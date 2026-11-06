@@ -34,10 +34,6 @@ import {
 } from "#src/backend/api-app";
 import { resolveAuth } from "#src/backend/lib/http/authorize";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
-import { connect as connectInngestSdk } from "inngest/connect";
-import { createInngestSurface } from "#src/backend/lib/inngest/client";
-import * as inngestClientModule from "#src/backend/lib/inngest/client";
-import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { createWfGraphRuntime } from "#src/backend/runtime";
 import { createWorkerWake } from "#src/backend/executor/worker-wake";
 import * as workerLoopModule from "#src/backend/executor/worker-loop";
@@ -362,9 +358,6 @@ describe("createWfGraphApp with host authentication", () => {
     // Only the route table is read here. A runtime builds its Layers on the
     // first Effect it runs and this app never serves a request, so this one is
     // disposed having built nothing.
-    const inngest = createInngestSurface(BASE_OPTIONS.inngest, {
-      connect: connectInngestSdk,
-    });
     const database = dbModule.createDatabaseSurface(
       normalizeDatabaseConfig({
         url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test",
@@ -386,12 +379,9 @@ describe("createWfGraphApp with host authentication", () => {
         auth: resolveAuth(trustWfGraphUpstream()),
         runtime,
         eventsKey: "events-key",
-        inngestHandler: inngest.serve(
-          await buildInngestFunctions(inngest.client, runtime)
-        ),
       });
       const machinePaths = new Set(
-        machineRoutes({ serveInngest: true, acceptEvents: true }).map(
+        machineRoutes({ acceptEvents: true }).map(
           (route) => `/wfgraph/api${route}`
         )
       );
@@ -443,12 +433,16 @@ describe("createWfGraphApp with host authentication", () => {
     }
   });
 
-  it("leaves the Inngest machine route on its own credentials", async () => {
-    await using app = await createGuardedApp(false);
-    // Inngest cannot carry a browser session, so a gate here would break every
-    // callback and with it every workflow run.
-    const inngest = await get(app, "/wfgraph/api/inngest");
-    expect(inngest.status).not.toBe(401);
+  // A host on Inngest registers the forwarders from `@wfgraph/core/inngest`
+  // on its own `serve`, so the app mounts no Inngest callback.
+  it("serves no Inngest route", async () => {
+    await using app = await createGuardedApp(true);
+    for (const method of ["GET", "POST", "PUT"]) {
+      const response = await app.fetch(
+        new Request("http://localhost/wfgraph/api/inngest", { method })
+      );
+      expect(response.status).toBe(404);
+    }
   });
 
   it("refuses the editor itself, not only its data", async () => {
@@ -599,155 +593,6 @@ describe("createWfGraphApp configuration", () => {
     ).json()) as { catalog: { actions: Array<{ id: string }> } };
 
     expect(catalog.actions.map((entry) => entry.id)).toContain("host/probe");
-  });
-});
-
-describe("createWfGraphApp with inngest.connect", () => {
-  const close = vi.fn(async () => undefined);
-  const connect = vi.fn();
-  const realCreate = inngestClientModule.createInngestSurface;
-
-  beforeEach(() => {
-    connect.mockReset();
-    close.mockReset();
-    connect.mockResolvedValue({
-      connectionId: "conn-app",
-      state: "ACTIVE",
-      close,
-      closed: Promise.resolve(),
-      getDebugState: vi.fn(),
-    });
-    vi.spyOn(inngestClientModule, "createInngestSurface").mockImplementation(
-      (config) => realCreate(config, { connect })
-    );
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("opens Connect at boot and drains it on dispose", async () => {
-    {
-      await using app = await createWfGraphApp({
-        ...BASE_OPTIONS,
-        inngest: { ...BASE_OPTIONS.inngest, connect: true },
-      });
-      expect(connect).toHaveBeenCalledTimes(1);
-      expect(connect.mock.calls[0]?.[0]).toMatchObject({
-        handleShutdownSignals: [],
-      });
-      // Connect dials out; the HTTP callback must not be advertised.
-      expect((await get(app, "/api/inngest")).status).toBe(404);
-    }
-
-    expect(close).toHaveBeenCalledTimes(1);
-  });
-
-  it("leaves Connect alone when the host does not opt in", async () => {
-    await using app = await createTestApp();
-    expect(connect).not.toHaveBeenCalled();
-    expect((await get(app, "/api/inngest")).status).not.toBe(404);
-  });
-
-  it("logs a warning when Connect close fails during dispose", async () => {
-    const warn = vi.fn();
-    close.mockRejectedValueOnce(new Error("close failed"));
-    const app = await createWfGraphApp({
-      ...BASE_OPTIONS,
-      inngest: { ...BASE_OPTIONS.inngest, connect: true },
-      logger: { info: () => {}, warn, error: () => {} },
-    });
-    await app.dispose();
-
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("Connect worker close failed"),
-      undefined
-    );
-  });
-
-  // A handshake failure the SDK cannot itself retry (outside its
-  // ReconnectError catch) still rejects `connect()` directly, and the shared
-  // catch still gives the pool back so a host that retries after fixing
-  // whatever broke is not refused by a leaked connection.
-  it("rejects boot when Connect itself rejects and gives the pool back", async () => {
-    const createSurface = dbModule.createDatabaseSurface;
-    let database: ReturnType<typeof createSurface> | undefined;
-    const surfaceSpy = vi
-      .spyOn(dbModule, "createDatabaseSurface")
-      .mockImplementation((config) => {
-        database = createSurface(config);
-        return database;
-      });
-
-    connect.mockRejectedValueOnce(new Error("gateway handshake failed"));
-
-    try {
-      await expect(
-        createWfGraphApp({
-          ...BASE_OPTIONS,
-          inngest: { ...BASE_OPTIONS.inngest, connect: true },
-        })
-      ).rejects.toThrow("gateway handshake failed");
-
-      if (!database) {
-        throw new Error("Boot opened no database surface to give back.");
-      }
-
-      // A pool that was never ended would answer with ECONNREFUSED
-      // (nothing listens on :1), not CONNECTION_ENDED.
-      await expect(database.client`select 1`).rejects.toThrow(
-        "CONNECTION_ENDED"
-      );
-    } finally {
-      surfaceSpy.mockRestore();
-    }
-  });
-
-  // Read against the inngest 4.x source this package accepts as its peer:
-  // every handshake failure the SDK meets (a down gateway included) is a
-  // ReconnectError, and
-  // its reconcile loop retries a ReconnectError forever without ever
-  // settling the promise connect() hands back. Boot must not hang behind
-  // that: it fails once connectTimeoutMs elapses, names the gateway it could
-  // not reach, and still gives the pool back.
-  it("fails boot when Connect never settles, naming the gateway", async () => {
-    const createSurface = dbModule.createDatabaseSurface;
-    let database: ReturnType<typeof createSurface> | undefined;
-    const surfaceSpy = vi
-      .spyOn(dbModule, "createDatabaseSurface")
-      .mockImplementation((config) => {
-        database = createSurface(config);
-        return database;
-      });
-
-    // Mirrors the SDK's own behavior against an unreachable gateway: the
-    // handshake's ReconnectError is retried internally, so nothing outside
-    // the SDK ever observes a rejection or a resolution.
-    connect.mockReturnValueOnce(new Promise<never>(() => {}));
-
-    try {
-      await expect(
-        createWfGraphApp({
-          ...BASE_OPTIONS,
-          inngest: {
-            ...BASE_OPTIONS.inngest,
-            connect: true,
-            gatewayUrl: "ws://localhost:8390/v0/connect",
-            connectTimeoutMs: 5,
-          },
-        })
-      ).rejects.toThrow("ws://localhost:8390/v0/connect");
-
-      if (!database) {
-        throw new Error("Boot opened no database surface to give back.");
-      }
-
-      await expect(database.client`select 1`).rejects.toThrow(
-        "CONNECTION_ENDED"
-      );
-    } finally {
-      surfaceSpy.mockRestore();
-    }
   });
 });
 

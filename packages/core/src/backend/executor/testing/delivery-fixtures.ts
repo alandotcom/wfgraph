@@ -24,6 +24,7 @@ import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { createInngestEventForwarder } from "#src/backend/lib/inngest/event-forwarder";
+import { createHostEvents } from "#src/backend/host-events";
 import {
   createWfGraphRuntime,
   type WfGraphRuntime,
@@ -64,18 +65,15 @@ export const LEASE_MS = 60_000;
 const inngestClient = new Inngest({ id: "delivery-cases", isDev: true });
 
 /** What a forwarder's Inngest function answered, read back from the test engine. */
-function forwardReceipt(result: unknown): {
-  inboxId: string;
-  duplicate: boolean;
-} {
+function forwardReceipt(result: unknown): { id: string; duplicate: boolean } {
   const receipt = readJsonObject(result);
   if (
-    typeof receipt?.inboxId !== "string" ||
+    typeof receipt?.id !== "string" ||
     typeof receipt.duplicate !== "boolean"
   ) {
     throw new Error("The forwarder answered no inbox receipt");
   }
-  return { inboxId: receipt.inboxId, duplicate: receipt.duplicate };
+  return { id: receipt.id, duplicate: receipt.duplicate };
 }
 export const WEBHOOK_SOURCE = "vendor/webhook";
 export const VENDOR_BOOKED = "vendor/booked";
@@ -295,13 +293,15 @@ export type DeliveryHarness = {
     id?: string | undefined;
   }) => Promise<{ id: string; duplicate: boolean }>;
   /**
-   * Runs the app's Inngest forwarder for `name` on one Inngest event, as
-   * Inngest invokes it, and answers what its step recorded.
+   * Runs the Inngest forwarder for `name` on one Inngest event, as Inngest
+   * invokes it, sending through the app's `events`, and answers the receipt
+   * its step returned. Rejects with the function's error as `cause` when the
+   * forward failed.
    */
   forward: (input: {
     name: string;
     event: { id?: string | undefined; data: unknown };
-  }) => Promise<{ inboxId: string; duplicate: boolean }>;
+  }) => Promise<{ id: string; duplicate: boolean }>;
   /** Stores an `acme` Connection, answering its id. */
   addConnection: (name: string) => Promise<string>;
   /** Posts `data` to one `acme` Connection's webhook under a vendor id. */
@@ -451,7 +451,7 @@ export function useDeliveryHarness(
         const forwarder = createInngestEventForwarder({
           client: inngestClient,
           name: input.name,
-          runtime: app,
+          events: createHostEvents(app),
         });
         const { result, error } = await new InngestTestEngine({
           function: forwarder,

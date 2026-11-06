@@ -1,7 +1,7 @@
 /**
  * Event deliveries through the worker loop, on the wall clock: an inbox row
  * delivered to a run that completes, a duplicate send, a host send through
- * `sendEvent`, an Inngest event the forwarder records, alone and on an
+ * `sendEvent`, an Inngest event the forwarder sends, alone and on an
  * umbrella source, webhook intake through two Connections, a row a host
  * inserted itself, and a webhook source told apart by its `source.when`
  * filter. Each case waits for the database to reach a state.
@@ -122,12 +122,12 @@ export function describeDeliveryLoopCases(
     const retried = await harness.forward({ name: START_EVENT, event });
     const loop = harness.loop();
 
-    const row = await settled(harness, first.inboxId);
+    const row = await settled(harness, first.id);
     const runId = await endedRun(harness, "wf_start");
     await loop.stop();
 
     expect(first.duplicate).toBe(false);
-    expect(retried).toEqual({ inboxId: first.inboxId, duplicate: true });
+    expect(retried).toEqual({ id: first.id, duplicate: true });
     expect(row).toMatchObject({
       status: "delivered",
       name: START_EVENT,
@@ -138,16 +138,16 @@ export function describeDeliveryLoopCases(
     expect(await harness.runs("wf_start")).toEqual([
       { id: runId, status: "completed" },
     ]);
-    expect(await harness.runOf("wf_start", first.inboxId)).toMatchObject({
+    expect(await harness.runOf("wf_start", first.id)).toMatchObject({
       id: runId,
     });
   });
 
-  // An umbrella source's forwarder records the event under the source name,
-  // and the delivery tells which Event it is, as it does for webhook intake.
-  // The forwarder decodes nothing, so data its Event refuses reaches the inbox
-  // and fails there.
-  it("delivers an Inngest event forwarded under an umbrella source as the Event its data is, and fails one whose data the Event refuses", async () => {
+  // An umbrella source's forwarder sends under the source name, and the send
+  // tells which Event it is by `source.when`, recording it under that Event's
+  // name. The send checks the payload, so data the Event refuses fails the
+  // forward without a retry and never reaches the inbox.
+  it("records an Inngest event forwarded under an umbrella source as the Event its data is, and refuses one whose data the Event refuses", async () => {
     const harness = await open();
     await harness.publish("wf_hook", startsAndSends(VENDOR_BOOKED));
     const booked = await harness.forward({
@@ -157,24 +157,33 @@ export function describeDeliveryLoopCases(
         data: { type: "booked", appointmentId: "appt_umbrella" },
       },
     });
-    const refused = await harness.forward({
+    const refused = harness.forward({
       name: WEBHOOK_SOURCE,
       event: { id: "evt_refused", data: { type: "booked" } },
     });
+    await expect(refused).rejects.toMatchObject({
+      cause: { name: "NonRetriableError" },
+    });
     const loop = harness.loop();
 
-    await settled(harness, booked.inboxId);
-    const failed = await settled(harness, refused.inboxId);
+    const row = await settled(harness, booked.id);
     const runId = await endedRun(harness, "wf_hook");
     await loop.stop();
 
-    expect(failed).toMatchObject({ status: "failed", name: WEBHOOK_SOURCE });
+    expect(row).toMatchObject({ status: "delivered", name: VENDOR_BOOKED });
     expect(await harness.runs("wf_hook")).toEqual([
       { id: runId, status: "completed" },
     ]);
-    expect(await harness.runOf("wf_hook", booked.inboxId)).toMatchObject({
+    expect(await harness.runOf("wf_hook", booked.id)).toMatchObject({
       id: runId,
     });
+    // The refused event left no inbox row its key would answer with.
+    const resent = await harness.sendEvent({
+      name: WEBHOOK_SOURCE,
+      data: { type: "booked", appointmentId: "appt_resent" },
+      id: "evt_refused",
+    });
+    expect(resent.duplicate).toBe(false);
   });
 
   it("records one inbox row per vendor id per Connection from webhook intake, and delivers each with its Connection", async () => {

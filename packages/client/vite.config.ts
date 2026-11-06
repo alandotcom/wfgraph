@@ -34,7 +34,7 @@ const outDir = fileURLToPath(new URL("./dist/client", import.meta.url));
 // `PORT=4018 pnpm run dev` moves both halves together.
 //
 // The example mounts Workflow Graph at the root, which puts every backend route under
-// `/api`: rpc, rest, openapi.json, docs, extensions, inngest, and webhooks.
+// `/api`: rpc, rest, openapi.json, docs, extensions, events, and webhooks.
 // Mounting under a `basePath` would move them all, and this
 // proxy rule would have to move with them.
 const APP_ORIGIN = `http://localhost:${process.env.PORT ?? 4017}`;

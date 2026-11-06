@@ -57,7 +57,7 @@ provides it by name.
 A `client.ts` is the adapter above that: the auth header, the endpoints, the system's
 error-envelope schema, and a `describeXFailure` saying what a failure means in words. Its
 calls answer an `Effect` a step yields directly. Twilio's client is the one to copy. The
-retry policy is stated once, above `RETRY_ATTEMPTS`, and Inngest's function-level retry is
+retry policy is stated once, above `RETRY_ATTEMPTS`, and the executor's run-level retry is
 the outer policy beyond it.
 
 An SDK earns its place only where it carries protocol logic worth borrowing, which is why

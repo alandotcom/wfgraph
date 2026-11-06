@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
+import { Effect } from "effect";
 import { Hono } from "hono";
 import { createApiApp } from "#src/backend/api-app";
 import {
@@ -18,13 +19,6 @@ import {
   toMountRelativePath,
 } from "#src/backend/lib/http/mount-path";
 import type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
-import {
-  createInngestSurface,
-  type WfGraphInngestConfig,
-  type WorkerConnection,
-} from "#src/backend/lib/inngest/client";
-import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
-import { connect as connectInngestSdk } from "inngest/connect";
 import { getAppLogger } from "#src/backend/lib/logger";
 import {
   readAgentSettings,
@@ -47,7 +41,6 @@ import type {
 import { isBlank } from "@wfgraph/shared/types/string";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
-export type { WfGraphInngestConfig } from "#src/backend/lib/inngest/client";
 export {
   defineWfGraphAuth,
   trustWfGraphUpstream,
@@ -86,9 +79,8 @@ export type WfGraphAppOptions = {
    * Required everywhere rather than only in production, because the check that
    * would tell the two apart reads an environment variable that says
    * "production" and misses "prod" and an unset one. Covers everything Workflow
-   * Graph serves except machine routes (`/webhooks/:type/:connectionId`,
-   * `/inngest` when HTTP serve is mounted, and `/events` when `events.key` is
-   * set) and public OAuth client metadata at
+   * Graph serves except machine routes (`/webhooks/:type/:connectionId` and
+   * `/events` when `events.key` is set) and public OAuth client metadata at
    * `/integrations/oauth/clients/:integrationType`.
    */
   auth: WfGraphAuth;
@@ -105,7 +97,6 @@ export type WfGraphAppOptions = {
    */
   entityResolverTimeoutMs?: number | undefined;
   encryption: EncryptionRuntimeConfig;
-  inngest: WfGraphInngestConfig;
   /** Event intake over HTTP. See `WfGraphEventsOptions`. */
   events?: WfGraphEventsOptions | undefined;
   /**
@@ -173,10 +164,9 @@ export type WfGraphApp = {
   /** Raises an Event into this app's event inbox from the host's own code. */
   events: WfGraphEvents;
   /**
-   * Give back everything this app holds. Awaiting it waits for the Effect
-   * runtime's Layers to finalize; a host that fires and forgets still releases
-   * the registrations synchronously. When `inngest.connect` was set, the
-   * Connect worker is drained first, and the runner stops after it.
+   * Give back everything this app holds. Awaiting it waits for the worker
+   * loop to stop and for the Effect runtime's Layers to finalize; a host that
+   * fires and forgets still releases the registrations synchronously.
    */
   dispose: () => Promise<void>;
   /** Dispose the app automatically when an `await using` scope exits. */
@@ -198,10 +188,6 @@ export async function createWfGraphApp(
   const publicUrl = resolvePublicUrl(options.publicUrl);
   const auth = resolveAuth(options.auth);
 
-  if (!options.inngest.id?.trim()) {
-    throw new Error("createWfGraphApp requires inngest.id");
-  }
-
   assertValidEncryptionKey(options.encryption.key);
   const eventsKey = options.events?.key;
   if (eventsKey !== undefined && isBlank(eventsKey)) {
@@ -216,13 +202,6 @@ export async function createWfGraphApp(
       "createWfGraphApp's events.key contains whitespace, which an Authorization: Bearer header cannot carry. Pass a key without spaces, tabs or line breaks."
     );
   }
-
-  // One value for the Inngest client this app sends on, built before the
-  // runtime because the Layer graph takes it. Functions are registered once
-  // the runtime exists, on either Connect or HTTP serve.
-  const inngest = createInngestSurface(options.inngest, {
-    connect: connectInngestSdk,
-  });
 
   const setup = await openWfGraphSetup({
     logger: options.logger,
@@ -252,7 +231,6 @@ export async function createWfGraphApp(
       basePath,
       auth,
       setup,
-      inngest,
     });
   } catch (error) {
     return await failAfterClose(error, [setup.close]);
@@ -284,29 +262,21 @@ async function assembleWfGraphApp(
     basePath: "" | `/${string}`;
     auth: ResolvedAuth;
     setup: WfGraphSetup;
-    inngest: ReturnType<typeof createInngestSurface>;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, auth, setup, inngest } = startup;
+  const { basePath, auth, setup } = startup;
   const { runtime } = setup;
   const { startRunner } = setup;
 
-  // Built once: Connect and HTTP serve are alternatives, and whichever path
-  // this app takes registers that same list. Building the list runs the
-  // runtime's first Effect, which builds the Layer graph, so a graph that
-  // cannot build or a broken extension surface fails at boot instead of on the
-  // first request or Connect handshake.
-  const functions = await buildInngestFunctions(inngest.client, runtime);
-  const useConnect = options.inngest.connect === true;
+  // The runtime's first Effect builds the Layer graph, so a graph that cannot
+  // build fails at boot instead of on the first request.
+  await runtime.runPromise(Effect.void);
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
     auth,
     runtime,
     mcp: options.mcp,
     eventsKey: options.events?.key,
-    // Connect dials out; mounting `/inngest` would advertise a callback Inngest
-    // cannot reach on a private network and is not how Connect syncs.
-    inngestHandler: useConnect ? undefined : inngest.serve(functions),
   });
   const fullApp = new Hono();
 
@@ -343,33 +313,10 @@ async function assembleWfGraphApp(
     });
   }
 
-  // Connect last so a failed client-bundle check never leaves a live WebSocket.
-  let workerConnection: WorkerConnection | undefined;
-  if (useConnect) {
-    workerConnection = await inngest.connect(functions);
-    getAppLogger("inngest").info(
-      `Inngest Connect worker ready: connectionId=${workerConnection.connectionId} state=${workerConnection.state}`
-    );
-  }
-
   // Last, so a boot that failed before this line leaves no loop running.
   let runner: InProcessRunner | undefined = startRunner?.();
 
   const disposeOnce = async (): Promise<void> => {
-    // Drain Connect before the runtime goes away: in-flight steps still need
-    // the Layer graph, and a closed WebSocket is what stops Inngest from
-    // dispatching more work to this process.
-    if (workerConnection) {
-      try {
-        await workerConnection.close();
-      } catch (error) {
-        getAppLogger("inngest").warn(
-          `Inngest Connect worker close failed during dispose: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-      workerConnection = undefined;
-    }
-
     // The loop's passes write through the runtime and the backend, so it
     // stops, its passes drained, before either closes.
     await runner?.stop();

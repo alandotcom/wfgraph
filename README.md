@@ -15,7 +15,8 @@ editor.
 
 Workflow Graph runs on your infrastructure. Workflow runs execute in your Node process and
 keep their state in your PostgreSQL or SQLite database. Events arrive in an inbox table in
-that database, sent from your code, over HTTP, from a webhook, or through Inngest.
+that database, sent from your code, over HTTP, from a webhook, or through Inngest with the
+forwarders from `@wfgraph/core/inngest`.
 
 ## Run locally
 
@@ -30,15 +31,26 @@ cat > .env.local <<EOF
 INTEGRATION_ENCRYPTION_KEY=$(openssl rand -hex 32)
 # Optional: enables the build agent in the editor.
 OPENAI_API_KEY=your-openai-api-key
+# Optional: mounts POST /api/events, which takes this as a bearer token.
+WFGRAPH_EVENTS_KEY=$(openssl rand -hex 32)
 # Optional: enables Slack OAuth. See .env.example for the redirect URL to
 # register on the Slack app.
 SLACK_CLIENT_ID=your-slack-client-id
 SLACK_CLIENT_SECRET=your-slack-client-secret
 EOF
 
-# App :4017, editor :5173. The Inngest CLI takes free ports and prints its own.
-# INNGEST_DEV_PORT pins that one.
+# Two processes: the example app on :4017 and the editor on :5173.
 pnpm run dev
+```
+
+The example app runs workflows and delivers Events in its own worker loop, so nothing else
+has to be running. To raise an Event from a shell, post it to the events route with the
+`WFGRAPH_EVENTS_KEY` from `.env.local`:
+
+```bash
+curl -X POST http://localhost:4017/api/events \
+  -H "Authorization: Bearer $WFGRAPH_EVENTS_KEY" -H "Content-Type: application/json" \
+  -d '{"name":"billing/payment.settled","data":{"appointmentId":"appt_1","amountCents":5000,"settledAt":"2026-08-10T19:00:00.000Z"}}'
 ```
 
 Open the editor at [http://localhost:5173](http://localhost:5173). The example host app lives
@@ -70,16 +82,15 @@ pnpm run start
 The setup command installs the workspace and creates the required encryption key. The
 codespace starts the development stack and keeps its own SQLite database. After the app
 starts, Codespaces opens the forwarded **Workflow Graph** port. Sign in with any demo account
-listed in **Run locally**. Codespaces also forwards the **Inngest** port for its development
-UI. If startup fails, read `/tmp/wfgraph-dev.log` in the codespace.
+listed in **Run locally**. If startup fails, read `/tmp/wfgraph-dev.log` in the codespace.
 
 ## Test workflow reliability
 
 `pnpm run test:reliability` exercises admission recovery, late cancellation, Entity
-Eligibility Exit, and Group execution through the real application and a private Inngest
-dev server. It runs fixed regression examples and generated cases on SQLite and
-PostgreSQL. Each case creates and closes its own application, database, and Inngest
-state.
+Eligibility Exit, and Group execution through the real application and its worker loop,
+sending every Event with `app.events.send`. It runs fixed regression examples and
+generated cases on SQLite and PostgreSQL. Each case creates and closes its own application
+and database.
 The cancellation, Exit, and Group properties run every case three times: ungrouped, and
 with a vertical and a horizontal Group around part of the graph. Each run must reach the
 expected outcome, and the grouped runs must match the ungrouped run. The property
@@ -99,16 +110,18 @@ defaults to three. Failures write evidence
 under `test-results/reliability/` and print a replay command with
 `WFGRAPH_RELIABILITY_SEED` and `WFGRAPH_RELIABILITY_PATH`. The seed reproduces generated
 inputs; test controls coordinate the repository failure windows. The ordinary
-`pnpm run test` suite runs separately and does not start Inngest.
+`pnpm run test` suite runs separately.
 
 ## Embed in your app
 
 ```bash
-pnpm add @wfgraph/core @wfgraph/client inngest hono
+pnpm add @wfgraph/core @wfgraph/client hono
 ```
 
-`inngest` and `hono` are peer dependencies, so your application owns the version of each
-that runs in its process. Add `@wfgraph/plugins` for the built-in integrations.
+`hono` is a peer dependency, so your application owns the version that runs in its process.
+Add `@wfgraph/plugins` for the built-in integrations. An application that publishes Events
+with `inngest.send` also installs `inngest`, an optional peer dependency, and registers the
+forwarders from `@wfgraph/core/inngest` (see `docs/events.md`).
 
 The published packages include Agent Skills (TanStack Intent). After install, run
 `pnpm dlx @tanstack/intent@latest install`, then `pnpm dlx @tanstack/intent@latest list`
@@ -176,7 +189,6 @@ const wfgraph = await createWfGraphApp({
   agent: { apiKey: process.env.OPENAI_API_KEY },
   auth,
   client: clientBundle,
-  inngest: { id: "my-wfgraph-app", connect: true },
   extensions: {
     events: [appointmentCreated],
     actions: [cancelAppointment],

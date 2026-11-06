@@ -53,7 +53,7 @@ export function draftDiffersFromPublished(
  * Hashes the ids and shapes that decide soundness (Event names, action ids and
  * their config/output field keys, integration types). Handler code is not part
  * of it: two deploys with the same catalog ids share a fingerprint even when
- * step bodies changed, which is Inngest's step-memoization problem rather than
+ * step bodies changed, which is the step memo's replay problem rather than
  * this one.
  *
  * Every list is sorted first. A version pins this value, and each later run of

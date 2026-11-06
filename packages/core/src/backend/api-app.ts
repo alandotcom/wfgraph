@@ -12,7 +12,6 @@ import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import { readCappedText } from "#src/backend/lib/http/capped-body";
 import { bearerKeyMatches } from "#src/backend/lib/http/bearer-key";
-import type { InngestServeHandler } from "#src/backend/lib/inngest/client";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { createRequestEvent } from "#src/backend/lib/http/request-event";
 import {
@@ -169,12 +168,6 @@ export type CreateApiAppOptions = {
    * procedure whose service has been migrated can run its Effect on it.
    */
   runtime: WfGraphRuntime;
-  /**
-   * The `/inngest` HTTP serve handler. Absent when the host opted into Connect:
-   * that mode dials out over a WebSocket and must not expose a callback route
-   * that Inngest cannot reach on a private network.
-   */
-  inngestHandler?: InngestServeHandler | undefined;
   /** Enables and secures the authenticated stateless MCP authoring endpoint. */
   mcp?: true | WfGraphMcpOptions | undefined;
   /**
@@ -186,38 +179,25 @@ export type CreateApiAppOptions = {
 
 const WEBHOOK_ROUTE = "/webhooks/:type/:connectionId";
 
-const INNGEST_SERVE_ROUTE = "/inngest";
-
 const EVENTS_ROUTE = "/events";
 
 /**
- * Routes reached by machines, each carrying a credential of its own: Inngest
- * signs its HTTP callback when that route is mounted, a webhook carries the
- * vendor's signature, and an Event send carries the app's shared events key
- * when that route is mounted. A session check would break each of them. Host
- * `auth` must not consume the webhook body.
+ * Routes reached by machines, each carrying a credential of its own: a
+ * webhook carries the vendor's signature, and an Event send carries the app's
+ * shared events key when that route is mounted. A session check would break
+ * each of them. Host `auth` must not consume the webhook body.
  *
  * Written as the exception, so a route added to this file is gated by default
  * and opening one is an edit here with a reason attached. Listing what to gate
  * instead fails the other way: forgetting it publishes an endpoint silently.
  *
- * Inngest verifies that signature only in cloud mode and with a signing key
- * configured; `reportInngestCallbackExposure` says so at startup when the HTTP
- * serve path is mounted and neither holds. Connect mode mounts no `/inngest`
- * route, so it is absent from this list then.
- *
  * Each path is named rather than spelled out, so the gate and the route
  * registration below cannot drift apart into a silent 401 for every sender.
  */
 export function machineRoutes(options: {
-  serveInngest: boolean;
   acceptEvents: boolean;
 }): readonly string[] {
-  return [
-    ...(options.serveInngest ? [INNGEST_SERVE_ROUTE] : []),
-    WEBHOOK_ROUTE,
-    ...(options.acceptEvents ? [EVENTS_ROUTE] : []),
-  ];
+  return [WEBHOOK_ROUTE, ...(options.acceptEvents ? [EVENTS_ROUTE] : [])];
 }
 
 /** OAuth client metadata is provider-discovery data, so it reaches no host auth. */
@@ -260,18 +240,10 @@ export function requestLogPath(path: string): string {
 }
 
 export function createApiApp(options: CreateApiAppOptions) {
-  const {
-    basePath,
-    auth,
-    runtime,
-    inngestHandler,
-    mcp = false,
-    eventsKey,
-  } = options;
+  const { basePath, auth, runtime, mcp = false, eventsKey } = options;
   const app = new Hono<WfGraphHonoEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
   const ungatedRoutes = machineRoutes({
-    serveInngest: inngestHandler !== undefined,
     acceptEvents: eventsKey !== undefined,
   });
 
@@ -532,12 +504,6 @@ export function createApiApp(options: CreateApiAppOptions) {
     .all("/auth/*", (c) => c.json({ error: "Not found" }, 404))
     .all("/og", (c) => c.json({ error: "Not found" }, 404))
     .all("/og/*", (c) => c.json({ error: "Not found" }, 404));
-
-  if (inngestHandler) {
-    routes.on(["GET", "POST", "PUT"], INNGEST_SERVE_ROUTE, (c) =>
-      inngestHandler(c)
-    );
-  }
 
   if (mcp) {
     routes.all("/mcp", async (c) => {

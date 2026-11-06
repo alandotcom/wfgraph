@@ -50,7 +50,6 @@ function slowStep() {
     entityByType: () => undefined,
     entityResolverTimeoutMs: DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS,
     events: [],
-    hostEvents: [],
     entities: [],
   };
 

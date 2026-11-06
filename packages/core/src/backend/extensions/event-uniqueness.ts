@@ -1,16 +1,14 @@
 /**
  * Intra- and cross-definition uniqueness for Events: mutually exclusive filters
- * on a shared source, Event names distinct from other Events' source names, and
- * one Inngest forwarder id per name a host sends.
+ * on a shared source, and Event names distinct from other Events' source names.
  *
  * `checkIntegration` runs the filter check on one plugin; `assembleExtensions`
  * runs every check on the whole surface. The sentences are the same because the
  * collision is.
  */
 
-import { groupBy, uniq } from "es-toolkit/array";
+import { groupBy } from "es-toolkit/array";
 import type { EventSource } from "#src/backend/extensions/define-event";
-import { toForwarderFunctionId } from "#src/backend/lib/inngest/forwarder-function-id";
 
 export type NamedEventSource = {
   readonly name: string;
@@ -70,39 +68,6 @@ export function assertSourcesAreDistinguishable(
       }
       filteredByValue.set(when.equals, event.name);
     }
-  }
-}
-
-/**
- * The Inngest event names a forwarder is registered for: the source of each
- * Event in `events`, once each. Events sharing an umbrella source share its
- * forwarder.
- */
-export function forwardedEventNames(
-  events: readonly NamedEventSource[]
-): string[] {
-  return uniq(events.map((event) => event.source.event));
-}
-
-/**
- * Two forwarded names may not slug to one Inngest function id.
- *
- * The id is `slugify(name)`, so `app/appointment.created` and
- * `app-appointment-created` are the same function to Inngest. It would sync one
- * and drop the other, which reads as an Event that quietly never arrives.
- */
-export function assertDistinctForwarderIds(names: readonly string[]): void {
-  const byId = new Map<string, string>();
-
-  for (const name of names) {
-    const id = toForwarderFunctionId(name);
-    const existing = byId.get(id);
-    if (existing) {
-      throw new Error(
-        `Events arriving as "${existing}" and "${name}" both name the Inngest function "${id}". A forwarder's id is the name it receives slugged, so two names differing only in punctuation collide; rename one.`
-      );
-    }
-    byId.set(id, name);
   }
 }
 

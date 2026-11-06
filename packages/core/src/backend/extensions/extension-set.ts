@@ -32,9 +32,7 @@ import type { ActionDefinition } from "#src/backend/extensions/define-action";
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import type { AnyEntityDefinition } from "#src/backend/extensions/define-entity";
 import {
-  assertDistinctForwarderIds,
   assertNamesAreNotOtherSources,
-  forwardedEventNames,
   assertSourcesAreDistinguishable,
 } from "#src/backend/extensions/event-uniqueness";
 import {
@@ -122,11 +120,11 @@ export type ExtensionSet = {
   readonly webhookFor: (type: string) => IntegrationWebhook | undefined;
   readonly eventByName: (name: string) => RegisteredEvent | undefined;
   /**
-   * Which Event an arrival is. An arrival with no Connection is one of
-   * `hostEvents`, named by the Event's own name or by the `source.event` name
-   * it arrives under. An arrival with a Connection is an integration-owned
-   * Event, named the same two ways. `app.events.send`, the events route, the
-   * Inngest forwarders and the delivery body all decide through this.
+   * Which Event an arrival is. An arrival with no Connection is an Event the
+   * host declared itself, named by the Event's own name or by the
+   * `source.event` name it arrives under. An arrival with a Connection is an integration-owned
+   * Event, named the same two ways. `app.events.send`, the events route and
+   * the delivery body all decide through this.
    */
   readonly resolveArrival: (arrival: Arrival) => ArrivalMatch;
   readonly entityByType: (type: string) => AnyEntityDefinition | undefined;
@@ -134,12 +132,6 @@ export type ExtensionSet = {
   readonly entityResolverTimeoutMs: number;
   /** Every Event, host-declared and integration-owned. */
   readonly events: readonly RegisteredEvent[];
-  /**
-   * The Events the host declared itself, which a host's own bus can carry. An
-   * integration-owned Event arrives through its integration's webhook, with
-   * the Connection it came through.
-   */
-  readonly hostEvents: readonly RegisteredEvent[];
   /** Every Entity reached transitively from a registered Event. */
   readonly entities: readonly AnyEntityDefinition[];
 };
@@ -540,7 +532,6 @@ export function assembleExtensions(
   );
   assertSourcesAreDistinguishable(events);
   assertNamesAreNotOtherSources(events);
-  assertDistinctForwarderIds(forwardedEventNames(hostEvents));
 
   // The built-ins go in first, so anything colliding with one of them is caught
   // by the same check as any other collision.
@@ -600,7 +591,6 @@ export function assembleExtensions(
       options.entityResolverTimeoutMs
     ),
     events,
-    hostEvents,
     entities,
   };
 }

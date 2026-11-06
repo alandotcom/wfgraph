@@ -31,7 +31,6 @@ const wfgraph = await createWfGraphApp({
   }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   auth,
-  inngest: { id: "my-wfgraph-app", connect: true },
   extensions: { events: [], actions: [], integrations: [] },
 });
 
@@ -45,7 +44,8 @@ persists to a file:
 import { wfSqlite } from "@wfgraph/core/sqlite";
 ```
 
-Runs on Node 24 with PostgreSQL 15 or newer or native SQLite, and Inngest. Add
+Runs on Node 24 with PostgreSQL 15 or newer or native SQLite. A host that sends Events with
+`inngest.send` adds `inngest` and registers the forwarders from `@wfgraph/core/inngest`. Add
 [`@wfgraph/client`](https://www.npmjs.com/package/@wfgraph/client) for the visual editor and
 [`@wfgraph/plugins`](https://www.npmjs.com/package/@wfgraph/plugins) for the built-in
 integrations; the three are released together and always share a version.

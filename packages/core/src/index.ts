@@ -56,7 +56,6 @@ export {
   type WfGraphEvents,
   type WfGraphEventsOptions,
   type WfGraphExtensions,
-  type WfGraphInngestConfig,
   type WfGraphLogger,
   type WfGraphPersistence,
   type WfGraphRunnerOptions,

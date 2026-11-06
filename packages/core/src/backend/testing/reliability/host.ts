@@ -18,16 +18,12 @@ import { uniq } from "es-toolkit/array";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { fixtureExtensions } from "#src/backend/testing/reliability/fixtures";
-import { boundary, eventually } from "#src/backend/testing/reliability/control";
-import {
-  InngestStartupFailure,
-  startInngest,
-} from "#src/backend/testing/reliability/inngest";
+import { boundary } from "#src/backend/testing/reliability/control";
 
 export class HostSetupFailure extends Error {
   constructor(
     cause: unknown,
-    readonly evidence: { applicationLogs: unknown[][]; runtimeLogs: string[] }
+    readonly evidence: { applicationLogs: unknown[][] }
   ) {
     super(`Reliability host setup failed: ${String(cause)}`, { cause });
   }
@@ -49,25 +45,12 @@ export type ReliabilityHost = ReturnType<typeof fixtureExtensions> & {
     ReturnType<typeof boundary>
   >;
   repo: ExecutionRepo["Service"];
-  runtime: Awaited<ReturnType<typeof startInngest>>;
   /**
    * Sends an Event through `app.events.send`, answering its inbox row's id.
    * `id` is the idempotency key, so a repeat answers the first row's id.
    */
   send: (name: string, data: JsonObject, id?: string) => Promise<string>;
-  /**
-   * Sends an Event to the Inngest dev server, whose run of the app's forwarder
-   * records it in the event inbox keyed by `id`.
-   */
-  sendThroughInngest: (
-    name: string,
-    data: JsonObject,
-    id?: string
-  ) => Promise<void>;
-  /**
-   * Waits until every forwarder run Inngest started has completed, and
-   * answers the inbox row ids of every Event this host sent, each once.
-   */
+  /** The inbox row ids of every Event this host sent, each once. */
   inboxIds: () => Promise<string[]>;
   logs: unknown[][];
   /** The application's own `dispose`, which `close` also runs. */
@@ -90,7 +73,6 @@ export async function createHost(
   options: HostOptions = {}
 ): Promise<ReliabilityHost> {
   const logs: unknown[][] = [];
-  let runtimeLogs: string[] = [];
   const directory = await mkdtemp(join(tmpdir(), "wfgraph-reliability-"));
   const faults = {
     admission: boundary(),
@@ -125,9 +107,6 @@ export async function createHost(
       faults,
       repositories.resolve
     );
-    const runtime = await startInngest(directory);
-    cleanup.push(runtime.close);
-    runtimeLogs = runtime.logs;
     const log = (...values: unknown[]) => {
       logs.push(values);
     };
@@ -135,7 +114,6 @@ export async function createHost(
       auth: trustWfGraphUpstream(),
       persistence,
       encryption: { key: "c".repeat(64) },
-      inngest: { id: "reliability", isDev: true, baseUrl: runtime.url },
       extensions: fixture.extensions,
       logger: { info: log, warn: log, error: log, debug: log },
       runner: options.runner,
@@ -156,9 +134,6 @@ export async function createHost(
     if (!address || typeof address === "string")
       throw new Error("Missing host port");
     const url = `http://127.0.0.1:${address.port}`;
-    await runtime.register(`${url}/api/inngest`);
-    // Stop deliveries before closing HTTP. The earlier registration also covers setup failure.
-    cleanup.push(runtime.close);
     const repo = await repositories.promise;
     const rpc = async (method: string, input: JsonObject) => {
       const response = await fetch(`${url}/api/rpc/workflow/${method}`, {
@@ -176,56 +151,17 @@ export async function createHost(
     };
     const workflowIds: string[] = [];
     const sentInboxIds: string[] = [];
-    const inngestSends: Array<{ name: string; data: JsonObject; id: string }> =
-      [];
     return {
       dispose: app.dispose,
       ...fixture,
       faults,
       repo,
-      runtime,
       async send(name: string, data: JsonObject, id?: string) {
         const sent = await app.events.send(omitUndefined({ name, data, id }));
         sentInboxIds.push(sent.id);
         return sent.id;
       },
-      async sendThroughInngest(
-        name: string,
-        data: JsonObject,
-        id: string = crypto.randomUUID()
-      ) {
-        await runtime.send(name, data, id);
-        inngestSends.push({ name, data, id });
-      },
-      async inboxIds() {
-        if (inngestSends.length === 0) return uniq(sentInboxIds);
-        const runs = await eventually(
-          "Inngest forwarder runs finished",
-          () => runtime.allRuns(),
-          (rows) =>
-            rows.length > 0 &&
-            rows.every((row) => !["RUNNING", "QUEUED"].includes(row.status))
-        );
-        const failed = runs.filter((row) => row.status !== "COMPLETED");
-        if (failed.length > 0)
-          throw new Error(
-            `Inngest forwarder runs did not complete: ${JSON.stringify(failed)}`
-          );
-        // Every forwarder run completed, so each Inngest send holds its inbox
-        // row by its event id. The same send through `app.events.send` is
-        // answered with that row as a duplicate, which is how its id is read.
-        const forwarded = await Promise.all(
-          inngestSends.map(async (sent) => {
-            const answer = await app.events.send(sent);
-            if (!answer.duplicate)
-              throw new Error(
-                `No forwarder recorded the Inngest event ${sent.id} for ${sent.name}`
-              );
-            return answer.id;
-          })
-        );
-        return uniq([...sentInboxIds, ...forwarded]);
-      },
+      inboxIds: () => Promise.resolve(uniq(sentInboxIds)),
       logs,
       close,
       directory,
@@ -253,7 +189,6 @@ export async function createHost(
       },
     };
   } catch (error) {
-    if (error instanceof InngestStartupFailure) runtimeLogs = error.logs;
     try {
       await close();
     } catch (cleanupError) {
@@ -263,10 +198,10 @@ export async function createHost(
           `Setup: ${String(error)}; cleanup: ${String(cleanupError)}`,
           { cause: cleanupError }
         ),
-        { applicationLogs: logs, runtimeLogs }
+        { applicationLogs: logs }
       );
     }
-    throw new HostSetupFailure(error, { applicationLogs: logs, runtimeLogs });
+    throw new HostSetupFailure(error, { applicationLogs: logs });
   }
 }
 

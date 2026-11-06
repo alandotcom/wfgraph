@@ -262,7 +262,7 @@ fills all three for one pass of the database executor, and `runWorkerLoop`
 (`backend/executor/worker-loop.ts`) runs the passes; `createWfGraphApp` starts that loop in
 its own process, and `createWfGraphRunner` starts it in a process that serves no HTTP. Both
 stand on `openWfGraphSetup` (`backend/setup.ts`). The engine imports neither the database,
-the assembled surface, Inngest, nor Drizzle.
+the assembled surface, nor Drizzle.
 
 **The host configures logtape, and a record is one unit of work** (ADR-0013).
 `backend/lib/logger.ts` is `getAppLogger` and the `wfgraph` root, and it calls no
@@ -313,7 +313,7 @@ active keeps the mocked import for every later file in that worker. Prefer:
   `useExtensionCatalog()` for React (fixtures wrap the provider; only
   `extensions.test.ts` stubs `fetch` to exercise hydrate)
 - required DI ports at construction (`fanOutDelivery`'s `ports`,
-  `runBody`'s `actions`, `createInngestSurface`'s `connect`)
+  `runBody`'s `actions`, `createInngestEventForwarder`'s `events`)
 - injected SDK factories (`createLinear(createClient)`) rather than `vi.spyOn` of
   thin wrappers
 - fetch stubs that read `globalThis` per call (see `RPCLink`'s `fetch`)
@@ -372,7 +372,8 @@ three projects: `client` covers `packages/client`, runs in happy-dom, and is the
 loading `test-setup.ts`; `node` takes every other `packages/*/src` test, the eval
 package's support tests included, and runs it with `scripts/**/*.test.ts` in bare Node.
 That boundary is load-bearing. happy-dom ships its own `TransformStream` whose `writable` is a boolean, and Inngest's
-execution engine builds a `TransformStream` on every run, so a backend test inheriting
+execution engine, which the forwarder tests in `backend/lib/inngest/` run through
+`@inngest/test`, builds a `TransformStream` on every run, so a backend test inheriting
 happy-dom's globals would throw `getWriter is not a function` the moment it touched a
 function. The node project's include is the whole of `packages/*/src` with the client
 carved out, rather than a list of package names, because a test file outside every
@@ -389,8 +390,9 @@ declares what its tests need. The `@wfgraph/plugins` source aliases are shared a
 importing `@wfgraph/plugins` would resolve through the package's `exports` to a stale `dist`.
 
 **The repo has no server of its own.** The one server is `examples/app.ts` (ADR-0006), and
-the bar for a line in it is whether an adopter would write it. `pnpm run dev` is three
-processes: the app on 4017, Vite's dev server in `packages/client`, and the Inngest CLI.
+the bar for a line in it is whether an adopter would write it. `pnpm run dev` is two
+processes: the app on 4017, which runs workflows and delivers Events in its own worker loop,
+and Vite's dev server in `packages/client`.
 Vite serves the editor on its own port and proxies `/api`, and its history fallback answers
 a page view, so nothing outside Workflow Graph applies the SPA-path rule. `client` goes unset in
 development, because the option takes a built bundle. `pnpm run start` is one process, with
@@ -399,9 +401,12 @@ the built bundle handed to `createWfGraphApp`.
 **The published package is not the dev tree.** `packages/core` publishes `dist`,
 `drizzle`, and `skills`, with `@wfgraph/shared` inlined into the build so it never appears as a dependency,
 and `backend/lib/effect/test-layers.ts` and `backend/lib/effect/span-test-support.ts`
-reachable from no entry. Verify a packaging change with `pnpm pack` and read the extracted
-manifest. `docs/embedding.md` ("Package exports")
-is the one home of the seven core entry points.
+reachable from no entry. `inngest` is an optional peer dependency, so only
+`backend/lib/inngest/`, which the `@wfgraph/core/inngest` entry alone reaches, may import
+it: a host without the SDK must still load every other entry, and after a build
+`grep -l inngest packages/core/dist/*.js` lists `inngest.js` alone. Verify a packaging
+change with `pnpm pack` and read the extracted manifest. `docs/embedding.md` ("Package exports")
+is the one home of the eight core entry points.
 
 ## Code cleanliness
 
@@ -636,7 +641,7 @@ Editing these changes their behaviour; nothing in them is enforced by lint or te
 
 ### Runtime services
 
-`pnpm run dev` starts the three processes (example app `:4017`, Vite client `:5173`, and the Inngest CLI on four ports `scripts/dev.ts` reserves at startup and prints, so a second checkout never collides; `INNGEST_DEV_PORT` pins the UI one). The example stores its data in SQLite at gitignored `examples/wfgraph.sqlite`, which it creates and migrates on open, so there is no service to start and no migration to apply. The update script only refreshes deps (`pnpm install`); it never runs `pnpm run dev`, so each session must start the services.
+`pnpm run dev` starts the two processes (example app `:4017`, which runs workflows and delivers Events in its own worker loop, and Vite client `:5173`). The example stores its data in SQLite at gitignored `examples/wfgraph.sqlite`, which it creates and migrates on open, so there is no service to start and no migration to apply. The update script only refreshes deps (`pnpm install`); it never runs `pnpm run dev`, so each session must start the services.
 
 The app refuses to start without `INTEGRATION_ENCRYPTION_KEY` (64-char hex). Put it in gitignored `.env.local` at the repo root.
 

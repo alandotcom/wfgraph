@@ -710,39 +710,6 @@ describe("assembleExtensions checks", () => {
       })
     ).toEqual({ kind: "unknown" });
   });
-
-  // The forwarder id is the name it receives slugged, so two names differing
-  // only in punctuation are one function to Inngest: it would sync one and drop
-  // the other.
-  it("refuses two Events whose names slug to one forwarder id", () => {
-    expect(() =>
-      assembleExtensions({
-        events: [
-          anEvent("app/appointment.created"),
-          anEvent("app-appointment-created"),
-        ],
-      })
-    ).toThrow("both name the Inngest function");
-  });
-
-  // Events on one umbrella source share its forwarder, so their own names never
-  // become function ids.
-  it("accepts Events on one source whose own names would slug to one id", () => {
-    expect(() =>
-      assembleExtensions({
-        events: [
-          anEvent("app/appointment.created", {
-            event: "app/appointment",
-            when: { path: "kind", equals: "created" },
-          }),
-          anEvent("app-appointment-created", {
-            event: "app/appointment",
-            when: { path: "kind", equals: "canceled" },
-          }),
-        ],
-      })
-    ).not.toThrow();
-  });
 });
 
 /**
@@ -983,9 +950,8 @@ describe("assembleExtensions and an integration definition", () => {
 
     expect(set.events).toEqual([event]);
     expect(set.catalog.events[0]?.integration).toBe("resend");
-    // The integration owns it, so it stays off the Events a host's bus carries,
-    // and only an arrival through a Connection resolves to it.
-    expect(set.hostEvents).toEqual([]);
+    // The integration owns it, so only an arrival through a Connection
+    // resolves to it.
     const delivered = { kind: "email.delivered" };
     expect(
       set.resolveArrival({

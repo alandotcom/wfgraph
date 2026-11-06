@@ -70,8 +70,8 @@ function resolverOver(
 
 /**
  * Builds `resolveArrival` over the host's own Events and the integration-owned
- * ones. A host send, the Inngest forwarders and a host's SQL insert carry no
- * Connection, so each of them can raise only a host Event.
+ * ones. A host send, which the Inngest forwarders also make, and a host's SQL
+ * insert carry no Connection, so each of them can raise only a host Event.
  */
 export function arrivalResolver(input: {
   hostEvents: readonly AnyEventDefinition[];

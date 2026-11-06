@@ -116,7 +116,6 @@ describePostgres("createWfGraphApp runner on PostgreSQL", () => {
       auth: trustWfGraphUpstream(),
       persistence: observed.persistence,
       encryption: ENCRYPTION,
-      inngest: { id: "wfgraph-app-pg-test", isDev: true },
     });
     await observed.listening;
 
@@ -205,7 +204,6 @@ describePostgres("createWfGraphApp runner on PostgreSQL", () => {
       auth: trustWfGraphUpstream(),
       persistence: wfPostgres({ url, schema }),
       encryption: ENCRYPTION,
-      inngest: { id: "wfgraph-app-pg-test", isDev: true },
       extensions: { actions: [markAction] },
       runner: false,
     });

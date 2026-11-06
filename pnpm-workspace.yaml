@@ -51,12 +51,13 @@ catalog:
   # @hono/node-server names `hono: ^4` as its own peer, so it binds to whichever
   # copy this range resolves.
   hono: ^4.13.14
-  # @wfgraph/core declares this as a peer dependency, so the host installs the
-  # SDK and picks the version inside this range. The example app installs it the
-  # way an adopter does, which means the peer range and the version the workspace
-  # actually resolves have to agree; writing it once here is what makes that so.
-  # pnpm rewrites `catalog:` inside peerDependencies at pack and publish time,
-  # the same as it does in the other three dependency blocks.
+  # @wfgraph/core declares this as an optional peer dependency that only its
+  # `@wfgraph/core/inngest` entry imports, so a host on Inngest installs the SDK
+  # and picks the version inside this range. Core's own devDependency resolves
+  # it for the entry's tests, which means the peer range and that version have
+  # to agree; writing it once here is what makes that so. pnpm rewrites
+  # `catalog:` inside peerDependencies at pack and publish time, the same as it
+  # does in the other three dependency blocks.
   inngest: ^4.26.1
   postgres: ^3.4.9
   react: 19.3.1
@@ -85,10 +86,6 @@ overrides:
   # the API at `^1.3.0`, which resolves 1.10.0 beside the 1.9 copy the SDK
   # accepts, so the whole graph is held to the 1.9 line until Effect moves.
   "@opentelemetry/api": "~1.9.1"
-  # inngest-cli pins adm-zip to ^0.5.10, which never reaches the patched line;
-  # GHSA-xcpc-8h2w-3j85 (crafted ZIP triggers a 4GB allocation) and
-  # GHSA-vwc7-r8mq-g2x9 (destination symlink overwrite) are fixed in 0.6.1.
-  adm-zip: "0.6.1"
   # cosmiconfig accepts the vulnerable js-yaml 4.3.1. GHSA-2883-xcg3-v3hh
   # (empty merge sources bypass the merge-key CPU limit) is fixed in 4.3.2.
   "js-yaml@^4": "4.3.2"
@@ -122,8 +119,7 @@ overrides:
 # than as executed code. Every package with an install script has to appear,
 # true or false, or the install ends with ERR_PNPM_IGNORED_BUILDS.
 #
-# inngest-cli downloads its platform binary and protobufjs generates its typed
-# accessors, so both need their scripts.
+# protobufjs generates its typed accessors, so it needs its script.
 #
 # esbuild ships its platform binaries as optional dependencies, so its script
 # only re-checks work the resolver already did.
@@ -138,7 +134,6 @@ overrides:
 allowBuilds:
   "@clerk/shared": false
   esbuild: false
-  inngest-cli: true
   msgpackr-extract: false
   protobufjs: true
 

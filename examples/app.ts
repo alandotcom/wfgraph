@@ -115,8 +115,7 @@ const patientEntity = defineEntity({
  *
  *   await wfgraph.events.send({ name: "app/appointment.created", data: { appointment, occurredAt } });
  *
- * or from another process with `POST /api/events` and the events key below, or
- * with `inngest.send`, which Workflow Graph forwards into the same inbox.
+ * or from another process with `POST /api/events` and the events key below.
  */
 const occurredAt = z.iso.datetime();
 
@@ -268,26 +267,12 @@ const wfgraph = await createWfGraphApp({
   events: {
     key: process.env.WFGRAPH_EVENTS_KEY?.trim() || undefined,
   },
-  inngest: {
-    id: process.env.INNGEST_APP_ID ?? "notifications-workflow",
-    isDev: !isProduction,
-    baseUrl: process.env.INNGEST_BASE_URL,
-    eventKey: process.env.INNGEST_EVENT_KEY,
-    env: process.env.INNGEST_ENV,
-    signingKey: process.env.INNGEST_SIGNING_KEY,
-    signingKeyFallback: process.env.INNGEST_SIGNING_KEY_FALLBACK,
-    serveOrigin: process.env.INNGEST_SERVE_ORIGIN,
-    servePath: process.env.INNGEST_SERVE_PATH,
-    // Long-running Node dials out over Connect so Inngest can push Event
-    // deliveries here without reaching this process over HTTP. Workflow runs
-    // execute in this process's worker loop (the `runner` option), which needs a
-    // long-lived process.
-    connect: true,
-    instanceId: process.env.INNGEST_INSTANCE_ID,
-    gatewayUrl: process.env.INNGEST_CONNECT_GATEWAY_URL,
-  },
+  // Workflow runs and Event deliveries execute in this process's worker loop,
+  // which the `runner` option tunes; left out, the loop runs at SQLite's
+  // defaults.
+  //
   // The whole extension surface, assembled in one place. The Events are what the
-  // editor lists and what the Inngest forwarders are built from.
+  // editor lists and what a send is checked against.
   extensions: {
     // Slack's OAuth flow turns on when the host hands over a Slack app's client
     // credentials; with neither variable set, the editor offers the bot-token

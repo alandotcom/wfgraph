@@ -9,7 +9,7 @@
  *
  * `.env.local` wins over `.env`, and a variable the shell already set wins over
  * both. That last rule is what lets `pnpm run dev` pin NODE_ENV, HOST, and
- * INNGEST_BASE_URL on the command line.
+ * LOG_FORMAT on the command line.
  */
 
 import { fileURLToPath } from "node:url";

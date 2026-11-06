@@ -1,7 +1,6 @@
 import type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 import type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
 import type { WfGraphAuth } from "#src/backend/lib/http/authorize";
-import type { WfGraphInngestConfig } from "#src/backend/lib/inngest/client";
 import type { WfGraphAgentConfig } from "#src/backend/agent/config";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
@@ -13,7 +12,6 @@ export type WfGraphWorkerRequestConfig = {
   auth: WfGraphAuth;
   persistence: WfGraphPersistence;
   encryption: EncryptionRuntimeConfig;
-  inngest: WfGraphInngestConfig;
   /**
    * The build agent's model settings. Per request like every other secret here,
    * because a Worker reads its bindings from the environment it was invoked

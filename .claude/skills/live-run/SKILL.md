@@ -1,14 +1,14 @@
 ---
 name: live-run
-description: Drive a real workflow run against the local stack and read what actually happened. Use when a change touches the engine, the Wait node, cancellation, the database executor's worker loop, Event delivery from the event inbox, or anything whose behaviour shows only in a running app on the wall clock, so a vitest suite cannot settle the question. Triggers on "drive a real run", "measure the timing", "check it end to end", "verify against inngest dev", or a claim about when a run wakes, resumes, retries, or is cancelled.
+description: Drive a real workflow run against the local stack and read what actually happened. Use when a change touches the engine, the Wait node, cancellation, the database executor's worker loop, Event delivery from the event inbox, or anything whose behaviour shows only in a running app on the wall clock, so a vitest suite cannot settle the question. Triggers on "drive a real run", "measure the timing", "check it end to end", "send a real Event", or a claim about when a run wakes, resumes, retries, or is cancelled.
 ---
 
 # Driving a live run
 
 Runs execute on the database executor: the worker loop the example app starts
 claims a run's schedule row, replays its body against the step memo, and
-releases the row. The same loop delivers each Event from the event inbox, and
-Inngest only forwards the Events a host sends with `inngest.send` into that inbox.
+releases the row. The same loop delivers each Event from the event inbox, which
+the example app fills through `app.events.send` and `POST /api/events`.
 The test suite drives the engine through `createInMemoryWorkflowRuntime` and
 `driveWithReplay` on a virtual clock, so a question about the wall clock, about
 the loop's wakes, or about how an Event reaches a run has to be answered by a
@@ -21,8 +21,8 @@ of the steps have a trap in them.
 
 - When a run wakes after a Wait, a Cancel or an Event, measured by the wall
   clock, and how late the worker loop claims it.
-- What Inngest adds to an Event on the way through, and whether the Event's
-  forwarder function registers, and under which id.
+- What an Event sent over `POST /api/events` becomes in `workflow_event_inbox`,
+  and how long the loop takes to deliver it.
 - What a row holds after a real replay, which is where a duration or a status
   written by the wrong pass shows up.
 
@@ -31,17 +31,17 @@ Everything else belongs in vitest, which is faster and repeatable.
 ## 1. Start the stack
 
 ```bash
-(INNGEST_DEV_PORT=8388 pnpm run dev > /tmp/wfgraph-dev.log 2>&1 &)
+(pnpm run dev > /tmp/wfgraph-dev.log 2>&1 &)
 ```
 
-Three processes: the example app on 4017, Vite in `packages/client`, and
-`inngest dev`. That last one takes free ports unless it is told otherwise, which
-is what `INNGEST_DEV_PORT` above is for: the curl in step 3 needs a port known in
-advance. Nothing else has to be running: the app opens `examples/wfgraph.sqlite`
-and creates its schema on first boot.
+Two processes: the example app on 4017 and Vite in `packages/client`. Nothing
+else has to be running: the app opens `examples/wfgraph.sqlite` and creates its
+schema on first boot. Sending an Event from a shell (step 3) needs
+`WFGRAPH_EVENTS_KEY` in `.env.local` before the app starts, since the events
+route is not mounted without it.
 
 **Trap.** A backgrounded `pnpm run dev` returns at once, and the harness reports
-it as finished while the three processes keep running. Wait for readiness rather
+it as finished while the two processes keep running. Wait for readiness rather
 than for the command. Probe the public login page: `/api/extensions` is protected
 and returns 401 until the request carries a demo-login session.
 
@@ -55,9 +55,8 @@ demo account before calling protected API routes. Every account uses `password`;
 `.env.local` to skip the login page in development.
 
 The log line `Worker loop started` says the executor is running, and a manual
-run started through the RPC needs nothing else. An Event sent to the dev server
-reaches the app only after the Connect handshake: wait for `Inngest Connect
-worker ready` before sending one, or it sits undelivered.
+run started through the RPC or an Event sent to the events route needs nothing
+else.
 
 ## 2. Build a probe workflow
 
@@ -105,10 +104,13 @@ The Start Event's schema is strict, so all four fields are required. The answer
 carries the `executionId` every query below is keyed by.
 
 To send a host Event instead, which is what drives cancellation and event waits,
-post it to the dev server. Any key works in dev:
+post it to the events route with the key from `.env.local`. The route checks the
+payload against the Event's schema before storing it and answers
+`202 { id, duplicate }`, where `id` is the inbox row:
 
 ```bash
-curl -s -X POST http://localhost:8388/e/dev_key -H 'content-type: application/json' \
+curl -s -X POST http://localhost:4017/api/events \
+  -H "Authorization: Bearer $WFGRAPH_EVENTS_KEY" -H 'content-type: application/json' \
   -d '{"name":"app/appointment.canceled","data":{...}}'
 ```
 
@@ -185,17 +187,21 @@ sqlite3 -box "$WFGRAPH_DB" "select s.step_id, s.status, s.failures,
 
 The app's log under the `executor` category carries a record for each pass that
 failed and each claim the database refused, which is where a stalled loop
-shows. When the question is about Event delivery, the Inngest dev server's UI
-on `INNGEST_DEV_PORT` lists each Event and the forwarder run that recorded it
-in `workflow_event_inbox`, whose row's `status` says whether the worker loop
-delivered it.
+shows. When the question is about Event delivery, read the Event's row in
+`workflow_event_inbox` by the `id` the route answered: its `status` says
+whether the worker loop delivered it, and `error` says why a failed one failed.
+
+```bash
+sqlite3 -box "$WFGRAPH_DB" "select name, status, error
+  from workflow_event_inbox where id='<inbox id>';"
+```
 
 ## 7. Clean up
 
 Every probe leaves rows behind, and the next session reads the workflow list.
 
 ```bash
-pkill -f "inngest dev"; pkill -f "concurrently --kill-others-on-fail"
+pkill -f "concurrently --kill-others-on-fail"
 sqlite3 examples/wfgraph.sqlite "PRAGMA foreign_keys = ON;
   delete from workflows where id in ('<id>');"
 ```

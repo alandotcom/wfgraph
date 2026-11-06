@@ -2,10 +2,10 @@
 name: wfgraph-core
 description: >
   Embed Workflow Graph with createWfGraphApp: fetch handler, createRequestListener,
-  auth, INTEGRATION_ENCRYPTION_KEY, Inngest, clientBundle, publicUrl, basePath,
+  auth, INTEGRATION_ENCRYPTION_KEY, clientBundle, publicUrl, basePath,
   MCP authoring, configureWfGraphLogging, wfPostgres, wfSqlite, wfWorker,
   migrateWfGraphDatabase, and createWfGraphRunner for a process that only runs
-  workflows.
+  workflows, plus @wfgraph/core/inngest for a host that keeps inngest.send.
   Load when mounting the host app or choosing persistence. Not for defineEvent,
   defineEntity, defineAction, or defineIntegration (those are sub-skills).
 metadata:
@@ -27,12 +27,15 @@ table from `docs/embedding.md`. This skill is the failure modes around that
 mount, not a second copy of it.
 
 ```bash
-pnpm add @wfgraph/core @wfgraph/client @wfgraph/plugins inngest hono
+pnpm add @wfgraph/core @wfgraph/client @wfgraph/plugins hono
 ```
 
-`inngest` and `hono` are peer dependencies. `@wfgraph/plugins` is optional.
-Pass `client` from `@wfgraph/client` (`clientBundle`) so `wfgraph.fetch` serves
-the editor.
+`hono` is a peer dependency. `@wfgraph/plugins` is optional. Pass `client`
+from `@wfgraph/client` (`clientBundle`) so `wfgraph.fetch` serves the editor.
+`createWfGraphApp` takes no `inngest` option and mounts no Inngest route. A
+host that publishes with `inngest.send` installs `inngest` (an optional peer)
+and registers `createWfGraphInngestFunctions` from `@wfgraph/core/inngest` on
+its own `serve` or `connect`: see wfgraph-core/events.
 
 ## Sub-skills
 
@@ -45,7 +48,7 @@ the editor.
 
 ## Embedding pitfalls
 
-- `createWfGraphApp` returns `{ fetch, basePath, dispose, [Symbol.asyncDispose] }`. `fetch`
+- `createWfGraphApp` returns `{ fetch, basePath, events, dispose, [Symbol.asyncDispose] }`. `fetch`
   is `(request: Request) => Promise<Response>`. Use `await using` for a lexical lifetime;
   call `dispose()` from a long-running host's shutdown handler.
 - `auth` is required and returns an access policy or `null`. Use
@@ -58,7 +61,7 @@ the editor.
 - `INTEGRATION_ENCRYPTION_KEY` is 64-character hex (`openssl rand -hex 32`).
 - Mount `createRequestListener(wfgraph)` **before** any body parser, at the
   same path as `basePath`. Express strips the matched path; the adapter reads
-  `req.originalUrl`. A drained body makes Inngest signature verification fail.
+  `req.originalUrl`. A drained body makes webhook signature verification fail.
 - Call `configureWfGraphLogging()` before `createWfGraphApp`, or pass `logger`,
   or sink LogTape category `wfgraph`. With none of those, start-up warns once.
   Never log a request body, Event payload, or step output.
@@ -104,10 +107,8 @@ the editor.
 
 Runs execute in the host's process on a worker loop that `createWfGraphApp`
 starts, with their schedule and step memo in the `persistence` database. The
-same loop delivers every Event from the event inbox. Inngest only forwards the
-Events a host sends with `inngest.send` into that inbox, so the `inngest`
-option stays required. Loop defaults and the `runner` fields: `docs/embedding.md`
-("Workflow runs").
+same loop delivers every Event from the event inbox, however the Event arrived.
+Loop defaults and the `runner` fields: `docs/embedding.md` ("Workflow runs").
 
 - `runner` left out runs one loop. `runner: false` runs none in that process;
   some process on the same database must run one, such as a
@@ -131,7 +132,7 @@ option stays required. Loop defaults and the `runner` fields: `docs/embedding.md
 
 ### CRITICAL Missing authorization boundary
 
-Wrong: `createWfGraphApp({ persistence, encryption, inngest })` with no `auth`.
+Wrong: `createWfGraphApp({ persistence, encryption, extensions })` with no `auth`.
 
 Correct: `auth: defineWfGraphAuth((request) => accessForSession(request))`
 (or `trustWfGraphUpstream()` when an upstream component enforces authorization
@@ -143,13 +144,25 @@ the internet can open that decrypts integration secrets.
 
 Source: alandotcom/wfgraph:docs/embedding.md (createWfGraphApp options)
 
+### HIGH Pass an inngest option to createWfGraphApp
+
+Wrong: `createWfGraphApp({ ..., inngest: { id: "my-app", connect: true } })`,
+or `/api/inngest` registered as Workflow Graph's Inngest endpoint.
+
+Correct: drop the option, which no longer type-checks. Keep `inngest.send` by
+building `createWfGraphInngestFunctions({ client, extensions, app })` from
+`@wfgraph/core/inngest` and registering them with your own Inngest client's
+`serve` or `connect`. Signing keys and Connect settings belong to that client.
+
+Source: alandotcom/wfgraph:docs/events.md (Sending through Inngest)
+
 ### HIGH Body parser in front of the listener
 
 Wrong: `app.use(express.json())` then `app.use("/workflows", createRequestListener(wfgraph))`.
 
 Correct: mount the listener first, then the parser.
 
-Inngest verifies the raw body. A drained request cannot be rebuilt.
+A connection webhook verifies the raw body. A drained request cannot be rebuilt.
 
 Source: alandotcom/wfgraph:docs/embedding.md (Mounting on Node)
 

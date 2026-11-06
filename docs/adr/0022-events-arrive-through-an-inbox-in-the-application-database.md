@@ -174,3 +174,21 @@ It now runs beside them, and a stopped loop drains it with its passes. `tick` sw
 on every invocation, with a retention window of its own, so a host that runs only the tick
 driver keeps no settled row forever. Every process that runs a loop or a tick sweeps with
 its own window.
+
+## Amendment: The Inngest source leaves the core
+
+Date: 2026-11-06
+
+The forwarders moved to a published entry, `@wfgraph/core/inngest`, and `inngest` became an
+optional peer dependency that only that entry imports. `createWfGraphApp` and the Worker
+entry lost their `inngest` option, and the app mounts no `/api/inngest` route and builds no
+Inngest client. A host on Inngest builds the forwarders with
+`createWfGraphInngestFunctions({ client, extensions, app })` on its own client and registers
+them with its own `serve` or `connect`, so its signing keys and Connect settings are its own.
+
+Each forwarder sends through the app's `events.send`, the public send, keyed by the Inngest
+event id. The forwarder therefore checks the payload at intake like any send: a refused
+payload fails the Inngest run with `NonRetriableError` and stores no inbox row, where the
+forwarder used to store it for the delivery to mark failed. The check that two forwarded
+names slug to one Inngest function id moved from extension assembly to the entry. The
+example app, `pnpm run dev` and the reliability suite run without Inngest.

@@ -20,8 +20,8 @@ import { wfPostgres } from "#src/backend/persistence/postgres";
 // the two hazards the adapter exists to handle get exercised by the frameworks
 // that actually cause them rather than by a hand-built IncomingMessage.
 //
-// Every route driven here answers out of process memory, so no Postgres and no
-// Inngest are involved.
+// Every route driven here answers out of process memory, so no Postgres is
+// involved.
 
 const MOUNT = "/wfgraph";
 
@@ -125,7 +125,6 @@ beforeAll(async () => {
       url: "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test",
     }),
     encryption: { key: "b".repeat(64) },
-    inngest: { id: "wfgraph-node-test", isDev: true },
   });
 
   const listener = createRequestListener(wfgraph);

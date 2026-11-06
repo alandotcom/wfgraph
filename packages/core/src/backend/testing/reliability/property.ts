@@ -118,7 +118,6 @@ async function runScenario<S>(input: {
       error: String(error),
       ledger: host?.ledger,
       applicationLogs: host?.logs,
-      runtimeLogs: host?.runtime.logs,
     });
     throw error;
   }
@@ -231,7 +230,6 @@ export function groupLayoutProperty<S, O>(
             passedRuns.set(layout, {
               ledger: host.ledger,
               applicationLogs: host.logs,
-              runtimeLogs: host.runtime.logs,
             });
           },
         });

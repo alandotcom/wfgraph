@@ -60,6 +60,10 @@
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
+    },
+    "./inngest": {
+      "types": "./dist/inngest.d.ts",
+      "default": "./dist/inngest.js"
     }
   },
   "publishConfig": {
@@ -110,6 +114,11 @@
   "peerDependencies": {
     "hono": "catalog:",
     "inngest": "catalog:"
+  },
+  "peerDependenciesMeta": {
+    "inngest": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=24"

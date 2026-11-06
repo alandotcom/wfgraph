@@ -25,7 +25,7 @@ const CONSUMED_BODY_MESSAGE =
   "Workflow Graph received a request whose body another middleware had already read. " +
   "Mount Workflow Graph before your body parser, or exclude Workflow Graph's path from it " +
   '(for example `app.use("/wfgraph", wfgraphListener)` above `app.use(express.json())`). ' +
-  "Workflow Graph cannot re-create the original bytes, and the Inngest callback verifies a " +
+  "Workflow Graph cannot re-create the original bytes, and a connection webhook verifies its " +
   "signature over them.";
 
 function buildMountMismatchMessage(
@@ -61,7 +61,7 @@ function hasRequestBody(request: IncomingMessage): boolean {
  * True when a body arrived on the wire but the stream has already been drained.
  *
  * A body parser mounted ahead of Workflow Graph leaves exactly this state, and every POST
- * would otherwise reach Workflow Graph empty. An Inngest callback's signature check
+ * would otherwise reach Workflow Graph empty. A connection webhook's signature check
  * would fail on bytes that no longer exist.
  * Re-serializing a parsed body is not a way out, because `JSON.stringify` does
  * not reproduce the original bytes and the signature covers those.

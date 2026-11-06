@@ -18,8 +18,8 @@ export type WfGraphEventsOptions = {
    * The shared key that mounts `POST {basePath}/api/events`. A sender
    * presents it as `Authorization: Bearer <key>`, so it holds no
    * whitespace. Absent, the route is not
-   * mounted, and `app.events.send` stays the only way in besides Inngest and
-   * webhook intake. Treat it as a secret, like `encryption.key`.
+   * mounted, and `app.events.send` stays the only way in besides webhook
+   * intake and a host's own insert. Treat it as a secret, like `encryption.key`.
    */
   key?: string | undefined;
   /**

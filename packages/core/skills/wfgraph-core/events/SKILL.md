@@ -3,7 +3,8 @@ name: events
 description: >
   defineEvent and defineEntity: Event schemas, typed Entity bindings, current-state
   resolvers, Lifecycle Entity Eligibility, correlationPath, umbrella source filters,
-  and intake through app.events.send, POST /api/events, or inngest.send. Load when
+  and intake through app.events.send, POST /api/events, or inngest.send with the
+  forwarders from @wfgraph/core/inngest. Load when
   declaring host Events or Entities, sending Events, choosing
   Lifecycle start/cancel behavior, or deciding between payload and current-state rules.
 metadata:
@@ -113,8 +114,8 @@ receive either arrival.
 
 `app.events.send({ name, data, id? })` from the host's code, `POST
 {basePath}/api/events` with `Authorization: Bearer <events.key>` from another
-process (off unless `events.key` is set), or `inngest.send({ name, data, id? })`.
-Every one lands in the event inbox, and the worker loop delivers it. `id` is the
+process (off unless `events.key` is set), or `inngest.send({ name, data, id? })`
+through the forwarders below. Every one lands in the event inbox, and the worker loop delivers it. `id` is the
 idempotency key, and it holds only while the first send's inbox row exists: the
 loop deletes a settled row after `events.retentionMs` (seven days by default),
 and the same `id` after that is a new arrival that starts runs again. A resend
@@ -122,12 +123,15 @@ of an `id` whose delivery failed for good delivers it again. A send that names
 no host Event (or umbrella name), names an integration-owned Event, or carries
 data the Event's schema refuses, is refused before anything is stored.
 
-A host already on Inngest keeps `inngest.send`. Workflow Graph registers one
-Inngest function per name a host Event arrives under (its umbrella `source`
-name, if it has one), and that function records the Inngest event in the inbox
-keyed by its `id`. It checks nothing: the worker loop gates the payload on
-delivery and marks a refused one failed. An integration-owned Event gets no
-Inngest function. The gate
+A host already on Inngest keeps `inngest.send` by registering
+`createWfGraphInngestFunctions({ client, extensions, app })` from
+`@wfgraph/core/inngest` on its own Inngest `serve` or `connect`. Workflow Graph
+mounts no Inngest route and builds no Inngest client. Each forwarder covers one
+name a host Event arrives under (its umbrella `source` name, if it has one) and
+calls `app.events.send` keyed by the Inngest event `id`, so it gates the payload
+like any send: a refused one fails the Inngest run with `NonRetriableError` and
+stores nothing. An integration-owned Event gets no forwarder. `inngest` is an
+optional peer dependency that only this entry imports. The gate
 validates declared fields and ignores unknown keys. Workflow Graph uses the decoded value only for an Entity ID selector and carries
 the raw JSON on. Do not transform the workflow payload: a `Date` round-trip
 breaks Wait matches captured at park time.

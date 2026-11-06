@@ -4,10 +4,11 @@ import { defineConfig } from "tsdown";
 // host-facing entry, re-exporting the authoring vocabulary, `createWfGraphApp`
 // and `createRequestListener` from the internal `app.ts` and `node.ts`
 // modules; `src/plugin.ts` is what a package of integrations builds against,
-// `src/testing.ts` is what that package's own suite drives an action with, and
-// `src/migrate.ts` applies the migrations without building an app. Every entry
-// here is named in the "exports" map in package.json, so the emitted file names
-// have to keep matching that map.
+// `src/testing.ts` is what that package's own suite drives an action with,
+// `src/migrate.ts` applies the migrations without building an app, and
+// `src/inngest.ts` is the one entry that imports the optional `inngest` peer.
+// Every entry here is named in the "exports" map in package.json, so the
+// emitted file names have to keep matching that map.
 export default defineConfig({
   entry: [
     "src/index.ts",
@@ -18,6 +19,7 @@ export default defineConfig({
     "src/postgres.ts",
     "src/sqlite.ts",
     "src/worker.ts",
+    "src/inngest.ts",
   ],
   format: "esm",
   // Selects Node-flavoured resolution and externalization, which is what a

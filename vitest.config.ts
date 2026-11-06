@@ -27,7 +27,7 @@ const POSTGRES_TESTS = "packages/*/src/**/*.pg.test.ts";
 const ALWAYS_EXCLUDED = [
   "**/node_modules/**",
   "**/dist/**",
-  // The full-stack properties start Inngest and run through their own command.
+  // The full-stack properties start a real app and run through their own command.
   "**/*.reliability.test.ts",
 ];
 

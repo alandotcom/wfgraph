@@ -23,8 +23,6 @@ import { groupLayoutProperty } from "#src/backend/testing/reliability/property";
 // Cleanup must run once, including when its own durable writes need a retry.
 // Each case also runs with one side's steps in a vertical and a horizontal Group,
 // and must route, clean up and retry the same way.
-// This family sends every Event through the Inngest dev server, so the app's
-// forwarders record them in the inbox; the other families use `app.events.send`.
 type CleanupMode = "direct" | "event" | "delay";
 type CancellationScenario = {
   cleanupMode: CleanupMode;
@@ -102,7 +100,7 @@ groupLayoutProperty(
       host.faults.terminal.arm({ fail: true, hold: false });
     if (scenario.failurePoint === "wait-claim")
       host.faults.claim.arm({ fail: true, hold: false });
-    await host.sendThroughInngest(START, {
+    await host.send(START, {
       entityId: "subject",
       marker: "start",
     });
@@ -119,7 +117,7 @@ groupLayoutProperty(
     // Repeated deliveries share one event id. Wait until the Cancel claim is durable.
     const cancelDeliveryId = crypto.randomUUID();
     for (let index = 0; index < scenario.cancelDeliveries; index++)
-      await host.sendThroughInngest(
+      await host.send(
         CANCEL,
         { entityId: "subject", marker: scenario.cancelMarker },
         cancelDeliveryId
@@ -139,7 +137,7 @@ groupLayoutProperty(
     if (scenario.cleanupMode === "event") {
       // The run must be parked on the cleanup Wait before the wake Event is sent.
       await waitForParkedWaits(host, executionId, 1);
-      await host.sendThroughInngest(WAKE[0]!, {
+      await host.send(WAKE[0]!, {
         entityId: "subject",
         marker: "wake",
       });

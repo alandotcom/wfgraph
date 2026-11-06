@@ -1,6 +1,6 @@
 # Defining Events and Entities
 
-How an Event Author declares Events, current Entity State, umbrella sources, how an application sends an Event, the intake gate, and how that fits the Lifecycle model.
+How an Event Author declares Events, current Entity State, umbrella sources, how an application sends an Event, including through Inngest, the intake gate, and how that fits the Lifecycle model.
 
 An Event is a named payload shape that your application raises.
 
@@ -202,12 +202,13 @@ const invoicePaid = defineEvent({
 });
 ```
 
-- An Inngest send or a webhook message under the umbrella name is stored in the inbox under
-  that name. The worker loop delivers it as the Event whose `when` its payload satisfies. An
-  arrival no Event on the source accepts is marked delivered and starts nothing.
+- A webhook message under the umbrella name is stored in the inbox under that name. The
+  worker loop delivers it as the Event whose `when` its payload satisfies. An arrival no
+  Event on the source accepts is marked delivered and starts nothing.
 - `events.send` and `POST /api/events` take the Event's own name, so they need no filter.
-  They also take the umbrella name, and then refuse a payload that no Event on the source
-  accepts.
+  They also take the umbrella name, store the arrival as the Event whose `when` its payload
+  satisfies, and refuse a payload that no Event on the source accepts. An `inngest.send`
+  under the umbrella name reaches the inbox through `events.send`, so the same rule holds.
 - Assembly refuses an Event whose name is another Event's umbrella name, because an
   arrival under that name could be either Event.
 - Workflow Graph reads the filter's path at definition, so a path that names no field fails
@@ -222,9 +223,12 @@ whether that Event changes a run in one workflow.
 
 ## Sending an Event
 
-An application sends an Event in one of three ways. Each one stores the Event in the event
-inbox, and the worker loop then opens every run the Event starts, in your database. For more information, see Workflow
-runs in `docs/embedding.md`.
+An application sends an Event from its own code, from another process, or inside its own
+database transaction. Each way stores
+the Event in the event inbox, and the worker loop then opens every run the Event starts, in
+your database. For more information, see Workflow runs in `docs/embedding.md`. An
+application that already publishes its Events with `inngest.send` registers forwarders
+instead; see Sending through Inngest.
 
 **From the application's own code**, call `events.send` on the value `createWfGraphApp`
 returns. The same method is on the value `createWfGraphRunner` returns.
@@ -274,23 +278,26 @@ The route compares the key in constant time.
 | 401    | `{ error }`         | The `Authorization` header is missing or holds another key           |
 | 413    | `{ error }`         | The body is larger than 1 MiB                                        |
 
-**Through Inngest**, an application already on Inngest keeps calling `inngest.send`.
-Workflow Graph registers one Inngest function for each name an Event arrives under, and
-that function stores the Inngest event in the inbox.
+**From your own database transaction**, when your application shares the database that
+`persistence` names, insert the inbox row in the transaction that produced the business
+fact. The Event is then stored exactly when that transaction commits. The statement is the
+same on PostgreSQL and SQLite:
 
-```ts
-inngest.send({ name: "app/appointment.created", data: { appointment } });
+```sql
+insert into workflow_event_inbox (name, data, idempotency_key)
+values ($1, $2, $3)
+on conflict do nothing
 ```
 
-- The Inngest event's `id` is the idempotency key, so a second event with the same `id`
-  starts nothing within the deduplication window. Inngest gives an event sent without an
-  `id` one of its own.
-- An Event with an umbrella `source` is sent under its source name, and the worker loop
-  tells which Event it is (see The umbrella source).
-- The forwarding function checks nothing. The worker loop checks the payload when it
-  delivers the Event.
-- An integration-owned Event gets no Inngest function: it reaches a workflow only through
-  the Connection it arrived on, which an Inngest send does not carry.
+- `name` and `data` are required, with the same meaning as in `events.send`. `data` is a
+  JSON object.
+- `idempotency_key` is optional, and `on conflict do nothing` makes a repeat a no-op.
+- Leave every other column to its default. The worker loop's poll schedules the row after
+  your transaction commits.
+- On PostgreSQL the table is in the schema `persistence` names, `_workflows` by default, so
+  qualify it or put that schema on the connection's `search_path`.
+- Nothing checks the payload until the worker loop delivers it, so a refused payload is
+  marked failed on its row.
 
 **The deduplication window is the inbox's retention window.** An idempotency key holds while
 the first send's inbox row exists. The worker loop deletes a row whose delivery has settled
@@ -298,6 +305,66 @@ once the row is older than `events.retentionMs`, which defaults to seven days, a
 the same `id` after that is a new Event that starts runs again. A sender that can retry for
 longer than seven days sets a longer window. For the option, see Keep settled Events for a
 window in `docs/embedding.md`.
+
+## Sending through Inngest
+
+An application that publishes its Events with `inngest.send` keeps doing so. The
+`@wfgraph/core/inngest` entry builds one Inngest function, a forwarder, for each name an
+Event in `extensions.events` arrives under, and each forwarder sends the Inngest event into
+the inbox with `events.send`. Inngest runs no workflow: the worker loop delivers the
+forwarded Event as it delivers every other one.
+
+Install `inngest` beside `@wfgraph/core`. It is an optional peer dependency, and only this
+entry imports it. Build the forwarders on your own Inngest client and register them with
+your own `serve` or `connect`, beside your other Inngest functions:
+
+```ts
+import { Inngest } from "inngest";
+import { serve } from "inngest/hono";
+import { createWfGraphInngestFunctions } from "@wfgraph/core/inngest";
+
+const inngest = new Inngest({ id: "my-app" });
+const app = await createWfGraphApp({
+  extensions /* , auth, persistence, encryption */,
+});
+
+const functions = [
+  ...myFunctions,
+  ...createWfGraphInngestFunctions({ client: inngest, extensions, app }),
+];
+
+// HTTP serve, mounted at your own route:
+honoApp.on(
+  ["GET", "POST", "PUT"],
+  "/api/inngest",
+  serve({ client: inngest, functions })
+);
+// Or a long-lived process dials out with `connect` from "inngest/connect":
+// await connect({ apps: [{ client: inngest, functions }] });
+
+await inngest.send({ name: "app/appointment.created", data: { appointment } });
+```
+
+- `extensions` is the value you passed to `createWfGraphApp`. `app` is what
+  `createWfGraphApp` or `createWfGraphRunner` returned, and the forwarders send through its
+  `events`, so register them in a process that holds one.
+- Your Inngest client, its signing key, its event key and the route or connection that
+  reaches it are yours to configure. Workflow Graph mounts no Inngest route.
+- The Inngest event's `id` is the idempotency key, so a second event with the same `id`
+  starts nothing within the deduplication window. Inngest gives an event sent without an
+  `id` one of its own, and a retried forwarder reads the same event, so a retry stores
+  nothing twice.
+- An Event with an umbrella `source` is sent under its source name. One forwarder serves
+  that name, and `events.send` tells which Event an arrival is by `when` (see The umbrella
+  source).
+- The forwarder checks the payload the way `events.send` does. A refused payload fails the
+  Inngest run with `NonRetriableError` and stores nothing. A storage failure fails the step,
+  and Inngest retries it.
+- An integration-owned Event gets no forwarder: it reaches a workflow only through the
+  Connection it arrived on, which an Inngest send does not carry.
+- `createWfGraphInngestFunctions` throws when two forwarded names slug to one Inngest
+  function id, such as `app/appointment.created` and `app-appointment-created`, because
+  Inngest would register one and drop the other.
 
 ## The intake gate
 
@@ -308,11 +375,11 @@ the schema never heard of.
   an additive change upstream must not stop intake.
 - This is the one boundary in the repository that decodes this way. A declared field that
   drifts fails loudly, and an extra key passes in silence by choice.
-- `events.send` and `POST /api/events` refuse a payload the gate refuses before storing it.
-  An Event from `inngest.send` or a webhook is checked when the worker loop delivers it. A
-  refused one is marked failed with the reason and is not retried, because a second
-  attempt meets the same malformed payload. A resend with the same idempotency key delivers
-  the stored Event again.
+- `events.send`, `POST /api/events` and the Inngest forwarders refuse a payload the gate
+  refuses before storing it. An Event from a webhook, or from a row your own transaction
+  inserted, is checked when the worker loop delivers it. A refused one is marked failed with
+  the reason and is not retried, because a second attempt meets the same malformed payload.
+  A resend with the same idempotency key delivers the stored Event again.
 
 Workflow Graph carries the raw JSON into the workflow. The decoded value is used only by a
 typed Entity ID selector and then discarded. A transform rewriting what the sender sent
@@ -337,6 +404,6 @@ An integration may declare Events on `defineIntegration`. They are ordinary Even
 name identity, payload schema, Correlation Path, optional umbrella `source`. The
 catalog stamps the owner so the editor offers a Connection picker. Publish requires
 a Connection for a Start, Cancel, or Wait that names one of these. An Event sent with
-`events.send`, `POST /api/events`, or `inngest.send` arrives with no Connection. The
+`events.send`, `POST /api/events`, or a forwarded `inngest.send` arrives with no Connection. The
 webhook route that produces integration Events records each one with the Connection it
 arrived through; see `docs/embedding.md` and `docs/integrations.md`.

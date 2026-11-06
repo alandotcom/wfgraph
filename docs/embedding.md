@@ -5,8 +5,12 @@ How to mount Workflow Graph in a host application: `createWfGraphApp`, the edito
 `createWfGraphApp` returns a fetch handler: `(request: Request) => Promise<Response>`.
 
 ```bash
-pnpm add @wfgraph/core @wfgraph/client @wfgraph/plugins inngest hono
+pnpm add @wfgraph/core @wfgraph/client @wfgraph/plugins hono
 ```
+
+A host that publishes its Events with `inngest.send` also installs `inngest` and registers
+the forwarders from `@wfgraph/core/inngest`; see Sending through Inngest in
+`docs/events.md`.
 
 An import hands you a value and stops there. The `extensions` option turns that value on,
 and it holds the full surface an application has.
@@ -79,15 +83,8 @@ const wfgraph = await createWfGraphApp({
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   auth,
   client: clientBundle,
-  inngest: {
-    id: "my-wfgraph-app",
-    baseUrl: process.env.INNGEST_BASE_URL,
-    eventKey: process.env.INNGEST_EVENT_KEY,
-    signingKey: process.env.INNGEST_SIGNING_KEY,
-    // Long-running Node dials out over Connect; serverless hosts omit this
-    // and keep `/api/inngest` for Inngest to call back.
-    connect: true,
-  },
+  // Another process sends Events to POST /api/events with this key as a bearer token.
+  events: { key: process.env.WFGRAPH_EVENTS_KEY },
   // The full extension surface, in one location.
   extensions: {
     events: [appointmentCreated],
@@ -99,6 +96,14 @@ const wfgraph = await createWfGraphApp({
 // wfgraph.fetch answers the API on /api/*. This call passes a client, so wfgraph.fetch
 // answers the editor on /* too.
 createServer(createRequestListener(wfgraph)).listen(3000);
+
+// Raise an Event from your own code. The worker loop in this process starts the runs.
+await wfgraph.events.send({
+  name: "app/appointment.created",
+  data: {
+    appointment: { id: "appt_123", startsAt: "2026-08-10T19:00:00.000Z" },
+  },
+});
 ```
 
 `examples/app.ts` is the same call with four Events and one custom action. That file is
@@ -196,7 +201,7 @@ Two failures the adapter handles for you:
 - Express strips the matched path from `req.url`, so the adapter reads `req.originalUrl`.
   It logs once when the mount path and `basePath` disagree.
 - A body parser in front of Workflow Graph drains the request. Workflow Graph cannot rebuild the original
-  bytes that the Inngest callback verifies a signature over. Such a request gets a 500 that
+  bytes that a connection webhook verifies its signature over. Such a request gets a 500 that
   names the fix.
 
 ## The editor
@@ -409,9 +414,8 @@ Three route classes have different authorization behavior:
 - Operator routes authenticate through the host. Protected RPC, REST, and OAuth operations
   call the returned policy's `allows` method.
 - Machine routes bypass host authentication because they carry a credential of their own:
-  a vendor signature, an Inngest signature, or the app's events key. These routes are
-  connection webhook intake, the Inngest HTTP callback when HTTP serve is enabled, and
-  `POST /api/events` when `events.key` is set.
+  a vendor signature or the app's events key. These routes are connection webhook intake
+  and `POST /api/events` when `events.key` is set.
 - The OAuth client metadata endpoint is public provider-discovery data and bypasses host
   authentication.
 
@@ -635,7 +639,7 @@ import { wfSqlite } from "@wfgraph/core/sqlite";
 
 const wfgraph = await createWfGraphApp({
   persistence: wfSqlite({ filename: "./wfgraph.db" }),
-  // auth, encryption, inngest, extensions
+  // auth, encryption, extensions
 });
 ```
 
@@ -670,10 +674,10 @@ Event, a Cancel, an Exit, or a Migration resolves the Wait.
 Every Event arrives in the `workflow_event_inbox` table, and the worker loop delivers it:
 it opens the runs the Event starts, cancels the runs it cancels, and wakes the Waits it
 matches. An Event reaches the inbox through `app.events.send`, `POST /api/events`, a
-Connection's webhook, or `inngest.send`. The `inngest` option is still required: Workflow
-Graph registers one Inngest function for each name an Event in `extensions.events` arrives
-under, and that function records each Inngest event in the inbox. Inngest runs no workflow
-and delivers no Event itself. For how to send one, see `docs/events.md`.
+Connection's webhook, or an insert your own transaction makes. A host on Inngest keeps
+`inngest.send` by registering the forwarders from `@wfgraph/core/inngest` on its own
+Inngest `serve` or `connect`; each forwarder sends the Inngest event in with `events.send`.
+For how to send one, see `docs/events.md`.
 
 An inbox row stays after its delivery settles, as `delivered`, or as `failed` with the
 reason in its `error` column. The loop deletes settled rows once they are older than
@@ -717,7 +721,7 @@ requests from it.
 
 ```ts
 const wfgraph = await createWfGraphApp({
-  // auth, persistence, encryption, inngest, extensions
+  // auth, persistence, encryption, extensions
   runner: { concurrency: 20, pollMs: 500 },
 });
 ```
@@ -742,7 +746,7 @@ process with the shortest window decides how long rows are kept.
 
 ```ts
 const wfgraph = await createWfGraphApp({
-  // auth, persistence, encryption, inngest, extensions
+  // auth, persistence, encryption, extensions
   events: { retentionMs: 30 * 24 * 60 * 60 * 1000 },
 });
 ```
@@ -831,7 +835,6 @@ import { wfHyperdrive, wfWorker } from "@wfgraph/core/worker";
 type Env = {
   HYPERDRIVE: { connectionString: string };
   INTEGRATION_ENCRYPTION_KEY: string;
-  INNGEST_SIGNING_KEY: string;
   SLACK_CLIENT_ID: string;
   SLACK_CLIENT_SECRET: string;
 };
@@ -842,10 +845,6 @@ export default wfWorker<Env>({
     auth,
     persistence: wfHyperdrive(env.HYPERDRIVE),
     encryption: { key: env.INTEGRATION_ENCRYPTION_KEY },
-    inngest: {
-      id: "my-wfgraph-worker",
-      signingKey: env.INNGEST_SIGNING_KEY,
-    },
   }),
   extensions: (env) => ({
     events,
@@ -921,6 +920,7 @@ different migration tool puts the tables in `public`. This repository's
 | `@wfgraph/core/testing`  | `runAction`, `actionData` and `actionError`, for that package's own suite                                                                                                                                                        |
 | `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                  |
 | `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                     |
+| `@wfgraph/core/inngest`  | `createWfGraphInngestFunctions`, the forwarders a host on Inngest registers so `inngest.send` reaches the event inbox. The one entry that imports `inngest`, an optional peer dependency. See `docs/events.md`                   |
 | `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                       |
 | `@wfgraph/plugins`       | Five static integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                                                                                                  |
 | `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                                                                                                    |
@@ -945,8 +945,6 @@ Cloudflare Workers and Hyperdrive.
 | `auth`                    | Yes      | Authentication callback returning a request-scoped access policy or `null`                                                                                                                                             |
 | `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                                                                                      |
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                                                                           |
-| `inngest.id`              | Yes      | Inngest application ID. Inngest forwards the Events a host sends with `inngest.send` into the event inbox; it runs no workflow                                                                                         |
-| `inngest.*`               | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency, connectTimeoutMs                                                         |
 | `events.key`              | No       | Shared secret that mounts `POST /api/events`. A sender presents it as `Authorization: Bearer <key>`. Unset, the route is not mounted. A blank value, or one holding whitespace, fails at startup. See `docs/events.md` |
 | `events.retentionMs`      | No       | How long a settled inbox row is kept after its Event arrived, in milliseconds. Defaults to seven days. See Keep settled Events for a window                                                                            |
 | `runner`                  | No       | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none beside a `createWfGraphRunner` process. See Workflow runs                        |
@@ -970,59 +968,37 @@ Read these once:
   contract, see [Authentication and authorization](#authentication-and-authorization).
 - **Three route classes define exposure.** Operator routes use `auth`. The
   Connection-addressed webhook intake
-  (`POST /api/webhooks/{type}/{connectionId}`), the Inngest HTTP callback, and
-  Event intake (`POST /api/events`) are machine routes that carry their own
-  credentials. The OAuth client metadata route is public discovery data. Webhook
-  intake is always available outside the gate, the Inngest HTTP callback is
-  available only when `inngest.connect` is unset, and Event intake is available
-  only when `events.key` is set. Workflow Graph applies the host authentication predicate route by route.
-  Connect mode mounts no `/api/inngest`; the worker dials out, so a private network
-  that Inngest cannot call into still runs.
+  (`POST /api/webhooks/{type}/{connectionId}`) and Event intake
+  (`POST /api/events`) are machine routes that carry their own credentials. The
+  OAuth client metadata route is public discovery data. Webhook intake is always
+  available outside the gate, and Event intake is available only when
+  `events.key` is set. Workflow Graph applies the host authentication predicate
+  route by route. Workflow Graph mounts no Inngest route: a host on Inngest
+  registers the forwarders from `@wfgraph/core/inngest` on a route or connection
+  of its own, and secures it with its own signing key.
 - **Set `publicUrl` when an integration offers OAuth or a webhook.** Use the
   origin that a provider reaches, such as `https://workflows.example.com`. Put
   the mount path in `basePath`. Workflow Graph refuses a `publicUrl` that contains
   a path. Absent `publicUrl`, the editor cannot copy a webhook URL and says so
   rather than offering `window.location`.
-- **Set `inngest.signingKey` on each cloud deployment.** With HTTP serve,
-  `/api/inngest` sits outside the gate because Inngest signs its callbacks, and
-  that holds with a configured signing key alone. Without one the SDK runs in
-  dev mode and skips the signature check, so an anonymous POST to that path can
-  deliver an Event with a payload of its choice, which can start or wake runs. With Connect, the
-  same key authenticates the worker to the gateway. Workflow Graph logs an error at
-  start-up when no key is set for the path in use.
 - **A mount under a sub-path takes `basePath`.** Workflow Graph builds its API prefix, the
   `<base href>` of the SPA, and each asset URL from it. A host that mounts at `/workflows`
   and omits it gets a client that requests its assets from the root.
-- **`inngest` and `hono` are peer dependencies**, at `^4.18.0` and `^4.13.1`. Your
-  application installs both and owns each version. For Inngest that keeps one
-  durable-execution runtime in the process, even when the application drives Inngest
-  functions of its own. Workflow Graph still builds its own Inngest client out of the
-  `inngest` option below, and still builds its own Hono app inside; `createWfGraphApp`
-  answers with `fetch`, `basePath`, `events`, `dispose`, and `[Symbol.asyncDispose]`
-  alone, so neither library appears in what it hands back.
-- **Running Inngest is the job of the consumer**, self-hosted or cloud. Inngest forwards
-  each Event a host sends with `inngest.send` into the event inbox; Event deliveries and
-  workflow runs execute in your process (see Workflow runs). `pnpm run dev` here
-  starts Inngest as a separate process. Long-running hosts set `inngest.connect: true` so
-  those forwards arrive over a Connect WebSocket and `/api/inngest` is not mounted.
-  Local `pnpm run dev` sets `INNGEST_CONNECT_GATEWAY_URL=ws://localhost:8390/v0/connect`
-  because the CLI's Connect gateway listens on 8390. Pass `inngest.instanceId`,
-  `inngest.gatewayUrl`, or `inngest.maxWorkerConcurrency` when the worker needs
-  them; the SDK also reads `INNGEST_CONNECT_GATEWAY_URL`. Serverless hosts leave
-  `connect` unset so Inngest can call `/api/inngest`.
-- **`createWfGraphApp` bounds the Connect handshake at boot.** The installed SDK
-  retries a failed handshake forever and never settles the promise it hands
-  back, so an unreachable gateway would otherwise hang boot with nothing
-  logged. Workflow Graph races it against `inngest.connectTimeoutMs` (default 30
-  seconds) and fails boot with an error naming the gateway once that elapses.
+- **`hono` is a peer dependency**, at `^4.13.14`, and `inngest` is an optional one, at
+  `^4.26.1`. Your application installs `hono` and owns its version; Workflow Graph builds
+  its own Hono app inside, and `createWfGraphApp` answers with `fetch`, `basePath`,
+  `events`, `dispose`, and `[Symbol.asyncDispose]` alone, so Hono appears nowhere in what
+  it hands back. Only `@wfgraph/core/inngest` imports `inngest`, so install it only when
+  you register the forwarders; your own Inngest client then shares the one SDK copy.
 - `createWfGraphApp` answers `{ fetch, basePath, events, dispose, [Symbol.asyncDispose] }`.
   `events.send` raises an Event from your own code; see `docs/events.md`. For a
   lexical lifetime, declare the app with `await using`. For a long-running host, call
   `await dispose()` from its shutdown handler. Both forms run the same idempotent shutdown:
-  they drain an open Connect worker, stop the worker loop and wait up to ten seconds for
-  the runs it is advancing, finalize the Effect runtime, and close persistence.
-  One Workflow Graph per process remains the supported arrangement; each app owns its
-  persistence instance, Inngest client, encryption key, and assembled surface.
+  they stop the worker loop and wait up to ten seconds for the runs it is advancing,
+  finalize the Effect runtime, and close persistence. Dispose the app after you close any
+  Inngest `connect` or route that registers the forwarders, since a forwarder sends
+  through the app. One Workflow Graph per process remains the supported arrangement; each
+  app owns its persistence instance, encryption key, and assembled surface.
 
 ## Logging
 

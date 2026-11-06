@@ -4,12 +4,18 @@ import { describe, expect, it } from "vitest";
 
 import { defineEvent } from "#src/backend/extensions/define-event";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
-import { assembleExtensions } from "#src/backend/extensions/extension-set";
-import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
-import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
+import type { WfGraphEvents } from "#src/backend/host-events";
+import { createWfGraphInngestFunctions } from "#src/backend/lib/inngest/functions";
 
 // Constructing a client opens nothing; these functions are never invoked.
 const client = new Inngest({ id: "functions-test", isDev: true });
+
+/** An app whose `events` the build never calls. */
+const app: { events: WfGraphEvents } = {
+  events: {
+    send: () => Promise.reject(new Error("The build sends nothing")),
+  },
+};
 
 const appointmentCreated = defineEvent({
   name: "app/appointment.created",
@@ -38,6 +44,12 @@ const invoiceVoided = defineEvent({
   },
 });
 
+const acmeBooked = defineEvent({
+  name: "acme/booked",
+  schema: billingPayload,
+  source: { event: "acme/webhook" },
+});
+
 /** An integration whose webhook raises its one Event. */
 const acme = defineIntegration({
   type: "acme",
@@ -45,13 +57,7 @@ const acme = defineIntegration({
   description: "Books appointments",
   credentials: {},
   actions: {},
-  events: [
-    defineEvent({
-      name: "acme/booked",
-      schema: billingPayload,
-      source: { event: "acme/webhook" },
-    }),
-  ],
+  events: [acmeBooked],
   webhook: {
     source: "acme/webhook",
     verify: () => Effect.void,
@@ -67,34 +73,73 @@ function triggersOf(fn: unknown): BuiltOptions["opts"]["triggers"] {
   return (fn as BuiltOptions).opts.triggers;
 }
 
-/**
- * What this app registers with Inngest: one forwarder per name a host Event
- * arrives under.
- *
- * Nothing here reads a saved graph, which the stub runtime enforces -- its
- * workflow repository dies on every method, so a build that asked which
- * workflows exist would fail the test rather than pass with an empty list.
- */
-describe("buildInngestFunctions", () => {
-  it("builds one forwarder per host Event source and none for an integration's Event", async () => {
-    const runtime = stubWfGraphRuntime({
-      extensions: assembleExtensions({
-        events: [appointmentCreated, invoicePaid, invoiceVoided],
+describe("createWfGraphInngestFunctions", () => {
+  it("builds one forwarder per host Event source and none for an integration's Event", () => {
+    const functions = createWfGraphInngestFunctions({
+      client,
+      app,
+      extensions: {
+        // A host may list an integration's Event too; the integration owns it.
+        events: [appointmentCreated, invoicePaid, invoiceVoided, acmeBooked],
         integrations: [acme],
-      }),
+      },
     });
-
-    const functions = await buildInngestFunctions(client, runtime);
 
     expect(functions.map((fn) => fn.id())).toEqual([
       "wfgraph-event-app-appointment-created",
       "wfgraph-event-billing-webhook",
     ]);
-    // Each triggers on its name alone: the delivery body evaluates an
-    // umbrella source's `when`, so Inngest filters nothing.
+    // Each triggers on its name alone: the send tells an umbrella source's
+    // Events apart by `when`, so Inngest filters nothing.
     expect(functions.map(triggersOf)).toEqual([
       [{ event: "app/appointment.created" }],
       [{ event: "billing/webhook" }],
     ]);
+  });
+
+  // The forwarder id is the name it receives slugged, so two names differing
+  // only in punctuation are one function to Inngest: it would sync one and drop
+  // the other.
+  it("refuses two Events whose names slug to one forwarder id", () => {
+    const twin = defineEvent({
+      name: "app-appointment-created",
+      schema: billingPayload,
+    });
+    expect(() =>
+      createWfGraphInngestFunctions({
+        client,
+        app,
+        extensions: { events: [appointmentCreated, twin] },
+      })
+    ).toThrow("both name the Inngest function");
+  });
+
+  // Events on one umbrella source share its forwarder, so their own names never
+  // become function ids.
+  it("accepts Events on one source whose own names would slug to one id", () => {
+    const created = defineEvent({
+      name: "app/appointment.created",
+      schema: Schema.Struct({ kind: Schema.String }),
+      source: {
+        event: "app/appointment",
+        when: { path: "kind", equals: "created" },
+      },
+    });
+    const twin = defineEvent({
+      name: "app-appointment-created",
+      schema: Schema.Struct({ kind: Schema.String }),
+      source: {
+        event: "app/appointment",
+        when: { path: "kind", equals: "canceled" },
+      },
+    });
+
+    expect(
+      createWfGraphInngestFunctions({
+        client,
+        app,
+        extensions: { events: [created, twin] },
+      }).map((fn) => fn.id())
+    ).toEqual(["wfgraph-event-app-appointment"]);
   });
 });

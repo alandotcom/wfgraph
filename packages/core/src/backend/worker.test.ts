@@ -31,7 +31,6 @@ describe("wfWorker", () => {
         auth,
         persistence,
         encryption: { key: env.INTEGRATION_ENCRYPTION_KEY },
-        inngest: { id: "wfgraph-worker-test", isDev: true },
       }),
     };
 

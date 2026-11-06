@@ -307,12 +307,8 @@ describe("events HTTP route", () => {
   });
 
   it("is a machine route only when a key is set", () => {
-    expect(
-      machineRoutes({ serveInngest: false, acceptEvents: true })
-    ).toContain("/events");
-    expect(
-      machineRoutes({ serveInngest: false, acceptEvents: false })
-    ).not.toContain("/events");
+    expect(machineRoutes({ acceptEvents: true })).toContain("/events");
+    expect(machineRoutes({ acceptEvents: false })).not.toContain("/events");
   });
 
   it("answers 202 with the inbox row for the right key", async () => {

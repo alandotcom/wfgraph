@@ -175,7 +175,6 @@ export function stubExtensions(
     entityByType: () => undefined,
     entityResolverTimeoutMs: DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS,
     events: [],
-    hostEvents: [],
     entities: [],
     ...set,
   });
@@ -469,11 +468,9 @@ export function stubExecutionDriver(
  * A whole `WfGraphRuntime`, for a test standing up something the app builds from
  * its own.
  *
- * Two app-owned boundaries take the runtime rather than a service: the dispatch
- * port's credential fetch and the Inngest function list, whose forwarders
- * write through the runtime's driver. A test of either is checking runtime
- * ownership itself, so providing an individual Layer would hide the behavior
- * under test.
+ * The dispatch port's credential fetch takes the runtime rather than a
+ * service, so a test of it is checking runtime ownership itself, and providing
+ * an individual Layer would hide the behavior under test.
  *
  * Every repository dies on an unnamed method, the same as the stub Layers do, so
  * a subject that reaches a query the test did not account for fails loudly.

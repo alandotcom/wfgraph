@@ -246,9 +246,9 @@ describe("receiveWebhook", () => {
 
 describe("webhook HTTP route", () => {
   it("is a machine route even when Inngest HTTP serve is off", () => {
-    expect(
-      machineRoutes({ serveInngest: false, acceptEvents: false })
-    ).toContain("/webhooks/:type/:connectionId");
+    expect(machineRoutes({ acceptEvents: false })).toContain(
+      "/webhooks/:type/:connectionId"
+    );
   });
 
   it("redacts the Connection id from request log paths", () => {

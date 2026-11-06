@@ -2,8 +2,8 @@
  * An integration's stored secrets, fetched by id at the moment a step needs them.
  *
  * A step is configured with an integration id and never with the secrets
- * themselves, so nothing that logs a step's input -- the run log, Inngest's own
- * observability -- has them to write down. The fetch happens inside the
+ * themselves, so nothing that logs a step's input -- the run log, the step memo,
+ * a trace -- has them to write down. The fetch happens inside the
  * handler's Effect and what it produces is thrown away with the step.
  */
 

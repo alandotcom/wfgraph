@@ -113,9 +113,8 @@ function buildWfGraphLayer(
  * these and disposes it. Ownership is what buys the dependency injection: a
  * service reaches its repository and its logger through this graph, so a test
  * swaps either one by handing over a different Layer instead of stubbing a
- * module. The graph is built on the first Effect the runtime runs: at boot for
- * an app, whose Inngest functions read the extension surface through it, and
- * at the worker loop's start for a runner.
+ * module. The graph is built on the first Effect the runtime runs, which
+ * `createWfGraphApp` runs at boot and a runner runs at its worker loop's start.
  *
  * One Workflow Graph per process stays the only supported arrangement (ADR-0002).
  */
