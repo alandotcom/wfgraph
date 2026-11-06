@@ -254,7 +254,7 @@ function describeCases(
           Effect.gen(function* () {
             const repo = yield* ExecutionRepo;
             yield* runWorkerLoop({
-              actions,
+              actions: () => actions,
               signal: controller.signal,
               pollMs: 20,
               ...options,

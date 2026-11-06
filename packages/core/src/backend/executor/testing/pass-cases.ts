@@ -222,13 +222,17 @@ function describeCases(
               now: now(),
             });
             if (!claimed) return null;
-            return yield* leasedPass(claimed, runBody({ actions }), {
-              workerId: options.workerId ?? "worker_1",
-              now,
-              leaseMs: LEASE_MS,
-              heartbeatMs: options.heartbeatMs,
-              backoffMs: () => 0,
-            }).pipe(Effect.provideService(ExecutionRepo, worker));
+            return yield* leasedPass(
+              claimed,
+              runBody({ actions: () => actions }),
+              {
+                workerId: options.workerId ?? "worker_1",
+                now,
+                leaseMs: LEASE_MS,
+                heartbeatMs: options.heartbeatMs,
+                backoffMs: () => 0,
+              }
+            ).pipe(Effect.provideService(ExecutionRepo, worker));
           })
         ),
       publishSecondVersion: async (secondGraph) =>

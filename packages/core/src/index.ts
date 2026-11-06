@@ -53,6 +53,7 @@ export {
   type WfGraphInngestConfig,
   type WfGraphLogger,
   type WfGraphPersistence,
+  type WfGraphRunnerOptions,
 } from "#src/app";
 export {
   WfGraphOperationIds,

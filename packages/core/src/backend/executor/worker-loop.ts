@@ -42,10 +42,10 @@ import type { WorkerWake } from "#src/backend/executor/worker-wake";
  * The lease a claim takes. It is shorter than any platform's kill timeout, so a
  * worker that died is noticed before its host would have restarted it.
  */
-const DEFAULT_LEASE_MS = 60_000;
+export const DEFAULT_LEASE_MS = 60_000;
 
 /** How often a pass renews its lease while its body runs: three per lease. */
-const DEFAULT_HEARTBEAT_MS = 20_000;
+export const DEFAULT_HEARTBEAT_MS = 20_000;
 
 /** How many passes one loop runs at once. */
 const DEFAULT_CONCURRENCY = 10;
@@ -136,7 +136,9 @@ const claimDue = Effect.fn("wfgraph.executor.claim")(function* (input: {
 
 /**
  * One claimed row's pass, as a drain step answers it. A pass that fails is
- * logged as one record; its row is claimed again once its lease expires.
+ * logged as one record; its row is claimed again once its lease expires. The
+ * pass first yields to the event loop, so timers and I/O callbacks that fell
+ * due while the previous pass replayed run before this one starts.
  */
 const drainPass = Effect.fnUntraced(function* <R>(
   options: DrainOptions<R>,
@@ -148,7 +150,8 @@ const drainPass = Effect.fnUntraced(function* <R>(
     kind: "interrupted",
     claimed,
   });
-  const pass = leasedPass(claimed, options.bodies[claimed.kind], options).pipe(
+  const pass = Effect.yieldNow.pipe(
+    Effect.andThen(leasedPass(claimed, options.bodies[claimed.kind], options)),
     Effect.map((result): DrainedPass => ({ kind: "passed", claimed, result }))
   );
   const bounded =
@@ -187,7 +190,8 @@ const drainPass = Effect.fnUntraced(function* <R>(
 });
 
 export type WorkerLoopOptions = {
-  actions: WorkflowActions;
+  /** Builds the action surface for one pass; see `runBody`. */
+  actions: () => WorkflowActions;
   entities?: WorkflowEntities | undefined;
   /**
    * Aborting it stops the loop claiming. Passes in flight run to their end,

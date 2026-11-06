@@ -2,11 +2,13 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { InngestError } from "#src/backend/lib/effect/inngest-client";
-import { InternalFailure } from "#src/backend/lib/effect/failures";
+import { InternalFailure, NotFound } from "#src/backend/lib/effect/failures";
 import {
+  catchSeamFailures,
   internalFailure,
   internalFailureFromCause,
 } from "#src/backend/lib/effect/internal-failure";
+import { DriverError } from "#src/backend/services/executions/driver";
 import { makeRecordingLogger } from "#src/backend/lib/effect/test-layers";
 
 describe("internalFailure", () => {
@@ -125,5 +127,41 @@ describe("internalFailureFromCause", () => {
         "Failed to cancel execution: inngest dev server unreachable"
       );
     })
+  );
+});
+
+describe("catchSeamFailures", () => {
+  it.effect(
+    "answers the executor's refusal like the other seams and leaves domain failures alone",
+    () =>
+      Effect.gen(function* () {
+        const recorder = makeRecordingLogger();
+        const answer = <E>(error: E) =>
+          Effect.fail(error).pipe(
+            catchSeamFailures(
+              Effect.succeed(recorder.logger),
+              "Failed to start workflow execution",
+              "Failed to execute workflow"
+            ),
+            Effect.flip,
+            Effect.provide(recorder.layer)
+          );
+
+        const refused = yield* answer(
+          new DriverError({ cause: new Error("schedule row refused") })
+        );
+        const missing = yield* answer(
+          new NotFound({ error: "Workflow not found" })
+        );
+
+        assert.instanceOf(refused, InternalFailure);
+        assert.strictEqual(refused.error, "Failed to execute workflow");
+        assert.strictEqual(
+          recorder.lines[0]?.message,
+          "Failed to start workflow execution: schedule row refused"
+        );
+        assert.instanceOf(missing, NotFound);
+        assert.strictEqual(recorder.lines.length, 1);
+      })
   );
 });

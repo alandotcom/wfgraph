@@ -11,7 +11,8 @@ import {
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Schema } from "effect";
+import { Effect, ManagedRuntime, Schema } from "effect";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { uniq } from "es-toolkit/array";
 import {
   defineAction,
@@ -37,6 +38,17 @@ import * as inngestClientModule from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { createWfGraphRuntime } from "#src/backend/runtime";
 import { createWorkerWake } from "#src/backend/executor/worker-wake";
+import * as workerLoopModule from "#src/backend/executor/worker-loop";
+import {
+  actionNode,
+  createGate,
+  edge,
+  lifecycleNode,
+  publishWorkflow,
+  startScheduledRun,
+} from "#src/backend/executor/testing/run-fixtures";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { catalogFingerprint } from "#src/backend/services/workflows/version-digest";
 import { makePostgresRepositories } from "#src/backend/persistence/postgres-repositories";
 import { normalizeDatabaseConfig } from "#src/backend/lib/db/config";
 import * as dbModule from "#src/backend/lib/db/index";
@@ -748,5 +760,197 @@ describe("createWfGraphApp with inngest.connect", () => {
     } finally {
       surfaceSpy.mockRestore();
     }
+  });
+});
+
+describe("createWfGraphApp runner", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "wfgraph-runner-"));
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  /** An action that holds its step open until the case releases it. */
+  function heldAction(gate: ReturnType<typeof createGate>) {
+    return defineAction({
+      id: "test/held",
+      label: "Held",
+      description: "Holds its step open until the case lets it go",
+      input: Schema.Struct({}),
+      handler: async ({ step }) => {
+        await step.run("hold", async () => {
+          await gate.pass();
+          return null;
+        });
+        return {};
+      },
+    });
+  }
+
+  /**
+   * Publishes a workflow whose one action is `action` into the SQLite file the
+   * app will open, and schedules one run of it due now, through a connection
+   * of the case's own. Answers how to read that run's status back.
+   */
+  async function seedDueRun(
+    filename: string,
+    action: ReturnType<typeof heldAction>
+  ) {
+    const instance = await wfSqlite({ filename }).open(
+      createIntegrationCipher(BASE_OPTIONS.encryption)
+    );
+    const runtime = ManagedRuntime.make(instance.repositories);
+    const executionId = await runtime.runPromise(
+      Effect.gen(function* () {
+        yield* publishWorkflow({
+          workflowId: "wf_runner",
+          versionId: "ver_runner",
+          graph: createSerializedWorkflowGraph({
+            nodes: [lifecycleNode(), actionNode("held", "test/held")],
+            edges: [edge("entry", "held", "started")],
+          }),
+          catalogFingerprint: catalogFingerprint(
+            assembleExtensions({ actions: [action] }).catalog
+          ),
+        });
+        return yield* startScheduledRun({
+          workflowId: "wf_runner",
+          versionId: "ver_runner",
+          entityValue: "entity_1",
+          wakeAt: new Date(),
+        });
+      })
+    );
+    return {
+      status: () =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            return (yield* executions.findSummaryById(executionId))?.status;
+          })
+        ),
+      close: async () => {
+        await runtime.dispose();
+        await instance.close();
+      },
+    };
+  }
+
+  /** Records the options of every loop an app starts. */
+  function recordLoops() {
+    const runWorkerLoop = workerLoopModule.runWorkerLoop;
+    return vi
+      .spyOn(workerLoopModule, "runWorkerLoop")
+      .mockImplementation((options) => runWorkerLoop(options));
+  }
+
+  // The run is due before the app opens, so the loop the app starts on its
+  // own is the only thing that can reach the held step. Dispose must wait for
+  // that pass to end before it closes the database the pass writes to.
+  it("runs a loop by default and drains its pass on dispose", async () => {
+    const filename = join(dir, "wfgraph.sqlite");
+    const gate = createGate();
+    const action = heldAction(gate);
+    const seeded = await seedDueRun(filename, action);
+    try {
+      const app = await createWfGraphApp({
+        ...BASE_OPTIONS,
+        persistence: wfSqlite({ filename }),
+        extensions: { actions: [action] },
+      });
+      await gate.entered;
+
+      let disposed = false;
+      const disposal = app.dispose().then(() => {
+        disposed = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(disposed).toBe(false);
+
+      gate.release();
+      await disposal;
+      expect(await seeded.status()).toBe("completed");
+    } finally {
+      await seeded.close();
+    }
+  });
+
+  it("takes the backend's defaults when the host sets nothing", async () => {
+    const loops = recordLoops();
+    const app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      persistence: wfSqlite(),
+    });
+    await app.dispose();
+
+    expect(loops).toHaveBeenCalledTimes(1);
+    expect(loops.mock.calls[0]?.[0]).toMatchObject({
+      concurrency: 1,
+      pollMs: 250,
+      leaseMs: undefined,
+      heartbeatMs: undefined,
+      drainMs: 10_000,
+    });
+  });
+
+  it("hands the host's settings to the loop", async () => {
+    const loops = recordLoops();
+    const app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      persistence: wfSqlite(),
+      runner: {
+        concurrency: 4,
+        pollMs: 50,
+        leaseMs: 9_000,
+        heartbeatMs: 3_000,
+      },
+    });
+    await app.dispose();
+
+    expect(loops.mock.calls[0]?.[0]).toMatchObject({
+      concurrency: 4,
+      pollMs: 50,
+      leaseMs: 9_000,
+      heartbeatMs: 3_000,
+    });
+  });
+
+  it("runs no loop when the host runs it elsewhere", async () => {
+    const loops = recordLoops();
+    const filename = join(dir, "wfgraph.sqlite");
+    const gate = createGate();
+    const action = heldAction(gate);
+    const seeded = await seedDueRun(filename, action);
+    try {
+      const app = await createWfGraphApp({
+        ...BASE_OPTIONS,
+        persistence: wfSqlite({ filename }),
+        extensions: { actions: [action] },
+        runner: false,
+      });
+      // Past a SQLite poll, so a loop would have claimed the due run.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await app.dispose();
+
+      expect(loops).not.toHaveBeenCalled();
+      expect(gate.calls()).toBe(0);
+      expect(await seeded.status()).toBe("running");
+    } finally {
+      await seeded.close();
+    }
+  });
+
+  it("refuses runner settings a loop could not run with", async () => {
+    await expect(
+      createWfGraphApp({ ...BASE_OPTIONS, runner: { concurrency: 0 } })
+    ).rejects.toThrow("runner.concurrency must be a positive integer");
+    await expect(
+      createWfGraphApp({ ...BASE_OPTIONS, runner: { leaseMs: 10_000 } })
+    ).rejects.toThrow("must be shorter than runner.leaseMs");
   });
 });

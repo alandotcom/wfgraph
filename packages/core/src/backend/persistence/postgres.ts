@@ -15,6 +15,7 @@ import { makePostgresRepositories } from "#src/backend/persistence/postgres-repo
 import {
   createPostgresRunWakes,
   POSTGRES_POLL_MS,
+  POSTGRES_WORKER_CONCURRENCY,
 } from "#src/backend/persistence/postgres-run-wakes";
 
 export type PostgresPersistenceOptions = DatabaseRuntimeConfig & {
@@ -45,6 +46,7 @@ export function wfPostgres(
         return {
           repositories: makePostgresRepositories(database, cipher),
           wakes: { kind: "notify", pollMs: POSTGRES_POLL_MS, broadcast },
+          workerConcurrency: POSTGRES_WORKER_CONCURRENCY,
           description: {
             backend: "postgres",
             ...describeConnection(database.client, database.schema),

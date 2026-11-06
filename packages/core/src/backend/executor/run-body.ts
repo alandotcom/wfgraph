@@ -2,7 +2,8 @@
  * The pass body of a `run` schedule row: load the Execution and the version it
  * pins, and replay the workflow over the pass's runtime, with the engine's
  * store writing through the pass's watched writes. A run that cannot be loaded
- * answers `unavailable` with the write that ends its row.
+ * answers `unavailable` with the write that ends its row. One body serves
+ * every pass of a worker loop, and keeps the versions those passes read.
  */
 
 import { Effect } from "effect";
@@ -23,6 +24,7 @@ import {
   type FencedExecutionWrites,
 } from "#src/backend/services/executions/repo";
 import {
+  createRunVersionCache,
   loadPersistedRunInput,
   RunInputUnavailable,
 } from "#src/backend/services/executions/run-input";
@@ -30,17 +32,25 @@ import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export function runBody(input: {
-  actions: WorkflowActions;
+  /**
+   * Builds the action surface one pass dispatches through. Called once per
+   * pass, because the surface keeps the integration credentials it read, and a
+   * decrypted secret must not outlive the pass that read it.
+   */
+  actions: () => WorkflowActions;
   entities?: WorkflowEntities | undefined;
 }): PassBody<ExecutionRepo | WorkflowRepo> {
   const entities = input.entities ?? noWorkflowEntities;
+  const versions = createRunVersionCache();
   return {
     open: (pass) =>
       Effect.gen(function* () {
         const executions = yield* ExecutionRepo;
         const { writes } = pass;
         const { executionId } = pass.claimed;
-        const loaded = yield* loadPersistedRunInput(executionId).pipe(
+        const loaded = yield* loadPersistedRunInput(executionId, {
+          versions,
+        }).pipe(
           Effect.catchTag("RunInputUnavailable", (unavailable) =>
             Effect.succeed(unavailable)
           )
@@ -53,10 +63,11 @@ export function runBody(input: {
           } as const;
         }
         const store = createDbWorkflowStore({ reads: executions, writes });
+        const actions = input.actions();
         return {
           kind: "ready",
           run: (runtime) =>
-            executeWorkflow(loaded, runtime, store, input.actions, entities),
+            executeWorkflow(loaded, runtime, store, actions, entities),
         } as const;
       }),
     fail: (pass, error) =>

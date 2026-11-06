@@ -16,6 +16,13 @@ import { makeSqliteExecutionRepo } from "#src/backend/persistence/sqlite/executi
  */
 const SQLITE_POLL_MS = 250;
 
+/**
+ * One pass at a time. SQLite allows one writer, and `node:sqlite` blocks the
+ * event loop for each statement, so more passes at once finish no sooner and
+ * hold the event loop longer between turns.
+ */
+const SQLITE_WORKER_CONCURRENCY = 1;
+
 export type SqlitePersistenceOptions = {
   /** A filesystem path. Omit for an in-memory database. */
   filename?: string | undefined;
@@ -52,6 +59,7 @@ export function wfSqlite(
         ),
         // Every loop runs in the one process that writes the file.
         wakes: { kind: "poll", pollMs: SQLITE_POLL_MS },
+        workerConcurrency: SQLITE_WORKER_CONCURRENCY,
         description: { backend: "sqlite", filename },
         close: database.close,
       };

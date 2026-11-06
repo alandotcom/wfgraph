@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
-import { statedSeamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
+import { catchStatedSeamFailures } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { wakeWait } from "#src/backend/services/workflows/lifecycle/wake-wait";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -52,12 +52,10 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
     // The caller holds a resume token, not our confidence, so the cause goes to
     // the log and they get a stated sentence.
     effect.pipe(
-      Effect.catchTags(
-        statedSeamFailureHandlers(
-          resumeLogger,
-          "Failed to resume wait",
-          "Could not resume this wait"
-        )
+      catchStatedSeamFailures(
+        resumeLogger,
+        "Failed to resume wait",
+        "Could not resume this wait"
       )
     )
 );

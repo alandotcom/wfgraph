@@ -13,6 +13,12 @@ import type { RunWakeBroadcast } from "#src/backend/persistence/types";
 /** How long a loop on PostgreSQL sleeps between claims when nothing wakes it. */
 export const POSTGRES_POLL_MS = 1_000;
 
+/**
+ * How many passes a loop on PostgreSQL runs at once. A pass spends most of its
+ * time waiting on the database, so several overlap on one event loop.
+ */
+export const POSTGRES_WORKER_CONCURRENCY = 10;
+
 /** How long a noted wake waits before the notification that carries it. */
 const FLUSH_MS = 50;
 

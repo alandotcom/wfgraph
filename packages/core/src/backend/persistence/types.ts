@@ -49,6 +49,12 @@ export type WfGraphRunWakes =
 export type WfGraphPersistenceInstance = {
   readonly repositories: Layer.Layer<WfGraphRepositories>;
   readonly wakes: WfGraphRunWakes;
+  /**
+   * How many passes an in-process worker loop runs at once unless the host
+   * says otherwise: as many as the backend serves without stalling the event
+   * loop or the writer.
+   */
+  readonly workerConcurrency: number;
   readonly description: Readonly<Record<string, string | number | boolean>>;
   readonly close: () => Promise<void>;
 };

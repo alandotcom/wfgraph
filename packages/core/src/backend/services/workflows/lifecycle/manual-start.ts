@@ -5,7 +5,7 @@ import {
 } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { Conflict, InvalidInput } from "#src/backend/lib/effect/failures";
-import { seamFailureHandlers } from "#src/backend/lib/effect/internal-failure";
+import { catchSeamFailures } from "#src/backend/lib/effect/internal-failure";
 import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
@@ -459,12 +459,10 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
   // same nothing, and the operator with the same line to grep for.
   (effect, workflowId) =>
     effect.pipe(
-      Effect.catchTags(
-        seamFailureHandlers(
-          loggerFor(workflowId),
-          "Failed to start workflow execution",
-          "Failed to execute workflow"
-        )
+      catchSeamFailures(
+        loggerFor(workflowId),
+        "Failed to start workflow execution",
+        "Failed to execute workflow"
       )
     )
 );

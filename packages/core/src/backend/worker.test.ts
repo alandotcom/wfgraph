@@ -87,6 +87,7 @@ describe("wfWorker", () => {
       open: async () => ({
         repositories,
         wakes: { kind: "poll", pollMs: 1_000 },
+        workerConcurrency: 10,
         description: { backend: "test" },
         close: () => Promise.resolve(),
       }),
@@ -216,6 +217,7 @@ describe("wfWorker", () => {
       open: async () => ({
         repositories,
         wakes: { kind: "poll", pollMs: 1_000 },
+        workerConcurrency: 10,
         description: { backend: "test" },
         close: async () => {
           closed += 1;
@@ -276,6 +278,7 @@ describe("wfWorker", () => {
       open: async () => ({
         repositories,
         wakes: { kind: "poll", pollMs: 1_000 },
+        workerConcurrency: 10,
         description: { backend: "test" },
         close: () => {
           closed += 1;

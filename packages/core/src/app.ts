@@ -20,6 +20,7 @@ import {
 } from "#src/backend/lib/http/mount-path";
 import {
   assembleExtensions,
+  type ExtensionSet,
   type WfGraphExtensions,
 } from "#src/backend/extensions/extension-set";
 import {
@@ -50,7 +51,16 @@ import type {
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { closeInOrder, failAfterClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
-import { createWorkerWake } from "#src/backend/executor/worker-wake";
+import {
+  createWorkerWake,
+  type WorkerWake,
+} from "#src/backend/executor/worker-wake";
+import {
+  assertValidRunnerOptions,
+  type InProcessRunner,
+  startInProcessRunner,
+  type WfGraphRunnerOptions,
+} from "#src/backend/executor/in-process-runner";
 import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
@@ -66,6 +76,7 @@ export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
 export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
+export type { WfGraphRunnerOptions } from "#src/backend/executor/in-process-runner";
 
 export type WfGraphAppOptions = {
   /**
@@ -104,6 +115,15 @@ export type WfGraphAppOptions = {
   entityResolverTimeoutMs?: number | undefined;
   encryption: EncryptionRuntimeConfig;
   inngest: WfGraphInngestConfig;
+  /**
+   * The worker loop that advances workflow runs stored in `persistence`.
+   *
+   * Left out, the app runs one loop in its own process with the backend's
+   * defaults. An object runs that loop with the fields it sets, and `false`
+   * runs none, for a host that advances runs in another process. Dispose stops
+   * the loop and waits up to ten seconds for the runs it is advancing.
+   */
+  runner?: false | WfGraphRunnerOptions | undefined;
   /**
    * The whole extension surface, in one place.
    *
@@ -159,7 +179,7 @@ export type WfGraphApp = {
    * Give back everything this app holds. Awaiting it waits for the Effect
    * runtime's Layers to finalize; a host that fires and forgets still releases
    * the registrations synchronously. When `inngest.connect` was set, the
-   * Connect worker is drained first.
+   * Connect worker is drained first, and the runner stops after it.
    */
   dispose: () => Promise<void>;
   /** Dispose the app automatically when an `await using` scope exits. */
@@ -186,6 +206,7 @@ export async function createWfGraphApp(
   }
 
   assertValidEncryptionKey(options.encryption.key);
+  assertValidRunnerOptions(options.runner);
 
   return await buildWfGraphApp(options, {
     basePath,
@@ -260,6 +281,9 @@ async function buildWfGraphApp(
       persistence: persistence.description,
     });
 
+    // The one wake this app's producers and its runner share.
+    const wake = createWorkerWake();
+
     // The Layer graph this instance owns. Building it is lazy, so an app that
     // never serves a migrated procedure never constructs a service.
     runtime = createWfGraphRuntime({
@@ -271,7 +295,7 @@ async function buildWfGraphApp(
       },
       agent: readAgentSettings(options.agent),
       repositories: persistence.repositories,
-      wakes: { worker: createWorkerWake(), persistence: persistence.wakes },
+      wakes: { worker: wake, persistence: persistence.wakes },
     });
 
     return await assembleWfGraphApp(options, {
@@ -279,7 +303,9 @@ async function buildWfGraphApp(
       auth,
       runtime,
       inngest,
+      extensions,
       persistence,
+      wake,
     });
   } catch (error) {
     return await failAfterClose(error, [
@@ -297,10 +323,13 @@ async function assembleWfGraphApp(
     auth: ResolvedAuth;
     runtime: WfGraphRuntime;
     inngest: InngestSurface;
+    extensions: ExtensionSet;
     persistence: WfGraphPersistenceInstance;
+    wake: WorkerWake;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, auth, runtime, inngest, persistence } = startup;
+  const { basePath, auth, runtime, inngest, extensions, persistence, wake } =
+    startup;
 
   // Built once: Connect and HTTP serve are alternatives, and whichever path
   // this app takes registers that same list. A broken extension surface fails
@@ -360,6 +389,18 @@ async function assembleWfGraphApp(
     );
   }
 
+  // Last, so a boot that failed before this line leaves no loop running.
+  let runner: InProcessRunner | undefined =
+    options.runner === false
+      ? undefined
+      : startInProcessRunner({
+          runtime,
+          extensions,
+          persistence,
+          wake,
+          options: options.runner ?? {},
+        });
+
   const disposeOnce = async (): Promise<void> => {
     // Drain Connect before the runtime goes away: in-flight steps still need
     // the Layer graph, and a closed WebSocket is what stops Inngest from
@@ -374,6 +415,11 @@ async function assembleWfGraphApp(
       }
       workerConnection = undefined;
     }
+
+    // The loop's passes write through the runtime and the backend, so it
+    // stops, its passes drained, before either closes.
+    await runner?.stop();
+    runner = undefined;
 
     await closeInOrder([
       () => runtime.dispose(),

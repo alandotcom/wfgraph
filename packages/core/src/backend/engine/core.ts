@@ -9,6 +9,7 @@
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type {
   SerializedWorkflowGraph,
+  WorkflowEdge,
   WorkflowNode,
 } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -176,6 +177,29 @@ type EndedWorkflowExecution = RunProgress & {
 };
 
 /**
+ * The nodes and edges parsed from each graph a run has walked, by the graph
+ * object itself. The database executor hands every pass of a version the same
+ * graph object, so the version is parsed once while that object lives, and an
+ * entry goes when its graph is collected. The engine reads the parsed nodes
+ * and edges and never writes them, which is what lets passes share one copy.
+ */
+const parsedGraphs = new WeakMap<
+  SerializedWorkflowGraph,
+  { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+>();
+
+function parsedGraph(graph: SerializedWorkflowGraph): {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+} {
+  const known = parsedGraphs.get(graph);
+  if (known !== undefined) return known;
+  const parsed = toWorkflowGraphData(graph);
+  parsedGraphs.set(graph, parsed);
+  return parsed;
+}
+
+/**
  * Builds the traversal, the cancel boundary and the scheduler one run walks
  * with.
  *
@@ -202,7 +226,7 @@ function prepareRun(
     workflowRunId,
     runMode = "live",
   } = input;
-  const { nodes, edges } = toWorkflowGraphData(graph);
+  const { nodes, edges } = parsedGraph(graph);
 
   const currentWorkflowRunId = workflowRunId || runtime.runId || executionId;
 

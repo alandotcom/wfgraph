@@ -248,7 +248,7 @@ function appOn(connection: ConformanceConnection): App {
                 ),
           };
           yield* runWorkerLoop({
-            actions,
+            actions: () => actions,
             signal: controller.signal,
             pollMs: LONG_POLL_MS,
             wake: worker.wake,

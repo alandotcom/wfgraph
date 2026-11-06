@@ -310,7 +310,7 @@ export async function measureWakeTimings(input: {
   // lines, so only warnings and errors from the run come through.
   const loop = run(
     runWorkerLoop({
-      actions,
+      actions: () => actions,
       signal: controller.signal,
       wake,
       pollMs: input.pollMs,

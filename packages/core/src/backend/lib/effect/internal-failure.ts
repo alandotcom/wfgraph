@@ -10,9 +10,10 @@ import { getErrorMessage } from "@wfgraph/shared/utils";
  * What a service answers when one of its seams refused it: the underlying error
  * in the log for whoever operates this, and a sentence for whoever called.
  *
- * The two seams are the database (`DatabaseError`) and Inngest
- * (`InngestError`), and both carry the same `cause`, which is why the handlers
- * below are written against that field rather than against either class.
+ * The seams are the database (`DatabaseError`), Inngest (`InngestError`) and
+ * the durable executor (`DriverError`), and all three carry the same `cause`,
+ * which is why the handlers below are written against that field rather than
+ * against any one class.
  */
 
 /**
@@ -105,31 +106,77 @@ const statedInternalFailure =
       return yield* new InternalFailure({ error: callerMessage, cause });
     });
 
-/**
- * Both seams answer with one stated sentence and keep storage details private.
- */
-export const statedSeamFailureHandlers = (
-  logger: Effect.Effect<EffectLogger, never, AppLogger>,
-  message: string,
-  callerMessage: string
-) => {
-  const handler = statedInternalFailure(logger, message, callerMessage);
-  return { DatabaseError: handler, InngestError: handler };
-};
+/** The `_tag` of each seam failure a service may meet. */
+type SeamFailureTag = "DatabaseError" | "InngestError" | "DriverError";
+
+type SeamFailure = { readonly _tag: SeamFailureTag; readonly cause: unknown };
+
+const seamFailureTags: ReadonlySet<string> = new Set<SeamFailureTag>([
+  "DatabaseError",
+  "InngestError",
+  "DriverError",
+]);
+
+/** Whether `error` is one of the seam failures, whichever the caller can meet. */
+function isSeamFailure<E>(error: E): error is Extract<E, SeamFailure> {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "_tag" in error &&
+    typeof error._tag === "string" &&
+    seamFailureTags.has(error._tag)
+  );
+}
 
 /**
- * Both seams answered by one policy, ready for `Effect.catchTags`.
+ * Every seam failure answered by one policy, as a pipeable step.
  *
- * A service that both queries and enqueues has two tags to catch and one thing
- * to say about either, and spelling the handler out twice let the two drift.
- * The single handler instance is what makes them the same answer by
- * construction rather than by matching text.
+ * A service that both queries and enqueues meets more than one seam and has
+ * one thing to say about any of them. One handler instance answers each seam
+ * failure in the Effect's error channel, so the answers are the same by
+ * construction, and a service whose error channel holds only some of the seams
+ * uses the same step.
  */
-export const seamFailureHandlers = (
-  logger: Effect.Effect<EffectLogger, never, AppLogger>,
-  message: string,
-  callerMessage: string = message
-) => {
-  const handler = internalFailureFromCause(logger, message, callerMessage);
-  return { DatabaseError: handler, InngestError: handler };
-};
+export const catchSeamFailures =
+  (
+    logger: Effect.Effect<EffectLogger, never, AppLogger>,
+    message: string,
+    callerMessage: string = message
+  ) =>
+  <A, E, R>(
+    self: Effect.Effect<A, E, R>
+  ): Effect.Effect<
+    A,
+    Exclude<E, Extract<E, SeamFailure>> | InternalFailure,
+    R | AppLogger
+  > =>
+    Effect.catchIf(
+      self,
+      isSeamFailure<E>,
+      internalFailureFromCause(logger, message, callerMessage),
+      Effect.fail
+    );
+
+/**
+ * Every seam failure answered with one stated sentence, keeping storage and
+ * request details private, as a pipeable step.
+ */
+export const catchStatedSeamFailures =
+  (
+    logger: Effect.Effect<EffectLogger, never, AppLogger>,
+    message: string,
+    callerMessage: string
+  ) =>
+  <A, E, R>(
+    self: Effect.Effect<A, E, R>
+  ): Effect.Effect<
+    A,
+    Exclude<E, Extract<E, SeamFailure>> | InternalFailure,
+    R | AppLogger
+  > =>
+    Effect.catchIf(
+      self,
+      isSeamFailure<E>,
+      statedInternalFailure(logger, message, callerMessage),
+      Effect.fail
+    );
