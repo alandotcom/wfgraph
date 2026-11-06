@@ -343,6 +343,28 @@ reaches the recipients the Published mode names, the same recipients an Event
 start reaches.
 _Avoid_: run workflow (the name must say which of the two graphs runs)
 
+**Try**:
+Each time the executor runs a step inside an Execution. A step that fails with
+a retriable error is tried again, up to the executor's retry limit, so the Runs
+view counts "try N of M": N is the step's failures so far plus one, and M is
+the retry limit plus one. A failure counts whether the step threw, its worker
+stopped renewing the lease while the step ran, or a host's time budget cut
+the step off. A finished node says which try it ended on.
+_Avoid_: retry number (a retry is any try after the first)
+
+**Stalled**:
+An in-progress Execution whose worker stopped renewing its lease, so no worker
+is acting on it until the next one claims it. The Runs view names the node the
+worker was running, or says it stalled between steps.
+_Avoid_: stuck, crashed, hung
+
+**Unclaimed**:
+An in-progress Execution that has been due for longer than its host allows and
+that no worker has claimed. The threshold is the host's: two polls of its worker
+loop, never under a minute, or two Cron Trigger intervals on a Worker. A due run
+inside the threshold is only queued for a worker.
+_Avoid_: not claimed, orphaned, stuck
+
 **Published mode**:
 A per-workflow setting, live or test, deciding which recipients Events and
 Published runs reach. Live means real recipients, and test means the test
