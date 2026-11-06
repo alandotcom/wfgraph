@@ -1088,7 +1088,11 @@ keeps compatibility machinery alive for the next one.
    major-version changeset.
 5. **Worker driver.** `tick`, cron, queue consumer, optional DO alarms, with
    Design E as the documented fallback.
-6. **Cron source and the Runs view fields** of S14. A cron schedule row is a
+6. **Cron source and the Runs view fields** of S14, after the merge. The owner
+   chose to merge the migration without them: both are features a user sees,
+   so each gets its own design pass on `main` (how a schedule is authored,
+   time zones and missed fires for cron; which facts the Runs view shows for
+   S14). When cron is built, a cron schedule row is a
    `kind = 'cron'` row of `workflow_execution_schedule`, and it names neither an
    Execution nor an inbox row, so it needs a subject column of its own (the
    `workflow_schedules` row it fires). Adding that column takes a migration on
@@ -1109,7 +1113,9 @@ keeps compatibility machinery alive for the next one.
 3. Decided: the Cloudflare Worker backend is a release target for the executor,
    through the tick-based driver of section 8, built last (phase 5). Design E
    stays the fallback.
-4. Decided: cron waits for phase 6. The executor makes it cheap to add then.
+4. Decided: cron and the S14 Runs view fields come after the migration merges,
+   each with its own design pass on `main`. The executor already has the seams
+   for cron (phase 6).
 5. Decided: `released_outlet` is added to the log row in phase 1's schema, and
    the Design B rewrite is deferred.
 6. Decided: both `app.events.send` and the inbox insert as a documented SQL
