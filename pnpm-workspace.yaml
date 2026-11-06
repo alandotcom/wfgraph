@@ -113,6 +113,16 @@ overrides:
   # (array-limit bypass through comma parsing of a bracket key) are both fixed
   # in 6.16.0.
   qs: "6.16.1"
+  # gcp-metadata 8.1.4 pins gaxios to exactly 7.1.3, the last gaxios 7 release
+  # that depends on rimraf 5, which brings glob 10 and minimatch 9. glob 10.5.0
+  # carries GHSA-3g3m-2fjr-6pw4 (an AbortSignal does not stop a walk, fixed in
+  # 14.0.2) and minimatch 9 carries GHSA-g3hv-75wg-m249 (a `**/..` pattern
+  # multiplies its glob parts, fixed in 11.0.1). gaxios dropped rimraf in 7.1.4,
+  # so moving gcp-metadata onto the current 7.x removes all three packages. The
+  # path is inngest's
+  # @opentelemetry/auto-instrumentations-node > @opentelemetry/resource-detector-gcp
+  # > gcp-metadata > gaxios.
+  "gcp-metadata>gaxios": "7.3.1"
 
 # pnpm refuses to run a dependency's install scripts until the dependency is
 # named here, so a package that gains a postinstall arrives as a warning rather
