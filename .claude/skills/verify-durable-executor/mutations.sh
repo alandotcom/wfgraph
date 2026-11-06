@@ -46,6 +46,7 @@ Migration|fence-refusal-counts-an-attempt|FenceRefusalCountsNoAttempt == TRUE|Fe
 Migration|event-wakes-a-delay-park|EventWakeNeedsAnEventPark == rowMode = "event"|EventWakeNeedsAnEventPark == TRUE|EventOnlyWakesAnEventPark
 Migration|repark-keeps-old-mode|ReparkMode(w) == mode[loaded[w]]|ReparkMode(w) == rowMode|ParkedInThePinnedMode
 Migration|wake-claims-a-woken-row|WakeIsUnclaimed == row = "waiting"|WakeIsUnclaimed == row # "none"|EachHopWokenOnce
+Migration|migrate-wake-refuses-an-event|EventReplacesMigrateWake == TRUE|EventReplacesMigrateWake == FALSE|NoEventLostToAMigrateWake
 Delivery|wake-the-runs-it-settled|ExcludeSettledRuns == TRUE|ExcludeSettledRuns == FALSE|NoWakeInTheRunItStarted NoWakeInARunItSettled
 Delivery|scan-and-wake-page-by-page|SavePagesBeforeWaking == TRUE|SavePagesBeforeWaking == FALSE|NoSecondWaitFromOneArrival
 Delivery|wake-claims-a-woken-row|WakeIsUnclaimed(r) == row[r] = "waiting"|WakeIsUnclaimed(r) == row[r] \in {"waiting", "woken"}|EachWaitWokenOnce

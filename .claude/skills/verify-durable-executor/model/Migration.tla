@@ -44,12 +44,13 @@ VARIABLES
   belowDone,    \* memo of the node below the Wait
   \* Observers.
   migrations, aboveRuns, belowRuns, belowVersionWrong, hopWakes, terminalWrites,
-  failures, eventWokeDelay
+  failures, eventWokeDelay,
+  eventLost     \* an Event the Wait subscribes to was refused because a migrate wake was pending
 
 vars == <<sched, holder, attempt, faults, pc, loaded, passFailed, sawParked, pinned, status,
           aboveDone, row, rowVersion, mode, rowMode, migrateDue, belowDone, migrations,
           aboveRuns, belowRuns, belowVersionWrong, hopWakes, terminalWrites, failures,
-          eventWokeDelay>>
+          eventWokeDelay, eventLost>>
 
 Sat(n) == IF n > MaxAttempts + 1 THEN MaxAttempts + 1 ELSE n
 
@@ -59,6 +60,10 @@ StillPinned(w) == pinned = loaded[w]             \* the version fence on every W
 RepinNeedsAPark == row = "waiting"               \* repinVersion: run waiting at this Wait
 WakeIsUnclaimed == row = "waiting"               \* claimWaitState: `status = 'waiting'`
 EventWakeNeedsAnEventPark == rowMode = "event"   \* claimWaitState: `wait_type = 'event'`
+EventReplacesMigrateWake == TRUE                 \* claimWaitState takes a row whose pending wake is a migrate wake
+
+\* A row an Event may wake: still waiting, or holding a migrate wake no pass has acted on.
+EventMayTake == WakeIsUnclaimed \/ (EventReplacesMigrateWake /\ row = "migrate")
 ReparkMode(w) == mode[loaded[w]]                 \* reparkWaitState writes the loaded version's mode
 ReleaseReadsWaitRow == TRUE                      \* the release decides from the wait row, not the pass's view
 FenceRefusalCountsNoAttempt == TRUE              \* "Migration": a refused fence re-queues with the attempt unchanged
@@ -70,13 +75,14 @@ Init ==
   /\ pinned = 1 /\ status = "running" /\ aboveDone = FALSE
   /\ row = "none" /\ rowVersion = 1 /\ migrateDue = FALSE /\ belowDone = FALSE
   /\ mode \in [Versions -> {"event", "delay"}] /\ rowMode = "event" /\ eventWokeDelay = FALSE
+  /\ eventLost = FALSE
   /\ migrations = 0 /\ aboveRuns = 0 /\ belowRuns = 0 /\ belowVersionWrong = FALSE
   /\ hopWakes = 0 /\ terminalWrites = 0 /\ failures = 0
 
 shared == <<sched, holder, attempt, faults, pinned, status, aboveDone, row,
             rowVersion, mode, rowMode, migrateDue, belowDone>>
 observers == <<migrations, aboveRuns, belowRuns, belowVersionWrong, hopWakes,
-               terminalWrites, failures, eventWokeDelay>>
+               terminalWrites, failures, eventWokeDelay, eventLost>>
 
 Go(w, next) == pc' = [pc EXCEPT ![w] = next]
 
@@ -106,7 +112,7 @@ ClaimWhenDue(w) ==
   /\ StartPass(w)
   /\ UNCHANGED <<attempt, faults, pinned, status, aboveDone, rowVersion, mode, rowMode, migrateDue,
                  belowDone, migrations, aboveRuns, belowRuns, belowVersionWrong,
-                 terminalWrites, failures, eventWokeDelay>>
+                 terminalWrites, failures, eventWokeDelay, eventLost>>
 
 -----------------------------------------------------------------------------
 (* The pass. *)
@@ -123,7 +129,7 @@ Above(w) ==
   /\ Go(w, "prepare")
   /\ UNCHANGED <<sched, holder, attempt, faults, loaded, passFailed, sawParked, pinned, status,
                  row, rowVersion, mode, rowMode, migrateDue, belowDone, migrations, belowRuns,
-                 belowVersionWrong, hopWakes, terminalWrites, failures, eventWokeDelay>>
+                 belowVersionWrong, hopWakes, terminalWrites, failures, eventWokeDelay, eventLost>>
 
 \* The Wait's first attempt: createWaitState, fenced on the loaded version.
 Prepare(w) ==
@@ -161,7 +167,7 @@ Park(w) ==
             /\ Go(w, "below") /\ UNCHANGED <<row, rowVersion, rowMode, passFailed, hopWakes>>
   /\ UNCHANGED <<sched, holder, attempt, faults, loaded, pinned, status, aboveDone, mode,
                  migrateDue, belowDone, migrations, aboveRuns, belowRuns,
-                 belowVersionWrong, terminalWrites, failures, eventWokeDelay>>
+                 belowVersionWrong, terminalWrites, failures, eventWokeDelay, eventLost>>
 
 \* The node below the Wait runs once, from the loaded version's definition.
 Below(w) ==
@@ -171,7 +177,7 @@ Below(w) ==
   /\ Go(w, "release")
   /\ UNCHANGED <<sched, holder, attempt, faults, loaded, passFailed, sawParked, pinned, status,
                  aboveDone, row, rowVersion, mode, rowMode, migrateDue, migrations, aboveRuns,
-                 hopWakes, terminalWrites, failures, eventWokeDelay>>
+                 hopWakes, terminalWrites, failures, eventWokeDelay, eventLost>>
 
 Release(w) ==
   /\ pc[w] = "release" /\ LeaseHeldBy(w)
@@ -194,7 +200,7 @@ Release(w) ==
             /\ sched' = "queued" /\ UNCHANGED <<attempt, status, terminalWrites>>
   /\ UNCHANGED <<faults, loaded, passFailed, sawParked, pinned, aboveDone, row, rowVersion, mode, rowMode,
                  migrateDue, belowDone, migrations, aboveRuns, belowRuns,
-                 belowVersionWrong, hopWakes, failures, eventWokeDelay>>
+                 belowVersionWrong, hopWakes, failures, eventWokeDelay, eventLost>>
 
 -----------------------------------------------------------------------------
 (* Faults. *)
@@ -205,7 +211,7 @@ LeaseExpires ==
   /\ attempt' = Sat(attempt + 1) /\ failures' = Sat(failures + 1)
   /\ UNCHANGED <<pc, loaded, passFailed, sawParked, pinned, status, aboveDone, row, rowVersion, mode, rowMode,
                  migrateDue, belowDone, migrations, aboveRuns, belowRuns,
-                 belowVersionWrong, hopWakes, terminalWrites, eventWokeDelay>>
+                 belowVersionWrong, hopWakes, terminalWrites, eventWokeDelay, eventLost>>
 
 Crash(w) ==
   /\ pc[w] # "idle" /\ faults < MaxFaults
@@ -219,7 +225,7 @@ SweepDeadLease ==
   /\ failures' = Sat(failures + 1)
   /\ UNCHANGED <<faults, pc, loaded, passFailed, sawParked, pinned, status, aboveDone, row,
                  rowVersion, mode, rowMode, migrateDue, belowDone, migrations, aboveRuns, belowRuns,
-                 belowVersionWrong, hopWakes, terminalWrites, eventWokeDelay>>
+                 belowVersionWrong, hopWakes, terminalWrites, eventWokeDelay, eventLost>>
 
 -----------------------------------------------------------------------------
 (* Producers. Each locks the schedule row first, so each is one step. *)
@@ -232,7 +238,7 @@ Repin ==
   /\ pinned' = Other(pinned) /\ migrateDue' = TRUE /\ migrations' = migrations + 1
   /\ UNCHANGED <<sched, holder, attempt, faults, pc, loaded, passFailed, sawParked, status,
                  aboveDone, row, rowVersion, mode, rowMode, belowDone, aboveRuns, belowRuns,
-                 belowVersionWrong, hopWakes, terminalWrites, failures, eventWokeDelay>>
+                 belowVersionWrong, hopWakes, terminalWrites, failures, eventWokeDelay, eventLost>>
 
 \* migrateExecutions, part two: the migrate wake on the parked row. A row
 \* another wake already took needs none, since its resume fails the fence and
@@ -246,14 +252,26 @@ MigrateWake ==
   /\ UNCHANGED <<holder, attempt, faults, pc, loaded, passFailed, sawParked, pinned, status,
                  aboveDone, rowVersion, mode, rowMode, belowDone, observers>>
 
-\* wakeWait for an Event the Wait subscribes to.
+\* wakeWait for an Event the Wait subscribes to. An Event that finds the row
+\* holding a migrate wake replaces it: the next pass reads the Event, fails the
+\* version fence, and resumes on the version the run was moved to.
 EventWake ==
-  /\ status = "running" /\ WakeIsUnclaimed /\ EventWakeNeedsAnEventPark
+  /\ status = "running" /\ EventMayTake /\ EventWakeNeedsAnEventPark
   /\ row' = "event" /\ hopWakes' = hopWakes + 1 /\ Requeue
   /\ eventWokeDelay' = (eventWokeDelay \/ rowMode = "delay")
   /\ UNCHANGED <<holder, attempt, faults, pc, loaded, passFailed, sawParked, pinned, status,
                  aboveDone, rowVersion, mode, rowMode, migrateDue, belowDone, migrations, aboveRuns,
-                 belowRuns, belowVersionWrong, terminalWrites, failures>>
+                 belowRuns, belowVersionWrong, terminalWrites, failures, eventLost>>
+
+\* An Event the Wait subscribes to arrives while a migrate wake is pending, and
+\* the claim refuses it, so the run never sees that Event.
+EventRefused ==
+  /\ status = "running" /\ row = "migrate" /\ EventWakeNeedsAnEventPark /\ ~EventMayTake
+  /\ ~eventLost /\ eventLost' = TRUE
+  /\ UNCHANGED <<sched, holder, attempt, faults, pc, loaded, passFailed, sawParked, pinned, status,
+                 aboveDone, row, rowVersion, mode, rowMode, migrateDue, belowDone, migrations,
+                 aboveRuns, belowRuns, belowVersionWrong, hopWakes, terminalWrites, failures,
+                 eventWokeDelay>>
 
 Ended == sched = "gone" /\ ~migrateDue /\ \A w \in Workers : pc[w] = "idle" /\ UNCHANGED vars
 
@@ -263,7 +281,7 @@ WorkerStep(w) ==
 
 Next ==
   \/ \E w \in Workers : WorkerStep(w) \/ Crash(w)
-  \/ LeaseExpires \/ SweepDeadLease \/ Repin \/ MigrateWake \/ EventWake \/ Ended
+  \/ LeaseExpires \/ SweepDeadLease \/ Repin \/ MigrateWake \/ EventWake \/ EventRefused \/ Ended
 
 Spec == Init /\ [][Next]_vars
 
@@ -302,6 +320,10 @@ EventOnlyWakesAnEventPark == ~eventWokeDelay
 ParkedInThePinnedMode ==
   (sched = "waiting" /\ row = "waiting" /\ ~migrateDue) => rowMode = mode[pinned]
 
+\* An Event the Wait subscribes to is never refused because a Migration's
+\* wake reached the row first.
+NoEventLostToAMigrateWake == ~eventLost
+
 \* A run never sleeps while its Wait holds a wake nobody has acted on.
 WokenWaitIsNeverStranded == sched = "waiting" => row = "waiting"
 
@@ -321,5 +343,6 @@ ReachFenceRefusedResume   == \E w \in Workers : passFailed[w] /\ pc[w] = "releas
 ReachMigratedBackAndForth == migrations = 2 /\ status = "completed"
 ReachEventBeatsMigrateWake == row = "event" /\ migrateDue
 ReachReparkedInTheOtherMode == row = "waiting" /\ rowVersion = 2 /\ rowMode # mode[1]
+ReachEventReplacesMigrateWake == row = "event" /\ rowVersion # pinned
 ReachEventResumesAcrossAModeChange == row = "resumed" /\ rowMode = "event" /\ mode[pinned] = "delay"
 =============================================================================
