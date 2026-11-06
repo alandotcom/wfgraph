@@ -5,15 +5,15 @@
  * it times out, what a release writes back, which runs a producer's wake
  * re-queues, which parks an Event, a re-park or a terminal write may take,
  * which wake the winner of an Exit claim gives the run's other parks, which
- * runs a Cancel claims and what it records on their timelines, and what each
- * producer answers. A decision a statement makes is a Drizzle `sql`
+ * runs a Cancel claims and what it records on their timelines, what each
+ * producer answers, and what a node-log close writes. A decision a statement makes is a Drizzle `sql`
  * builder over the columns each backend passes in. Each backend runs the statements inside its
  * own transaction, holding the schedule row first.
  */
 
 import { countBy, sortBy } from "es-toolkit/array";
 import { Effect } from "effect";
-import { and, type Column, eq, type SQL, sql } from "drizzle-orm";
+import { and, type Column, eq, type SQL, sql, type Table } from "drizzle-orm";
 import type {
   ExecutionScheduleKind,
   ParkWake,
@@ -146,6 +146,64 @@ export function nodeRetries(columns: RetryColumns): SQL<number | null> {
   return sql<
     number | null
   >`cast(sum(${columns.failures} - case when ${columns.status} = 'failed' then 1 else 0 end) as integer)`;
+}
+
+/** The tables a node-log close writes and reads, as each backend declares them. */
+type NodeLogCloseTables = {
+  logs: {
+    executionId: Column;
+    nodeId: Column;
+    status: Column;
+    output: Column;
+    error: Column;
+    completedAt: Column;
+    duration: Column;
+    retries: Column;
+  };
+  schedule: Table & { id: Column; executionId: Column };
+  steps: Table & RetryColumns & { scheduleId: Column; nodeId: Column };
+};
+
+/** A node-log close's outcome, encoded as the backend stores it. */
+type NodeLogCloseValues = {
+  status: string;
+  output: unknown;
+  error: string | null;
+  completedAt: unknown;
+  duration: string;
+};
+
+/**
+ * The SET of a node-log close, one statement for both backends.
+ *
+ * `retries` is written on every close, fenced or not, from `nodeRetries` over
+ * the memo rows of the row's run that carry the row's node id, and keeps the
+ * count the row holds when the run has none, as after the run ended. A close
+ * whose memo write failed runs again on the next pass, and that close's own
+ * failure is then counted although the row already holds its outcome.
+ *
+ * The outcome columns are written as `values` when `fenced` is false. A fenced
+ * close writes them only while the row is still `running` or `error`, so a
+ * later attempt can correct an `error` and nothing overwrites a success.
+ */
+export function nodeLogCloseSet(input: {
+  tables: NodeLogCloseTables;
+  values: NodeLogCloseValues;
+  fenced: boolean;
+}): Record<keyof NodeLogCloseValues | "retries", SQL> {
+  const { logs, schedule, steps } = input.tables;
+  const outcome = (column: Column, value: unknown): SQL =>
+    input.fenced
+      ? sql`case when ${logs.status} in ('running', 'error') then ${sql.param(value, column)} else ${column} end`
+      : sql`${sql.param(value, column)}`;
+  return {
+    status: outcome(logs.status, input.values.status),
+    output: outcome(logs.output, input.values.output),
+    error: outcome(logs.error, input.values.error),
+    completedAt: outcome(logs.completedAt, input.values.completedAt),
+    duration: outcome(logs.duration, input.values.duration),
+    retries: sql`coalesce((select ${nodeRetries(steps)} from ${steps} inner join ${schedule} on ${schedule.id} = ${steps.scheduleId} where ${schedule.executionId} = ${logs.executionId} and ${steps.nodeId} = ${logs.nodeId}), ${logs.retries})`,
+  };
 }
 
 /**

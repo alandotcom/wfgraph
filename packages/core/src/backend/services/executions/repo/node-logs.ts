@@ -15,7 +15,7 @@ import type {
   RunFence,
   WorkflowExecutionLog,
 } from "#src/backend/services/executions/repo/contracts";
-import { nodeRetries } from "#src/backend/services/executions/repo/release-policy";
+import { nodeLogCloseSet } from "#src/backend/services/executions/repo/release-policy";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
@@ -67,10 +67,10 @@ export type NodeLogsRepoMethods = {
   /**
    * Close a row `openNodeLog` opened, whatever it holds, which is how a retry
    * corrects the verdict an earlier attempt wrote. The fenced close
-   * (`ExecutionRepo.fenced`) closes only a row that is `running` or `error`.
-   * The close also writes the row's `retries` from the step memo rows of its
-   * run that carry its node id (`nodeRetries`), and leaves the count as it
-   * was when the run has no such rows, as after the run ended.
+   * (`ExecutionRepo.fenced`) changes the outcome of a row only while it is
+   * `running` or `error`. Every close writes the row's `retries` from the
+   * step memo rows of its run that carry its node id, as `nodeLogCloseSet`
+   * describes.
    */
   readonly closeNodeLog: (
     input: CloseNodeLogInput
@@ -137,67 +137,42 @@ export function openNodeLogWrite(input: OpenNodeLogInput) {
 }
 
 /**
- * The retries the step memo of a log row's run records against the row's
- * node, or null when the memo holds no row of that node.
- */
-async function readNodeRetries(
-  db: Executor,
-  logId: string
-): Promise<number | null> {
-  const [row] = await db
-    .select({ retries: nodeRetries(workflowExecutionSteps) })
-    .from(workflowExecutionSteps)
-    .innerJoin(
-      workflowExecutionSchedule,
-      eq(workflowExecutionSchedule.id, workflowExecutionSteps.scheduleId)
-    )
-    .innerJoin(
-      workflowExecutionLogs,
-      and(
-        eq(
-          workflowExecutionLogs.executionId,
-          workflowExecutionSchedule.executionId
-        ),
-        eq(workflowExecutionLogs.nodeId, workflowExecutionSteps.nodeId)
-      )
-    )
-    .where(eq(workflowExecutionLogs.id, logId));
-  return row?.retries ?? null;
-}
-
-/**
- * The update behind `closeNodeLog`. Given a fence, it closes only a row of the
- * fenced Execution that is `running` or `error`. `runWithStepLog` closes a row
- * as `error` before it rethrows a retriable error, so a later attempt of the
- * node can still correct that verdict, while a row closed with any other
- * status keeps it.
+ * The update behind `closeNodeLog`, one statement whose SET is
+ * `nodeLogCloseSet`. Given a fence, it updates only a row of the fenced
+ * Execution, and its outcome columns change only while the row is `running`
+ * or `error`. `runWithStepLog` closes a row as `error` before it rethrows a
+ * retriable error, so a later attempt of the node can still correct that
+ * verdict, while a row closed with any other status keeps it.
  */
 export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
   return async (db: Executor): Promise<void> => {
-    const retries = await readNodeRetries(db, input.logId);
     await db
       .update(workflowExecutionLogs)
-      .set({
-        status: input.status,
-        // Undefined when the memo holds no row of this node, which leaves the
-        // key out of the update, so the row keeps the count it holds.
-        retries: retries ?? undefined,
-        // Drizzle leaves an undefined key out of the update, so an absent
-        // payload is written as null to clear what an earlier close wrote.
-        output: input.output ?? null,
-        error: input.error ?? null,
-        completedAt: new Date(),
-        duration: input.durationMs.toString(),
-      })
+      .set(
+        nodeLogCloseSet({
+          tables: {
+            logs: workflowExecutionLogs,
+            schedule: workflowExecutionSchedule,
+            steps: workflowExecutionSteps,
+          },
+          values: {
+            status: input.status,
+            // An absent payload is written as null to clear what an earlier
+            // close wrote.
+            output: input.output ?? null,
+            error: input.error ?? null,
+            completedAt: new Date(),
+            duration: input.durationMs.toString(),
+          },
+          fenced: fence !== undefined,
+        })
+      )
       .where(
         and(
           eq(workflowExecutionLogs.id, input.logId),
           fence === undefined
             ? undefined
-            : and(
-                eq(workflowExecutionLogs.executionId, fence.executionId),
-                inArray(workflowExecutionLogs.status, ["running", "error"])
-              )
+            : eq(workflowExecutionLogs.executionId, fence.executionId)
         )
       );
   };

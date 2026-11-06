@@ -942,6 +942,45 @@ function describeCases(
     ]);
   });
 
+  // The close step's log update commits before its memo write. When that
+  // write fails, the close step itself counts a failure, and the replay finds
+  // the row already `success`: the outcome stays, and the count still has to
+  // take in the close step's own failure.
+  it("counts a failed memo write of a node's log close in the node's retries", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(), actionNode("send", "test/send")],
+        edges: [edge("entry", "send", "started")],
+      })
+    );
+
+    let refused = false;
+    const refuseCloseMemoOnce = wrapFenced((writes) => ({
+      ...writes,
+      writeStepMemo: (input) => {
+        if (input.stepId !== "node:send:log-close:success" || refused) {
+          return writes.writeStepMemo(input);
+        }
+        refused = true;
+        return Effect.fail(
+          new DatabaseError({ cause: new Error("connection reset") })
+        );
+      },
+    }));
+
+    expect(await harness.pass({ wrap: refuseCloseMemoOnce })).toMatchObject({
+      kind: "retry",
+    });
+    expect(await logsOf(harness, "send")).toMatchObject([
+      { status: "success", retries: 0 },
+    ]);
+
+    expect(await harness.pass()).toEqual({ kind: "ended" });
+    expect(await logsOf(harness, "send")).toMatchObject([
+      { status: "success", retries: 1 },
+    ]);
+  });
+
   it("keeps one log row when the lease is lost between a log open and its memo row", async () => {
     const harness = await startRun(
       createSerializedWorkflowGraph({
