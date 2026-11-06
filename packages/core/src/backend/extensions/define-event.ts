@@ -26,7 +26,7 @@ import {
   type StandardSchema,
 } from "@wfgraph/shared/types/schema";
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
-import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
+import { sourceFilterSegments } from "@wfgraph/shared/lifecycle/event-source-filter";
 import { requireOutputFieldsFromSchema } from "@wfgraph/shared/graph/output-fields";
 import {
   isSafeRecordKey,
@@ -112,8 +112,8 @@ export type EventDefinition<
    * Phantom, and the only occurrence of `TPayload` left on this type.
    *
    * The type parameter earns its keep at the `defineEvent` call site rather than
-   * here: it is what types `correlationPath`, `source.when.path`, and the Inngest
-   * options against the payload's own shape. Without this field TypeScript would
+   * here: it is what types `correlationPath` and `source.when.path` against the
+   * payload's own shape. Without this field TypeScript would
    * have no occurrence to infer from and every definition would widen.
    */
   readonly _payload?: TPayload | undefined;
@@ -126,9 +126,9 @@ export type AnyEventDefinition = EventDefinition<JsonObject, unknown>;
 /**
  * A payload that is not the Event it arrived as.
  *
- * One type at the seam whichever library described the payload, so the HTTP
- * route turns it into a 400 and the Inngest listener logs it and answers without
- * retrying: a malformed payload does not improve on a second attempt.
+ * One type at the seam whichever library described the payload, so a send
+ * turns it into a refusal and the delivery body marks its inbox row failed
+ * without retrying: a malformed payload does not improve on a second attempt.
  *
  * Two strings for two audiences. `error` travels to the sender, which is a third
  * party across origins, so it names paths and expectations and quotes nothing of
@@ -311,9 +311,9 @@ export type DefineEventInput<
   readonly correlationPath?: StringPath<TPayload> | undefined;
   /**
    * How the Event arrives, for an existing bus that sends one umbrella name and
-   * cannot change. Identity stays the Workflow Graph name above, so the lifecycle model is
-   * untouched, and `when` becomes the listener's filter so Inngest still does
-   * the narrowing.
+   * cannot change. Identity stays the Workflow Graph name above, so the
+   * lifecycle model is untouched, and `when` is what tells an arrival on the
+   * umbrella name apart as this Event when the executor delivers it.
    *
    * Defaults to `{ event: name }`.
    */
@@ -373,11 +373,10 @@ export function defineEvent<TPayload extends JsonObject, TValidated = TPayload>(
     );
   }
 
-  // Compiled here rather than where the listener is built, so a filter that
-  // cannot become a CEL expression fails at definition, in the build of whoever
-  // wrote it.
+  // Read here rather than where an arrival is delivered, so a filter whose
+  // path names no field fails at definition, in the build of whoever wrote it.
   if (when) {
-    compileEventDataEquals(when);
+    sourceFilterSegments(when.path);
   }
 
   const decodePayloadValue = buildPayloadGate(name, input.schema, schema);

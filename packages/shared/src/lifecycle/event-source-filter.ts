@@ -1,8 +1,7 @@
 /**
  * An Event's `source.when` filter, read in process: one payload path compared
  * against one string. The executor's delivery body evaluates it to tell which
- * Event on a shared source an arrival is, with the same answer the compiled
- * CEL expression in `inngest-event-data.ts` gives.
+ * Event on a shared source an arrival is.
  */
 
 import { compact } from "es-toolkit/array";
@@ -31,8 +30,7 @@ export function sourceFilterSegments(path: string): string[] {
 /**
  * Whether `data` satisfies `when`: the value at the filter's path is a string
  * equal to `equals`. Each segment reads an own key of a JSON object, so a path
- * through an array, a missing key or a value of another type answers false,
- * where the CEL expression errors and Inngest skips the trigger.
+ * through an array, a missing key or a value of another type answers false.
  */
 export function matchesSourceFilter(
   when: EventSourceFilter,

@@ -6,7 +6,7 @@ import type { ExtensionSet } from "#src/backend/extensions/extension-set";
  *
  * `createWfGraphApp` assembles one set and hands it to the Layer graph, so every
  * reader -- the credential mapping, the two workflow validators, the catalog
- * route, the Event listener set -- asks the runtime that owns it. The type
+ * route, the Inngest forwarders -- asks the runtime that owns it. The type
  * system enforces that an app has assembled a surface: a service body that
  * yields this puts `Extensions` in its own `R`, and only a runtime carrying one
  * can run it.

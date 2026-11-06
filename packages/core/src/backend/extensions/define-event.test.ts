@@ -300,9 +300,9 @@ describe("defineEvent payload fields", () => {
   });
 });
 
-// A `source.when` that cannot become a CEL expression fails at definition rather
-// than at sync time, which is what this covers here; the compiler's own escaping
-// is `inngest-event-data.test.ts`.
+// A `source.when` whose path names no field fails at definition rather than
+// when an arrival is delivered; how a filter reads a payload is
+// `event-source-filter.test.ts`.
 describe("defineEvent source filters", () => {
   it("refuses a filter whose path is nothing", () => {
     expect(() =>

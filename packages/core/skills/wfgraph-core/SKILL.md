@@ -103,9 +103,10 @@ the editor.
 ## Workflow runs
 
 Runs execute in the host's process on a worker loop that `createWfGraphApp`
-starts, with their schedule and step memo in the `persistence` database.
-Inngest delivers Events and runs no workflow, so the `inngest` option stays
-required. Loop defaults and the `runner` fields: `docs/embedding.md`
+starts, with their schedule and step memo in the `persistence` database. The
+same loop delivers every Event from the event inbox. Inngest only forwards the
+Events a host sends with `inngest.send` into that inbox, so the `inngest`
+option stays required. Loop defaults and the `runner` fields: `docs/embedding.md`
 ("Workflow runs").
 
 - `runner` left out runs one loop. `runner: false` runs none in that process;

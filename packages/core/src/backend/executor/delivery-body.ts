@@ -19,7 +19,7 @@ import {
   defaultDeliverPorts,
   type EventListenerDeliverPorts,
   runEventListener,
-} from "#src/backend/lib/inngest/event-listener-function";
+} from "#src/backend/executor/event-listener";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import type {
   DeliveryPass,
@@ -45,7 +45,8 @@ export type DeliverySettings = {
  *
  * - `event`: the row is `event`.
  * - `unmatched_source`: the row names a source, and no Event on it accepts the
- *   row's data. Inngest skips such an arrival, so nothing is owed it.
+ *   row's data. The arrival is a subtype no Event declares, so nothing is owed
+ *   it.
  * - `unknown`: the row names neither an Event nor a source.
  */
 type InboxEventMatch =
@@ -55,9 +56,9 @@ type InboxEventMatch =
 
 /**
  * Answers which catalog Event an inbox row is. A send names the Event it
- * raises, so a row named after an Event is that Event. Webhook intake names
- * the source the vendor's message arrived on, and the row is the Event on that
- * source whose `source.when` its data satisfies. `event-uniqueness.ts` keeps
+ * raises, so a row named after an Event is that Event. Webhook intake and the
+ * Inngest forwarders name the source the message arrived on, and the row is
+ * the Event on that source whose `source.when` its data satisfies. `event-uniqueness.ts` keeps
  * at most one Event on a source accepting any payload. Both lookups are keyed
  * by a `Map`, since the row's name is whatever its sender wrote.
  */
@@ -189,7 +190,7 @@ export function deliveryBody(
                   event,
                   payload: inbox.data,
                   validatedPayload: decoded.value,
-                  arrival: { kind: "inbox", inboxId: inbox.id },
+                  inboxId: inbox.id,
                   connectionId: inbox.connectionId ?? undefined,
                   runtime: input.runtime,
                   step: { run: (id, fn) => steps.run({ id }, fn) },

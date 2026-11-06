@@ -20,8 +20,8 @@ of the steps have a trap in them.
 
 - When a run wakes after a Wait, a Cancel or an Event, measured by the wall
   clock, and how late the worker loop claims it.
-- What Inngest adds to an Event on the way through, and whether the Event
-  listener function registers, and under which id.
+- What Inngest adds to an Event on the way through, and whether the Event's
+  forwarder function registers, and under which id.
 - What a row holds after a real replay, which is where a duration or a status
   written by the wrong pass shows up.
 
@@ -185,7 +185,9 @@ sqlite3 -box "$WFGRAPH_DB" "select s.step_id, s.status, s.failures,
 The app's log under the `executor` category carries a record for each pass that
 failed and each claim the database refused, which is where a stalled loop
 shows. When the question is about Event delivery, the Inngest dev server's UI
-on `INNGEST_DEV_PORT` lists each Event and the listener run that delivered it.
+on `INNGEST_DEV_PORT` lists each Event and the forwarder run that recorded it
+in `workflow_event_inbox`, whose row's `status` says whether the worker loop
+delivered it.
 
 ## 7. Clean up
 

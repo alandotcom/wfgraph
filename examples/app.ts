@@ -115,7 +115,8 @@ const patientEntity = defineEntity({
  *
  *   await wfgraph.events.send({ name: "app/appointment.created", data: { appointment, occurredAt } });
  *
- * or from another process with `POST /api/events` and the events key below.
+ * or from another process with `POST /api/events` and the events key below, or
+ * with `inngest.send`, which Workflow Graph forwards into the same inbox.
  */
 const occurredAt = z.iso.datetime();
 
@@ -286,7 +287,7 @@ const wfgraph = await createWfGraphApp({
     gatewayUrl: process.env.INNGEST_CONNECT_GATEWAY_URL,
   },
   // The whole extension surface, assembled in one place. The Events are what the
-  // editor lists and what the per-Event Inngest listeners are built from.
+  // editor lists and what the Inngest forwarders are built from.
   extensions: {
     // Slack's OAuth flow turns on when the host hands over a Slack app's client
     // credentials; with neither variable set, the editor offers the bot-token

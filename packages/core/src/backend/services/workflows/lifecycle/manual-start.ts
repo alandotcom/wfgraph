@@ -237,8 +237,8 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
     // The Event gate comes before every lifecycle question below, because a
     // request naming an Event this workflow does not take, or carrying a payload
     // that Event refuses, is malformed rather than declined. It leaves no row and
-    // answers 400, which is the same verdict the Event listener reaches on the
-    // delivery path.
+    // answers 400, which is the same verdict a send reaches at the inbox and the
+    // delivery body reaches for a row a host inserted.
     if (eventName) {
       if (!rules.startEvents.includes(eventName)) {
         return yield* new InvalidInput({

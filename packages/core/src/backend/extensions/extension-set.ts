@@ -31,7 +31,8 @@ import type { ActionDefinition } from "#src/backend/extensions/define-action";
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import type { AnyEntityDefinition } from "#src/backend/extensions/define-entity";
 import {
-  assertDistinctListenerIds,
+  assertDistinctForwarderIds,
+  forwardedEventNames,
   assertSourcesAreDistinguishable,
 } from "#src/backend/extensions/event-uniqueness";
 import {
@@ -116,8 +117,14 @@ export type ExtensionSet = {
   readonly entityByType: (type: string) => AnyEntityDefinition | undefined;
   /** App-owned deadline for every call into a host Entity resolver. */
   readonly entityResolverTimeoutMs: number;
-  /** Every Event, which is the Inngest listener set: one function each. */
+  /** Every Event, host-declared and integration-owned. */
   readonly events: readonly RegisteredEvent[];
+  /**
+   * The Events the host declared itself, which a host's own bus can carry. An
+   * integration-owned Event arrives through its integration's webhook, with
+   * the Connection it came through.
+   */
+  readonly hostEvents: readonly RegisteredEvent[];
   /** Every Entity reached transitively from a registered Event. */
   readonly entities: readonly AnyEntityDefinition[];
 };
@@ -513,8 +520,9 @@ export function assembleExtensions(
   for (const event of events) {
     assertSafeReferencePaths(`Event "${event.name}"`, event.payloadFields);
   }
+  const hostEvents = events.filter((event) => !eventOwners.has(event.name));
   assertSourcesAreDistinguishable(events);
-  assertDistinctListenerIds(events);
+  assertDistinctForwarderIds(forwardedEventNames(hostEvents));
 
   // The built-ins go in first, so anything colliding with one of them is caught
   // by the same check as any other collision.
@@ -570,6 +578,7 @@ export function assembleExtensions(
       options.entityResolverTimeoutMs
     ),
     events,
+    hostEvents,
     entities,
   };
 }

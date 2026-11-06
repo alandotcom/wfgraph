@@ -1,14 +1,15 @@
 /**
  * Intra- and cross-definition uniqueness for Events: mutually exclusive filters
- * on a shared source, one Inngest listener id.
+ * on a shared source, and one Inngest forwarder id per name a host sends.
  *
- * `checkIntegration` runs these on one plugin; `assembleExtensions` runs them
- * on the whole surface. The sentences are the same because the collision is.
+ * `checkIntegration` runs the filter check on one plugin; `assembleExtensions`
+ * runs both on the whole surface. The sentences are the same because the
+ * collision is.
  */
 
-import { groupBy } from "es-toolkit/array";
+import { groupBy, uniq } from "es-toolkit/array";
 import type { EventSource } from "#src/backend/extensions/define-event";
-import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
+import { toForwarderFunctionId } from "#src/backend/lib/inngest/forwarder-function-id";
 
 export type NamedEventSource = {
   readonly name: string;
@@ -72,25 +73,34 @@ export function assertSourcesAreDistinguishable(
 }
 
 /**
- * Two Events may not slug to one Inngest function id.
+ * The Inngest event names a forwarder is registered for: the source of each
+ * Event in `events`, once each. Events sharing an umbrella source share its
+ * forwarder.
+ */
+export function forwardedEventNames(
+  events: readonly NamedEventSource[]
+): string[] {
+  return uniq(events.map((event) => event.source.event));
+}
+
+/**
+ * Two forwarded names may not slug to one Inngest function id.
  *
  * The id is `slugify(name)`, so `app/appointment.created` and
  * `app-appointment-created` are the same function to Inngest. It would sync one
  * and drop the other, which reads as an Event that quietly never arrives.
  */
-export function assertDistinctListenerIds(
-  events: readonly NamedEventSource[]
-): void {
+export function assertDistinctForwarderIds(names: readonly string[]): void {
   const byId = new Map<string, string>();
 
-  for (const event of events) {
-    const id = toListenerFunctionId(event.name);
+  for (const name of names) {
+    const id = toForwarderFunctionId(name);
     const existing = byId.get(id);
     if (existing) {
       throw new Error(
-        `Events "${existing}" and "${event.name}" both name the Inngest function "${id}". An Event's listener id is its name slugged, so two names differing only in punctuation collide; rename one.`
+        `Events arriving as "${existing}" and "${name}" both name the Inngest function "${id}". A forwarder's id is the name it receives slugged, so two names differing only in punctuation collide; rename one.`
       );
     }
-    byId.set(id, event.name);
+    byId.set(id, name);
   }
 }

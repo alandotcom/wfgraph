@@ -122,9 +122,9 @@ export function nodeLogCounts(
 
 /**
  * Waits until the workflow's one Execution reads `status` with its schedule row
- * and step memo deleted, which is the executor done with it, and until every
- * Event delivery Inngest ran has finished. Then checks that each delivery
- * completed, and that the run left no open wait row, no open node log and,
+ * and step memo deleted, which is the executor done with it, and until the
+ * inbox row of every Event the case sent has settled. Then checks that each
+ * one was delivered, and that the run left no open wait row, no open node log and,
  * unless it completed, no `run_completed` audit event. Answers the Execution id.
  */
 export async function expectSettledExecution(
@@ -149,14 +149,17 @@ export async function expectSettledExecution(
     }),
     ({ schedule, stepMemo }) => schedule === null && stepMemo.length === 0
   );
+  const inboxIds = await host.inboxIds();
+  expect(inboxIds.length).toBeGreaterThan(0);
   const deliveries = await eventually(
-    "Event deliveries finished",
-    () => host.runtime.allRuns(),
-    (rows) =>
-      rows.length > 0 &&
-      rows.every((row) => !["RUNNING", "QUEUED"].includes(row.status))
+    "Event deliveries settled",
+    () =>
+      Promise.all(
+        inboxIds.map((inboxId) => host.run(host.repo.findInboxEvent(inboxId)))
+      ),
+    (rows) => rows.every((row) => row !== null && row.status !== "pending")
   );
-  expect(deliveries.filter((run) => run.status !== "COMPLETED")).toEqual([]);
+  expect(deliveries.filter((row) => row?.status !== "delivered")).toEqual([]);
   // The terminal write cancels every open park in its own transaction, so a
   // run that ended leaves no wait row waiting.
   expect(await host.run(host.repo.listWaitingStates(executionId))).toEqual([]);

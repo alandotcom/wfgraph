@@ -393,7 +393,7 @@ export const workflowExecutions = pgTable(
 /**
  * Which workflows care about which Events, derived from their published graphs.
  *
- * The listener set is app-wide, so a delivered Event needs one indexed lookup to
+ * The catalog is app-wide, so a delivered Event needs one indexed lookup to
  * find the workflows it concerns rather than a scan of every stored graph. The
  * rows are rewritten on publish from the published graph. Connection and
  * Correlation Path ride on the row so a delivery matches without reading the

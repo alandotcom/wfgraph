@@ -15,10 +15,7 @@
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
 import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
-import {
-  assertDistinctListenerIds,
-  assertSourcesAreDistinguishable,
-} from "#src/backend/extensions/event-uniqueness";
+import { assertSourcesAreDistinguishable } from "#src/backend/extensions/event-uniqueness";
 import {
   assertConfigOptionsWiring,
   type ConfigOptionsProvider,
@@ -455,7 +452,6 @@ function checkIntegrationEvents(integration: IntegrationDefinition): void {
   }
 
   assertSourcesAreDistinguishable(events);
-  assertDistinctListenerIds(events);
 }
 
 function assertOrdinaryDeclarationRecord(

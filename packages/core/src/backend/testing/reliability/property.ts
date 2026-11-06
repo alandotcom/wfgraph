@@ -12,6 +12,7 @@ import {
   createHost,
   HostSetupFailure,
   type Backend,
+  type HostOptions,
   type ReliabilityHost,
 } from "#src/backend/testing/reliability/host";
 import {
@@ -78,6 +79,7 @@ async function captureSnapshot(host: ReliabilityHost): Promise<unknown> {
 
 async function runScenario<S>(input: {
   backend: Backend;
+  host: HostOptions;
   value: S;
   scenario: Scenario<S>;
   evidence: Map<string, FailureEvidence>;
@@ -96,7 +98,7 @@ async function runScenario<S>(input: {
   try {
     await withCleanup(
       async () => {
-        host = await createHost(input.backend);
+        host = await createHost(input.backend, input.host);
         return host;
       },
       async (resource) => {
@@ -169,6 +171,8 @@ type PropertyOptions = {
   /** The environment variable that sets the generated case count. */
   runsVariable?: string | undefined;
   defaultRuns?: number | undefined;
+  /** How every host of the property is set up beyond its backend. */
+  host?: HostOptions | undefined;
 };
 
 export function reliabilityProperty<S>(
@@ -266,6 +270,7 @@ function defineProperty<S>(
   options: PropertyOptions,
   execute: (input: {
     backend: Backend;
+    host: HostOptions;
     value: S;
     evidence: Map<string, FailureEvidence>;
   }) => Promise<void>
@@ -281,7 +286,8 @@ function defineProperty<S>(
 
       const result = await checkScenarios({
         arbitrary,
-        execute: (value) => execute({ backend, value, evidence }),
+        execute: (value) =>
+          execute({ backend, host: options.host ?? {}, value, evidence }),
         parameters: {
           // fast-check counts fixed examples toward numRuns.
           numRuns: numRuns + examples.length,

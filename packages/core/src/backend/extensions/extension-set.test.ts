@@ -502,9 +502,9 @@ describe("assembleExtensions", () => {
     expect(set.eventByName("app/appointment.canceled")).toBeUndefined();
   });
 
-  // One listener per Event, so what the set hands back is the Events themselves.
-  // Several may share a source name and each narrows it with its own filter.
-  it("holds every Event, which is the listener set", () => {
+  // Several Events may share a source name, and each narrows it with its own
+  // filter.
+  it("holds every Event", () => {
     const set = assembleExtensions({
       events: [
         anEvent("appointment.created", {
@@ -659,9 +659,10 @@ describe("assembleExtensions checks", () => {
     ).toThrow(/unfiltered Event overlaps every filtered Event/u);
   });
 
-  // The listener id is the Event name slugged, so two names differing only in
-  // punctuation are one function to Inngest: it would sync one and drop the other.
-  it("refuses two Events whose names slug to one listener id", () => {
+  // The forwarder id is the name it receives slugged, so two names differing
+  // only in punctuation are one function to Inngest: it would sync one and drop
+  // the other.
+  it("refuses two Events whose names slug to one forwarder id", () => {
     expect(() =>
       assembleExtensions({
         events: [
@@ -670,6 +671,25 @@ describe("assembleExtensions checks", () => {
         ],
       })
     ).toThrow("both name the Inngest function");
+  });
+
+  // Events on one umbrella source share its forwarder, so their own names never
+  // become function ids.
+  it("accepts Events on one source whose own names would slug to one id", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [
+          anEvent("app/appointment.created", {
+            event: "app/appointment",
+            when: { path: "kind", equals: "created" },
+          }),
+          anEvent("app-appointment-created", {
+            event: "app/appointment",
+            when: { path: "kind", equals: "canceled" },
+          }),
+        ],
+      })
+    ).not.toThrow();
   });
 });
 
@@ -911,6 +931,8 @@ describe("assembleExtensions and an integration definition", () => {
 
     expect(set.events).toEqual([event]);
     expect(set.catalog.events[0]?.integration).toBe("resend");
+    // The integration owns it, so it stays off the Events a host's bus carries.
+    expect(set.hostEvents).toEqual([]);
   });
 
   it("refuses one Event object claimed by two integrations", () => {

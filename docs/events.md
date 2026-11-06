@@ -186,8 +186,8 @@ Add `.check(Schema.isPattern(...))` where a malformed value must be turned away.
 ## The umbrella source
 
 For an existing bus that sends one name and cannot change. `source` separates the identity
-of an Event from its transport. The identity stays the Workflow Graph name, so the lifecycle model is
-untouched, and `when` becomes the filter of the listener.
+of an Event from its transport. The identity stays the Workflow Graph name, so the lifecycle
+model is untouched, and `when` decides which Event an arrival on the umbrella name is.
 
 ```ts
 const invoicePaid = defineEvent({
@@ -202,10 +202,12 @@ const invoicePaid = defineEvent({
 });
 ```
 
-- Each listener carries its filter as the `if` of its Inngest trigger, so the bus decides
-  which Event a payload is. It invokes a listener only for a subtype an Event declares.
-- Workflow Graph compiles the filter at definition, so an expression it cannot build fails in the
-  build of whoever wrote it.
+- An Inngest send or a webhook message under the umbrella name is stored in the inbox under
+  that name. The worker loop delivers it as the Event whose `when` its payload satisfies. An
+  arrival no Event on the source accepts is marked delivered and starts nothing.
+- `events.send` and `POST /api/events` take the Event's own name, so they need no filter.
+- Workflow Graph reads the filter's path at definition, so a path that names no field fails
+  in the build of whoever wrote it.
 - Assembly refuses two Events on one source that both omit `when`.
 
 `when` decides which Event a payload is, for every workflow in the app, and it is the
@@ -216,8 +218,8 @@ whether that Event changes a run in one workflow.
 
 ## Sending an Event
 
-An application sends an Event in one of three ways. Each one ends with the worker loop
-opening every run the Event starts, in your database. For more information, see Workflow
+An application sends an Event in one of three ways. Each one stores the Event in the event
+inbox, and the worker loop then opens every run the Event starts, in your database. For more information, see Workflow
 runs in `docs/embedding.md`.
 
 **From the application's own code**, call `events.send` on the value `createWfGraphApp`
@@ -264,12 +266,22 @@ The route compares the key in constant time.
 | 401    | `{ error }`         | The `Authorization` header is missing or holds another key           |
 | 413    | `{ error }`         | The body is larger than 1 MiB                                        |
 
-**Through Inngest**, send the Event with an Inngest client. The Inngest listener of that
-Event delivers it.
+**Through Inngest**, an application already on Inngest keeps calling `inngest.send`.
+Workflow Graph registers one Inngest function for each name an Event arrives under, and
+that function stores the Inngest event in the inbox.
 
 ```ts
 inngest.send({ name: "app/appointment.created", data: { appointment } });
 ```
+
+- The Inngest event's `id` is the idempotency key, so a second event with the same `id`
+  starts nothing while the first one's record exists.
+- An Event with an umbrella `source` is sent under its source name, and the worker loop
+  tells which Event it is (see The umbrella source).
+- The forwarding function checks nothing. The worker loop checks the payload when it
+  delivers the Event.
+- An integration-owned Event gets no Inngest function: it reaches a workflow only through
+  the Connection it arrived on, which an Inngest send does not carry.
 
 ## The intake gate
 
@@ -281,8 +293,9 @@ the schema never heard of.
 - This is the one boundary in the repository that decodes this way. A declared field that
   drifts fails loudly, and an extra key passes in silence by choice.
 - `events.send` and `POST /api/events` refuse a payload the gate refuses before storing it.
-  An Inngest send is checked when its listener runs, and Workflow Graph logs a refusal and
-  stops there, because a second attempt meets the same malformed payload.
+  An Event from `inngest.send` or a webhook is checked when the worker loop delivers it. A
+  refused one is marked failed with the reason and never delivered again, because a second
+  attempt meets the same malformed payload.
 
 Workflow Graph carries the raw JSON into the workflow. The decoded value is used only by a
 typed Entity ID selector and then discarded. A transform rewriting what the sender sent

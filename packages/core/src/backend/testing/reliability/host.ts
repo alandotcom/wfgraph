@@ -4,15 +4,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, ManagedRuntime, Schema } from "effect";
 import postgres from "postgres";
-import { createWfGraphApp, trustWfGraphUpstream } from "#src/app";
+import {
+  createWfGraphApp,
+  trustWfGraphUpstream,
+  type WfGraphRunnerOptions,
+} from "#src/app";
 import { createRequestListener } from "#src/node";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
 import { wfPostgres } from "#src/backend/persistence/postgres";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
+import { uniq } from "es-toolkit/array";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { fixtureExtensions } from "#src/backend/testing/reliability/fixtures";
-import { boundary } from "#src/backend/testing/reliability/control";
+import { boundary, eventually } from "#src/backend/testing/reliability/control";
 import {
   InngestStartupFailure,
   startInngest,
@@ -32,7 +38,7 @@ export type ReliabilityHost = ReturnType<typeof fixtureExtensions> & {
   /**
    * One-shot repository faults a scenario arms. `admission` fires after
    * `startForEntity` commits a Start's run, so the delivery loses the answer
-   * and Inngest retries it. `completion` fires before a `completed` terminal
+   * and the executor retries it. `completion` fires before a `completed` terminal
    * write and `terminal` before any other, whether a pass makes it fenced or
    * after it ended the run. `claim` fires after an Event delivery's claim
    * of a parked Wait commits, which resolves the park and re-queues the run in
@@ -44,6 +50,25 @@ export type ReliabilityHost = ReturnType<typeof fixtureExtensions> & {
   >;
   repo: ExecutionRepo["Service"];
   runtime: Awaited<ReturnType<typeof startInngest>>;
+  /**
+   * Sends an Event through `app.events.send`, answering its inbox row's id.
+   * `id` is the idempotency key, so a repeat answers the first row's id.
+   */
+  send: (name: string, data: JsonObject, id?: string) => Promise<string>;
+  /**
+   * Sends an Event to the Inngest dev server, whose run of the app's forwarder
+   * records it in the event inbox keyed by `id`.
+   */
+  sendThroughInngest: (
+    name: string,
+    data: JsonObject,
+    id?: string
+  ) => Promise<void>;
+  /**
+   * Waits until every forwarder run Inngest started has completed, and
+   * answers the inbox row ids of every Event this host sent, each once.
+   */
+  inboxIds: () => Promise<string[]>;
   logs: unknown[][];
   /** The application's own `dispose`, which `close` also runs. */
   dispose: () => Promise<void>;
@@ -54,7 +79,16 @@ export type ReliabilityHost = ReturnType<typeof fixtureExtensions> & {
   snapshot: () => Promise<unknown>;
   publish: (graph: JsonObject) => Promise<string>;
 };
-export async function createHost(backend: Backend): Promise<ReliabilityHost> {
+/** How a family sets up its host beyond the backend. */
+export type HostOptions = {
+  /** The app's worker loop settings, over the backend's defaults. */
+  runner?: WfGraphRunnerOptions | undefined;
+};
+
+export async function createHost(
+  backend: Backend,
+  options: HostOptions = {}
+): Promise<ReliabilityHost> {
   const logs: unknown[][] = [];
   let runtimeLogs: string[] = [];
   const directory = await mkdtemp(join(tmpdir(), "wfgraph-reliability-"));
@@ -104,6 +138,7 @@ export async function createHost(backend: Backend): Promise<ReliabilityHost> {
       inngest: { id: "reliability", isDev: true, baseUrl: runtime.url },
       extensions: fixture.extensions,
       logger: { info: log, warn: log, error: log, debug: log },
+      runner: options.runner,
     });
     cleanup.push(app.dispose);
     const server = createServer(createRequestListener(app));
@@ -140,12 +175,57 @@ export async function createHost(backend: Backend): Promise<ReliabilityHost> {
       return body;
     };
     const workflowIds: string[] = [];
+    const sentInboxIds: string[] = [];
+    const inngestSends: Array<{ name: string; data: JsonObject; id: string }> =
+      [];
     return {
       dispose: app.dispose,
       ...fixture,
       faults,
       repo,
       runtime,
+      async send(name: string, data: JsonObject, id?: string) {
+        const sent = await app.events.send(omitUndefined({ name, data, id }));
+        sentInboxIds.push(sent.id);
+        return sent.id;
+      },
+      async sendThroughInngest(
+        name: string,
+        data: JsonObject,
+        id: string = crypto.randomUUID()
+      ) {
+        await runtime.send(name, data, id);
+        inngestSends.push({ name, data, id });
+      },
+      async inboxIds() {
+        if (inngestSends.length === 0) return uniq(sentInboxIds);
+        const runs = await eventually(
+          "Inngest forwarder runs finished",
+          () => runtime.allRuns(),
+          (rows) =>
+            rows.length > 0 &&
+            rows.every((row) => !["RUNNING", "QUEUED"].includes(row.status))
+        );
+        const failed = runs.filter((row) => row.status !== "COMPLETED");
+        if (failed.length > 0)
+          throw new Error(
+            `Inngest forwarder runs did not complete: ${JSON.stringify(failed)}`
+          );
+        // Every forwarder run completed, so each Inngest send holds its inbox
+        // row by its event id. The same send through `app.events.send` is
+        // answered with that row as a duplicate, which is how its id is read.
+        const forwarded = await Promise.all(
+          inngestSends.map(async (sent) => {
+            const answer = await app.events.send(sent);
+            if (!answer.duplicate)
+              throw new Error(
+                `No forwarder recorded the Inngest event ${sent.id} for ${sent.name}`
+              );
+            return answer.id;
+          })
+        );
+        return uniq([...sentInboxIds, ...forwarded]);
+      },
       logs,
       close,
       directory,

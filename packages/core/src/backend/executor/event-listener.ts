@@ -1,22 +1,11 @@
 /**
- * One Inngest function per Event, built from the catalog.
- *
- * The listener set is the app's extension surface rather than its saved graphs, so
- * it is fixed for the life of the process: nothing a Workflow Builder does changes
- * which Events Inngest delivers, and a graph save needs no re-sync to keep it
- * current. Which workflows a delivered Event concerns is the subscription index's
- * question, asked inside the handler.
- *
- * Per Event rather than per source name, even though several Events may share a
- * source. A function then knows which Event it is without inspecting the payload,
- * and Inngest's ten-trigger ceiling is out of reach. The narrowing stays
- * Inngest's own: each function's single trigger carries that Event's compiled
- * `source.when`.
+ * The fan-out of one inbox row's delivery: which workflows the Event concerns,
+ * each one's Lifecycle Rules, and the parked Waits it wakes. The delivery body
+ * (`delivery-body.ts`) gates the payload and calls `runEventListener` with the
+ * pass's step memo, so a step that committed is answered from its memo row
+ * when the delivery runs again.
  */
 
-import { Effect } from "effect";
-import { NonRetriableError } from "inngest";
-import type { Inngest, InngestFunction } from "inngest";
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { WfGraphRuntime } from "#src/backend/runtime";
@@ -28,25 +17,9 @@ import {
   type LifecycleDeliveryOutcome,
   listEventSubscribers,
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
-import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
-import { compileEventDataEquals } from "@wfgraph/shared/lifecycle/inngest-event-data";
-import { toListenerFunctionId } from "#src/backend/lib/inngest/listener-function-id";
-import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 
 const logger = getAppLogger("events");
-
-/**
- * Reads the payload off an Inngest event.
- *
- * Inngest serializes event data with `JSON.stringify` before sending it, so
- * whatever the application passed to `inngest.send(...)` reaches us as JSON. This
- * parse is where that fact becomes a type. Data that is not a JSON object carries
- * no fields for an Event schema to describe, so it is treated as an empty payload
- * and refused by that schema.
- */
-function toEventPayload(value: unknown): JsonObject {
-  return readJsonObject(value) ?? {};
-}
 
 /** The runs the Lifecycle Rules settled, which the wait half then leaves alone. */
 function settledExecutionIds(outcome: LifecycleDeliveryOutcome): string[] {
@@ -59,67 +32,20 @@ function settledExecutionIds(outcome: LifecycleDeliveryOutcome): string[] {
   return [];
 }
 
-/** What one workflow's delivery came to, as the function answers Inngest. */
+/** What one workflow's delivery came to. */
 type WorkflowDelivery = {
   lifecycle: LifecycleDeliveryOutcome;
   resumedWaits: number;
 };
 
 /**
- * The steps a delivery needs, named here rather than taken from the SDK's
- * context, so the shape it depends on is stated in one readable place, a test
- * can stand in for it, and the database executor's runtime fills it too.
+ * The steps a delivery needs, named here rather than taken from the executor's
+ * runtime, so the shape it depends on is stated in one readable place and a
+ * test can stand in for it.
  */
 export type EventListenerSteps = {
   run: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
 };
-
-/**
- * The arrival one delivery belongs to, which names it in every record and row
- * the delivery writes.
- *
- * - `inbox`: an inbox row the database executor delivers. Its id is the
- *   delivery id both halves write: the lifecycle's committed decision and
- *   every wake.
- * - `inngest`: an Inngest event. The lifecycle's decision is keyed by the
- *   event's own id, which is the sender's idempotency id wherever they sent
- *   one. A wake is keyed by that id, or by the function run's id when the
- *   event has none, each in a namespace of its own so a host-chosen event id
- *   cannot collide with a run id.
- */
-export type EventArrival =
-  | { kind: "inbox"; inboxId: string }
-  | {
-      kind: "inngest";
-      eventId?: string | undefined;
-      runId?: string | undefined;
-    };
-
-/** The delivery ids `arrival` gives the lifecycle half and the wait half. */
-function deliveryIdsOf(arrival: EventArrival): {
-  lifecycle: string | undefined;
-  wait: string | undefined;
-} {
-  if (arrival.kind === "inbox") {
-    return { lifecycle: arrival.inboxId, wait: arrival.inboxId };
-  }
-  return {
-    lifecycle: arrival.eventId,
-    wait:
-      arrival.eventId !== undefined
-        ? `event:${arrival.eventId}`
-        : arrival.runId !== undefined
-          ? `run:${arrival.runId}`
-          : undefined,
-  };
-}
-
-/** The log fields that name `arrival`. */
-function arrivalLogFields(arrival: EventArrival) {
-  return arrival.kind === "inbox"
-    ? { inboxId: arrival.inboxId }
-    : omitUndefined({ eventId: arrival.eventId, runId: arrival.runId });
-}
 
 /**
  * The deliver halves this listener fans out through.
@@ -158,7 +84,11 @@ export async function runEventListener(input: {
   payload: JsonObject;
   /** What `event.decodePayloadValue` answered for `payload`. */
   validatedPayload: unknown;
-  arrival: EventArrival;
+  /**
+   * The inbox row being delivered. Its id is the delivery id both halves
+   * write: the lifecycle's committed decision and every wake.
+   */
+  inboxId: string;
   /**
    * The Connection this arrival came through. Absent for a host Event.
    */
@@ -168,11 +98,8 @@ export async function runEventListener(input: {
   deliver: EventListenerDeliverPorts;
 }): Promise<{ eventName: string; workflows: WorkflowDelivery[] }> {
   const { event, payload, runtime, step, deliver } = input;
-  const deliveryIds = deliveryIdsOf(input.arrival);
-  const arrivalLogger = logger.with({
-    eventName: event.name,
-    ...arrivalLogFields(input.arrival),
-  });
+  const { inboxId } = input;
+  const arrivalLogger = logger.with({ eventName: event.name, inboxId });
 
   const deliveredEvent = {
     name: event.name,
@@ -206,7 +133,7 @@ export async function runEventListener(input: {
                 subscriber,
                 event: deliveredEvent,
                 payload,
-                deliveryId: deliveryIds.lifecycle,
+                deliveryId: inboxId,
               })
             )
         )
@@ -230,10 +157,8 @@ export async function runEventListener(input: {
       const candidatePages: WaitCandidatePage[] = [];
       let afterId: string | undefined;
 
-      // Collect every page before a delivery step can wake any run. Inngest
-      // memoizes these step outputs when a later delivery page retries. Each
-      // page consumes two steps; this scan remains subject to Inngest's
-      // per-invocation step limit, including subscriber and lifecycle steps.
+      // Collect every page before a delivery step can wake any run. The step
+      // memo answers these page reads when a later delivery page retries.
       for (let pageIndex = 0; ; pageIndex += 1) {
         // eslint-disable-next-line no-await-in-loop -- the next cursor depends on this durable page result.
         const page = await step.run(
@@ -270,7 +195,7 @@ export async function runEventListener(input: {
                 event: deliveredEvent,
                 payload,
                 candidates: page.candidates,
-                deliveryId: deliveryIds.wait,
+                deliveryId: inboxId,
               })
             )
         );
@@ -301,82 +226,4 @@ export async function runEventListener(input: {
   });
 
   return { eventName: event.name, workflows };
-}
-
-// The return type is stated because declaration emit cannot name the inferred
-// one: it references types inngest keeps internal (`SendSignalResponse` under
-// inngest/api). `InngestFunction.Any` is what the function registry collects
-// these into anyway.
-export function createInngestEventListenerFunction(input: {
-  /** The app's own connection, which this listener is registered on. */
-  client: Inngest;
-  event: AnyEventDefinition;
-  /**
-   * The app's Layer graph. It arrives from `createWfGraphApp` through the function
-   * registry rather than being reached for here, so this function runs its
-   * services on the same repositories and logger the HTTP side does.
-   */
-  runtime: WfGraphRuntime;
-}): InngestFunction.Any {
-  const { client, event, runtime } = input;
-  const when = event.source.when;
-
-  return client.createFunction(
-    {
-      id: toListenerFunctionId(event.name),
-      name: `Event listener: ${event.name}`,
-      triggers: [
-        omitUndefined({
-          event: event.source.event,
-          // An umbrella source pays no invocations for the subtypes this Event is
-          // not, because Inngest evaluates the filter before calling us.
-          if: when ? compileEventDataEquals(when) : undefined,
-        }),
-      ],
-    },
-    async ({ event: delivered, step, runId }) => {
-      // An Inngest send carries no Connection: webhook intake records an
-      // integration Event in the event inbox with its Connection.
-      return await listenToInngestEvent({
-        event,
-        payload: toEventPayload(delivered.data),
-        arrival: { kind: "inngest", eventId: delivered.id, runId },
-        runtime,
-        step,
-        deliver: defaultDeliverPorts,
-      });
-    }
-  );
-}
-
-/**
- * One Inngest event, gated and fanned out. The gate runs here because what
- * arrives is a host's own message onto the bus rather than a contract between
- * Workflow Graph's two halves. A refusal is not retried, because the same
- * payload fails the same way on the next attempt.
- */
-export async function listenToInngestEvent(
-  input: Omit<Parameters<typeof runEventListener>[0], "validatedPayload">
-): ReturnType<typeof runEventListener> {
-  const { event, payload, runtime } = input;
-  const decoded = await runtime.runPromise(
-    event.decodePayloadValue(payload).pipe(
-      Effect.match({
-        onSuccess: (value) => ({ success: true as const, value }),
-        onFailure: (rejection) => ({ success: false as const, rejection }),
-      })
-    )
-  );
-  if (!decoded.success) {
-    const { rejection } = decoded;
-    // The thrown sentence reaches Inngest's own run history, which a host can
-    // read, so it takes the answer string; the log line takes the operator's.
-    logger
-      .with({ eventName: event.name, ...arrivalLogFields(input.arrival) })
-      .warn("Refused an event payload", { error: rejection.detail });
-    throw new NonRetriableError(
-      `Payload refused for Event "${event.name}": ${rejection.error}`
-    );
-  }
-  return await runEventListener({ ...input, validatedPayload: decoded.value });
 }

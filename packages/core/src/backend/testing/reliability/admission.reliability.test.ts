@@ -12,9 +12,10 @@ import { expectSettledExecution } from "#src/backend/testing/reliability/asserti
 import type { ReliabilityHost } from "#src/backend/testing/reliability/host";
 import { reliabilityProperty } from "#src/backend/testing/reliability/property";
 
-// A Start creates an Execution, but the caller loses the successful response.
-// Change the current workflow or Entity before Inngest retries that same Start.
-// The retry must finish the original Execution and run its original action once.
+// A Start creates an Execution, but the delivery loses the successful response.
+// Change the current workflow or Entity before the executor retries that same
+// delivery. The retry must finish the original Execution and run its original
+// action once.
 const changesBeforeRetry = [
   "publish",
   "remove-start",
@@ -46,12 +47,14 @@ reliabilityProperty(
       admissionGraph(scenario.originalActionMarker)
     );
     host.faults.admission.arm({ fail: true, hold: true });
-    const deliveryId = crypto.randomUUID();
+    // The send's idempotency key, and the inbox row id its delivery opens the
+    // Execution under.
+    const startKey = crypto.randomUUID();
     const startPayload = {
       entityId: "subject",
       marker: scenario.originalActionMarker,
     };
-    await host.runtime.send(START, startPayload, deliveryId);
+    const deliveryId = await host.send(START, startPayload, startKey);
     await eventually(
       "committed admission boundary",
       async () => host.faults.admission.hits,
@@ -72,10 +75,11 @@ reliabilityProperty(
       );
     }
 
-    // Releasing the failure triggers an Inngest retry; also redeliver the same Start.
+    // Releasing the failure makes the executor retry the delivery; also send
+    // the same Start again, which the inbox answers with the first row.
     host.faults.admission.release();
     for (let index = 0; index < scenario.repeatedStartDeliveries; index++)
-      await host.runtime.send(START, startPayload, deliveryId);
+      expect(await host.send(START, startPayload, startKey)).toBe(deliveryId);
 
     // Expect the original id, version and input, with exactly one original action.
     const executionId = await expectSettledExecution(

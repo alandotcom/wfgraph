@@ -1,7 +1,8 @@
 /**
  * Event deliveries on the database executor, on one persistence backend: an
  * inbox row delivered by the worker loop, a duplicate send, a host send
- * through `sendEvent`, webhook intake through two Connections, a row a host
+ * through `sendEvent`, an Inngest event the forwarder records, alone and on an
+ * umbrella source, webhook intake through two Connections, a row a host
  * inserted itself, a webhook source told apart by its `source.when` filter, a
  * refused payload, a lifecycle step that spends its retries, and a crash
  * between a step and its memo row, alone and under a Cancel claim. A runner per
@@ -27,7 +28,7 @@ import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
-import { defaultDeliverPorts } from "#src/backend/lib/inngest/event-listener-function";
+import { defaultDeliverPorts } from "#src/backend/executor/event-listener";
 import {
   createWfGraphRuntime,
   type WfGraphRuntime,
@@ -68,6 +69,7 @@ import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { sendEvent } from "#src/backend/services/executions/send-event";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
+import { forwardInngestEvent } from "#src/backend/lib/inngest/event-forwarder";
 
 const LEASE_MS = 60_000;
 const WEBHOOK_SOURCE = "vendor/webhook";
@@ -335,6 +337,14 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       data: JsonObject;
       id?: string | undefined;
     }) => Promise<{ id: string; duplicate: boolean }>;
+    /**
+     * Records an Inngest event as the app's Inngest forwarder for `name` does,
+     * keyed by the event's id.
+     */
+    forward: (input: {
+      name: string;
+      event: { id?: string | undefined; data: unknown };
+    }) => Promise<{ inboxId: string; duplicate: boolean }>;
     /** Stores an `acme` Connection, answering its id. */
     addConnection: (name: string) => Promise<string>;
     /** Posts `data` to one `acme` Connection's webhook under a vendor id. */
@@ -440,6 +450,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
           )
         ),
       sendEvent: (input) => app.runPromise(sendEvent(input)),
+      forward: (input) => forwardInngestEvent({ ...input, runtime: app }),
       addConnection: (name) =>
         connection.run(
           Effect.flatMap(IntegrationRepo, (integrations) =>
@@ -640,6 +651,72 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       { id: runId, status: "completed" },
     ]);
     expect(await harness.runOf("wf_start", first.id)).toMatchObject({
+      id: runId,
+    });
+  });
+
+  it("records an Inngest event the forwarder hands over as one inbox row keyed by its event id, answers a retried forward with that row, and delivers it to a run that completes", async () => {
+    const harness = await open();
+    await harness.publish("wf_start", startsAndSends(START_EVENT));
+    const event = {
+      id: "01JINNGESTEVENT",
+      data: { appointmentId: "appt_forwarded" },
+    };
+    const first = await harness.forward({ name: START_EVENT, event });
+    const retried = await harness.forward({ name: START_EVENT, event });
+    const loop = harness.loop();
+
+    const row = await settled(harness, first.inboxId);
+    const runId = await endedRun(harness, "wf_start");
+    await loop.stop();
+
+    expect(first.duplicate).toBe(false);
+    expect(retried).toEqual({ inboxId: first.inboxId, duplicate: true });
+    expect(row).toMatchObject({
+      status: "delivered",
+      name: START_EVENT,
+      data: { appointmentId: "appt_forwarded" },
+      connectionId: null,
+      idempotencyKey: "01JINNGESTEVENT",
+    });
+    expect(await harness.runs("wf_start")).toEqual([
+      { id: runId, status: "completed" },
+    ]);
+    expect(await harness.runOf("wf_start", first.inboxId)).toMatchObject({
+      id: runId,
+    });
+  });
+
+  // An umbrella source's forwarder records the event under the source name,
+  // and the delivery tells which Event it is, as it does for webhook intake.
+  // The forwarder decodes nothing, so data its Event refuses reaches the inbox
+  // and fails there.
+  it("delivers an Inngest event forwarded under an umbrella source as the Event its data is, and fails one whose data the Event refuses", async () => {
+    const harness = await open();
+    await harness.publish("wf_hook", startsAndSends(VENDOR_BOOKED));
+    const booked = await harness.forward({
+      name: WEBHOOK_SOURCE,
+      event: {
+        id: "evt_booked",
+        data: { type: "booked", appointmentId: "appt_umbrella" },
+      },
+    });
+    const refused = await harness.forward({
+      name: WEBHOOK_SOURCE,
+      event: { id: "evt_refused", data: { type: "booked" } },
+    });
+    const loop = harness.loop();
+
+    await settled(harness, booked.inboxId);
+    const failed = await settled(harness, refused.inboxId);
+    const runId = await endedRun(harness, "wf_hook");
+    await loop.stop();
+
+    expect(failed).toMatchObject({ status: "failed", name: WEBHOOK_SOURCE });
+    expect(await harness.runs("wf_hook")).toEqual([
+      { id: runId, status: "completed" },
+    ]);
+    expect(await harness.runOf("wf_hook", booked.inboxId)).toMatchObject({
       id: runId,
     });
   });

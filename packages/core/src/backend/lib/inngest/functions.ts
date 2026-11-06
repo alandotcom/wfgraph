@@ -1,15 +1,16 @@
 import type { Inngest, InngestFunction } from "inngest";
+import { forwardedEventNames } from "#src/backend/extensions/event-uniqueness";
 import { Extensions } from "#src/backend/lib/effect/extensions";
-// Static, now that the id helper the app assembly needs has moved to a leaf of
-// its own: this import is the only reason the delivery stack loads, and this
-// module is on the path of a request that serves it anyway.
-import { createInngestEventListenerFunction } from "#src/backend/lib/inngest/event-listener-function";
+import { createInngestEventForwarder } from "#src/backend/lib/inngest/event-forwarder";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 
 /**
- * Everything this app registers with Inngest: one listener per Event in the
- * catalog. Workflow runs execute on the database executor, so Inngest delivers
- * Events and runs no workflow body.
+ * Everything this app registers with Inngest: one forwarder per name a host
+ * Event arrives under, which records each Inngest event in the event inbox.
+ * The executor delivers Events and runs workflows, so Inngest runs neither.
+ * An integration-owned Event gets no forwarder: it reaches a workflow only
+ * through its Connection, which an Inngest send cannot carry, so its
+ * integration's webhook intake is its one source.
  *
  * Nothing here depends on a saved graph, so the list is the same for the life
  * of the process. Creating, saving or deleting a workflow changes nothing here
@@ -20,10 +21,6 @@ import type { WfGraphRuntime } from "#src/backend/runtime";
  * the other is what keeps that from being a cycle. `createWfGraphApp` builds the
  * list once after the runtime exists and hands it to either Connect or HTTP
  * serve.
- *
- * v4 encodes the trigger tuple in a function's type, so the listeners have no
- * common specific type and this names the general one. `serve()` and
- * `connect()` take that same type.
  */
 export async function buildInngestFunctions(
   client: Inngest,
@@ -31,11 +28,7 @@ export async function buildInngestFunctions(
 ): Promise<InngestFunction.Any[]> {
   const extensions = await runtime.runPromise(Extensions);
 
-  return extensions.events.map((event) =>
-    createInngestEventListenerFunction({
-      client,
-      event,
-      runtime,
-    })
+  return forwardedEventNames(extensions.hostEvents).map((name) =>
+    createInngestEventForwarder({ client, name, runtime })
   );
 }

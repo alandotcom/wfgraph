@@ -94,7 +94,8 @@ type InngestRunner = {
   close: () => Promise<void>;
   /**
    * Every function run the dev server holds, newest first and at most 100.
-   * Inngest runs only the Event listeners, so each is one Event delivery.
+   * Inngest runs only the forwarders, so each is one Inngest event recorded
+   * in the event inbox.
    */
   allRuns: () => Promise<
     Array<{ readonly id: string; readonly status: string }>

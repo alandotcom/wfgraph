@@ -145,7 +145,7 @@ groupLayoutProperty(
 
     if (built.fault !== "none")
       host.faults[built.fault].arm({ fail: true, hold: false });
-    await host.runtime.send(START, {
+    await host.send(START, {
       entityId: "subject",
       marker: built.startMarker,
     });
@@ -173,7 +173,7 @@ groupLayoutProperty(
       );
       expect(sideEffects).toEqual(stage.sideEffectsBefore.toSorted());
       checkpoints.push({ openWaits: stage.openWaits, sideEffects });
-      await host.runtime.send(stage.wake.event, {
+      await host.send(stage.wake.event, {
         entityId: "subject",
         marker: stage.wake.marker,
       });

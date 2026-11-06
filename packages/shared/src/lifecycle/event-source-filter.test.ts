@@ -1,28 +1,11 @@
-import { evaluate as evaluateCel } from "@marcbachmann/cel-js";
 import { describe, expect, it } from "vitest";
 import type { JsonObject } from "#src/types/json";
 import {
   type EventSourceFilter,
   matchesSourceFilter,
 } from "#src/lifecycle/event-source-filter";
-import { compileEventDataEquals } from "#src/lifecycle/inngest-event-data";
 
-/**
- * What Inngest decides for the compiled filter: the CEL expression evaluated
- * against the event, where an expression that errors, such as one reading a
- * missing field, does not trigger.
- */
-function celDecides(when: EventSourceFilter, data: JsonObject): boolean {
-  try {
-    return (
-      evaluateCel(compileEventDataEquals(when), { event: { data } }) === true
-    );
-  } catch {
-    return false;
-  }
-}
-
-/** The filters `compileEventDataEquals` is tested with, and payloads around each. */
+/** Filters, and payloads around each. */
 const cases: { when: EventSourceFilter; data: JsonObject; matches: boolean }[] =
   [
     {
@@ -76,7 +59,7 @@ const cases: { when: EventSourceFilter; data: JsonObject; matches: boolean }[] =
       matches: true,
     },
     // A missing key, a value of another type, and a path through a non-object
-    // are errors to CEL, which Inngest reads as no match.
+    // are no match.
     {
       when: { path: "meta.kind", equals: "created" },
       data: {},
@@ -106,10 +89,9 @@ const cases: { when: EventSourceFilter; data: JsonObject; matches: boolean }[] =
 
 describe("matchesSourceFilter", () => {
   it.each(cases)(
-    "answers $matches for $when.path == $when.equals over $data, as the compiled CEL filter does",
+    "answers $matches for $when.path == $when.equals over $data",
     ({ when, data, matches }) => {
       expect(matchesSourceFilter(when, data)).toBe(matches);
-      expect(celDecides(when, data)).toBe(matches);
     }
   );
 

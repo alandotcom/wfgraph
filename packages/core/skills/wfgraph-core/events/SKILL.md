@@ -99,8 +99,9 @@ schemas omit the keyword; annotate by hand.
 ### Umbrella source
 
 When an existing bus sends one name, keep Workflow Graph identity on `name` and
-filter with `source: { event, when: { path, equals } }`. Assembly refuses two
-Events on one source that both omit `when`.
+filter with `source: { event, when: { path, equals } }`. The worker loop
+delivers an arrival on the umbrella name as the Event whose `when` its payload
+satisfies. Assembly refuses two Events on one source that both omit `when`.
 
 `when` decides which Event a payload is for every workflow in the app. It belongs
 to the Event Author. A Workflow Builder uses a Start Filter or Cancel Filter to
@@ -112,9 +113,17 @@ receive either arrival.
 
 `app.events.send({ name, data, id? })` from the host's code, `POST
 {basePath}/api/events` with `Authorization: Bearer <events.key>` from another
-process (off unless `events.key` is set), or `inngest.send({ name, data })`.
-`id` is the idempotency key. A send that names no catalog Event, or whose data
-the Event's schema refuses, is refused before anything is stored. The gate
+process (off unless `events.key` is set), or `inngest.send({ name, data, id? })`.
+Every one lands in the event inbox, and the worker loop delivers it. `id` is the
+idempotency key. A send that names no catalog Event, or whose data the Event's
+schema refuses, is refused before anything is stored.
+
+A host already on Inngest keeps `inngest.send`. Workflow Graph registers one
+Inngest function per name a host Event arrives under (its umbrella `source`
+name, if it has one), and that function records the Inngest event in the inbox
+keyed by its `id`. It checks nothing: the worker loop gates the payload on
+delivery and marks a refused one failed. An integration-owned Event gets no
+Inngest function. The gate
 validates declared fields and ignores unknown keys. Workflow Graph uses the decoded value only for an Entity ID selector and carries
 the raw JSON on. Do not transform the workflow payload: a `Date` round-trip
 breaks Wait matches captured at park time.

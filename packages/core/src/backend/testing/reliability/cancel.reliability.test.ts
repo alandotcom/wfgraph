@@ -23,6 +23,8 @@ import { groupLayoutProperty } from "#src/backend/testing/reliability/property";
 // Cleanup must run once, including when its own durable writes need a retry.
 // Each case also runs with one side's steps in a vertical and a horizontal Group,
 // and must route, clean up and retry the same way.
+// This family sends every Event through the Inngest dev server, so the app's
+// forwarders record them in the inbox; the other families use `app.events.send`.
 type CleanupMode = "direct" | "event" | "delay";
 type CancellationScenario = {
   cleanupMode: CleanupMode;
@@ -100,7 +102,10 @@ groupLayoutProperty(
       host.faults.terminal.arm({ fail: true, hold: false });
     if (scenario.failurePoint === "wait-claim")
       host.faults.claim.arm({ fail: true, hold: false });
-    await host.runtime.send(START, { entityId: "subject", marker: "start" });
+    await host.sendThroughInngest(START, {
+      entityId: "subject",
+      marker: "start",
+    });
     await eventually(
       "completion boundary",
       async () => host.faults.completion.hits,
@@ -114,7 +119,7 @@ groupLayoutProperty(
     // Repeated deliveries share one event id. Wait until the Cancel claim is durable.
     const cancelDeliveryId = crypto.randomUUID();
     for (let index = 0; index < scenario.cancelDeliveries; index++)
-      await host.runtime.send(
+      await host.sendThroughInngest(
         CANCEL,
         { entityId: "subject", marker: scenario.cancelMarker },
         cancelDeliveryId
@@ -134,7 +139,7 @@ groupLayoutProperty(
     if (scenario.cleanupMode === "event") {
       // The run must be parked on the cleanup Wait before the wake Event is sent.
       await waitForParkedWaits(host, executionId, 1);
-      await host.runtime.send(WAKE[0]!, {
+      await host.sendThroughInngest(WAKE[0]!, {
         entityId: "subject",
         marker: "wake",
       });
@@ -152,7 +157,11 @@ groupLayoutProperty(
     if (scenario.failurePoint === "wait-claim")
       expect(host.faults.claim.hits).toBe(1);
     return observeExecution(host, executionId);
-  }
+  },
+  // The Cancel's delivery is a pass of its own, which has to run while the
+  // run's pass is held at its completion write. SQLite's default loop runs one
+  // pass at a time, so it would queue the delivery behind the held pass.
+  { host: { runner: { concurrency: 2 } } }
 );
 
 function cancellationWorkflow(cleanupMode: CleanupMode) {

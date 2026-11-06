@@ -81,7 +81,7 @@ groupLayoutProperty(
     );
 
     // Wait until the run is parked on every branch's Wait.
-    await host.runtime.send(START, { entityId: "subject", marker: "start" });
+    await host.send(START, { entityId: "subject", marker: "start" });
     const executions = await eventually(
       "Execution admitted",
       () =>
@@ -104,7 +104,7 @@ groupLayoutProperty(
     // Only one branch receives a wake event. The other waits have ten-minute timeouts.
     if (scenario.entityDisappears) host.state.missing = true;
     else host.state.active = false;
-    await host.runtime.send(WAKE[branchToWake]!, {
+    await host.send(WAKE[branchToWake]!, {
       entityId: "subject",
       marker: "exit",
     });

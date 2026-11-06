@@ -667,11 +667,13 @@ finishes or until each of its branches is parked at a Wait, and records each com
 in that database. A parked run is due again when the Wait's deadline passes, or when an
 Event, a Cancel, an Exit, or a Migration resolves the Wait.
 
-Inngest delivers Events to Workflow Graph and runs no workflow, so the `inngest` option is
-still required. Each Event in `extensions.events` registers an Inngest listener, and that
-listener opens and schedules the run in your database. An Event sent with `app.events.send`,
-`POST /api/events`, or a Connection's webhook is stored in the `workflow_event_inbox`
-table, and the worker loop delivers it. For how to send one, see `docs/events.md`.
+Every Event arrives in the `workflow_event_inbox` table, and the worker loop delivers it:
+it opens the runs the Event starts, cancels the runs it cancels, and wakes the Waits it
+matches. An Event reaches the inbox through `app.events.send`, `POST /api/events`, a
+Connection's webhook, or `inngest.send`. The `inngest` option is still required: Workflow
+Graph registers one Inngest function for each name an Event in `extensions.events` arrives
+under, and that function records each Inngest event in the inbox. Inngest runs no workflow
+and delivers no Event itself. For how to send one, see `docs/events.md`.
 
 The loop keeps its state in two tables beside the other Workflow Graph tables.
 `workflow_execution_schedule` holds one row per run in flight, and
@@ -904,7 +906,7 @@ Cloudflare Workers and Hyperdrive.
 | `auth`                    | Yes      | Authentication callback returning a request-scoped access policy or `null`                                                                                                                                            |
 | `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                                                                                     |
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                                                                          |
-| `inngest.id`              | Yes      | Inngest application ID. Inngest delivers Events; it runs no workflow                                                                                                                                                  |
+| `inngest.id`              | Yes      | Inngest application ID. Inngest forwards the Events a host sends with `inngest.send` into the event inbox; it runs no workflow                                                                                        |
 | `inngest.*`               | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency, connectTimeoutMs                                                        |
 | `events.key`              | No       | Shared secret that mounts `POST /api/events`. A sender presents it as `Authorization: Bearer <key>`. Unset, the route is not mounted. A blank value fails at startup. See `docs/events.md`                            |
 | `runner`                  | No       | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none beside a `createWfGraphRunner` process. See Workflow runs                       |
@@ -958,10 +960,11 @@ Read these once:
   `inngest` option below, and still builds its own Hono app inside; `createWfGraphApp`
   answers with `fetch`, `basePath`, `events`, `dispose`, and `[Symbol.asyncDispose]`
   alone, so neither library appears in what it hands back.
-- **Running Inngest is the job of the consumer**, self-hosted or cloud. Inngest delivers
-  Events; workflow runs execute in your process (see Workflow runs). `pnpm run dev` here
+- **Running Inngest is the job of the consumer**, self-hosted or cloud. Inngest forwards
+  each Event a host sends with `inngest.send` into the event inbox; Event deliveries and
+  workflow runs execute in your process (see Workflow runs). `pnpm run dev` here
   starts Inngest as a separate process. Long-running hosts set `inngest.connect: true` so
-  Event deliveries arrive over a Connect WebSocket and `/api/inngest` is not mounted.
+  those forwards arrive over a Connect WebSocket and `/api/inngest` is not mounted.
   Local `pnpm run dev` sets `INNGEST_CONNECT_GATEWAY_URL=ws://localhost:8390/v0/connect`
   because the CLI's Connect gateway listens on 8390. Pass `inngest.instanceId`,
   `inngest.gatewayUrl`, or `inngest.maxWorkerConcurrency` when the worker needs

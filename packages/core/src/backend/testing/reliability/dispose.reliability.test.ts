@@ -54,7 +54,7 @@ reliabilityProperty<DisposeScenario>(
 
     if (scenario.loop === "draining")
       host.faults.completion.arm({ fail: false, hold: true });
-    await host.runtime.send(START, { entityId: "subject", marker: "start" });
+    await host.send(START, { entityId: "subject", marker: "start" });
 
     if (scenario.loop === "idle") {
       await expectSettledExecution(host, workflowId, "completed");
