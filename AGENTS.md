@@ -404,12 +404,13 @@ the built bundle handed to `createWfGraphApp`.
 **The published package is not the dev tree.** `packages/core` publishes `dist`,
 `drizzle`, and `skills`, with `@wfgraph/shared` inlined into the build so it never appears as a dependency,
 and `backend/lib/effect/test-layers.ts` and `backend/lib/effect/span-test-support.ts`
-reachable from no entry. `inngest` is an optional peer dependency, so only
-`backend/lib/inngest/`, which the `@wfgraph/core/inngest` entry alone reaches, may import
-it: a host without the SDK must still load every other entry, and after a build
-`grep -l inngest packages/core/dist/*.js` lists `inngest.js` alone. Verify a packaging
-change with `pnpm pack` and read the extracted manifest. `docs/embedding.md` ("Package exports")
-is the one home of the eight core entry points.
+reachable from no entry. `inngest` is an optional peer dependency, so in production code
+only `backend/lib/inngest/`, which the `@wfgraph/core/inngest` entry alone reaches, may
+import it. A host without the SDK must load every other
+entry, which `pnpm run package:smoke` checks by importing each of them from the packed
+tarball installed without `inngest`. Verify a packaging change with `pnpm pack` and read
+the extracted manifest. `docs/embedding.md` ("Package exports") is the one home of the
+core entry points.
 
 ## Code cleanliness
 

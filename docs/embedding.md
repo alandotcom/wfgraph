@@ -890,6 +890,10 @@ binding = "WFGRAPH_WAKES"
 
 [[queues.consumers]]
 queue = "wfgraph-wakes"
+max_batch_timeout = 0
+
+[limits]
+cpu_ms = 300_000
 ```
 
 `wfWorker` has one type parameter for the Worker environment. Host session state stays inside
@@ -906,7 +910,7 @@ invocation of each handler, and it answers these fields:
 | `persistence`        | Yes      | `wfHyperdrive(env.HYPERDRIVE)`, opened and closed once per invocation                                                                        |
 | `encryption.key`     | Yes      | As on `createWfGraphApp`                                                                                                                     |
 | `events.key`         | No       | Mounts `POST /api/events`, as on `createWfGraphApp`. A blank value, or one holding whitespace, fails the invocation before persistence opens |
-| `events.retentionMs` | No       | How long a settled inbox row is kept, as on `createWfGraphApp`. Every tick sweeps with it                                                    |
+| `events.retentionMs` | No       | How long a settled inbox row is kept, as on `createWfGraphApp`. Each Cron Trigger tick sweeps with it                                        |
 | `wakeQueue`          | No       | The Queue producer binding that carries run wakes. Its consumer must be this Worker. See Wake runs through a Queue                           |
 | `agent`              | No       | As on `createWfGraphApp`                                                                                                                     |
 
@@ -915,8 +919,9 @@ The options passed to `wfWorker` itself are `basePath`, `publicUrl`, `entityReso
 function of the environment.
 
 `wfWorker` answers `{ fetch, scheduled, queue }`. A Worker that serves other routes, crons or
-queues of its own calls these from its own handlers: `fetch(request, env)`,
-`scheduled(controller, env)`, and `queue(batch, env)`. The `queue` handler treats every
+queues of its own calls these from its own handlers: `fetch(request, env, ctx)`,
+`scheduled(controller, env)`, and `queue(batch, env)`. `fetch` hands the invocation's closes to
+`ctx.waitUntil`, so a response is sent before the database connection closes. The `queue` handler treats every
 message in a batch as a run wake, so route only the wake Queue's batches to it, by
 `batch.queue`.
 
@@ -926,12 +931,18 @@ Without a Queue, the Cron Trigger's tick each minute is the only tick. An Event 
 Worker is delivered at the next tick, up to a minute later, and the runs it starts run in the
 same tick.
 
-With `wakeQueue`, a write that makes a run or a delivery due also sends a message, and the
-Queue starts the Worker's `queue` handler, which runs a tick at once. Such writes include an
-Event's arrival, a Cancel, a manual resume, a Migration, and a run that an Event's delivery
-starts. Each invocation sends one message for the first such write, and one more for all the
-writes made while that send was in flight. A message names no run, since a tick claims every
-due row. A send the Queue refuses is logged, and the next Cron Trigger finds the run.
+With `wakeQueue`, a write a `fetch` invocation makes that makes a run or a delivery due also
+sends a message, and the Queue starts the Worker's `queue` handler, which runs a tick. Such
+writes include an Event's arrival, a Cancel, a manual resume, and a Migration. Each invocation
+sends one message for the first such write, and one more for all the writes made while that
+send was in flight. A message names no run, since a tick claims every due row. A tick sends no
+message: a run that an Event's delivery starts is claimed by the same tick's next drain step. A
+send the Queue refuses is logged, and the next Cron Trigger finds the run.
+
+A Queue consumer waits up to `max_batch_timeout` seconds to fill a batch before it is invoked,
+and Cloudflare's default is 5. Set it to 0, as in the Wrangler configuration, so a wake runs
+its tick as soon as the message arrives. A wake carries no data, so a batch of one is as good
+as a batch of ten.
 
 The Cron Trigger is still required with a Queue. A Wait's deadline stays a row in the
 database, which the Cron Trigger's tick finds, so a Wait resumes within a minute of its
@@ -946,19 +957,35 @@ connection. It keeps claiming due rows until a claim finds none, so one tick wor
 backlog in turn. These limits apply to each tick:
 
 - **Wall time.** Cloudflare ends a Cron Trigger or Queue consumer invocation after 15
-  minutes. A tick claims new rows for its first 10 minutes and interrupts any pass still
-  running at 14 minutes. An interrupted pass hands its run back, due at once with no retry
-  counted, and the next tick resumes it from its last completed step.
+  minutes. A tick claims new rows for its first 10 minutes and cuts any pass still running
+  at 14 minutes. A cut pass hands its run back, due at once, and counts one failure against
+  the step it was running, so a step that outlasts every tick spends its retries and fails
+  its node instead of repeating its side effects on every tick. The next tick resumes the run
+  from its last completed step. A tick returns at most 30 seconds after its budget, whether or
+  not the cut passes' releases answered, and closing the database connection waits at most
+  five seconds more. A claim or a poll the database has not answered when the budget runs out
+  is abandoned.
 - **Leases.** A tick holds each run it claims under a five-minute lease and renews it every
   minute while a step runs. When the platform ends an invocation before its tick can hand a
   run back, a later tick claims the run once its lease expires, about six minutes later at
   most.
-- **CPU time.** Workers on the Paid plan get 30 seconds of CPU time per Cron Trigger or Queue
-  consumer invocation by default. Time spent waiting on the database or on an action's
-  requests is not counted. When ticks reach the limit, raise `limits.cpu_ms` in the Wrangler
-  configuration, up to 300,000.
+- **CPU time.** Cloudflare counts CPU time across the whole invocation; time spent waiting on
+  the database or on an action's requests is not counted. On the Paid plan a Queue consumer
+  invocation gets 30 seconds by default, which `limits.cpu_ms` in the Wrangler configuration
+  raises to at most 300,000 (five minutes), and Cloudflare's limits page lists 30 seconds for
+  a Cron Trigger that fires more often than hourly. A tick stops claiming once it has run 100
+  passes, which leaves each pass about 300 ms of CPU time in 30 seconds. A tick's record names
+  its passes and why it stopped (`stopped: "pass_limit"`); the next tick takes the rest.
 - **Statements.** Hyperdrive ends any statement after 60 seconds. Each statement a tick makes
   is short, and no transaction is held across a step.
+- **Retention.** Only the Cron Trigger's tick runs the retention sweep, once a minute. A
+  Queue tick does not, so it stays as short as the work its wake found.
+- **Observability.** Each tick writes one record, `Tick finished` or `Tick failed`, grouped
+  under `tick` with its trigger, its worker id (`cf-worker:cron:<id>` or
+  `cf-worker:queue:<id>`, which is also written on each row it leases) and its duration, with
+  its passes counted by kind and by result. A tick that fails to open the database, dies, or
+  fails to close rethrows after its record, so a Queue retries the batch. The tick runs in a
+  `wfgraph.worker.tick` span around the executor's `wfgraph.executor.tick` span.
 
 A Durable Object per run, whose alarm fires at the run's next deadline, would give Waits a
 resolution under a minute. Workflow Graph does not provide one. If ticks prove too slow for a

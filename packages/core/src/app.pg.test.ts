@@ -231,38 +231,33 @@ describePostgres("createWfGraphApp runner on PostgreSQL", () => {
     }
   });
 
-  it("logs a Layer graph that fails to build apart from a loop that died", async () => {
+  it("refuses to start a runner whose Layer graph fails to build, and closes the database", async () => {
     const loops = vi.spyOn(workerLoopModule, "runWorkerLoop");
-    const recorded = recordedLogger();
-    const runner = await createWfGraphRunner({
-      logger: recorded.logger,
-      encryption: ENCRYPTION,
-      persistence: {
-        open: async (cipher) => {
-          const instance = await wfPostgres({ url, schema }).open(cipher);
-          return {
-            ...instance,
-            repositories: Layer.merge(
-              instance.repositories,
-              Layer.effectDiscard(Effect.die(new Error("graph refused")))
-            ),
-          };
+    let closed = 0;
+    await expect(
+      createWfGraphRunner({
+        encryption: ENCRYPTION,
+        persistence: {
+          open: async (cipher) => {
+            const instance = await wfPostgres({ url, schema }).open(cipher);
+            return {
+              ...instance,
+              repositories: Layer.merge(
+                instance.repositories,
+                Layer.effectDiscard(Effect.die(new Error("graph refused")))
+              ),
+              close: async () => {
+                closed += 1;
+                await instance.close();
+              },
+            };
+          },
         },
-      },
-    });
-    await vi.waitFor(() =>
-      expect(
-        recorded.find(
-          "Could not build the Layer graph the worker loop runs on; this process advances no runs"
-        )
-      ).toHaveLength(1)
-    );
-    await runner.dispose();
+      })
+    ).rejects.toThrow("graph refused");
 
     expect(loops).not.toHaveBeenCalled();
-    expect(
-      recorded.find("The worker loop died; it restarts after a backoff")
-    ).toHaveLength(0);
+    expect(closed).toBe(1);
   });
 
   it("stops at once when its listener never connected", async () => {

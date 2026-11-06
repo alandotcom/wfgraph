@@ -105,16 +105,14 @@ its own `serve` or `connect`: see wfgraph-core/events.
   serves the API, and its `scheduled` and `queue` handlers each run a tick
   that advances the due runs and deliveries. A Worker runs no `runner` loop and
   `createWfGraphRunner` refuses Hyperdrive.
-- The Worker needs a Cron Trigger every minute (`[triggers] crons = ["* * * * *"]`);
-  without it nothing advances. A Queue is optional: pass its producer binding as
+- The Worker needs a Cron Trigger that fires every minute; without it nothing
+  advances. A Queue is optional: pass its producer binding as
   `request(env).wakeQueue` and make the same Worker its consumer, and a write
   that makes a run due starts a tick at once. Without the Queue, Events are
   delivered up to a minute late. A Wait's deadline resumes on the Cron
   Trigger, within a minute, with or without the Queue.
-- A tick claims for 10 minutes and interrupts passes at 14, under the
-  15-minute wall limit of a Cron Trigger or Queue consumer, with a 5-minute
-  lease. Heavy ticks may need `limits.cpu_ms` raised past the 30-second
-  default.
+- A tick's wall-time, lease and CPU bounds, and when to raise `limits.cpu_ms`:
+  `docs/embedding.md` ("Ticks and the platform limits").
 
 ## Workflow runs
 
@@ -163,7 +161,7 @@ Wrong: `createWfGraphApp({ ..., inngest: { id: "my-app", connect: true } })`,
 or `/api/inngest` registered as Workflow Graph's Inngest endpoint.
 
 Correct: drop the option, which no longer type-checks. Keep `inngest.send` by
-building `createWfGraphInngestFunctions({ client, extensions, app })` from
+building `createWfGraphInngestFunctions({ client, app })` from
 `@wfgraph/core/inngest` and registering them with your own Inngest client's
 `serve` or `connect`. Signing keys and Connect settings belong to that client.
 

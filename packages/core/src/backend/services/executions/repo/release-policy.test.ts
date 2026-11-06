@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  BUDGET_CUT_ERROR,
   countStepFailure,
   decideRelease,
   exitWakeForClaim,
   retriesSpent,
   STEP_RETRY_LIMIT,
+  stepFailureOf,
   sweptStepFailures,
   UNDATED_PARK_WAKE_AT,
 } from "#src/backend/services/executions/repo/release-policy";
@@ -57,6 +59,26 @@ describe("sweptStepFailures", () => {
         { id: "sched_3", state: "queued", runningStepId: null },
       ])
     ).toEqual([{ scheduleId: "sched_1", stepId: "step_a" }]);
+  });
+});
+
+describe("stepFailureOf", () => {
+  it("counts a thrown step and a budget cut's running step, and nothing for a drain or a cut between steps", () => {
+    expect(
+      stepFailureOf({
+        kind: "step_failed",
+        stepId: "step_a",
+        error: "down",
+        backoffMs: 1_000,
+      })
+    ).toEqual({ stepId: "step_a", error: "down" });
+    expect(
+      stepFailureOf({ kind: "interrupted", by: "budget", stepId: "step_a" })
+    ).toEqual({ stepId: "step_a", error: BUDGET_CUT_ERROR });
+    expect(
+      stepFailureOf({ kind: "interrupted", by: "budget", stepId: null })
+    ).toBeNull();
+    expect(stepFailureOf({ kind: "interrupted", by: "drain" })).toBeNull();
   });
 });
 
@@ -119,6 +141,36 @@ describe("decideRelease", () => {
         countedStep: null,
       })
     ).toEqual({ state: "queued", wakeAt: NOW, attempt: 0, lastError: null });
+  });
+
+  it("re-queues an interrupted pass at once, keeping the row's count, and records a budget cut's counted step", () => {
+    expect(
+      decideRelease({
+        outcome: { kind: "interrupted", by: "drain" },
+        attempt: 2,
+        now: NOW,
+        parks: [],
+        countedStep: null,
+      })
+    ).toEqual({ state: "queued", wakeAt: NOW, attempt: 2, lastError: null });
+    expect(
+      decideRelease({
+        outcome: { kind: "interrupted", by: "budget", stepId: "step_a" },
+        attempt: 2,
+        now: NOW,
+        parks: [],
+        countedStep: {
+          status: "failing",
+          failures: 1,
+          error: BUDGET_CUT_ERROR,
+        },
+      })
+    ).toEqual({
+      state: "queued",
+      wakeAt: NOW,
+      attempt: 2,
+      lastError: BUDGET_CUT_ERROR,
+    });
   });
 
   it("sleeps a parked run until its earliest deadline, and re-queues one holding an unconsumed wake", () => {

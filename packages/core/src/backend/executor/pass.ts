@@ -9,10 +9,11 @@
  * engine's fenced store writes and its parks on top. A pass that loses its
  * lease writes nothing after the write that found it out, its release
  * included. An interrupted pass releases its row due at once, counting no
- * failure.
+ * failure, unless its host's time budget cut it, which counts one against the
+ * step it was running.
  */
 
-import { Cause, Clock, Effect, Exit, FiberSet, Option } from "effect";
+import { Cause, Clock, Effect, Exit, Fiber, FiberSet, Option } from "effect";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import {
   failureFromCause,
@@ -111,6 +112,11 @@ export type UnavailableSeverity = "info" | "warn";
  * - `unavailable` with `ending: "failed"`: the database failed that write
  *   with `error`. The release counted a failure against the row and re-queued
  *   it after a backoff, so a later pass tries the write again.
+ * - `budget_cut`: the pass was still running at `budgetEndsAt`. It was
+ *   interrupted, and its release re-queued the row at once and counted one
+ *   failure against `stepId`, the step it was running, or nothing when it was
+ *   between steps. A release the database failed or did not answer in time
+ *   leaves the row leased, and the claim that sweeps it counts that failure.
  */
 export type PassResult =
   | { kind: "ended" }
@@ -133,7 +139,8 @@ export type PassResult =
       ending: "failed";
       error: DatabaseError;
       schedule: ReleasedSchedule;
-    };
+    }
+  | { kind: "budget_cut"; stepId: string | null };
 
 /**
  * How a release went: written, or refused because the schedule row no longer
@@ -478,7 +485,20 @@ export type LeasedPassOptions = {
    * failed. Defaults to `retryBackoffMs`.
    */
   backoffMs?: ((failures: number) => number) | undefined;
+  /**
+   * When the host's time budget for this pass runs out, such as the end of a
+   * Worker tick. A pass still running then is interrupted and answers
+   * `budget_cut`. Omitted, the pass runs until its body ends or its caller
+   * interrupts it, which releases its row as a graceful drain.
+   */
+  budgetEndsAt?: Date | undefined;
 };
+
+/**
+ * How long an interrupted pass waits for its release, so a database that
+ * stopped answering cannot hold a stopping worker past its platform's limit.
+ */
+const INTERRUPTED_RELEASE_TIMEOUT_MS = 10_000;
 
 /** Why a body that did not end on its own stopped, as the release reads it. */
 type Failure =
@@ -492,8 +512,8 @@ const OWNER_REFUSED = { kind: "fence_refused", fence: "owner" } as const;
  * kind, and answers what it did. A database failure outside the body leaves
  * the row leased, so a later claim sweeps it once the lease expires. An
  * interrupted pass releases its row as `interrupted` before the interruption
- * completes, so a worker that stops gracefully spends no retry of the step it
- * was running.
+ * completes: a worker that stops gracefully spends no retry of the step it
+ * was running, and a pass its `budgetEndsAt` cut spends one.
  */
 export const leasedPass = Effect.fn("wfgraph.executor.pass")(function* <R>(
   claimed: ClaimedSchedule,
@@ -542,30 +562,84 @@ const runPassBody = Effect.fnUntraced(function* <R>(
   );
 });
 
+/**
+ * Runs the opened pass to its release. An interruption from the caller
+ * releases the row as a graceful drain. With `budgetEndsAt`, the pass runs in
+ * a fiber of its own, and one still running at that moment has the step it is
+ * running read before it is interrupted, since interrupting an Effect step
+ * marks the step finished. Its release then counts a failure against that
+ * step.
+ */
 function runOpenedPass<Port, P extends PassCore<ClaimedSchedule, Port>, R>(
   pass: P,
   body: BodyOver<P, Port, R>,
   options: LeasedPassOptions
 ): Effect.Effect<PassResult, DatabaseError, R> {
-  return settlePass(pass, body, options).pipe(
-    Effect.onInterrupt(() => releaseInterrupted(pass))
+  let interruption: Extract<PassOutcome, { kind: "interrupted" }> = {
+    kind: "interrupted",
+    by: "drain",
+  };
+  const settled = settlePass(pass, body, options).pipe(
+    Effect.onInterrupt(() =>
+      Effect.suspend(() => releaseInterrupted(pass, interruption))
+    )
+  );
+  const { budgetEndsAt } = options;
+  if (budgetEndsAt === undefined) return settled;
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const fiber = yield* Effect.forkScoped(settled);
+      const exit = yield* Fiber.await(fiber).pipe(
+        Effect.timeoutOrElse({
+          duration: Math.max(
+            0,
+            budgetEndsAt.getTime() - options.now().getTime()
+          ),
+          orElse: () => Effect.succeed(undefined),
+        })
+      );
+      if (exit !== undefined) return yield* exit;
+      const stepId = pass.state.runningStep();
+      interruption = { kind: "interrupted", by: "budget", stepId };
+      yield* Fiber.interrupt(fiber);
+      const cut: PassResult = { kind: "budget_cut", stepId };
+      return cut;
+    })
   );
 }
 
 /**
- * Hands an interrupted pass's row back, due at once and counting nothing. A
- * pass that already released its row, ended its subject or lost its lease
- * finds the fence refused, and writes nothing. A release the database fails is
- * logged, and the row is swept once its lease expires.
+ * Hands an interrupted pass's row back, due at once, counting what
+ * `interruption` says to. A pass that already released its row, ended its
+ * subject or lost its lease finds the fence refused, and writes nothing. A
+ * release the database fails, or does not answer within
+ * `INTERRUPTED_RELEASE_TIMEOUT_MS`, is logged, and the row is swept once its
+ * lease expires.
  */
-function releaseInterrupted(pass: AnyPass): Effect.Effect<void> {
-  return pass.release({ kind: "interrupted" }).pipe(
+function releaseInterrupted(
+  pass: AnyPass,
+  interruption: Extract<PassOutcome, { kind: "interrupted" }>
+): Effect.Effect<void> {
+  const notReleased = (error: unknown) =>
+    Effect.logWarning(
+      "Could not release an interrupted pass; its row is claimed again once its lease expires"
+    ).pipe(
+      Effect.annotateLogs({
+        ...subjectAnnotation(pass.claimed),
+        interruption: { by: interruption.by },
+        error,
+      })
+    );
+  // Interruptible, so the timeout can abandon a write the database never
+  // answers even though an interruption's finalizer runs uninterruptibly.
+  return Effect.interruptible(pass.release(interruption)).pipe(
     Effect.asVoid,
-    Effect.catchTag("DatabaseError", (error) =>
-      Effect.logWarning(
-        "Could not release an interrupted pass; its row is claimed again once its lease expires"
-      ).pipe(Effect.annotateLogs({ ...subjectAnnotation(pass.claimed), error }))
-    )
+    Effect.catchTag("DatabaseError", notReleased),
+    Effect.timeoutOrElse({
+      duration: INTERRUPTED_RELEASE_TIMEOUT_MS,
+      orElse: () =>
+        notReleased(`no answer within ${INTERRUPTED_RELEASE_TIMEOUT_MS} ms`),
+    })
   );
 }
 
@@ -734,8 +808,8 @@ export function passAnnotations(claimed: ClaimedSchedule, workerId: string) {
 
 /**
  * The pass's one record, written only for an outcome the body's own records
- * do not report: a retry, spent retries, a refused fence, or a row with
- * nothing to run. A pass that ended or parked its row leaves the record to the
+ * do not report: a retry, spent retries, a refused fence, a row with nothing
+ * to run, or a budget cut. A pass that ended or parked its row leaves the record to the
  * engine's run record or the delivery's own.
  */
 function logPassRecord(input: {
@@ -814,6 +888,14 @@ function passRecord(result: PassResult): PassRecord | null {
             },
             error: result.error,
           };
+    case "budget_cut":
+      return {
+        level: "Warn",
+        outcome: omitUndefined({
+          kind: result.kind,
+          step: result.stepId ?? undefined,
+        }),
+      };
     case "ended":
     case "parked":
       break;

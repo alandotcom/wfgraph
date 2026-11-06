@@ -8,6 +8,7 @@
  */
 
 import { Cause, Exit, Option } from "effect";
+import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { sendEvent } from "#src/backend/services/executions/send-event";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -64,6 +65,14 @@ export type WfGraphEvents = {
    * cancels or wakes.
    */
   send: (event: WfGraphEventInput) => Promise<WfGraphEventReceipt>;
+  /**
+   * The names host-declared Events arrive under: each host Event's
+   * `source.event`, which is the Event's own name unless it arrives on an
+   * umbrella source, once each. They are read from the same assembled
+   * extensions `send` resolves a name against. An Event owned by an
+   * integration arrives through its Connection and is not listed.
+   */
+  readonly sourceNames: readonly string[];
 };
 
 /**
@@ -73,6 +82,15 @@ export type WfGraphEvents = {
  */
 export class WfGraphEventRefused extends Error {
   override readonly name = "WfGraphEventRefused";
+}
+
+/**
+ * Whether `error` is a `WfGraphEventRefused`, read from its `name`. A bundled
+ * entry such as `@wfgraph/core/inngest` can hold its own copy of the class,
+ * where `instanceof` against another copy answers false.
+ */
+export function isWfGraphEventRefused(error: unknown): error is Error {
+  return error instanceof Error && error.name === "WfGraphEventRefused";
 }
 
 /**
@@ -97,8 +115,16 @@ export function assertValidEventsKey(
   }
 }
 
-export function createHostEvents(runtime: WfGraphRuntime): WfGraphEvents {
+/**
+ * The host's send over `runtime`. `extensions` is the set the runtime was
+ * built on, which `sourceNames` is read from.
+ */
+export function createHostEvents(
+  runtime: WfGraphRuntime,
+  extensions: ExtensionSet
+): WfGraphEvents {
   return {
+    sourceNames: extensions.hostEventSources,
     send: async (event) => {
       // An exit rather than a rejected promise, so a defect, such as a send
       // after the app was disposed, is answered as the storage failure it is

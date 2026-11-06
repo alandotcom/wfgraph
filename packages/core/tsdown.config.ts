@@ -1,14 +1,10 @@
 import { defineConfig } from "tsdown";
 
-// Builds the publishable @wfgraph/core library: `src/index.ts` is the one
-// host-facing entry, re-exporting the authoring vocabulary, `createWfGraphApp`
-// and `createRequestListener` from the internal `app.ts` and `node.ts`
-// modules; `src/plugin.ts` is what a package of integrations builds against,
-// `src/testing.ts` is what that package's own suite drives an action with,
-// `src/migrate.ts` applies the migrations without building an app, and
-// `src/inngest.ts` is the one entry that imports the optional `inngest` peer.
-// Every entry here is named in the "exports" map in package.json, so the
-// emitted file names have to keep matching that map.
+// Builds the publishable @wfgraph/core library, one output file per entry.
+// Each entry is named in the "exports" map in package.json, so the emitted
+// file names have to keep matching that map; `docs/embedding.md` ("Package
+// exports") says what each entry is for. `src/inngest.ts` is the one entry
+// that imports the optional `inngest` peer.
 export default defineConfig({
   entry: [
     "src/index.ts",

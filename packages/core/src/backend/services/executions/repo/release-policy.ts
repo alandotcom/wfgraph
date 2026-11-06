@@ -54,6 +54,31 @@ export function retryBackoffMs(failures: number): number {
 export const LEASE_EXPIRED_ERROR =
   "The worker running this step stopped renewing its lease";
 
+/** The error a release records on a step that a host's time budget cut. */
+export const BUDGET_CUT_ERROR =
+  "The worker's time budget ran out while this step ran";
+
+/**
+ * The step failure a release counts for `outcome`: the step that threw for a
+ * `step_failed` outcome, the step that was running for a budget cut, and
+ * otherwise none.
+ */
+export function stepFailureOf(
+  outcome: PassOutcome
+): { stepId: string; error: string } | null {
+  if (outcome.kind === "step_failed") {
+    return { stepId: outcome.stepId, error: outcome.error };
+  }
+  if (
+    outcome.kind === "interrupted" &&
+    outcome.by === "budget" &&
+    outcome.stepId !== null
+  ) {
+    return { stepId: outcome.stepId, error: BUDGET_CUT_ERROR };
+  }
+  return null;
+}
+
 /** The wake a claim writes onto a park whose deadline passed. */
 export const TIMEOUT_WAKE: ParkWake = { kind: "timeout" };
 
@@ -314,8 +339,8 @@ export type ReleaseDecision = ReleasedSchedule & { lastError: string | null };
 /**
  * The schedule row a release writes, decided from the pass's outcome, the
  * run's own failure count, the run's wait rows as they stand once the schedule
- * row is locked, and, for a `step_failed` outcome, the memo row the release
- * counted that failure on.
+ * row is locked, and the memo row the release counted a step failure on, for
+ * an outcome `stepFailureOf` answers one for.
  *
  * A row `resuming` with a wake holds a wake no pass has consumed, because the
  * pass that consumes one settles the row out of `resuming`.
@@ -350,11 +375,13 @@ export function decideRelease(input: {
     case "fence_refused":
       return { state: "queued", wakeAt: now, attempt: 0, lastError: null };
     case "interrupted":
+      // A budget cut's step is retried at once, since the cut says nothing
+      // about the vendor the step calls.
       return {
         state: "queued",
         wakeAt: now,
         attempt: input.attempt,
-        lastError: null,
+        lastError: input.countedStep?.error ?? null,
       };
     default:
       return decideParkedRelease(input.parks, now);

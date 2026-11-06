@@ -168,17 +168,25 @@ export type ClaimLane = { kind: ExecutionScheduleKind; limit: number };
  * - `fence_refused`: a version fence refused a write because a Migration moved
  *   the run. Nothing failed, so the release re-queues the run at once and
  *   counts nothing, and the next pass loads the version the run now pins.
- * - `interrupted`: the pass was interrupted before it settled, as a worker's
- *   dispose interrupts a pass still running when its drain ends. Nothing
- *   failed, so the release re-queues the run at once and counts nothing,
- *   against the run or against the step that was running.
+ * - `interrupted` with `by: "drain"`: a worker stopping gracefully interrupted
+ *   the pass, as a dispose does to a pass still running when its drain ends.
+ *   Nothing failed, so the release re-queues the row at once and counts
+ *   nothing, against the row or against the step that was running.
+ * - `interrupted` with `by: "budget"`: the pass was still running when its
+ *   host's time budget ran out, as a Worker tick's does. The release re-queues
+ *   the row at once and counts one failure on the memo row of `stepId`, the
+ *   step the pass was running, as a claim counts one against a step whose
+ *   lease expired under it, so a step that outlasts every budget spends its
+ *   retries and fails its node. A pass cut between steps (`stepId` null)
+ *   counts nothing.
  */
 export type PassOutcome =
   | { kind: "parked" }
   | { kind: "step_failed"; stepId: string; error: string; backoffMs: number }
   | { kind: "body_failed"; error: string; backoffMs: number }
   | { kind: "fence_refused" }
-  | { kind: "interrupted" };
+  | { kind: "interrupted"; by: "drain" }
+  | { kind: "interrupted"; by: "budget"; stepId: string | null };
 
 /** The schedule row a release left behind. */
 export type ReleasedSchedule = {

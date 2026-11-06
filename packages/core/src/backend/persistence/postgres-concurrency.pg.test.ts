@@ -549,9 +549,9 @@ describePostgres("PostgreSQL concurrency", () => {
     );
     expect(history).toHaveLength(1);
   });
-  // One arrival is one run however many callers replay it. The caller is an
-  // Inngest step whose retry re-runs the whole call, and `unlimited` compares
-  // nothing. The unique index on `(workflow_id, delivery_id)` is the only thing
+  // One arrival is one run however many callers replay it. The caller is a
+  // delivery pass, which a retry or an expired lease runs again from the
+  // start, and `unlimited` compares nothing. The unique index on `(workflow_id, delivery_id)` is the only thing
   // standing between a burst of replays and a row each.
   it("opens one run per arrival when a delivery is replayed at once", async () => {
     const racers = await openRacers(6);

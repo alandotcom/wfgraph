@@ -68,7 +68,7 @@ export const myService = defineIntegration({
       // Optional. `input` draws the form, so this states what a schema cannot.
       // Workflow Graph checks each `key` against the schema.
       configFields: [{ key: "text", placeholder: "Something to send" }],
-      // One bag, the way an Inngest handler takes one. Destructure what you use.
+      // One bag holds every value the handler reads. Destructure what you use.
       handler: Effect.fn(function* (bag) {
         // Credentials arrive as an effect, so a step reads them only when it
         // has work to do. Two yields fetch once.
@@ -139,9 +139,9 @@ editor uses it to tell a filled secret from a send-only Connection.
 
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,
 `step`, and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`,
-`integrationId`. `defineAction` calls its handler the same way. One object rather than two
-parameters is Inngest's shape, and it takes a later value with no new position for an author
-to learn.
+`integrationId`. `defineAction` calls its handler the same way. Every value is a key on that
+one object, so a value added later is one more key, and no argument an author wrote changes
+position.
 
 ## What is remembered across a replay
 

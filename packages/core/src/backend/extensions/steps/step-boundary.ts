@@ -20,8 +20,8 @@ import type { StepResult } from "@wfgraph/shared/actions/step-result";
  * The one argument every handler is called with: its config, and the run it is
  * part of.
  *
- * One bag rather than two parameters, which is the shape Inngest uses and the
- * shape a later value can be added to without moving anything an author wrote.
+ * One object holds every value, so a later value is one more key and nothing
+ * an author wrote moves.
  * `buildStep` adds the credential reads and `step` to this, and what it builds
  * is what a handler written either way receives.
  */

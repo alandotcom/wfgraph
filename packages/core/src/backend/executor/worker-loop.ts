@@ -1,19 +1,19 @@
 /**
  * The database executor's worker loop, the drain step it repeats, and `tick`,
  * drain steps within a budget for a host with no long-lived process. A
- * drain step claims due schedule rows in lanes, one lane per kind, each with
- * its own slots (`concurrency` for runs, `deliveryConcurrency` for
- * deliveries), so a long run never holds back an Event's delivery; one claim
- * answers every lane. It starts one leased pass per claimed row. The loop runs
- * a drain step every `pollMs`, sooner when a row one of its own passes
- * released falls due or its `wake` is called. The loop and `tick` both keep
- * the event inbox through `inboxUpkeep`: a poll that schedules the rows a host
- * inserted itself, and a sweep that deletes settled rows past `retentionMs`.
- * The loop's Effect succeeds once `signal` has aborted and every pass in
- * flight has ended, or once `drainMs` has passed and the passes still running
- * are interrupted. A pass that fails leaves its row leased, so a later claim
- * sweeps it once the lease expires. An interrupted pass releases its row due
- * at once and counts no failure.
+ * drain step claims due schedule rows in lanes, one lane per schedule kind,
+ * each with the slots `LaneConcurrency` gives it, so a long run never holds
+ * back an Event's delivery; one claim answers every lane. It starts one leased
+ * pass per claimed row. The loop runs a drain step every `pollMs`, sooner when
+ * a row one of its own passes released falls due or its `wake` is called. The
+ * loop and `tick` both keep the event inbox through `inboxUpkeep`: a poll that
+ * schedules the rows a host inserted itself, and a sweep that deletes settled
+ * rows past `retentionMs`. The loop's Effect succeeds once `signal` has
+ * aborted and every pass in flight has ended, or once `drainMs` has passed
+ * and the passes still running are interrupted. A pass that fails leaves its
+ * row leased, so a later claim sweeps it once the lease expires. A pass the
+ * loop's drain interrupts releases its row due at once and counts no failure;
+ * a pass a tick's budget cuts counts one against the step it was running.
  */
 
 import {
@@ -26,8 +26,9 @@ import {
   FiberSet,
   type Scope,
 } from "effect";
-import { countBy, groupBy } from "es-toolkit/array";
+import { countBy, groupBy, sortBy } from "es-toolkit/array";
 import { sumBy } from "es-toolkit/math";
+import { mapKeys, mapValues } from "es-toolkit/object";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { WorkflowEntities } from "#src/backend/engine/entities";
@@ -95,12 +96,16 @@ export type DrainOptions<R> = {
  *
  * - `passed`: the pass ran to its end and answered `result`.
  * - `failed`: the pass failed or died, which was logged. Its row stays leased.
- * - `interrupted`: the pass was still running at the drain step's deadline.
- *   It released its row due at once, counting no failure.
+ * - `cut`: the pass was still running at the drain step's deadline. It
+ *   released its row due at once, counting one failure against the step it
+ *   was running; see `PassResult`'s `budget_cut`.
+ * - `interrupted`: the caller interrupted the pass, as a stopping loop's
+ *   drain does. It released its row due at once, counting no failure.
  */
 export type DrainedPass =
   | { kind: "passed"; claimed: ClaimedSchedule; result: PassResult }
   | { kind: "failed"; claimed: ClaimedSchedule }
+  | { kind: "cut"; claimed: ClaimedSchedule }
   | { kind: "interrupted"; claimed: ClaimedSchedule };
 
 /** One pass a drain step started: the row it claimed, and the pass's fiber. */
@@ -127,7 +132,7 @@ function raceAbandon<A, E, R>(
  * One drain step: one claim of up to each lane's `limit` due rows of the
  * lane's kind, and one pass over each claimed row in the caller's scope,
  * started lane by lane in `lanes` order. A pass still running at `deadline`
- * is interrupted, and closing the caller's scope interrupts every pass still
+ * is cut, and closing the caller's scope interrupts every pass still
  * running. A claim the database fails is logged and claims nothing, and so is
  * a claim still waiting on the database when `abandon` succeeds. A claim that
  * commits after it was abandoned leaves its rows leased until their leases
@@ -221,27 +226,23 @@ const drainPass = Effect.fnUntraced(function* <R>(
   deadline: Date | undefined
 ): Effect.fn.Return<DrainedPass, never, ExecutionRepo | R> {
   const startedAt = yield* Clock.currentTimeMillis;
-  const interrupted = Effect.succeed<DrainedPass>({
-    kind: "interrupted",
-    claimed,
-  });
   const pass = Effect.yieldNow.pipe(
-    Effect.andThen(leasedPass(claimed, options.bodies, options)),
-    Effect.map((result): DrainedPass => ({ kind: "passed", claimed, result }))
+    Effect.andThen(
+      leasedPass(claimed, options.bodies, {
+        ...options,
+        budgetEndsAt: deadline,
+      })
+    ),
+    Effect.map((result): DrainedPass =>
+      result.kind === "budget_cut"
+        ? { kind: "cut", claimed }
+        : { kind: "passed", claimed, result }
+    )
   );
-  const bounded =
-    deadline === undefined
-      ? pass
-      : pass.pipe(
-          Effect.timeoutOrElse({
-            duration: Math.max(0, deadline.getTime() - options.now().getTime()),
-            orElse: () => interrupted,
-          })
-        );
-  return yield* bounded.pipe(
+  return yield* pass.pipe(
     Effect.catchCause((cause) =>
       Cause.hasInterruptsOnly(cause)
-        ? interrupted
+        ? Effect.succeed<DrainedPass>({ kind: "interrupted", claimed })
         : Effect.gen(function* () {
             const ms = (yield* Clock.currentTimeMillis) - startedAt;
             const annotations = passAnnotations(claimed, options.workerId);
@@ -386,18 +387,48 @@ export function inboxUpkeep(input: {
   };
 }
 
+/** A kind of schedule row, which is also the kind of lane that claims it. */
+export type ScheduleKind = ClaimedSchedule["kind"];
+
+/**
+ * How many passes of each schedule kind run at once, each kind in a lane of
+ * its own, so a run never holds a delivery's slot.
+ */
+export type LaneConcurrency = { readonly [K in ScheduleKind]: number };
+
+/**
+ * The order a drain step starts its lanes' passes in, lowest first.
+ * Deliveries go first, so an arrival's pass starts ahead of the runs it may
+ * wake. A schedule kind added to `ClaimedSchedule` fails to compile here,
+ * in `LaneConcurrency`'s resolver and in `PassBodies` until it has an entry
+ * in each.
+ */
+const LANE_ORDER: { readonly [K in ScheduleKind]: number } = {
+  delivery: 0,
+  run: 1,
+};
+
+/** One lane of claims: the schedule kind it claims, and its slots. */
+type Lane = { kind: ScheduleKind; concurrency: number };
+
+function lanesFor(concurrency: LaneConcurrency): Lane[] {
+  const lanes = mapValues(LANE_ORDER, (order, kind) => ({
+    kind,
+    order,
+    concurrency: concurrency[kind],
+  }));
+  return sortBy(Object.values(lanes), [(lane) => lane.order]).map(
+    ({ kind, concurrency: slots }) => ({ kind, concurrency: slots })
+  );
+}
+
 /** What every drain step of a loop or a tick is built from. */
 type DrainSettings = {
   /** Builds the action surface for one pass; see `runBody`. */
   actions: () => WorkflowActions;
   entities?: WorkflowEntities | undefined;
-  /** How many runs' passes run at once. */
-  concurrency: number;
-  /**
-   * How many deliveries' passes run at once, in a lane beside the runs', so
-   * a run never holds a delivery's slot.
-   */
-  deliveryConcurrency: number;
+  /** How many passes of each schedule kind run at once. */
+  concurrency: LaneConcurrency;
   /** Defaults to 60 s. */
   leaseMs?: number | undefined;
   /** Defaults to 20 s. */
@@ -472,101 +503,194 @@ function drainOptionsFor(
 export type TickOptions = DrainSettings & {
   /**
    * How long the tick may run, in milliseconds. A pass still running when it
-   * runs out is interrupted and releases its row due at once, counting no
-   * failure, and so is the retention sweep, so the budget stays under the
-   * platform's own limit.
+   * runs out is cut: it releases its row due at once and counts one failure
+   * against the step it was running, so a step longer than every budget
+   * spends its retries instead of running again on every tick. A claim, a
+   * poll or a retention sweep still waiting on the database then is abandoned.
+   * The tick returns at most `TICK_RELEASE_MARGIN_MS` later, after the cut
+   * passes' releases, so the budget stays under the platform's own limit.
    */
   budgetMs: number;
   /**
    * How long after the tick starts it may begin another drain step, in
    * milliseconds, at most `budgetMs`, which is its default. The first drain
    * step always starts. A shorter window leaves a pass claimed late in the
-   * tick the difference to finish in before the budget interrupts it part way
-   * through a step.
+   * tick the difference to finish in before the budget cuts it.
    */
   claimWindowMs?: number | undefined;
+  /**
+   * How many passes the tick runs before it stops claiming, which bounds the
+   * CPU time a tick spends, since a platform such as Cloudflare limits CPU
+   * time per invocation as well as wall time. A drain step started under the
+   * limit runs all its passes, so a tick may run up to one drain step's worth
+   * more. Omitted, only the claim window and the budget bound the tick.
+   */
+  passLimit?: number | undefined;
+  /** Whether the tick runs the event inbox's retention sweep. */
+  sweep: boolean;
 };
 
-/** What the passes of one tick came to, by `DrainedPass` kind. */
-export type TickOutcome = Record<DrainedPass["kind"], number>;
+/**
+ * Why a tick stopped claiming: a claim found nothing due (`idle`), the claim
+ * window passed, the tick ran `passLimit` passes, or the budget ran out.
+ */
+export type TickStop = "idle" | "claim_window" | "pass_limit" | "budget";
 
-/** One lane of claims: the schedule kind it claims, and its slots. */
-type Lane = { kind: ClaimLane["kind"]; concurrency: number };
+/** What the passes of one tick came to. */
+export type TickOutcome = {
+  /** How many passes ran, by the schedule kind of the row each one ran. */
+  passes: Record<ScheduleKind, number>;
+  /** How many passes ended each way, by `DrainedPass` kind. */
+  results: Record<DrainedPass["kind"], number>;
+  stopped: TickStop;
+};
 
-/** Deliveries first, so an arrival's pass starts ahead of the runs it may wake. */
-function lanesFor(settings: DrainSettings): Lane[] {
-  return [
-    { kind: "delivery", concurrency: settings.deliveryConcurrency },
-    { kind: "run", concurrency: settings.concurrency },
-  ];
+/**
+ * How long past its budget a tick waits for its cut passes' releases and its
+ * sweep to end before it returns without them. It is longer than the time a
+ * pass gives its interrupted release.
+ */
+const TICK_RELEASE_MARGIN_MS = 30_000;
+
+function tickOutcome(
+  drained: readonly DrainedPass[],
+  stopped: TickStop
+): TickOutcome {
+  const byKind = countBy(drained, (pass) => pass.claimed.kind);
+  const byResult = countBy(drained, (pass) => pass.kind);
+  return {
+    passes: mapValues(LANE_ORDER, (_order, kind) => byKind[kind] ?? 0),
+    results: {
+      passed: byResult.passed ?? 0,
+      failed: byResult.failed ?? 0,
+      cut: byResult.cut ?? 0,
+      interrupted: byResult.interrupted ?? 0,
+    },
+    stopped,
+  };
 }
 
 /**
  * Drain steps within a budget, for a host whose platform invokes it, such as
  * a Cron Trigger or a Queue consumer on a Cloudflare Worker. It polls the
- * inbox and starts the retention sweep beside the passes, then repeats a drain
- * step: one claim of up to `deliveryConcurrency` due deliveries and up to
- * `concurrency` due runs, and one pass over each, all of which end before the
- * next claim. It stops claiming once a claim finds nothing due or the claim
- * window has passed, and succeeds once every pass and the sweep have ended or
- * the budget has run out. A row a pass of the tick made due, such as a run an
- * Event's delivery started, is claimed by the next drain step. It sleeps for
- * nothing, so the platform's next invocation is what finds the rows due later.
+ * inbox and, with `sweep`, starts the retention sweep beside the passes, then
+ * repeats a drain step: one claim of up to each lane's concurrency in due
+ * rows, and one pass over each, all of which end before the next claim. It
+ * stops claiming once a claim finds nothing due, the claim window has passed,
+ * the tick has run `passLimit` passes, or the budget has run out, and succeeds
+ * once every pass and the sweep have ended or been cut. A row a pass of the
+ * tick made due, such as a run an Event's delivery started, is claimed by the
+ * next drain step. It sleeps for nothing, so the platform's next invocation is
+ * what finds the rows due later.
+ *
+ * The drain steps run in lock step, where the loop refills a lane's slot as
+ * soon as one of its passes ends. The loop's refill is driven by its sleep and
+ * its wakes, which a tick has neither of, and lock step is what tells a tick
+ * that nothing more is due: a claim made after every pass ended that finds no
+ * row. On a backend with one slot per lane the two differ only while one
+ * lane's pass outlasts the other's.
  */
-export function tick(
+export const tick = Effect.fn("wfgraph.executor.tick")(function* (
   options: TickOptions
-): Effect.Effect<TickOutcome, never, ExecutorServices> {
+): Effect.fn.Return<TickOutcome, never, ExecutorServices> {
   const drain = drainOptionsFor(options);
-  const lanes = lanesFor(options).map((lane) => ({
+  const lanes = lanesFor(options.concurrency).map((lane) => ({
     kind: lane.kind,
     limit: lane.concurrency,
   }));
-  return withExecutorLogCategory(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const startedAt = drain.now();
-        const deadline = new Date(startedAt.getTime() + options.budgetMs);
-        const claimUntil =
-          startedAt.getTime() +
-          Math.min(options.claimWindowMs ?? options.budgetMs, options.budgetMs);
-        const upkeep = inboxUpkeep({
-          pollMs: 0,
-          retentionMs: options.retentionMs,
+  const startedAt = drain.now();
+  const deadline = new Date(startedAt.getTime() + options.budgetMs);
+  const claimUntil =
+    startedAt.getTime() +
+    Math.min(options.claimWindowMs ?? options.budgetMs, options.budgetMs);
+  const passLimit = options.passLimit ?? Number.POSITIVE_INFINITY;
+  const untilDeadline = () =>
+    Math.max(0, deadline.getTime() - drain.now().getTime());
+  // Succeeds once the budget has run out, so a claim or a poll the database
+  // has not answered by then is abandoned.
+  const budgetRunsOut = Effect.suspend(() => Effect.sleep(untilDeadline()));
+  yield* Effect.annotateCurrentSpan({
+    "wfgraph.executor.worker": drain.workerId,
+    "wfgraph.executor.budget_ms": options.budgetMs,
+    "wfgraph.executor.sweep": options.sweep,
+  });
+
+  const drained: DrainedPass[] = [];
+  let stopped: TickStop = "budget";
+  const drainSteps = Effect.scoped(
+    Effect.gen(function* () {
+      const upkeep = inboxUpkeep({
+        pollMs: 0,
+        retentionMs: options.retentionMs,
+      });
+      yield* raceAbandon(upkeep.poll(startedAt), budgetRunsOut, undefined);
+      const sweep = options.sweep ? upkeep.sweepDue(startedAt) : undefined;
+      const sweeping =
+        sweep === undefined ? undefined : yield* Effect.forkScoped(sweep);
+      for (;;) {
+        const passes = yield* drainOnce(drain, {
+          lanes,
+          deadline,
+          abandon: budgetRunsOut,
         });
-        yield* upkeep.poll(startedAt);
-        const sweep = upkeep.sweepDue(startedAt);
-        const sweeping =
-          sweep === undefined ? undefined : yield* Effect.forkScoped(sweep);
-        const drained: DrainedPass[] = [];
-        for (;;) {
-          const passes = yield* drainOnce(drain, { lanes, deadline });
-          if (passes.length === 0) break;
-          const step = yield* Effect.forEach(passes, (pass) =>
-            Fiber.join(pass.fiber)
-          );
-          drained.push(...step);
-          if (drain.now().getTime() >= claimUntil) break;
+        if (passes.length === 0) {
+          stopped = untilDeadline() === 0 ? "budget" : "idle";
+          break;
         }
-        if (sweeping !== undefined) {
-          // Closing the tick's scope interrupts a sweep that outlasts it.
-          yield* Fiber.await(sweeping).pipe(
-            Effect.timeoutOrElse({
-              duration: Math.max(0, deadline.getTime() - drain.now().getTime()),
-              orElse: () => Effect.void,
-            })
-          );
+        const step = yield* Effect.forEach(passes, (pass) =>
+          Fiber.join(pass.fiber)
+        );
+        drained.push(...step);
+        if (untilDeadline() === 0) {
+          stopped = "budget";
+          break;
         }
-        const counts = countBy(drained, (pass) => pass.kind);
-        const outcome: TickOutcome = {
-          passed: counts.passed ?? 0,
-          failed: counts.failed ?? 0,
-          interrupted: counts.interrupted ?? 0,
-        };
-        return outcome;
-      })
-    )
+        if (drained.length >= passLimit) {
+          stopped = "pass_limit";
+          break;
+        }
+        if (drain.now().getTime() >= claimUntil) {
+          stopped = "claim_window";
+          break;
+        }
+      }
+      if (sweeping !== undefined) {
+        // Closing the scope interrupts a sweep that outlasts the budget.
+        yield* Fiber.await(sweeping).pipe(
+          Effect.timeoutOrElse({
+            duration: untilDeadline(),
+            orElse: () => Effect.void,
+          })
+        );
+      }
+    })
   );
-}
+  // Bounds what the budget alone cannot, such as a cut pass's release that
+  // the database never answers. Closing the scope interrupts whatever still
+  // runs.
+  yield* drainSteps.pipe(
+    Effect.timeoutOrElse({
+      duration: options.budgetMs + TICK_RELEASE_MARGIN_MS,
+      orElse: () =>
+        Effect.sync(() => {
+          stopped = "budget";
+        }),
+    })
+  );
+  const outcome = tickOutcome(drained, stopped);
+  yield* Effect.annotateCurrentSpan({
+    "wfgraph.executor.stopped": outcome.stopped,
+    ...mapKeys(
+      outcome.passes,
+      (_count, kind) => `wfgraph.executor.passes.${kind}`
+    ),
+    ...mapKeys(
+      outcome.results,
+      (_count, result) => `wfgraph.executor.results.${result}`
+    ),
+  });
+  return outcome;
+}, withExecutorLogCategory);
 
 export function runWorkerLoop(
   options: WorkerLoopOptions
@@ -591,7 +715,7 @@ export function runWorkerLoop(
   // Per lane, how many of its passes are running, and whether its last claim
   // took every free slot, so a due row of its kind may be waiting. A lane's
   // claim takes at most its remaining slots.
-  const lanes = lanesFor(options).map((lane) => ({
+  const lanes = lanesFor(options.concurrency).map((lane) => ({
     ...lane,
     running: 0,
     full: false,

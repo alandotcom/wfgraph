@@ -763,8 +763,7 @@ describe("createWfGraphApp runner", () => {
 
     expect(loops).toHaveBeenCalledTimes(1);
     expect(loops.mock.calls[0]?.[0]).toMatchObject({
-      concurrency: 1,
-      deliveryConcurrency: 1,
+      concurrency: { run: 1, delivery: 1 },
       pollMs: 250,
       leaseMs: undefined,
       heartbeatMs: undefined,
@@ -790,8 +789,7 @@ describe("createWfGraphApp runner", () => {
     await app.dispose();
 
     expect(loops.mock.calls[0]?.[0]).toMatchObject({
-      concurrency: 4,
-      deliveryConcurrency: 2,
+      concurrency: { run: 4, delivery: 2 },
       pollMs: 50,
       leaseMs: 9_000,
       heartbeatMs: 3_000,

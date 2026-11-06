@@ -57,6 +57,7 @@ import {
   type ExecutionSchedule,
   type InboxEvent,
 } from "#src/backend/services/executions/repo";
+import { BUDGET_CUT_ERROR } from "#src/backend/services/executions/repo/release-policy";
 
 let heldStep = createGate();
 /** When each `test/mark` node ran, by node id. */
@@ -355,12 +356,19 @@ function describeCases(
     const second = await harness.start(oneActionThenMark("test/send"));
 
     const outcome = await harness.connection.run(
-      tick({ actions: () => actions, ...LOOP_SETTINGS, budgetMs: 10_000 }).pipe(
-        Effect.provide(noDeliveryServices)
-      )
+      tick({
+        actions: () => actions,
+        ...LOOP_SETTINGS,
+        budgetMs: 10_000,
+        sweep: false,
+      }).pipe(Effect.provide(noDeliveryServices))
     );
 
-    expect(outcome).toEqual({ passed: 2, failed: 0, interrupted: 0 });
+    expect(outcome).toEqual({
+      passes: { run: 2, delivery: 0 },
+      results: { passed: 2, failed: 0, cut: 0, interrupted: 0 },
+      stopped: "idle",
+    });
     expect(await harness.ended(first, 0)).toBe("completed");
     expect(await harness.ended(second, 0)).toBe("completed");
   });
@@ -381,13 +389,18 @@ function describeCases(
       tick({
         actions: () => actions,
         ...LOOP_SETTINGS,
-        concurrency: 1,
+        concurrency: { run: 1, delivery: 1 },
         budgetMs,
+        sweep: false,
       }).pipe(Effect.provide(noDeliveryServices))
     );
 
     expect(Date.now() - startedAt).toBeLessThan(budgetMs);
-    expect(outcome).toEqual({ passed: 3, failed: 0, interrupted: 0 });
+    expect(outcome).toMatchObject({
+      passes: { run: 3 },
+      results: { passed: 3 },
+      stopped: "idle",
+    });
     for (const executionId of executionIds) {
       // eslint-disable-next-line eslint/no-await-in-loop -- one read per run
       expect(await harness.ended(executionId, 0)).toBe("completed");
@@ -403,15 +416,19 @@ function describeCases(
       tick({
         actions: () => actions,
         ...LOOP_SETTINGS,
-        concurrency: 1,
+        concurrency: { run: 1, delivery: 1 },
         budgetMs: 10_000,
         // The first drain step always starts, and the window has passed by
         // the time its pass ends.
         claimWindowMs: 1,
+        sweep: false,
       }).pipe(Effect.provide(noDeliveryServices))
     );
 
-    expect(outcome).toEqual({ passed: 1, failed: 0, interrupted: 0 });
+    expect(outcome).toMatchObject({
+      results: { passed: 1 },
+      stopped: "claim_window",
+    });
     const ended = [
       await harness.ended(first, 0).catch(() => undefined),
       await harness.ended(second, 0).catch(() => undefined),
@@ -424,18 +441,79 @@ function describeCases(
     });
   });
 
-  it("interrupts a tick's pass still running when its budget runs out, and releases the run due at once", async () => {
+  it("stops claiming once it has run its pass limit, leaving later rows due", async () => {
+    const harness = await open();
+    const executionIds = [
+      await harness.start(oneActionThenMark("test/send")),
+      await harness.start(oneActionThenMark("test/send")),
+      await harness.start(oneActionThenMark("test/send")),
+    ];
+
+    const outcome = await harness.connection.run(
+      tick({
+        actions: () => actions,
+        ...LOOP_SETTINGS,
+        concurrency: { run: 1, delivery: 1 },
+        budgetMs: 10_000,
+        passLimit: 2,
+        sweep: false,
+      }).pipe(Effect.provide(noDeliveryServices))
+    );
+
+    expect(outcome).toMatchObject({
+      passes: { run: 2 },
+      results: { passed: 2 },
+      stopped: "pass_limit",
+    });
+    const schedules = await Promise.all(
+      executionIds.map((executionId) => harness.schedule(executionId))
+    );
+    expect(
+      schedules.filter((schedule) => schedule?.state === "queued")
+    ).toHaveLength(1);
+  });
+
+  it("cuts a tick's pass still running when its budget runs out, releasing the run due at once with one failure on its step", async () => {
     const harness = await open();
     const held = await harness.start(oneActionThenMark("test/held"));
 
     const outcome = await harness.connection.run(
-      tick({ actions: () => actions, ...LOOP_SETTINGS, budgetMs: 100 }).pipe(
-        Effect.provide(noDeliveryServices)
-      )
+      tick({
+        actions: () => actions,
+        ...LOOP_SETTINGS,
+        budgetMs: 100,
+        sweep: false,
+      }).pipe(Effect.provide(noDeliveryServices))
     );
 
-    expect(outcome).toEqual({ passed: 0, failed: 0, interrupted: 1 });
-    expect((await harness.schedule(held))?.state).toBe("queued");
+    expect(outcome).toMatchObject({
+      passes: { run: 1 },
+      results: { passed: 0, cut: 1, interrupted: 0 },
+      stopped: "budget",
+    });
+    const schedule = await harness.schedule(held);
+    expect(schedule).toMatchObject({
+      state: "queued",
+      workerId: null,
+      lastError: BUDGET_CUT_ERROR,
+    });
+    const memo = await harness.connection.run(
+      Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        return yield* executions.listStepMemo({
+          scheduleId: schedule?.id ?? "",
+        });
+      })
+    );
+    // The step the action was running when the budget ran out, and no other.
+    expect(memo.filter((entry) => entry.status !== "succeeded")).toEqual([
+      {
+        stepId: "node:work:dispatch",
+        status: "failing",
+        failures: 1,
+        error: BUDGET_CUT_ERROR,
+      },
+    ]);
     heldStep.release();
     const loop = harness.loop({});
     expect(await harness.ended(held)).toBe("completed");
@@ -709,7 +787,7 @@ function describeCases(
   it("delivers an Event in its own lane while a long pass holds the loop's only run slot", async () => {
     const harness = await open();
     const executionId = await harness.start(oneActionThenMark("test/held"));
-    const loop = harness.loop({ concurrency: 1, deliveryConcurrency: 1 });
+    const loop = harness.loop({ concurrency: { run: 1, delivery: 1 } });
     await heldStep.entered;
 
     // The loop's deliveries know no Event, so this one settles `failed` as
@@ -765,6 +843,35 @@ function describeCases(
 
     expect(await harness.inbox(recent)).toMatchObject({ status: "failed" });
     expect(await harness.inbox(pending)).toMatchObject({ status: "pending" });
+  });
+
+  it("sweeps settled inbox rows in a tick only when the tick is told to", async () => {
+    const harness = await open();
+    const old = await harness.send({
+      receivedAt: new Date(Date.now() - 60_000),
+    });
+    const delivering = harness.loop({});
+    await waitUntil(
+      async () => (await harness.inbox(old))?.status === "failed",
+      "The delivery did not settle"
+    );
+    await delivering.stop();
+    const runTick = (sweep: boolean) =>
+      harness.connection.run(
+        tick({
+          actions: () => actions,
+          ...LOOP_SETTINGS,
+          retentionMs: 30_000,
+          budgetMs: 10_000,
+          sweep,
+        }).pipe(Effect.provide(noDeliveryServices))
+      );
+
+    await runTick(false);
+    expect(await harness.inbox(old)).toMatchObject({ status: "failed" });
+
+    await runTick(true);
+    expect(await harness.inbox(old)).toBeNull();
   });
 
   it("claims once more right after a claim that a wake arrived during", async () => {

@@ -10,20 +10,40 @@
  * one's `source.when`.
  */
 
-import { NonRetriableError, type Inngest, type InngestFunction } from "inngest";
-import { toForwarderFunctionId } from "#src/backend/lib/inngest/forwarder-function-id";
 import {
-  WfGraphEventRefused,
+  NonRetriableError,
+  slugify,
+  type Inngest,
+  type InngestFunction,
+} from "inngest";
+import {
+  isWfGraphEventRefused,
   type WfGraphEventReceipt,
   type WfGraphEvents,
 } from "#src/backend/host-events";
+import { getAppLogger } from "#src/backend/lib/logger";
 import { readJsonObject } from "@wfgraph/shared/types/json";
+
+const logger = getAppLogger("events");
+
+/**
+ * The Inngest function id of the forwarder for one Inngest event name. The
+ * forwarder registers under it, and `createWfGraphInngestFunctions` compares
+ * these ids to refuse two names Inngest would treat as one function.
+ *
+ * `slugify` is the SDK's own, so an id built here is the id Inngest would build.
+ */
+export function toForwarderFunctionId(eventName: string): string {
+  return `wfgraph-event-${slugify(eventName)}`;
+}
 
 /**
  * Sends one Inngest event into the inbox under `name`, keyed by the event's
  * id. Inngest's server gives every event an id, using its own when the sender
  * set none, and an invocation Inngest retries reads the same stored event, so
- * a retried send is answered with the first one's inbox row.
+ * a retried send is answered with the first one's inbox row. A send answered
+ * as a duplicate is logged, since it means Inngest delivered an event id the
+ * inbox already holds.
  *
  * Data that is not a JSON object carries no fields for an Event schema to
  * describe, so it is sent as an empty payload, which the Event's schema then
@@ -36,18 +56,32 @@ async function forwardToInbox(input: {
   event: { id?: string | undefined; data?: unknown };
   events: WfGraphEvents;
 }): Promise<WfGraphEventReceipt> {
+  let receipt: WfGraphEventReceipt;
   try {
-    return await input.events.send({
+    receipt = await input.events.send({
       name: input.name,
       data: readJsonObject(input.event.data) ?? {},
       id: input.event.id,
     });
   } catch (error) {
-    if (error instanceof WfGraphEventRefused) {
+    if (isWfGraphEventRefused(error)) {
       throw new NonRetriableError(error.message, { cause: error });
     }
     throw error;
   }
+  if (receipt.duplicate) {
+    logger.info(
+      "An Inngest event was forwarded with an id the event inbox already holds; the send answered with the existing row",
+      {
+        forward: {
+          name: input.name,
+          eventId: input.event.id,
+          inboxId: receipt.id,
+        },
+      }
+    );
+  }
+  return receipt;
 }
 
 // The return type is stated because declaration emit cannot name the inferred

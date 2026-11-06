@@ -11,7 +11,10 @@ import {
   type WfGraphEventInput,
   type WfGraphEvents,
 } from "#src/backend/host-events";
-import { createInngestEventForwarder } from "#src/backend/lib/inngest/event-forwarder";
+import {
+  createInngestEventForwarder,
+  toForwarderFunctionId,
+} from "#src/backend/lib/inngest/event-forwarder";
 
 const client = new Inngest({ id: "event-forwarder-test", isDev: true });
 
@@ -32,6 +35,7 @@ function recordingEvents(
         sent.push(event);
         return await answer();
       }),
+      sourceNames: [NAME],
     },
   };
 }
@@ -93,6 +97,38 @@ describe("the Inngest event forwarder", () => {
     });
   });
 
+  // `@wfgraph/core/inngest` is a bundle of its own and can hold another copy
+  // of the class, so the refusal is recognised by its name.
+  it("recognises a refusal from another copy of WfGraphEventRefused by its name", async () => {
+    class OtherCopyRefused extends Error {
+      override readonly name = "WfGraphEventRefused";
+    }
+    const { events } = recordingEvents(() =>
+      Promise.reject(new OtherCopyRefused("Payload refused"))
+    );
+
+    const { error } = await forward(events, { id: "01JEVENT", data: {} });
+
+    expect(error).toMatchObject({
+      name: "NonRetriableError",
+      message: "Payload refused",
+    });
+  });
+
+  it("answers the existing inbox row for an event id the inbox already holds", async () => {
+    const { events } = recordingEvents(() =>
+      Promise.resolve({ id: "inbox_1", duplicate: true })
+    );
+
+    const { result, error } = await forward(events, {
+      id: "01JEVENT",
+      data: {},
+    });
+
+    expect(error).toBeUndefined();
+    expect(result).toEqual({ id: "inbox_1", duplicate: true });
+  });
+
   it("rethrows a storage failure as it is, so Inngest retries the step", async () => {
     const storageFailure = new Error("Could not send this Event", {
       cause: new Error("connection reset"),
@@ -105,5 +141,15 @@ describe("the Inngest event forwarder", () => {
       name: "Error",
       message: "Could not send this Event",
     });
+  });
+});
+
+describe("toForwarderFunctionId", () => {
+  // The id reaches Inngest's own identifiers, so a bus name's slashes and dots
+  // cannot travel in it.
+  it("slugs an Event name into something a URL can carry", () => {
+    expect(toForwarderFunctionId("app/appointment.updated")).toBe(
+      "wfgraph-event-app-appointment-updated"
+    );
   });
 });

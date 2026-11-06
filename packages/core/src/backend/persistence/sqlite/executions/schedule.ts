@@ -38,6 +38,7 @@ import {
   parkResolution,
   requeuedByWake,
   requeuedWakeAt,
+  stepFailureOf,
   stepMemoOf,
   sweptStepFailures,
   TIMEOUT_WAKE,
@@ -540,14 +541,14 @@ export function makeSqlitePassWrites(
                     )
                   );
           const { outcome } = input;
+          const stepFailure = stepFailureOf(outcome);
           const countedStep =
-            outcome.kind === "step_failed"
-              ? yield* countFailureOnStep(database, {
+            stepFailure === null
+              ? null
+              : yield* countFailureOnStep(database, {
                   scheduleId,
-                  stepId: outcome.stepId,
-                  error: outcome.error,
-                })
-              : null;
+                  ...stepFailure,
+                });
 
           const released = decideRelease({
             outcome,

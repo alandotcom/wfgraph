@@ -296,6 +296,10 @@ export function makeInboxMethods(
                 .where(sweepableInbox(workflowEventInbox, input.olderThan))
                 .orderBy(asc(workflowEventInbox.receivedAt))
                 .limit(input.limit)
+                // Two sweeps that overlap, such as two Workers' Cron Trigger
+                // ticks, each take the rows the other has not locked, so
+                // neither waits on the other's delete.
+                .for("update", { skipLocked: true })
             )
           )
           .returning({ id: workflowEventInbox.id });

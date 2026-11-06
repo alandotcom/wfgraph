@@ -3,11 +3,14 @@
  * loop's settings, logging, the cipher, the extension surface, the opened
  * persistence backend, the app's run wakes, the runtime whose
  * `ExecutionDriver` announces to them, and the host's Event send over that
- * runtime. The loop's options are refused before anything opens. A failure
- * while opening gives back whatever was acquired. `close` disposes the
- * runtime and then closes the backend, so the runner must stop first.
+ * runtime. `openWfGraphRuntime`, the runtime over an opened backend, is also
+ * what each `wfWorker` invocation stands on. The loop's options are refused
+ * before anything opens. A failure while opening gives back whatever was
+ * acquired. `close` disposes the runtime and then closes the backend, so the
+ * runner must stop first.
  */
 
+import { Effect } from "effect";
 import type { AgentSettings } from "#src/backend/agent/config";
 import {
   assembleExtensions,
@@ -37,6 +40,7 @@ import type {
 import {
   createWfGraphRuntime,
   type WfGraphRuntime,
+  type WfGraphRuntimeParts,
 } from "#src/backend/runtime";
 import {
   createIntegrationCipher,
@@ -79,6 +83,46 @@ export type WfGraphSetup = {
   readonly close: () => Promise<void>;
 };
 
+/** A runtime over an opened persistence backend, and the close that gives both back. */
+export type OpenedRuntime = {
+  readonly runtime: WfGraphRuntime;
+  /** Settles the wakes, disposes the runtime, then closes the backend. */
+  readonly close: () => Promise<void>;
+};
+
+/**
+ * Builds the runtime over `persistence`, which the caller just opened, and
+ * builds the runtime's Layer graph at once, so a graph that cannot build fails
+ * here instead of on the first request or pass. A failure gives back the
+ * runtime and the backend. `close` first awaits `settleWakes`, such as a Queue
+ * wake's sends in flight, then disposes the runtime, then closes the backend,
+ * last because a Layer finalizer is free to use persistence while closing.
+ */
+export async function openWfGraphRuntime(
+  input: Omit<WfGraphRuntimeParts, "repositories"> & {
+    persistence: WfGraphPersistenceInstance;
+    settleWakes?: (() => Promise<void>) | undefined;
+  }
+): Promise<OpenedRuntime> {
+  const { persistence, settleWakes, ...parts } = input;
+  let runtime: WfGraphRuntime | undefined;
+  const closes = [
+    async () => await settleWakes?.(),
+    async () => await runtime?.dispose(),
+    persistence.close,
+  ];
+  try {
+    runtime = createWfGraphRuntime({
+      ...parts,
+      repositories: persistence.repositories,
+    });
+    await runtime.runPromise(Effect.void);
+  } catch (error) {
+    return await failAfterClose(error, closes);
+  }
+  return { runtime, close: () => closeInOrder(closes) };
+}
+
 export async function openWfGraphSetup(
   options: WfGraphSetupOptions
 ): Promise<WfGraphSetup> {
@@ -107,25 +151,22 @@ export async function openWfGraphSetup(
     persistence: persistence.description,
   });
 
+  const { capabilities } = persistence;
+  const wakes = createAppRunWakes(capabilities.broadcast);
+  const { runtime, close } = await openWfGraphRuntime({
+    persistence,
+    extensions,
+    appContext: {
+      publicUrl: options.publicUrl,
+      apiBasePath: `${options.basePath}/api`,
+    },
+    agent: options.agent,
+    wakes: wakes.sinks,
+  });
+
   try {
-    const { capabilities } = persistence;
-    const wakes = createAppRunWakes(capabilities.broadcast);
-
-    // Built on the first Effect it runs, so opening the setup opens nothing
-    // more than the backend did.
-    const runtime = createWfGraphRuntime({
-      extensions,
-      appContext: {
-        publicUrl: options.publicUrl,
-        apiBasePath: `${options.basePath}/api`,
-      },
-      agent: options.agent,
-      repositories: persistence.repositories,
-      wakes: wakes.sinks,
-    });
-
-    // Resolved now, so a backend that runs no long-lived loop is refused
-    // before the app starts serving.
+    // Resolved before the app starts serving, so a backend that runs no
+    // long-lived loop is refused at startup.
     const settings =
       options.runner === false
         ? undefined
@@ -139,21 +180,15 @@ export async function openWfGraphSetup(
       runtime,
       extensions,
       capabilities,
-      events: createHostEvents(runtime),
+      events: createHostEvents(runtime, extensions),
       startRunner:
         settings === undefined
           ? undefined
           : () =>
               startInProcessRunner({ runtime, extensions, wakes, settings }),
-      close: () =>
-        closeInOrder([
-          () => runtime.dispose(),
-          // Last, because a Layer finalizer is free to use persistence while
-          // closing.
-          persistence.close,
-        ]),
+      close,
     };
   } catch (error) {
-    return await failAfterClose(error, [persistence.close]);
+    return await failAfterClose(error, [close]);
   }
 }

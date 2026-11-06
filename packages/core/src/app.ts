@@ -1,6 +1,5 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import { Effect } from "effect";
 import { Hono } from "hono";
 import { createApiApp } from "#src/backend/api-app";
 import {
@@ -256,9 +255,6 @@ async function assembleWfGraphApp(
   const { runtime } = setup;
   const { startRunner } = setup;
 
-  // The runtime's first Effect builds the Layer graph, so a graph that cannot
-  // build fails at boot instead of on the first request.
-  await runtime.runPromise(Effect.void);
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
     auth,

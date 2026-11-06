@@ -13,18 +13,14 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { ExecutionScheduleKind } from "@wfgraph/shared/lifecycle/execution-schedule";
-import { readJsonObject, type JsonObject } from "@wfgraph/shared/types/json";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import { InngestTestEngine } from "@inngest/test";
-import { Inngest } from "inngest";
 import { defineAction } from "#src/backend/extensions/define-action";
 import { defineEvent } from "#src/backend/extensions/define-event";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
-import { createInngestEventForwarder } from "#src/backend/lib/inngest/event-forwarder";
-import { createHostEvents } from "#src/backend/host-events";
 import {
   createWfGraphRuntime,
   type WfGraphRuntime,
@@ -61,20 +57,6 @@ import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 export const LEASE_MS = 60_000;
 
-/** The Inngest client the forwarders are built on. Constructing one opens nothing. */
-const inngestClient = new Inngest({ id: "delivery-cases", isDev: true });
-
-/** What a forwarder's Inngest function answered, read back from the test engine. */
-function forwardReceipt(result: unknown): { id: string; duplicate: boolean } {
-  const receipt = readJsonObject(result);
-  if (
-    typeof receipt?.id !== "string" ||
-    typeof receipt.duplicate !== "boolean"
-  ) {
-    throw new Error("The forwarder answered no inbox receipt");
-  }
-  return { id: receipt.id, duplicate: receipt.duplicate };
-}
 export const WEBHOOK_SOURCE = "vendor/webhook";
 export const VENDOR_BOOKED = "vendor/booked";
 export const ACME_WEBHOOK = "acme/webhook";
@@ -292,16 +274,6 @@ export type DeliveryHarness = {
     data: JsonObject;
     id?: string | undefined;
   }) => Promise<{ id: string; duplicate: boolean }>;
-  /**
-   * Runs the Inngest forwarder for `name` on one Inngest event, as Inngest
-   * invokes it, sending through the app's `events`, and answers the receipt
-   * its step returned. Rejects with the function's error as `cause` when the
-   * forward failed.
-   */
-  forward: (input: {
-    name: string;
-    event: { id?: string | undefined; data: unknown };
-  }) => Promise<{ id: string; duplicate: boolean }>;
   /** Stores an `acme` Connection, answering its id. */
   addConnection: (name: string) => Promise<string>;
   /** Posts `data` to one `acme` Connection's webhook under a vendor id. */
@@ -447,28 +419,6 @@ export function useDeliveryHarness(
           )
         ),
       sendEvent: (input) => app.runPromise(sendEvent(input)),
-      forward: async (input) => {
-        const forwarder = createInngestEventForwarder({
-          client: inngestClient,
-          name: input.name,
-          events: createHostEvents(app),
-        });
-        const { result, error } = await new InngestTestEngine({
-          function: forwarder,
-        }).execute({
-          events: [
-            omitUndefined({
-              name: input.name,
-              id: input.event.id,
-              data: readJsonObject(input.event.data) ?? {},
-            }),
-          ],
-        });
-        if (error !== undefined) {
-          throw new Error("The forwarder failed", { cause: error });
-        }
-        return forwardReceipt(result);
-      },
       addConnection: (name) =>
         connection.run(
           Effect.flatMap(IntegrationRepo, (integrations) =>

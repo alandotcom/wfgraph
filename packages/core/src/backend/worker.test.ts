@@ -50,11 +50,28 @@ import {
   publishWorkflow,
 } from "#src/backend/executor/testing/run-fixtures";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { recordedLogger } from "#src/backend/executor/testing/recorded-logger";
 import { catalogFingerprint } from "#src/backend/services/workflows/version-digest";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import type { WfGraphRepositories } from "#src/backend/runtime";
 
 const ENCRYPTION = { key: "d".repeat(64) };
+
+/**
+ * A stand-in for Cloudflare's `ExecutionContext` that holds every promise
+ * handed to `waitUntil`, and `settled`, which waits for all of them.
+ */
+function executionContext() {
+  const pending: Promise<unknown>[] = [];
+  return {
+    ctx: {
+      waitUntil: (promise: Promise<unknown>) => void pending.push(promise),
+    },
+    settled: async () => {
+      await Promise.all(pending);
+    },
+  };
+}
 const EVENTS_KEY = "events-key-0123456789";
 
 /** A backend serving the given repositories, which opens no database. */
@@ -181,7 +198,8 @@ describe("wfWorker", () => {
     await expect(
       worker({ key: " " }).fetch(
         new Request("https://example.test/api/extensions"),
-        {}
+        {},
+        executionContext().ctx
       )
     ).rejects.toThrow("wfWorker's events.key is blank");
     await expect(
@@ -216,13 +234,16 @@ describe("wfWorker", () => {
       }),
     });
 
+    const { ctx } = executionContext();
     const first = await worker.fetch(
       new Request("https://example.test/api/extensions"),
-      { integrationType: "first" }
+      { integrationType: "first" },
+      ctx
     );
     const second = await worker.fetch(
       new Request("https://example.test/api/extensions"),
-      { integrationType: "second" }
+      { integrationType: "second" },
+      ctx
     );
     const firstBody = (await first.json()) as {
       catalog: { integrations: Array<{ type: string }> };
@@ -240,7 +261,7 @@ describe("wfWorker", () => {
     expect(resolutions).toBe(2);
   });
 
-  it("opens and closes persistence for each request", async () => {
+  it("opens persistence for each request and closes it after the response, through waitUntil", async () => {
     directory = await mkdtemp(join(tmpdir(), "wfgraph-worker-"));
     const sqlite = wfSqlite({ filename: join(directory, "wfgraph.db") });
     let opened = 0;
@@ -266,14 +287,18 @@ describe("wfWorker", () => {
       }),
     });
 
+    const { ctx, settled } = executionContext();
     const first = await worker.fetch(
       new Request("https://example.test/api/extensions"),
-      {}
+      {},
+      ctx
     );
     const second = await worker.fetch(
       new Request("https://example.test/api/extensions"),
-      {}
+      {},
+      ctx
     );
+    await settled();
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
@@ -320,13 +345,15 @@ describe("wfWorker", () => {
       }),
     });
 
+    const { ctx, settled } = executionContext();
     const response = await worker.fetch(
       new Request("https://example.test/api/rpc/workflow/subscribeList", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ json: {} }),
       }),
-      {}
+      {},
+      ctx
     );
     const reader = response.body?.getReader();
     expect(reader).toBeDefined();
@@ -347,11 +374,12 @@ describe("wfWorker", () => {
     expect(body).toContain('"name":"Second"');
 
     await reader.cancel();
+    await settled();
 
     expect(closed).toBe(1);
   });
 
-  it("closes persistence when runtime disposal fails", async () => {
+  it("closes persistence after the response when runtime disposal fails", async () => {
     let closed = 0;
     const repositories = Layer.mergeAll(
       stubRepositories(),
@@ -369,9 +397,15 @@ describe("wfWorker", () => {
       }),
     });
 
-    await expect(
-      worker.fetch(new Request("https://example.test/api/extensions"), {})
-    ).rejects.toThrow("runtime dispose failed");
+    const { ctx, settled } = executionContext();
+    const response = await worker.fetch(
+      new Request("https://example.test/api/extensions"),
+      {},
+      ctx
+    );
+    await settled();
+
+    expect(response.status).toBe(200);
     expect(closed).toBe(1);
   });
 });
@@ -456,6 +490,7 @@ describe("wfWorker runs workflows", () => {
     worker: WfGraphWorker<Record<string, never>>,
     appointmentId: string
   ): Promise<string> => {
+    const { ctx, settled } = executionContext();
     const response = await worker.fetch(
       new Request("https://example.test/api/events", {
         method: "POST",
@@ -468,8 +503,12 @@ describe("wfWorker runs workflows", () => {
           data: { appointmentId },
         }),
       }),
-      {}
+      {},
+      ctx
     );
+    // The invocation's closes, which settle its Queue sends, run after the
+    // response through `waitUntil`.
+    await settled();
     expect(response.status).toBe(202);
     return String(readJsonObject(await response.json())?.id);
   };
@@ -510,8 +549,6 @@ describe("wfWorker runs workflows", () => {
 
     const deliveryId = await postEvent(worker, "appt_queue");
 
-    // The send settles before `fetch` answers, so the message is on the
-    // Queue once the response is.
     expect(queue.sent).toEqual([{ kind: "wfgraph.wake" }]);
     expect(await statusOf(deliveryId)).toBeUndefined();
 
@@ -520,8 +557,9 @@ describe("wfWorker runs workflows", () => {
     // The delivery's pass started the run, and the tick's next drain step
     // claimed it, so one tick ran the workflow to its end.
     expect(await statusOf(deliveryId)).toBe("completed");
-    // The run the delivery started announced a wake of its own.
-    expect(queue.sent).toEqual([{ kind: "wfgraph.wake" }]);
+    // The tick's runtime carries no Queue wake, so the run its delivery
+    // started sent no message that would start an overlapping tick.
+    expect(queue.sent).toEqual([]);
     expect(counts).toEqual({ opened: 2, closed: 2 });
   });
 
@@ -546,9 +584,11 @@ describe("wfWorker runs workflows", () => {
     expect(counts).toEqual({ opened: 2, closed: 2 });
   });
 
-  it("fails a tick whose persistence cannot open, so the Queue retries the batch", async () => {
+  it("fails a tick whose persistence cannot open, so the Queue retries the batch, and writes one error record", async () => {
+    const recorded = recordedLogger();
     const worker = wfWorker<Record<string, never>>({
       extensions,
+      logger: recorded.logger,
       request: () => ({
         auth: trustWfGraphUpstream(),
         persistence: {
@@ -561,5 +601,16 @@ describe("wfWorker runs workflows", () => {
     await expect(
       worker.queue({ messages: [{ kind: "wfgraph.wake" }] }, {})
     ).rejects.toThrow("database unreachable");
+    const failures = recorded.find("Tick failed");
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.properties).toMatchObject({
+      tick: {
+        trigger: "queue",
+        messages: 1,
+        worker: expect.stringMatching(/^cf-worker:queue:/),
+        ms: expect.any(Number),
+      },
+      error: expect.objectContaining({ message: "database unreachable" }),
+    });
   });
 });

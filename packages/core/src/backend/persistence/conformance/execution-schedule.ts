@@ -14,7 +14,10 @@ import {
   type ParkWake,
   type PassOutcome,
 } from "#src/backend/services/executions/repo";
-import { LEASE_EXPIRED_ERROR } from "#src/backend/services/executions/repo/release-policy";
+import {
+  BUDGET_CUT_ERROR,
+  LEASE_EXPIRED_ERROR,
+} from "#src/backend/services/executions/repo/release-policy";
 import {
   type PersistenceTestRegistry,
   notYetDue,
@@ -257,6 +260,17 @@ export function describeExecutionScheduleConformance({
             }),
             fenceRefused: yield* release({ kind: "fence_refused" }),
             nothingParked: yield* release({ kind: "parked" }),
+            drained: yield* release({ kind: "interrupted", by: "drain" }),
+            budgetCut: yield* release({
+              kind: "interrupted",
+              by: "budget",
+              stepId: "node:send:dispatch",
+            }),
+            budgetCutBetweenSteps: yield* release({
+              kind: "interrupted",
+              by: "budget",
+              stepId: null,
+            }),
           };
         })
       );
@@ -306,6 +320,32 @@ export function describeExecutionScheduleConformance({
         wakeAt: releasedAt,
         attempt: 0,
       });
+      // An interruption keeps the row's own count and re-queues it at once. A
+      // graceful drain counts nothing; a budget cut counts one failure on the
+      // step that was running, and nothing when no step was.
+      const interrupted = {
+        schedule: { state: "queued", wakeAt: releasedAt, attempt: 1 },
+        countedStep: null,
+      };
+      expect(result.drained.released).toEqual(interrupted);
+      expect(result.drained.memo).toEqual([]);
+      expect(result.budgetCutBetweenSteps.released).toEqual(interrupted);
+      expect(result.budgetCutBetweenSteps.memo).toEqual([]);
+      const cut = {
+        status: "failing",
+        failures: 1,
+        error: BUDGET_CUT_ERROR,
+      };
+      expect(result.budgetCut.released).toEqual({
+        ...interrupted,
+        countedStep: cut,
+      });
+      expect(result.budgetCut.schedule).toMatchObject({
+        lastError: BUDGET_CUT_ERROR,
+      });
+      expect(result.budgetCut.memo).toEqual([
+        { stepId: "node:send:dispatch", ...cut },
+      ]);
     });
 
     it("re-queues at release a run whose park was woken while it was leased", async () => {

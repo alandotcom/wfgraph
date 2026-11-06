@@ -309,8 +309,8 @@ window in `docs/embedding.md`.
 ## Sending through Inngest
 
 An application that publishes its Events with `inngest.send` keeps doing so. The
-`@wfgraph/core/inngest` entry builds one Inngest function, a forwarder, for each name an
-Event in `extensions.events` arrives under, and each forwarder sends the Inngest event into
+`@wfgraph/core/inngest` entry builds one Inngest function, a forwarder, for each name a
+host Event of the app arrives under, and each forwarder sends the Inngest event into
 the inbox with `events.send`. Inngest runs no workflow: the worker loop delivers the
 forwarded Event as it delivers every other one.
 
@@ -330,7 +330,7 @@ const app = await createWfGraphApp({
 
 const functions = [
   ...myFunctions,
-  ...createWfGraphInngestFunctions({ client: inngest, extensions, app }),
+  ...createWfGraphInngestFunctions({ client: inngest, app }),
 ];
 
 // HTTP serve, mounted at your own route:
@@ -345,15 +345,18 @@ honoApp.on(
 await inngest.send({ name: "app/appointment.created", data: { appointment } });
 ```
 
-- `extensions` is the value you passed to `createWfGraphApp`. `app` is what
-  `createWfGraphApp` or `createWfGraphRunner` returned, and the forwarders send through its
-  `events`, so register them in a process that holds one.
+- `app` is what `createWfGraphApp` or `createWfGraphRunner` returned. The forwarders are
+  named by its `events.sourceNames`, the names its host Events arrive under, and they send
+  through its `events`, so register them in a process that holds one.
 - Your Inngest client, its signing key, its event key and the route or connection that
   reaches it are yours to configure. Workflow Graph mounts no Inngest route.
 - The Inngest event's `id` is the idempotency key, so a second event with the same `id`
-  starts nothing within the deduplication window. Inngest gives an event sent without an
-  `id` one of its own, and a retried forwarder reads the same event, so a retry stores
-  nothing twice.
+  starts nothing within the deduplication window. That window is the inbox's
+  `events.retentionMs`, seven days by default, and Inngest's own 24-hour event
+  deduplication plays no part in it. Inngest gives an event sent without an `id` one of its
+  own, and a retried forwarder reads the same event, so a retry stores nothing twice. A
+  forward answered as a duplicate writes an info record naming the event id and the inbox
+  row it matched.
 - An Event with an umbrella `source` is sent under its source name. One forwarder serves
   that name, and `events.send` tells which Event an arrival is by `when` (see The umbrella
   source).

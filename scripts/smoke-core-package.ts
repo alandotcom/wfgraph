@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -48,6 +54,55 @@ function openAndVerifySqlite(
   );
 }
 
+/**
+ * Imports each entry the packed manifest's `exports` map names, except
+ * `./inngest`, in an install that holds no `inngest`. `inngest` is an optional
+ * peer dependency, so a host that never installed it must still load every
+ * other entry; an entry whose chunks reach the SDK fails here with
+ * ERR_MODULE_NOT_FOUND.
+ */
+function importEveryEntryButInngest(): void {
+  const manifest: unknown = JSON.parse(
+    readFileSync(
+      resolve(temporaryDirectory, "node_modules/@wfgraph/core/package.json"),
+      "utf8"
+    )
+  );
+  const exportsMap =
+    typeof manifest === "object" && manifest !== null && "exports" in manifest
+      ? manifest.exports
+      : undefined;
+  if (typeof exportsMap !== "object" || exportsMap === null) {
+    throw new Error("The packed @wfgraph/core manifest has no exports map");
+  }
+  const specifiers = Object.keys(exportsMap)
+    .filter((subpath) => subpath !== "./inngest")
+    .map((subpath) => `@wfgraph/core${subpath.slice(1)}`);
+  execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+        const inngest = await import("inngest").then(
+          () => true,
+          (error) => error.code !== "ERR_MODULE_NOT_FOUND"
+        );
+        if (inngest) {
+          throw new Error("The smoke install resolves inngest, so it cannot show the entries load without it");
+        }
+        for (const specifier of ${JSON.stringify(specifiers)}) {
+          await import(specifier);
+        }
+      `,
+    ],
+    { cwd: temporaryDirectory, stdio: "inherit" }
+  );
+  console.log(
+    `Loaded ${specifiers.length} @wfgraph/core entries without inngest installed`
+  );
+}
+
 try {
   execFileSync("pnpm", ["pack", "--pack-destination", temporaryDirectory], {
     cwd: core,
@@ -78,6 +133,8 @@ try {
     cwd: temporaryDirectory,
     stdio: "inherit",
   });
+
+  importEveryEntryButInngest();
 
   const packagedSqliteMigrationCount = readdirSync(
     resolve(temporaryDirectory, "node_modules/@wfgraph/core/drizzle-sqlite"),

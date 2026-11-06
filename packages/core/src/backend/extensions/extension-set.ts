@@ -12,7 +12,7 @@
  * slug is a record key the definition never spells out twice.
  */
 
-import { partition } from "es-toolkit/array";
+import { partition, uniq } from "es-toolkit/array";
 import { isBlank } from "@wfgraph/shared/types/string";
 import type {
   ActionMetadata,
@@ -127,6 +127,13 @@ export type ExtensionSet = {
    * events route and the delivery body all decide through this.
    */
   readonly resolveArrival: (arrival: Arrival) => ArrivalMatch;
+  /**
+   * The names a host-declared Event arrives under with no Connection: each
+   * one's `source.event`, once each, in declaration order. An Event an
+   * integration also declares belongs to the integration and is left out, as
+   * `resolveArrival` leaves it out of a send with no Connection.
+   */
+  readonly hostEventSources: readonly string[];
   readonly entityByType: (type: string) => AnyEntityDefinition | undefined;
   /** App-owned deadline for every call into a host Entity resolver. */
   readonly entityResolverTimeoutMs: number;
@@ -586,6 +593,7 @@ export function assembleExtensions(
       hostEvents,
       integrationEvents: integrationOwnedEvents,
     }),
+    hostEventSources: uniq(hostEvents.map((event) => event.source.event)),
     entityByType: (type) => entitiesByType.get(type),
     entityResolverTimeoutMs: readEntityResolverTimeoutMs(
       options.entityResolverTimeoutMs

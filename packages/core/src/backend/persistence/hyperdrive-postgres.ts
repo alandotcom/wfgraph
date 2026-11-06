@@ -19,6 +19,9 @@ export type HyperdrivePostgresPersistenceOptions = {
   schema?: string | undefined;
 };
 
+/** How long closing an invocation's client waits for its queries, in seconds. */
+const CLOSE_TIMEOUT_SECONDS = 5;
+
 /** Connection-local options safe under Hyperdrive's transaction pooler. */
 export function hyperdrivePostgresClientOptions() {
   return {
@@ -55,7 +58,9 @@ export function wfHyperdrive(
         schema: config.schema,
         client,
         db: drizzle({ client, relations }),
-        close: () => client.end(),
+        // Bounded, so a query Hyperdrive never answers cannot hold the
+        // invocation open: the timeout rejects it and destroys the connection.
+        close: () => client.end({ timeout: CLOSE_TIMEOUT_SECONDS }),
       };
       try {
         const [row] = await database.client<

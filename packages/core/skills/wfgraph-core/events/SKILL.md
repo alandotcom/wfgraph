@@ -124,7 +124,7 @@ no host Event (or umbrella name), names an integration-owned Event, or carries
 data the Event's schema refuses, is refused before anything is stored.
 
 A host already on Inngest keeps `inngest.send` by registering
-`createWfGraphInngestFunctions({ client, extensions, app })` from
+`createWfGraphInngestFunctions({ client, app })` from
 `@wfgraph/core/inngest` on its own Inngest `serve` or `connect`. Workflow Graph
 mounts no Inngest route and builds no Inngest client. Each forwarder covers one
 name a host Event arrives under (its umbrella `source` name, if it has one) and

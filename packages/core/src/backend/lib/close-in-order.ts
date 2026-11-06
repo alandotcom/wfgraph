@@ -68,11 +68,19 @@ export async function runWithClose<A>(
   return result;
 }
 
-/** Keep request resources alive until an event-stream body ends or is canceled. */
+/**
+ * Keep request resources alive until an event-stream body ends or is canceled.
+ * With `defer`, the closes of a response that is not a stream, and of a
+ * stream the client canceled, are handed to it rather than awaited, so the
+ * response does not wait for them; `defer` owns their failures. A Worker
+ * passes its `ctx.waitUntil` here.
+ */
 export async function runWithResponseClose(
   run: () => Promise<Response>,
-  closes: readonly (() => Promise<void>)[]
+  closes: readonly (() => Promise<void>)[],
+  options?: { defer?: ((close: () => Promise<void>) => void) | undefined }
 ): Promise<Response> {
+  const defer = options?.defer;
   let response: Response;
   try {
     response = await run();
@@ -88,7 +96,11 @@ export async function runWithResponseClose(
     !response.body ||
     !response.headers.get("content-type")?.startsWith("text/event-stream")
   ) {
-    await closeInOrder(closes);
+    if (defer === undefined) {
+      await closeInOrder(closes);
+    } else {
+      defer(() => closeInOrder(closes));
+    }
     return response;
   }
 
@@ -118,7 +130,13 @@ export async function runWithResponseClose(
       }
     },
     async cancel(reason) {
-      await runWithClose(() => reader.cancel(reason), [closeOnce]);
+      const cancelThenClose = () =>
+        runWithClose(() => reader.cancel(reason), [closeOnce]);
+      if (defer === undefined) {
+        await cancelThenClose();
+      } else {
+        defer(cancelThenClose);
+      }
     },
   });
 

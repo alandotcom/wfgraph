@@ -47,6 +47,7 @@ function slowStep() {
     webhookFor: () => undefined,
     eventByName: () => undefined,
     resolveArrival: () => ({ kind: "unknown" }),
+    hostEventSources: [],
     entityByType: () => undefined,
     entityResolverTimeoutMs: DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS,
     events: [],

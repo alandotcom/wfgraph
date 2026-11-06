@@ -4,18 +4,28 @@ import { describe, expect, it } from "vitest";
 
 import { defineEvent } from "#src/backend/extensions/define-event";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
+import {
+  assembleExtensions,
+  type WfGraphExtensions,
+} from "#src/backend/extensions/extension-set";
 import type { WfGraphEvents } from "#src/backend/host-events";
 import { createWfGraphInngestFunctions } from "#src/backend/lib/inngest/functions";
 
 // Constructing a client opens nothing; these functions are never invoked.
 const client = new Inngest({ id: "functions-test", isDev: true });
 
-/** An app whose `events` the build never calls. */
-const app: { events: WfGraphEvents } = {
-  events: {
-    send: () => Promise.reject(new Error("The build sends nothing")),
-  },
-};
+/**
+ * An app over `extensions`, assembled as `createWfGraphApp` assembles them,
+ * whose `send` the build never calls.
+ */
+function appOver(extensions: WfGraphExtensions): { events: WfGraphEvents } {
+  return {
+    events: {
+      send: () => Promise.reject(new Error("The build sends nothing")),
+      sourceNames: assembleExtensions(extensions).hostEventSources,
+    },
+  };
+}
 
 const appointmentCreated = defineEvent({
   name: "app/appointment.created",
@@ -77,12 +87,11 @@ describe("createWfGraphInngestFunctions", () => {
   it("builds one forwarder per host Event source and none for an integration's Event", () => {
     const functions = createWfGraphInngestFunctions({
       client,
-      app,
-      extensions: {
+      app: appOver({
         // A host may list an integration's Event too; the integration owns it.
         events: [appointmentCreated, invoicePaid, invoiceVoided, acmeBooked],
         integrations: [acme],
-      },
+      }),
     });
 
     expect(functions.map((fn) => fn.id())).toEqual([
@@ -108,8 +117,7 @@ describe("createWfGraphInngestFunctions", () => {
     expect(() =>
       createWfGraphInngestFunctions({
         client,
-        app,
-        extensions: { events: [appointmentCreated, twin] },
+        app: appOver({ events: [appointmentCreated, twin] }),
       })
     ).toThrow("both name the Inngest function");
   });
@@ -137,8 +145,7 @@ describe("createWfGraphInngestFunctions", () => {
     expect(
       createWfGraphInngestFunctions({
         client,
-        app,
-        extensions: { events: [created, twin] },
+        app: appOver({ events: [created, twin] }),
       }).map((fn) => fn.id())
     ).toEqual(["wfgraph-event-app-appointment"]);
   });

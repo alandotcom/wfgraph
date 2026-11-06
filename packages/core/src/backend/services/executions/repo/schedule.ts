@@ -57,6 +57,7 @@ import {
   parkResolution,
   requeuedByWake,
   requeuedWakeAt,
+  stepFailureOf,
   stepMemoOf,
   sweptStepFailures,
   TIMEOUT_WAKE,
@@ -734,14 +735,11 @@ export function makePassWrites(
                     )
                   );
           const { outcome } = input;
+          const stepFailure = stepFailureOf(outcome);
           const countedStep =
-            outcome.kind === "step_failed"
-              ? await countFailureOnStep(tx, {
-                  scheduleId,
-                  stepId: outcome.stepId,
-                  error: outcome.error,
-                })
-              : null;
+            stepFailure === null
+              ? null
+              : await countFailureOnStep(tx, { scheduleId, ...stepFailure });
 
           const released = decideRelease({
             outcome,

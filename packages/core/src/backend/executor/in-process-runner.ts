@@ -4,7 +4,9 @@
  * restarts after a backoff. `stop` ends the loop, waits for its passes in
  * flight for at most `RUNNER_DRAIN_MS` and then for the listener, and
  * interrupts the fiber when that wait runs `RUNNER_STOP_MARGIN_MS` past the
- * drain. The runtime and the persistence backend must outlive the runner.
+ * drain. The runtime must have built its Layer graph already, as
+ * `openWfGraphRuntime` does, and it and the persistence backend must outlive
+ * the runner.
  */
 
 import { Cause, Effect, Exit, Fiber, Schedule } from "effect";
@@ -14,6 +16,7 @@ import { createWorkflowEntities } from "#src/backend/extensions/workflow-entitie
 import {
   DEFAULT_HEARTBEAT_MS,
   DEFAULT_LEASE_MS,
+  type LaneConcurrency,
   runWorkerLoop,
   type WorkerLoopOutcome,
 } from "#src/backend/executor/worker-loop";
@@ -62,15 +65,15 @@ export type WfGraphRunnerOptions = {
   heartbeatMs?: number | undefined;
 };
 
-/** How many deliveries the loop runs at once when the host sets none. */
-export const DEFAULT_DELIVERY_CONCURRENCY = 1;
+/** How many deliveries a loop or a tick runs at once when the host sets none. */
+const DEFAULT_DELIVERY_CONCURRENCY = 1;
 
 /**
  * How long a settled inbox row is kept after it arrived when the host sets no
  * `events.retentionMs`: seven days, so a host retrying a send over a weekend
  * still finds its first row.
  */
-export const DEFAULT_INBOX_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const DEFAULT_INBOX_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** How long `stop` waits for passes in flight before it interrupts them. */
 const RUNNER_DRAIN_MS = 10_000;
@@ -95,6 +98,24 @@ const RESTART_BACKOFF = Schedule.min([
 const logger = getAppLogger("executor");
 
 /**
+ * Refuses an `events.retentionMs` the retention sweep could not run with.
+ * `caller` names the function the host called.
+ */
+export function assertValidRetentionMs(
+  retentionMs: number | undefined,
+  caller: string
+): void {
+  if (
+    retentionMs !== undefined &&
+    (!Number.isInteger(retentionMs) || retentionMs <= 0)
+  ) {
+    throw new Error(
+      `${caller}'s events.retentionMs must be a positive integer of milliseconds. Leave it out to keep settled inbox rows for seven days.`
+    );
+  }
+}
+
+/**
  * Refuses a `runner` option or an `events.retentionMs` a loop could not run
  * with, so the mistake fails at startup. `caller` names the function the host
  * called.
@@ -104,15 +125,7 @@ export function assertValidRunnerOptions(input: {
   retentionMs: number | undefined;
   caller: string;
 }): void {
-  const { retentionMs } = input;
-  if (
-    retentionMs !== undefined &&
-    (!Number.isInteger(retentionMs) || retentionMs <= 0)
-  ) {
-    throw new Error(
-      `${input.caller}'s events.retentionMs must be a positive integer of milliseconds. Leave it out to keep settled inbox rows for seven days.`
-    );
-  }
+  assertValidRetentionMs(input.retentionMs, input.caller);
   const options = input.runner;
   if (options === false || options === undefined) return;
   for (const key of [
@@ -137,10 +150,43 @@ export function assertValidRunnerOptions(input: {
   }
 }
 
+/**
+ * Each lane's slots, the host's options over the backend's defaults: the
+ * runs' from `concurrency`, and the deliveries' from `deliveryConcurrency`.
+ */
+function resolveLaneConcurrency(
+  capabilities: WfGraphRunCapabilities,
+  options: Pick<WfGraphRunnerOptions, "concurrency" | "deliveryConcurrency">
+): LaneConcurrency {
+  const { loopDefaults, connectionLimit } = capabilities;
+  return {
+    run:
+      options.concurrency ??
+      Math.min(loopDefaults.concurrency, connectionLimit),
+    delivery: options.deliveryConcurrency ?? DEFAULT_DELIVERY_CONCURRENCY,
+  };
+}
+
+/** The settings a tick runs with, which a host does not tune. */
+export type TickSettings = {
+  concurrency: LaneConcurrency;
+  retentionMs: number;
+};
+
+/** Resolves a tick's settings from the backend's defaults and the host's `events.retentionMs`. */
+export function resolveTickSettings(
+  capabilities: WfGraphRunCapabilities,
+  retentionMs: number | undefined
+): TickSettings {
+  return {
+    concurrency: resolveLaneConcurrency(capabilities, {}),
+    retentionMs: retentionMs ?? DEFAULT_INBOX_RETENTION_MS,
+  };
+}
+
 /** The settings a loop runs with, the host's options over the backend's. */
 export type RunnerSettings = {
-  concurrency: number;
-  deliveryConcurrency: number;
+  concurrency: LaneConcurrency;
   pollMs: number;
   leaseMs: number | undefined;
   heartbeatMs: number | undefined;
@@ -156,19 +202,14 @@ export function resolveRunnerSettings(
   options: WfGraphRunnerOptions,
   retentionMs: number | undefined
 ): RunnerSettings {
-  const { loopDefaults, connectionLimit } = capabilities;
-  const pollMs = options.pollMs ?? loopDefaults.pollMs;
+  const pollMs = options.pollMs ?? capabilities.loopDefaults.pollMs;
   if (pollMs === undefined) {
     throw new Error(
       "This persistence backend runs no long-lived worker loop; its runs advance through the ticks that wfWorker's scheduled and queue handlers run"
     );
   }
   return {
-    concurrency:
-      options.concurrency ??
-      Math.min(loopDefaults.concurrency, connectionLimit),
-    deliveryConcurrency:
-      options.deliveryConcurrency ?? DEFAULT_DELIVERY_CONCURRENCY,
+    concurrency: resolveLaneConcurrency(capabilities, options),
     pollMs,
     leaseMs: options.leaseMs,
     heartbeatMs: options.heartbeatMs,
@@ -227,12 +268,8 @@ export function startInProcessRunner(input: {
     }))
   );
 
-  // The runtime builds the Layer graph before the program's first step, so a
-  // fiber that failed without taking that step failed building the graph.
-  let started = false;
   const program = Effect.scoped(
     Effect.gen(function* () {
-      started = true;
       if (wakes.broadcast !== undefined) {
         // Forked, so a database that is down at boot delays no claim. A
         // listener that never starts costs a wake from another process at most
@@ -244,23 +281,11 @@ export function startInProcessRunner(input: {
   );
 
   const fiber = runtime.runFork(program);
-  const ended = Effect.runPromise(Fiber.await(fiber)).then((exit) => {
-    if (
-      !started &&
-      Exit.isFailure(exit) &&
-      !Cause.hasInterruptsOnly(exit.cause)
-    ) {
-      logger.error(
-        "Could not build the Layer graph the worker loop runs on; this process advances no runs",
-        { error: Cause.squash(exit.cause) }
-      );
-    }
-    return exit;
-  });
+  const ended = Effect.runPromise(Fiber.await(fiber));
   logger.info("Worker loop started", {
     runner: {
-      concurrency: settings.concurrency,
-      deliveryConcurrency: settings.deliveryConcurrency,
+      concurrency: settings.concurrency.run,
+      deliveryConcurrency: settings.concurrency.delivery,
       pollMs: settings.pollMs,
       retentionMs: settings.retentionMs,
       broadcast: wakes.broadcast !== undefined,

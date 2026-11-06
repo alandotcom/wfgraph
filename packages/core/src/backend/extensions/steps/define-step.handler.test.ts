@@ -292,7 +292,7 @@ describe("what step.run accepts", () => {
 
 /**
  * The Promise `step.run` adapter memoizes the bare value. A throw leaves no
- * stored entry so a function-level retry re-runs the work (Inngest's model).
+ * stored value, so the pass that retries the step runs the work again.
  */
 describe("Promise step.run adapter", () => {
   it("memoizes a host-style Promise factory as the bare value", async () => {
