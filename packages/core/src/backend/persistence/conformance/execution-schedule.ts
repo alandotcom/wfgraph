@@ -29,6 +29,7 @@ import {
   scheduledRun,
   openRun,
   claimRun,
+  memoWrite,
   park,
   claimOne,
   seeded,
@@ -46,11 +47,6 @@ function reparkInput(waitStateId: string) {
     resumeToken: null,
     metadata: {},
   };
-}
-
-/** Each log row's retry count, by its node id. */
-function retriesOf(logs: readonly { nodeId: string; retries: number }[]) {
-  return Object.fromEntries(logs.map((log) => [log.nodeId, log.retries]));
 }
 
 export function describeExecutionScheduleConformance({
@@ -130,12 +126,13 @@ export function describeExecutionScheduleConformance({
             at(LEASE_MS + 1)
           );
           const staleWrite = yield* Effect.flip(
-            executions.fenced(staleFence).writeStepMemo({
-              nodeId: null,
-              stepId: "step_1",
-              value: "stale",
-              leaseExpiresAt: at(LEASE_MS * 3),
-            })
+            executions.fenced(staleFence).writeStepMemo(
+              memoWrite({
+                stepId: "step_1",
+                value: "stale",
+                leaseExpiresAt: at(LEASE_MS * 3),
+              })
+            )
           );
           return {
             first,
@@ -210,12 +207,13 @@ export function describeExecutionScheduleConformance({
           const executionId = yield* scheduledRun(T0);
           const { fence } = yield* claimRun(executionId, T0);
           for (const [stepId, value] of Object.entries(values)) {
-            yield* executions.fenced(fence).writeStepMemo({
-              nodeId: null,
-              stepId,
-              value,
-              leaseExpiresAt: at(LEASE_MS),
-            });
+            yield* executions.fenced(fence).writeStepMemo(
+              memoWrite({
+                stepId,
+                value,
+                leaseExpiresAt: at(LEASE_MS),
+              })
+            );
           }
           return yield* executions.listStepMemo({ executionId });
         })
@@ -462,12 +460,13 @@ export function describeExecutionScheduleConformance({
             nodeName: "Send reminder",
             nodeType: "action",
           });
-          yield* pass.writeStepMemo({
-            nodeId: null,
-            stepId: "node:send:log-open",
-            value: { logId },
-            leaseExpiresAt: at(LEASE_MS),
-          });
+          yield* pass.writeStepMemo(
+            memoWrite({
+              stepId: "node:send:log-open",
+              value: { logId },
+              leaseExpiresAt: at(LEASE_MS),
+            })
+          );
           const finished = yield* pass.finishRun({
             executionId,
             status: "completed",
@@ -665,12 +664,13 @@ export function describeExecutionScheduleConformance({
           const again = retried.execution.id === executionId;
           const entries = yield* executions.listEvents(executionId);
           const { claim, fence } = yield* claimRun(executionId, T0);
-          yield* executions.fenced(fence).writeStepMemo({
-            nodeId: null,
-            stepId: "step_1",
-            value: "sent",
-            leaseExpiresAt: at(LEASE_MS),
-          });
+          yield* executions.fenced(fence).writeStepMemo(
+            memoWrite({
+              stepId: "step_1",
+              value: "sent",
+              leaseExpiresAt: at(LEASE_MS),
+            })
+          );
           const schedule = yield* executions.findSchedule({ executionId });
           const memo = yield* executions.listStepMemo({ executionId });
           yield* executions.deleteAllForWorkflow("wf_1");
@@ -711,12 +711,13 @@ export function describeExecutionScheduleConformance({
           const executionId = yield* scheduledRun(T0);
           const { fence } = yield* claimRun(executionId, T0);
           const pass = executions.fenced(fence);
-          yield* pass.writeStepMemo({
-            nodeId: null,
-            stepId: "step_1",
-            value: "sent",
-            leaseExpiresAt: at(LEASE_MS),
-          });
+          yield* pass.writeStepMemo(
+            memoWrite({
+              stepId: "step_1",
+              value: "sent",
+              leaseExpiresAt: at(LEASE_MS),
+            })
+          );
           yield* pass.dropSchedule();
           return {
             schedule: yield* executions.findSchedule({ executionId }),
@@ -765,12 +766,13 @@ export function describeExecutionScheduleConformance({
             yield* failOnce("step_a");
           }
           const { fence } = yield* claimRun(executionId, at(clock));
-          yield* executions.fenced(fence).writeStepMemo({
-            nodeId: null,
-            stepId: "step_a",
-            value: "sent",
-            leaseExpiresAt: at(clock + LEASE_MS),
-          });
+          yield* executions.fenced(fence).writeStepMemo(
+            memoWrite({
+              stepId: "step_a",
+              value: "sent",
+              leaseExpiresAt: at(clock + LEASE_MS),
+            })
+          );
           yield* executions
             .fenced(fence)
             .releasePass({ outcome: { kind: "parked" }, now: at(clock) });
@@ -782,12 +784,13 @@ export function describeExecutionScheduleConformance({
 
           // A step whose row is `failed` keeps it when a late value arrives.
           const { fence: last } = yield* claimRun(executionId, at(clock));
-          yield* executions.fenced(last).writeStepMemo({
-            nodeId: null,
-            stepId: "step_b",
-            value: "late",
-            leaseExpiresAt: at(clock + LEASE_MS),
-          });
+          yield* executions.fenced(last).writeStepMemo(
+            memoWrite({
+              stepId: "step_b",
+              value: "late",
+              leaseExpiresAt: at(clock + LEASE_MS),
+            })
+          );
           return {
             stepB,
             memo: yield* executions.listStepMemo({ executionId }),
@@ -965,103 +968,6 @@ export function describeExecutionScheduleConformance({
           value: "sent",
         },
       ]);
-    });
-
-    it("closes a node log with the retries its node's memo rows record, and keeps the count once the memo is gone", async () => {
-      const connection = await seeded(await openConnection());
-      const result = await connection.run(
-        Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
-          const executionId = yield* scheduledRun(T0);
-          let clock = 0;
-          const pass = Effect.gen(function* () {
-            const { fence } = yield* claimRun(executionId, at(clock));
-            return executions.fenced(fence);
-          });
-          const fail = (stepId: string, nodeId: string | null) =>
-            Effect.gen(function* () {
-              const released = yield* (yield* pass).releasePass({
-                outcome: {
-                  kind: "step_failed",
-                  stepId,
-                  nodeId,
-                  error: `${stepId} failed`,
-                  backoffMs: 0,
-                },
-                now: at(clock),
-              });
-              clock = released.schedule.wakeAt.getTime() - T0.getTime() + 1;
-            });
-          const openLog = (nodeId: string) =>
-            executions.openNodeLog({
-              executionId,
-              nodeId,
-              nodeName: nodeId,
-              nodeType: "action",
-            });
-
-          const send = yield* openLog("send");
-          const spent = yield* openLog("spent");
-          const quiet = yield* openLog("quiet");
-
-          // `send` fails twice on one step and then succeeds; its node's other
-          // step never fails. `spent` fails five times, the last of them
-          // with no retry after it. A step of no node fails once, and another
-          // node's step fails once, and neither reaches `send`.
-          yield* fail("node:send:dispatch", "send");
-          yield* fail("node:send:dispatch", "send");
-          yield* fail("delivery-step", null);
-          yield* fail("node:other:dispatch", "other");
-          for (let failure = 1; failure <= 5; failure += 1) {
-            yield* fail("node:spent:dispatch", "spent");
-          }
-          const live = yield* pass;
-          for (const [stepId, nodeId] of [
-            ["node:send:dispatch", "send"],
-            ["node:send:log-open", "send"],
-            ["node:quiet:dispatch", "quiet"],
-          ] as const) {
-            yield* live.writeStepMemo({
-              stepId,
-              nodeId,
-              value: null,
-              leaseExpiresAt: at(clock + LEASE_MS),
-            });
-          }
-          for (const logId of [send, spent, quiet]) {
-            yield* live.closeNodeLog({
-              logId,
-              status: logId === spent ? "error" : "success",
-              durationMs: 1,
-            });
-          }
-          const whileOpen = yield* executions.listLogs(executionId);
-
-          // Once the run ends its memo is deleted, and a close made after
-          // that keeps the count the row already holds.
-          yield* live.finishRun({ executionId, status: "completed" });
-          yield* executions.closeNodeLog({
-            logId: send,
-            status: "success",
-            durationMs: 2,
-          });
-          return {
-            whileOpen,
-            afterEnd: yield* executions.listLogs(executionId),
-          };
-        })
-      );
-
-      expect(retriesOf(result.whileOpen)).toEqual({
-        send: 2,
-        spent: 4,
-        quiet: 0,
-      });
-      expect(retriesOf(result.afterEnd)).toEqual({
-        send: 2,
-        spent: 4,
-        quiet: 0,
-      });
     });
   });
 }

@@ -4,6 +4,7 @@
  */
 
 import { Effect } from "effect";
+import type { JsonValue } from "@wfgraph/shared/types/json";
 import {
   type ClaimedRun,
   ExecutionRepo,
@@ -118,4 +119,17 @@ export function refusalOf<A>(write: Effect.Effect<A, { _tag: string }>) {
 export async function seeded(connection: ConformanceConnection) {
   await seedPublishedWorkflow(connection);
   return connection;
+}
+
+/**
+ * A step memo write as these cases make one: for a step of no node unless
+ * `nodeId` names one.
+ */
+export function memoWrite(input: {
+  stepId: string;
+  value: JsonValue;
+  leaseExpiresAt: Date;
+  nodeId?: string | null | undefined;
+}) {
+  return { ...input, nodeId: input.nodeId ?? null };
 }

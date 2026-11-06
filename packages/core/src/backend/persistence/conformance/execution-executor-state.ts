@@ -1,7 +1,9 @@
 /**
  * The executions aggregate's reads of the database executor for the Runs
- * view: where the executor holds one open run (`findExecutorState`), and where
- * it holds each run on a runs list page (`listExecutorHolds`).
+ * view: where the executor holds one open run (`findExecutorState`), where it
+ * holds each run on a runs list page (`listExecutorHolds`), which nodes have a
+ * failing step (`listFailingNodeIds`), and the retry count a node log's close
+ * writes from the step memo.
  *
  * Every case passes its own clock to the claim, the release and the read, so
  * the due and lease comparisons do not depend on how fast the case runs.
@@ -37,6 +39,11 @@ function openLog(executionId: string, nodeId: string, nodeName: string) {
       nodeType: "action",
     });
   });
+}
+
+/** Each log row's retry count, by its node id. */
+function retriesOf(logs: readonly { nodeId: string; retries: number }[]) {
+  return Object.fromEntries(logs.map((log) => [log.nodeId, log.retries]));
 }
 
 export function describeExecutionExecutorStateConformance({
@@ -457,6 +464,95 @@ export function describeExecutionExecutorStateConformance({
         ])
       );
       expect(result.none).toEqual(new Map());
+    });
+
+    it("closes a node log with the retries its node's memo rows record, and keeps the count once the memo is gone", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          let clock = 0;
+          const pass = Effect.gen(function* () {
+            const { fence } = yield* claimRun(executionId, at(clock));
+            return executions.fenced(fence);
+          });
+          const fail = (stepId: string, nodeId: string | null) =>
+            Effect.gen(function* () {
+              const released = yield* (yield* pass).releasePass({
+                outcome: {
+                  kind: "step_failed",
+                  stepId,
+                  nodeId,
+                  error: `${stepId} failed`,
+                  backoffMs: 0,
+                },
+                now: at(clock),
+              });
+              clock = released.schedule.wakeAt.getTime() - T0.getTime() + 1;
+            });
+          const send = yield* openLog(executionId, "send", "send");
+          const spent = yield* openLog(executionId, "spent", "spent");
+          const quiet = yield* openLog(executionId, "quiet", "quiet");
+
+          // `send` fails twice on one step and then succeeds; its node's other
+          // step never fails. `spent` fails five times, the last of them
+          // with no retry after it. A step of no node fails once, and another
+          // node's step fails once, and neither reaches `send`.
+          yield* fail("node:send:dispatch", "send");
+          yield* fail("node:send:dispatch", "send");
+          yield* fail("delivery-step", null);
+          yield* fail("node:other:dispatch", "other");
+          for (let failure = 1; failure <= 5; failure += 1) {
+            yield* fail("node:spent:dispatch", "spent");
+          }
+          const live = yield* pass;
+          for (const [stepId, nodeId] of [
+            ["node:send:dispatch", "send"],
+            ["node:send:log-open", "send"],
+            ["node:quiet:dispatch", "quiet"],
+          ] as const) {
+            yield* live.writeStepMemo({
+              stepId,
+              nodeId,
+              value: null,
+              leaseExpiresAt: at(clock + LEASE_MS),
+            });
+          }
+          for (const logId of [send, spent, quiet]) {
+            yield* live.closeNodeLog({
+              logId,
+              status: logId === spent ? "error" : "success",
+              durationMs: 1,
+            });
+          }
+          const whileOpen = yield* executions.listLogs(executionId);
+
+          // Once the run ends its memo is deleted, and a close made after
+          // that keeps the count the row already holds.
+          yield* live.finishRun({ executionId, status: "completed" });
+          yield* executions.closeNodeLog({
+            logId: send,
+            status: "success",
+            durationMs: 2,
+          });
+          return {
+            whileOpen,
+            afterEnd: yield* executions.listLogs(executionId),
+          };
+        })
+      );
+
+      expect(retriesOf(result.whileOpen)).toEqual({
+        send: 2,
+        spent: 4,
+        quiet: 0,
+      });
+      expect(retriesOf(result.afterEnd)).toEqual({
+        send: 2,
+        spent: 4,
+        quiet: 0,
+      });
     });
   });
 }
