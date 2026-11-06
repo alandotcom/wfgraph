@@ -659,6 +659,56 @@ describe("assembleExtensions checks", () => {
     ).toThrow(/unfiltered Event overlaps every filtered Event/u);
   });
 
+  // An arrival is resolved by name before source, so an Event named after
+  // another Event's umbrella would take every arrival meant for the filtered
+  // Events on it.
+  it("refuses an Event named after another Event's source", () => {
+    expect(() =>
+      assembleExtensions({
+        events: [
+          anEvent("app/appointment.updated", { event: "app/legacy-bus" }),
+          anEvent("appointment.canceled", {
+            event: "app/appointment.updated",
+            when: { path: "kind", equals: "canceled" },
+          }),
+        ],
+      })
+    ).toThrow(/is named after the source Event "appointment.canceled"/u);
+  });
+
+  it("resolves an arrival by an Event's name or by its source and filter", () => {
+    const created = anEvent("appointment.created", {
+      event: "app/appointment.updated",
+      when: { path: "kind", equals: "created" },
+    });
+    const set = assembleExtensions({ events: [created] });
+    const resolve = (name: string, kind: string) =>
+      set.resolveArrival({ name, data: { kind }, connectionId: null });
+
+    expect(resolve("appointment.created", "anything")).toEqual({
+      kind: "event",
+      event: created,
+    });
+    expect(resolve("app/appointment.updated", "created")).toEqual({
+      kind: "event",
+      event: created,
+    });
+    expect(resolve("app/appointment.updated", "moved")).toEqual({
+      kind: "unmatched_source",
+    });
+    expect(resolve("app/appointment.moved", "created")).toEqual({
+      kind: "unknown",
+    });
+    // A host Event never arrives through a Connection.
+    expect(
+      set.resolveArrival({
+        name: "appointment.created",
+        data: {},
+        connectionId: "conn_1",
+      })
+    ).toEqual({ kind: "unknown" });
+  });
+
   // The forwarder id is the name it receives slugged, so two names differing
   // only in punctuation are one function to Inngest: it would sync one and drop
   // the other.
@@ -931,8 +981,24 @@ describe("assembleExtensions and an integration definition", () => {
 
     expect(set.events).toEqual([event]);
     expect(set.catalog.events[0]?.integration).toBe("resend");
-    // The integration owns it, so it stays off the Events a host's bus carries.
+    // The integration owns it, so it stays off the Events a host's bus carries,
+    // and only an arrival through a Connection resolves to it.
     expect(set.hostEvents).toEqual([]);
+    const delivered = { kind: "email.delivered" };
+    expect(
+      set.resolveArrival({
+        name: "resend/webhook",
+        data: delivered,
+        connectionId: null,
+      })
+    ).toEqual({ kind: "unknown" });
+    expect(
+      set.resolveArrival({
+        name: "resend/webhook",
+        data: delivered,
+        connectionId: "conn_1",
+      })
+    ).toEqual({ kind: "event", event });
   });
 
   it("refuses one Event object claimed by two integrations", () => {

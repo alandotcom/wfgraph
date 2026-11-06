@@ -23,6 +23,7 @@ import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test
 import { wfSqlite } from "#src/backend/persistence/sqlite";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { cancelArrival } from "#src/backend/persistence/conformance/support";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 const RECORDER_ACTION_ID = "test/sqlite-cancel-recorder";
@@ -174,6 +175,7 @@ describe("a Canceled-side Wait over native SQLite", () => {
             runMode: "live",
             eventName: "app/appointment.canceled",
             payload: { reason: "customer left" },
+            deliveryId: yield* cancelArrival(),
             now: new Date(),
           });
 

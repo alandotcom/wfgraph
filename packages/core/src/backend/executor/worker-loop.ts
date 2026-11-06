@@ -282,7 +282,7 @@ const sweepSettledInbox = Effect.fn("wfgraph.executor.sweep_inbox")(
   function* (input: { now: Date; retentionMs: number }) {
     const executions = yield* ExecutionRepo;
     const swept = yield* executions
-      .sweepDeliveredInbox({
+      .sweepSettledInbox({
         olderThan: new Date(input.now.getTime() - input.retentionMs),
         limit: INBOX_SWEEP_LIMIT,
       })

@@ -1045,6 +1045,35 @@ describe("createWfGraphApp events", () => {
     ).rejects.toThrow("events.key is blank");
   });
 
+  // A send the runtime cannot run any more is a failure the host can catch
+  // like any storage failure: an Error with a sentence and the reason as cause.
+  it("rejects a send after dispose with an Error carrying the cause", async () => {
+    const app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      persistence: wfSqlite({ filename: join(dir, "disposed.sqlite") }),
+      extensions,
+    });
+    await app.dispose();
+
+    const rejection: unknown = await app.events
+      .send({ name: appointmentCreated.name, data: { appointmentId: "a" } })
+      .then(
+        () => undefined,
+        (error: unknown) => error
+      );
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect(rejection).not.toBeInstanceOf(WfGraphEventRefused);
+    expect(rejection).toMatchObject({ message: "Could not send this Event" });
+    expect(rejection instanceof Error && rejection.cause).toBeDefined();
+  });
+
+  it("refuses an events.key holding whitespace, which no Bearer header could carry", async () => {
+    await expect(
+      createWfGraphApp({ ...BASE_OPTIONS, events: { key: "events key" } })
+    ).rejects.toThrow("events.key contains whitespace");
+  });
+
   it("refuses an events.retentionMs the sweep could not use, and so does createWfGraphRunner", async () => {
     for (const retentionMs of [0, -1, 1.5, Number.NaN]) {
       // eslint-disable-next-line eslint/no-await-in-loop -- one refusal per value

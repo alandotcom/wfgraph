@@ -7,6 +7,7 @@ import {
   Schedule,
   Schema,
 } from "effect";
+import { DrizzleQueryError } from "drizzle-orm";
 import type {
   WfGraphDatabase,
   WfGraphTransaction,
@@ -15,8 +16,10 @@ import type {
 /**
  * A query did not reach the database, or the database refused it.
  *
- * `cause` is whatever `postgres.js` threw, kept so that a constraint violation
- * can be told apart from a dropped connection further up.
+ * `cause` is what the driver threw, kept so that a constraint violation can be
+ * told apart from a dropped connection further up. A failed query arrives as a
+ * `QueryFailed` holding the SQL text, with the driver's error under it, and
+ * never carries the values the query bound.
  * `serializableTransaction` reads it to retry an aborted transaction; services
  * otherwise log database failures and answer "internal".
  */
@@ -45,13 +48,78 @@ export class LeaseLost extends Schema.TaggedError<
   message: Schema.String,
 }) {}
 
+/**
+ * The fields of a driver error that name the failure and quote nothing the
+ * query bound. postgres.js also puts the query's `parameters` and `args` on
+ * the error, as properties a debug connection makes enumerable, and a
+ * constraint violation's `detail` and `where` quote the row or key that
+ * failed, which can hold an Event's payload. None of those are kept.
+ */
+const DRIVER_ERROR_FIELDS = [
+  "code",
+  "errno",
+  "severity",
+  "schema_name",
+  "table_name",
+  "column_name",
+  "constraint_name",
+  "routine",
+] as const;
+
+/**
+ * A copy of a driver error holding its message, name, stack and the fields
+ * in `DRIVER_ERROR_FIELDS`, and nothing else. Anything that is not an `Error`
+ * is answered as it is.
+ */
+function withoutBoundValues(driverError: unknown): unknown {
+  if (!(driverError instanceof Error)) return driverError;
+  const copy = new Error(driverError.message);
+  copy.name = driverError.name;
+  if (driverError.stack !== undefined) copy.stack = driverError.stack;
+  for (const field of DRIVER_ERROR_FIELDS) {
+    if (field in driverError) {
+      Reflect.set(copy, field, Reflect.get(driverError, field));
+    }
+  }
+  return copy;
+}
+
+/**
+ * A query the database refused or never received: the SQL text it ran, with
+ * the driver's error as `cause`, stripped to the fields that name the failure.
+ * The values the query bound are left out, because they can be an Event's
+ * payload or a credential, and this error reaches logs, a host's
+ * `Error.cause`, and Inngest.
+ */
+export class QueryFailed extends Error {
+  override readonly name = "QueryFailed";
+  readonly query: string;
+
+  constructor(query: string, driverError: unknown) {
+    super(`Failed query: ${query}`, {
+      cause: withoutBoundValues(driverError),
+    });
+    this.query = query;
+  }
+}
+
+/**
+ * Replaces Drizzle's `DrizzleQueryError`, whose message can list the query's
+ * bound values, with a `QueryFailed`. Any other failure is answered as it is.
+ */
+export function withoutQueryParams(cause: unknown): unknown {
+  return cause instanceof DrizzleQueryError
+    ? new QueryFailed(cause.query, cause.cause)
+    : cause;
+}
+
 /** Bounds the walk, so a cause that points at itself cannot spin a predicate. */
 const MAX_CAUSE_DEPTH = 8;
 
 /**
  * Checks whether a failure carries this driver code, at any depth.
  *
- * Drizzle wraps a driver error in a `DrizzleQueryError` carrying the failed SQL,
+ * A failed query's driver error sits under the `QueryFailed` carrying its SQL,
  * so the code sits below `error.cause` rather than on it. Reading only the first
  * link matched nothing a real database produces.
  */
@@ -105,7 +173,8 @@ export function makeDatabaseLayer(db: WfGraphDatabase): Layer.Layer<Database> {
     query: (run) =>
       Effect.tryPromise({
         try: () => run(db),
-        catch: (cause) => new DatabaseError({ cause }),
+        catch: (cause) =>
+          new DatabaseError({ cause: withoutQueryParams(cause) }),
       }),
   });
 }

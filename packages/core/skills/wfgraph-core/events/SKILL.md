@@ -117,9 +117,10 @@ process (off unless `events.key` is set), or `inngest.send({ name, data, id? })`
 Every one lands in the event inbox, and the worker loop delivers it. `id` is the
 idempotency key, and it holds only while the first send's inbox row exists: the
 loop deletes a settled row after `events.retentionMs` (seven days by default),
-and the same `id` after that is a new arrival that starts runs again. A send
-that names no catalog Event, or whose data the Event's schema refuses, is
-refused before anything is stored.
+and the same `id` after that is a new arrival that starts runs again. A resend
+of an `id` whose delivery failed for good delivers it again. A send that names
+no host Event (or umbrella name), names an integration-owned Event, or carries
+data the Event's schema refuses, is refused before anything is stored.
 
 A host already on Inngest keeps `inngest.send`. Workflow Graph registers one
 Inngest function per name a host Event arrives under (its umbrella `source`

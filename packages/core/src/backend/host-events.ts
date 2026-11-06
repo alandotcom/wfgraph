@@ -1,12 +1,13 @@
 /**
  * `events` on what `createWfGraphApp` and `createWfGraphRunner` answer: a
  * host's in-process send into the event inbox. `send` resolves once the inbox
- * row has committed, and rejects with `WfGraphEventRefused` for a send the
- * caller can correct, or with an `Error` whose `cause` holds the storage
- * failure. Neither message quotes what the caller sent.
+ * row has committed, and rejects only with `WfGraphEventRefused` for a send
+ * the caller can correct, or with an `Error` whose `cause` holds the storage
+ * failure or the defect, such as a send after the app was disposed. Neither
+ * message quotes what the caller sent.
  */
 
-import { Effect } from "effect";
+import { Cause, Exit, Option } from "effect";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { sendEvent } from "#src/backend/services/executions/send-event";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -53,20 +54,21 @@ export class WfGraphEventRefused extends Error {
 export function createHostEvents(runtime: WfGraphRuntime): WfGraphEvents {
   return {
     send: async (event) => {
-      const outcome = await runtime.runPromise(
-        sendEvent(event).pipe(
-          Effect.match({
-            onSuccess: (receipt) => ({ ok: true as const, receipt }),
-            onFailure: (failure) => ({ ok: false as const, failure }),
-          })
-        )
-      );
-      if (outcome.ok) return outcome.receipt;
-      const { failure } = outcome;
-      if (failure._tag === "InvalidInput") {
-        throw new WfGraphEventRefused(failure.error);
+      // An exit rather than a rejected promise, so a defect, such as a send
+      // after the app was disposed, is answered as the storage failure it is
+      // to the host and never escapes as whatever the runtime threw.
+      const exit = await runtime.runPromiseExit(sendEvent(event));
+      if (Exit.isSuccess(exit)) return exit.value;
+      const failure = Cause.findErrorOption(exit.cause);
+      if (Option.isSome(failure)) {
+        if (failure.value._tag === "InvalidInput") {
+          throw new WfGraphEventRefused(failure.value.error);
+        }
+        throw new Error(failure.value.error, { cause: failure.value.cause });
       }
-      throw new Error(failure.error, { cause: failure.cause });
+      throw new Error("Could not send this Event", {
+        cause: Cause.squash(exit.cause),
+      });
     },
   };
 }

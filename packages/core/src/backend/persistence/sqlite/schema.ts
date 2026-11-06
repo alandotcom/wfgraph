@@ -334,6 +334,23 @@ export const workflowEventInbox = sqliteTable(
 );
 
 /**
+ * The PostgreSQL cancel decision table in SQLite's encoding, with the decision
+ * time as epoch milliseconds. `workflowCancelDecisions` in `lib/db/schema.ts`
+ * describes the rows.
+ */
+export const workflowCancelDecisions = sqliteTable(
+  "workflow_cancel_decisions",
+  {
+    deliveryId: text("delivery_id")
+      .notNull()
+      .references(() => workflowEventInbox.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id").notNull(),
+    decidedAt: integer("decided_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.deliveryId, table.workflowId] })]
+);
+
+/**
  * The PostgreSQL schedule table in SQLite's encoding, with timestamps as epoch
  * milliseconds. `workflowExecutionSchedule` in `lib/db/schema.ts` describes the
  * columns.
@@ -515,6 +532,7 @@ export const sqliteTables = {
   workflowExecutionLogs,
   workflowWaitStates,
   workflowEventInbox,
+  workflowCancelDecisions,
   workflowExecutionSchedule,
   workflowExecutionSteps,
   workflowExecutionEvents,

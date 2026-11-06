@@ -1,15 +1,16 @@
 /**
- * A host's Event send: the shape is checked, the name must be a catalog
- * Event, and the data must pass that Event's payload gate before the arrival
- * reaches the event inbox. A refusal is `InvalidInput` whose sentence names
- * fields and rules and quotes nothing the sender wrote. The inbox row keeps
- * `data` as it arrived, since the gate's decoded value serves only Entity ID
- * selectors.
+ * A host's Event send: the shape is checked, `resolveArrival` must answer a
+ * host Event for the name with no Connection, and the data must pass that
+ * Event's payload gate before the arrival reaches the event inbox under the
+ * Event's own name. A refusal is `InvalidInput` whose sentence names fields
+ * and rules and quotes nothing the sender wrote. The inbox row keeps `data` as
+ * it arrived, since the gate's decoded value serves only Entity ID selectors.
  */
 
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
+import { payloadRejectionFields } from "#src/backend/extensions/define-event";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
 import { catchSeamFailures } from "#src/backend/lib/effect/internal-failure";
 import { ExecutionDriver } from "#src/backend/services/executions/driver";
@@ -58,13 +59,22 @@ export const sendEvent = Effect.fn("wfgraph.event.send")(
     }
     const { name, data, id } = parsed.success;
 
+    // A host send carries no Connection, so it raises a host Event only: an
+    // integration-owned Event arrives through its integration's webhook.
     const extensions = yield* Extensions;
-    const event = extensions.eventByName(name);
-    if (event === undefined) {
+    const match = extensions.resolveArrival({ name, data, connectionId: null });
+    if (match.kind === "unknown") {
       return yield* new InvalidInput({
-        error: "name: No catalog Event has this name",
+        error: "name: No host Event has this name or arrives under it",
       });
     }
+    if (match.kind === "unmatched_source") {
+      return yield* new InvalidInput({
+        error:
+          "data: No Event arriving under this name accepts this payload's source filter value",
+      });
+    }
+    const { event } = match;
 
     const refusal = yield* event.decodePayloadValue(data).pipe(
       Effect.match({
@@ -76,7 +86,7 @@ export const sendEvent = Effect.fn("wfgraph.event.send")(
       const logger = yield* sendLogger;
       yield* logger.warn("Refused an Event send", {
         event: { name: event.name, keys: Object.keys(data).length },
-        error: { message: refusal.detail },
+        payload: payloadRejectionFields(refusal),
       });
       return yield* new InvalidInput({
         error: `Payload refused for Event "${event.name}": ${refusal.error}`,

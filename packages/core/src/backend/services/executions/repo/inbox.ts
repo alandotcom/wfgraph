@@ -6,12 +6,13 @@
  * inbox row, the order every fenced write takes a schedule row first.
  */
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import {
   workflowEventInbox,
   workflowExecutionSchedule,
 } from "#src/backend/lib/db/schema";
+import type { WfGraphTransaction } from "#src/backend/lib/db/index";
 import type {
   Database,
   DatabaseError,
@@ -28,6 +29,8 @@ import {
   awaitsSchedule,
   holdsInboxKey,
   inboxEventOf,
+  resendOnHeldKey,
+  settleableInbox,
   sweepableInbox,
 } from "#src/backend/services/executions/repo/inbox-policy";
 import { writeFenced } from "#src/backend/services/executions/repo/schedule";
@@ -36,11 +39,9 @@ import { generateId } from "@wfgraph/shared/utils/id";
 /** The event inbox slice of `ExecutionRepo`. */
 export type InboxRepoMethods = {
   /**
-   * Record an arrival: its inbox row and its `delivery` schedule row, `queued`
-   * and due at `now`, in one transaction. An arrival whose idempotency key an
-   * inbox row already holds, for the same Event name and Connection, writes
-   * nothing and is answered with that row's id. The caller wakes the worker
-   * loops once a new arrival has committed.
+   * Record an arrival in one transaction, as `writeArrival` describes. The
+   * caller wakes the worker loops once an answer that is not a duplicate has
+   * committed.
    */
   readonly insertInboxEvent: (
     input: NewInboxEvent & { now: Date }
@@ -76,12 +77,13 @@ export type InboxRepoMethods = {
     now: Date;
   }) => Effect.Effect<void, DatabaseError | LeaseLost>;
   /**
-   * The retention sweep: delete up to `limit` settled inbox rows that arrived
-   * before `olderThan`, oldest first, answering how many went. A `pending`
-   * row is never deleted. Once a row is gone, its idempotency key is accepted
-   * again as a new arrival.
+   * The retention sweep: delete up to `limit` settled inbox rows, `delivered`
+   * or `failed`, that arrived before `olderThan`, oldest first, answering how
+   * many went, with each row's Cancel decisions by cascade. A `pending` row is
+   * never deleted. Once a row is gone, its idempotency key is accepted again as
+   * a new arrival.
    */
-  readonly sweepDeliveredInbox: (input: {
+  readonly sweepSettledInbox: (input: {
     olderThan: Date;
     limit: number;
   }) => Effect.Effect<number, DatabaseError>;
@@ -90,6 +92,109 @@ export type InboxRepoMethods = {
     inboxId: string
   ) => Effect.Effect<InboxEvent | null, DatabaseError>;
 };
+
+/** Gives one inbox row its `delivery` schedule row, `queued` and due at `wakeAt`. */
+async function insertDeliverySchedule(
+  tx: WfGraphTransaction,
+  input: { inboxId: string; wakeAt: Date }
+): Promise<string> {
+  const [schedule] = await tx
+    .insert(workflowExecutionSchedule)
+    .values({
+      kind: "delivery",
+      inboxId: input.inboxId,
+      state: "queued",
+      wakeAt: input.wakeAt,
+    })
+    .returning({ id: workflowExecutionSchedule.id });
+  if (!schedule) {
+    throw new Error("PostgreSQL returned no delivery schedule row");
+  }
+  return schedule.id;
+}
+
+/**
+ * One attempt at recording an arrival, as `writeArrival` describes. Answers
+ * null when the insert met a row holding the arrival's key and that row was
+ * gone by the time this read it, which the retention sweep does between the
+ * two statements.
+ */
+async function insertOrResend(
+  tx: WfGraphTransaction,
+  input: NewInboxEvent & { now: Date }
+): Promise<InboxInsert | null> {
+  const inboxId = generateId();
+  // The inbox id is minted here, so the only unique index a new row can meet
+  // is the idempotency key's.
+  const [inserted] = await tx
+    .insert(workflowEventInbox)
+    .values({
+      id: inboxId,
+      name: input.name,
+      data: input.data,
+      connectionId: input.connectionId,
+      idempotencyKey: input.idempotencyKey,
+      receivedAt: input.now,
+    })
+    .onConflictDoNothing()
+    .returning({ id: workflowEventInbox.id });
+  if (inserted) {
+    const scheduleId = await insertDeliverySchedule(tx, {
+      inboxId,
+      wakeAt: input.now,
+    });
+    return { duplicate: false, inboxId, scheduleId };
+  }
+
+  const { idempotencyKey } = input;
+  if (idempotencyKey === null) {
+    throw new Error("An inbox insert with no idempotency key conflicted");
+  }
+  // The row lock orders two resends of one failed row: the second reads the
+  // row the first reopened, and answers it as a duplicate.
+  const [held] = await tx
+    .select({ id: workflowEventInbox.id, status: workflowEventInbox.status })
+    .from(workflowEventInbox)
+    .where(holdsInboxKey(workflowEventInbox, { ...input, idempotencyKey }))
+    .for("update");
+  if (!held) return null;
+  if (resendOnHeldKey(held.status) === "duplicate") {
+    return { duplicate: true, inboxId: held.id };
+  }
+  await tx
+    .update(workflowEventInbox)
+    .set({ status: "pending", error: null, settledAt: null })
+    .where(eq(workflowEventInbox.id, held.id));
+  const scheduleId = await insertDeliverySchedule(tx, {
+    inboxId: held.id,
+    wakeAt: input.now,
+  });
+  return { duplicate: false, inboxId: held.id, scheduleId };
+}
+
+/**
+ * Records an arrival inside the caller's transaction: its inbox row and its
+ * `delivery` schedule row, `queued` and due at `now`. When an inbox row
+ * already holds the arrival's idempotency key, for the same Event name and
+ * Connection, a `failed` row is reopened as `pending`, with its error and
+ * settled time cleared, and given a new schedule row, keeping its id and its
+ * data; a `pending` or `delivered` row writes nothing and is answered as a
+ * duplicate. When the row holding the key is swept between the insert and the
+ * read, the insert runs once more.
+ */
+export async function writeArrival(
+  tx: WfGraphTransaction,
+  input: NewInboxEvent & { now: Date }
+): Promise<InboxInsert> {
+  const written =
+    (await insertOrResend(tx, input)) ?? (await insertOrResend(tx, input));
+  if (written === null) {
+    throw new Error(
+      "An inbox insert conflicted twice, and no row holds its idempotency key"
+    );
+  }
+  return written;
+}
 
 /** Builds the event inbox slice of `ExecutionRepo` over one database. */
 export function makeInboxMethods(
@@ -110,12 +215,7 @@ export function makeInboxMethods(
             error: settled.error,
             settledAt: settled.now,
           })
-          .where(
-            and(
-              eq(workflowEventInbox.id, fence.inboxId),
-              eq(workflowEventInbox.status, "pending")
-            )
-          );
+          .where(settleableInbox(workflowEventInbox, fence.inboxId));
         // The memo rows go with the schedule row by cascade.
         await tx
           .delete(workflowExecutionSchedule)
@@ -126,60 +226,7 @@ export function makeInboxMethods(
 
   return {
     insertInboxEvent: (input) =>
-      database.query((db) =>
-        db.transaction(async (tx): Promise<InboxInsert> => {
-          const inboxId = generateId();
-          // The inbox id is minted here, so the only unique index a new row
-          // can meet is the idempotency key's.
-          const [inserted] = await tx
-            .insert(workflowEventInbox)
-            .values({
-              id: inboxId,
-              name: input.name,
-              data: input.data,
-              connectionId: input.connectionId,
-              idempotencyKey: input.idempotencyKey,
-              receivedAt: input.now,
-            })
-            .onConflictDoNothing()
-            .returning({ id: workflowEventInbox.id });
-          if (inserted) {
-            const [schedule] = await tx
-              .insert(workflowExecutionSchedule)
-              .values({
-                kind: "delivery",
-                inboxId,
-                state: "queued",
-                wakeAt: input.now,
-              })
-              .returning({ id: workflowExecutionSchedule.id });
-            if (!schedule) {
-              throw new Error("PostgreSQL returned no delivery schedule row");
-            }
-            return { duplicate: false, inboxId, scheduleId: schedule.id };
-          }
-
-          const { idempotencyKey } = input;
-          const [existing] =
-            idempotencyKey === null
-              ? []
-              : await tx
-                  .select({ id: workflowEventInbox.id })
-                  .from(workflowEventInbox)
-                  .where(
-                    holdsInboxKey(workflowEventInbox, {
-                      ...input,
-                      idempotencyKey,
-                    })
-                  );
-          if (!existing) {
-            throw new Error(
-              "An inbox insert conflicted, and no row holds its idempotency key"
-            );
-          }
-          return { duplicate: true, inboxId: existing.id };
-        })
-      ),
+      database.query((db) => db.transaction((tx) => writeArrival(tx, input))),
 
     scheduleUnscheduledInbox: (input) =>
       database.query((db) =>
@@ -236,7 +283,7 @@ export function makeInboxMethods(
         now: input.now,
       }),
 
-    sweepDeliveredInbox: (input) =>
+    sweepSettledInbox: (input) =>
       database.query(async (db) => {
         const swept = await db
           .delete(workflowEventInbox)

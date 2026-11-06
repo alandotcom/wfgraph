@@ -171,6 +171,7 @@ export function stubExtensions(
     oauthFor: () => undefined,
     webhookFor: () => undefined,
     eventByName: () => undefined,
+    resolveArrival: () => ({ kind: "unknown" }),
     entityByType: () => undefined,
     entityResolverTimeoutMs: DEFAULT_ENTITY_RESOLVER_TIMEOUT_MS,
     events: [],
@@ -390,7 +391,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   scheduleUnscheduledInbox: refuse("scheduleUnscheduledInbox"),
   finishDelivery: refuse("finishDelivery"),
   failDelivery: refuse("failDelivery"),
-  sweepDeliveredInbox: refuse("sweepDeliveredInbox"),
+  sweepSettledInbox: refuse("sweepSettledInbox"),
   findInboxEvent: refuse("findInboxEvent"),
   // `fenced` answers a set of writes, each of which dies when called, the way
   // every other method here does.
@@ -487,11 +488,13 @@ export function stubWfGraphRuntime(
     agent?: AgentSettings | undefined;
     /** Stable host URLs. OAuth is off in a test unless it supplies a public URL. */
     appContext?: WfGraphAppContextValue | undefined;
+    /** Silent unless a test records what the services log. */
+    logger?: Layer.Layer<AppLogger> | undefined;
   } = {}
 ): ManagedRuntime.ManagedRuntime<WfGraphServices, never> {
   return ManagedRuntime.make(
     Layer.mergeAll(
-      SilentAppLoggerLayer,
+      overrides.logger ?? SilentAppLoggerLayer,
       makeAppContextLayer(
         overrides.appContext ?? {
           apiBasePath: "/api",

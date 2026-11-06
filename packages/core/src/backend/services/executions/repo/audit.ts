@@ -66,6 +66,22 @@ export function recordAuditEventWrite(input: NewAuditEvent) {
   };
 }
 
+/** The insert of several entries at once, on the transaction the caller holds. */
+export function recordAuditEventsWrite(inputs: readonly NewAuditEvent[]) {
+  return async (db: WfGraphDatabase | WfGraphTransaction): Promise<void> => {
+    if (inputs.length === 0) return;
+    await db.insert(workflowExecutionEvents).values(
+      inputs.map((input) => ({
+        workflowId: input.workflowId,
+        executionId: input.executionId ?? null,
+        eventType: input.eventType,
+        message: input.message,
+        metadata: toJsonObject(input.metadata),
+      }))
+    );
+  };
+}
+
 /** Builds the `workflow_execution_events` slice of `ExecutionRepo` over one database. */
 export function makeAuditMethods(
   database: Database["Service"]

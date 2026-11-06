@@ -1,9 +1,10 @@
 /**
  * Intra- and cross-definition uniqueness for Events: mutually exclusive filters
- * on a shared source, and one Inngest forwarder id per name a host sends.
+ * on a shared source, Event names distinct from other Events' source names, and
+ * one Inngest forwarder id per name a host sends.
  *
  * `checkIntegration` runs the filter check on one plugin; `assembleExtensions`
- * runs both on the whole surface. The sentences are the same because the
+ * runs every check on the whole surface. The sentences are the same because the
  * collision is.
  */
 
@@ -102,5 +103,30 @@ export function assertDistinctForwarderIds(names: readonly string[]): void {
       );
     }
     byId.set(id, name);
+  }
+}
+
+/**
+ * An Event's name may not be the source name a different Event arrives
+ * under.
+ *
+ * An inbox row is resolved by its name first and by source second, so an Event
+ * named after another Event's umbrella source would take every arrival meant
+ * for that source, and the filtered Events on it would never be delivered.
+ */
+export function assertNamesAreNotOtherSources(
+  events: readonly NamedEventSource[]
+): void {
+  const bySource = Map.groupBy(events, (event) => event.source.event);
+
+  for (const event of events) {
+    const other = bySource
+      .get(event.name)
+      ?.find((candidate) => candidate.name !== event.name);
+    if (other) {
+      throw new Error(
+        `Event "${event.name}" is named after the source Event "${other.name}" arrives under, so an arrival with that name could be either Event. Rename the Event, or give "${other.name}" a different source name.`
+      );
+    }
   }
 }

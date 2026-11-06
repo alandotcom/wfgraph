@@ -18,9 +18,13 @@ import type {
 } from "#src/backend/services/executions/repo";
 import type { ClaimsRepoMethods } from "#src/backend/services/executions/repo/claims";
 import {
+  type CancelClaimWrite,
+  cancelClaimable,
+  cancelRequestedEntries,
   canceledOutletClaims,
   claimablePark,
   claimedByDelivery,
+  claimedEarlierBy,
   matchesClassification,
   resumeWakeOf,
 } from "#src/backend/services/executions/repo/release-policy";
@@ -30,9 +34,11 @@ import type {
 } from "#src/backend/persistence/sqlite/database";
 import { encodeJson } from "#src/backend/persistence/sqlite/database";
 import {
+  workflowCancelDecisions,
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/persistence/sqlite/schema";
+import { recordAuditEventsWrite } from "#src/backend/persistence/sqlite/executions/audit";
 import { sqliteWaitState } from "#src/backend/persistence/sqlite/executions/rows";
 import { notExitClaimed } from "#src/backend/persistence/sqlite/executions/runs";
 import {
@@ -167,46 +173,42 @@ function repinVersionWrite(database: SqliteExecutor, input: RepinInput) {
   });
 }
 
-/** The Cancel producer behind `requestCancelForEntity`. */
+/**
+ * The Cancel producer behind `requestCancelForEntity`. The write transaction
+ * holds the one writer, so the decision row and every flag it guards land
+ * together.
+ */
 function requestCancelForEntityWrite(
   database: SqliteExecutor,
   input: CancelInput
 ) {
-  const entityPredicate =
-    input.entityType === undefined
-      ? eq(workflowExecutions.entityValue, input.entityValue)
-      : and(
-          eq(workflowExecutions.entityType, input.entityType),
-          eq(workflowExecutions.entityId, input.entityId)
-        );
-  const sameRuns = and(
-    eq(workflowExecutions.workflowId, input.workflowId),
-    entityPredicate,
-    eq(workflowExecutions.runMode, input.runMode)
-  );
-  const where = and(
-    sameRuns,
-    inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-    isNull(workflowExecutions.terminationKind)
-  );
-  const { deliveryId } = input;
   return wakeExecutions(
     database,
     input.now,
-    Effect.gen(function* () {
-      const claimedEarlier =
-        deliveryId === undefined
-          ? []
-          : yield* database
-              .select({ id: workflowExecutions.id })
-              .from(workflowExecutions)
-              .where(
-                and(
-                  sameRuns,
-                  eq(workflowExecutions.terminationKind, "cancel"),
-                  eq(workflowExecutions.cancelDeliveryId, deliveryId)
-                )
-              );
+    Effect.gen(function* (): Effect.fn.Return<CancelClaimWrite, unknown> {
+      const decided = yield* database
+        .insert(workflowCancelDecisions)
+        .values({
+          deliveryId: input.deliveryId,
+          workflowId: input.workflowId,
+          decidedAt: input.now.getTime(),
+        })
+        .onConflictDoNothing()
+        .returning({ deliveryId: workflowCancelDecisions.deliveryId });
+      if (decided.length === 0) {
+        const claimedEarlier = yield* database
+          .select({ id: workflowExecutions.id })
+          .from(workflowExecutions)
+          .where(claimedEarlierBy(workflowExecutions, input));
+        return {
+          result: {
+            flagged: [],
+            resolved: [],
+            claimedEarlier: claimedEarlier.map((row) => row.id),
+          },
+          woken: [],
+        };
+      }
       const flagged = yield* database
         .update(workflowExecutions)
         .set({
@@ -214,20 +216,24 @@ function requestCancelForEntityWrite(
           terminationRequestedAt: input.now.getTime(),
           cancelEventName: input.eventName,
           cancelPayload: encodeJson(input.payload),
-          cancelDeliveryId: deliveryId ?? null,
+          cancelDeliveryId: input.deliveryId,
         })
-        .where(where)
+        .where(cancelClaimable(workflowExecutions, input))
         .returning({ id: workflowExecutions.id });
       const flaggedIds = flagged.map((row) => row.id);
       const resolved = yield* resolveOpenParks(database, flaggedIds, {
         kind: "cancel",
       });
-      return {
-        result: {
+      yield* recordAuditEventsWrite(
+        cancelRequestedEntries({
+          workflowId: input.workflowId,
+          eventName: input.eventName,
           flagged: flaggedIds,
           resolved,
-          claimedEarlier: claimedEarlier.map((row) => row.id),
-        },
+        })
+      )(database);
+      return {
+        result: { flagged: flaggedIds, resolved, claimedEarlier: [] },
         woken: flaggedIds,
       };
     })

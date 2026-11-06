@@ -180,4 +180,13 @@ export const sqliteMigrations = [
     hash: "62b69c7c31076ae25e76cbb3e1a095d1aa1cb4a64f2a7171415b418264989dd3",
     name: "20261106041822_worthless_the_hood",
   },
+  {
+    sql: [
+      "CREATE TABLE `workflow_cancel_decisions` (\n\t`delivery_id` text NOT NULL,\n\t`workflow_id` text NOT NULL,\n\t`decided_at` integer NOT NULL,\n\tCONSTRAINT `workflow_cancel_decisions_pk` PRIMARY KEY(`delivery_id`, `workflow_id`),\n\tCONSTRAINT `fk_workflow_cancel_decisions_delivery_id_workflow_event_inbox_id_fk` FOREIGN KEY (`delivery_id`) REFERENCES `workflow_event_inbox`(`id`) ON DELETE CASCADE\n) STRICT;\n",
+    ],
+    bps: true,
+    folderMillis: 1793946051000,
+    hash: "70cef4bda12225ed66e96c43d7c2755f6886fe36bcd674f3324be03bfce80893",
+    name: "20261106062051_real_alex_wilder",
+  },
 ] satisfies readonly MigrationMeta[];

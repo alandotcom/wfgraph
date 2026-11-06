@@ -4,6 +4,7 @@ import {
   type EffectLogger,
 } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
+import { payloadRejectionFields } from "#src/backend/extensions/define-event";
 import { Conflict, InvalidInput } from "#src/backend/lib/effect/failures";
 import { catchSeamFailures } from "#src/backend/lib/effect/internal-failure";
 import { annotateServiceSpan } from "#src/backend/lib/telemetry";
@@ -261,10 +262,10 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       if (!decoded.success) {
         const { rejection } = decoded;
         // The sentence the caller reads names the Event; the operator's line
-        // carries the detail, which quotes paths rather than values.
+        // carries the issue count and paths, never a value.
         yield* logger.info("Refused a manual run payload", {
           eventName,
-          error: rejection.detail,
+          payload: payloadRejectionFields(rejection),
         });
         return yield* new InvalidInput({
           error: `Payload refused for Event "${eventName}": ${rejection.error}`,

@@ -15,6 +15,7 @@ import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import {
   type PersistenceTestRegistry,
+  cancelArrival,
   notYetDue,
   publishSecondVersion,
 } from "#src/backend/persistence/conformance/support";
@@ -27,8 +28,24 @@ import {
   seeded,
 } from "#src/backend/persistence/conformance/schedule-support";
 
+/** One Cancel Event for `appointment_1`, applied under the delivery id given. */
+function cancelAppointment(deliveryId: string, now: Date) {
+  return Effect.flatMap(ExecutionRepo, (executions) =>
+    executions.requestCancelForEntity({
+      workflowId: "wf_1",
+      runMode: "live",
+      entityValue: "appointment_1",
+      eventName: "appointment/cancelled",
+      payload: { reason: "customer left" },
+      deliveryId,
+      now,
+    })
+  );
+}
+
 export function describeExecutionProducerConformance({
   openConnection,
+  openDatabase,
 }: PersistenceTestRegistry): void {
   describe("execution producers", () => {
     it("resolves the run's other parks as an Exit in the fenced write that wins the Exit claim", async () => {
@@ -612,15 +629,19 @@ export function describeExecutionProducerConformance({
           yield* claimRun(leased, at(1_500));
           const leasedPark = yield* park(leased, "wait_c", at(90_000));
 
+          // Each call is a Cancel Event of its own, with an inbox row of its own.
           const cancel = (now: Date) =>
-            executions.requestCancelForEntity({
-              workflowId: "wf_1",
-              runMode: "live",
-              entityValue: "appointment_1",
-              eventName: "appointment/cancelled",
-              payload: { reason: "customer left" },
-              now,
-            });
+            Effect.flatMap(cancelArrival(), (deliveryId) =>
+              executions.requestCancelForEntity({
+                workflowId: "wf_1",
+                runMode: "live",
+                entityValue: "appointment_1",
+                eventName: "appointment/cancelled",
+                payload: { reason: "customer left" },
+                deliveryId,
+                now,
+              })
+            );
           const claims = yield* cancel(at(2_000));
           const repeated = yield* cancel(at(3_000));
 
@@ -710,12 +731,14 @@ export function describeExecutionProducerConformance({
               deliveryId,
               now,
             });
-          const first = yield* cancel("inbox_1", at(1_000));
+          const arrival = yield* cancelArrival();
+          const otherArrival = yield* cancelArrival();
+          const first = yield* cancel(arrival, at(1_000));
           const scheduleAfterFirst = yield* executions.findSchedule({
             executionId: started.execution.id,
           });
-          const retried = yield* cancel("inbox_1", at(2_000));
-          const other = yield* cancel("inbox_2", at(3_000));
+          const retried = yield* cancel(arrival, at(2_000));
+          const other = yield* cancel(otherArrival, at(3_000));
           return {
             executionId: started.execution.id,
             first,
@@ -728,6 +751,7 @@ export function describeExecutionProducerConformance({
             termination: yield* executions.findTerminationState(
               started.execution.id
             ),
+            timeline: yield* executions.listEvents(started.execution.id),
           };
         })
       );
@@ -752,6 +776,88 @@ export function describeExecutionProducerConformance({
         kind: "cancel",
         eventName: "appointment/cancelled",
       });
+      // The claim wrote its timeline entry in its own transaction, once.
+      expect(
+        result.timeline.filter(
+          (entry) => entry.eventType === "run_cancel_requested"
+        )
+      ).toMatchObject([
+        {
+          message: "Cancellation requested by appointment/cancelled",
+          metadata: { eventName: "appointment/cancelled", parkedWaits: 0 },
+        },
+      ]);
+    });
+
+    it("answers a retried Cancel from its recorded decision, leaving a run that opened after the first attempt unclaimed, and drops the decision with its inbox row", async () => {
+      const database = await openDatabase();
+      const connection = await seeded(await database.open());
+
+      const retried = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          // The first attempt finds no run in flight, and records that it
+          // decided so.
+          const arrival = yield* cancelArrival(T0);
+          const first = yield* cancelAppointment(arrival, at(1_000));
+          // A run opens after the first attempt committed, and the delivery
+          // is retried, as after a crash before its step's memo row.
+          const late = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              runMode: "live",
+              entityValue: "appointment_1",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+            startedEntry: notYetDue.startedEntry,
+            now: at(2_000),
+          });
+          if (late.status !== "started") throw new Error("Start refused");
+          return {
+            arrival,
+            first,
+            again: yield* cancelAppointment(arrival, at(3_000)),
+            lateId: late.execution.id,
+            lateCancel: yield* executions.findPendingCancel(late.execution.id),
+            lateTimeline: yield* executions.listEvents(late.execution.id),
+          };
+        })
+      );
+
+      expect(retried.first).toEqual([]);
+      expect(retried.again).toEqual([]);
+      expect(retried.lateCancel).toBeNull();
+      expect(
+        retried.lateTimeline.map((entry) => entry.eventType)
+      ).not.toContain("run_cancel_requested");
+
+      // The arrival settles and the sweep deletes its row on this connection,
+      // and the decision goes with it by cascade. A host row inserted under
+      // the same id is a new arrival, whose Cancel claims the run.
+      await database.execute({
+        postgresql: `update workflow_event_inbox set status = 'delivered', settled_at = now() where id = '${retried.arrival}'`,
+        sqlite: `update workflow_event_inbox set status = 'delivered', settled_at = 0 where id = '${retried.arrival}'`,
+      });
+      const swept = await connection.run(
+        Effect.flatMap(ExecutionRepo, (executions) =>
+          executions.sweepSettledInbox({ olderThan: at(5_000), limit: 10 })
+        )
+      );
+      await database.execute(
+        `insert into workflow_event_inbox (id, name, data) values ('${retried.arrival}', 'appointment/cancelled', '{}')`
+      );
+      const reused = await connection.run(
+        cancelAppointment(retried.arrival, at(6_000))
+      );
+
+      expect(swept).toBe(1);
+      expect(reused).toMatchObject([
+        { kind: "claimed", executionId: retried.lateId },
+      ]);
     });
   });
 }

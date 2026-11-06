@@ -6,7 +6,10 @@
  */
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { defineEvent } from "#src/backend/extensions/define-event";
+import {
+  defineEvent,
+  payloadRejectionFields,
+} from "#src/backend/extensions/define-event";
 import { defineEntity } from "#src/backend/extensions/define-entity";
 import { isoTimestampToDate } from "@wfgraph/shared/types/timestamp";
 
@@ -379,10 +382,8 @@ describe("the intake gate", () => {
   });
 
   // An Effect payload schema renders through `formatSchemaFailure`, which holds
-  // nothing of what arrived, so the sender's answer and the operator's log line
-  // are the same string. A payload schema from a foreign library is the case
-  // where the two still differ, because its own messages stay in `detail`.
-  it("keeps the payload out of both the answer and the log line", () => {
+  // nothing of what arrived. The log record carries the issue paths and count.
+  it("keeps the payload out of both the answer and the log fields", () => {
     const rejected = Effect.runSync(
       appointmentCreated
         .decodePayload({ event: 7, appointment: { id: "appt_1" } })
@@ -395,8 +396,10 @@ describe("the intake gate", () => {
     );
 
     expect(rejected?.error).not.toContain("7");
-    expect(rejected?.detail).not.toContain("7");
-    expect(rejected?.detail).toBe(rejected?.error);
+    expect(rejected && payloadRejectionFields(rejected)).toEqual({
+      issues: 2,
+      paths: ["event", "appointment.priority"],
+    });
   });
 });
 
@@ -487,9 +490,9 @@ describe("the intake gate over a foreign schema", () => {
     expect(error).not.toContain("was 7");
   });
 
-  // The library's own message never leaves the process, so the log keeps it: for
-  // a foreign schema it is the only statement of what was expected.
-  it("keeps the library's own message on the operator-facing string", () => {
+  // A foreign library's own message may quote the value it rejected, so the
+  // log fields keep only where each issue was.
+  it("logs the paths of a foreign schema's issues and none of its messages", () => {
     const rejected = Effect.runSync(
       foreignEvent.decodePayload({ appointment: { id: 7 } }).pipe(
         Effect.match({
@@ -499,8 +502,10 @@ describe("the intake gate over a foreign schema", () => {
       )
     );
 
-    expect(rejected?.detail).toBe(
-      "Payload does not fit this Event: appointment.id: must be a string, was 7"
-    );
+    expect(rejected && payloadRejectionFields(rejected)).toEqual({
+      issues: 1,
+      paths: ["appointment.id"],
+    });
+    expect(JSON.stringify(rejected)).not.toContain("was 7");
   });
 });

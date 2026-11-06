@@ -10,7 +10,8 @@
 
 import { Effect } from "effect";
 import { failureFromUnknown } from "#src/backend/engine/engine-failure";
-import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
+import { payloadRejectionFields } from "#src/backend/extensions/define-event";
+import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type {
   DatabaseError,
   LeaseLost,
@@ -26,62 +27,15 @@ import type {
   OpenedBody,
   PassBody,
 } from "#src/backend/executor/pass";
-import {
-  ExecutionRepo,
-  type InboxEvent,
-} from "#src/backend/services/executions/repo";
-import { matchesSourceFilter } from "@wfgraph/shared/lifecycle/event-source-filter";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 /** What a delivery body needs beyond the repository it runs on. */
 export type DeliverySettings = {
-  /** The catalog Events an inbox row can be. */
-  events: readonly AnyEventDefinition[];
+  /** Which catalog Event an inbox row is: `ExtensionSet.resolveArrival`. */
+  resolveArrival: ExtensionSet["resolveArrival"];
   /** The app's Layer graph, which runs the services a delivery's steps call. */
   runtime: WfGraphRuntime;
 };
-
-/**
- * Which catalog Event an inbox row is.
- *
- * - `event`: the row is `event`.
- * - `unmatched_source`: the row names a source, and no Event on it accepts the
- *   row's data. The arrival is a subtype no Event declares, so nothing is owed
- *   it.
- * - `unknown`: the row names neither an Event nor a source.
- */
-type InboxEventMatch =
-  | { kind: "event"; event: AnyEventDefinition }
-  | { kind: "unmatched_source" }
-  | { kind: "unknown" };
-
-/**
- * Answers which catalog Event an inbox row is. A send names the Event it
- * raises, so a row named after an Event is that Event. Webhook intake and the
- * Inngest forwarders name the source the message arrived on, and the row is
- * the Event on that source whose `source.when` its data satisfies. `event-uniqueness.ts` keeps
- * at most one Event on a source accepting any payload. Both lookups are keyed
- * by a `Map`, since the row's name is whatever its sender wrote.
- */
-function inboxEventResolver(
-  events: readonly AnyEventDefinition[]
-): (inbox: InboxEvent) => InboxEventMatch {
-  const byName = new Map(events.map((event) => [event.name, event]));
-  const bySource = Map.groupBy(events, (event) => event.source.event);
-  return (inbox) => {
-    const named = byName.get(inbox.name);
-    if (named !== undefined) return { kind: "event", event: named };
-    const onSource = bySource.get(inbox.name);
-    if (onSource === undefined) return { kind: "unknown" };
-    const event = onSource.find(
-      (candidate) =>
-        candidate.source.when === undefined ||
-        matchesSourceFilter(candidate.source.when, inbox.data)
-    );
-    return event === undefined
-      ? { kind: "unmatched_source" }
-      : { kind: "event", event };
-  };
-}
 
 /**
  * One settling write of the pass. A refusal stops the pass as a lost lease,
@@ -106,7 +60,6 @@ export function deliveryBody(
     deliver?: EventListenerDeliverPorts | undefined;
   }
 ): PassBody<DeliveryPass, ExecutionRepo> {
-  const resolve = inboxEventResolver(input.events);
   const deliver = input.deliver ?? defaultDeliverPorts;
 
   return {
@@ -138,9 +91,12 @@ export function deliveryBody(
           } satisfies OpenedBody<never>;
         }
 
-        const match = resolve(inbox);
+        const match = input.resolveArrival(inbox);
         if (match.kind === "unknown") {
-          const error = "No catalog Event or Event source has this name";
+          const error =
+            inbox.connectionId === null
+              ? "No host Event or host Event source has this name"
+              : "No integration-owned Event or Event source has this name";
           return {
             kind: "unavailable",
             reason: "unknown_event",
@@ -168,16 +124,17 @@ export function deliveryBody(
         );
         // A refusal is final: the same data fails the same way on every
         // attempt. The row keeps the sender's sentence, which quotes nothing
-        // of the data, and the pass's record carries the operator's.
+        // of the data, and the pass's record carries the issue count and paths.
         if (!decoded.accepted) {
           const { rejection } = decoded;
+          const { issues, paths } = payloadRejectionFields(rejection);
           return {
             kind: "unavailable",
             reason: "payload_refused",
             settle: failDelivery(
               `Payload refused for Event "${event.name}": ${rejection.error}`
             ),
-            detail: rejection.detail,
+            detail: `${issues} payload issue(s) at: ${paths.join(", ")}`,
           } satisfies OpenedBody<never>;
         }
 

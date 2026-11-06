@@ -70,9 +70,30 @@ import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { sendEvent } from "#src/backend/services/executions/send-event";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
-import { forwardInngestEvent } from "#src/backend/lib/inngest/event-forwarder";
+import { InngestTestEngine } from "@inngest/test";
+import { Inngest } from "inngest";
+import { createInngestEventForwarder } from "#src/backend/lib/inngest/event-forwarder";
+import { readJsonObject } from "@wfgraph/shared/types/json";
 
 const LEASE_MS = 60_000;
+
+/** The Inngest client the forwarders are built on. Constructing one opens nothing. */
+const inngestClient = new Inngest({ id: "delivery-cases", isDev: true });
+
+/** What a forwarder's Inngest function answered, read back from the test engine. */
+function forwardReceipt(result: unknown): {
+  inboxId: string;
+  duplicate: boolean;
+} {
+  const receipt = readJsonObject(result);
+  if (
+    typeof receipt?.inboxId !== "string" ||
+    typeof receipt.duplicate !== "boolean"
+  ) {
+    throw new Error("The forwarder answered no inbox receipt");
+  }
+  return { inboxId: receipt.inboxId, duplicate: receipt.duplicate };
+}
 const WEBHOOK_SOURCE = "vendor/webhook";
 const VENDOR_BOOKED = "vendor/booked";
 const ACME_WEBHOOK = "acme/webhook";
@@ -339,8 +360,8 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       id?: string | undefined;
     }) => Promise<{ id: string; duplicate: boolean }>;
     /**
-     * Records an Inngest event as the app's Inngest forwarder for `name` does,
-     * keyed by the event's id.
+     * Runs the app's Inngest forwarder for `name` on one Inngest event, as
+     * Inngest invokes it, and answers what its step recorded.
      */
     forward: (input: {
       name: string;
@@ -397,7 +418,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     });
     runtimes.push(app);
     const delivery: DeliverySettings = {
-      events: extensions.events,
+      resolveArrival: extensions.resolveArrival,
       runtime: app,
     };
     const actions = createWorkflowActions(extensions, app);
@@ -459,7 +480,28 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
           )
         ),
       sendEvent: (input) => app.runPromise(sendEvent(input)),
-      forward: (input) => forwardInngestEvent({ ...input, runtime: app }),
+      forward: async (input) => {
+        const forwarder = createInngestEventForwarder({
+          client: inngestClient,
+          name: input.name,
+          runtime: app,
+        });
+        const { result, error } = await new InngestTestEngine({
+          function: forwarder,
+        }).execute({
+          events: [
+            omitUndefined({
+              name: input.name,
+              id: input.event.id,
+              data: readJsonObject(input.event.data) ?? {},
+            }),
+          ],
+        });
+        if (error !== undefined) {
+          throw new Error("The forwarder failed", { cause: error });
+        }
+        return forwardReceipt(result);
+      },
       addConnection: (name) =>
         connection.run(
           Effect.flatMap(IntegrationRepo, (integrations) =>

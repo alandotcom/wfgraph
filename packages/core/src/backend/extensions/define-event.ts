@@ -19,6 +19,7 @@ import type { StringPath } from "@wfgraph/shared/types/payload-path";
 import {
   formatSchemaFailure,
   formatStandardIssuePath,
+  schemaFailurePaths,
 } from "@wfgraph/shared/types/schema-message";
 import {
   asStandardSchema,
@@ -130,11 +131,11 @@ export type AnyEventDefinition = EventDefinition<JsonObject, unknown>;
  * turns it into a refusal and the delivery body marks its inbox row failed
  * without retrying: a malformed payload does not improve on a second attempt.
  *
- * Two strings for two audiences. `error` travels to the sender, which is a third
- * party across origins, so it names paths and expectations and quotes nothing of
- * what arrived. `detail` stays in the process, which is what lets it carry a
- * foreign library's own messages for the operator. An Effect payload schema
- * renders both through `formatSchemaFailure`, so the two read alike there.
+ * `error` travels to the sender, which is a third party across origins, so it
+ * names paths and expectations and quotes nothing of what arrived. `paths`
+ * holds the dot-path of each issue, one per issue, for a log record, which
+ * carries those and their count. A foreign library's own messages are kept
+ * nowhere, because a library is free to quote the value it rejected.
  */
 export class PayloadRejected extends Schema.TaggedError<
   PayloadRejected,
@@ -142,8 +143,20 @@ export class PayloadRejected extends Schema.TaggedError<
 >()("PayloadRejected", {
   eventName: Schema.String,
   error: Schema.String,
-  detail: Schema.String,
+  paths: Schema.Array(Schema.String),
 }) {}
+
+/**
+ * A refusal as a log record's fields: how many issues the payload had and the
+ * distinct paths they were at, which says where the payload was wrong and
+ * nothing it held.
+ */
+export function payloadRejectionFields(rejected: PayloadRejected): {
+  issues: number;
+  paths: string[];
+} {
+  return { issues: rejected.paths.length, paths: uniq(rejected.paths) };
+}
 
 /**
  * The intake gate for one Event, built once at definition.
@@ -167,8 +180,8 @@ function buildPayloadGate<TPayload extends JsonObject, TValidated>(
   authored: PayloadSchema<TPayload, TValidated>,
   bridged: StandardSchema<TValidated, TPayload>
 ): (payload: unknown) => Effect.Effect<TValidated, PayloadRejected> {
-  const reject = (error: string, detail: string = error) =>
-    Effect.fail(new PayloadRejected({ eventName, error, detail }));
+  const reject = (error: string, paths: readonly string[]) =>
+    Effect.fail(new PayloadRejected({ eventName, error, paths }));
 
   // An Effect schema is decoded directly for the message rather than for the
   // options: the bridge's defaults are these defaults, but `~standard.validate`
@@ -181,23 +194,25 @@ function buildPayloadGate<TPayload extends JsonObject, TValidated>(
     return (payload) =>
       decode(payload).pipe(
         Effect.catchTag("SchemaError", (failure) =>
-          reject(formatSchemaFailure(failure.issue))
+          reject(
+            formatSchemaFailure(failure.issue),
+            schemaFailurePaths(failure.issue)
+          )
         )
       );
   }
 
   // A foreign library's own validate, whose messages are its own. The answer is
   // joined by path rather than passed through whole, because a library free to
-  // quote the value it rejected would put a payload in the reply. The
-  // operator's string keeps each library's own message, because it never leaves
-  // the process.
+  // quote the value it rejected would put a payload in the reply and the log.
   return (payload) =>
     Effect.suspend<TValidated, PayloadRejected, never>(() => {
       const result = bridged["~standard"].validate(payload);
 
       if (result instanceof Promise) {
         return reject(
-          "This Event's payload schema validates asynchronously, which intake cannot use"
+          "This Event's payload schema validates asynchronously, which intake cannot use",
+          []
         );
       }
 
@@ -205,17 +220,12 @@ function buildPayloadGate<TPayload extends JsonObject, TValidated>(
         return Effect.succeed(result.value);
       }
 
-      const paths = uniq(
-        result.issues.map((issue) => formatStandardIssuePath(issue.path))
-      ).join(", ");
-      const detail = result.issues
-        .map(
-          (issue) => `${formatStandardIssuePath(issue.path)}: ${issue.message}`
-        )
-        .join("; ");
+      const paths = result.issues.map((issue) =>
+        formatStandardIssuePath(issue.path)
+      );
       return reject(
-        `Payload does not fit this Event at: ${paths}`,
-        `Payload does not fit this Event: ${detail}`
+        `Payload does not fit this Event at: ${uniq(paths).join(", ")}`,
+        paths
       );
     });
 }

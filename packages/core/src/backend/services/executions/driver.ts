@@ -102,8 +102,8 @@ export class ExecutionDriver extends Context.Service<
         runMode: WorkflowExecution["runMode"];
         eventName: string;
         payload: JsonObject;
-        /** The arrival's delivery id, which a retried delivery is answered by. */
-        deliveryId?: string | undefined;
+        /** The arrival's inbox id, which a retried delivery is answered by. */
+        deliveryId: string;
       } & ExecutionEntitySelector
     ) => Effect.Effect<CanceledOutletClaim[], DriverError>;
     /**

@@ -14,6 +14,7 @@ import type {
   PersistenceTestRegistry,
 } from "#src/backend/persistence/conformance/support";
 import {
+  cancelArrival,
   emptyGraph,
   notYetDue,
   publishSecondVersion,
@@ -595,6 +596,7 @@ export function describeExecutionWaitConformance({
             runMode: "live",
             eventName: "appointment/cancelled",
             payload: { reason: "customer left" },
+            deliveryId: yield* cancelArrival(),
           });
 
           const claimedIds = cancelClaims.map((claim) => claim.executionId);

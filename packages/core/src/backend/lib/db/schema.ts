@@ -579,11 +579,15 @@ const eventInboxStatusLiterals = EVENT_INBOX_STATUSES.map(
  *   values ($1, $2, $3, $4)
  *   on conflict do nothing
  *
- * `name` is a catalog Event name and `data` its payload as a JSON object; both
- * are required. `idempotency_key` is optional: a second row with the same
- * name, Connection and key is refused while the first row exists, and
- * `on conflict do nothing` turns that refusal into a no-op. `connection_id` is
- * optional and names the Connection an integration Event arrived through.
+ * `name` and `data` are required. `name` is the name of an Event the host
+ * declared, or the `source.event` name such Events arrive under, in which case
+ * each Event's `source.when` decides which Event the row is; `data` is the
+ * payload as a JSON object. `connection_id` names the Connection an
+ * integration-owned Event arrived through, and only webhook intake writes it:
+ * a row without one that names an integration-owned Event settles as
+ * `failed` when the executor delivers it. `idempotency_key` is optional: a second row with the same name,
+ * Connection and key is refused while the first row exists, and
+ * `on conflict do nothing` turns that refusal into a no-op.
  * `id` defaults to a random UUID, and a host may set its own. The host leaves
  * `received_at` and `status` to their defaults, the insert time and `pending`,
  * and writes no schedule row: the executor's poll (`scheduleUnscheduledInbox`)
@@ -644,6 +648,27 @@ export const workflowEventInbox = pgTable(
       .on(table.receivedAt)
       .where(sql`${table.status} <> 'pending'`),
   ]
+);
+
+/**
+ * The decision one Cancel arrival made for one workflow: a row per workflow
+ * and inbox row whose Cancel claim has committed, written in the claim's own
+ * transaction whether or not it flagged a run. A retried delivery that finds
+ * the row flags nothing new and answers with the runs the first attempt
+ * flagged, which carry the inbox id in `cancel_delivery_id`, so one arrival
+ * never cancels a run that opened after it was first applied. The rows go with
+ * their inbox row when the retention sweep deletes it.
+ */
+export const workflowCancelDecisions = pgTable(
+  "workflow_cancel_decisions",
+  {
+    deliveryId: text("delivery_id")
+      .notNull()
+      .references(() => workflowEventInbox.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id").notNull(),
+    decidedAt: timestamp("decided_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.deliveryId, table.workflowId] })]
 );
 
 /**
@@ -841,6 +866,7 @@ export const tables = {
   workflowExecutionSchedule,
   workflowExecutionSteps,
   workflowEventInbox,
+  workflowCancelDecisions,
   workflowEventSubscriptions,
   integrations,
   oauthAuthorizationAttempts,

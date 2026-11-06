@@ -401,7 +401,7 @@ describe("native SQLite persistence", () => {
              AND name <> '__wfgraph_sqlite_migrations'`
         )
         .all();
-      expect(applicationTables).toHaveLength(12);
+      expect(applicationTables).toHaveLength(13);
       expect(applicationTables.map((table) => table.name)).not.toContain(
         "api_keys"
       );
@@ -630,7 +630,9 @@ describe("native SQLite persistence", () => {
         )
       );
 
-      expect(inspect(error, { depth: null })).not.toContain(sentinel);
+      expect(inspect(error, { depth: null, showHidden: true })).not.toContain(
+        sentinel
+      );
       expect(hasDatabaseErrorCode(error, "ERR_SQLITE_ERROR")).toBe(true);
     } finally {
       await database.close();

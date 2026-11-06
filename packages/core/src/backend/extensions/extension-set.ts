@@ -12,6 +12,7 @@
  * slug is a record key the definition never spells out twice.
  */
 
+import { partition } from "es-toolkit/array";
 import { isBlank } from "@wfgraph/shared/types/string";
 import type {
   ActionMetadata,
@@ -32,9 +33,15 @@ import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import type { AnyEntityDefinition } from "#src/backend/extensions/define-entity";
 import {
   assertDistinctForwarderIds,
+  assertNamesAreNotOtherSources,
   forwardedEventNames,
   assertSourcesAreDistinguishable,
 } from "#src/backend/extensions/event-uniqueness";
+import {
+  type Arrival,
+  type ArrivalMatch,
+  arrivalResolver,
+} from "#src/backend/extensions/arrival-resolution";
 import {
   checkIntegration,
   type IntegrationDefinition,
@@ -114,6 +121,14 @@ export type ExtensionSet = {
    */
   readonly webhookFor: (type: string) => IntegrationWebhook | undefined;
   readonly eventByName: (name: string) => RegisteredEvent | undefined;
+  /**
+   * Which Event an arrival is. An arrival with no Connection is one of
+   * `hostEvents`, named by the Event's own name or by the `source.event` name
+   * it arrives under. An arrival with a Connection is an integration-owned
+   * Event, named the same two ways. `app.events.send`, the events route, the
+   * Inngest forwarders and the delivery body all decide through this.
+   */
+  readonly resolveArrival: (arrival: Arrival) => ArrivalMatch;
   readonly entityByType: (type: string) => AnyEntityDefinition | undefined;
   /** App-owned deadline for every call into a host Entity resolver. */
   readonly entityResolverTimeoutMs: number;
@@ -520,8 +535,11 @@ export function assembleExtensions(
   for (const event of events) {
     assertSafeReferencePaths(`Event "${event.name}"`, event.payloadFields);
   }
-  const hostEvents = events.filter((event) => !eventOwners.has(event.name));
+  const [integrationOwnedEvents, hostEvents] = partition(events, (event) =>
+    eventOwners.has(event.name)
+  );
   assertSourcesAreDistinguishable(events);
+  assertNamesAreNotOtherSources(events);
   assertDistinctForwarderIds(forwardedEventNames(hostEvents));
 
   // The built-ins go in first, so anything colliding with one of them is caught
@@ -573,6 +591,10 @@ export function assembleExtensions(
     oauthFor: (type) => into.oauth.get(type),
     webhookFor: (type) => into.webhooks.get(type),
     eventByName: (name) => eventsByName.get(name),
+    resolveArrival: arrivalResolver({
+      hostEvents,
+      integrationEvents: integrationOwnedEvents,
+    }),
     entityByType: (type) => entitiesByType.get(type),
     entityResolverTimeoutMs: readEntityResolverTimeoutMs(
       options.entityResolverTimeoutMs

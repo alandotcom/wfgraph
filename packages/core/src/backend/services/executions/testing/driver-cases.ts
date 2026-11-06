@@ -37,6 +37,7 @@ import {
 } from "#src/backend/executor/worker-wake";
 import {
   type ConformanceConnection,
+  cancelArrival,
   usePersistenceRegistry,
 } from "#src/backend/persistence/conformance/support";
 import type { PersistenceConformanceHarness } from "#src/backend/persistence/persistence-conformance-test-support";
@@ -431,15 +432,17 @@ function describeCases(
     await sleep(100);
     const wakesBefore = app.worker.calls();
 
-    const cancel = Effect.flatMap(ExecutionDriver, (driver) =>
-      driver.requestCanceledOutlet({
+    const cancel = Effect.gen(function* () {
+      const driver = yield* ExecutionDriver;
+      return yield* driver.requestCanceledOutlet({
         workflowId: run.workflowId,
         runMode: "live",
         entityValue: run.entityValue,
         eventName: CANCEL_EVENT,
         payload: {},
-      })
-    );
+        deliveryId: yield* cancelArrival(),
+      });
+    });
     const claims = await app.drive(cancel);
     const wokenAt = Date.now();
 
@@ -546,6 +549,7 @@ function describeCases(
         const backoff = yield* executions.findSchedule({
           executionId: run.executionId,
         });
+        const deliveryId = yield* cancelArrival();
         const wakesBefore = app.worker.calls();
         const claims = yield* driver.requestCanceledOutlet({
           workflowId: run.workflowId,
@@ -553,6 +557,7 @@ function describeCases(
           entityValue: run.entityValue,
           eventName: CANCEL_EVENT,
           payload: {},
+          deliveryId,
         });
         return {
           backoff,

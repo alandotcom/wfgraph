@@ -205,6 +205,15 @@ export function formatSchemaFailure(issue: SchemaIssue.Issue): string {
   return summarize(formatIssues(rewriteEmptyAnyOf(issue)).issues);
 }
 
+/**
+ * The dot-path of each issue a failed decode carries, one per issue in the
+ * order Effect reports them. A log record carries these and their count when
+ * it must say where a value was wrong and nothing about the value.
+ */
+export function schemaFailurePaths(issue: SchemaIssue.Issue): string[] {
+  return formatIssues(rewriteEmptyAnyOf(issue)).issues.map(formatIssuePath);
+}
+
 function summarize(issues: readonly FormattedIssue[]): string {
   const displayedIssues = issues.slice(0, MAX_LISTED_ISSUES);
   const summary = displayedIssues

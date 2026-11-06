@@ -220,6 +220,64 @@ export function describeExecutionInboxConformance({
       expect(result.scheduledByPoll).toEqual([]);
     });
 
+    it("reopens a failed row for a resend of its key, scheduling it again once, and keeps its id and data", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      const first = await connection.run(sendNew(arrival("vendor_1")));
+      const fence = await leaseDelivery(database, first, "owner_1");
+
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          yield* executions.failDelivery({
+            fence,
+            error: "The subscriber step failed",
+            now: at(2_000),
+          });
+          const resent = yield* send(
+            { ...arrival("vendor_1"), data: { appointmentId: "appt_2" } },
+            at(3_000)
+          );
+          return {
+            resent,
+            event: yield* executions.findInboxEvent(first.inboxId),
+            schedule: yield* executions.findSchedule({
+              inboxId: first.inboxId,
+            }),
+            // A pending row answers a second resend as a duplicate.
+            resentAgain: yield* send(arrival("vendor_1"), at(4_000)),
+            scheduledByPoll: yield* executions.scheduleUnscheduledInbox({
+              now: at(5_000),
+              limit: 10,
+            }),
+          };
+        })
+      );
+
+      if (result.resent.duplicate)
+        throw new Error("The resend was a duplicate");
+      expect(result.resent.inboxId).toBe(first.inboxId);
+      expect(result.resent.scheduleId).not.toBe(first.scheduleId);
+      expect(result.event).toEqual({
+        id: first.inboxId,
+        ...arrival("vendor_1"),
+        receivedAt: T0,
+        status: "pending",
+      });
+      expect(result.schedule).toMatchObject({
+        id: result.resent.scheduleId,
+        kind: "delivery",
+        state: "queued",
+        wakeAt: at(3_000),
+        ownerToken: null,
+      });
+      expect(result.resentAgain).toEqual({
+        duplicate: true,
+        inboxId: first.inboxId,
+      });
+      expect(result.scheduledByPoll).toEqual([]);
+    });
+
     it("schedules a row a host inserted through SQL once, and skips scheduled, delivered and failed rows", async () => {
       const database = await openDatabase();
       const connection = await database.open();
@@ -456,7 +514,7 @@ export function describeExecutionInboxConformance({
           yield* executions.finishDelivery({ fence: fences.newDelivered, now });
 
           const window = { olderThan: at(3_600_000) };
-          const firstSweep = yield* executions.sweepDeliveredInbox({
+          const firstSweep = yield* executions.sweepSettledInbox({
             ...window,
             limit: 1,
           });
@@ -465,8 +523,8 @@ export function describeExecutionInboxConformance({
           );
           const sweeps = [
             firstSweep,
-            yield* executions.sweepDeliveredInbox({ ...window, limit: 10 }),
-            yield* executions.sweepDeliveredInbox({ ...window, limit: 10 }),
+            yield* executions.sweepSettledInbox({ ...window, limit: 10 }),
+            yield* executions.sweepSettledInbox({ ...window, limit: 10 }),
           ];
           const remaining = {
             oldDelivered: yield* executions.findInboxEvent(

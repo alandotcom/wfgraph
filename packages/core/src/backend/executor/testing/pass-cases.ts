@@ -40,6 +40,7 @@ import {
 } from "#src/backend/executor/testing/run-fixtures";
 import {
   type ConformanceConnection,
+  cancelArrival,
   usePersistenceRegistry,
 } from "#src/backend/persistence/conformance/support";
 import type { PersistenceConformanceHarness } from "#src/backend/persistence/persistence-conformance-test-support";
@@ -458,6 +459,7 @@ function describeCases(
           entityValue: ENTITY,
           eventName: CANCEL_EVENT,
           payload: { reason: "customer left" },
+          deliveryId: yield* cancelArrival(),
           now: now(),
         });
       })

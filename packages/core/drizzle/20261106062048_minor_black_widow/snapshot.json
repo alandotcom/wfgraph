@@ -1,0 +1,146 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "fac243a6-9cd3-46e0-8eb4-d5eb7383d8ed",
+  "prevIds": [
+    "3ba3b6dd-6b5d-4c9d-93fa-5de692ac7c90"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_cancel_decisions"
+      ],
+      "writes": [
+        "s|tbl|public.workflow_cancel_decisions",
+        "n|tbl|public.workflow_cancel_decisions",
+        "e|tbl|public.workflow_cancel_decisions",
+        "n|rel|public.workflow_cancel_decisions",
+        "n|type|public.workflow_cancel_decisions",
+        "n|rel|public.workflow_cancel_decisions_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_cancel_decisions"
+      ],
+      "writes": [
+        "s|fk|public.workflow_cancel_decisions.workflow_cancel_decisions_wHqviay3ZngT_fkey",
+        "n|fk|public.workflow_cancel_decisions.workflow_cancel_decisions_wHqviay3ZngT_fkey",
+        "e|fk|public.workflow_cancel_decisions.workflow_cancel_decisions_wHqviay3ZngT_fkey",
+        "n|con|public.workflow_cancel_decisions.workflow_cancel_decisions_wHqviay3ZngT_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_cancel_decisions",
+        "n|sch|public",
+        "n|tbl|public.workflow_event_inbox",
+        "n|sch|public",
+        "n|col|public.workflow_cancel_decisions.delivery_id",
+        "n|col|public.workflow_event_inbox.id",
+        "e|uniqueness|public.workflow_event_inbox.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "workflow_cancel_decisions",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "delivery_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "workflow_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "decided_at",
+        "type": "timestamp",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "workflow_cancel_decisions_wHqviay3ZngT_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "delivery_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "workflow_event_inbox",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "workflow_cancel_decisions_pkey",
+        "columns": [
+          "delivery_id",
+          "workflow_id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

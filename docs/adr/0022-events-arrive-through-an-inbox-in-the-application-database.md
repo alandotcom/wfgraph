@@ -131,3 +131,29 @@ loop at its defaults can hold 11 connections.
 Every caller of `applyLifecycleRules` and `deliverWaitCandidates` passes a delivery id,
 which the type now requires, so a start answered from its committed decision and a wake
 recorded with its arrival no longer have an arm for a delivery with no id.
+
+## Amendment: Resends, Cancel decisions and host sends
+
+Date: 2026-11-05
+
+A resend of a `failed` row's key answered as a duplicate, and the poll never scheduled a
+`failed` row again, so a webhook whose delivery failed during an outage was lost when the
+vendor resent it. A resend of a `failed` row's key now reopens that row as `pending`, with
+its error and settled time cleared and its id and data kept, and gives it a new `delivery`
+schedule row in the same transaction. A `pending` or `delivered` row still answers a resend
+as a duplicate.
+
+A Cancel delivery that crashed after its claim committed and before its step's memo row
+re-ran the claim, which could flag a run that opened after the first attempt. The claim now
+records its decision as a `workflow_cancel_decisions` row for the workflow and the inbox id,
+in its own transaction and whether or not it flagged a run, and writes each flagged run's
+`run_cancel_requested` entry there too. A retry that finds the decision flags nothing new
+and answers the runs the first attempt flagged. The decision rows go with their inbox row
+when the retention sweep deletes it.
+
+`app.events.send` and the events route accept only an Event the host declared, by its own
+name or by the umbrella name it arrives under, which is what the Inngest forwarders accept.
+An integration-owned Event arrives only through its integration's webhook, with its
+Connection. One resolver on the extension set decides which Event an arrival is for a send
+and for the delivery body, and assembly refuses an Event named after another Event's
+umbrella name.

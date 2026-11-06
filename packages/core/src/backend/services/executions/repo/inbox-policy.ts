@@ -1,8 +1,9 @@
 /**
  * The event inbox's decisions, made once for both backends: which inbox rows
  * the poll gives a delivery schedule row, which row holds an arrival's
- * idempotency key, which rows the retention sweep deletes, and how a row reads
- * back as an `InboxEvent`. Each backend runs the statements inside its own
+ * idempotency key and what a resend does with it, which row a settling write
+ * takes, which rows the retention sweep deletes, and how a row reads back as
+ * an `InboxEvent`. Each backend runs the statements inside its own
  * transaction, as `release-policy.ts` describes for the run's decisions.
  */
 
@@ -52,6 +53,28 @@ export function holdsInboxKey(
   }
 ): SQL {
   return sql`(${inbox.name} = ${arrival.name} and coalesce(${inbox.connectionId}, '') = ${arrival.connectionId ?? ""} and ${inbox.idempotencyKey} = ${arrival.idempotencyKey})`;
+}
+
+/**
+ * What an arrival does with the inbox row that already holds its idempotency
+ * key, by that row's status. A `failed` row is reopened and delivered again,
+ * so a webhook a vendor resends after a delivery failed for good, during an
+ * outage for example, still reaches its workflows. A `pending` or `delivered`
+ * row answers the arrival as a duplicate.
+ */
+export function resendOnHeldKey(status: string): "reopen" | "duplicate" {
+  return status === "failed" ? "reopen" : "duplicate";
+}
+
+/**
+ * Whether a settling write takes this inbox row: it is the delivery's own row
+ * and still `pending`. A row that settled already stays as it settled.
+ */
+export function settleableInbox(
+  inbox: Pick<InboxColumns, "id" | "status">,
+  inboxId: string
+): SQL {
+  return sql`(${inbox.id} = ${inboxId} and ${inbox.status} = 'pending')`;
 }
 
 /**

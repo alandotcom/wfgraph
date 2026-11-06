@@ -37,6 +37,27 @@ export function recordAuditEventWrite(input: NewAuditEvent) {
     });
 }
 
+/** The insert of several entries at once, inside the caller's write transaction. */
+export function recordAuditEventsWrite(inputs: readonly NewAuditEvent[]) {
+  return (database: SqliteExecutor) =>
+    inputs.length === 0
+      ? Effect.void
+      : database
+          .insert(workflowExecutionEvents)
+          .values(
+            inputs.map((input) => ({
+              id: generateId(),
+              workflowId: input.workflowId,
+              executionId: input.executionId ?? null,
+              eventType: input.eventType,
+              message: input.message,
+              metadata: encodeJson(toJsonObject(input.metadata)),
+              createdAt: Date.now(),
+            }))
+          )
+          .pipe(Effect.asVoid);
+}
+
 export function makeSqliteAuditMethods(
   store: SqliteDatabase
 ): AuditRepoMethods {

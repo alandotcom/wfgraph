@@ -10,10 +10,14 @@
  * delivery body tells which Event it is by each one's `source.when`.
  */
 
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import type { Inngest, InngestFunction } from "inngest";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import type { WfGraphRuntime } from "#src/backend/runtime";
-import { ExecutionDriver } from "#src/backend/services/executions/driver";
+import {
+  DriverError,
+  ExecutionDriver,
+} from "#src/backend/services/executions/driver";
 import { toForwarderFunctionId } from "#src/backend/lib/inngest/forwarder-function-id";
 import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 
@@ -30,31 +34,75 @@ function toEventPayload(value: unknown): JsonObject {
   return readJsonObject(value) ?? {};
 }
 
+const forwardLogger = Effect.map(AppLogger, (appLogger) =>
+  appLogger.get("events")
+);
+
 /**
- * Records one Inngest event in the inbox under `name`, keyed by the event's id,
- * and wakes the worker loops once a new row has committed. A second event with
- * the same id, or a retried invocation, is answered with the first row and
- * wakes nothing. An event that reaches the forwarder with no id is recorded
- * with no key, so only the step's memo keeps a retried invocation from
- * recording it twice.
+ * What a failed forward carries to the log and to Inngest: the storage
+ * failure under a `DriverError`, which the database layer has already cleared
+ * of the query's bound values, or the defect itself.
  */
-export function forwardInngestEvent(input: {
+function forwardFailure(cause: Cause.Cause<DriverError>): unknown {
+  const squashed = Cause.squash(cause);
+  return squashed instanceof DriverError ? squashed.cause : squashed;
+}
+
+/**
+ * Records one Inngest event in the inbox under `name`, keyed by the event's
+ * id, and wakes the worker loops once a new row has committed. A second event
+ * with the same id, or a retried invocation, is answered with the first row
+ * and wakes nothing. Inngest's server gives every event an id, using its own
+ * when the sender set none, and an invocation Inngest retries reads the same
+ * stored event, so the key is stable across retries. A failure writes one log
+ * record naming the Event and whether it carried a key, and nothing of its
+ * data.
+ */
+const forwardInngestEvent = Effect.fn("wfgraph.event.forward")(
+  function* (input: {
+    name: string;
+    event: { id?: string | undefined; data?: unknown };
+  }) {
+    const driver = yield* ExecutionDriver;
+    return yield* driver.receiveEvent({
+      name: input.name,
+      data: toEventPayload(input.event.data),
+      connectionId: null,
+      idempotencyKey: input.event.id ?? null,
+    });
+  },
+  (effect, input) =>
+    effect.pipe(
+      Effect.tapCause((cause) =>
+        Effect.flatMap(forwardLogger, (logger) =>
+          logger.error("Failed to record an Inngest event in the event inbox", {
+            event: { name: input.name, keyed: input.event.id !== undefined },
+            error: forwardFailure(cause),
+          })
+        )
+      )
+    )
+);
+
+/**
+ * Runs `forwardInngestEvent` on the app's runtime. A failure rejects with one
+ * `Error` whose `cause` is what `forwardFailure` answers, so Inngest records a
+ * sentence and the cleared storage error.
+ */
+async function recordInInbox(input: {
   name: string;
   event: { id?: string | undefined; data?: unknown };
   runtime: WfGraphRuntime;
 }): Promise<{ inboxId: string; duplicate: boolean }> {
-  const { name, event, runtime } = input;
-  return runtime.runPromise(
-    Effect.gen(function* () {
-      const driver = yield* ExecutionDriver;
-      return yield* driver.receiveEvent({
-        name,
-        data: toEventPayload(event.data),
-        connectionId: null,
-        idempotencyKey: event.id ?? null,
-      });
-    })
+  const exit = await input.runtime.runPromiseExit(
+    forwardInngestEvent({ name: input.name, event: input.event })
   );
+  if (Exit.isSuccess(exit)) {
+    return { inboxId: exit.value.inboxId, duplicate: exit.value.duplicate };
+  }
+  throw new Error("Could not record the Inngest event in the event inbox", {
+    cause: forwardFailure(exit.cause),
+  });
 }
 
 // The return type is stated because declaration emit cannot name the inferred
@@ -85,7 +133,7 @@ export function createInngestEventForwarder(input: {
       // is answered from the step's memo rather than writing again.
       await step.run(
         "forward-to-inbox",
-        async () => await forwardInngestEvent({ name, event, runtime })
+        async () => await recordInInbox({ name, event, runtime })
       )
   );
 }

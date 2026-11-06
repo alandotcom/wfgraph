@@ -6,17 +6,20 @@
  */
 
 import { Effect } from "effect";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type {
   DeliveryFence,
   InboxInsert,
+  NewInboxEvent,
 } from "#src/backend/services/executions/repo/contracts";
 import type { InboxRepoMethods } from "#src/backend/services/executions/repo/inbox";
 import {
   awaitsSchedule,
   holdsInboxKey,
   inboxEventOf,
+  resendOnHeldKey,
+  settleableInbox,
   sweepableInbox,
 } from "#src/backend/services/executions/repo/inbox-policy";
 import type {
@@ -62,6 +65,83 @@ function insertDeliverySchedule(
     .pipe(Effect.as(scheduleId));
 }
 
+/**
+ * Records an arrival inside the caller's write transaction, as `writeArrival`
+ * in `repo/inbox.ts` describes. The transaction holds the one writer from its
+ * first statement, so no sweep or second resend can act between the insert
+ * and the read of the row that holds the key.
+ */
+export function writeArrival(
+  database: SqliteExecutor,
+  input: NewInboxEvent & { now: Date }
+) {
+  return Effect.gen(function* () {
+    const inboxId = generateId();
+    // The inbox id is minted here, so the only unique index a new row can
+    // meet is the idempotency key's.
+    const inserted = yield* database
+      .insert(workflowEventInbox)
+      .values({
+        id: inboxId,
+        name: input.name,
+        data: JSON.stringify(input.data),
+        connectionId: input.connectionId,
+        idempotencyKey: input.idempotencyKey,
+        receivedAt: input.now.getTime(),
+        status: "pending",
+      })
+      .onConflictDoNothing()
+      .returning({ id: workflowEventInbox.id });
+    if (inserted.length > 0) {
+      const scheduleId = yield* insertDeliverySchedule(database, {
+        inboxId,
+        wakeAt: input.now,
+      });
+      return {
+        duplicate: false,
+        inboxId,
+        scheduleId,
+      } satisfies InboxInsert;
+    }
+
+    const { idempotencyKey } = input;
+    const held =
+      idempotencyKey === null
+        ? undefined
+        : yield* database
+            .select({
+              id: workflowEventInbox.id,
+              status: workflowEventInbox.status,
+            })
+            .from(workflowEventInbox)
+            .where(
+              holdsInboxKey(workflowEventInbox, { ...input, idempotencyKey })
+            )
+            .get();
+    if (!held) {
+      throw new Error(
+        "An inbox insert conflicted, and no row holds its idempotency key"
+      );
+    }
+    if (resendOnHeldKey(held.status) === "duplicate") {
+      return { duplicate: true, inboxId: held.id } satisfies InboxInsert;
+    }
+    yield* database
+      .update(workflowEventInbox)
+      .set({ status: "pending", error: null, settledAt: null })
+      .where(eq(workflowEventInbox.id, held.id));
+    const scheduleId = yield* insertDeliverySchedule(database, {
+      inboxId: held.id,
+      wakeAt: input.now,
+    });
+    return {
+      duplicate: false,
+      inboxId: held.id,
+      scheduleId,
+    } satisfies InboxInsert;
+  });
+}
+
 export function makeSqliteInboxMethods(
   store: SqliteDatabase
 ): InboxRepoMethods {
@@ -78,12 +158,7 @@ export function makeSqliteInboxMethods(
             error: settled.error,
             settledAt: settled.now.getTime(),
           })
-          .where(
-            and(
-              eq(workflowEventInbox.id, fence.inboxId),
-              eq(workflowEventInbox.status, "pending")
-            )
-          );
+          .where(settleableInbox(workflowEventInbox, fence.inboxId));
         // The memo rows go with the schedule row by cascade.
         yield* database
           .delete(workflowExecutionSchedule)
@@ -93,61 +168,7 @@ export function makeSqliteInboxMethods(
 
   return {
     insertInboxEvent: (input) =>
-      store.write((database) =>
-        Effect.gen(function* () {
-          const inboxId = generateId();
-          // The inbox id is minted here, so the only unique index a new row
-          // can meet is the idempotency key's.
-          const inserted = yield* database
-            .insert(workflowEventInbox)
-            .values({
-              id: inboxId,
-              name: input.name,
-              data: JSON.stringify(input.data),
-              connectionId: input.connectionId,
-              idempotencyKey: input.idempotencyKey,
-              receivedAt: input.now.getTime(),
-              status: "pending",
-            })
-            .onConflictDoNothing()
-            .returning({ id: workflowEventInbox.id });
-          if (inserted.length > 0) {
-            const scheduleId = yield* insertDeliverySchedule(database, {
-              inboxId,
-              wakeAt: input.now,
-            });
-            return {
-              duplicate: false,
-              inboxId,
-              scheduleId,
-            } satisfies InboxInsert;
-          }
-
-          const { idempotencyKey } = input;
-          const existing =
-            idempotencyKey === null
-              ? undefined
-              : yield* database
-                  .select({ id: workflowEventInbox.id })
-                  .from(workflowEventInbox)
-                  .where(
-                    holdsInboxKey(workflowEventInbox, {
-                      ...input,
-                      idempotencyKey,
-                    })
-                  )
-                  .get();
-          if (!existing) {
-            throw new Error(
-              "An inbox insert conflicted, and no row holds its idempotency key"
-            );
-          }
-          return {
-            duplicate: true,
-            inboxId: existing.id,
-          } satisfies InboxInsert;
-        })
-      ),
+      store.write((database) => writeArrival(database, input)),
 
     scheduleUnscheduledInbox: (input) =>
       store.write((database) =>
@@ -187,7 +208,7 @@ export function makeSqliteInboxMethods(
         now: input.now,
       }),
 
-    sweepDeliveredInbox: (input) =>
+    sweepSettledInbox: (input) =>
       store.write((database) =>
         database
           .delete(workflowEventInbox)

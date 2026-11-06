@@ -4,8 +4,9 @@
  * may have, what a claim counts when it sweeps an expired lease, which parks
  * it times out, what a release writes back, which runs a producer's wake
  * re-queues, which parks an Event, a re-park or a terminal write may take,
- * which wake the winner of an Exit claim gives the run's other parks, and what
- * each producer answers. A decision a statement makes is a Drizzle `sql`
+ * which wake the winner of an Exit claim gives the run's other parks, which
+ * runs a Cancel claims and what it records on their timelines, and what each
+ * producer answers. A decision a statement makes is a Drizzle `sql`
  * builder over the columns each backend passes in. Each backend runs the statements inside its
  * own transaction, holding the schedule row first.
  */
@@ -18,13 +19,17 @@ import type {
   ParkWake,
 } from "@wfgraph/shared/lifecycle/execution-schedule";
 import type { JsonValue } from "@wfgraph/shared/types/json";
+import type { WorkflowMode } from "@wfgraph/shared/graph/types";
+import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
   CanceledOutletClaim,
   ClaimedSchedule,
   CountedStepFailure,
+  ExecutionEntitySelector,
   ExecutionSchedule,
   ExecutionTerminationState,
+  NewAuditEvent,
   ParkResolution,
   PassOutcome,
   ReleasedSchedule,
@@ -409,17 +414,107 @@ export function arrivalOfWake(wake: ParkWake | null): WaitArrival | null {
 /** A schedule row a producer made due, with the run it schedules. */
 export type DueSchedule = { scheduleId: string; executionId: string | null };
 
+/** The run row columns the Cancel producer's decisions read. */
+type CancelColumns = {
+  workflowId: Column;
+  runMode: Column;
+  entityValue: Column;
+  entityType: Column;
+  entityId: Column;
+  status: Column;
+  terminationKind: Column;
+  cancelDeliveryId: Column;
+};
+
+/** The runs one Cancel arrival is about, in one workflow. */
+export type CancelScope = {
+  workflowId: string;
+  runMode: WorkflowMode;
+} & ExecutionEntitySelector;
+
+/** Whether a run is about the Cancel's Entity, in its workflow and run mode. */
+function inCancelScope(columns: CancelColumns, scope: CancelScope): SQL {
+  const entity =
+    scope.entityType === undefined
+      ? sql`${columns.entityValue} = ${scope.entityValue}`
+      : sql`${columns.entityType} = ${scope.entityType} and ${columns.entityId} = ${scope.entityId}`;
+  return sql`(${columns.workflowId} = ${scope.workflowId} and ${entity} and ${columns.runMode} = ${scope.runMode})`;
+}
+
+/**
+ * Whether a Cancel claim takes this run: it is in the Cancel's scope, in
+ * flight, and holds no boundary claim. The first boundary claim owns the run,
+ * so a second Cancel Event or a concurrent Exit cannot replace its kind or
+ * payload.
+ */
+export function cancelClaimable(
+  columns: CancelColumns,
+  scope: CancelScope
+): SQL {
+  const inFlight = sql.join(
+    IN_FLIGHT_EXECUTION_STATUSES.map((status) => sql`${status}`),
+    sql`, `
+  );
+  return sql`(${inCancelScope(columns, scope)} and ${columns.status} in (${inFlight}) and ${columns.terminationKind} is null)`;
+}
+
+/**
+ * Whether the first attempt of a Cancel delivery flagged this run: it is in
+ * the Cancel's scope and carries the delivery's Cancel claim, whatever it has
+ * done since.
+ */
+export function claimedEarlierBy(
+  columns: CancelColumns,
+  scope: CancelScope & { deliveryId: string }
+): SQL {
+  return sql`(${inCancelScope(columns, scope)} and ${columns.terminationKind} = 'cancel' and ${columns.cancelDeliveryId} = ${scope.deliveryId})`;
+}
+
+/**
+ * The `run_cancel_requested` entry a Cancel claim writes on the timeline of
+ * each run it flagged, in the claim's own transaction, so a crash after the
+ * claim cannot lose the entry and a retry, which flags nothing, writes none.
+ */
+export function cancelRequestedEntries(input: {
+  workflowId: string;
+  eventName: string;
+  flagged: readonly string[];
+  resolved: readonly string[];
+}): NewAuditEvent[] {
+  const parksByRun = countBy(input.resolved, (id) => id);
+  return input.flagged.map((executionId) => ({
+    workflowId: input.workflowId,
+    executionId,
+    eventType: "run_cancel_requested",
+    message: `Cancellation requested by ${input.eventName}`,
+    metadata: {
+      eventName: input.eventName,
+      parkedWaits: parksByRun[executionId] ?? 0,
+    },
+  }));
+}
+
+/**
+ * What a Cancel claim's write reports to `wakeExecutions`: the runs it
+ * flagged, the run of each park its `cancel` wake resolved, the runs an
+ * earlier attempt of the same delivery flagged, and the runs it woke.
+ */
+export type CancelClaimWrite = {
+  result: {
+    flagged: readonly string[];
+    resolved: readonly string[];
+    claimedEarlier: readonly string[];
+  };
+  woken: readonly string[];
+};
+
 /**
  * What `requestCancelForEntity` answers, from the runs its claim flagged, the
  * run of each park its `cancel` wake resolved, the rows it made due, and the
  * runs an earlier attempt of the same delivery flagged.
  */
 export function canceledOutletClaims(produced: {
-  result: {
-    flagged: readonly string[];
-    resolved: readonly string[];
-    claimedEarlier: readonly string[];
-  };
+  result: CancelClaimWrite["result"];
   due: readonly DueSchedule[];
 }): CanceledOutletClaim[] {
   const { flagged, resolved, claimedEarlier } = produced.result;

@@ -16,6 +16,7 @@ import type { DatabaseError } from "#src/backend/lib/effect/database";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import type { DeliverySettings } from "#src/backend/executor/delivery-body";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { cancelArrival } from "#src/backend/persistence/conformance/support";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { deriveEventSubscriptions } from "#src/backend/services/workflows/lifecycle/subscriptions";
 
@@ -27,7 +28,7 @@ export const CANCEL_EVENT = "app/appointment.canceled";
  * catalog Events, and a runtime whose services a delivery would never reach.
  */
 export const noDeliveries: DeliverySettings = {
-  events: [],
+  resolveArrival: () => ({ kind: "unknown" }),
   runtime: stubWfGraphRuntime(),
 };
 
@@ -214,6 +215,7 @@ export function cancelEntity(input: {
       entityValue: input.entityValue,
       eventName: CANCEL_EVENT,
       payload: {},
+      deliveryId: yield* cancelArrival(),
       now: input.now,
     });
     return claims.map((claim) => claim.executionId);

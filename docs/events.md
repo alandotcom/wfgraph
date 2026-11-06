@@ -206,6 +206,10 @@ const invoicePaid = defineEvent({
   that name. The worker loop delivers it as the Event whose `when` its payload satisfies. An
   arrival no Event on the source accepts is marked delivered and starts nothing.
 - `events.send` and `POST /api/events` take the Event's own name, so they need no filter.
+  They also take the umbrella name, and then refuse a payload that no Event on the source
+  accepts.
+- Assembly refuses an Event whose name is another Event's umbrella name, because an
+  arrival under that name could be either Event.
 - Workflow Graph reads the filter's path at definition, so a path that names no field fails
   in the build of whoever wrote it.
 - Assembly refuses two Events on one source that both omit `when`.
@@ -233,11 +237,15 @@ const { id, duplicate } = await app.events.send({
 });
 ```
 
-- `name` is the name of an Event in `extensions.events` or of an integration-owned Event.
+- `name` is the name of an Event in `extensions.events`, or the umbrella name it arrives
+  under. An integration-owned Event is refused, because it arrives only through its
+  integration's webhook, with the Connection it came through.
 - `data` must pass the schema of that Event before the send resolves.
 - `id` is optional. It is the idempotency key: a second send with the same `name` and `id`
   resolves with `duplicate: true` and the `id` of the first send, and it starts nothing.
-  The key holds for the deduplication window, which is the inbox's retention window.
+  When the first send's delivery failed for good, a second send with the same `id` delivers
+  that first send again and resolves with `duplicate: false`. The key holds for the
+  deduplication window, which is the inbox's retention window.
 - The promise resolves once the Event is stored in the event inbox, so a send that
   resolved survives a crash. The run starts in the worker loop shortly after.
 - The promise rejects with `WfGraphEventRefused`, exported from `@wfgraph/core`, for an
@@ -275,7 +283,8 @@ inngest.send({ name: "app/appointment.created", data: { appointment } });
 ```
 
 - The Inngest event's `id` is the idempotency key, so a second event with the same `id`
-  starts nothing within the deduplication window.
+  starts nothing within the deduplication window. Inngest gives an event sent without an
+  `id` one of its own.
 - An Event with an umbrella `source` is sent under its source name, and the worker loop
   tells which Event it is (see The umbrella source).
 - The forwarding function checks nothing. The worker loop checks the payload when it
@@ -301,8 +310,9 @@ the schema never heard of.
   drifts fails loudly, and an extra key passes in silence by choice.
 - `events.send` and `POST /api/events` refuse a payload the gate refuses before storing it.
   An Event from `inngest.send` or a webhook is checked when the worker loop delivers it. A
-  refused one is marked failed with the reason and never delivered again, because a second
-  attempt meets the same malformed payload.
+  refused one is marked failed with the reason and is not retried, because a second
+  attempt meets the same malformed payload. A resend with the same idempotency key delivers
+  the stored Event again.
 
 Workflow Graph carries the raw JSON into the workflow. The decoded value is used only by a
 typed Entity ID selector and then discarded. A transform rewriting what the sender sent

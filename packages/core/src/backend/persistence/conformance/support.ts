@@ -39,6 +39,25 @@ export const notYetDue = {
   now: new Date("2100-01-01T00:00:00.000Z"),
 };
 
+/**
+ * Records one Cancel Event arrival in the event inbox, with no idempotency
+ * key, and answers its inbox id: the delivery id a Cancel claim records its
+ * decision under.
+ */
+export function cancelArrival(now: Date = notYetDue.now) {
+  return Effect.gen(function* () {
+    const executions = yield* ExecutionRepo;
+    const arrival = yield* executions.insertInboxEvent({
+      name: "appointment/cancelled",
+      data: {},
+      connectionId: null,
+      idempotencyKey: null,
+      now,
+    });
+    return arrival.inboxId;
+  });
+}
+
 /** The one key every backend seals with. */
 export const conformanceCipher = createIntegrationCipher({
   key: "c".repeat(64),

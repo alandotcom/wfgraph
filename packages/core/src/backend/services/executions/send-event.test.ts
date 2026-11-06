@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApiApp, machineRoutes } from "#src/backend/api-app";
 import { defineEvent } from "#src/backend/extensions/define-event";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
+import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import {
   defineWfGraphAuth,
@@ -27,6 +28,37 @@ const extensions = assembleExtensions({
       name: "app/appointment.created",
       schema: Schema.Struct({ appointmentId: Schema.String }),
       correlationPath: "appointmentId",
+    }),
+    defineEvent({
+      name: "billing/invoice.paid",
+      schema: Schema.Struct({ type: Schema.String, invoiceId: Schema.String }),
+      correlationPath: "invoiceId",
+      source: {
+        event: "billing/webhook",
+        when: { path: "type", equals: "paid" },
+      },
+    }),
+  ],
+  integrations: [
+    defineIntegration({
+      type: "sms",
+      label: "SMS",
+      description: "Text messages",
+      credentials: {},
+      actions: {},
+      events: [
+        defineEvent({
+          name: "sms/message.received",
+          schema: Schema.Struct({ from: Schema.String }),
+          correlationPath: "from",
+          source: { event: "sms/webhook" },
+        }),
+      ],
+      webhook: {
+        source: "sms/webhook",
+        verify: () => Effect.void,
+        receive: () => undefined,
+      },
     }),
   ],
 });
@@ -121,7 +153,59 @@ describe("sendEvent", () => {
     );
 
     expect(failure._tag).toBe("InvalidInput");
-    expect(failure.error).toBe("name: No catalog Event has this name");
+    expect(failure.error).toBe(
+      "name: No host Event has this name or arrives under it"
+    );
+    expect(receiveEvent).not.toHaveBeenCalled();
+  });
+
+  // An integration-owned Event arrives only through its integration's webhook,
+  // which records the Connection it came through. A host send has none.
+  it("refuses an integration-owned Event's name", async () => {
+    const { runtime, receiveEvent } = runtimeFor();
+    await using _ = runtime;
+
+    const failure = await runtime.runPromise(
+      sendEvent({ name: "sms/message.received", data: { from: "+1555" } }).pipe(
+        Effect.flip
+      )
+    );
+
+    expect(failure.error).toBe(
+      "name: No host Event has this name or arrives under it"
+    );
+    expect(receiveEvent).not.toHaveBeenCalled();
+  });
+
+  // The umbrella name is what an Inngest send of the same message would
+  // carry, so a host send may use it too, and the row names the Event.
+  it("records a send under an umbrella source name as the Event its data is", async () => {
+    const { runtime, receiveEvent } = runtimeFor();
+    await using _ = runtime;
+
+    await runtime.runPromise(
+      sendEvent({
+        name: "billing/webhook",
+        data: { type: "paid", invoiceId: "inv_1" },
+      })
+    );
+
+    expect(receiveEvent.mock.lastCall?.[0].name).toBe("billing/invoice.paid");
+  });
+
+  it("refuses a send under an umbrella source name that no Event on it accepts", async () => {
+    const { runtime, receiveEvent } = runtimeFor();
+    await using _ = runtime;
+
+    const failure = await runtime.runPromise(
+      sendEvent({
+        name: "billing/webhook",
+        data: { type: SECRET, invoiceId: "inv_1" },
+      }).pipe(Effect.flip)
+    );
+
+    expect(failure._tag).toBe("InvalidInput");
+    expect(failure.error).not.toContain(SECRET);
     expect(receiveEvent).not.toHaveBeenCalled();
   });
 
@@ -284,7 +368,7 @@ describe("events HTTP route", () => {
     expect(response.status).toBe(400);
     const body = await response.text();
     expect(JSON.parse(body)).toEqual({
-      error: "name: No catalog Event has this name",
+      error: "name: No host Event has this name or arrives under it",
     });
     expect(body).not.toContain(SECRET);
   });

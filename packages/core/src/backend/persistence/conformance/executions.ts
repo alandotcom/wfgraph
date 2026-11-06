@@ -13,6 +13,7 @@ import type {
 } from "#src/backend/persistence/conformance/support";
 import {
   attemptStart,
+  cancelArrival,
   emptyGraph,
   notYetDue,
   seedPublishedWorkflow,
@@ -366,6 +367,7 @@ export function describeExecutionConformance({
             runMode: "live",
             eventName: "appointment/cancelled",
             payload: {},
+            deliveryId: yield* cancelArrival(),
           });
           const completion = yield* executions.finishRun({
             executionId: started.execution.id,
@@ -486,6 +488,7 @@ export function describeExecutionConformance({
             runMode: "live",
             eventName: "appointment/cancelled",
             payload: { reason: "host request" },
+            deliveryId: yield* cancelArrival(),
           });
           const exit = yield* executions.requestExit({
             executionId: started.execution.id,
@@ -812,6 +815,7 @@ export function describeExecutionConformance({
             runMode: "live",
             eventName: "appointment/cancelled",
             payload: { reason: "host request" },
+            deliveryId: yield* cancelArrival(),
           });
           const pendingCancel =
             yield* executions.findPendingCancel(executionId);
@@ -895,6 +899,11 @@ export function describeExecutionConformance({
       expect(result.outputs).toEqual({ node_1: { taskId: "task_1" } });
       expect(result.events).toMatchObject([
         { message: "Completed" },
+        {
+          eventType: "run_cancel_requested",
+          message: "Cancellation requested by appointment/cancelled",
+          metadata: { eventName: "appointment/cancelled", parkedWaits: 0 },
+        },
         { eventType: "run_started", message: notYetDue.startedEntry.message },
       ]);
       expect(result.deleted).toBe(1);
@@ -926,15 +935,19 @@ export function describeExecutionConformance({
             throw new Error("Start was refused");
           }
 
+          // Each call is a Cancel Event of its own, with an inbox row of its own.
           const cancel = (reason: string) =>
-            executions.requestCancelForEntity({
-              now: NOW,
-              workflowId: "wf_1",
-              entityValue: "appointment_1",
-              runMode: "live",
-              eventName: "appointment/cancelled",
-              payload: { reason },
-            });
+            Effect.flatMap(cancelArrival(), (deliveryId) =>
+              executions.requestCancelForEntity({
+                now: NOW,
+                workflowId: "wf_1",
+                entityValue: "appointment_1",
+                runMode: "live",
+                eventName: "appointment/cancelled",
+                payload: { reason },
+                deliveryId,
+              })
+            );
 
           return {
             first: yield* cancel("first"),
