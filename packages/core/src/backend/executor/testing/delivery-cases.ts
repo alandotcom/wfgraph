@@ -19,6 +19,7 @@ import { Effect, Schema } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import type { ExecutionScheduleKind } from "@wfgraph/shared/lifecycle/execution-schedule";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { defineAction } from "#src/backend/extensions/define-action";
@@ -370,7 +371,10 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     drain: (
       bodies?: PassBodies<ExecutionRepo | WorkflowRepo>
     ) => Promise<PassResult[]>;
-    /** Claims one due row and runs one pass over it, or answers null. */
+    /**
+     * Claims one due row, a delivery before a run as the loop's lanes order
+     * them, and runs one pass over it, or answers null.
+     */
     passOnce: (options?: {
       bodies?: PassBodies<ExecutionRepo | WorkflowRepo> | undefined;
       wrap?:
@@ -407,12 +411,17 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
         Effect.gen(function* () {
           const repo = yield* ExecutionRepo;
           const worker = options.wrap?.(repo) ?? repo;
-          const [claimed] = yield* worker.claimDue({
-            workerId: "worker_1",
-            limit: 1,
-            leaseMs: LEASE_MS,
-            now: now(),
-          });
+          const claimOne = (kind: ExecutionScheduleKind) =>
+            worker.claimDue({
+              kind,
+              workerId: "worker_1",
+              limit: 1,
+              leaseMs: LEASE_MS,
+              now: now(),
+            });
+          const deliveries = yield* claimOne("delivery");
+          const [claimed] =
+            deliveries.length > 0 ? deliveries : yield* claimOne("run");
           if (!claimed) return null;
           return yield* leasedPass(claimed, options.bodies ?? bodies, {
             workerId: "worker_1",
@@ -860,6 +869,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
             limit: 10,
           }),
           claim: yield* executions.claimDue({
+            kind: "delivery",
             workerId: "worker_2",
             limit: 10,
             leaseMs: LEASE_MS,

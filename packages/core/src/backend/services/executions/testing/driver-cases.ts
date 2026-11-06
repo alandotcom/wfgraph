@@ -313,6 +313,7 @@ function appOn(connection: ConformanceConnection): App {
 /** Claims every due row for one worker, as a loop's drain step would. */
 const claimAll = Effect.flatMap(ExecutionRepo, (executions) =>
   executions.claimDue({
+    kind: "run",
     workerId: "worker_case",
     limit: 10,
     leaseMs: 60_000,

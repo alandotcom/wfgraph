@@ -101,6 +101,7 @@ describe("runBody", () => {
           });
           const executions = yield* ExecutionRepo;
           const claimed = yield* executions.claimDue({
+            kind: "run",
             workerId: "worker_1",
             limit: 2,
             leaseMs: 60_000,

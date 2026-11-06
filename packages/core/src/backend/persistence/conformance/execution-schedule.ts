@@ -85,6 +85,7 @@ export function describeExecutionScheduleConformance({
           yield* scheduledRun(at(3_000));
           const fresh = yield* scheduledRun(at(1_500));
           const claimed = yield* executions.claimDue({
+            kind: "run",
             workerId: "worker_a",
             limit: 1,
             leaseMs: LEASE_MS,
@@ -112,6 +113,7 @@ export function describeExecutionScheduleConformance({
             T0
           );
           const beforeExpiry = yield* executions.claimDue({
+            kind: "run",
             workerId: "worker_2",
             limit: 10,
             leaseMs: LEASE_MS,

@@ -1,11 +1,11 @@
 /**
  * The database executor's scheduling decisions, made once for both backends:
- * which rows a claim leases, how many failures a step or a run may have, what
- * a claim counts when it sweeps an expired lease, which parks it times out,
- * what a release writes back, which runs a producer's wake re-queues, which
- * parks an Event, a re-park or a terminal write may take, which wake the
- * winner of an Exit claim gives the run's other parks, and what each producer
- * answers. A decision a statement makes is a Drizzle `sql` builder over the
+ * which rows a claim for one kind leases, how many failures a step or a run
+ * may have, what a claim counts when it sweeps an expired lease, which parks
+ * it times out, what a release writes back, which runs a producer's wake
+ * re-queues, which parks an Event, a re-park or a terminal write may take,
+ * which wake the winner of an Exit claim gives the run's other parks, and what
+ * each producer answers. A decision a statement makes is a Drizzle `sql` builder over the
  * columns each backend passes in. Each backend runs the statements inside its
  * own transaction, holding the schedule row first.
  */
@@ -104,12 +104,6 @@ export function instantOf(column: Column, now: BoundInstant): SQL {
   return sql`${sql.param(now, column)}`;
 }
 
-/** The kinds of schedule row the claim leases, one per pass body. */
-const CLAIMED_SCHEDULE_KINDS = [
-  "run",
-  "delivery",
-] as const satisfies readonly ExecutionScheduleKind[];
-
 function sqlLiterals(values: readonly string[]): SQL {
   return sql.raw(values.map((value) => `'${value}'`).join(", "));
 }
@@ -134,12 +128,15 @@ function expiredLease(
 }
 
 /**
- * Whether the claim leases this row at `now`: its kind has a pass body, and it
- * is `queued` or `waiting` with `wake_at` at or before `now`, or its lease
- * expired (`expiredLease`).
+ * Whether a claim for `kind` leases this row at `now`: the row is of that kind,
+ * and it is `queued` or `waiting` with `wake_at` at or before `now`, or its
+ * lease expired (`expiredLease`).
  */
-export function dueSchedule(columns: ScheduleColumns, now: BoundInstant): SQL {
-  return sql`(${columns.kind} in (${sqlLiterals(CLAIMED_SCHEDULE_KINDS)}) and ((${columns.state} in ('queued', 'waiting') and ${columns.wakeAt} <= ${instantOf(columns.wakeAt, now)}) or ${expiredLease(columns, now)}))`;
+export function dueSchedule(
+  columns: ScheduleColumns,
+  claim: { kind: ExecutionScheduleKind; now: BoundInstant }
+): SQL {
+  return sql`(${columns.kind} = ${claim.kind} and ((${columns.state} in ('queued', 'waiting') and ${columns.wakeAt} <= ${instantOf(columns.wakeAt, claim.now)}) or ${expiredLease(columns, claim.now)}))`;
 }
 
 /**
@@ -447,9 +444,8 @@ export function canceledOutletClaims(produced: {
 
 /**
  * A row the claim just leased, as its pass sees it. The claim wrote the token
- * and the lease expiry and leases only the kinds `CLAIMED_SCHEDULE_KINDS`
- * names, a `run` row always names its Execution, and a `delivery` row its
- * inbox row, so a row missing any of them is a defect.
+ * and the lease expiry, a `run` row always names its Execution, and a
+ * `delivery` row its inbox row, so a row missing any of them is a defect.
  */
 function claimedSchedule(
   row: ExecutionSchedule

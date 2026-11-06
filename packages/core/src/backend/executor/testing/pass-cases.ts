@@ -262,6 +262,7 @@ function describeCases(
             const repo = yield* ExecutionRepo;
             const worker = options.wrap?.(repo) ?? repo;
             const [claimed] = yield* worker.claimDue({
+              kind: "run",
               workerId: options.workerId ?? "worker_1",
               limit: 1,
               leaseMs: LEASE_MS,
@@ -1015,6 +1016,7 @@ function describeCases(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
           const [claimed] = yield* executions.claimDue({
+            kind: "run",
             workerId: "worker_live",
             limit: 1,
             leaseMs: LEASE_MS,

@@ -157,11 +157,7 @@ groupLayoutProperty(
     if (scenario.failurePoint === "wait-claim")
       expect(host.faults.claim.hits).toBe(1);
     return observeExecution(host, executionId);
-  },
-  // The Cancel's delivery is a pass of its own, which has to run while the
-  // run's pass is held at its completion write. SQLite's default loop runs one
-  // pass at a time, so it would queue the delivery behind the held pass.
-  { host: { runner: { concurrency: 2 } } }
+  }
 );
 
 function cancellationWorkflow(cleanupMode: CleanupMode) {

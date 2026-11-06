@@ -932,9 +932,11 @@ describe("createWfGraphApp runner", () => {
     expect(loops).toHaveBeenCalledTimes(1);
     expect(loops.mock.calls[0]?.[0]).toMatchObject({
       concurrency: 1,
+      deliveryConcurrency: 1,
       pollMs: 250,
       leaseMs: undefined,
       heartbeatMs: undefined,
+      retentionMs: 7 * 24 * 60 * 60 * 1000,
       drainMs: 10_000,
     });
   });
@@ -946,18 +948,22 @@ describe("createWfGraphApp runner", () => {
       persistence: wfSqlite(),
       runner: {
         concurrency: 4,
+        deliveryConcurrency: 2,
         pollMs: 50,
         leaseMs: 9_000,
         heartbeatMs: 3_000,
       },
+      events: { retentionMs: 86_400_000 },
     });
     await app.dispose();
 
     expect(loops.mock.calls[0]?.[0]).toMatchObject({
       concurrency: 4,
+      deliveryConcurrency: 2,
       pollMs: 50,
       leaseMs: 9_000,
       heartbeatMs: 3_000,
+      retentionMs: 86_400_000,
     });
   });
 
@@ -992,6 +998,9 @@ describe("createWfGraphApp runner", () => {
     await expect(
       createWfGraphApp({ ...BASE_OPTIONS, runner: { concurrency: 0 } })
     ).rejects.toThrow("runner.concurrency must be a positive integer");
+    await expect(
+      createWfGraphApp({ ...BASE_OPTIONS, runner: { deliveryConcurrency: 0 } })
+    ).rejects.toThrow("runner.deliveryConcurrency must be a positive integer");
     await expect(
       createWfGraphApp({ ...BASE_OPTIONS, runner: { leaseMs: 10_000 } })
     ).rejects.toThrow("must be shorter than runner.leaseMs");
@@ -1034,6 +1043,26 @@ describe("createWfGraphApp events", () => {
     await expect(
       createWfGraphApp({ ...BASE_OPTIONS, events: { key: "  " } })
     ).rejects.toThrow("events.key is blank");
+  });
+
+  it("refuses an events.retentionMs the sweep could not use, and so does createWfGraphRunner", async () => {
+    for (const retentionMs of [0, -1, 1.5, Number.NaN]) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- one refusal per value
+      await expect(
+        createWfGraphApp({ ...BASE_OPTIONS, events: { retentionMs } })
+      ).rejects.toThrow(
+        "createWfGraphApp's events.retentionMs must be a positive integer"
+      );
+    }
+    await expect(
+      createWfGraphRunner({
+        persistence: wfSqlite(),
+        encryption: BASE_OPTIONS.encryption,
+        events: { retentionMs: 0 },
+      })
+    ).rejects.toThrow(
+      "createWfGraphRunner's events.retentionMs must be a positive integer"
+    );
   });
 
   it("opens a run that completes from app.events.send and from POST /api/events", async () => {

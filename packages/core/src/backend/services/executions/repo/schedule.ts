@@ -60,6 +60,7 @@ import {
   TIMEOUT_WAKE,
 } from "#src/backend/services/executions/repo/release-policy";
 import { ownershipLost } from "#src/backend/services/executions/repo/fencing";
+import type { ExecutionScheduleKind } from "@wfgraph/shared/lifecycle/execution-schedule";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
@@ -316,9 +317,11 @@ export type ScheduleRepoMethods = {
     row: ScheduleRowKey
   ) => Effect.Effect<ExecutionSchedule | null, DatabaseError>;
   /**
-   * Lease up to `limit` due rows to one worker, oldest `wake_at` first.
+   * Lease up to `limit` due rows of one `kind` to one worker, oldest `wake_at`
+   * first. A worker loop claims each kind in a lane of its own, so runs and
+   * deliveries never wait for each other's slots.
    *
-   * A row is due as `dueSchedule` decides: a kind a pass runs, `queued` or
+   * A row is due as `dueSchedule` decides: of `kind`, and `queued` or
    * `waiting` with `wake_at` at or before `now`, or `leased` with a lease that
    * expired by `now`. Each claimed row gets
    * a new owner token and a lease ending `leaseMs` after `now`. A row queued by
@@ -332,6 +335,7 @@ export type ScheduleRepoMethods = {
    * once never lease the same row.
    */
   readonly claimDue: (input: {
+    kind: ExecutionScheduleKind;
     workerId: string;
     limit: number;
     leaseMs: number;
@@ -543,7 +547,12 @@ export function makeScheduleMethods(
                 runningStepId: workflowExecutionSchedule.runningStepId,
               })
               .from(workflowExecutionSchedule)
-              .where(dueSchedule(workflowExecutionSchedule, input.now))
+              .where(
+                dueSchedule(workflowExecutionSchedule, {
+                  kind: input.kind,
+                  now: input.now,
+                })
+              )
               .orderBy(
                 asc(workflowExecutionSchedule.wakeAt),
                 asc(workflowExecutionSchedule.id)

@@ -1,9 +1,11 @@
 import {
+  assertValidRetention,
   assertValidRunnerOptions,
   type InProcessRunner,
   type WfGraphRunnerOptions,
 } from "#src/backend/executor/in-process-runner";
 import type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
+import type { WfGraphEventsOptions } from "#src/app";
 import { failAfterClose } from "#src/backend/lib/close-in-order";
 import { normalizeBasePath } from "#src/backend/lib/http/mount-path";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
@@ -35,6 +37,12 @@ export type CreateWfGraphRunnerOptions = {
   logger?: WfGraphLogger | undefined;
   /** Tunes the loop, as `createWfGraphApp`'s `runner` option does. */
   runner?: WfGraphRunnerOptions | undefined;
+  /**
+   * How long this loop keeps a settled inbox row, as `createWfGraphApp`'s
+   * `events.retentionMs` describes. The loop sweeps with this process's
+   * window, whatever the app sets.
+   */
+  events?: Pick<WfGraphEventsOptions, "retentionMs"> | undefined;
 };
 
 export type WfGraphRunner = {
@@ -61,6 +69,7 @@ export async function createWfGraphRunner(
   const publicUrl = resolvePublicUrl(options.publicUrl);
   assertValidEncryptionKey(options.encryption.key);
   assertValidRunnerOptions(options.runner);
+  assertValidRetention(options.events?.retentionMs, "createWfGraphRunner");
 
   const setup = await openWfGraphSetup({
     logger: options.logger,
@@ -80,7 +89,10 @@ export async function createWfGraphRunner(
         "createWfGraphRunner cannot run on this persistence backend: no other process can share its database, so its runs advance in the app's own process"
       );
     }
-    runner = setup.prepareRunner(options.runner ?? {})();
+    runner = setup.prepareRunner({
+      runner: options.runner ?? {},
+      retentionMs: options.events?.retentionMs,
+    })();
   } catch (error) {
     return await failAfterClose(error, [setup.close]);
   }

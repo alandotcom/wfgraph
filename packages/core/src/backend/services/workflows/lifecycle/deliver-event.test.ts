@@ -306,13 +306,17 @@ function parkedWait(
 /**
  * The ports `applyLifecycleRules` reaches through its real neighbours.
  *
- * The executor's writes go through a stubbed `ExecutionDriver`: the Cancel
- * claim answers one claimed run, and a start or a stop succeeds. Their own
- * suites own those writes.
+ * Every delivery here is its arrival's first attempt, so the reads a retried
+ * delivery answers from find no refusal and no run it committed earlier. The
+ * executor's writes go through a stubbed `ExecutionDriver`: the Cancel claim
+ * answers one claimed run, and a start or a stop succeeds. Their own suites
+ * own those writes.
  */
 const lifecyclePorts = Layer.mergeAll(
   stubExecutionRepo({
     recordAuditEvent: recordAuditEventMock,
+    findAdmissionRefusal: () => Effect.succeed(null),
+    findByDelivery: () => Effect.succeed(null),
   }),
   stubExecutionDriver({
     startRun: startRunMock,
@@ -372,6 +376,7 @@ describe("applyLifecycleRules", () => {
     it.effect("starts a run where the Event holds the start role", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber(),
           event: appointmentCreated,
           payload,
@@ -405,6 +410,7 @@ describe("applyLifecycleRules", () => {
     it.effect("is waits_only when the arrival is a different Connection", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber({ connectionId: "conn_1" }),
           event: { ...slackMessagePosted, connectionId: "conn_other" },
           payload: { message: { id: "message_1" } },
@@ -430,6 +436,7 @@ describe("applyLifecycleRules", () => {
     it.effect("starts when the arrival is the Connection the rules name", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber({ connectionId: "conn_1" }),
           event: { ...slackMessagePosted, connectionId: "conn_1" },
           payload: { message: { id: "message_1" } },
@@ -459,6 +466,7 @@ describe("applyLifecycleRules", () => {
             },
           };
           const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: subscriber({ correlationPath: "appointment.id" }),
             event: appointmentCreated,
             payload: {
@@ -496,6 +504,7 @@ describe("applyLifecycleRules", () => {
       () =>
         Effect.gen(function* () {
           const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: subscriber({ connectionId: "conn_old" }),
             event: { ...slackMessagePosted, connectionId: "conn_new" },
             payload: { message: { id: "message_1" } },
@@ -526,6 +535,7 @@ describe("applyLifecycleRules", () => {
       () =>
         Effect.gen(function* () {
           const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: subscriber({ roles: ["start"] }),
             event: appointmentCreated,
             payload,
@@ -561,6 +571,7 @@ describe("applyLifecycleRules", () => {
     it.effect("starts a run on any of several Start Events", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber(),
           event: appointmentCanceled,
           payload,
@@ -601,6 +612,7 @@ describe("applyLifecycleRules", () => {
     it.effect("trims the Entity Value it reads", () =>
       Effect.gen(function* () {
         yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber(),
           event: appointmentCreated,
           payload: { appointment: { id: "  appt_8813  " } },
@@ -626,6 +638,7 @@ describe("applyLifecycleRules", () => {
     it.effect("treats a graph with no rules as starting nothing", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber(),
           event: appointmentCreated,
           payload,
@@ -656,6 +669,7 @@ describe("applyLifecycleRules", () => {
         );
 
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber(),
           event: appointmentCreated,
           payload,
@@ -679,6 +693,7 @@ describe("applyLifecycleRules", () => {
     it.effect("routes the runs of an entity to the Canceled outlet", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber({ roles: ["cancel"] }),
           event: appointmentCanceled,
           payload,
@@ -696,14 +711,13 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           canceledExecutionIds: ["exec_running"],
         });
-        // An arrival with no delivery id records none on the claim.
         assert.deepStrictEqual(requestCanceledOutletMock.mock.calls[0]?.[0], {
           workflowId: "wf_1",
           entityValue: "appt_8813",
           runMode: "live",
           eventName: "app/appointment.canceled",
           payload,
-          deliveryId: undefined,
+          deliveryId: "delivery_1",
         });
         assert.strictEqual(startRunMock.mock.calls.length, 0);
       })
@@ -712,6 +726,7 @@ describe("applyLifecycleRules", () => {
     it.effect("cancels when the arrival satisfies the Cancel Filter", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber({ roles: ["cancel"] }),
           event: appointmentCanceled,
           payload: {
@@ -795,6 +810,7 @@ describe("applyLifecycleRules", () => {
       () =>
         Effect.gen(function* () {
           const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: subscriber({ roles: ["cancel"] }),
             event: appointmentCanceled,
             payload: { appointment: { reason: "rescheduled" } },
@@ -829,6 +845,7 @@ describe("applyLifecycleRules", () => {
     it.effect("leaves runs active when the Cancel Filter is unevaluable", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber({ roles: ["cancel"] }),
           event: appointmentCanceled,
           payload: {
@@ -869,6 +886,7 @@ describe("applyLifecycleRules", () => {
       () =>
         Effect.gen(function* () {
           yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: subscriber({
               roles: ["cancel"],
               correlationPath: "appointment.id",
@@ -962,6 +980,7 @@ describe("applyLifecycleRules", () => {
     it.effect("cancels nothing where the rules no longer say to", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber({ roles: ["cancel"] }),
           event: appointmentCanceled,
           payload,
@@ -987,6 +1006,7 @@ describe("applyLifecycleRules", () => {
     it.effect("skips a workflow that is gone", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber(),
           event: appointmentCreated,
           payload,
@@ -1012,6 +1032,7 @@ describe("applyLifecycleRules", () => {
     it.effect("skips a workflow whose graph will not run", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber(),
           event: appointmentCreated,
           payload,
@@ -1072,6 +1093,7 @@ describe("applyLifecycleRules", () => {
     it.effect("leaves a refused query failing", () =>
       Effect.gen(function* () {
         const failure = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber(),
           event: appointmentCreated,
           payload,
@@ -1191,6 +1213,7 @@ describe("wait candidate delivery", () => {
     it.effect("offers the Event to parked runs regardless of run mode", () =>
       Effect.gen(function* () {
         const outcome = yield* deliverWaitCandidates({
+          deliveryId: "delivery_1",
           workflowId: "wf_1",
           event: appointmentCreated,
           payload,
@@ -1209,6 +1232,7 @@ describe("wait candidate delivery", () => {
     it.effect("delivers waits with no Correlation Path in sight", () =>
       Effect.gen(function* () {
         const outcome = yield* deliverWaitCandidates({
+          deliveryId: "delivery_1",
           workflowId: "wf_1",
           event: { name: "ops/nightly.swept" },
           payload: { sweep: { id: "sweep_1" } },
@@ -1223,6 +1247,7 @@ describe("wait candidate delivery", () => {
     it.effect("wakes nothing for an empty saved page", () =>
       Effect.gen(function* () {
         const outcome = yield* deliverWaitCandidates({
+          deliveryId: "delivery_1",
           workflowId: "wf_1",
           event: { name: "ops/nightly.swept" },
           payload: { sweep: { id: "sweep_1" } },

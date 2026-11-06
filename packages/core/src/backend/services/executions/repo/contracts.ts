@@ -128,8 +128,8 @@ export type ClaimedDelivery = ScheduleLease & {
 
 /**
  * A schedule row a claim leased to one worker's pass, by what the row runs.
- * `kind` picks the pass's body, and each kind the claim leases is one member
- * of this union. `CLAIMED_SCHEDULE_KINDS` names the kinds the claim leases.
+ * `kind` picks the pass's body, and each schedule kind is one member of this
+ * union, claimed by a claim for that kind.
  */
 export type ClaimedSchedule = ClaimedRun | ClaimedDelivery;
 

@@ -675,6 +675,11 @@ Graph registers one Inngest function for each name an Event in `extensions.event
 under, and that function records each Inngest event in the inbox. Inngest runs no workflow
 and delivers no Event itself. For how to send one, see `docs/events.md`.
 
+An inbox row stays after its delivery settles, as `delivered`, or as `failed` with the
+reason in its `error` column. The loop deletes settled rows once they are older than
+`events.retentionMs`, seven days by default, and never deletes a row still waiting for
+delivery. See Keep settled Events for a window.
+
 The loop keeps its state in two tables beside the other Workflow Graph tables.
 `workflow_execution_schedule` holds one row per run in flight, and
 `workflow_execution_steps` holds the result of each completed step, including what an
@@ -692,20 +697,52 @@ The `runner` option controls the loop:
   least one process connected to the same database must run a loop, or runs open and never
   advance. SQLite refuses `false` at startup, because no other process can share its file.
 
-| Field         | PostgreSQL default | SQLite default | Description                                                                                 |
-| ------------- | ------------------ | -------------- | ------------------------------------------------------------------------------------------- |
-| `concurrency` | 10                 | 1              | How many runs the loop advances at once. On PostgreSQL, at most the pool's `maxConnections` |
-| `pollMs`      | 1,000              | 250            | How long the loop waits between checks for due runs when nothing wakes it, in milliseconds  |
-| `leaseMs`     | 60,000             | 60,000         | How long the loop holds a run before another loop can take it over, in milliseconds         |
-| `heartbeatMs` | 20,000             | 20,000         | How often the loop renews its hold while a step runs, in milliseconds                       |
+| Field                 | PostgreSQL default | SQLite default | Description                                                                                 |
+| --------------------- | ------------------ | -------------- | ------------------------------------------------------------------------------------------- |
+| `concurrency`         | 10                 | 1              | How many runs the loop advances at once. On PostgreSQL, at most the pool's `maxConnections` |
+| `deliveryConcurrency` | 1                  | 1              | How many Event deliveries the loop runs at once, in slots of their own beside the runs'     |
+| `pollMs`              | 1,000              | 250            | How long the loop waits between checks for due runs when nothing wakes it, in milliseconds  |
+| `leaseMs`             | 60,000             | 60,000         | How long the loop holds a run before another loop can take it over, in milliseconds         |
+| `heartbeatMs`         | 20,000             | 20,000         | How often the loop renews its hold while a step runs, in milliseconds                       |
 
 Each field must be a positive integer, and `heartbeatMs` must be shorter than `leaseMs`.
 `createWfGraphApp` refuses any other value at startup.
+
+The loop claims runs and Event deliveries in two lanes, each limited by its own field. A
+delivery is the work that starts, cancels and wakes runs for one Event, so a Cancel is
+applied while every run slot is busy with a long step. On PostgreSQL, the passes of both
+lanes share the pool, so a loop at its defaults can hold 11 connections; give the pool a
+`maxConnections` above `concurrency` plus `deliveryConcurrency` when the app also serves
+requests from it.
 
 ```ts
 const wfgraph = await createWfGraphApp({
   // auth, persistence, encryption, inngest, extensions
   runner: { concurrency: 20, pollMs: 500 },
+});
+```
+
+### Keep settled Events for a window
+
+`events.retentionMs` sets how long an inbox row is kept after its Event arrived, once its
+delivery has settled. It defaults to 604,800,000, which is seven days, and must be a positive
+integer; a zero, negative or fractional value fails at startup. Once an hour, the loop
+deletes up to 1,000 `delivered` or `failed` rows that arrived earlier than the window; when a
+sweep reaches that limit, the next one runs at the loop's next poll. A `pending` row is
+never deleted.
+
+The window is also the deduplication window. A send whose idempotency key matches a row
+still kept is answered with that row and starts nothing, and once the sweep has deleted the
+row, the same key is a new arrival. The `delivery_id` of an Execution names its inbox row
+as plain text, so a run outlives the row it started from.
+
+The sweep runs in the process that runs the loop, with that process's window. When the
+loop runs under `createWfGraphRunner`, set `events.retentionMs` there.
+
+```ts
+const wfgraph = await createWfGraphApp({
+  // auth, persistence, encryption, inngest, extensions
+  events: { retentionMs: 30 * 24 * 60 * 60 * 1000 },
 });
 ```
 
@@ -741,6 +778,7 @@ process.once("SIGTERM", () => void runner.dispose());
 | `entityResolverTimeoutMs` | No       | As on `createWfGraphApp`                                                                      |
 | `logger`                  | No       | As on `createWfGraphApp`                                                                      |
 | `runner`                  | No       | The loop's settings, as in the table under Configure the runner                               |
+| `events.retentionMs`      | No       | How long this loop keeps a settled inbox row. See Keep settled Events for a window            |
 
 It answers `{ events, dispose, [Symbol.asyncDispose] }`. `events.send` raises an Event the
 way the app's does. `dispose()` drains the loop the way the app's does, then closes the
@@ -909,6 +947,7 @@ Cloudflare Workers and Hyperdrive.
 | `inngest.id`              | Yes      | Inngest application ID. Inngest forwards the Events a host sends with `inngest.send` into the event inbox; it runs no workflow                                                                                        |
 | `inngest.*`               | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency, connectTimeoutMs                                                        |
 | `events.key`              | No       | Shared secret that mounts `POST /api/events`. A sender presents it as `Authorization: Bearer <key>`. Unset, the route is not mounted. A blank value fails at startup. See `docs/events.md`                            |
+| `events.retentionMs`      | No       | How long a settled inbox row is kept after its Event arrived, in milliseconds. Defaults to seven days. See Keep settled Events for a window                                                                           |
 | `runner`                  | No       | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none beside a `createWfGraphRunner` process. See Workflow runs                       |
 | `extensions.events`       | No       | `defineEvent` values                                                                                                                                                                                                  |
 | `extensions.actions`      | No       | `defineAction` values                                                                                                                                                                                                 |

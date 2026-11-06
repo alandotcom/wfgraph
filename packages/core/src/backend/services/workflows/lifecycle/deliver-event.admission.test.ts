@@ -198,6 +198,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
         resolveEntityMock.mockResolvedValue(null);
 
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber(),
           event: appointmentCreated,
           payload: videoPayload,
@@ -220,6 +221,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
       () =>
         Effect.gen(function* () {
           const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: subscriber(),
             event: appointmentCreated,
             payload: videoPayload,
@@ -251,6 +253,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
             return "appt_constant";
           });
           const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: subscriber(),
             event: {
               name: appointmentCreated.name,
@@ -283,6 +286,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
       () =>
         Effect.gen(function* () {
           const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: subscriber(),
             event: appointmentCreated,
             payload: videoPayload,
@@ -309,6 +313,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
 
           const exit = yield* Effect.exit(
             applyLifecycleRules({
+              deliveryId: "delivery_1",
               subscriber: subscriber(),
               event: appointmentCreated,
               payload: videoPayload,
@@ -355,6 +360,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
 
           const exit = yield* Effect.exit(
             applyLifecycleRules({
+              deliveryId: "delivery_1",
               subscriber: subscriber(),
               event: appointmentCreated,
               payload: videoPayload,
@@ -402,6 +408,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
           const fiber = yield* Effect.forkChild(
             Effect.exit(
               applyLifecycleRules({
+                deliveryId: "delivery_1",
                 subscriber: subscriber(),
                 event: appointmentCreated,
                 payload: videoPayload,
@@ -428,6 +435,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
     it.effect("matches guarded cancellations by typed Entity identity", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: { ...subscriber(), roles: ["cancel"] },
           event: appointmentCanceled,
           payload: { appointmentId: "appt_8813", reason: "host request" },
@@ -449,6 +457,7 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
     it.effect("runs a guarded Cancel Filter before its Entity selector", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: { ...subscriber(), roles: ["cancel"] },
           event: appointmentCanceled,
           payload: { appointmentId: "appt_8813", reason: "host request" },

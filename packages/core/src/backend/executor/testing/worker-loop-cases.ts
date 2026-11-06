@@ -48,6 +48,7 @@ import type { PersistenceConformanceHarness } from "#src/backend/persistence/per
 import {
   ExecutionRepo,
   type ExecutionSchedule,
+  type InboxEvent,
 } from "#src/backend/services/executions/repo";
 
 let heldStep = createGate();
@@ -210,6 +211,12 @@ function describeCases(
     ) => Promise<void>;
     /** Sends a Cancel Event for the entity a run of `start` was started for. */
     cancel: (executionId: string) => Promise<void>;
+    /**
+     * Records an arrival of an Event no Event definition declares, received
+     * and due at `receivedAt`, and answers its inbox id.
+     */
+    send: (input: { receivedAt: Date }) => Promise<string>;
+    inbox: (inboxId: string) => Promise<InboxEvent | null>;
   };
 
   let runs = 0;
@@ -323,6 +330,26 @@ function describeCases(
         if (run === undefined) throw new Error(`No run ${executionId}`);
         await connection.run(cancelEntity({ ...run, now: new Date() }));
       },
+      send: async ({ receivedAt }) => {
+        const inserted = await connection.run(
+          Effect.flatMap(ExecutionRepo, (executions) =>
+            executions.insertInboxEvent({
+              name: "test/undeclared",
+              data: {},
+              connectionId: null,
+              idempotencyKey: null,
+              now: receivedAt,
+            })
+          )
+        );
+        return inserted.inboxId;
+      },
+      inbox: (inboxId) =>
+        connection.run(
+          Effect.flatMap(ExecutionRepo, (executions) =>
+            executions.findInboxEvent(inboxId)
+          )
+        ),
     };
   }
 
@@ -457,6 +484,7 @@ function describeCases(
       Effect.gen(function* () {
         const executions = yield* ExecutionRepo;
         const [claimed] = yield* executions.claimDue({
+          kind: "run",
           workerId: "worker_next",
           limit: 1,
           leaseMs: 60_000,
@@ -654,23 +682,84 @@ function describeCases(
     expect((marks.get("outlet") ?? Number.NaN) - wokenAt).toBeLessThan(1_000);
   }, 30_000);
 
+  it("delivers an Event in its own lane while a long pass holds the loop's only run slot", async () => {
+    const harness = await open();
+    const executionId = await harness.start(oneActionThenMark("test/held"));
+    const loop = harness.loop({ concurrency: 1, deliveryConcurrency: 1 });
+    await heldStep.entered;
+
+    // The loop's deliveries know no Event, so this one settles `failed` as
+    // soon as its pass runs.
+    const inboxId = await harness.send({ receivedAt: new Date() });
+    await waitUntil(
+      async () => (await harness.inbox(inboxId))?.status === "failed",
+      "The delivery did not settle while the run's pass was held"
+    );
+    expect(await harness.schedule(executionId)).toMatchObject({
+      state: "leased",
+    });
+    expect(marks.has("after")).toBe(false);
+
+    heldStep.release();
+    expect(await harness.ended(executionId)).toBe("completed");
+    await loop.stop();
+  });
+
+  it("deletes settled inbox rows past the retention window, and keeps a pending row and a settled row within it", async () => {
+    const harness = await open();
+    const minuteAgo = new Date(Date.now() - 60_000);
+    const old = await harness.send({ receivedAt: minuteAgo });
+    const recent = await harness.send({ receivedAt: new Date() });
+    const delivering = harness.loop({});
+    await waitUntil(
+      async () =>
+        (await harness.inbox(old))?.status === "failed" &&
+        (await harness.inbox(recent))?.status === "failed",
+      "The deliveries did not settle"
+    );
+    await delivering.stop();
+
+    // A loop whose delivery claims find nothing leaves this row pending,
+    // however old it is.
+    const pending = await harness.send({ receivedAt: minuteAgo });
+    const sweeping = harness.loop({
+      retentionMs: 30_000,
+      wrap: (repo) => ({
+        ...repo,
+        claimDue: (input) =>
+          input.kind === "delivery" ? Effect.succeed([]) : repo.claimDue(input),
+      }),
+    });
+    await waitUntil(
+      async () => (await harness.inbox(old)) === null,
+      "The sweep did not delete the settled row past the window"
+    );
+    await sweeping.stop();
+
+    expect(await harness.inbox(recent)).toMatchObject({ status: "failed" });
+    expect(await harness.inbox(pending)).toMatchObject({ status: "pending" });
+  });
+
   it("claims once more right after a claim that a wake arrived during", async () => {
     const harness = await open();
     const wake = createWorkerWake();
     const claimHeld = createGate();
     const claimStartedAt: number[] = [];
-    // The loop's first claim reads the schedule and is then held open, so the
-    // run the case starts next is due only after that claim has looked.
+    // The loop's first claim of runs reads the schedule and is then held
+    // open, so the run the case starts next is due only after that claim has
+    // looked. The delivery lane's claims find nothing and are not counted.
     const loop = harness.loop({
       pollMs: 30_000,
       wake,
       wrap: (repo) => ({
         ...repo,
         claimDue: (input) =>
-          Effect.sync(() => claimStartedAt.push(Date.now())).pipe(
-            Effect.andThen(repo.claimDue(input)),
-            Effect.tap(() => Effect.promise(() => claimHeld.pass()))
-          ),
+          input.kind === "run"
+            ? Effect.sync(() => claimStartedAt.push(Date.now())).pipe(
+                Effect.andThen(repo.claimDue(input)),
+                Effect.tap(() => Effect.promise(() => claimHeld.pass()))
+              )
+            : repo.claimDue(input),
       }),
     });
 

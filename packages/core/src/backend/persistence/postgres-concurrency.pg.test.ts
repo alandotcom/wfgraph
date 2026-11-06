@@ -663,6 +663,7 @@ describePostgres("PostgreSQL concurrency", () => {
         if (started.status !== "started") throw new Error("Start refused");
         const executionId = started.execution.id;
         const claimed = yield* executions.claimDue({
+          kind: "run",
           workerId: "worker_1",
           limit: 100,
           leaseMs: 60_000,
@@ -855,6 +856,7 @@ describePostgres("PostgreSQL concurrency", () => {
           Effect.gen(function* () {
             const executions = yield* ExecutionRepo;
             return yield* executions.claimDue({
+              kind: "run",
               workerId,
               limit: 1,
               leaseMs: 60_000,

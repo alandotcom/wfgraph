@@ -134,6 +134,7 @@ describe("published Event metadata on native SQLite", () => {
           }
 
           const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: staleSubscriber,
             event: { name: EVENT_NAME, correlationPath: "declared.id" },
             payload: {

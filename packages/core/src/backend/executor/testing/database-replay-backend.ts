@@ -192,6 +192,7 @@ export function openDatabaseReplayBackend(
       runtimeForPass: async ({ now, parkDeadline }) => {
         const claimed = await run(
           repo.claimDue({
+            kind: "run",
             workerId: "replay",
             limit: 1,
             leaseMs: LEASE_MS,

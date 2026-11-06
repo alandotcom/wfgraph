@@ -237,7 +237,7 @@ const { id, duplicate } = await app.events.send({
 - `data` must pass the schema of that Event before the send resolves.
 - `id` is optional. It is the idempotency key: a second send with the same `name` and `id`
   resolves with `duplicate: true` and the `id` of the first send, and it starts nothing.
-  The key holds while the first send's record exists.
+  The key holds for the deduplication window, which is the inbox's retention window.
 - The promise resolves once the Event is stored in the event inbox, so a send that
   resolved survives a crash. The run starts in the worker loop shortly after.
 - The promise rejects with `WfGraphEventRefused`, exported from `@wfgraph/core`, for an
@@ -275,13 +275,20 @@ inngest.send({ name: "app/appointment.created", data: { appointment } });
 ```
 
 - The Inngest event's `id` is the idempotency key, so a second event with the same `id`
-  starts nothing while the first one's record exists.
+  starts nothing within the deduplication window.
 - An Event with an umbrella `source` is sent under its source name, and the worker loop
   tells which Event it is (see The umbrella source).
 - The forwarding function checks nothing. The worker loop checks the payload when it
   delivers the Event.
 - An integration-owned Event gets no Inngest function: it reaches a workflow only through
   the Connection it arrived on, which an Inngest send does not carry.
+
+**The deduplication window is the inbox's retention window.** An idempotency key holds while
+the first send's inbox row exists. The worker loop deletes a row whose delivery has settled
+once the row is older than `events.retentionMs`, which defaults to seven days, and a send with
+the same `id` after that is a new Event that starts runs again. A sender that can retry for
+longer than seven days sets a longer window. For the option, see Keep settled Events for a
+window in `docs/embedding.md`.
 
 ## The intake gate
 

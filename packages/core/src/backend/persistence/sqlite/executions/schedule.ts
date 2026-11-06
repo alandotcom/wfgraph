@@ -347,7 +347,12 @@ export function makeSqliteScheduleMethods(
                 runningStepId: workflowExecutionSchedule.runningStepId,
               })
               .from(workflowExecutionSchedule)
-              .where(dueSchedule(workflowExecutionSchedule, now))
+              .where(
+                dueSchedule(workflowExecutionSchedule, {
+                  kind: input.kind,
+                  now,
+                })
+              )
               .orderBy(
                 asc(workflowExecutionSchedule.wakeAt),
                 asc(workflowExecutionSchedule.id)

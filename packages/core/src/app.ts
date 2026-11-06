@@ -35,6 +35,7 @@ import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 import { failAfterClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
 import {
+  assertValidRetention,
   assertValidRunnerOptions,
   type InProcessRunner,
   type WfGraphRunnerOptions,
@@ -65,7 +66,7 @@ export {
   type WfGraphEvents,
 } from "#src/backend/host-events";
 
-/** How Events reach this app's event inbox from outside its process. */
+/** How Events reach this app's event inbox, and how long the inbox keeps them. */
 export type WfGraphEventsOptions = {
   /**
    * The shared key that mounts `POST {basePath}/api/events`. A sender
@@ -74,6 +75,16 @@ export type WfGraphEventsOptions = {
    * webhook intake. Treat it as a secret, like `encryption.key`.
    */
   key?: string | undefined;
+  /**
+   * How long a delivered or failed inbox row is kept after it arrived, in
+   * milliseconds. Defaults to seven days. This is also the deduplication
+   * window: a send whose idempotency key matches a row still kept answers
+   * with that row, and once the sweep has deleted the row the same key is a
+   * new arrival. The worker loop applies the window of the process it runs
+   * in, so a host running the loop with `createWfGraphRunner` sets it there.
+   * A pending row is never deleted.
+   */
+  retentionMs?: number | undefined;
 };
 
 export type WfGraphAppOptions = {
@@ -212,6 +223,7 @@ export async function createWfGraphApp(
 
   assertValidEncryptionKey(options.encryption.key);
   assertValidRunnerOptions(options.runner);
+  assertValidRetention(options.events?.retentionMs, "createWfGraphApp");
   const eventsKey = options.events?.key;
   if (eventsKey !== undefined && isBlank(eventsKey)) {
     throw new Error(
@@ -291,7 +303,10 @@ async function assembleWfGraphApp(
   const startRunner =
     options.runner === false
       ? undefined
-      : setup.prepareRunner(options.runner ?? {});
+      : setup.prepareRunner({
+          runner: options.runner ?? {},
+          retentionMs: options.events?.retentionMs,
+        });
 
   // Built once: Connect and HTTP serve are alternatives, and whichever path
   // this app takes registers that same list. Building the list runs the

@@ -1,13 +1,14 @@
 ---
 name: live-run
-description: Drive a real workflow run against the local stack and read what actually happened. Use when a change touches the engine, the Wait node, cancellation, the database executor's worker loop, Event delivery through Inngest, or anything whose behaviour shows only in a running app on the wall clock, so a vitest suite cannot settle the question. Triggers on "drive a real run", "measure the timing", "check it end to end", "verify against inngest dev", or a claim about when a run wakes, resumes, retries, or is cancelled.
+description: Drive a real workflow run against the local stack and read what actually happened. Use when a change touches the engine, the Wait node, cancellation, the database executor's worker loop, Event delivery from the event inbox, or anything whose behaviour shows only in a running app on the wall clock, so a vitest suite cannot settle the question. Triggers on "drive a real run", "measure the timing", "check it end to end", "verify against inngest dev", or a claim about when a run wakes, resumes, retries, or is cancelled.
 ---
 
 # Driving a live run
 
 Runs execute on the database executor: the worker loop the example app starts
 claims a run's schedule row, replays its body against the step memo, and
-releases the row. Inngest delivers Events to the app and runs no workflow body.
+releases the row. The same loop delivers each Event from the event inbox, and
+Inngest only forwards the Events a host sends with `inngest.send` into that inbox.
 The test suite drives the engine through `createInMemoryWorkflowRuntime` and
 `driveWithReplay` on a virtual clock, so a question about the wall clock, about
 the loop's wakes, or about how an Event reaches a run has to be answered by a

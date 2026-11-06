@@ -195,10 +195,11 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     event: DeliveredEvent;
     payload: JsonObject;
     /**
-     * The arrival this delivery belongs to, which lands on the audit row so one
-     * arrival can be traced across every workflow it reached.
+     * The inbox row of the arrival this delivery belongs to. It lands on the
+     * audit row so one arrival can be traced across every workflow it
+     * reached, and it is what a retried delivery finds its committed start by.
      */
-    deliveryId?: string | undefined;
+    deliveryId: string;
   }) {
     const repo = yield* WorkflowRepo;
     const logger = (yield* AppLogger)
@@ -221,7 +222,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     // subscriber list is memoized per arrival, so `roles` is what the workflow
     // held when the first attempt ran: a delivery that never carried the start
     // role then can have committed nothing for these reads to find.
-    if (input.deliveryId && input.subscriber.roles.includes("start")) {
+    if (input.subscriber.roles.includes("start")) {
       const recovered = yield* answerFromCommittedDecision({
         workflowId: workflow.id,
         deliveryId: input.deliveryId,
@@ -418,9 +419,9 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       event: input.event,
     });
     if (guarded?.refusal) {
-      const refusalInput = {
+      const decision = yield* recordStartRefusal({
         workflowId: workflow.id,
-        startSource: "event" as const,
+        startSource: "event",
         reason: guarded.refusal.reason,
         runMode: workflow.mode,
         logger,
@@ -431,14 +432,9 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
           checkpoint: "before-execution",
           checkedAt: guarded.refusal.checkedAt,
         },
-      };
-      const decision = input.deliveryId
-        ? yield* recordStartRefusal({
-            ...refusalInput,
-            deliveryId: input.deliveryId,
-            durableEntityAdmission: true,
-          })
-        : yield* recordStartRefusal(refusalInput);
+        deliveryId: input.deliveryId,
+        durableEntityAdmission: true,
+      });
 
       // A "started" decision means another attempt of this delivery committed
       // its Execution after this attempt's `findByDelivery` read, which two
@@ -627,7 +623,8 @@ export const deliverWaitCandidates = Effect.fn("deliverWaitCandidates")(
     event: DeliveredEvent;
     payload: JsonObject;
     candidates: WaitDeliveryCandidate[];
-    deliveryId?: string | undefined;
+    /** The inbox row of the arrival, recorded on each wake it writes. */
+    deliveryId: string;
   }) {
     const resumedWaits = yield* resumeWaitsMatchingEvent({
       workflowId: input.workflowId,
@@ -684,7 +681,7 @@ const refuseFilteredCancel = Effect.fn("refuseFilteredCancel")(
     workflow: { id: string; mode: WorkflowMode };
     event: DeliveredEvent;
     payload: JsonObject;
-    deliveryId?: string | undefined;
+    deliveryId: string;
     logger: EffectLogger;
   }) {
     const evaluated = lifecycleFilterRefusal({
@@ -759,7 +756,7 @@ const refuseFilteredStart = Effect.fn("refuseFilteredStart")(function* (input: {
   event: DeliveredEvent;
   payload: JsonObject;
   entityValue?: string | undefined;
-  deliveryId?: string | undefined;
+  deliveryId: string;
   logger: EffectLogger;
 }) {
   const evaluated = lifecycleFilterRefusal({

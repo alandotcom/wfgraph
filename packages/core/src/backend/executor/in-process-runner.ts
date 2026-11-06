@@ -12,7 +12,9 @@ import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { createWorkflowEntities } from "#src/backend/extensions/workflow-entities";
 import {
+  DEFAULT_DELIVERY_CONCURRENCY,
   DEFAULT_HEARTBEAT_MS,
+  DEFAULT_INBOX_RETENTION_MS,
   DEFAULT_LEASE_MS,
   runWorkerLoop,
   type WorkerLoopOutcome,
@@ -39,6 +41,12 @@ export type WfGraphRunnerOptions = {
    * `maxConnections` when that is lower.
    */
   concurrency?: number | undefined;
+  /**
+   * How many Event deliveries the loop runs at once, in slots of their own
+   * beside the runs', so a run holding every run slot never delays an Event's
+   * delivery. Defaults to 1 on every backend.
+   */
+  deliveryConcurrency?: number | undefined;
   /**
    * How long the loop sleeps between looking for due runs when nothing wakes
    * it, in milliseconds. Defaults to 250 on SQLite and 1,000 on PostgreSQL.
@@ -88,6 +96,7 @@ export function assertValidRunnerOptions(
   if (options === false || options === undefined) return;
   for (const key of [
     "concurrency",
+    "deliveryConcurrency",
     "pollMs",
     "leaseMs",
     "heartbeatMs",
@@ -107,12 +116,32 @@ export function assertValidRunnerOptions(
   }
 }
 
+/**
+ * Refuses an `events.retentionMs` the sweep could not use, so the mistake
+ * fails at startup. `option` names the function the host called.
+ */
+export function assertValidRetention(
+  retentionMs: number | undefined,
+  option: string
+): void {
+  if (
+    retentionMs !== undefined &&
+    (!Number.isInteger(retentionMs) || retentionMs <= 0)
+  ) {
+    throw new Error(
+      `${option}'s events.retentionMs must be a positive integer of milliseconds. Leave it out to keep settled inbox rows for seven days.`
+    );
+  }
+}
+
 /** The settings a loop runs with, the host's options over the backend's. */
 export type RunnerSettings = {
   concurrency: number;
+  deliveryConcurrency: number;
   pollMs: number;
   leaseMs: number | undefined;
   heartbeatMs: number | undefined;
+  retentionMs: number;
 };
 
 /**
@@ -121,7 +150,8 @@ export type RunnerSettings = {
  */
 export function resolveRunnerSettings(
   capabilities: WfGraphRunCapabilities,
-  options: WfGraphRunnerOptions
+  options: WfGraphRunnerOptions,
+  retentionMs: number | undefined
 ): RunnerSettings {
   const { loopDefaults, connectionLimit } = capabilities;
   const pollMs = options.pollMs ?? loopDefaults.pollMs;
@@ -134,9 +164,12 @@ export function resolveRunnerSettings(
     concurrency:
       options.concurrency ??
       Math.min(loopDefaults.concurrency, connectionLimit),
+    deliveryConcurrency:
+      options.deliveryConcurrency ?? DEFAULT_DELIVERY_CONCURRENCY,
     pollMs,
     leaseMs: options.leaseMs,
     heartbeatMs: options.heartbeatMs,
+    retentionMs: retentionMs ?? DEFAULT_INBOX_RETENTION_MS,
   };
 }
 
@@ -225,7 +258,9 @@ export function startInProcessRunner(input: {
   logger.info("Worker loop started", {
     runner: {
       concurrency: settings.concurrency,
+      deliveryConcurrency: settings.deliveryConcurrency,
       pollMs: settings.pollMs,
+      retentionMs: settings.retentionMs,
       broadcast: wakes.broadcast !== undefined,
     },
   });

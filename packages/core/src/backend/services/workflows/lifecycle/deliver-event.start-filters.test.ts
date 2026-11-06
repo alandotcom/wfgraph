@@ -41,6 +41,7 @@ describe("applyLifecycleRules and Start Filters", () => {
     it.effect("starts when the arrival satisfies the Start Filter", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber(),
           event: appointmentCreated,
           payload: videoPayload,
@@ -137,6 +138,7 @@ describe("applyLifecycleRules and Start Filters", () => {
       () =>
         Effect.gen(function* () {
           const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: subscriber(),
             event: appointmentCreated,
             payload: videoPayload,
@@ -168,6 +170,7 @@ describe("applyLifecycleRules and Start Filters", () => {
     it.effect("opens no run when the Start Filter cannot be evaluated", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
           subscriber: subscriber(),
           event: appointmentCreated,
           payload: videoPayload,
@@ -204,6 +207,7 @@ describe("applyLifecycleRules and Start Filters", () => {
       () =>
         Effect.gen(function* () {
           const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: subscriber(),
             event: appointmentCreated,
             payload: videoPayload,
@@ -235,6 +239,7 @@ describe("applyLifecycleRules and Start Filters", () => {
       () =>
         Effect.gen(function* () {
           const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
             subscriber: subscriber(),
             event: appointmentCreated,
             payload: videoPayload,

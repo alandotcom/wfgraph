@@ -64,11 +64,13 @@ export type WfGraphSetup = {
   /**
    * Resolves the worker loop's settings, throwing for a backend that runs no
    * long-lived loop, and answers how to start that loop in this process on
-   * the setup's runtime and wakes.
+   * the setup's runtime and wakes. `retentionMs` is the host's
+   * `events.retentionMs`.
    */
-  readonly prepareRunner: (
-    options: WfGraphRunnerOptions
-  ) => () => InProcessRunner;
+  readonly prepareRunner: (options: {
+    runner: WfGraphRunnerOptions;
+    retentionMs: number | undefined;
+  }) => () => InProcessRunner;
   /** Disposes the runtime, then closes the backend. */
   readonly close: () => Promise<void>;
 };
@@ -122,8 +124,12 @@ export async function openWfGraphSetup(
       extensions,
       capabilities,
       events: createHostEvents(runtime),
-      prepareRunner: (runner) => {
-        const settings = resolveRunnerSettings(capabilities, runner);
+      prepareRunner: ({ runner, retentionMs }) => {
+        const settings = resolveRunnerSettings(
+          capabilities,
+          runner,
+          retentionMs
+        );
         return () =>
           startInProcessRunner({ runtime, extensions, wakes, settings });
       },

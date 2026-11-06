@@ -55,6 +55,7 @@ export function claimRun(executionId: string, now: Date) {
   return Effect.gen(function* () {
     const executions = yield* ExecutionRepo;
     const claimed = yield* executions.claimDue({
+      kind: "run",
       workerId: "worker_1",
       limit: 10,
       leaseMs: LEASE_MS,
@@ -101,6 +102,7 @@ export function claimOne(connection: ConformanceConnection, workerId: string) {
     Effect.gen(function* () {
       const executions = yield* ExecutionRepo;
       return yield* executions.claimDue({
+        kind: "run",
         workerId,
         limit: 1,
         leaseMs: LEASE_MS,
