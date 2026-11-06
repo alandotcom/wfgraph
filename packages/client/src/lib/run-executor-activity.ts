@@ -142,7 +142,8 @@ export function executorActivityCopy(input: {
       const node = nameOf(activity);
       const on = activity.workerId === null ? "" : ` on ${activity.workerId}`;
       // The node is the one the worker's last lease renewal recorded, so a run
-      // just claimed names none yet, and the headline does not guess where it is.
+      // just claimed names none yet, and the headline does not guess where it
+      // is.
       return {
         headline:
           node === null ? `Running${on}` : `Running ${quoted(node)}${on}`,

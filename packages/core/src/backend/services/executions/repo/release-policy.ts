@@ -1,13 +1,14 @@
 /**
  * The database executor's scheduling decisions, made once for both backends:
  * which rows a claim lane leases, which schedule row a fenced write stands on,
- * how many failures a step or a schedule row may have, what a claim counts when it sweeps an expired lease, which parks
- * it times out, what a release writes back, which runs a producer's wake
- * re-queues, which parks an Event, a re-park or a terminal write may take,
- * which wake the winner of an Exit claim gives the run's other parks, which
- * runs a Cancel claims and what it records on their timelines, what each
- * producer answers, and what a node-log close writes. A decision a statement makes is a Drizzle `sql`
- * builder over the columns each backend passes in. Each backend runs the statements inside its
+ * how many failures a step or a schedule row may have, what a claim counts
+ * when it sweeps an expired lease, which parks it times out, what a release
+ * writes back, which runs a producer's wake re-queues, which parks an Event, a
+ * re-park or a terminal write may take, which wake the winner of an Exit claim
+ * gives the run's other parks, which runs a Cancel claims and what it records
+ * on their timelines, what each producer answers, and what a node-log close
+ * writes. A decision a statement makes is a Drizzle `sql` builder over the
+ * columns each backend passes in. Each backend runs the statements inside its
  * own transaction, holding the schedule row first.
  */
 
