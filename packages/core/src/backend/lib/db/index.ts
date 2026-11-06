@@ -146,7 +146,9 @@ export function createDatabaseSurface(
  * Where a pool is pointed, for a log line. The fields come from postgres.js's own
  * parse rather than from the config, so a URL reports the host and database it
  * actually resolved to. The URL itself is never among them: it carries the
- * password.
+ * password. postgres.js types `database` as nullable and `user` as possibly a
+ * function, which happens only for a user given as a function; Workflow Graph's
+ * config passes a string, and either field that is not one is left out.
  */
 export function describeConnection(
   client: Sql,
@@ -155,16 +157,16 @@ export function describeConnection(
   schema: string;
   host: string;
   port: string;
-  database: string;
-  user: string;
+  database?: string;
+  user?: string;
 } {
   const { options } = client;
 
-  return {
+  return omitUndefined({
     schema,
     host: options.host.join(","),
     port: options.port.join(","),
-    database: options.database,
-    user: options.user,
-  };
+    database: options.database ?? undefined,
+    user: typeof options.user === "string" ? options.user : undefined,
+  });
 }

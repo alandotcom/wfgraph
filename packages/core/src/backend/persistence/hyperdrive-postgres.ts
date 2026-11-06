@@ -5,7 +5,10 @@ import {
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { relations } from "#src/backend/lib/db/schema";
-import type { DatabaseSurface } from "#src/backend/lib/db/index";
+import {
+  describeConnection,
+  type DatabaseSurface,
+} from "#src/backend/lib/db/index";
 import { makePostgresRepositories } from "#src/backend/persistence/postgres-repositories";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 
@@ -84,11 +87,7 @@ export function wfHyperdrive(
           },
           description: {
             backend: "postgres-hyperdrive",
-            schema: database.schema,
-            host: client.options.host.join(","),
-            port: client.options.port.join(","),
-            database: client.options.database,
-            user: client.options.user,
+            ...describeConnection(client, database.schema),
           },
           close: database.close,
         };

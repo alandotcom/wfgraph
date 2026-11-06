@@ -159,7 +159,9 @@ describePostgres("PostgreSQL migrations", () => {
     );
     expect(row).toEqual({
       termination_kind: "cancel",
-      termination_requested_at: new Date(2026, 2, 1, 0, 1),
+      // postgres.js reads a `timestamp` column as UTC, the way the schema's
+      // `utcNow()` defaults write it, whatever the process's time zone.
+      termination_requested_at: new Date(Date.UTC(2026, 2, 1, 0, 1)),
       cancel_event_name: "appointment.canceled",
       cancel_payload: { reason: "host request" },
     });
