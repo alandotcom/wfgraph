@@ -89,12 +89,7 @@ describe("resumeWaitByToken", () => {
           assert.deepStrictEqual(seams.calls, [
             {
               target: { kind: "resume_token", token: RESUME_TOKEN },
-              arrival: {
-                signalType: "wait-resume",
-                eventName: null,
-                payload: { approved: true },
-                deliveryId: undefined,
-              },
+              payload: { approved: true },
             },
           ]);
         })

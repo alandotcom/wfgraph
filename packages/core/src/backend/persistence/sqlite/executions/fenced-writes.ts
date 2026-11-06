@@ -14,7 +14,6 @@ import { exitWakeForClaim } from "#src/backend/services/executions/repo/release-
 import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
 import { recordAuditEventWrite } from "#src/backend/persistence/sqlite/executions/audit";
 import {
-  cancelOpenNodeLogsWrite,
   closeNodeLogWrite,
   openNodeLogWrite,
 } from "#src/backend/persistence/sqlite/executions/logs";
@@ -30,7 +29,6 @@ import {
   writeFenced,
 } from "#src/backend/persistence/sqlite/executions/schedule";
 import {
-  cancelWaitsForExecutionWrite,
   markWaitStatusWrite,
   reparkWaitWrite,
   settleWaitTimeoutWrite,
@@ -47,8 +45,6 @@ export function makeSqliteFencedWrites(
         writeFenced(store, fence, openNodeLogWrite(input)),
       closeNodeLog: (input) =>
         writeFenced(store, fence, closeNodeLogWrite(input, fence)),
-      cancelOpenNodeLogs: (executionId) =>
-        writeFenced(store, fence, cancelOpenNodeLogsWrite(executionId)),
       recordAuditEvent: (input) =>
         writeFenced(store, fence, recordAuditEventWrite(input)),
       startWait: (input) => writeFenced(store, fence, startWaitWrite(input)),
@@ -58,8 +54,6 @@ export function makeSqliteFencedWrites(
         writeFenced(store, fence, markWaitStatusWrite(input, fence)),
       settleWaitTimeout: (waitStateId) =>
         writeFenced(store, fence, settleWaitTimeoutWrite(waitStateId, fence)),
-      cancelWaitsForExecution: (executionId) =>
-        writeFenced(store, fence, cancelWaitsForExecutionWrite(executionId)),
       markRunning: (input) =>
         writeFenced(store, fence, markRunningWrite(input)),
       markWaitingIfParked: (input) =>
@@ -70,7 +64,7 @@ export function makeSqliteFencedWrites(
             const state = yield* requestExitWrite(input)(database);
             const wake = exitWakeForClaim(state);
             if (wake !== null) {
-              yield* resolveOpenParks(database, input.executionId, wake);
+              yield* resolveOpenParks(database, [input.executionId], wake);
             }
             return state;
           })

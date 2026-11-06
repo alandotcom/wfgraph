@@ -3,11 +3,10 @@ import { Effect, Layer } from "effect";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
 import { beforeEach, vi } from "vitest";
-import { DriverError } from "#src/backend/services/executions/driver";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   SilentAppLoggerLayer,
   stubExecutionRepo,
-  stubExecutionDriver,
 } from "#src/backend/lib/effect/test-layers";
 import type {
   ExecutionRepo,
@@ -35,8 +34,6 @@ const endInFlight = vi.fn<Repo["endInFlight"]>(() =>
     didWrite: true,
   })
 );
-const cancelWaits = vi.fn<Repo["cancelWaits"]>(() => Effect.succeed([]));
-const stopRun = vi.fn(() => Effect.void as Effect.Effect<void, DriverError>);
 
 /** A run parked on a wait, as `listWaitingStates` hands one over. */
 function createWaitState(
@@ -77,8 +74,6 @@ beforeEach(() => {
       didWrite: true,
     })
   );
-  cancelWaits.mockImplementation(() => Effect.succeed([]));
-  stopRun.mockImplementation(() => Effect.void);
 });
 
 const services = Layer.mergeAll(
@@ -89,9 +84,7 @@ const services = Layer.mergeAll(
     listWaitingStates,
     recordAuditEvent,
     endInFlight,
-    cancelWaits,
-  }),
-  stubExecutionDriver({ stopRun })
+  })
 );
 
 describe("postExecutionCancel", () => {
@@ -138,68 +131,49 @@ describe("postExecutionCancel", () => {
         status: "canceled",
         cancelledWaitStates: 1,
       });
-      assert.deepStrictEqual(cancelWaits.mock.calls, [[["wait_1"]]]);
+      assert.strictEqual(endInFlight.mock.calls.length, 1);
     })
   );
 
-  it.effect("retries a stop after its terminal write succeeded", () =>
-    Effect.gen(function* () {
-      findStatusById
-        .mockImplementationOnce(() =>
-          Effect.succeed({ id: "exec_1", status: "running" })
-        )
-        .mockImplementationOnce(() =>
-          Effect.succeed({ id: "exec_1", status: "canceled" })
+  // The terminal write cancels the run's wait rows and deletes its schedule
+  // row in one transaction, so a refused write leaves nothing half-done and a
+  // canceled run has nothing left to stop.
+  it.effect(
+    "answers an internal failure when the terminal write is refused",
+    () =>
+      Effect.gen(function* () {
+        endInFlight.mockImplementationOnce(() =>
+          Effect.fail(new DatabaseError({ cause: "connection lost" }))
         );
-      listWaitingStates.mockImplementation(() =>
-        Effect.succeed([createWaitState()])
-      );
-      endInFlight
-        .mockImplementationOnce(() =>
-          Effect.succeed({
-            executionId: "exec_1",
-            status: "canceled",
-            claim: null,
-            didWrite: true,
-          })
-        )
-        .mockImplementationOnce(() =>
-          Effect.succeed({
-            executionId: "exec_1",
-            status: "canceled",
-            claim: null,
-            didWrite: false,
-          })
-        );
-      stopRun
-        .mockImplementationOnce(() =>
-          Effect.fail(new DriverError({ cause: "connection lost" }))
-        )
-        .mockImplementationOnce(() => Effect.void);
 
-      const firstFailure = yield* postExecutionCancel("exec_1").pipe(
+        const failure = yield* postExecutionCancel("exec_1").pipe(
+          Effect.provide(services),
+          Effect.flip
+        );
+
+        assert.strictEqual(failure._tag, "InternalFailure");
+        assert.strictEqual(
+          recordAuditEvent.mock.calls.filter(
+            ([event]) => event.eventType === "run_cancelled"
+          ).length,
+          0
+        );
+      })
+  );
+
+  it.effect("refuses a run that is already canceled", () =>
+    Effect.gen(function* () {
+      findStatusById.mockImplementation(() =>
+        Effect.succeed({ id: "exec_1", status: "canceled" })
+      );
+
+      const failure = yield* postExecutionCancel("exec_1").pipe(
         Effect.provide(services),
         Effect.flip
       );
-      const retried = yield* postExecutionCancel("exec_1").pipe(
-        Effect.provide(services)
-      );
 
-      assert.strictEqual(firstFailure._tag, "InternalFailure");
-      assert.deepStrictEqual(retried, {
-        success: true,
-        status: "canceled",
-        cancelledWaitStates: 1,
-      });
-      assert.strictEqual(endInFlight.mock.calls.length, 2);
-      assert.strictEqual(stopRun.mock.calls.length, 2);
-      assert.deepStrictEqual(cancelWaits.mock.calls, [[[]], [["wait_1"]]]);
-      assert.strictEqual(
-        recordAuditEvent.mock.calls.filter(
-          ([event]) => event.eventType === "run_cancelled"
-        ).length,
-        1
-      );
+      assert.strictEqual(failure._tag, "Conflict");
+      assert.strictEqual(endInFlight.mock.calls.length, 0);
     })
   );
 
@@ -246,7 +220,6 @@ describe("postExecutionCancel", () => {
 
       assert.strictEqual(failure._tag, "Conflict");
       assert.strictEqual(failure.error, "Execution is already canceling");
-      assert.strictEqual(stopRun.mock.calls.length, 0);
       // The run is already on its way out under the earlier claim, so this call
       // leaves no request on its timeline.
       assert.deepStrictEqual(

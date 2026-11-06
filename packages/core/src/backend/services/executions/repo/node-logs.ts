@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Effect } from "effect";
 import { workflowExecutionLogs } from "#src/backend/lib/db/schema";
 import type {
@@ -66,16 +66,6 @@ export type NodeLogsRepoMethods = {
    */
   readonly closeNodeLog: (
     input: CloseNodeLogInput
-  ) => Effect.Effect<void, DatabaseError>;
-  /**
-   * Close every row of one run that is still open, as cancelled.
-   *
-   * For the rows a killed branch run left behind: it was stopped where it
-   * stood, so nothing inside it can close its own row. The caller states when
-   * this is safe to call.
-   */
-  readonly cancelOpenNodeLogs: (
-    executionId: string
   ) => Effect.Effect<void, DatabaseError>;
   /**
    * What each node of one run that succeeded left behind, by node id.
@@ -174,27 +164,6 @@ export function closeNodeLogWrite(
   };
 }
 
-/** The update behind `cancelOpenNodeLogs`. */
-export function cancelOpenNodeLogsWrite(executionId: string) {
-  return async (db: Executor): Promise<void> => {
-    await db
-      .update(workflowExecutionLogs)
-      .set({
-        status: "cancelled",
-        completedAt: new Date(),
-        // Same reasoning as `finishRun`: the row holds when it started, and the
-        // caller's clock belongs to a body that replays.
-        duration: sql`round(extract(epoch from ((now() at time zone 'utc') - ${workflowExecutionLogs.startedAt})) * 1000)::text`,
-      })
-      .where(
-        and(
-          eq(workflowExecutionLogs.executionId, executionId),
-          inArray(workflowExecutionLogs.status, ["pending", "running"])
-        )
-      );
-  };
-}
-
 /** Builds the `workflow_execution_logs` slice of `ExecutionRepo` over one database. */
 export function makeNodeLogsMethods(
   database: Database["Service"]
@@ -202,8 +171,6 @@ export function makeNodeLogsMethods(
   return {
     openNodeLog: (input) => database.query(openNodeLogWrite(input)),
     closeNodeLog: (input) => database.query(closeNodeLogWrite(input)),
-    cancelOpenNodeLogs: (executionId) =>
-      database.query(cancelOpenNodeLogsWrite(executionId)),
 
     readNodeOutputs: (executionId) =>
       database.query(async (db) => {

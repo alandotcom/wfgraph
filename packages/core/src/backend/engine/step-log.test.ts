@@ -148,29 +148,36 @@ describe("the duration a closed row carries", () => {
         vi.useFakeTimers();
         const store = createRecordingWorkflowStore();
         const memo = new Map<string, unknown>();
-        const target = (attempt: number) => ({
+        const target = {
           store,
           context,
-          runtime: createInMemoryWorkflowRuntime({ memo, attempt }),
+          runtime: createInMemoryWorkflowRuntime({ memo }),
           input: {},
-        });
+        };
 
-        yield* runWithStepLog(target(0), () => {
+        yield* runWithStepLog(target, () => {
           vi.advanceTimersByTime(200);
-          return answer();
+          return Effect.succeed({
+            success: false,
+            error: { message: "The vendor refused the message" },
+          } as const);
         });
 
-        // A retry an hour on, which reaches the same row and is entitled to correct
-        // what the first attempt wrote.
+        // A later attempt an hour on, which reaches the same row and is
+        // entitled to correct the error the first attempt wrote.
         vi.advanceTimersByTime(3_600_000);
 
-        yield* runWithStepLog(target(1), () => {
+        yield* runWithStepLog(target, () => {
           vi.advanceTimersByTime(5);
           return answer();
         });
 
         const closes = store.callsOf("completeStepLog");
         expect(closes.map((close) => close.logId)).toEqual(["log_1", "log_1"]);
+        expect(closes.map((close) => close.status)).toEqual([
+          "error",
+          "success",
+        ]);
         expect(closes.map((close) => close.durationMs)).toEqual([200, 5]);
       })
   );

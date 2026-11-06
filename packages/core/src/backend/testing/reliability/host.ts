@@ -285,7 +285,7 @@ async function snapshotWorkflows(
           runs.map(async (row) => ({
             ...row,
             summary: await Effect.runPromise(repo.findSummaryById(row.id)),
-            waits: await Effect.runPromise(repo.listActiveWaitStates(row.id)),
+            waits: await Effect.runPromise(repo.listWaitingStates(row.id)),
             schedule: await Effect.runPromise(repo.findSchedule(row.id)),
             stepMemo: await Effect.runPromise(repo.listStepMemo(row.id)),
             logs: await Effect.runPromise(repo.listLogs(row.id)),

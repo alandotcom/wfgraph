@@ -242,9 +242,9 @@ type WaitAttemptResult =
  * What the prepare step of one attempt settled.
  *
  * `woken` is a re-park refused between a Migration's wake and this park. Either
- * a resume claim recorded its arrival on the row, and this attempt takes that
- * arrival instead of parking on a signal that has already been sent, or a Cancel
- * or Exit claim on the run refused the park, and the claim is the wake.
+ * a resume claim wrote its wake on the row, and this attempt takes that wake
+ * instead of parking on a signal that has already been sent, or a Cancel or
+ * Exit claim on the run refused the park, and the claim is the wake.
  *
  * `workflowVersionId` is the version that wrote the preparation. A replay
  * returns the earlier body's memoized value, so the driver starts a new attempt
@@ -823,10 +823,8 @@ function failPreparation<Prepared>(
  * producer writes its wake into the row's `wake` column, and an Event or claim
  * wake there is answered whatever version the row was parked from: the TLA+
  * Migration model resumes a Wait from an Event taken before the re-park, under
- * the version the run then pins. A resume claim also records its arrival in
- * the row's metadata, which answers when the `wake` column holds none. A
- * cancelled row is the Cancel Event having claimed the run in the same
- * window.
+ * the version the run then pins. A cancelled row is the Cancel Event having
+ * claimed the run in the same window.
  */
 function readMissedWake(
   branch: WaitBranchContext,
@@ -852,18 +850,10 @@ function readMissedWake(
       // an Event or a claim is the only wake this Wait still has to act on. A
       // `migrate` wake that lands after this read is found by the park step.
       const wake = waitState.wake;
-      if (wake !== null && wake.kind !== "migrate" && wake.kind !== "timeout") {
-        return wake;
-      }
-      const arrival = waitState.arrival;
-      if (arrival === null) {
+      if (wake === null || wake.kind === "migrate" || wake.kind === "timeout") {
         return null;
       }
-      return {
-        kind: "resume",
-        eventName: arrival.eventName,
-        payload: arrival.payload,
-      };
+      return wake;
     }
   );
 }

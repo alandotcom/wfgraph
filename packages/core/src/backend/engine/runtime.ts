@@ -94,9 +94,9 @@ export type WorkflowExecutionRuntime = {
   run: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
   /**
    * Zero-indexed retry counter for the current attempt, which holds across every
-   * replay within that attempt and rises when the runtime retries the body. A
-   * step id carrying it is memoized per attempt, so a later attempt may correct
-   * what an earlier one wrote.
+   * replay within that attempt and rises when the runtime retries the body. The
+   * database executor resets it on every release that counts no failure
+   * against the run, so no step id is keyed on it.
    */
   attempt: number;
 };

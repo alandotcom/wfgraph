@@ -41,7 +41,6 @@ const startRunMock = vi.fn<Driver["startRun"]>();
 const listWaitsForEventMock = vi.fn<Repo["listWaitsForEvent"]>();
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const CLAIMED_AT = new Date("2026-03-01T00:01:00.000Z");
-const stopRunMock = vi.fn<Driver["stopRun"]>(() => Effect.void);
 const requestCanceledOutletMock = vi.fn<Driver["requestCanceledOutlet"]>();
 const resolveParkMock = vi.fn<Driver["resolvePark"]>();
 
@@ -317,7 +316,6 @@ const lifecyclePorts = Layer.mergeAll(
   }),
   stubExecutionDriver({
     startRun: startRunMock,
-    stopRun: stopRunMock,
     requestCanceledOutlet: requestCanceledOutletMock,
   }),
   stubIntegrationRepo({
@@ -342,14 +340,12 @@ beforeEach(() => {
   startRunMock.mockReset();
   listWaitsForEventMock.mockReset();
   recordAuditEventMock.mockReset();
-  stopRunMock.mockReset();
   requestCanceledOutletMock.mockReset();
   resolveParkMock.mockReset();
 
   startRunMock.mockImplementation(() => Effect.succeed(startedOutcome));
   listWaitsForEventMock.mockImplementation(() => Effect.succeed([]));
   recordAuditEventMock.mockImplementation(() => Effect.void);
-  stopRunMock.mockImplementation(() => Effect.void);
   requestCanceledOutletMock.mockImplementation(() =>
     Effect.succeed([
       { executionId: "exec_running", resolvedParks: 0, requeued: false },

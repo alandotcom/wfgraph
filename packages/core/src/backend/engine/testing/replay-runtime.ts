@@ -82,13 +82,13 @@ export type ReplayRun<T> = {
  *
  * The default holds both in memory. A backend over a real database supplies a
  * runtime whose `run` reads and writes memo rows and whose `waitForEvent` reads
- * the park's wait row, and `resolvePark` writes the wake onto that row the way
+ * the park's wait row, and `wakePark` writes the wake onto that row the way
  * a producer does.
  */
 export type ReplayDatabaseBackend = {
   /**
    * The runtime one pass of the body runs against. Its `waitForEvent` answers
-   * the wake `resolvePark` recorded for that step id, or `parked` while none is
+   * the wake `wakePark` recorded for that step id, or `parked` while none is
    * recorded. The harness reads only `run`, `waitForEvent` and `attempt` from
    * it. `now` is the virtual clock in milliseconds, which a backend over a real
    * database hands its claim.
@@ -102,7 +102,7 @@ export type ReplayDatabaseBackend = {
    * under. Every pass after the call answers it. `now` is the virtual clock at
    * the moment the park resolves.
    */
-  resolvePark: (
+  wakePark: (
     stepId: string,
     wake: WaitWake,
     at: { now: number }
@@ -178,7 +178,7 @@ export function createInMemoryReplayBackend(): ReplayDatabaseBackend {
         },
       };
     },
-    resolvePark: (stepId, wake) => {
+    wakePark: (stepId, wake) => {
       wakes.set(stepId, wake);
     },
   };
@@ -239,12 +239,12 @@ export async function driveWithReplay<T>(
   let passRunning = false;
   let now = 0;
 
-  async function resolvePark(stepId: string, wake: WaitWake) {
+  async function wakePark(stepId: string, wake: WaitWake) {
     openParks.delete(stepId);
     if (passRunning) {
       unreadWakes.add(stepId);
     }
-    await backend.resolvePark(stepId, wake, { now });
+    await backend.wakePark(stepId, wake, { now });
   }
 
   async function signalOpenParks(wake: WaitWake) {
@@ -254,7 +254,7 @@ export async function driveWithReplay<T>(
     const signaled = Array.from(openParks);
     for (const stepId of signaled) {
       // eslint-disable-next-line eslint/no-await-in-loop -- one write per park, in a stable order, as a producer makes them
-      await resolvePark(stepId, wake);
+      await wakePark(stepId, wake);
     }
   }
 
@@ -276,13 +276,13 @@ export async function driveWithReplay<T>(
 
     now = Math.max(now, Math.min(...targets));
 
-    // `resolvePark` deletes the id being visited, and a Set iteration is
+    // `wakePark` deletes the id being visited, and a Set iteration is
     // defined over exactly that. No pass runs here, so nothing else adds one.
     for (const stepId of openParks) {
       const deadline = deadlines.get(stepId);
       if (deadline !== undefined && deadline <= now) {
         // eslint-disable-next-line eslint/no-await-in-loop -- one write per park, in a stable order
-        await resolvePark(stepId, events[stepId] ?? TIMEOUT_WAKE);
+        await wakePark(stepId, events[stepId] ?? TIMEOUT_WAKE);
       }
     }
 

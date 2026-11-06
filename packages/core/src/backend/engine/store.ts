@@ -163,12 +163,11 @@ export type WaitStateStatus =
  *
  * A Migration's repin can leave the row `waiting` until the Wait parks again
  * under the new version, so a resume can resolve the row in that window. A
- * producer records its `wake` in the row's `wake` column, and a resume claim
- * also records its `arrival` in the row's metadata.
+ * producer records its wake in the row's `wake` column, which is the one
+ * record of it.
  */
 export type WaitStateSnapshot = {
   status: WaitStateStatus;
-  arrival: WaitArrival | null;
   wake: WaitWake | null;
 };
 
@@ -253,7 +252,7 @@ export type WorkflowStore = {
     input: ReparkWaitStateInput
   ): Effect.Effect<ReparkWaitStateOutcome, StoreFailure>;
   /**
-   * One wait row as it stands, with the wake or arrival it records, or null
+   * One wait row as it stands, with the wake it records, or null
    * when no row holds that id. Read after each park is written or refused, to
    * find a wake that reached the row before the Wait parked on it.
    */
@@ -265,8 +264,9 @@ export type WorkflowStore = {
     input: MarkWaitStateStatusInput
   ): Effect.Effect<void, StoreFailure>;
   /**
-   * Atomically closes a timed-out wait or returns the arrival a concurrent
-   * producer already persisted, which takes precedence over the timeout.
+   * Atomically closes a timed-out wait or returns the arrival of the `resume`
+   * wake a concurrent producer already wrote, which takes precedence over the
+   * timeout.
    */
   settleWaitTimeout(
     waitStateId: string

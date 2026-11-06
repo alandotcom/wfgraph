@@ -120,13 +120,8 @@ it.each([false, true])(
           expect((yield* deliver("other")).resumedWaits).toBe(0);
           expect((yield* deliver("owner")).resumedWaits).toBe(1);
 
-          const claimed = yield* executions.findWaitStateById(wait.waitStateId);
-          expect(claimed?.status).toBe("resuming");
-          expect(claimed?.metadata?.arrival).toMatchObject({
-            deliveryId: "owner",
-            payload: { owner: "owner" },
-          });
           const park = yield* executions.findPark(wait.waitStateId);
+          expect(park?.status).toBe("resuming");
           expect(park?.wake).toEqual({
             kind: "resume",
             eventName: "approval",

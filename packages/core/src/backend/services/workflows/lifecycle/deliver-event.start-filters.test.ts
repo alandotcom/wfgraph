@@ -13,7 +13,6 @@ import {
   resetGuardedStartMocks,
   resolveEntityMock,
   selectEntityIdMock,
-  stopRunMock,
   startRunMock,
   startRules,
   subscriber,
@@ -161,7 +160,6 @@ describe("applyLifecycleRules and Start Filters", () => {
           // `startForEntity` is where a newest-wins start supersedes, so never
           // reaching it is the assertion: nothing was displaced.
           assert.strictEqual(startRunMock.mock.calls.length, 0);
-          assert.strictEqual(stopRunMock.mock.calls.length, 0);
         })
     );
 

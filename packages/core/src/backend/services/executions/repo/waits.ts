@@ -18,7 +18,6 @@ import {
   inArray,
   isNull,
   notInArray,
-  or,
   type SQL,
   sql,
 } from "drizzle-orm";
@@ -42,26 +41,17 @@ import {
   type ExecutionSide,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
-  readJsonObject,
   type JsonObject,
   type JsonObjectDraft,
   toJsonObject,
 } from "@wfgraph/shared/types/json";
-import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import {
-  isWaitSignalType,
-  WAIT_ARRIVAL_METADATA_KEY,
-  type WaitArrival,
-} from "@wfgraph/shared/lifecycle/wait-signal";
+import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import {
   claimAdmits,
   inFlightExecution,
   notExitClaimed,
 } from "#src/backend/services/executions/repo/runs";
-import {
-  lockSchedules,
-  requeueWaitingRun,
-} from "#src/backend/services/executions/repo/schedule";
+import { wakeExecutions } from "#src/backend/services/executions/repo/schedule";
 import type {
   OwnerFence,
   ParkState,
@@ -75,8 +65,8 @@ type Executor = WfGraphDatabase | WfGraphTransaction;
 
 /**
  * A park an Event or a manual resume claimed, with the wake the claim wrote on
- * it. `requeued` says whether the claim moved the run's schedule row from
- * `waiting` to `queued`, which is when the caller wakes a worker loop.
+ * it. `requeued` says whether the claim made the run due (`wakeExecutions`),
+ * which is when the caller wakes a worker loop.
  */
 export type WaitResumeClaim = {
   waitState: WorkflowWaitState;
@@ -93,22 +83,17 @@ export function resumeWakeOf(arrival: WaitArrival): ParkWake {
   };
 }
 
-/** The claim's wake as it is stored, under one key of the row's metadata. */
-function arrivalMetadata(arrival: WaitArrival): JsonObject {
-  return { [WAIT_ARRIVAL_METADATA_KEY]: omitUndefined(arrival) };
-}
-
-function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
-  const arrival = readJsonObject(metadata?.[WAIT_ARRIVAL_METADATA_KEY]);
-  if (!arrival || !isWaitSignalType(arrival.signalType)) {
-    return null;
-  }
+/**
+ * The arrival a `resume` wake carries, or null for any other wake. The wake
+ * column is the one record of a resume, so this is how a timeout learns that a
+ * resume won the park first.
+ */
+export function arrivalOfWake(wake: ParkWake | null): WaitArrival | null {
+  if (wake?.kind !== "resume") return null;
   return {
-    signalType: arrival.signalType,
-    eventName: typeof arrival.eventName === "string" ? arrival.eventName : null,
-    payload: readJsonObject(arrival.payload) ?? {},
-    deliveryId:
-      typeof arrival.deliveryId === "string" ? arrival.deliveryId : undefined,
+    eventName: wake.eventName,
+    payload: wake.payload,
+    deliveryId: wake.deliveryId ?? undefined,
   };
 }
 
@@ -218,22 +203,11 @@ export type WaitsRepoMethods = {
     boolean
   >;
   /**
-   * Resolve the timeout against the row's persisted arrival in one fenced
-   * transition. A valid arrival wins whether its claim is still `resuming`,
-   * already `resumed`, or was released back to `waiting` after a refused send.
+   * Resolve the timeout against the `resume` wake the row records, in one
+   * fenced transition. A resume wins whether its claim is still `resuming` or
+   * already `resumed`, and is answered; a row with none times out.
    */
   readonly settleWaitTimeout: StoreWrite<string, WaitArrival | null>;
-  /** Cancel whichever rows are waiting or being resumed, answering which. */
-  readonly cancelWaits: (
-    waitStateIds: string[]
-  ) => Effect.Effect<string[], DatabaseError>;
-  /**
-   * Cancel every active wait of one run, including an in-flight resume claim.
-   *
-   * For the rows a killed branch run left behind, whose ids nobody holds: the
-   * branch parked and was then stopped where it stood.
-   */
-  readonly cancelWaitsForExecution: StoreWrite<string, void>;
   /**
    * One page of the runs of this workflow parked on this Event name, whatever
    * they are waiting for the payload to say.
@@ -289,6 +263,10 @@ export type WaitsRepoMethods = {
    * Migration can re-park the row between selection and this write. The row
    * must still be an event wait, hold the selected token and subscribe to
    * `eventName`.
+   *
+   * The arrival's `deliveryId` is the retry identity: a row whose `resume`
+   * wake that same delivery already wrote answers as claimed, with `requeued:
+   * false` and nothing written, so a retried delivery counts it.
    */
   readonly claimWaitingStateById: (input: {
     waitStateId: string;
@@ -296,23 +274,10 @@ export type WaitsRepoMethods = {
     resumeToken: string | null;
     /** The Event being delivered, which the row must still subscribe to. */
     eventName: string;
-    /**
-     * Permit only an empty arrival slot or this arrival's own delivery id, and
-     * answer a row this delivery's own claim already resolved as claimed, with
-     * `requeued: false` and nothing written, so a retried delivery counts it.
-     */
-    allowSameDeliveryRetry?: boolean | undefined;
     arrival: WaitArrival;
     /** When the run becomes due, if the claim re-queues it. */
     now: Date;
   }) => Effect.Effect<WaitResumeClaim | null, DatabaseError>;
-  /**
-   * Every wait row of one run still open: `waiting`, or `resuming` with a wake
-   * no pass has consumed yet. A run's terminal write cancels both.
-   */
-  readonly listActiveWaitStates: (
-    executionId: string
-  ) => Effect.Effect<WorkflowWaitState[], DatabaseError>;
   /** Every wait one run is currently parked on, for the Runs view. */
   readonly listWaitingStates: (
     executionId: string
@@ -557,7 +522,7 @@ export function settleWaitTimeoutWrite(
     const [row] = await tx
       .select({
         status: workflowWaitStates.status,
-        metadata: workflowWaitStates.metadata,
+        wake: workflowWaitStates.wake,
       })
       .from(workflowWaitStates)
       .where(
@@ -567,7 +532,7 @@ export function settleWaitTimeoutWrite(
 
     if (!row) return null;
 
-    const arrival = readWaitArrival(row.metadata);
+    const arrival = arrivalOfWake(row.wake);
     if (row.status === "resumed") return arrival;
     if (row.status !== "waiting" && row.status !== "resuming") return null;
 
@@ -586,21 +551,6 @@ export function settleWaitTimeoutWrite(
       .returning({ id: workflowWaitStates.id });
 
     return settled.length > 0 ? arrival : null;
-  };
-}
-
-/** The update behind `cancelWaitsForExecution`. */
-export function cancelWaitsForExecutionWrite(executionId: string) {
-  return async (db: Executor): Promise<void> => {
-    await db
-      .update(workflowWaitStates)
-      .set({ status: "cancelled", cancelledAt: new Date() })
-      .where(
-        and(
-          eq(workflowWaitStates.executionId, executionId),
-          inArray(workflowWaitStates.status, ["waiting", "resuming"])
-        )
-      );
   };
 }
 
@@ -643,29 +593,6 @@ export function makeWaitsMethods(
 
     settleWaitTimeout: (waitStateId) =>
       serializableTransaction(database, settleWaitTimeoutWrite(waitStateId)),
-
-    cancelWaits: (waitStateIds) =>
-      database.query(async (db) => {
-        if (waitStateIds.length === 0) {
-          return [];
-        }
-
-        const cancelled = await db
-          .update(workflowWaitStates)
-          .set({ status: "cancelled", cancelledAt: new Date() })
-          .where(
-            and(
-              inArray(workflowWaitStates.id, waitStateIds),
-              inArray(workflowWaitStates.status, ["waiting", "resuming"])
-            )
-          )
-          .returning({ id: workflowWaitStates.id });
-
-        return cancelled.map((row) => row.id);
-      }),
-
-    cancelWaitsForExecution: (executionId) =>
-      database.query(cancelWaitsForExecutionWrite(executionId)),
 
     listWaitsForEvent: (input) =>
       database.query((db) =>
@@ -728,24 +655,8 @@ export function makeWaitsMethods(
               : eq(workflowWaitStates.resumeToken, input.resumeToken),
             arrayContains(workflowWaitStates.subscribedEvents, [
               input.eventName,
-            ]),
-            input.allowSameDeliveryRetry
-              ? or(
-                  isNull(
-                    sql`${workflowWaitStates.metadata} -> ${WAIT_ARRIVAL_METADATA_KEY}::text`
-                  ),
-                  input.arrival.deliveryId === undefined
-                    ? undefined
-                    : eq(
-                        sql`${workflowWaitStates.metadata} -> ${WAIT_ARRIVAL_METADATA_KEY}::text ->> 'deliveryId'`,
-                        input.arrival.deliveryId
-                      )
-                )
-              : undefined
+            ])
           ),
-          retryDeliveryId: input.allowSameDeliveryRetry
-            ? input.arrival.deliveryId
-            : undefined,
           arrival: input.arrival,
           now: input.now,
         })
@@ -775,17 +686,6 @@ export function makeWaitsMethods(
           );
         return rows.map((row) => row.nodeId);
       }),
-
-    listActiveWaitStates: (executionId) =>
-      database.query((db) =>
-        db.query.workflowWaitStates.findMany({
-          columns: WITHOUT_PARK_COLUMNS,
-          where: {
-            executionId,
-            status: { in: ["waiting", "resuming"] },
-          },
-        })
-      ),
 
     listWaitingStatesForExecutions: (executionIds) =>
       database.query(async (db) => {
@@ -866,94 +766,94 @@ function claimableWait(): SQL {
 
 /**
  * Whether this delivery's own claim already resolved the row: `resuming` with
- * the `resume` wake the claim wrote and the arrival naming `deliveryId`. A
- * delivery that crashed after its claim committed finds its row in this state.
+ * the `resume` wake the claim wrote, naming `deliveryId`. A delivery that
+ * crashed after its claim committed finds its row in this state.
  */
 function claimedByDelivery(deliveryId: string): SQL {
-  return sql`(${workflowWaitStates.status} = 'resuming' and ${workflowWaitStates.wake}->>'kind' = 'resume' and ${workflowWaitStates.metadata} -> ${WAIT_ARRIVAL_METADATA_KEY}::text ->> 'deliveryId' = ${deliveryId})`;
+  return sql`(${workflowWaitStates.status} = 'resuming' and ${workflowWaitStates.wake}->>'kind' = 'resume' and ${workflowWaitStates.wake}->>'deliveryId' = ${deliveryId})`;
 }
 
 /**
- * Claims one row for an Event or a manual resume, in one transaction.
+ * Claims one row for an Event or a manual resume, through `wakeExecutions`.
  *
- * The run's schedule row is locked first, as every producer locks it, so the
- * claim either commits before a pass's release reads the wait rows or finds
- * the schedule row `waiting` once that release commits. The claim then writes
- * the `resume` wake, `resuming`, and the arrival into the row's metadata (merged
- * into what the park wrote, so its compiled match survives), and moves a
- * `waiting` schedule row to `queued` at `now`.
+ * The claim writes the `resume` wake and `resuming`, which is the one record
+ * of the resume, and the run is made due.
  *
  * `identity` is everything about the row the caller requires, which is more than
  * its id: a Migration can re-park the row between a candidate read and this
  * write, so the claim re-states the properties the candidate was chosen for.
  * The run must still be in flight and hold no Exit claim.
  *
- * `retryDeliveryId` names the Event delivery making the claim when it may be a
- * retry of itself. A row that delivery's own earlier claim resolved answers as
- * claimed with `requeued: false`, and the claim writes nothing.
+ * An arrival with a `deliveryId` may be a retry of its own delivery. A row
+ * whose `resume` wake that delivery already wrote answers as claimed with
+ * `requeued: false`, and the claim writes nothing.
  */
 async function claimWaitState(
   db: WfGraphDatabase,
   input: {
     identity: SQL | undefined;
-    retryDeliveryId?: string | undefined;
     arrival: WaitArrival;
     now: Date;
   }
 ): Promise<WaitResumeClaim | null> {
-  const { identity, retryDeliveryId, arrival, now } = input;
-  return await db.transaction(async (tx) => {
-    const [candidate] = await tx
-      .select({ executionId: workflowWaitStates.executionId })
-      .from(workflowWaitStates)
-      .where(identity)
-      .limit(1);
-    if (!candidate) return null;
-    await lockSchedules(tx, [candidate.executionId]);
-
-    const [waitState] = await tx
-      .update(workflowWaitStates)
-      .set({
-        status: "resuming",
-        resumedAt: now,
-        wake: resumeWakeOf(arrival),
-        metadata: sql`coalesce(${workflowWaitStates.metadata}, '{}'::jsonb) || ${arrivalMetadata(arrival)}::jsonb`,
-      })
-      .where(
-        and(
-          identity,
-          eq(workflowWaitStates.executionId, candidate.executionId),
-          claimableWait(),
-          exists(
-            tx
-              .select({ id: workflowExecutions.id })
-              .from(workflowExecutions)
-              .where(
-                and(
-                  eq(workflowExecutions.id, workflowWaitStates.executionId),
-                  inArray(workflowExecutions.status, [
-                    ...IN_FLIGHT_EXECUTION_STATUSES,
-                  ]),
-                  notExitClaimed
+  const { identity, arrival, now } = input;
+  const { result, due } = await wakeExecutions(
+    db,
+    {
+      now,
+      candidates: async (tx) => {
+        const [candidate] = await tx
+          .select({ executionId: workflowWaitStates.executionId })
+          .from(workflowWaitStates)
+          .where(identity)
+          .limit(1);
+        return candidate === undefined ? [] : [candidate.executionId];
+      },
+    },
+    async (tx, candidateIds) => {
+      if (candidateIds.length === 0) return { result: null, woken: [] };
+      const [waitState] = await tx
+        .update(workflowWaitStates)
+        .set({
+          status: "resuming",
+          resumedAt: now,
+          wake: resumeWakeOf(arrival),
+        })
+        .where(
+          and(
+            identity,
+            inArray(workflowWaitStates.executionId, [...candidateIds]),
+            claimableWait(),
+            exists(
+              tx
+                .select({ id: workflowExecutions.id })
+                .from(workflowExecutions)
+                .where(
+                  and(
+                    eq(workflowExecutions.id, workflowWaitStates.executionId),
+                    inArray(workflowExecutions.status, [
+                      ...IN_FLIGHT_EXECUTION_STATUSES,
+                    ]),
+                    notExitClaimed
+                  )
                 )
-              )
+            )
           )
         )
-      )
-      .returning(WAIT_STATE_COLUMNS);
-    if (!waitState) {
-      if (retryDeliveryId === undefined) return null;
+        .returning(WAIT_STATE_COLUMNS);
+      if (waitState) {
+        return { result: waitState, woken: [waitState.executionId] };
+      }
+      if (arrival.deliveryId === undefined) return { result: null, woken: [] };
       const [ownClaim] = await tx
         .select(WAIT_STATE_COLUMNS)
         .from(workflowWaitStates)
-        .where(and(identity, claimedByDelivery(retryDeliveryId)))
+        .where(and(identity, claimedByDelivery(arrival.deliveryId)))
         .limit(1);
-      return ownClaim ? { waitState: ownClaim, requeued: false } : null;
+      return { result: ownClaim ?? null, woken: [] };
     }
-
-    return {
-      waitState,
-      requeued: await requeueWaitingRun(tx, waitState.executionId, now),
-    };
-  });
+  );
+  return result === null
+    ? null
+    : { waitState: result, requeued: due.length > 0 };
 }

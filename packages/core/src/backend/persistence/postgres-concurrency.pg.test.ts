@@ -177,6 +177,91 @@ describePostgres("PostgreSQL concurrency", () => {
     }
   });
 
+  // A pass's fenced write takes its schedule row `for share` and then writes
+  // the execution row. Deleting a workflow's runs takes the same two rows, and
+  // took them in the reverse order when the schedule row went by cascade after
+  // the execution row, which PostgreSQL answered with a deadlock.
+  it("deletes a workflow's runs behind a fenced write without a deadlock", async () => {
+    const schema = mintTestSchemaName();
+    const url = requirePostgresTestUrl();
+    await migrateWfGraphDatabase({ url, schema });
+    const connection = connect(
+      await wfPostgres({ url, schema }).open(conformanceCipher)
+    );
+    try {
+      await seedPublishedWorkflow(connection);
+      const { executionId, scheduleId } = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+            ...notYetDue,
+          });
+          if (started.status !== "started") throw new Error("Start refused");
+          const schedule = yield* executions.findSchedule(started.execution.id);
+          if (!schedule) throw new Error("The run has no schedule row");
+          return {
+            executionId: started.execution.id,
+            scheduleId: schedule.id,
+          };
+        })
+      );
+      await withAdminClient(async (pass) => {
+        await pass.unsafe("begin");
+        let deletion: Promise<number> | undefined;
+        try {
+          const [backend] = await pass.unsafe<{ pid: number }[]>(
+            "select pg_backend_pid() as pid"
+          );
+          if (!backend) throw new Error("Backend not found");
+          // The fenced write's first statement: hold the schedule row.
+          await pass.unsafe(
+            `select id from "${schema}".workflow_execution_schedule where id = $1 for share`,
+            [scheduleId]
+          );
+          deletion = connection.run(
+            Effect.flatMap(ExecutionRepo, (executions) =>
+              executions.deleteAllForWorkflow("wf_1")
+            )
+          );
+          await vi.waitFor(async () => {
+            const blocked = await withAdminClient((observer) =>
+              observer.unsafe(
+                "select pid from pg_stat_activity where $1::integer = any(pg_blocking_pids(pid))",
+                [backend.pid]
+              )
+            );
+            expect(blocked.length).toBeGreaterThan(0);
+          });
+          // The fenced write's own statement on the execution row, which the
+          // deletion must not be holding while it waits for the schedule row.
+          await pass.unsafe(
+            `update "${schema}".workflow_executions set status = 'running' where id = $1`,
+            [executionId]
+          );
+          await pass.unsafe("commit");
+          expect(await deletion).toBe(1);
+        } finally {
+          await pass.unsafe("rollback");
+          await deletion?.catch(() => undefined);
+        }
+      });
+    } finally {
+      await connection.close();
+      await withAdminClient((client) =>
+        client.unsafe(`drop schema "${schema}" cascade`)
+      );
+    }
+  });
+
   it("allows only one graph write for a shared draft revision", async () => {
     const racers = await openRacers(2);
     await racers[0].run(
@@ -637,9 +722,7 @@ describePostgres("PostgreSQL concurrency", () => {
               waitStateId: run.wokenWaitStateId,
               resumeToken: run.wokenResumeToken,
               eventName: "appointment/approved",
-              allowSameDeliveryRetry: true,
               arrival: {
-                signalType: "wait-resume",
                 eventName: "appointment/approved",
                 payload: {},
                 deliveryId: `delivery_${round}`,
@@ -719,7 +802,7 @@ describePostgres("PostgreSQL concurrency", () => {
       // The release leaves the parks alone, so the repin always moves the
       // run, and whichever committed first, its wakes reached the schedule
       // row.
-      expect(moved, `round ${round}`).toBe(true);
+      expect(moved.moved, `round ${round}`).toBe(true);
       expect(after.schedule?.state, `round ${round}`).toBe("queued");
       expect(after.parks).toMatchObject([
         { status: "resuming", wake: { kind: "migrate" } },

@@ -238,7 +238,7 @@ export function openDatabaseReplayBackend(
         return passRuntime;
       },
 
-      resolvePark: async (stepId, wake, { now }) => {
+      wakePark: async (stepId, wake, { now }) => {
         // A timeout is the claim's to resolve, at the deadline the mirror row
         // holds, which is the deadline the harness fixed for the park.
         if (wake.kind === "timeout") return;
@@ -247,7 +247,7 @@ export function openDatabaseReplayBackend(
           throw new Error(`No mirror park was opened for step ${stepId}`);
         }
         const resolution = await run(
-          repo.resolvePark({
+          repo.wakePark({
             executionId,
             waitStateId,
             wake: parkWakeOf(wake),

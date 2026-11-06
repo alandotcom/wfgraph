@@ -24,7 +24,6 @@ import {
   guardStoreWrites,
 } from "#src/backend/services/executions/repo/fencing";
 import {
-  cancelOpenNodeLogsWrite,
   closeNodeLogWrite,
   openNodeLogWrite,
 } from "#src/backend/services/executions/repo/node-logs";
@@ -42,7 +41,6 @@ import {
   writeFencedSerializable,
 } from "#src/backend/services/executions/repo/schedule";
 import {
-  cancelWaitsForExecutionWrite,
   markWaitStatusWrite,
   reparkWaitWrite,
   settleWaitTimeoutWrite,
@@ -60,8 +58,6 @@ export function makeFencedWrites(
         writeFenced(database, fence, openNodeLogWrite(input)),
       closeNodeLog: (input) =>
         writeFenced(database, fence, closeNodeLogWrite(input, fence)),
-      cancelOpenNodeLogs: (executionId) =>
-        writeFenced(database, fence, cancelOpenNodeLogsWrite(executionId)),
       recordAuditEvent: (input) =>
         writeFenced(database, fence, recordAuditEventWrite(input)),
       startWait: (input) => writeFenced(database, fence, startWaitWrite(input)),
@@ -75,8 +71,6 @@ export function makeFencedWrites(
           fence,
           settleWaitTimeoutWrite(waitStateId, fence)
         ),
-      cancelWaitsForExecution: (executionId) =>
-        writeFenced(database, fence, cancelWaitsForExecutionWrite(executionId)),
       markRunning: (input) =>
         writeFenced(database, fence, markRunningWrite(input)),
       markWaitingIfParked: (input) =>
@@ -86,7 +80,7 @@ export function makeFencedWrites(
           const state = await requestExitWrite(input)(tx);
           const wake = exitWakeForClaim(state);
           if (wake !== null) {
-            await resolveOpenParks(tx, input.executionId, wake);
+            await resolveOpenParks(tx, [input.executionId], wake);
           }
           return state;
         }),

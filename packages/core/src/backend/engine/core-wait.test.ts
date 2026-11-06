@@ -85,13 +85,12 @@ describe("wait node - event mode", () => {
   );
 
   it.each(["waiting", "resuming", "resumed"] as const)(
-    "consumes a persisted arrival from a %s row before registration",
+    "consumes a resume wake recorded on a %s row before registration",
     async (status) => {
       store.waitState = {
-        wake: null,
         status,
-        arrival: {
-          signalType: "wait-resume",
+        wake: {
+          kind: "resume",
           eventName: "billing/payment.settled",
           payload: { approved: true },
         },
@@ -117,7 +116,6 @@ describe("wait node - event mode", () => {
 
   it("uses the atomic timeout result when the signal was lost after preparation", async () => {
     const arrival = {
-      signalType: "wait-resume" as const,
       eventName: "billing/payment.settled",
       payload: { approved: true },
     };

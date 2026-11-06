@@ -28,12 +28,6 @@ import type {
   WorkflowStore,
 } from "#src/backend/engine/store";
 import type { ExecutionTerminationState as StoredTerminationState } from "#src/backend/services/executions/repo/contracts";
-import {
-  isWaitSignalType,
-  WAIT_ARRIVAL_METADATA_KEY,
-  type WaitArrival,
-} from "@wfgraph/shared/lifecycle/wait-signal";
-import { type JsonObject, readJsonObject } from "@wfgraph/shared/types/json";
 
 /**
  * The port speaks ISO strings so wait-state writes stay JSON-safe across a
@@ -74,28 +68,6 @@ function engineTerminationState(
             }
           : null,
     didWrite: state.didWrite,
-  };
-}
-
-/**
- * The arrival a resume claim recorded on the row, or null when it recorded none.
- *
- * The row's metadata is written by two parties: the park writes the wait's own
- * parameters and a claim adds its arrival under one key. Anything that does not
- * read back as an arrival is treated as none, because the alternative is a run
- * failing on a row a future version wrote a different shape into.
- */
-function readWaitArrival(metadata: JsonObject | null): WaitArrival | null {
-  const arrival = readJsonObject(metadata?.[WAIT_ARRIVAL_METADATA_KEY]);
-  if (!arrival || !isWaitSignalType(arrival.signalType)) {
-    return null;
-  }
-  return {
-    signalType: arrival.signalType,
-    eventName: typeof arrival.eventName === "string" ? arrival.eventName : null,
-    payload: readJsonObject(arrival.payload) ?? {},
-    deliveryId:
-      typeof arrival.deliveryId === "string" ? arrival.deliveryId : undefined,
   };
 }
 
@@ -188,7 +160,6 @@ export function createDbWorkflowStore(bound: {
         const park = yield* reads.findPark(waitStateId);
         return {
           status: row.status,
-          arrival: readWaitArrival(row.metadata),
           wake: park?.wake ? engineWake(park.wake) : null,
         };
       }),

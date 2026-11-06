@@ -1,7 +1,7 @@
 /**
  * The eight replay suites' cases, with every drive run through one persistence
  * backend: each pass is claimed with `claimDue`, replayed over the memo rows,
- * woken through `resolvePark`, and released with `releasePass`, all at the
+ * woken through `wakePark`, and released with `releasePass`, all at the
  * harness's virtual clock.
  *
  * Each suite declares those cases in a `*.replay-cases.ts` module as a function

@@ -34,9 +34,9 @@ describe("driveWithReplay backends", () => {
         passes.push(pass.invocation);
         return memory.runtimeForPass(pass);
       },
-      resolvePark: (stepId, wake, at) => {
+      wakePark: (stepId, wake, at) => {
         resolved.push({ stepId, wake });
-        return memory.resolvePark(stepId, wake, at);
+        return memory.wakePark(stepId, wake, at);
       },
     };
 

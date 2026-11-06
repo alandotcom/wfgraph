@@ -25,7 +25,6 @@ import {
  * passes because a claim writes one.
  */
 const EVENT_ARRIVAL = {
-  signalType: "wait-resume",
   eventName: "appointment/approved",
   payload: { approved: true },
 } as const;
@@ -145,7 +144,7 @@ export function describeExecutionWaitConformance({
             };
           })
         );
-        expect(result.moved).toBe(false);
+        expect(result.moved).toEqual({ moved: false });
         expect(result.summary?.workflowVersionId).toBe("ver_1");
       }
     );
@@ -202,12 +201,14 @@ export function describeExecutionWaitConformance({
               metadata: {},
             })
           ).toEqual({ ok: false, reason: "not_waiting" });
-          expect(
-            (yield* executions.findWaitStateById(waitStateId))?.metadata
-          ).toMatchObject({ arrival: EVENT_ARRIVAL });
+          // The wake column is the one record of the resume.
           expect(yield* executions.findPark(waitStateId)).toMatchObject({
             status: "resuming",
-            wake: { kind: "resume", eventName: EVENT_ARRIVAL.eventName },
+            wake: {
+              kind: "resume",
+              eventName: EVENT_ARRIVAL.eventName,
+              payload: EVENT_ARRIVAL.payload,
+            },
           });
         })
       );
@@ -372,8 +373,7 @@ export function describeExecutionWaitConformance({
       const result = await database.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
-          const refreshedRead =
-            yield* executions.findWaitStateById(waitStateId);
+          const refreshedRead = yield* executions.findPark(waitStateId);
           const competingClaim = yield* executions.claimWaitingStateById({
             now: NOW,
             waitStateId,
@@ -388,21 +388,25 @@ export function describeExecutionWaitConformance({
             resumeToken: "resume_claim_race",
             eventName: EVENT_ARRIVAL.eventName,
             arrival: firstArrival,
-            allowSameDeliveryRetry: true,
           });
-          const current = yield* executions.findWaitStateById(waitStateId);
+          const current = yield* executions.findPark(waitStateId);
           return {
-            arrivalAtRefreshRead: refreshedRead?.metadata?.arrival ?? null,
+            wakeAtRefreshRead: refreshedRead?.wake ?? null,
             refreshedClaim,
-            arrivalAfterClaim: current?.metadata?.arrival,
+            wakeAfterClaim: current?.wake,
           };
         })
       );
 
       expect(result).toEqual({
-        arrivalAtRefreshRead: null,
+        wakeAtRefreshRead: null,
         refreshedClaim: null,
-        arrivalAfterClaim: competingArrival,
+        wakeAfterClaim: {
+          kind: "resume",
+          eventName: competingArrival.eventName,
+          payload: competingArrival.payload,
+          deliveryId: competingArrival.deliveryId,
+        },
       });
     });
 
@@ -1080,7 +1084,7 @@ export function describeExecutionWaitConformance({
             toVersionId: "ver_2",
             now: NOW,
           });
-          if (!migrated) throw new Error("The migration was refused");
+          if (!migrated.moved) throw new Error("The migration was refused");
 
           return {
             beforeTheMigration: first,
@@ -1348,7 +1352,7 @@ export function describeExecutionWaitConformance({
     // A run woken by a Migration is still parked as far as the row is concerned
     // until its next park lands. A resume claim in that window takes the row and
     // records what it was about, so the refused re-park has something to read.
-    it("refuses a re-park of a row that has left waiting, which records the claim's arrival", async () => {
+    it("refuses a re-park of a row that has left waiting, whose wake records the claim", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
 
@@ -1411,10 +1415,10 @@ export function describeExecutionWaitConformance({
       expect(result.reparked).toEqual({ ok: false, reason: "not_waiting" });
       expect(result.row).toMatchObject({
         status: "resuming",
-        // The re-park wrote nothing, so the park's own metadata still stands
-        // beside the arrival the claim added.
+        // The re-park wrote nothing, and the claim writes only the row's
+        // wake, so the park's own metadata still stands as it was.
         subscribedEvents: ["appointment/approved"],
-        metadata: { waitTimeout: "7d", arrival: EVENT_ARRIVAL },
+        metadata: { waitTimeout: "7d" },
       });
     });
 
@@ -1583,9 +1587,9 @@ export function describeExecutionWaitConformance({
         })
       );
 
-      expect(result.whileRunning).toBe(false);
-      expect(result.fromAnotherVersion).toBe(false);
-      expect(result.whileWaiting).toBe(true);
+      expect(result.whileRunning).toEqual({ moved: false });
+      expect(result.fromAnotherVersion).toEqual({ moved: false });
+      expect(result.whileWaiting).toMatchObject({ moved: true });
       expect(result.summary).toMatchObject({
         workflowVersionId: "ver_2",
         versionNumber: 2,
@@ -1638,7 +1642,7 @@ export function describeExecutionWaitConformance({
             toVersionId: "ver_2",
             now: NOW,
           });
-          if (!migrated) throw new Error("The migration was refused");
+          if (!migrated.moved) throw new Error("The migration was refused");
 
           return {
             // The resuming body loaded ver_1, which the row no longer pins.
@@ -1717,7 +1721,7 @@ export function describeExecutionWaitConformance({
             toVersionId: "ver_2",
             now: NOW,
           });
-          if (!migrated) throw new Error("The migration was refused");
+          if (!migrated.moved) throw new Error("The migration was refused");
 
           return {
             fromTheVersionLeftBehind: yield* executions.reparkWait({

@@ -23,7 +23,6 @@ import {
  * passes because a claim writes one.
  */
 const EVENT_ARRIVAL = {
-  signalType: "wait-resume",
   eventName: "appointment/approved",
   payload: { approved: true },
 } as const;
@@ -514,11 +513,12 @@ export function describeExecutionConformance({
         eventName: "appointment/cancelled",
         payload: { reason: "host request" },
       } as const;
+      // The claim makes the run due at once, though its start was not yet due.
       expect(result.cancel).toEqual([
         {
           executionId: started.execution.id,
           resolvedParks: 0,
-          requeued: false,
+          requeued: true,
         },
       ]);
       expect(result.exit).toMatchObject({
@@ -810,7 +810,6 @@ export function describeExecutionConformance({
           });
           const pendingCancel =
             yield* executions.findPendingCancel(executionId);
-          yield* executions.cancelOpenNodeLogs(executionId);
           yield* executions.recordAuditEvent({
             workflowId: "wf_1",
             executionId,
@@ -854,6 +853,7 @@ export function describeExecutionConformance({
       // A claimed row holds its wake until the run closes it.
       expect(result.secondClaim).toBeNull();
       expect(result.settled).toBe(true);
+      // The resume claim before it already made the run due.
       expect(result.cancelled).toEqual([
         { executionId: result.executionId, resolvedParks: 0, requeued: false },
       ]);
@@ -879,7 +879,7 @@ export function describeExecutionConformance({
         { workflowName: "Appointments", workflowIsPaused: false },
       ]);
       expect(result.logs.map((log) => log.status).toSorted()).toEqual([
-        "cancelled",
+        "running",
         "success",
       ]);
       expect(result.outputs).toEqual({ node_1: { taskId: "task_1" } });

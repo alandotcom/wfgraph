@@ -5,9 +5,9 @@
  * passes released falls due or its `wake` is called, and keeps at most
  * `concurrency` passes running. The loop's Effect succeeds once `signal` has
  * aborted and every pass in flight has ended, or once `drainMs` has passed and
- * the passes still running are interrupted. A pass that fails or is
- * interrupted leaves its row leased, so a later claim sweeps it once the lease
- * expires.
+ * the passes still running are interrupted. A pass that fails leaves its row
+ * leased, so a later claim sweeps it once the lease expires. An interrupted
+ * pass releases its row due at once and counts no failure.
  */
 
 import {
@@ -69,7 +69,7 @@ export type DrainOptions<R> = {
  * - `passed`: the pass ran to its end and answered `result`.
  * - `failed`: the pass failed or died, which was logged. Its row stays leased.
  * - `interrupted`: the pass was still running at the drain step's deadline.
- *   Its row stays leased.
+ *   It released its row due at once, counting no failure.
  */
 export type DrainedPass =
   | { kind: "passed"; claimed: ClaimedExecution; result: PassResult }
@@ -200,8 +200,8 @@ export type WorkerLoopOptions = {
   signal: AbortSignal;
   /**
    * How long a stopped loop waits for its passes in flight before it
-   * interrupts them, leaving their rows leased. Omitted, it waits for every
-   * pass to end.
+   * interrupts them. Each interrupted pass releases its row due at once,
+   * counting no failure. Omitted, it waits for every pass to end.
    */
   drainMs?: number | undefined;
   /** How long the loop sleeps between claims when nothing wakes it sooner. */

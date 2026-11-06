@@ -399,7 +399,7 @@ export function describeExecutionScheduleConformance({
 
           // The producer lands mid-pass: it sets the wake but leaves the
           // leased row for the release to notice.
-          const duringPass = yield* executions.resolvePark({
+          const duringPass = yield* executions.wakePark({
             executionId,
             waitStateId: woken,
             wake: {
@@ -410,7 +410,7 @@ export function describeExecutionScheduleConformance({
             },
             now: at(500),
           });
-          const secondWake = yield* executions.resolvePark({
+          const secondWake = yield* executions.wakePark({
             executionId,
             waitStateId: woken,
             wake: { kind: "cancel" },
@@ -430,7 +430,7 @@ export function describeExecutionScheduleConformance({
           const slept = yield* executions
             .fenced(nextFence)
             .releasePass({ outcome: { kind: "parked" }, now: at(2_000) });
-          const wakeOnSleeping = yield* executions.resolvePark({
+          const wakeOnSleeping = yield* executions.wakePark({
             executionId,
             waitStateId: sleeping,
             wake: { kind: "timeout" },
@@ -757,7 +757,7 @@ export function describeExecutionScheduleConformance({
           const { fence } = yield* claimRun(executionId, T0);
           const parked = yield* park(executionId, "wait_parked", at(90_000));
           const woken = yield* park(executionId, "wait_woken", at(90_000));
-          yield* executions.resolvePark({
+          yield* executions.wakePark({
             executionId,
             waitStateId: woken,
             wake: { kind: "timeout" },
@@ -785,7 +785,7 @@ export function describeExecutionScheduleConformance({
             parked: yield* executions.findPark(parked),
             woken: yield* executions.findPark(woken),
             cancelled: yield* executions.findPark(cancelledWait),
-            open: yield* executions.listActiveWaitStates(executionId),
+            waiting: yield* executions.listWaitingStates(executionId),
           };
         })
       );
@@ -796,7 +796,7 @@ export function describeExecutionScheduleConformance({
         wake: { kind: "timeout" },
       });
       expect(result.cancelled).toMatchObject({ status: "cancelled" });
-      expect(result.open).toEqual([]);
+      expect(result.waiting).toEqual([]);
     });
 
     it("resolves the run's other parks as an Exit in the fenced write that wins the Exit claim", async () => {
@@ -883,7 +883,7 @@ export function describeExecutionScheduleConformance({
                 waitStateId,
                 parkStepId: `park-${waitStateId}`,
               });
-              yield* executions.resolvePark({
+              yield* executions.wakePark({
                 executionId,
                 waitStateId,
                 wake: parkWake,
@@ -1025,7 +1025,10 @@ export function describeExecutionScheduleConformance({
       expect(result.again._tag).toBe("LeaseLost");
     });
 
-    it("revokes a pass's lease, queueing the row due now and keeping its step memo", async () => {
+    // A policy cancel ends a run from outside the pass holding it. The
+    // terminal write deletes the schedule row in its own transaction, so the
+    // pass is stopped by its next fenced write and nothing else has to stop it.
+    it("refuses a leased pass's next write once a policy cancel ends its run", async () => {
       const connection = await seeded(await openConnection());
       const result = await connection.run(
         Effect.gen(function* () {
@@ -1033,50 +1036,50 @@ export function describeExecutionScheduleConformance({
           const executionId = yield* scheduledRun(T0);
           const { fence } = yield* claimRun(executionId, T0);
           const pass = executions.fenced(fence);
-          yield* pass.renewLease({
-            leaseExpiresAt: at(LEASE_MS * 2),
-            runningStepId: "step_2",
-          });
           yield* pass.writeStepMemo({
             stepId: "step_1",
             value: "sent",
-            leaseExpiresAt: at(LEASE_MS * 2),
+            leaseExpiresAt: at(LEASE_MS),
           });
-          const revoked = yield* executions.revokeLease({
+          const waitStateId = yield* park(executionId, "wait_open", at(90_000));
+          const cancelled = yield* executions.endInFlight({
             executionId,
-            now: at(1_000),
+            status: "canceled",
           });
           return {
-            revoked,
-            staleWrite: yield* refusalOf(
+            cancelled,
+            staleMemo: yield* refusalOf(
               pass.writeStepMemo({
                 stepId: "step_2",
                 value: "stale",
-                leaseExpiresAt: at(LEASE_MS * 3),
+                leaseExpiresAt: at(LEASE_MS),
               })
+            ),
+            staleFinish: yield* refusalOf(
+              pass.finishRun({ executionId, status: "completed" })
+            ),
+            staleRelease: yield* refusalOf(
+              pass.releasePass({ outcome: { kind: "parked" }, now: at(1_000) })
             ),
             schedule: yield* executions.findSchedule(executionId),
             memo: yield* executions.listStepMemo(executionId),
-            unscheduled: yield* executions.revokeLease({
-              executionId: "exec_without_a_schedule_row",
-              now: at(1_000),
-            }),
+            park: yield* executions.findPark(waitStateId),
+            status: yield* executions.findStatusById(executionId),
           };
         })
       );
 
-      expect(result.revoked).toBe(true);
-      expect(result.staleWrite).toBe("LeaseLost");
-      expect(result.schedule).toMatchObject({
-        state: "queued",
-        wakeAt: at(1_000),
-        ownerToken: null,
-        leaseExpiresAt: null,
-        workerId: null,
-        runningStepId: null,
+      expect(result.cancelled).toMatchObject({
+        status: "canceled",
+        didWrite: true,
       });
-      expect(result.memo.map((entry) => entry.stepId)).toEqual(["step_1"]);
-      expect(result.unscheduled).toBe(false);
+      expect(result.staleMemo).toBe("LeaseLost");
+      expect(result.staleFinish).toBe("LeaseLost");
+      expect(result.staleRelease).toBe("LeaseLost");
+      expect(result.schedule).toBeNull();
+      expect(result.memo).toEqual([]);
+      expect(result.park).toMatchObject({ status: "cancelled" });
+      expect(result.status?.status).toBe("canceled");
     });
 
     // A count kept for the whole run would hand each later step the retries
@@ -1373,7 +1376,7 @@ export function describeExecutionScheduleConformance({
           const { fence } = yield* claimRun(executionId, T0);
           const consumed = yield* park(executionId, "wait_a", at(90_000));
           yield* park(executionId, "wait_b", at(120_000));
-          yield* executions.resolvePark({
+          yield* executions.wakePark({
             executionId,
             waitStateId: consumed,
             wake: { kind: "timeout" },
@@ -1387,7 +1390,7 @@ export function describeExecutionScheduleConformance({
           const released = yield* executions
             .fenced(fence)
             .releasePass({ outcome: { kind: "parked" }, now: at(1_000) });
-          const late = yield* executions.resolvePark({
+          const late = yield* executions.wakePark({
             executionId,
             waitStateId: consumed,
             wake: { kind: "cancel" },
@@ -1448,7 +1451,7 @@ export function describeExecutionScheduleConformance({
       );
 
       expect(result).toMatchObject({
-        moved: true,
+        moved: { moved: true, requeued: true },
         version: "ver_2",
         schedule: { state: "queued", wakeAt: at(5_000) },
       });
@@ -1491,7 +1494,7 @@ export function describeExecutionScheduleConformance({
         })
       );
 
-      expect(result.moved).toBe(true);
+      expect(result.moved).toEqual({ moved: true, requeued: false });
       expect(result.duringPass).toMatchObject({
         state: "leased",
         ownerToken: expect.any(String),
@@ -1541,7 +1544,7 @@ export function describeExecutionScheduleConformance({
             .releasePass({ outcome: { kind: "parked" }, now: at(1_000) });
           // The Migration classified both parks before the Event arrived.
           const classified = yield* executions.listWaitingStates(woken);
-          yield* executions.resolvePark({
+          yield* executions.wakePark({
             executionId: woken,
             waitStateId: eventPark,
             wake: {
@@ -1575,13 +1578,13 @@ export function describeExecutionScheduleConformance({
         })
       );
 
-      expect(result.runningRefused).toBe(false);
+      expect(result.runningRefused).toEqual({ moved: false });
       expect(result.runningVersion).toBe("ver_1");
       expect(result.runningSchedule).toMatchObject({
         state: "queued",
         wakeAt: T0,
       });
-      expect(result.wokenRefused).toBe(false);
+      expect(result.wokenRefused).toEqual({ moved: false });
       expect(result.wokenVersion).toBe("ver_1");
       expect(result.eventPark).toMatchObject({
         status: "resuming",
@@ -1597,7 +1600,6 @@ export function describeExecutionScheduleConformance({
     it("writes an Event's claim and its wake in one write, re-queueing a sleeping run and leaving a leased one to its release", async () => {
       const connection = await seeded(await openConnection());
       const arrival = {
-        signalType: "wait-resume",
         eventName: "appointment/approved",
         payload: { approved: true },
         deliveryId: "delivery_1",
@@ -1664,7 +1666,7 @@ export function describeExecutionScheduleConformance({
         deliveryId: arrival.deliveryId,
       };
       expect(result.byId).toMatchObject({
-        waitState: { status: "resuming", metadata: { arrival } },
+        waitState: { status: "resuming" },
         requeued: true,
       });
       expect(result.secondDelivery).toBeNull();
@@ -1690,7 +1692,6 @@ export function describeExecutionScheduleConformance({
     it("answers a delivery's retry of its own committed claim as claimed, writing nothing, and refuses every other arrival", async () => {
       const connection = await seeded(await openConnection());
       const arrival = {
-        signalType: "wait-resume",
         eventName: "appointment/approved",
         payload: { approved: true },
         deliveryId: "delivery_1",
@@ -1709,7 +1710,6 @@ export function describeExecutionScheduleConformance({
               waitStateId,
               resumeToken: `${executionId}-wait_a`,
               eventName: arrival.eventName,
-              allowSameDeliveryRetry: true,
               arrival: input.arrival,
               now: input.now,
             });
@@ -1730,7 +1730,6 @@ export function describeExecutionScheduleConformance({
           });
           const noDelivery = yield* claimFor({
             arrival: {
-              signalType: arrival.signalType,
               eventName: arrival.eventName,
               payload: arrival.payload,
             },
@@ -1780,7 +1779,6 @@ export function describeExecutionScheduleConformance({
     it("lets an Event's claim replace a pending migrate wake, and refuses a second Event", async () => {
       const connection = await seeded(await openConnection());
       const arrival = {
-        signalType: "wait-resume",
         eventName: "appointment/approved",
         payload: {},
       } as const;

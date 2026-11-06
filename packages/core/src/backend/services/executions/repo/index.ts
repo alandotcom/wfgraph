@@ -1,7 +1,8 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
   workflowExecutionEvents,
+  workflowExecutionSchedule,
   workflowExecutions,
 } from "#src/backend/lib/db/schema";
 import type {
@@ -138,10 +139,11 @@ type CrossTableRepoMethods = {
     metadata: JsonObject;
   }) => Effect.Effect<StartAdmissionDecision, DatabaseError>;
   /**
-   * Erase one workflow's run history, answering how many runs went. Node logs
-   * and wait states follow the runs by cascade; the audit rows are deleted here
-   * beside them, in the same transaction, because half a deletion leaves rows
-   * pointing at a run that is gone.
+   * Erase one workflow's run history, answering how many runs went. Node logs,
+   * wait states and schedule rows follow the runs by cascade; the audit rows
+   * are deleted here beside them, in the same transaction, because half a
+   * deletion leaves rows pointing at a run that is gone. The runs' schedule
+   * rows are locked first, in the order every fenced write takes them.
    */
   readonly deleteAllForWorkflow: (
     workflowId: string
@@ -424,12 +426,30 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
               // found through, and a workflow with nothing but refusals has an
               // empty execution list and history to clear all the same.
               //
-              // Node logs and wait states are not named here: both foreign keys
-              // are `ON DELETE cascade`, so Postgres takes them with the runs. The
-              // count comes off the delete rather than from a pre-read of ids,
-              // which would bind one parameter per run and stop working past the
-              // protocol's 65535.
+              // Node logs, wait states and schedule rows are not deleted by
+              // name: their foreign keys are `ON DELETE cascade`, so Postgres
+              // takes them with the runs. The count comes off the delete rather
+              // than from a pre-read of ids, which would bind one parameter per
+              // run and stop working past the protocol's 65535.
               await db.transaction(async (tx) => {
+                // A pass's fenced write holds its schedule row and then writes
+                // the execution row. The cascade would take the schedule rows
+                // after the execution rows, the reverse order, and the two
+                // transactions would deadlock; so the schedule rows go first.
+                await tx
+                  .select({ id: workflowExecutionSchedule.id })
+                  .from(workflowExecutionSchedule)
+                  .where(
+                    inArray(
+                      workflowExecutionSchedule.executionId,
+                      tx
+                        .select({ id: workflowExecutions.id })
+                        .from(workflowExecutions)
+                        .where(eq(workflowExecutions.workflowId, workflowId))
+                    )
+                  )
+                  .orderBy(asc(workflowExecutionSchedule.id))
+                  .for("update");
                 await tx
                   .delete(workflowExecutionEvents)
                   .where(eq(workflowExecutionEvents.workflowId, workflowId));

@@ -4,7 +4,8 @@
  * runtime while a heartbeat renews the lease, and release the row by how the
  * body ended. The caller claims the row first (`ExecutionRepo.claimDue`) and
  * picks the body by the row's `kind`. A pass that loses its lease writes
- * nothing after the write that found it out, its release included.
+ * nothing after the write that found it out, its release included. An
+ * interrupted pass releases its row due at once, counting no failure.
  */
 
 import { Cause, Clock, Effect, Exit, FiberSet, Option } from "effect";
@@ -272,7 +273,9 @@ const OWNER_REFUSED = { kind: "fence_refused", fence: "owner" } as const;
 /**
  * Runs one leased pass of `body` over `claimed` and answers what it did. A
  * database failure outside the body leaves the row leased, so a later claim
- * sweeps it once the lease expires.
+ * sweeps it once the lease expires. An interrupted pass releases its row as
+ * `interrupted` before the interruption completes, so a worker that stops
+ * gracefully spends no retry of the step it was running.
  */
 export const leasedPass = Effect.fn("wfgraph.executor.pass")(function* <R>(
   claimed: ClaimedExecution,
@@ -314,9 +317,43 @@ const runPassBody = Effect.fnUntraced(function* <R>(
     now: options.now,
     leaseMs: options.leaseMs,
   });
+  return yield* settlePass(pass, body, options).pipe(
+    Effect.onInterrupt(() => releaseInterrupted(pass))
+  );
+});
+
+/**
+ * Hands an interrupted pass's row back, due at once and counting nothing. A
+ * pass that already released its row, wrote its run's terminal record or lost
+ * its lease finds the fence refused, and writes nothing. A release the
+ * database fails is logged, and the row is swept once its lease expires.
+ */
+function releaseInterrupted(pass: OpenPass): Effect.Effect<void> {
+  return pass.release({ kind: "interrupted" }).pipe(
+    Effect.asVoid,
+    Effect.catchTag("DatabaseError", (error) =>
+      Effect.logWarning(
+        "Could not release an interrupted pass; its run is claimed again once its lease expires"
+      ).pipe(
+        Effect.annotateLogs({
+          run: { execution: pass.claimed.executionId },
+          error,
+        })
+      )
+    )
+  );
+}
+
+/** Runs the opened pass's body and writes the release its ending decides. */
+const settlePass = Effect.fnUntraced(function* <R>(
+  pass: OpenPass,
+  body: PassBody<R>,
+  options: LeasedPassOptions
+): Effect.fn.Return<PassResult, DatabaseError, R> {
+  const { claimed } = pass;
   const backoffMs = options.backoffMs ?? retryBackoffMs;
 
-  const releaseFailed = (outcome: Exclude<PassOutcome, { kind: "parked" }>) =>
+  const releaseFailed = (outcome: FailedPassOutcome) =>
     pass
       .release(outcome)
       .pipe(
@@ -607,9 +644,15 @@ const renewLeaseWhileRunning = Effect.fnUntraced(function* (input: {
   }
 });
 
+/** The outcomes of a pass whose body failed. */
+type FailedPassOutcome = Extract<
+  PassOutcome,
+  { kind: "step_failed" | "run_failed" | "fence_refused" }
+>;
+
 /** What a failed pass answers for the release it wrote. */
 function passResultOf(
-  outcome: Exclude<PassOutcome, { kind: "parked" }>,
+  outcome: FailedPassOutcome,
   released: ReleasedPass
 ): PassResult {
   const { schedule } = released;
@@ -636,7 +679,7 @@ function decideFailedPass(input: {
   memo: ReadonlyMap<string, StepMemo>;
   attempt: number;
   backoffMs: (failures: number) => number;
-}): Exclude<PassOutcome, { kind: "parked" }> {
+}): FailedPassOutcome {
   const { failure } = input;
   const engineFailure =
     failure.kind === "step"

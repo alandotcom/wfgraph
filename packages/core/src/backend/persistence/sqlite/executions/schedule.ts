@@ -10,7 +10,8 @@
  */
 
 import { Effect } from "effect";
-import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
+import { compact } from "es-toolkit/array";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type {
   DatabaseError,
@@ -33,6 +34,7 @@ import {
 } from "#src/backend/services/executions/repo/release-policy";
 import {
   claimedExecutions,
+  parkResolution,
   type PassWrites,
   type ScheduleRepoMethods,
   stepMemoOf,
@@ -162,51 +164,66 @@ export function insertRunSchedule(
 }
 
 /**
- * Resolves every park of one run still `waiting` with `wake`, answering how
- * many it resolved, as the PostgreSQL backend's `resolveOpenParks` does. It
- * runs inside the caller's write transaction, which already holds the one
- * writer.
+ * Resolves every park still `waiting` of the runs named with `wake`,
+ * answering the run of each park it resolved, as the PostgreSQL backend's
+ * `resolveOpenParks` does. It runs inside the caller's write transaction,
+ * which already holds the one writer.
  */
 export function resolveOpenParks(
   database: SqliteExecutor,
-  executionId: string,
+  executionIds: readonly string[],
   wake: ParkWake
-) {
+): Effect.Effect<string[], unknown> {
+  if (executionIds.length === 0) return Effect.succeed([]);
   return database
     .update(workflowWaitStates)
     .set({ wake: encodeJson(wake), status: "resuming" })
     .where(
       and(
-        eq(workflowWaitStates.executionId, executionId),
+        inArray(workflowWaitStates.executionId, [...executionIds]),
         eq(workflowWaitStates.status, "waiting")
       )
     )
-    .returning({ id: workflowWaitStates.id })
-    .pipe(Effect.map((resolved) => resolved.length));
+    .returning({ executionId: workflowWaitStates.executionId })
+    .pipe(Effect.map((resolved) => resolved.map((row) => row.executionId)));
 }
 
 /**
- * Moves one run's schedule row from `waiting` to `queued` at `now`, answering
- * whether it moved, as the PostgreSQL backend's `requeueWaitingRun` does. A
- * `leased` row is left for its release, which reads the wakes the caller's
- * transaction wrote.
+ * Runs a producer's write inside the caller's write transaction, then makes
+ * due the runs it woke, as the PostgreSQL backend's `wakeExecutions` does. The
+ * transaction holds the one writer from its first statement, so no release
+ * reads the wait rows between the write and the re-queue, and nothing needs
+ * locking first. Answers the write's result and the runs it made due.
  */
-export function requeueWaitingRun(
+export function wakeExecutions<A, E>(
   database: SqliteExecutor,
-  executionId: string,
-  now: Date
-) {
-  return database
-    .update(workflowExecutionSchedule)
-    .set({ state: "queued", wakeAt: now.getTime() })
-    .where(
-      and(
-        eq(workflowExecutionSchedule.executionId, executionId),
-        eq(workflowExecutionSchedule.state, "waiting")
+  now: Date,
+  write: Effect.Effect<{ result: A; woken: readonly string[] }, E>
+): Effect.Effect<{ result: A; due: string[] }, unknown> {
+  return Effect.gen(function* () {
+    const { result, woken } = yield* write;
+    if (woken.length === 0) return { result, due: [] };
+    const requeued = yield* database
+      .update(workflowExecutionSchedule)
+      .set({
+        state: "queued",
+        wakeAt: sql`min(${workflowExecutionSchedule.wakeAt}, ${now.getTime()})`,
+      })
+      .where(
+        and(
+          inArray(workflowExecutionSchedule.executionId, [...woken]),
+          or(
+            eq(workflowExecutionSchedule.state, "waiting"),
+            and(
+              eq(workflowExecutionSchedule.state, "queued"),
+              gt(workflowExecutionSchedule.wakeAt, now.getTime())
+            )
+          )
+        )
       )
-    )
-    .returning({ id: workflowExecutionSchedule.id })
-    .pipe(Effect.map((requeued) => requeued.length > 0));
+      .returning({ executionId: workflowExecutionSchedule.executionId });
+    return { result, due: compact(requeued.map((row) => row.executionId)) };
+  });
 }
 
 const memoColumns = {
@@ -378,52 +395,32 @@ export function makeSqliteScheduleMethods(
         )
         .pipe(Effect.flatMap(claimedExecutions)),
 
-    resolvePark: (input) =>
-      store.write((database) =>
-        Effect.gen(function* () {
-          // One writer holds the database for the whole transaction, so the
-          // release cannot read the wait rows between these two statements.
-          const resolved = yield* database
-            .update(workflowWaitStates)
-            .set({ wake: encodeJson(input.wake), status: "resuming" })
-            .where(
-              and(
-                eq(workflowWaitStates.id, input.waitStateId),
-                eq(workflowWaitStates.executionId, input.executionId),
-                eq(workflowWaitStates.status, "waiting")
+    wakePark: (input) =>
+      store
+        .write((database) =>
+          wakeExecutions(
+            database,
+            input.now,
+            database
+              .update(workflowWaitStates)
+              .set({ wake: encodeJson(input.wake), status: "resuming" })
+              .where(
+                and(
+                  eq(workflowWaitStates.id, input.waitStateId),
+                  eq(workflowWaitStates.executionId, input.executionId),
+                  eq(workflowWaitStates.status, "waiting")
+                )
               )
-            )
-            .returning({ id: workflowWaitStates.id });
-          if (resolved.length === 0) {
-            return { resolved: false, requeued: false };
-          }
-          return {
-            resolved: true,
-            requeued: yield* requeueWaitingRun(
-              database,
-              input.executionId,
-              input.now
-            ),
-          };
-        })
-      ),
-
-    revokeLease: (input) =>
-      store.write((database) =>
-        database
-          .update(workflowExecutionSchedule)
-          .set({
-            state: "queued",
-            wakeAt: input.now.getTime(),
-            ownerToken: null,
-            leaseExpiresAt: null,
-            workerId: null,
-            runningStepId: null,
-          })
-          .where(eq(workflowExecutionSchedule.executionId, input.executionId))
-          .returning({ id: workflowExecutionSchedule.id })
-          .pipe(Effect.map((rows) => rows.length > 0))
-      ),
+              .returning({ executionId: workflowWaitStates.executionId })
+              .pipe(
+                Effect.map((resolved) => ({
+                  result: resolved.length > 0,
+                  woken: resolved.map((row) => row.executionId),
+                }))
+              )
+          )
+        )
+        .pipe(Effect.map(parkResolution)),
 
     listStepMemo: (executionId) =>
       store.read((database) =>

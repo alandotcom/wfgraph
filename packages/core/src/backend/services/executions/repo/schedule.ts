@@ -5,15 +5,16 @@
  * this file runs the statements they call for.
  *
  * Lock order: every transaction here, and every fenced or terminal write and
- * Migration repin in the sibling slices, takes the run's schedule row before
- * its execution row and its wait rows. The producers and the release all lock
- * the schedule row first, so a wake either commits before a release reads the
- * wait rows or finds the row `waiting` after the release commits.
+ * producer in the sibling slices, takes the run's schedule row before its
+ * execution row and its wait rows. The producers (`wakeExecutions`) and the
+ * release all lock the schedule row first, so a wake either commits before a
+ * release reads the wait rows or finds the row `waiting` after the release
+ * commits.
  */
 
-import { and, asc, eq, inArray, lte, or, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lte, or, type SQL, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import { sortBy } from "es-toolkit/array";
+import { compact, countBy, sortBy } from "es-toolkit/array";
 import {
   workflowExecutionSchedule,
   workflowExecutionSteps,
@@ -30,6 +31,7 @@ import {
   serializableTransaction,
 } from "#src/backend/lib/effect/database";
 import type {
+  CanceledOutletClaim,
   ClaimedExecution,
   CountedStepFailure,
   ExecutionSchedule,
@@ -201,6 +203,73 @@ export function endExecutions<A>(
 }
 
 /**
+ * Runs a producer's write as one transaction: a write that resolves parks of
+ * some runs, after which the runs it woke are made due.
+ *
+ * `candidates` names the runs the write may wake, read inside the transaction.
+ * Their schedule rows are locked first, ordered by id, whatever state each
+ * holds: a conditional update alone takes no lock when its predicate fails on
+ * a `leased` row, so a release reading the wait rows in the same window would
+ * miss the wake. `write` then reports which of the candidates it woke. Each of
+ * those runs' schedule rows that is `waiting`, or `queued` and not yet due,
+ * becomes `queued` and due at `now` at the latest, so a run in a retry backoff
+ * is woken at once; a `leased` row is left for its release, which reads the
+ * wakes, and a row already queued and due is left as it is. Answers the
+ * write's result and the runs it made due. Inside a fenced write the
+ * transaction is a savepoint of the fenced one.
+ */
+export function wakeExecutions<A>(
+  db: Executor,
+  input: {
+    now: Date;
+    candidates: (tx: WfGraphTransaction) => Promise<readonly string[]>;
+  },
+  write: (
+    tx: WfGraphTransaction,
+    candidateIds: readonly string[]
+  ) => Promise<{ result: A; woken: readonly string[] }>
+): Promise<{ result: A; due: string[] }> {
+  return db.transaction(async (tx) => {
+    const candidateIds = await input.candidates(tx);
+    await lockSchedules(tx, candidateIds);
+    const { result, woken } = await write(tx, candidateIds);
+    return { result, due: await requeueWokenRuns(tx, woken, input.now) };
+  });
+}
+
+/**
+ * Makes due the runs a producer woke, as `wakeExecutions` describes,
+ * answering which runs it made due. The caller holds their schedule rows.
+ */
+async function requeueWokenRuns(
+  tx: Executor,
+  executionIds: readonly string[],
+  now: Date
+): Promise<string[]> {
+  if (executionIds.length === 0) return [];
+  const requeued = await tx
+    .update(workflowExecutionSchedule)
+    .set({
+      state: "queued",
+      wakeAt: sql`least(${workflowExecutionSchedule.wakeAt}, ${now.toISOString()}::timestamptz)`,
+    })
+    .where(
+      and(
+        inArray(workflowExecutionSchedule.executionId, [...executionIds]),
+        or(
+          eq(workflowExecutionSchedule.state, "waiting"),
+          and(
+            eq(workflowExecutionSchedule.state, "queued"),
+            gt(workflowExecutionSchedule.wakeAt, now)
+          )
+        )
+      )
+    )
+    .returning({ executionId: workflowExecutionSchedule.executionId });
+  return compact(requeued.map((row) => row.executionId));
+}
+
+/**
  * Gives a run its schedule row, `queued` and due at `wakeAt`, inside the
  * transaction that inserts the run's execution row (`startForEntity`).
  */
@@ -302,33 +371,21 @@ export type ScheduleRepoMethods = {
     now: Date;
   }) => Effect.Effect<ClaimedExecution[], DatabaseError>;
   /**
-   * The producer's write: resolve one park with `wake` and re-queue its run.
+   * Write `wake` onto one park by its row id and make its run due, which is
+   * how the replay harness plays whichever producer resolves that park. A
+   * producer the application runs claims its park by what it knows instead
+   * (`claimWaitingStateById`, `requestCancelForEntity`, `repinVersion`).
    *
-   * The schedule row is locked first whatever state it holds. The wake is set
-   * only on a row still `waiting`, so each park takes one wake. The schedule
-   * row moves to `queued` only when this call set the wake and only from
-   * `waiting`; a leased run's release notices the wake instead.
+   * Runs through `wakeExecutions`. The wake is set only on a row still
+   * `waiting`, so each park takes one wake, and only a wake this call set
+   * makes the run due; a leased run's release notices the wake instead.
    */
-  readonly resolvePark: (input: {
+  readonly wakePark: (input: {
     executionId: string;
     waitStateId: string;
     wake: ParkWake;
     now: Date;
   }) => Effect.Effect<ParkResolution, DatabaseError>;
-  /**
-   * Take one run's schedule row back from whichever pass holds it, answering
-   * whether the run had a row.
-   *
-   * The row loses its owner token, lease, worker and running step and becomes
-   * `queued`, due at `now`, with its failure count unchanged. A pass that held
-   * the lease has its next fenced write refused with `LeaseLost`. The next
-   * claim's pass finds the run as it now stands, and drops the row of a run
-   * that has ended.
-   */
-  readonly revokeLease: (input: {
-    executionId: string;
-    now: Date;
-  }) => Effect.Effect<boolean, DatabaseError>;
   /**
    * Every memo row of one run's schedule row, which a pass loads before it
    * replays. A run with no schedule row has none.
@@ -405,50 +462,28 @@ async function resolveOverdueParks(
 }
 
 /**
- * Resolves every park of one run still `waiting` with `wake`, the way a
- * producer resolves one park, answering how many it resolved. The caller holds
- * the run's schedule row, so a release reads these wakes once this transaction
- * commits.
+ * Resolves every park still `waiting` of the runs named with `wake`, the way a
+ * producer resolves one park, answering the run of each park it resolved, once
+ * per park. The caller holds the runs' schedule rows, so a release reads these
+ * wakes once this transaction commits.
  */
 export async function resolveOpenParks(
   tx: Executor,
-  executionId: string,
+  executionIds: readonly string[],
   wake: ParkWake
-): Promise<number> {
+): Promise<string[]> {
+  if (executionIds.length === 0) return [];
   const resolved = await tx
     .update(workflowWaitStates)
     .set({ wake, status: "resuming" })
     .where(
       and(
-        eq(workflowWaitStates.executionId, executionId),
+        inArray(workflowWaitStates.executionId, [...executionIds]),
         eq(workflowWaitStates.status, "waiting")
       )
     )
-    .returning({ id: workflowWaitStates.id });
-  return resolved.length;
-}
-
-/**
- * Moves one run's schedule row from `waiting` to `queued` at `now`, answering
- * whether it moved. A `leased` row is left for its release, which reads the
- * wakes this transaction wrote. The caller holds the schedule row.
- */
-export async function requeueWaitingRun(
-  tx: Executor,
-  executionId: string,
-  now: Date
-): Promise<boolean> {
-  const requeued = await tx
-    .update(workflowExecutionSchedule)
-    .set({ state: "queued", wakeAt: now })
-    .where(
-      and(
-        eq(workflowExecutionSchedule.executionId, executionId),
-        eq(workflowExecutionSchedule.state, "waiting")
-      )
-    )
-    .returning({ id: workflowExecutionSchedule.id });
-  return requeued.length > 0;
+    .returning({ executionId: workflowWaitStates.executionId });
+  return resolved.map((row) => row.executionId);
 }
 
 const memoColumns = {
@@ -502,6 +537,31 @@ async function countFailureOnStep(
       },
     });
   return counted;
+}
+
+/** What `wakePark` answers, from whether it set the wake and what it made due. */
+export function parkResolution(produced: {
+  result: boolean;
+  due: readonly string[];
+}): ParkResolution {
+  return { resolved: produced.result, requeued: produced.due.length > 0 };
+}
+
+/**
+ * What `requestCancelForEntity` answers, from the runs its claim flagged, the
+ * run of each park its `cancel` wake resolved, and the runs it made due.
+ */
+export function canceledOutletClaims(produced: {
+  result: { flagged: readonly string[]; resolved: readonly string[] };
+  due: readonly string[];
+}): CanceledOutletClaim[] {
+  const parksByRun = countBy(produced.result.resolved, (id) => id);
+  const due = new Set(produced.due);
+  return produced.result.flagged.map((executionId) => ({
+    executionId,
+    resolvedParks: parksByRun[executionId] ?? 0,
+    requeued: due.has(executionId),
+  }));
 }
 
 /** Builds the schedule and step memo slice of `ExecutionRepo` over one database. */
@@ -593,54 +653,32 @@ export function makeScheduleMethods(
         )
         .pipe(Effect.flatMap(claimedExecutions)),
 
-    resolvePark: (input) =>
-      database.query((db) =>
-        db.transaction(async (tx) => {
-          // Taken first and unconditionally. A conditional update alone takes
-          // no lock when its predicate fails on a leased row, so a release
-          // reading the wait rows in the same window would miss this wake.
-          await tx
-            .select({ state: workflowExecutionSchedule.state })
-            .from(workflowExecutionSchedule)
-            .where(eq(workflowExecutionSchedule.executionId, input.executionId))
-            .for("update");
-          const resolved = await tx
-            .update(workflowWaitStates)
-            .set({ wake: input.wake, status: "resuming" })
-            .where(
-              and(
-                eq(workflowWaitStates.id, input.waitStateId),
-                eq(workflowWaitStates.executionId, input.executionId),
-                eq(workflowWaitStates.status, "waiting")
-              )
-            )
-            .returning({ id: workflowWaitStates.id });
-          if (resolved.length === 0) {
-            return { resolved: false, requeued: false };
-          }
-          return {
-            resolved: true,
-            requeued: await requeueWaitingRun(tx, input.executionId, input.now),
-          };
-        })
-      ),
-
-    revokeLease: (input) =>
-      database.query(async (db) => {
-        const revoked = await db
-          .update(workflowExecutionSchedule)
-          .set({
-            state: "queued",
-            wakeAt: input.now,
-            ownerToken: null,
-            leaseExpiresAt: null,
-            workerId: null,
-            runningStepId: null,
-          })
-          .where(eq(workflowExecutionSchedule.executionId, input.executionId))
-          .returning({ id: workflowExecutionSchedule.id });
-        return revoked.length > 0;
-      }),
+    wakePark: (input) =>
+      database
+        .query((db) =>
+          wakeExecutions(
+            db,
+            { now: input.now, candidates: async () => [input.executionId] },
+            async (tx) => {
+              const resolved = await tx
+                .update(workflowWaitStates)
+                .set({ wake: input.wake, status: "resuming" })
+                .where(
+                  and(
+                    eq(workflowWaitStates.id, input.waitStateId),
+                    eq(workflowWaitStates.executionId, input.executionId),
+                    eq(workflowWaitStates.status, "waiting")
+                  )
+                )
+                .returning({ executionId: workflowWaitStates.executionId });
+              return {
+                result: resolved.length > 0,
+                woken: resolved.map((row) => row.executionId),
+              };
+            }
+          )
+        )
+        .pipe(Effect.map(parkResolution)),
 
     listStepMemo: (executionId) =>
       database.query(async (db) => {

@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 import type {
   CloseNodeLogInput,
@@ -70,34 +70,12 @@ export function closeNodeLogWrite(
       );
 }
 
-/** The update behind `cancelOpenNodeLogs`. */
-export function cancelOpenNodeLogsWrite(executionId: string) {
-  return (database: SqliteExecutor) => {
-    const now = Date.now();
-    return database
-      .update(workflowExecutionLogs)
-      .set({
-        status: "cancelled",
-        completedAt: now,
-        duration: sql<string>`cast(${now} - ${workflowExecutionLogs.startedAt} as text)`,
-      })
-      .where(
-        and(
-          eq(workflowExecutionLogs.executionId, executionId),
-          inArray(workflowExecutionLogs.status, ["pending", "running"])
-        )
-      );
-  };
-}
-
 export function makeSqliteNodeLogsMethods(
   store: SqliteDatabase
 ): NodeLogsRepoMethods {
   return {
     openNodeLog: (input) => store.write(openNodeLogWrite(input)),
     closeNodeLog: (input) => store.write(closeNodeLogWrite(input)),
-    cancelOpenNodeLogs: (executionId) =>
-      store.write(cancelOpenNodeLogsWrite(executionId)),
     readNodeOutputs: (executionId) =>
       store.read((database) =>
         database

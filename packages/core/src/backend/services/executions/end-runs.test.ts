@@ -3,12 +3,11 @@ import { Effect, Layer } from "effect";
 // The mocks API has to be the one vitest itself exports; reaching it through the
 // `@effect/vitest` re-export leaves it unable to find the module registry.
 import { beforeEach, vi } from "vitest";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   SilentAppLoggerLayer,
-  stubExecutionDriver,
   stubExecutionRepo,
 } from "#src/backend/lib/effect/test-layers";
-import { DriverError } from "#src/backend/services/executions/driver";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
 import {
   announceSupersededRuns,
@@ -17,7 +16,6 @@ import {
 
 type Repo = ExecutionRepo["Service"];
 
-const stopRun = vi.fn(() => Effect.void as Effect.Effect<void, DriverError>);
 const endInFlight = vi.fn<Repo["endInFlight"]>(() =>
   Effect.succeed({
     executionId: "exec_1",
@@ -26,12 +24,10 @@ const endInFlight = vi.fn<Repo["endInFlight"]>(() =>
     didWrite: true,
   })
 );
-const cancelWaits = vi.fn<Repo["cancelWaits"]>(() => Effect.succeed([]));
 const recordAuditEvent = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 
-/** Every stop and every write lands, unless a case says otherwise. */
+/** Every write lands, unless a case says otherwise. */
 beforeEach(() => {
-  stopRun.mockImplementation(() => Effect.void);
   endInFlight.mockImplementation(() =>
     Effect.succeed({
       executionId: "exec_1",
@@ -40,39 +36,38 @@ beforeEach(() => {
       didWrite: true,
     })
   );
-  cancelWaits.mockImplementation(() => Effect.succeed([]));
   recordAuditEvent.mockImplementation(() => Effect.void);
 });
 
 const services = Layer.mergeAll(
   SilentAppLoggerLayer,
-  stubExecutionRepo({ endInFlight, cancelWaits, recordAuditEvent }),
-  stubExecutionDriver({ stopRun })
+  stubExecutionRepo({ endInFlight, recordAuditEvent })
 );
 
-const refusedStop = () =>
-  Effect.fail(new DriverError({ cause: "connection lost" }));
+const refusedWrite = () =>
+  Effect.fail(new DatabaseError({ cause: "connection lost" }));
 
 describe("cancelInFlightRuns", () => {
-  it.effect("reports and cleans only executions the executor stopped", () =>
+  it.effect("reports a run whose terminal write the database refused", () =>
     Effect.gen(function* () {
-      stopRun
-        .mockImplementationOnce(() => Effect.void)
-        .mockImplementationOnce(refusedStop);
+      endInFlight
+        .mockImplementationOnce(() =>
+          Effect.succeed({
+            executionId: "exec_success",
+            status: "canceled",
+            claim: null,
+            didWrite: true,
+          })
+        )
+        .mockImplementationOnce(refusedWrite);
 
       const summary = yield* cancelInFlightRuns({
         workflowId: "workflow_1",
         executionIds: ["exec_success", "exec_failed"],
-        waitStates: [
-          { id: "wait_1", executionId: "exec_success" },
-          { id: "wait_2", executionId: "exec_success" },
-          { id: "wait_3", executionId: "exec_failed" },
-        ],
         reason: "Cancelled by event",
         eventName: "appointment.cancelled",
       }).pipe(Effect.provide(services));
 
-      assert.strictEqual(stopRun.mock.calls.length, 2);
       assert.deepStrictEqual(endInFlight.mock.calls, [
         [
           {
@@ -89,10 +84,18 @@ describe("cancelInFlightRuns", () => {
           },
         ],
       ]);
-      assert.deepStrictEqual(cancelWaits.mock.calls, [[["wait_1", "wait_2"]]]);
       // One run_cancelled for the winner, one run_cancel_requested recording
-      // that the other run could not be stopped.
-      assert.strictEqual(recordAuditEvent.mock.calls.length, 2);
+      // that the other run's status could not be written.
+      assert.deepStrictEqual(
+        recordAuditEvent.mock.calls.map(([entry]) => [
+          entry.executionId,
+          entry.eventType,
+        ]),
+        [
+          ["exec_success", "run_cancelled"],
+          ["exec_failed", "run_cancel_requested"],
+        ]
+      );
       assert.deepStrictEqual(summary, {
         endedExecutionIds: ["exec_success"],
         failedExecutionIds: ["exec_failed"],
@@ -122,12 +125,10 @@ describe("cancelInFlightRuns", () => {
         const summary = yield* cancelInFlightRuns({
           workflowId: "workflow_1",
           executionIds: ["exec_claimed"],
-          waitStates: [{ id: "wait_1", executionId: "exec_claimed" }],
           reason: "Cancelled manually",
         }).pipe(Effect.provide(services));
 
-        assert.strictEqual(stopRun.mock.calls.length, 0);
-        assert.deepStrictEqual(cancelWaits.mock.calls, [[[]]]);
+        assert.strictEqual(recordAuditEvent.mock.calls.length, 0);
         // The claim is not a failure: the run that owns it is still walking, and
         // the caller answers a conflict rather than an internal failure.
         assert.deepStrictEqual(summary, {
@@ -138,54 +139,24 @@ describe("cancelInFlightRuns", () => {
       })
   );
 
-  it.effect("cancels an in-flight execution that has no wait state", () =>
+  it.effect("ends each execution once when it is named twice", () =>
     Effect.gen(function* () {
       const summary = yield* cancelInFlightRuns({
         workflowId: "workflow_1",
-        executionIds: ["exec_running"],
-        waitStates: [],
-        reason: "Cancelled by event appointment.rescheduled",
-        eventName: "appointment.rescheduled",
+        executionIds: ["exec_1", "exec_1"],
+        reason: "Cancelled by event",
       }).pipe(Effect.provide(services));
 
-      assert.deepStrictEqual(stopRun.mock.calls, [
-        [{ executionId: "exec_running" }],
-      ]);
-      assert.deepStrictEqual(cancelWaits.mock.calls, [[[]]]);
-      assert.deepStrictEqual(summary, {
-        endedExecutionIds: ["exec_running"],
-        failedExecutionIds: [],
-        claimedExecutionIds: [],
-      });
+      assert.strictEqual(endInFlight.mock.calls.length, 1);
+      assert.deepStrictEqual(summary.endedExecutionIds, ["exec_1"]);
     })
   );
 
-  it.effect(
-    "stops each execution once when several wait states share a run",
-    () =>
-      Effect.gen(function* () {
-        const summary = yield* cancelInFlightRuns({
-          workflowId: "workflow_1",
-          executionIds: ["exec_1", "exec_1"],
-          waitStates: [
-            { id: "wait_1", executionId: "exec_1" },
-            { id: "wait_2", executionId: "exec_1" },
-          ],
-          reason: "Cancelled by event",
-        }).pipe(Effect.provide(services));
-
-        assert.strictEqual(stopRun.mock.calls.length, 1);
-        assert.deepStrictEqual(summary.endedExecutionIds, ["exec_1"]);
-        assert.deepStrictEqual(cancelWaits.mock.calls, [
-          [["wait_1", "wait_2"]],
-        ]);
-      })
-  );
-
   // The compare-and-set race: the run finished between the caller's in-flight
-  // query and this write, so the row keeps its terminal status.
+  // query and this write, so the row keeps its terminal status. A run another
+  // cancel ended first is the same race.
   it.effect(
-    "does not count or audit an execution that finished before the cancel write",
+    "does not count or audit an execution that ended before the cancel write",
     () =>
       Effect.gen(function* () {
         endInFlight
@@ -193,6 +164,14 @@ describe("cancelInFlightRuns", () => {
             Effect.succeed({
               executionId: "exec_completed",
               status: "completed",
+              claim: null,
+              didWrite: false,
+            })
+          )
+          .mockImplementationOnce(() =>
+            Effect.succeed({
+              executionId: "exec_already_canceled",
+              status: "canceled",
               claim: null,
               didWrite: false,
             })
@@ -208,19 +187,16 @@ describe("cancelInFlightRuns", () => {
 
         const summary = yield* cancelInFlightRuns({
           workflowId: "workflow_1",
-          executionIds: ["exec_completed", "exec_still_waiting"],
-          waitStates: [
-            { id: "wait_1", executionId: "exec_completed" },
-            { id: "wait_2", executionId: "exec_still_waiting" },
+          executionIds: [
+            "exec_completed",
+            "exec_already_canceled",
+            "exec_still_waiting",
           ],
           reason: "Cancelled by event",
           eventName: "appointment.cancelled",
         }).pipe(Effect.provide(services));
 
-        assert.strictEqual(endInFlight.mock.calls.length, 2);
-        assert.deepStrictEqual(stopRun.mock.calls, [
-          [{ executionId: "exec_still_waiting" }],
-        ]);
+        assert.strictEqual(endInFlight.mock.calls.length, 3);
         assert.deepStrictEqual(recordAuditEvent.mock.calls, [
           [
             {
@@ -232,13 +208,6 @@ describe("cancelInFlightRuns", () => {
             },
           ],
         ]);
-        // The lost race's wait state joins the cleanup batch: its execution is
-        // terminal, and a still-waiting row on it would silently swallow future
-        // events via resume matching. The CAS inside `cancelWaits` keeps this
-        // safe for legitimately resumed waits.
-        assert.deepStrictEqual(cancelWaits.mock.calls, [
-          [["wait_1", "wait_2"]],
-        ]);
         assert.deepStrictEqual(summary, {
           endedExecutionIds: ["exec_still_waiting"],
           failedExecutionIds: [],
@@ -248,11 +217,11 @@ describe("cancelInFlightRuns", () => {
   );
 });
 
-// The rows are already terminal when this runs -- the entity lock flipped them --
-// so there is no compare-and-set here and no lost race to report. What is left is
-// the stop and the timeline.
+// The rows are already terminal when this runs -- the entity lock flipped them
+// and deleted their schedule rows -- so there is no compare-and-set here and no
+// lost race to report. What is left is the timeline.
 describe("announceSupersededRuns", () => {
-  it.effect("stops each displaced run and says why on its timeline", () =>
+  it.effect("says on each displaced run's timeline why it ended", () =>
     Effect.gen(function* () {
       const summary = yield* announceSupersededRuns({
         workflowId: "workflow_1",
@@ -261,7 +230,6 @@ describe("announceSupersededRuns", () => {
         eventName: "appointment.rescheduled",
       }).pipe(Effect.provide(services));
 
-      assert.strictEqual(stopRun.mock.calls.length, 1);
       assert.strictEqual(endInFlight.mock.calls.length, 0);
       assert.strictEqual(
         recordAuditEvent.mock.calls.at(0)?.[0]?.eventType,
@@ -271,11 +239,9 @@ describe("announceSupersededRuns", () => {
     })
   );
 
-  // A stop the database refused can leave a step already running to finish
-  // against a superseded row, and the id travels back so the caller can say so.
-  it.effect("names the runs whose stop was refused", () =>
+  it.effect("names the runs whose timeline entry was refused", () =>
     Effect.gen(function* () {
-      stopRun.mockImplementationOnce(refusedStop);
+      recordAuditEvent.mockImplementationOnce(refusedWrite);
 
       const summary = yield* announceSupersededRuns({
         workflowId: "workflow_1",

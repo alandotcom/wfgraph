@@ -344,15 +344,14 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
 
   // Between a Migration's wake and the next park the row is still `waiting`, so
   // a resume claim can take it and send a signal nothing is parked on. The claim
-  // writes its arrival onto the row, and the refused re-park is what sends the
+  // writes its wake onto the row, and the refused re-park is what sends the
   // Wait to read it.
-  it("resumes from the arrival recorded on a row that left waiting", async () => {
+  it("resumes from the resume wake recorded on a row that left waiting", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
     store.waitState = {
-      wake: null,
       status: "resumed",
-      arrival: {
-        signalType: "wait-resume",
+      wake: {
+        kind: "resume",
         eventName: "billing/payment.settled",
         payload: { id: "pay_1" },
       },
@@ -383,19 +382,18 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
       timedOut: false,
       event: "billing/payment.settled",
       payload: { id: "pay_1" },
-      // The second attempt read the arrival instead of parking again.
+      // The second attempt read the wake instead of parking again.
       hops: 1,
     });
     expect(run.value.results.after_wait).toBeDefined();
   });
 
-  it("keeps a recorded arrival when the target version changes the wait to delay mode", async () => {
+  it("keeps a recorded resume wake when the target version changes the wait to delay mode", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
     store.waitState = {
-      wake: null,
       status: "resumed",
-      arrival: {
-        signalType: "wait-resume",
+      wake: {
+        kind: "resume",
         eventName: "billing/payment.settled",
         payload: { id: "pay_1" },
       },
@@ -446,7 +444,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
 
   it("takes the cancel path when the row was cancelled between two parks", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
-    store.waitState = { status: "cancelled", arrival: null, wake: null };
+    store.waitState = { status: "cancelled", wake: null };
 
     const run = await runMigratedWait({
       executor,
@@ -475,7 +473,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
   // Exit and halts its branch.
   it("resumes as an Exit when an Exit claim refused the re-park", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
-    store.waitState = { status: "waiting", arrival: null, wake: null };
+    store.waitState = { status: "waiting", wake: null };
 
     const run = await runMigratedWait({
       executor,
@@ -523,7 +521,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
 
   it("fails the node when the row that left waiting records no wake", async () => {
     store.reparkAnswer = { ok: false, reason: "not_waiting" };
-    store.waitState = { status: "timed_out", arrival: null, wake: null };
+    store.waitState = { status: "timed_out", wake: null };
 
     const run = await runMigratedWait({
       executor,

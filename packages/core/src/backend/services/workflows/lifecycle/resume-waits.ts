@@ -12,12 +12,14 @@ import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payloa
 import { DEFAULT_QUERY_CONNECTIONS } from "#src/backend/lib/db/config";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { readCompiledWaitSubscriptions } from "#src/backend/engine/wait-match";
+import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-import type { WorkflowWaitState } from "#src/backend/services/executions/repo/contracts";
-import { wakeWait } from "#src/backend/services/workflows/lifecycle/wake-wait";
-import { isJsonObject, type JsonObject } from "@wfgraph/shared/types/json";
+import type {
+  ParkWake,
+  WorkflowWaitState,
+} from "#src/backend/services/executions/repo/contracts";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
-import { WAIT_ARRIVAL_METADATA_KEY } from "@wfgraph/shared/lifecycle/wait-signal";
 
 /** The JSON-safe portion of a wait row needed to match and wake one Event. */
 export type WaitDeliveryCandidate = {
@@ -34,26 +36,25 @@ type WaitMatchResult = { matched: boolean; unevaluated: string[] };
 
 /**
  * Whether a reread still names the same Event Wait under a newer park token,
- * either still `waiting` with no arrival or this delivery's, or `resuming` on
- * this delivery's own arrival. The second is a retried delivery whose earlier
- * attempt claimed the row under the newer token; its claim answers as claimed.
+ * either still `waiting` with no wake, or `resuming` on a `resume` wake this
+ * delivery wrote. The second is a retried delivery whose earlier attempt
+ * claimed the row under the newer token; its claim answers as claimed.
  */
 function canRefreshWaitCandidate(input: {
   candidate: WaitDeliveryCandidate;
   current: WorkflowWaitState;
+  /** The wake the row records, read from its `wake` column. */
+  wake: ParkWake | null;
   workflowId: string;
   eventType: string;
   deliveryId?: string | undefined;
 }): boolean {
-  const { candidate, current } = input;
-  const recordedArrival = current.metadata?.[WAIT_ARRIVAL_METADATA_KEY];
-  const arrivalIsAbsent = recordedArrival === undefined;
-  const arrivalIsThisDelivery =
+  const { candidate, current, wake } = input;
+  const wakeIsThisDelivery =
     input.deliveryId !== undefined &&
-    isJsonObject(recordedArrival) &&
-    recordedArrival.signalType === "wait-resume" &&
-    recordedArrival.eventName === input.eventType &&
-    recordedArrival.deliveryId === input.deliveryId;
+    wake?.kind === "resume" &&
+    wake.eventName === input.eventType &&
+    wake.deliveryId === input.deliveryId;
   return (
     current.id === candidate.id &&
     current.workflowId === input.workflowId &&
@@ -63,9 +64,8 @@ function canRefreshWaitCandidate(input: {
     current.resumeToken !== null &&
     current.resumeToken !== candidate.resumeToken &&
     current.subscribedEvents?.includes(input.eventType) === true &&
-    ((current.status === "waiting" &&
-      (arrivalIsAbsent || arrivalIsThisDelivery)) ||
-      (current.status === "resuming" && arrivalIsThisDelivery))
+    ((current.status === "waiting" && wake === null) ||
+      (current.status === "resuming" && wakeIsThisDelivery))
   );
 }
 
@@ -191,6 +191,7 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
 }) {
   const { waitState, eventType } = input;
   const repo = yield* ExecutionRepo;
+  const driver = yield* ExecutionDriver;
   const logger = (yield* AppLogger).get("wait-resume");
   const resumeToken = waitState.resumeToken;
   if (!resumeToken) {
@@ -240,31 +241,32 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   }
 
   const wakeCandidate = (candidate: WaitDeliveryCandidate, token: string) =>
-    wakeWait({
-      target: {
-        kind: "wait_state",
-        waitStateId: candidate.id,
-        token,
-        eventName: eventType,
-        deliveryId: input.deliveryId,
-        allowSameDeliveryRetry: true,
-      },
-      payload: input.payload,
-    }).pipe(
-      Effect.tapError((error) =>
-        logger.error("Failed to resume wait", {
-          workflowId: input.workflowId,
-          eventType,
+    driver
+      .resolvePark({
+        target: {
+          kind: "wait_state",
           waitStateId: candidate.id,
-          executionId: candidate.executionId,
-          nodeId: candidate.nodeId,
-          error,
-        })
-      )
-    );
+          token,
+          eventName: eventType,
+          deliveryId: input.deliveryId,
+        },
+        payload: input.payload,
+      })
+      .pipe(
+        Effect.tapError((error) =>
+          logger.error("Failed to resume wait", {
+            workflowId: input.workflowId,
+            eventType,
+            waitStateId: candidate.id,
+            executionId: candidate.executionId,
+            nodeId: candidate.nodeId,
+            error,
+          })
+        )
+      );
 
-  const firstOutcome = yield* wakeCandidate(waitState, resumeToken);
-  if (firstOutcome.status === "resumed") {
+  const firstClaim = yield* wakeCandidate(waitState, resumeToken);
+  if (firstClaim !== null) {
     return 1;
   }
 
@@ -274,12 +276,15 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
   let previousCandidate = waitState;
   while (true) {
     const current = yield* repo.findWaitStateById(waitState.id);
+    // Read second, so a wake written between the two reads is still seen.
+    const park = yield* repo.findPark(waitState.id);
     if (
       current === null ||
       current.resumeToken === null ||
       !canRefreshWaitCandidate({
         candidate: previousCandidate,
         current,
+        wake: park?.wake ?? null,
         workflowId: input.workflowId,
         eventType,
         deliveryId: input.deliveryId,
@@ -319,11 +324,11 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
       return 0;
     }
 
-    const refreshedOutcome = yield* wakeCandidate(
+    const refreshedClaim = yield* wakeCandidate(
       currentCandidate,
       current.resumeToken
     );
-    if (refreshedOutcome.status === "resumed") {
+    if (refreshedClaim !== null) {
       return 1;
     }
     previousCandidate = currentCandidate;

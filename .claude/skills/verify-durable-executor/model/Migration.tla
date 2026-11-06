@@ -252,7 +252,7 @@ MigrateWake ==
   /\ UNCHANGED <<holder, attempt, faults, pc, loaded, passFailed, sawParked, pinned, status,
                  aboveDone, rowVersion, mode, rowMode, belowDone, observers>>
 
-\* wakeWait for an Event the Wait subscribes to. An Event that finds the row
+\* The driver's resolvePark for an Event the Wait subscribes to. An Event that finds the row
 \* holding a migrate wake replaces it: the next pass reads the Event, fails the
 \* version fence, and resumes on the version the run was moved to.
 EventWake ==

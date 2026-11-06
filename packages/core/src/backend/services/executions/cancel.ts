@@ -49,9 +49,7 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
         (status) => status === execution.status
       );
 
-    // A canceled row can be a half-finished earlier request whose stop failed.
-    // Let the operation retry its stop, wait cleanup, and final audit.
-    if (!isInFlight && execution?.status !== "canceled") {
+    if (!isInFlight) {
       yield* logger.warn("Execution is not in flight and cannot be cancelled");
       yield* annotateServiceSpan({ outcome: "already_finished" });
       return yield* new Conflict({
@@ -62,17 +60,12 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
     const waitingStates = yield* repo.listWaitingStates(executionId);
 
     // The one run-ender a person reaches: the row behind its compare-and-set,
-    // the signal, the wait rows (whatever exist -- a run standing on any other
-    // node carries none), and the timeline entry are one thing. A Cancel
-    // Event takes the other path, flagging the run for its Canceled outlet
-    // rather than ending it (`lifecycle/cancel.ts`).
+    // which also cancels the run's wait rows and deletes its schedule row, and
+    // the timeline entry. A Cancel Event takes the other path, flagging the run
+    // for its Canceled outlet rather than ending it (`lifecycle/cancel.ts`).
     const ended = yield* cancelInFlightRuns({
       workflowId,
       executionIds: [executionId],
-      waitStates: waitingStates.map((state) => ({
-        id: state.id,
-        executionId,
-      })),
       reason: "Cancelled manually",
     });
 
@@ -100,7 +93,7 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
     });
 
     if (ended.failedExecutionIds.length > 0) {
-      yield* logger.warn("Cancel signal did not reach the run");
+      yield* logger.warn("Cancel could not be written or recorded");
       return yield* new InternalFailure({
         error: "Failed to cancel execution",
       });
@@ -123,8 +116,9 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
     return cancelled;
   },
   (effect, executionId) =>
-    // One seam left: `cancelInFlightRuns` answers with the ids a send failed on
-    // rather than failing, so the only way out of this body is a refused query.
+    // One seam left: `cancelInFlightRuns` answers with the ids a write failed
+    // on rather than failing, so the only way out of this body is a refused
+    // query.
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",

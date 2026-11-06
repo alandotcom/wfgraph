@@ -283,7 +283,8 @@ const parkWakeSchema = Schema.Union([
 ]);
 const readParkWake = readAs(parkWakeSchema);
 
-function parkWake(encoded: string | null): ParkWake | null {
+/** A wait row's `wake` column as the wake it holds, or null while parked. */
+export function sqliteParkWake(encoded: string | null): ParkWake | null {
   if (encoded === null) return null;
   const wake: ParkWake | undefined = readParkWake(JSON.parse(encoded));
   if (wake === undefined) throw new Error("Invalid SQLite wait wake");
@@ -304,7 +305,7 @@ export function sqliteParkState(
     executionId: row.executionId,
     status: waitStatus(row.status),
     parkStepId: row.parkStepId,
-    wake: parkWake(row.wake),
+    wake: sqliteParkWake(row.wake),
   };
 }
 

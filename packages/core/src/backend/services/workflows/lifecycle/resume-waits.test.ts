@@ -62,9 +62,33 @@ const resolveParkMock =
 const findWaitStateByIdMock = vi.fn<Repo["findWaitStateById"]>(() =>
   Effect.succeed(null)
 );
+const findParkMock = vi.fn<Repo["findPark"]>(() => Effect.succeed(null));
+
+/** The park a reread finds, resolved with a `resume` wake from `deliveryId`. */
+function resumedPark(
+  id: string,
+  executionId: string,
+  deliveryId: string | null
+) {
+  return Effect.succeed({
+    waitStateId: id,
+    executionId,
+    status: "resuming" as const,
+    parkStepId: null,
+    wake: {
+      kind: "resume" as const,
+      eventName: "event.update",
+      payload: { key: "value" },
+      deliveryId,
+    },
+  });
+}
 
 const services = Layer.mergeAll(
-  stubExecutionRepo({ findWaitStateById: findWaitStateByIdMock }),
+  stubExecutionRepo({
+    findWaitStateById: findWaitStateByIdMock,
+    findPark: findParkMock,
+  }),
   stubExecutionDriver({ resolvePark: resolveParkMock })
 );
 
@@ -165,6 +189,7 @@ describe("resumeWaitsMatchingEvent", () => {
     loggerErrorMock.mockReset();
     resolveParkMock.mockReset();
     findWaitStateByIdMock.mockReset();
+    findParkMock.mockReset();
 
     // `wait-match` captured the logger at module load, so spy the same category
     // instance's `error` rather than replacing `getAppLogger`. This module's
@@ -178,6 +203,7 @@ describe("resumeWaitsMatchingEvent", () => {
 
     resolveParkMock.mockImplementation(claimedPark);
     findWaitStateByIdMock.mockImplementation(() => Effect.succeed(null));
+    findParkMock.mockImplementation(() => Effect.succeed(null));
   });
 
   afterEach(() => {
@@ -299,13 +325,8 @@ describe("resumeWaitsMatchingEvent", () => {
         waitStateId: "1",
         token: "token_1",
         eventName: "event.update",
-        allowSameDeliveryRetry: true,
       },
-      arrival: {
-        signalType: "wait-resume",
-        eventName: "event.update",
-        payload: { key: "value" },
-      },
+      payload: { key: "value" },
     });
   });
 
@@ -561,23 +582,17 @@ describe("resumeWaitsMatchingEvent", () => {
     ]);
   });
 
-  it("does not refresh a recorded arrival when the delivery has no id", async () => {
+  it("does not refresh a row a resume already woke when the delivery has no id", async () => {
     resolveParkMock.mockImplementationOnce(() => Effect.succeed(null));
     findWaitStateByIdMock.mockImplementationOnce(() =>
       Effect.succeed(
         createPersistedWaitState("1", "exec_1", {
           resumeToken: "token_1_v2",
-          metadata: {
-            waitFor: [{ event: "event.update" }],
-            arrival: {
-              signalType: "wait-resume",
-              eventName: "event.update",
-              payload: { earlier: true },
-            },
-          },
+          status: "resuming",
         })
       )
     );
+    findParkMock.mockImplementationOnce(() => resumedPark("1", "exec_1", null));
 
     const result = await resumeWaits({
       workflowId: "workflow_1",
@@ -592,24 +607,19 @@ describe("resumeWaitsMatchingEvent", () => {
     expect(resolveParkMock).toHaveBeenCalledTimes(1);
   });
 
-  it("retries its own recorded arrival after token rotation", async () => {
+  it("retries its own recorded resume wake after token rotation", async () => {
     const deliveryId = "delivery_1";
     resolveParkMock.mockImplementationOnce(() => Effect.succeed(null));
     findWaitStateByIdMock.mockImplementationOnce(() =>
       Effect.succeed(
         createPersistedWaitState("1", "exec_1", {
           resumeToken: "token_1_v2",
-          metadata: {
-            waitFor: [{ event: "event.update" }],
-            arrival: {
-              signalType: "wait-resume",
-              eventName: "event.update",
-              deliveryId,
-              payload: { key: "value" },
-            },
-          },
+          status: "resuming",
         })
       )
+    );
+    findParkMock.mockImplementationOnce(() =>
+      resumedPark("1", "exec_1", deliveryId)
     );
 
     const result = await resumeWaits({
@@ -629,33 +639,24 @@ describe("resumeWaitsMatchingEvent", () => {
         waitStateId: "1",
         token: "token_1_v2",
         eventName: "event.update",
-        allowSameDeliveryRetry: true,
-      },
-      arrival: {
         deliveryId,
-        eventName: "event.update",
-        payload: { key: "value" },
       },
+      payload: { key: "value" },
     });
   });
 
-  it("does not replace an arrival owned by a different Event delivery", async () => {
+  it("does not replace a resume wake owned by a different Event delivery", async () => {
     resolveParkMock.mockImplementationOnce(() => Effect.succeed(null));
     findWaitStateByIdMock.mockImplementationOnce(() =>
       Effect.succeed(
         createPersistedWaitState("1", "exec_1", {
           resumeToken: "token_1_v2",
-          metadata: {
-            waitFor: [{ event: "event.update" }],
-            arrival: {
-              signalType: "wait-resume",
-              eventName: "event.update",
-              deliveryId: "delivery_older",
-              payload: { key: "value" },
-            },
-          },
+          status: "resuming",
         })
       )
+    );
+    findParkMock.mockImplementationOnce(() =>
+      resumedPark("1", "exec_1", "delivery_older")
     );
 
     const result = await resumeWaits({

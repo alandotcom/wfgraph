@@ -235,9 +235,7 @@ describe("execution start and cancel spans", () => {
             claim: null,
             didWrite: true,
           }),
-        cancelWaits: () => Effect.succeed([]),
-      }),
-      stubExecutionDriver({ stopRun: () => Effect.void })
+      })
     );
 
     await Effect.runPromise(

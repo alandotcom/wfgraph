@@ -56,7 +56,6 @@ export const findVersionByIdMock =
 export const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(
   () => Effect.void
 );
-export const stopRunMock = vi.fn<Driver["stopRun"]>(() => Effect.void);
 
 export const resolveEntityMock = vi.fn(
   async (): Promise<{ status: string; remindersEnabled: boolean } | null> => ({
@@ -464,7 +463,6 @@ export const lifecyclePorts = Layer.mergeAll(
   stubExecutionDriver({
     startRun: startRunMock,
     requestCanceledOutlet: requestCanceledOutletMock,
-    stopRun: stopRunMock,
   }),
   stubIntegrationRepo()
 );
@@ -491,7 +489,6 @@ export function resetGuardedStartMocks(): void {
   findByDeliveryMock.mockReset();
   findVersionByIdMock.mockReset();
   recordAuditEventMock.mockReset();
-  stopRunMock.mockReset();
   resolveEntityMock.mockReset();
   selectEntityIdMock.mockClear();
   selectCanceledEntityIdMock.mockClear();
@@ -511,5 +508,4 @@ export function resetGuardedStartMocks(): void {
     Effect.succeed(publishedVersion(createWorkflow({ rules: startRules })))
   );
   recordAuditEventMock.mockImplementation(() => Effect.void);
-  stopRunMock.mockImplementation(() => Effect.void);
 }

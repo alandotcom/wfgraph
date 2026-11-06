@@ -10,10 +10,8 @@ import {
   stubExecutionRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import {
-  DriverError,
-  type ExecutionDriver,
-} from "#src/backend/services/executions/driver";
+import { DatabaseError } from "#src/backend/lib/effect/database";
+import type { ExecutionDriver } from "#src/backend/services/executions/driver";
 import type { WorkflowVersion } from "#src/backend/lib/db/schema";
 import type {
   EntityStartOutcome,
@@ -28,7 +26,6 @@ type Driver = ExecutionDriver["Service"];
 
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const findVersionByIdMock = vi.fn<WorkflowRepo["Service"]["findVersionById"]>();
-const stopRunMock = vi.fn<Driver["stopRun"]>(() => Effect.void);
 
 const workflow = {
   id: "wf_1",
@@ -112,7 +109,6 @@ function stubStart(outcome: EntityStartOutcome) {
             calls.push(input);
             return outcome;
           }),
-        stopRun: stopRunMock,
       }),
       stubWorkflowRepo({ findVersionById: findVersionByIdMock })
     ),
@@ -128,13 +124,11 @@ const startedOutcome: EntityStartOutcome = {
 beforeEach(() => {
   recordAuditEventMock.mockReset();
   findVersionByIdMock.mockReset();
-  stopRunMock.mockReset();
 
   recordAuditEventMock.mockImplementation(() => Effect.void);
   findVersionByIdMock.mockImplementation(() =>
     Effect.succeed(versionRow({ id: "ver_1", version: 3 }))
   );
-  stopRunMock.mockImplementation(() => Effect.void);
 });
 
 describe("startWithConcurrency", () => {
@@ -178,7 +172,6 @@ describe("startWithConcurrency", () => {
           deliveryId: "dlv_4021",
         });
         assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
-        assert.strictEqual(stopRunMock.mock.calls.length, 0);
       })
     );
 
@@ -313,9 +306,6 @@ describe("startWithConcurrency", () => {
           supersededExecutionIds: ["exec_old"],
           failedToSupersede: [],
         });
-        assert.deepStrictEqual(stopRunMock.mock.calls[0]?.[0], {
-          executionId: "exec_old",
-        });
         assert.deepInclude(recordAuditEventMock.mock.calls[0]?.[0], {
           executionId: "exec_old",
           eventType: "run_superseded",
@@ -372,13 +362,13 @@ describe("startWithConcurrency", () => {
       })
     );
 
-    // A stop the database refused can leave a step already running to finish
-    // against a superseded row, so the caller hears about it rather than
+    // A timeline entry the database refused leaves a superseded run with no
+    // record of why it ended, so the caller hears about it rather than
     // reading one clean new run.
-    it.effect("carries a half-failed supersede back to the caller", () =>
+    it.effect("carries a half-recorded supersede back to the caller", () =>
       Effect.gen(function* () {
-        stopRunMock.mockReturnValue(
-          Effect.fail(new DriverError({ cause: "connection lost" }))
+        recordAuditEventMock.mockReturnValue(
+          Effect.fail(new DatabaseError({ cause: "connection lost" }))
         );
 
         const outcome = yield* startWithConcurrency({
@@ -402,9 +392,8 @@ describe("startWithConcurrency", () => {
           outcome.status === "started" ? outcome.failedToSupersede : [],
           ["exec_old"]
         );
-        assert.strictEqual(stopRunMock.mock.calls.length, 1);
         assert.strictEqual(
-          stopRunMock.mock.calls[0]?.[0].executionId,
+          recordAuditEventMock.mock.calls[0]?.[0].executionId,
           "exec_old"
         );
       })

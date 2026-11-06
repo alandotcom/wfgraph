@@ -92,8 +92,9 @@ export type ClaimedExecution = {
 
 /**
  * How a pass that wrote no terminal record ended, which decides the schedule
- * row and the memo row its release writes. Every outcome but `run_failed`
- * resets the run's own failure count.
+ * row and the memo row its release writes. `run_failed` counts one failure
+ * against the run's own failure count, `interrupted` leaves that count as it
+ * was, and every other outcome resets it.
  *
  * - `parked`: the body ended with work parked. The release re-queues the run
  *   when a park holds a wake the pass did not consume, and otherwise puts it to
@@ -109,12 +110,17 @@ export type ClaimedExecution = {
  * - `fence_refused`: a version fence refused a write because a Migration moved
  *   the run. Nothing failed, so the release re-queues the run at once and
  *   counts nothing, and the next pass loads the version the run now pins.
+ * - `interrupted`: the pass was interrupted before it settled, as a worker's
+ *   dispose interrupts a pass still running when its drain ends. Nothing
+ *   failed, so the release re-queues the run at once and counts nothing,
+ *   against the run or against the step that was running.
  */
 export type PassOutcome =
   | { kind: "parked" }
   | { kind: "step_failed"; stepId: string; error: string; backoffMs: number }
   | { kind: "run_failed"; error: string; backoffMs: number }
-  | { kind: "fence_refused" };
+  | { kind: "fence_refused" }
+  | { kind: "interrupted" };
 
 /** The schedule row a release left behind. */
 export type ReleasedSchedule = {
@@ -156,8 +162,9 @@ export type ParkResolution = {
   /** Whether this call set the wake. False when the row had left `waiting`. */
   resolved: boolean;
   /**
-   * Whether this call moved a `waiting` schedule row to `queued`. Only a wake
-   * this call set re-queues the run.
+   * Whether this call made the run due: its schedule row is `queued` and due
+   * by the write's `now`. Only a wake this call set makes the run due, and a
+   * `leased` row is left for its release.
    */
   requeued: boolean;
 };
@@ -174,9 +181,17 @@ export type CanceledOutletClaim = {
    * parks only under a Cancel claim.
    */
   resolvedParks: number;
-  /** Whether the claim moved the run's schedule row from `waiting` to `queued`. */
+  /** Whether the claim made the run due, as `ParkResolution.requeued` says. */
   requeued: boolean;
 };
+
+/**
+ * What a Migration's repin did. A run that moved is made due unless a pass
+ * holds it, in which case that pass's release reads the `migrate` wakes.
+ */
+export type RepinOutcome =
+  | { moved: false }
+  | { moved: true; requeued: boolean };
 
 /** One row of `workflow_executions`, as the Runs view and the engine see it. */
 export type WorkflowExecution = typeof workflowExecutions.$inferSelect;

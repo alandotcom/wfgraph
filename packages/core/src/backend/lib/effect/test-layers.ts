@@ -361,19 +361,15 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   recordAuditEvent: refuse("recordAuditEvent"),
   openNodeLog: refuse("openNodeLog"),
   closeNodeLog: refuse("closeNodeLog"),
-  cancelOpenNodeLogs: refuse("cancelOpenNodeLogs"),
   readNodeOutputs: refuse("readNodeOutputs"),
   startWait: refuse("startWait"),
   reparkWait: refuse("reparkWait"),
   findWaitStateById: refuse("findWaitStateById"),
   markWaitStatus: refuse("markWaitStatus"),
   settleWaitTimeout: refuse("settleWaitTimeout"),
-  cancelWaits: refuse("cancelWaits"),
-  cancelWaitsForExecution: refuse("cancelWaitsForExecution"),
   listWaitsForEvent: refuse("listWaitsForEvent"),
   claimWaitingStateByToken: refuse("claimWaitingStateByToken"),
   claimWaitingStateById: refuse("claimWaitingStateById"),
-  listActiveWaitStates: refuse("listActiveWaitStates"),
 
   listWaitingStates: refuse("listWaitingStates"),
   listOpenWaitNodeIds: refuse("listOpenWaitNodeIds"),
@@ -388,8 +384,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   findPark: refuse("findPark"),
   findSchedule: refuse("findSchedule"),
   claimDue: refuse("claimDue"),
-  resolvePark: refuse("resolvePark"),
-  revokeLease: refuse("revokeLease"),
+  wakePark: refuse("wakePark"),
   listStepMemo: refuse("listStepMemo"),
   // `fenced` answers a set of writes, each of which dies when called, the way
   // every other method here does.
@@ -458,7 +453,6 @@ const executionDriverStubs: ExecutionDriver["Service"] = {
   resolvePark: refuse("resolvePark"),
   requestCanceledOutlet: refuse("requestCanceledOutlet"),
   migrateRun: refuse("migrateRun"),
-  stopRun: refuse("stopRun"),
 };
 
 export function stubExecutionDriver(

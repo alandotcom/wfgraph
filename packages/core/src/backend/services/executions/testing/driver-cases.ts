@@ -421,11 +421,7 @@ function describeCases(
         const wakesBefore = app.worker.calls();
         const resolution = yield* driver.resolvePark({
           target: { kind: "resume_token", token: `${run.executionId}-wait` },
-          arrival: {
-            signalType: "wait-resume",
-            eventName: null,
-            payload: { approved: true },
-          },
+          payload: { approved: true },
         });
         return {
           resolution,
@@ -447,7 +443,10 @@ function describeCases(
     expect(result.schedule?.state).toBe("leased");
   });
 
-  it("stops a run by clearing its lease, so the pass holding it is refused its next write, and wakes the loop", async () => {
+  // A producer's re-queue pulls a queued row's `wake_at` forward, so a run
+  // waiting out a retry backoff acts on a Cancel Event at once rather than
+  // when its backoff ends.
+  it("makes a run in a retry backoff due at once when a Cancel claim lands, and wakes the loop", async () => {
     const app = appOn(await openConnection());
     const run = await app.startRun(markGraph);
 
@@ -459,41 +458,49 @@ function describeCases(
           (row) => row.executionId === run.executionId
         );
         if (claimed === undefined) throw new Error("The run was not claimed");
-        yield* driver.stopRun({ executionId: run.executionId });
-        const wakesAfterStop = app.worker.calls();
-        // A run with no schedule row has nothing to stop.
-        yield* driver.stopRun({ executionId: "exec_without_a_schedule_row" });
-        const refused = yield* Effect.flip(
-          executions
-            .fenced({
-              scheduleId: claimed.scheduleId,
-              executionId: run.executionId,
-              ownerToken: claimed.ownerToken,
-            })
-            .writeStepMemo({
+        yield* executions
+          .fenced({
+            scheduleId: claimed.scheduleId,
+            executionId: run.executionId,
+            ownerToken: claimed.ownerToken,
+          })
+          .releasePass({
+            outcome: {
+              kind: "step_failed",
               stepId: "step_1",
-              value: "stale",
-              leaseExpiresAt: new Date(Date.now() + 60_000),
-            })
-        );
+              error: "vendor timed out",
+              backoffMs: 60 * 60 * 1000,
+            },
+            now: new Date(),
+          });
+        const backoff = yield* executions.findSchedule(run.executionId);
+        const wakesBefore = app.worker.calls();
+        const claims = yield* driver.requestCanceledOutlet({
+          workflowId: run.workflowId,
+          runMode: "live",
+          entityValue: run.entityValue,
+          eventName: CANCEL_EVENT,
+          payload: {},
+        });
         return {
-          refused: refused._tag,
-          wakesAfterStop,
-          wakes: app.worker.calls(),
+          backoff,
+          claims,
+          wakes: app.worker.calls() - wakesBefore,
           schedule: yield* executions.findSchedule(run.executionId),
         };
       })
     );
 
-    expect(result.refused).toBe("LeaseLost");
-    expect(result.schedule).toMatchObject({
-      state: "queued",
-      ownerToken: null,
-      leaseExpiresAt: null,
-    });
-    // One wake for the start, one for the stop, none for the run with no row.
-    expect(result.wakesAfterStop).toBe(2);
-    expect(result.wakes).toBe(2);
+    expect(result.backoff?.state).toBe("queued");
+    expect(result.backoff?.wakeAt.getTime()).toBeGreaterThan(
+      Date.now() + 30 * 60 * 1000
+    );
+    expect(result.claims).toEqual([
+      { executionId: run.executionId, resolvedParks: 0, requeued: true },
+    ]);
+    expect(result.wakes).toBe(1);
+    expect(result.schedule?.state).toBe("queued");
+    expect(result.schedule?.wakeAt.getTime()).toBeLessThanOrEqual(Date.now());
   });
 }
 

@@ -343,32 +343,65 @@ function describeCases(
     });
   });
 
-  it("interrupts a pass still running once its drain deadline passes, leaving its row leased and its step unrecorded", async () => {
+  // A graceful restart during a long step must not spend that step's retry.
+  // The interrupted pass hands its row back as it is interrupted, so the next
+  // claim finds a queued row and sweeps no expired lease.
+  it("interrupts a pass still running once its drain deadline passes, releasing its row due at once and counting no failure", async () => {
     const harness = await open();
     const executionId = await harness.start(oneActionThenMark("test/held"));
-    const loop = harness.loop({ drainMs: 100, workerId: "worker_draining" });
+    const loop = harness.loop({
+      drainMs: 100,
+      workerId: "worker_draining",
+      heartbeatMs: 20,
+    });
     await heldStep.entered;
+    // A heartbeat records the held step as running, which is the step a swept
+    // lease would count a failure against.
+    await sleep(100);
 
     // The loop returns with the step body still held, because its pass was
     // interrupted at the deadline.
+    const stoppedAt = Date.now();
     await loop.stop();
     heldStep.release();
     // The step body returns after its pass ended. Its memo write runs on a
     // fiber the interrupted pass closed, so it never reaches the database.
     await sleep(200);
 
-    expect(await harness.schedule(executionId)).toMatchObject({
-      state: "leased",
-      workerId: "worker_draining",
+    const released = await harness.schedule(executionId);
+    expect(released).toMatchObject({
+      state: "queued",
+      attempt: 0,
+      workerId: null,
+      ownerToken: null,
+      leaseExpiresAt: null,
+      runningStepId: null,
     });
-    const memo = await harness.connection.run(
-      Effect.flatMap(ExecutionRepo, (executions) =>
-        executions.listStepMemo(executionId)
-      )
+    expect(released?.wakeAt.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(released?.wakeAt.getTime()).toBeGreaterThanOrEqual(stoppedAt - 1);
+
+    const reclaimed = await harness.connection.run(
+      Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        const [claimed] = yield* executions.claimDue({
+          workerId: "worker_next",
+          limit: 1,
+          leaseMs: 60_000,
+          now: new Date(),
+        });
+        return {
+          claimed,
+          memo: yield* executions.listStepMemo(executionId),
+        };
+      })
     );
-    expect(memo.filter((entry) => entry.stepId.includes("dispatch"))).toEqual(
-      []
+    expect(reclaimed.claimed).toMatchObject({ executionId, attempt: 0 });
+    expect(reclaimed.memo).not.toContainEqual(
+      expect.objectContaining({ status: "failing" })
     );
+    expect(
+      reclaimed.memo.filter((entry) => entry.stepId.includes("dispatch"))
+    ).toEqual([]);
     expect(marks.has("after")).toBe(false);
   });
 

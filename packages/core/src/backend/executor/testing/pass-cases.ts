@@ -54,6 +54,17 @@ const ENTITY = "appointment_1";
 
 let heldStep = createGate();
 
+/**
+ * How many times the `test/flaky` handler has run in the current case. Its
+ * first call throws outside any step, which fails its node with no step having
+ * thrown; every later call succeeds.
+ */
+let flakyCalls = 0;
+/** How many times the `test/throws-once` step has run in the current case. */
+let throwsOnceCalls = 0;
+/** Settles once the `flaky` node's log close is memoized. */
+let flakyClosed = Promise.withResolvers<void>();
+
 const actions = createWorkflowActions(
   assembleExtensions({
     actions: [
@@ -77,6 +88,36 @@ const actions = createWorkflowActions(
             Promise.reject(new Error("The vendor is down"))
           );
           return {};
+        },
+      }),
+      defineAction({
+        id: "test/flaky",
+        label: "Flaky",
+        description: "Fails its node outside any step on its first call",
+        input: Schema.Struct({}),
+        handler: async ({ step }) => {
+          flakyCalls += 1;
+          if (flakyCalls === 1) throw new Error("The vendor answered nonsense");
+          await step.run("dispatch", () => Promise.resolve(null));
+          return { sent: true };
+        },
+      }),
+      defineAction({
+        id: "test/throws-once",
+        label: "Throws once",
+        description:
+          "Runs one durable step that throws on its first call, once the flaky node's log close is memoized",
+        input: Schema.Struct({}),
+        handler: async ({ step }) => {
+          await step.run("dispatch", async () => {
+            throwsOnceCalls += 1;
+            if (throwsOnceCalls === 1) {
+              await flakyClosed.promise;
+              throw new Error("The vendor is down");
+            }
+            return null;
+          });
+          return { sent: true };
         },
       }),
       defineAction({
@@ -189,6 +230,9 @@ function describeCases(
   async function startRun(graph: SerializedWorkflowGraph): Promise<Harness> {
     offsetMs = 0;
     heldStep = createGate();
+    flakyCalls = 0;
+    throwsOnceCalls = 0;
+    flakyClosed = Promise.withResolvers<void>();
     const connection = await openConnection();
     const executionId = await connection.run(
       Effect.gen(function* () {
@@ -278,7 +322,7 @@ function describeCases(
             error: log.error,
           })),
           events: events.map((event) => event.eventType),
-          waits: yield* executions.listActiveWaitStates(executionId),
+          waits: yield* executions.listWaitingStates(executionId),
           schedule: yield* executions.findSchedule(executionId),
           memo: yield* executions.listStepMemo(executionId),
         };
@@ -332,7 +376,7 @@ function describeCases(
                   return Effect.void;
                 }
                 woken = true;
-                return repo.resolvePark({
+                return repo.wakePark({
                   executionId: harness.executionId,
                   waitStateId: input.waitStateId,
                   wake: {
@@ -508,9 +552,9 @@ function describeCases(
       ...repo,
       listStepMemo: (executionId) =>
         Effect.gen(function* () {
-          const [wait] = yield* repo.listActiveWaitStates(executionId);
+          const [wait] = yield* repo.listWaitingStates(executionId);
           if (!wait) throw new Error("No parked Wait to migrate");
-          migrated = yield* repo.repinVersion({
+          const repinned = yield* repo.repinVersion({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
@@ -519,6 +563,7 @@ function describeCases(
             ],
             now: now(),
           });
+          migrated = repinned.moved;
           return yield* repo.listStepMemo(executionId);
         }),
     });
@@ -601,9 +646,9 @@ function describeCases(
       ...failPark(repo),
       listStepMemo: (executionId) =>
         Effect.gen(function* () {
-          const [wait] = yield* repo.listActiveWaitStates(executionId);
+          const [wait] = yield* repo.listWaitingStates(executionId);
           if (!wait) throw new Error("No parked Wait to migrate");
-          migrated = yield* repo.repinVersion({
+          const repinned = yield* repo.repinVersion({
             executionId,
             fromVersionId: "ver_1",
             toVersionId: "ver_2",
@@ -612,6 +657,7 @@ function describeCases(
             ],
             now: now(),
           });
+          migrated = repinned.moved;
           return yield* repo.listStepMemo(executionId);
         }),
     });
@@ -667,9 +713,9 @@ function describeCases(
       Effect.gen(function* () {
         const repo = yield* ExecutionRepo;
         const executionId = harness.executionId;
-        const [wait] = yield* repo.listActiveWaitStates(executionId);
+        const [wait] = yield* repo.listWaitingStates(executionId);
         if (!wait) throw new Error("No parked Wait to migrate");
-        const migrated = yield* repo.repinVersion({
+        const repinned = yield* repo.repinVersion({
           executionId,
           fromVersionId: "ver_1",
           toVersionId: "ver_2",
@@ -681,14 +727,13 @@ function describeCases(
           resumeToken: wait.resumeToken,
           eventName: "app/approved",
           arrival: {
-            signalType: "wait-resume",
             eventName: "app/approved",
             payload: { approvedBy: "dana" },
           },
           now: now(),
         });
         return {
-          migrated,
+          migrated: repinned.moved,
           wake: (yield* repo.findPark(wait.id))?.wake,
           // The repin already re-queued the run.
           requeued: claim?.requeued,
@@ -758,6 +803,56 @@ function describeCases(
       { name: "writeStepMemo", outcome: "LeaseLost" },
     ]);
     expect(await readRun(harness)).toEqual(afterLive);
+  });
+
+  // A node's log close is memoized per verdict. The run's own failure count is
+  // reset by every release, so a close keyed on it would find the first pass's
+  // `error` close on a later pass that succeeds, and the row would keep `error`.
+  it("closes a node's log row as success when it succeeds on a later pass after failing with no step thrown", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode(),
+          actionNode("flaky", "test/flaky"),
+          actionNode("throws_once", "test/throws-once"),
+        ],
+        edges: [
+          edge("entry", "flaky", "started"),
+          edge("entry", "throws_once", "started"),
+        ],
+      })
+    );
+    const signalFlakyClosed = wrapFenced((writes) => ({
+      ...writes,
+      writeStepMemo: (input) =>
+        writes.writeStepMemo(input).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              if (input.stepId.startsWith("node:flaky:log-close")) {
+                flakyClosed.resolve();
+              }
+            })
+          )
+        ),
+    }));
+
+    // The flaky node fails with no step thrown and closes its row as an error,
+    // then the sibling's step throws, which ends the pass and resets the
+    // run's failure count.
+    expect(await harness.pass({ wrap: signalFlakyClosed })).toMatchObject({
+      kind: "retry",
+      schedule: { state: "queued", attempt: 0 },
+    });
+    expect(await logsOf(harness, "flaky")).toMatchObject([{ status: "error" }]);
+
+    expect(await harness.pass()).toEqual({ kind: "ended" });
+    expect(flakyCalls).toBe(2);
+    expect(await logsOf(harness, "flaky")).toMatchObject([
+      { status: "success", output: { sent: true }, error: null },
+    ]);
+    expect(await logsOf(harness, "throws_once")).toMatchObject([
+      { status: "success" },
+    ]);
   });
 
   it("keeps one log row when the lease is lost between a log open and its memo row", async () => {

@@ -10,7 +10,7 @@
  * because a candidate read followed by an insert is not a decision two arrivals
  * can share. The same transaction schedules the new run on the executor and
  * writes its "run started" entry. What is left here follows that transaction:
- * stop the runs it displaced and write their timelines.
+ * write the timelines of the runs it displaced.
  */
 
 import { Effect } from "effect";
@@ -57,8 +57,9 @@ export type StartRefusalReason =
  *
  * `supersededExecutionIds` carries ids rather than a count because those runs are
  * ending, so the caller knows not to deliver the same Event to their waits.
- * `failedToSupersede` names the runs no signal reached, which is what stops a
- * half-failed supersede reading as one clean new run.
+ * `failedToSupersede` names the runs whose supersede the database refused to
+ * record on their timelines, which is what stops a half-recorded supersede
+ * reading as one clean new run.
  */
 export type StartOutcome =
   | {
@@ -137,10 +138,10 @@ export const startWithConcurrency = Effect.fn("startWithConcurrency")(
       });
     }
 
-    // The displaced rows already say `superseded`, so what is left is telling
-    // those runs to stop and putting the reason on their timelines. A signal that
-    // never lands leaves a live run against a superseded row, which is why the ids
-    // it failed on travel back to the caller.
+    // The displaced rows already say `superseded` and lost their schedule rows
+    // in the same transaction, so what is left is putting the reason on their
+    // timelines. The ids whose entry the database refused travel back to the
+    // caller.
     const announced =
       opened.supersededExecutionIds.length > 0
         ? yield* announceSupersededRuns({

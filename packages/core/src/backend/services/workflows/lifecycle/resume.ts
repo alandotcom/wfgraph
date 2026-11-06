@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { catchStatedSeamFailures } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
-import { wakeWait } from "#src/backend/services/workflows/lifecycle/wake-wait";
+import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
 type WorkflowResumeSuccess = {
@@ -25,13 +25,14 @@ const resumeLogger = Effect.map(AppLogger, (appLogger) =>
  */
 export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
   function* (input: { token: string; body: JsonObject }) {
-    const result = yield* wakeWait({
+    const driver = yield* ExecutionDriver;
+    const claim = yield* driver.resolvePark({
       target: { kind: "resume_token", token: input.token },
       payload: input.body,
     });
 
     // A wake that claimed nothing is a wait the caller cannot reach.
-    if (result.status === "unclaimed") {
+    if (claim === null) {
       const logger = yield* resumeLogger;
       yield* logger.warn("Wait not found or no longer active");
       return yield* new NotFound({
@@ -42,7 +43,7 @@ export const resumeWaitByToken = Effect.fn("resumeWaitByToken")(
     const resumed: WorkflowResumeSuccess = {
       success: true,
       status: "resumed",
-      executionId: result.executionId,
+      executionId: claim.waitState.executionId,
     };
     return resumed;
   },

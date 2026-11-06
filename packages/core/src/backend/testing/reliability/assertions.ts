@@ -157,9 +157,9 @@ export async function expectSettledExecution(
       rows.every((row) => !["RUNNING", "QUEUED"].includes(row.status))
   );
   expect(deliveries.filter((run) => run.status !== "COMPLETED")).toEqual([]);
-  expect(await host.run(host.repo.listActiveWaitStates(executionId))).toEqual(
-    []
-  );
+  // The terminal write cancels every open park in its own transaction, so a
+  // run that ended leaves no wait row waiting.
+  expect(await host.run(host.repo.listWaitingStates(executionId))).toEqual([]);
   const logs = await host.run(host.repo.listLogs(executionId));
   expect(
     logs.filter((log) => log.status === "running" || log.status === "pending")

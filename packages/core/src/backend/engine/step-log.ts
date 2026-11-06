@@ -132,11 +132,14 @@ function closeStepLogQuietly(
  * attempt, so an unmemoized open would insert a second row per attempt rather
  * than close the first.
  *
- * The close carries the attempt in its step id, which is what lets a retry
- * correct a verdict an earlier attempt wrote while a plain replay leaves the row
- * alone. A close memoized under a fixed id would freeze the first verdict; an
- * unmemoized close would rewrite the row on every replay, and each replay reads
- * its work back out of the memo, so the duration it records is near zero.
+ * The close carries its own status in its step id (`log-close:success` or
+ * `log-close:error`), which is what lets a later attempt that succeeds correct
+ * an `error` an earlier attempt wrote while a plain replay leaves the row
+ * alone. The fenced close updates only a row still `running` or `error`, so a
+ * success is never overwritten by an error. A close memoized under one fixed
+ * id would freeze the first verdict; an unmemoized close would rewrite the row
+ * on every replay, and each replay reads its work back out of the memo, so the
+ * duration it records is near zero.
  *
  * Each attempt times its own work. The handle's start time came out of the memo
  * with the row's id, so a duration taken from it would grow with everything that
@@ -172,13 +175,14 @@ export function runWithStepLog<T extends StepResult, E, R>(
     const startedAt = Date.now();
     const elapsed = () => Date.now() - startedAt;
 
-    // One attempt closes the row down one path, so the two callers below share an
-    // id. The step answers null because a memoized value has to be JSON-safe.
+    // A close is memoized once per verdict, so the callers below closing with
+    // the same status share an id. The step answers null because a memoized
+    // value has to be JSON-safe.
     const closeOnce = (close: StepLogClose) =>
       runDurable(
         runtime,
         {
-          id: `node:${context.nodeId}:log-close:${runtime.attempt}`,
+          id: `node:${context.nodeId}:log-close:${close.status}`,
           name: `${context.nodeName} (close)`,
         },
         Effect.as(

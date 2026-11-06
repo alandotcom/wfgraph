@@ -1,9 +1,9 @@
 /**
  * `ExecutionDriver`: what a producer asks of the durable executor, by intent.
  * Each method commits its row write through `ExecutionRepo` in one
- * transaction, then, when the write made a run due, wakes this process's
- * worker loop and announces the run to other processes. A lost wake costs at
- * most one poll interval.
+ * transaction, then follows one rule: when the write made a run due, it wakes
+ * this process's worker loop and announces the run to other processes. A lost
+ * wake costs at most one poll interval.
  */
 
 import { Clock, Context, Effect, Layer, Schema } from "effect";
@@ -19,7 +19,6 @@ import {
   type WorkflowExecution,
 } from "#src/backend/services/executions/repo";
 import type { WaitResumeClaim } from "#src/backend/services/executions/repo/waits";
-import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
 /**
@@ -48,7 +47,8 @@ const now = Effect.map(Clock.currentTimeMillis, (millis) => new Date(millis));
  * A manual resume from the Runs view names the park's own token. An Event
  * delivery names the row it selected and the Event it is delivering, which the
  * claim requires the row to still be subscribed to: a Migration can re-park the
- * row between the selection and the claim.
+ * row between the selection and the claim. `deliveryId` is the delivery that
+ * carried the Event, which the claim uses to recognise a retry of itself.
  */
 export type ParkTarget =
   | { kind: "resume_token"; token: string }
@@ -57,8 +57,7 @@ export type ParkTarget =
       waitStateId: string;
       token: string;
       eventName: string;
-      /** Permit only an empty arrival slot or this arrival's own delivery id. */
-      allowSameDeliveryRetry?: boolean | undefined;
+      deliveryId?: string | undefined;
     };
 
 export class ExecutionDriver extends Context.Service<
@@ -75,15 +74,20 @@ export class ExecutionDriver extends Context.Service<
     ) => Effect.Effect<EntityStartOutcome, DriverError>;
     /**
      * Claim the event park `target` addresses for an Event or a manual resume,
-     * and resolve it with `arrival` as a `resume` wake, re-queueing its run.
-     * The claim and the wake are one write (`claimWaitingStateById` and
+     * and resolve it with a `resume` wake carrying `payload`, making its run
+     * due. The claim and the wake are one write (`claimWaitingStateById` and
      * `claimWaitingStateByToken` in `ExecutionRepo`). Answers the park it
      * claimed, or null when no row could be claimed; a run whose pass holds it
      * is re-queued by that pass's release.
+     *
+     * The run's next pass reads the wake from the row, so it owns the
+     * Execution's running status, the timeline entry for the wake, and closing
+     * the row.
      */
     readonly resolvePark: (input: {
       target: ParkTarget;
-      arrival: WaitArrival;
+      /** What the Event or the Runs view sent, which the woken run reads back. */
+      payload: JsonObject;
     }) => Effect.Effect<WaitResumeClaim | null, DriverError>;
     /**
      * Claim every in-flight run of one entity for its Canceled outlet,
@@ -109,16 +113,6 @@ export class ExecutionDriver extends Context.Service<
       toVersionId: string;
       expectedWaitStates: readonly { id: string; resumeToken: string | null }[];
     }) => Effect.Effect<boolean, DriverError>;
-    /**
-     * Take a run back from the pass that holds it, for a run a policy cancel
-     * ended. The terminal write already cancelled the run's open parks and
-     * deleted its schedule row; when the row is still there, this clears its
-     * lease token, so the pass's next write is refused, and makes the row due
-     * now, so the next pass drops it. A run with no row is left alone.
-     */
-    readonly stopRun: (input: {
-      executionId: string;
-    }) => Effect.Effect<void, DriverError>;
   }
 >()("@wfgraph/core/ExecutionDriver") {}
 
@@ -136,12 +130,18 @@ export type ExecutionDriverWakes = {
 export function makeExecutionDriverLayer(
   wakes: ExecutionDriverWakes
 ): Layer.Layer<ExecutionDriver, never, ExecutionRepo> {
-  /** Runs once the write that made `executionId` due has committed. */
-  const runDue = (executionId: string) =>
+  /**
+   * Runs once the write that made `executionIds` due has committed, and does
+   * nothing when it made none due.
+   */
+  const runDue = (executionIds: readonly string[]) =>
     Effect.sync(() => {
+      if (executionIds.length === 0) return;
       wakes.worker.wake();
       if (wakes.persistence.kind === "notify") {
-        wakes.persistence.broadcast.announce(executionId);
+        for (const executionId of executionIds) {
+          wakes.persistence.broadcast.announce(executionId);
+        }
       }
     });
 
@@ -157,34 +157,37 @@ export function makeExecutionDriverLayer(
           // A start answered with the row an earlier attempt committed wakes
           // the loops again, which costs one claim that may lease nothing.
           if (outcome.status === "started") {
-            yield* runDue(outcome.execution.id);
+            yield* runDue([outcome.execution.id]);
           }
           return outcome;
         }),
 
         resolvePark: Effect.fn("ExecutionDriver.resolvePark")(
           function* (input) {
-            const { target, arrival } = input;
+            const { target, payload } = input;
             const at = yield* now;
             const claim = yield* (
               target.kind === "resume_token"
                 ? executions.claimWaitingStateByToken({
                     resumeToken: target.token,
-                    arrival,
+                    arrival: { eventName: null, payload },
                     now: at,
                   })
                 : executions.claimWaitingStateById({
                     waitStateId: target.waitStateId,
                     resumeToken: target.token,
                     eventName: target.eventName,
-                    allowSameDeliveryRetry: target.allowSameDeliveryRetry,
-                    arrival,
+                    arrival: {
+                      eventName: target.eventName,
+                      payload,
+                      deliveryId: target.deliveryId,
+                    },
                     now: at,
                   })
             ).pipe(Effect.mapError(driverError));
-            if (claim?.requeued === true) {
-              yield* runDue(claim.waitState.executionId);
-            }
+            yield* runDue(
+              claim?.requeued === true ? [claim.waitState.executionId] : []
+            );
             return claim;
           }
         ),
@@ -195,28 +198,22 @@ export function makeExecutionDriverLayer(
           const claims = yield* executions
             .requestCancelForEntity({ ...input, now: yield* now })
             .pipe(Effect.mapError(driverError));
-          yield* Effect.forEach(
-            claims.filter((claim) => claim.requeued),
-            (claim) => runDue(claim.executionId)
+          yield* runDue(
+            claims
+              .filter((claim) => claim.requeued)
+              .map((claim) => claim.executionId)
           );
           return claims;
         }),
 
         migrateRun: Effect.fn("ExecutionDriver.migrateRun")(function* (input) {
-          const moved = yield* executions
+          const repinned = yield* executions
             .repinVersion({ ...input, now: yield* now })
             .pipe(Effect.mapError(driverError));
-          // A leased run is re-queued by its release, so this wake can find
-          // nothing due; it costs one claim that leases nothing.
-          if (moved) yield* runDue(input.executionId);
-          return moved;
-        }),
-
-        stopRun: Effect.fn("ExecutionDriver.stopRun")(function* (input) {
-          const revoked = yield* executions
-            .revokeLease({ executionId: input.executionId, now: yield* now })
-            .pipe(Effect.mapError(driverError));
-          if (revoked) yield* runDue(input.executionId);
+          yield* runDue(
+            repinned.moved && repinned.requeued ? [input.executionId] : []
+          );
+          return repinned.moved;
         }),
       });
     })

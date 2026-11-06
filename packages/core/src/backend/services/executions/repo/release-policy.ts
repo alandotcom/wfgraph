@@ -166,6 +166,13 @@ export function decideRelease(input: {
       };
     case "fence_refused":
       return { state: "queued", wakeAt: now, attempt: 0, lastError: null };
+    case "interrupted":
+      return {
+        state: "queued",
+        wakeAt: now,
+        attempt: input.attempt,
+        lastError: null,
+      };
     default:
       return decideParkedRelease(input.parks, now);
   }

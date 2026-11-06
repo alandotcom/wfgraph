@@ -57,7 +57,6 @@ const recordAdmissionRefusalMock = vi.fn<Repo["recordAdmissionRefusal"]>();
 const findByDeliveryMock = vi.fn<Repo["findByDelivery"]>();
 const findVersionByIdMock = vi.fn<WorkflowRepo["Service"]["findVersionById"]>();
 const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
-const stopRunMock = vi.fn<Driver["stopRun"]>(() => Effect.void);
 const resolveEntityMock = vi.fn(
   async (): Promise<{ status: string; remindersEnabled: boolean } | null> => ({
     status: "scheduled",
@@ -410,7 +409,6 @@ const lifecyclePorts = Layer.mergeAll(
   stubExecutionDriver({
     startRun: startRunMock,
     requestCanceledOutlet: requestCanceledOutletMock,
-    stopRun: stopRunMock,
   }),
   stubIntegrationRepo()
 );
@@ -431,7 +429,6 @@ beforeEach(() => {
   findByDeliveryMock.mockReset();
   findVersionByIdMock.mockReset();
   recordAuditEventMock.mockReset();
-  stopRunMock.mockReset();
   resolveEntityMock.mockReset();
   selectEntityIdMock.mockClear();
   selectCanceledEntityIdMock.mockClear();
@@ -451,7 +448,6 @@ beforeEach(() => {
     Effect.succeed(publishedVersion(createWorkflow({ rules: startRules })))
   );
   recordAuditEventMock.mockImplementation(() => Effect.void);
-  stopRunMock.mockImplementation(() => Effect.void);
 });
 
 /**

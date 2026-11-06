@@ -350,7 +350,8 @@ SweepDeadLease ==
 
 Requeue == sched' = IF sched = "waiting" THEN "queued" ELSE sched
 
-\* wakeWait: claim the wait row, record the wake, re-queue a sleeping run.
+\* The driver's resolvePark: claim the wait row, record the wake, re-queue a
+\* sleeping run.
 \* claimWaitState refuses a run that holds an Exit claim.
 EventWake(p) ==
   /\ RunInFlight /\ claim # "exit" /\ WakeIsUnclaimed(p)
