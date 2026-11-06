@@ -21,8 +21,9 @@ const RUN_STATUS_POLL_MS = 500;
 /**
  * The open run's progress, projected onto the graph as one evidence status per
  * node. Step cards paint from the projection and a Group's run summary counts
- * from it. One status read names each node's status and the nodes holding an
- * open wait, so each read projects a whole snapshot of the run. The projection
+ * from it. One status read names each node's status, the nodes holding an open
+ * wait and the nodes with a step that will run again, so each read projects a
+ * whole snapshot of the run. The projection
  * is the one writer of run statuses when the route opens, switches or closes a
  * run: a run whose status has not been read yet projects no statuses.
  *
@@ -62,6 +63,7 @@ function useRunStatusProjection(): void {
           executionStatus: executionStatus.status,
           nodeStatuses: executionStatus.nodeStatuses,
           parkedNodeIds: executionStatus.openWaitNodeIds,
+          retryingNodeIds: executionStatus.retryingNodeIds,
         });
 
   // The statuses live on the nodes because that is where React Flow reads them

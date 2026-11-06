@@ -17,13 +17,15 @@ import type { WorkflowExecutionStatus } from "#src/lifecycle/execution-contracts
 /**
  * What a run recorded for one real node, from its latest execution. `none` is a
  * node the run has not reached. `waiting` is an unfinished execution the run is
- * parked on. `pending` is a reached node with no further proof of progress.
+ * parked on. `retrying` is an unfinished execution with a step that failed and
+ * will run again. `pending` is a reached node with no further proof of progress.
  */
 export type RunNodeEvidenceStatus =
   | "none"
   | "pending"
   | "running"
   | "waiting"
+  | "retrying"
   | "success"
   | "error"
   | "cancelled";
@@ -33,6 +35,7 @@ export type GroupRunStatus =
   | "reached"
   | "running"
   | "waiting"
+  | "retrying"
   | "canceled"
   | "failed"
   | "successful";
@@ -47,12 +50,13 @@ export type GroupRunSummary = {
   failedCount: number;
   canceledCount: number;
   waitingCount: number;
+  retryingCount: number;
   runningCount: number;
 };
 
 /**
  * The run status of the Group `groupId`. Any failed member makes it Failed, then
- * Canceled, Waiting and Running in that order. With no member reached it is
+ * Canceled, Retrying, Waiting and Running in that order. With no member reached it is
  * Idle. A Group is Successful once a step it continues to has evidence, or once
  * the run completed with evidence at a member where a path ends inside the
  * Group, including a Condition's True or False outlet that nothing leaves by.
@@ -81,6 +85,7 @@ export function summarizeGroupRun(input: {
     failedCount: counts.error ?? 0,
     canceledCount: counts.cancelled ?? 0,
     waitingCount: counts.waiting ?? 0,
+    retryingCount: counts.retrying ?? 0,
     runningCount: counts.running ?? 0,
   };
   const hasEvidence = (nodeId: string) => statusOf(nodeId) !== "none";
@@ -106,6 +111,9 @@ function groupStatus(
   if (summary.canceledCount > 0) {
     return "canceled";
   }
+  if (summary.retryingCount > 0) {
+    return "retrying";
+  }
   if (summary.waitingCount > 0) {
     return "waiting";
   }
@@ -123,6 +131,7 @@ const GROUP_RUN_STATUS_LABELS = {
   reached: "Reached",
   running: "Running",
   waiting: "Waiting",
+  retrying: "Retrying",
   canceled: "Canceled",
   failed: "Failed",
   successful: "Successful",
@@ -142,6 +151,7 @@ export function groupRunCountsText(summary: GroupRunSummary): string {
   const details = [
     [summary.failedCount, "failed"],
     [summary.canceledCount, "canceled"],
+    [summary.retryingCount, "retrying"],
     [summary.waitingCount, "waiting"],
     [summary.runningCount, "running"],
   ] as const;

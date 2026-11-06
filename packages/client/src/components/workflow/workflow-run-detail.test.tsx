@@ -358,6 +358,7 @@ describe("WorkflowRunDetail", () => {
         input: { invoiceId: "inv_1" },
         output: {},
         error: null,
+        retries: 0,
       },
     ];
     const onSelectLog = vi.fn();
@@ -390,6 +391,7 @@ describe("WorkflowRunDetail", () => {
         completedAt: new Date("2026-02-22T10:00:01Z"),
         duration: "1000",
         error: null,
+        retries: 0,
       },
       {
         id: "log_wait",
@@ -401,6 +403,7 @@ describe("WorkflowRunDetail", () => {
         completedAt: null,
         duration: null,
         error: null,
+        retries: 0,
       },
     ];
 

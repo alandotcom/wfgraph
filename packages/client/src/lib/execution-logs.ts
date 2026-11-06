@@ -30,6 +30,11 @@ export type ExecutionLog = {
   input?: unknown;
   output?: unknown;
   error: string | null;
+  /**
+   * How many times the database executor retried the node's steps before this
+   * execution finished. Zero while it is unfinished.
+   */
+  retries: number;
 };
 
 export type WorkflowExecution = {
@@ -327,6 +332,7 @@ function toExecutionLogs(payload: ExecutionLogsResult): ExecutionLog[] {
       input: log.input,
       output: log.output,
       error: log.error,
+      retries: log.retries,
     })),
     payload.execution.status
   );

@@ -4,6 +4,10 @@ import { cn } from "@wfgraph/shared/utils";
 import { Button } from "#src/components/ui/button";
 import type { ExecutionLog } from "#src/lib/execution-logs";
 import type { RunNodeEvidence } from "#src/lib/run-node-evidence";
+import {
+  finishedRetriesSummary,
+  nodeRetrySummary,
+} from "#src/lib/run-executor-activity";
 import { Section } from "./canvas-reveal/reveal-sections";
 import { RUN_POLL_MS } from "./use-workflow-runs";
 import { waitingSummary } from "./workflow-run-detail";
@@ -111,9 +115,10 @@ function ExecutionList({
 
 /**
  * The recorded evidence of one node in one run: its executions, timing, error or
- * cancellation, the wait it holds with Resume, its activity, result, input,
- * output, and configuration. An execution is one time the run reached the node,
- * and retries inside it show as its final outcome. Notices say when the node is
+ * cancellation, a step the executor is retrying, the wait it holds with
+ * Resume, its activity, result, input, output, and configuration. An execution
+ * is one time the run reached the node, and retries inside it show as its
+ * final outcome, with how many retries a finished execution took. Notices say when the node is
  * gone from the pinned graph, when that graph is loading or unavailable, and
  * when the run is still polling. Choosing an execution calls
  * `onChooseExecution` and nothing else.
@@ -134,6 +139,7 @@ export function WorkflowRunNodeEvidence({
   const unfinished =
     shown !== null &&
     (shown.status === "running" || shown.status === "pending");
+  const retriesSummary = shown === null ? null : finishedRetriesSummary(shown);
   const notices = compact([
     evidence.removed ? "This step is not in the graph this run uses." : null,
     evidence.pinnedGraph === "unavailable"
@@ -219,6 +225,9 @@ export function WorkflowRunNodeEvidence({
                   : "The run ended before this execution recorded a finish."}
               </p>
             ) : null}
+            {retriesSummary === null ? null : (
+              <p className="text-sm">{retriesSummary}</p>
+            )}
             <p className="text-muted-foreground text-xs">
               Retries inside one execution are shown as that execution&apos;s
               final outcome.
@@ -249,6 +258,17 @@ export function WorkflowRunNodeEvidence({
             </Section>
           ) : null}
         </>
+      )}
+
+      {evidence.retry === null ? null : (
+        <Section title="Retry">
+          <p className="text-sm text-warning">
+            {nodeRetrySummary(evidence.retry)}
+          </p>
+          <p className="break-words text-muted-foreground text-xs">
+            {evidence.retry.error}
+          </p>
+        </Section>
       )}
 
       {evidence.waits.length > 0 ? (

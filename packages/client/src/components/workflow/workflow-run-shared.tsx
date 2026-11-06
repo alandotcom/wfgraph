@@ -156,6 +156,7 @@ const GROUP_RUN_STATUS_TONES = {
   reached: "muted",
   running: "info",
   waiting: "warning",
+  retrying: "warning",
   canceled: "cancelled",
   failed: "destructive",
   successful: "success",
@@ -168,7 +169,8 @@ export function groupRunStatusTone(status: GroupRunStatus): StatusTone {
 
 /**
  * How a node's run evidence reads: "Not run" for a node the run has not
- * reached, "Waiting" for one it is parked on, and the node status otherwise.
+ * reached, "Waiting" for one it is parked on, "Retrying" for one with a step
+ * that will run again, and the node status otherwise.
  */
 export function runNodeEvidenceLabel(status: RunNodeEvidenceStatus): {
   text: string;
@@ -179,6 +181,9 @@ export function runNodeEvidenceLabel(status: RunNodeEvidenceStatus): {
   }
   if (status === "waiting") {
     return { text: "Waiting", tone: "warning" };
+  }
+  if (status === "retrying") {
+    return { text: "Retrying", tone: "warning" };
   }
   return { text: nodeStatusLabel(status), tone: nodeStatusTone(status) };
 }

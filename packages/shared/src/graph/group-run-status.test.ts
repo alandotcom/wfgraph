@@ -228,7 +228,7 @@ describe("summarizeGroupRun", () => {
     ]);
   });
 
-  it("orders Failed, Canceled, Waiting, Running, Reached", () => {
+  it("orders Failed, Canceled, Retrying, Waiting, Running, Reached", () => {
     const graph = chain();
     const statusFor = (evidence: Record<string, RunNodeEvidenceStatus>) =>
       summarize({ graph, evidence, executionStatus: "running" }).status;
@@ -244,6 +244,10 @@ describe("summarizeGroupRun", () => {
     expect(statusFor({ a: "cancelled", b: "waiting", c: "running" })).toBe(
       "canceled"
     );
+    expect(statusFor({ a: "retrying", b: "waiting", c: "running" })).toBe(
+      "retrying"
+    );
+    expect(statusFor({ a: "cancelled", b: "retrying" })).toBe("canceled");
     expect(statusFor({ a: "success", b: "waiting", c: "running" })).toBe(
       "waiting"
     );
@@ -261,7 +265,7 @@ describe("summarizeGroupRun", () => {
     expect(groupRunCountsText(summary)).toBe("2 of 3 steps reached, 1 failed");
   });
 
-  it("counts waits and cancellation as facts about members", () => {
+  it("counts waits, retries and cancellation as facts about members", () => {
     const waiting = summarize({
       graph: chain(),
       evidence: { a: "success", b: "waiting" },
@@ -269,6 +273,16 @@ describe("summarizeGroupRun", () => {
     });
     expect(waiting.status).toBe("waiting");
     expect(groupRunCountsText(waiting)).toBe("2 of 3 steps reached, 1 waiting");
+
+    const retrying = summarize({
+      graph: chain(),
+      evidence: { a: "success", b: "retrying" },
+      executionStatus: "running",
+    });
+    expect(retrying.status).toBe("retrying");
+    expect(groupRunCountsText(retrying)).toBe(
+      "2 of 3 steps reached, 1 retrying"
+    );
 
     const canceled = summarize({
       graph: chain(),
@@ -307,6 +321,7 @@ describe("summarizeGroupRun", () => {
         failedCount: 0,
         canceledCount: 0,
         waitingCount: 0,
+        retryingCount: 0,
         runningCount: 1,
       })
     ).toBe("1 of 1 step reached, 1 running");

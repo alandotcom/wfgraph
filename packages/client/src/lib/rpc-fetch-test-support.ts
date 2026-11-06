@@ -213,6 +213,7 @@ export async function answerWorkflowRunRpc(
             return typeof nodeId === "string" ? [nodeId] : [];
           }
         ),
+        retryingNodeIds: [],
       });
     }
 

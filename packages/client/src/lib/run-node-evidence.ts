@@ -19,6 +19,7 @@ import {
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { ExecutorSchedule } from "#src/lib/run-executor-activity";
 import {
   type CanvasSelection,
   type ChosenRunExecution,
@@ -118,6 +119,39 @@ function eventNodeId(event: ExecutionEvent): string | null {
     : null;
 }
 
+/** A node's step that failed and will run again. */
+export type NodeRetry = {
+  /** The retriable failures counted against the step so far. */
+  failures: number;
+  /** The retries a step gets, so the next try is `failures + 1` of `retryLimit + 1`. */
+  retryLimit: number;
+  /** When the run is queued to try again, or null while a worker holds it. */
+  nextTryAt: string | null;
+  /** The step's last failure. */
+  error: string;
+};
+
+/**
+ * The failing step of `nodeId` in `schedule`, the one with the most failures
+ * when the node has several, or null for none.
+ */
+function nodeRetryOf(
+  nodeId: string,
+  schedule: ExecutorSchedule | null
+): NodeRetry | null {
+  // The server lists failing steps most failures first.
+  const step = schedule?.failingSteps.find((item) => item.nodeId === nodeId);
+  if (schedule === null || step === undefined) {
+    return null;
+  }
+  return {
+    failures: step.failures,
+    retryLimit: schedule.retryLimit,
+    nextTryAt: schedule.state === "queued" ? schedule.wakeAt : null,
+    error: step.error,
+  };
+}
+
 export type RunNodeEvidence = {
   nodeId: string;
   title: string;
@@ -142,6 +176,12 @@ export type RunNodeEvidence = {
   activity: readonly ExecutionEvent[];
   /** The run's cancellation event, when the shown execution was cancelled. */
   cancellation: ExecutionEvent | null;
+  /**
+   * The node's step that failed and will run again, while the run is in
+   * progress, or null for none. `nextTryAt` is when the run is queued to try
+   * again, and null while a worker holds the run.
+   */
+  retry: NodeRetry | null;
   /** Whether the run is still in progress, so its reads keep polling. */
   inProgress: boolean;
 };
@@ -156,6 +196,8 @@ export function buildRunNodeEvidence(input: {
   nodes: readonly WorkflowNode[];
   pinnedGraph: PinnedGraphState;
   chosenExecution: ChosenRunExecution | null;
+  /** Where the database executor holds the run, or null once it has ended. */
+  schedule: ExecutorSchedule | null;
 }): RunNodeEvidence {
   const { nodeId, execution, nodes } = input;
   const logs = orderedRunLogs(input.logs, execution.status);
@@ -189,29 +231,48 @@ export function buildRunNodeEvidence(input: {
             (event) => event.eventType === "run_cancelled"
           ) ?? null)
         : null,
+    retry: inProgress ? nodeRetryOf(nodeId, input.schedule) : null,
     inProgress,
   };
 }
 
+/** Whether a log status is an execution that has not finished. */
+function unfinished(status: ExecutionLog["status"]): boolean {
+  return status === "pending" || status === "running";
+}
+
 /**
  * The evidence status of each node a run status read names, in the order the
- * read lists them. An unfinished node the run is parked on is `waiting` while
- * the run is in progress. `parkedNodeIds` names the nodes of the run's open
- * waits.
+ * read lists them, while the run is in progress: an unfinished node with a
+ * step that will run again is `retrying`, and an unfinished node the run is
+ * parked on is `waiting`. A retrying node the read names no status for, such
+ * as one whose step failed before its log opened, follows the rest as
+ * `retrying`. `parkedNodeIds` names the nodes of the run's open waits, and
+ * `retryingNodeIds` the nodes with a failing step.
  */
 export function runNodeEvidenceStatuses(input: {
   executionStatus: string;
   nodeStatuses: readonly { nodeId: string; status: ExecutionLog["status"] }[];
   parkedNodeIds: readonly string[];
+  retryingNodeIds: readonly string[];
 }): Array<{ nodeId: string; status: RunNodeEvidenceStatus }> {
-  const parked = new Set(
-    isRunInProgress(input.executionStatus) ? input.parkedNodeIds : []
-  );
-  return input.nodeStatuses.map(({ nodeId, status }) => ({
-    nodeId,
-    status:
-      (status === "pending" || status === "running") && parked.has(nodeId)
-        ? "waiting"
-        : status,
-  }));
+  const inProgress = isRunInProgress(input.executionStatus);
+  const parked = new Set(inProgress ? input.parkedNodeIds : []);
+  const retrying = new Set(inProgress ? input.retryingNodeIds : []);
+  const named = new Set(input.nodeStatuses.map(({ nodeId }) => nodeId));
+  return [
+    ...input.nodeStatuses.map(({ nodeId, status }) => ({
+      nodeId,
+      status: !unfinished(status)
+        ? status
+        : retrying.has(nodeId)
+          ? ("retrying" as const)
+          : parked.has(nodeId)
+            ? ("waiting" as const)
+            : status,
+    })),
+    ...[...retrying]
+      .filter((nodeId) => !named.has(nodeId))
+      .map((nodeId) => ({ nodeId, status: "retrying" as const })),
+  ];
 }

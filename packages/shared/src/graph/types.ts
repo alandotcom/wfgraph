@@ -8,6 +8,7 @@ export type NodeRunStatus =
   | "idle"
   | "running"
   | "waiting"
+  | "retrying"
   | "success"
   | "error"
   | "cancelled";

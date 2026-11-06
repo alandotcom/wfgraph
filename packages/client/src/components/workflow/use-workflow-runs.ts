@@ -25,6 +25,7 @@ import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { PinnedGraphState } from "#src/lib/run-node-evidence";
+import type { ExecutorSchedule } from "#src/lib/run-executor-activity";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
@@ -63,7 +64,8 @@ export type OpenRun = Omit<
  * Which run the route opens, as far as the reads know it. `run` carries the
  * execution from the run list, or from its logs once it has left the list, its
  * number in the list, which is 0 for a run the list does not hold, the logs,
- * waits, and events read so far, and whether its pinned graph is on the canvas.
+ * waits, events and executor schedule read so far, and whether its pinned
+ * graph is on the canvas.
  */
 export type OpenRunIdentity =
   | { kind: "run-loading" }
@@ -77,6 +79,7 @@ export type OpenRunIdentity =
       waits: ExecutionWait[];
       events: ExecutionEvent[];
       pinnedGraph: PinnedGraphState;
+      schedule: ExecutorSchedule | null;
     };
 
 /**
@@ -252,6 +255,7 @@ function useRunReads(): RunReads {
       waits: detailQuery.data?.waits ?? [],
       events: eventsQuery.data ?? [],
       pinnedGraph,
+      schedule: detailQuery.data?.schedule ?? null,
     };
   };
 

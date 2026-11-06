@@ -1,5 +1,5 @@
 import { Handle, Position } from "@xyflow/react";
-import { Ban, Check, Hourglass, Loader2, XCircle } from "lucide-react";
+import { Ban, Check, Hourglass, Loader2, RotateCw, XCircle } from "lucide-react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { AnimatedBorder } from "#src/components/ui/animated-border";
 import { Card, CardTitle } from "#src/components/ui/card";
@@ -22,6 +22,7 @@ export type NodeProps = ComponentProps<typeof Card> & {
     | "idle"
     | "running"
     | "waiting"
+    | "retrying"
     | "success"
     | "error"
     | "cancelled"
@@ -51,6 +52,11 @@ const STATUS_CHIP = {
   },
   waiting: {
     Icon: Hourglass,
+    className: "bg-warning/10 text-warning",
+    iconClassName: "",
+  },
+  retrying: {
+    Icon: RotateCw,
     className: "bg-warning/10 text-warning",
     iconClassName: "",
   },

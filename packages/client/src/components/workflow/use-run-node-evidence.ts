@@ -18,6 +18,7 @@ import type {
   ExecutionWait,
   WorkflowExecution,
 } from "#src/lib/execution-logs";
+import type { ExecutorSchedule } from "#src/lib/run-executor-activity";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import {
   buildRunNodeEvidence,
@@ -62,6 +63,8 @@ export type RunEvidenceReads = {
   waits: readonly ExecutionWait[];
   events: readonly ExecutionEvent[];
   pinnedGraph: PinnedGraphState;
+  /** Where the database executor holds the run, or null once it has ended. */
+  schedule: ExecutorSchedule | null;
 };
 
 /**
@@ -87,6 +90,7 @@ export function useRunNodeEvidence(
     nodes,
     pinnedGraph: reads.pinnedGraph,
     chosenExecution,
+    schedule: reads.schedule,
   });
 }
 

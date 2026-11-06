@@ -3,7 +3,9 @@ import {
   type ExecutorSchedule,
   executorActivityCopy,
   executorDetails,
+  finishedRetriesSummary,
   type NodeNamer,
+  nodeRetrySummary,
   type ScheduleActivity,
   serverNowMs,
   shortDuration,
@@ -268,5 +270,40 @@ describe("shortDuration", () => {
     expect(shortDuration(3_600_000)).toBe("1 h");
     expect(shortDuration(3_900_000)).toBe("1 h 5 min");
     expect(shortDuration(90_000_000)).toBe("1 d 1 h");
+  });
+});
+
+describe("nodeRetrySummary", () => {
+  it("counts a step's failures and its next try", () => {
+    expect(
+      nodeRetrySummary({
+        failures: 2,
+        retryLimit: 4,
+        nextTryAt: localAt(14, 41, 30),
+      })
+    ).toBe("Failed 2 times. Next try at 14:41:30, try 3 of 5.");
+    expect(
+      nodeRetrySummary({ failures: 1, retryLimit: 4, nextTryAt: null })
+    ).toBe("Failed 1 time.");
+  });
+});
+
+describe("finishedRetriesSummary", () => {
+  it("says how many retries a finished execution took", () => {
+    expect(finishedRetriesSummary({ status: "success", retries: 1 })).toBe(
+      "Succeeded after 1 retry"
+    );
+    expect(finishedRetriesSummary({ status: "success", retries: 3 })).toBe(
+      "Succeeded after 3 retries"
+    );
+    expect(finishedRetriesSummary({ status: "error", retries: 4 })).toBe(
+      "Failed after 4 retries"
+    );
+    expect(
+      finishedRetriesSummary({ status: "success", retries: 0 })
+    ).toBeNull();
+    expect(
+      finishedRetriesSummary({ status: "cancelled", retries: 2 })
+    ).toBeNull();
   });
 });

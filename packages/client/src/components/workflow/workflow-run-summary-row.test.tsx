@@ -175,6 +175,7 @@ describe("WorkflowRunSummaryRow", () => {
       completedAt: new Date("2026-02-22T10:00:01Z"),
       duration: "1000",
       error: "Request failed",
+      retries: 0,
     };
 
     expect(

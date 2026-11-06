@@ -1,8 +1,8 @@
 /**
  * The sentences the Runs view uses to say what the database executor is doing
- * about an in-progress run. The server decides which case holds
- * (`schedule.activity` on a run's logs, `activity` on a runs list row); this
- * module only words it.
+ * about an in-progress run, and how a node's retries read. The server decides
+ * which case holds (`schedule.activity` on a run's logs, `activity` on a runs
+ * list row); this module only words it.
  *
  * Elapsed times ("for 3 min", "22 s ago") are measured on the server's clock:
  * the server's `observedAt` plus the time since the browser received the
@@ -257,4 +257,49 @@ export function executorDetails(input: {
       ? null
       : { term: "Running step", value: schedule.runningStepId, mono: true },
   ]);
+}
+
+/** `1 time`, `2 times`. */
+function times(count: number): string {
+  return count === 1 ? "1 time" : `${count} times`;
+}
+
+/** `1 retry`, `2 retries`. */
+function retries(count: number): string {
+  return count === 1 ? "1 retry" : `${count} retries`;
+}
+
+/**
+ * A node's failing step in one sentence: how often it failed, and when the run
+ * tries it next and which try that is. A run a worker holds has no next try
+ * time, so the sentence stops at the failures.
+ */
+export function nodeRetrySummary(retry: {
+  failures: number;
+  retryLimit: number;
+  nextTryAt: string | null;
+}): string {
+  const failed = `Failed ${times(retry.failures)}.`;
+  return retry.nextTryAt === null
+    ? failed
+    : `${failed} Next try at ${clockTimeWithSeconds(retry.nextTryAt)}, try ${retry.failures + 1} of ${retry.retryLimit + 1}.`;
+}
+
+/**
+ * How a finished execution's retries read, or null for an execution that
+ * needed none or did not finish with success or failure.
+ */
+export function finishedRetriesSummary(execution: {
+  status: string;
+  retries: number;
+}): string | null {
+  if (execution.retries === 0) {
+    return null;
+  }
+  if (execution.status === "success") {
+    return `Succeeded after ${retries(execution.retries)}`;
+  }
+  return execution.status === "error"
+    ? `Failed after ${retries(execution.retries)}`
+    : null;
 }

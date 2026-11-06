@@ -357,7 +357,11 @@ export function RunsBody({ subject, frame, level, mobile }: RevealBodyProps) {
   const evidence = useRunNodeEvidence(
     openRun === null
       ? null
-      : { ...openRun.run, pinnedGraph: openRun.pinnedGraph },
+      : {
+          ...openRun.run,
+          pinnedGraph: openRun.pinnedGraph,
+          schedule: openRun.run.executor?.schedule ?? null,
+        },
     runsTarget?.kind === "node" ? runsTarget.nodeId : null
   );
   const evidenceScrollRef = useRef<HTMLDivElement>(null);

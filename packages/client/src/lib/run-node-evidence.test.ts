@@ -12,6 +12,7 @@ import {
   shownExecution,
 } from "#src/lib/run-node-evidence";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { ExecutorSchedule } from "#src/lib/run-executor-activity";
 
 const EXECUTION: WorkflowExecution = {
   id: "exec_1",
@@ -47,6 +48,7 @@ function log(
     completedAt: null,
     duration: null,
     error: null,
+    retries: 0,
   };
 }
 
@@ -201,6 +203,7 @@ describe("buildRunNodeEvidence", () => {
       nodes: [node("other", "action")],
       pinnedGraph: "ready",
       chosenExecution: null,
+      schedule: null,
     });
 
     expect(evidence.executions.map((execution) => execution.id)).toEqual([
@@ -238,6 +241,7 @@ describe("buildRunNodeEvidence", () => {
       nodes: [node("step", "action", "Step")],
       pinnedGraph: "ready",
       chosenExecution: null,
+      schedule: null,
     });
 
     expect(evidence.shownExecution?.status).toBe("cancelled");
@@ -257,15 +261,110 @@ describe("buildRunNodeEvidence", () => {
       nodes: [],
       pinnedGraph: "unavailable",
       chosenExecution: null,
+      schedule: null,
     });
 
     expect(evidence.removed).toBe(false);
     expect(evidence.shownExecution).toBeNull();
     expect(evidence.title).toBe("Step");
   });
+
+  // The schedule lists failing steps most failures first, so the node's first
+  // is the one it is retrying hardest.
+  it("names the node's failing step and when the queued run tries again", () => {
+    const schedule: ExecutorSchedule = {
+      observedAt: "2026-03-01T10:00:10.000Z",
+      activity: null,
+      state: "queued",
+      wakeAt: "2026-03-01T10:00:40.000Z",
+      attempt: 0,
+      retryLimit: 4,
+      runningStepId: null,
+      runningNodeId: null,
+      runningNodeName: null,
+      leaseExpiresAt: null,
+      workerId: null,
+      lastError: null,
+      failingSteps: [
+        {
+          stepId: "node:step:send",
+          nodeId: "step",
+          nodeName: "Step",
+          failures: 2,
+          error: "Twilio answered 503",
+        },
+        {
+          stepId: "node:step:lookup",
+          nodeId: "step",
+          nodeName: "Step",
+          failures: 1,
+          error: "timeout",
+        },
+      ],
+      unconsumedWakes: [],
+    };
+    const build = (
+      execution: WorkflowExecution,
+      held: ExecutorSchedule | null
+    ) =>
+      buildRunNodeEvidence({
+        nodeId: "step",
+        execution,
+        logs: [log("only", "step", "2026-03-01T10:00:00Z", "running")],
+        waits: [],
+        events: [],
+        nodes: [node("step", "action", "Step")],
+        pinnedGraph: "ready",
+        chosenExecution: null,
+        schedule: held,
+      });
+
+    const running = { ...EXECUTION, status: "running" as const };
+    expect(build(running, schedule).retry).toEqual({
+      failures: 2,
+      retryLimit: 4,
+      nextTryAt: "2026-03-01T10:00:40.000Z",
+      error: "Twilio answered 503",
+    });
+    expect(
+      build(running, { ...schedule, state: "leased" }).retry?.nextTryAt
+    ).toBeNull();
+    expect(build(EXECUTION, schedule).retry).toBeNull();
+    expect(build(running, null).retry).toBeNull();
+  });
 });
 
 describe("runNodeEvidenceStatuses", () => {
+  it("reads an unfinished node with a failing step as retrying, before waiting, and adds one the read does not name", () => {
+    expect(
+      runNodeEvidenceStatuses({
+        executionStatus: "running",
+        nodeStatuses: [
+          { nodeId: "a", status: "success" },
+          { nodeId: "r", status: "running" },
+          { nodeId: "w", status: "running" },
+          { nodeId: "done", status: "success" },
+        ],
+        parkedNodeIds: ["w", "r"],
+        retryingNodeIds: ["r", "done", "unlogged"],
+      })
+    ).toEqual([
+      { nodeId: "a", status: "success" },
+      { nodeId: "r", status: "retrying" },
+      { nodeId: "w", status: "waiting" },
+      { nodeId: "done", status: "success" },
+      { nodeId: "unlogged", status: "retrying" },
+    ]);
+    expect(
+      runNodeEvidenceStatuses({
+        executionStatus: "failed",
+        nodeStatuses: [{ nodeId: "r", status: "error" }],
+        parkedNodeIds: [],
+        retryingNodeIds: ["r"],
+      })
+    ).toEqual([{ nodeId: "r", status: "error" }]);
+  });
+
   it("reads an unfinished node the run is parked on as waiting", () => {
     expect(
       runNodeEvidenceStatuses({
@@ -276,6 +375,7 @@ describe("runNodeEvidenceStatuses", () => {
           { nodeId: "b", status: "pending" },
         ],
         parkedNodeIds: ["w"],
+        retryingNodeIds: [],
       })
     ).toEqual([
       { nodeId: "a", status: "success" },
@@ -290,6 +390,7 @@ describe("runNodeEvidenceStatuses", () => {
         executionStatus: "canceled",
         nodeStatuses: [{ nodeId: "w", status: "cancelled" }],
         parkedNodeIds: ["w"],
+        retryingNodeIds: [],
       })
     ).toEqual([{ nodeId: "w", status: "cancelled" }]);
   });
