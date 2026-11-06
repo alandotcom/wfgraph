@@ -32,15 +32,18 @@ import type {
  * What the executor is doing about one run at `now`, as `ExecutorActivity`
  * describes each case, taking the first that holds:
  *
- * 1. an unconsumed wake is `resuming`, naming the oldest when there are several;
- * 2. a lease that ended at or before `now` is `lease_expired`, the same test a
- *    claim sweeps it by, and a lease still held is `running`;
- * 3. a `queued` row not yet due after a step's failure is `retrying` that
+ * 1. a lease that ended at or before `now` is `lease_expired`, the same test a
+ *    claim sweeps it by, whatever else the run holds, since no worker is
+ *    acting on it;
+ * 2. an unconsumed wake is `resuming`, naming the oldest when there are
+ *    several, and waiting for a worker unless a live lease holds the run;
+ * 3. a lease still held is `running`;
+ * 4. a `queued` row not yet due after a step's failure is `retrying` that
  *    step, the one with the most failures when several are failing, and after
  *    a failure of the run body (`attempt` above zero) it is `retrying` with no
  *    node;
- * 4. a `queued` or `waiting` row due at or before `now` is `unclaimed`;
- * 5. a `waiting` row not yet due is `waiting`.
+ * 5. a `queued` or `waiting` row due at or before `now` is `unclaimed`;
+ * 6. a `waiting` row not yet due is `waiting`.
  *
  * A `queued` row not yet due with no failure has no activity, which answers
  * null. `wakes` is empty for a caller that did not read them.
@@ -52,6 +55,19 @@ export function executorActivityOf(input: {
 }): ExecutorActivity | null {
   const { hold, now } = input;
   const at = now.getTime();
+  const leased = hold.state === "leased";
+  if (
+    leased &&
+    hold.leaseExpiresAt !== null &&
+    hold.leaseExpiresAt.getTime() <= at
+  ) {
+    return {
+      kind: "lease_expired",
+      nodeId: hold.runningNodeId,
+      nodeName: hold.runningNodeName,
+      since: hold.leaseExpiresAt,
+    };
+  }
   const [wake] = input.wakes;
   if (wake !== undefined) {
     return {
@@ -62,24 +78,16 @@ export function executorActivityOf(input: {
       eventName: wake.eventName,
       wokenAt: wake.wokenAt,
       deadline: wake.deadline,
-      unclaimedSince:
-        hold.state === "leased" ? null : (wake.wokenAt ?? hold.wakeAt),
+      unclaimedSince: leased ? null : (wake.wokenAt ?? hold.wakeAt),
     };
   }
-  if (hold.state === "leased") {
-    return hold.leaseExpiresAt !== null && hold.leaseExpiresAt.getTime() <= at
-      ? {
-          kind: "lease_expired",
-          nodeId: hold.runningNodeId,
-          nodeName: hold.runningNodeName,
-          since: hold.leaseExpiresAt,
-        }
-      : {
-          kind: "running",
-          nodeId: hold.runningNodeId,
-          nodeName: hold.runningNodeName,
-          workerId: hold.workerId,
-        };
+  if (leased) {
+    return {
+      kind: "running",
+      nodeId: hold.runningNodeId,
+      nodeName: hold.runningNodeName,
+      workerId: hold.workerId,
+    };
   }
   const due = hold.wakeAt.getTime() <= at;
   if (hold.state === "queued" && !due) {

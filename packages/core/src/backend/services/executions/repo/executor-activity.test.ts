@@ -47,7 +47,7 @@ const LEASED = {
 } as const;
 
 describe("executorActivityOf", () => {
-  it("answers an unconsumed wake as resuming before anything else, waiting for a worker only while no lease is held", () => {
+  it("answers an unconsumed wake as resuming before a failing step, waiting for a worker only while no live lease holds the run", () => {
     expect(
       activityOf(
         {
@@ -97,6 +97,20 @@ describe("executorActivityOf", () => {
       nodeId: "send",
       nodeName: "Send reminder",
       workerId: "worker_1",
+    });
+  });
+
+  // A worker that dies after a producer wrote a wake leaves both on the run.
+  // Nothing acts on the wake until another worker claims the run, so the
+  // expired lease is what the overview says.
+  it("answers an expired lease before an unconsumed wake", () => {
+    expect(
+      activityOf({ ...LEASED, leaseExpiresAt: after(-1) }, [APPROVED])
+    ).toEqual({
+      kind: "lease_expired",
+      nodeId: "send",
+      nodeName: "Send reminder",
+      since: after(-1),
     });
   });
 

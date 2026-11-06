@@ -221,6 +221,52 @@ export function describeExecutionExecutorStateConformance({
       expect(result.unknown).toBeNull();
     });
 
+    // A worker claimed the run after an Event resolved its park, then died
+    // before its pass read the wake. The wake and the expired lease are both
+    // on the run, and the expired lease is what the overview says.
+    it("reads a wake behind an expired lease as the expired lease", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence: parking } = yield* claimRun(executionId, T0);
+          yield* park(executionId, "approval", at(600_000));
+          yield* executions.fenced(parking).releasePass({
+            outcome: { kind: "parked" },
+            now: at(1_000),
+          });
+          yield* executions.claimWaitingStateByToken({
+            resumeToken: `${executionId}-approval`,
+            arrival: { eventName: "app/approved", payload: {} },
+            now: at(2_000),
+          });
+          yield* claimRun(executionId, at(3_000));
+          return yield* executions.findExecutorState(executionId);
+        })
+      );
+
+      expect(result).toMatchObject({
+        state: "leased",
+        leaseExpiresAt: at(3_000 + LEASE_MS),
+        unconsumedWakes: [{ nodeId: "approval", kind: "resume" }],
+      });
+      expect(
+        result === null
+          ? null
+          : executorActivityOf({
+              hold: result,
+              wakes: result.unconsumedWakes,
+              now: at(3_000 + LEASE_MS + 1),
+            })
+      ).toEqual({
+        kind: "lease_expired",
+        nodeId: null,
+        nodeName: null,
+        since: at(3_000 + LEASE_MS),
+      });
+    });
+
     it("reads where the executor holds each run on a list page in one call", async () => {
       const connection = await seeded(await openConnection());
       const result = await connection.run(

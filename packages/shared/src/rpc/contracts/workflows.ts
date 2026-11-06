@@ -203,13 +203,14 @@ const executionActivitySchema = Schema.Union([
 
 /**
  * What the database executor is doing about an in-progress run, as the run's
- * overview states it. The server decides the case, in this order:
+ * overview states it. The server decides which case holds (`executorActivityOf`
+ * in @wfgraph/core gives the order the cases are tested in):
  *
  * - `resuming`: a producer resolved a park of the run (`wake` says which) and
  *   no pass has read the wake. `wokenAt` is when an Event or a manual resume
  *   claimed it, `deadline` is the park's deadline, and `unclaimedSince` is
- *   when the wake began waiting for a worker, null while a worker holds the
- *   run.
+ *   when the wake began waiting for a worker, null while a worker holds a live
+ *   lease on the run.
  * - `lease_expired`: as in a runs list.
  * - `running`: a worker, `workerId`, holds a live lease, running a step of the
  *   named node, or between steps when the node is null.

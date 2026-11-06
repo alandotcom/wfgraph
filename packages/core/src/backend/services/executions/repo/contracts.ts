@@ -318,7 +318,8 @@ export type ExecutorState = ExecutorHold & {
  *   a manual resume claimed the park, and `deadline` is the park's own
  *   deadline, which a `timeout` wake passed. `unclaimedSince` is when the wake
  *   began waiting for a worker (`wokenAt`, or the schedule row's wake time for
- *   a wake that records none), and null while a worker holds the run's lease.
+ *   a wake that records none), and null while a worker holds a live lease on
+ *   the run.
  * - `lease_expired`: the worker that leased the run stopped renewing its lease
  *   at `since`, while running a step of `nodeId` (null between steps). The
  *   next claim takes the run over.
