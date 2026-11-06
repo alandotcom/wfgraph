@@ -276,6 +276,60 @@ export const workflowWaitStates = sqliteTable(
 );
 
 /**
+ * The PostgreSQL event inbox in SQLite's encoding, with the payload as JSON
+ * text and timestamps as epoch milliseconds. `workflowEventInbox` in
+ * `lib/db/schema.ts` describes the columns, the idempotency index, and the
+ * insert a host makes in its own transaction, which is the same statement
+ * here. The defaults on `id`, `received_at` and `status` are what let that
+ * statement leave them out.
+ */
+export const workflowEventInbox = sqliteTable(
+  "workflow_event_inbox",
+  {
+    id: text("id")
+      .primaryKey()
+      .default(sql`(lower(hex(randomblob(16))))`),
+    name: text("name").notNull(),
+    data: text("data").notNull(),
+    connectionId: text("connection_id"),
+    idempotencyKey: text("idempotency_key"),
+    receivedAt: integer("received_at")
+      .notNull()
+      .default(sql`(cast(unixepoch('subsec') * 1000 as integer))`),
+    status: text("status").notNull().default("pending"),
+    error: text("error"),
+    settledAt: integer("settled_at"),
+  },
+  (table) => [
+    uniqueIndex("inbox_idempotency_uidx")
+      .on(
+        table.name,
+        sql`coalesce(${table.connectionId}, '')`,
+        table.idempotencyKey
+      )
+      .where(sql`${table.idempotencyKey} is not null`),
+    index("inbox_pending_idx")
+      .on(table.receivedAt, table.id)
+      .where(sql`${table.status} = 'pending'`),
+    index("inbox_settled_idx")
+      .on(table.receivedAt)
+      .where(sql`${table.status} <> 'pending'`),
+    check(
+      "workflow_event_inbox_status_check",
+      sql`${table.status} in ('pending', 'delivered', 'failed')`
+    ),
+    check(
+      "workflow_event_inbox_settled_check",
+      sql`(${table.status} = 'pending' and ${table.settledAt} is null and ${table.error} is null) or (${table.status} = 'delivered' and ${table.settledAt} is not null and ${table.error} is null) or (${table.status} = 'failed' and ${table.settledAt} is not null and ${table.error} is not null)`
+    ),
+    check(
+      "workflow_event_inbox_data_json_check",
+      sql`json_valid(${table.data}) and json_type(${table.data}) = 'object'`
+    ),
+  ]
+);
+
+/**
  * The PostgreSQL schedule table in SQLite's encoding, with timestamps as epoch
  * milliseconds. `workflowExecutionSchedule` in `lib/db/schema.ts` describes the
  * columns.
@@ -286,6 +340,9 @@ export const workflowExecutionSchedule = sqliteTable(
     id: text("id").primaryKey(),
     kind: text("kind").notNull(),
     executionId: text("execution_id").references(() => workflowExecutions.id, {
+      onDelete: "cascade",
+    }),
+    inboxId: text("inbox_id").references(() => workflowEventInbox.id, {
       onDelete: "cascade",
     }),
     state: text("state").notNull(),
@@ -299,6 +356,7 @@ export const workflowExecutionSchedule = sqliteTable(
   },
   (table) => [
     uniqueIndex("schedule_execution_uidx").on(table.executionId),
+    uniqueIndex("schedule_inbox_uidx").on(table.inboxId),
     index("schedule_due_idx")
       .on(table.wakeAt, table.id)
       .where(sql`${table.state} in ('queued', 'waiting')`),
@@ -314,8 +372,8 @@ export const workflowExecutionSchedule = sqliteTable(
       sql`${table.state} in ('queued', 'leased', 'waiting')`
     ),
     check(
-      "workflow_execution_schedule_run_execution_check",
-      sql`${table.kind} <> 'run' or ${table.executionId} is not null`
+      "workflow_execution_schedule_subject_check",
+      sql`(${table.kind} = 'run' and ${table.executionId} is not null and ${table.inboxId} is null) or (${table.kind} = 'delivery' and ${table.inboxId} is not null and ${table.executionId} is null)`
     ),
   ]
 );
@@ -452,6 +510,7 @@ export const sqliteTables = {
   workflowExecutions,
   workflowExecutionLogs,
   workflowWaitStates,
+  workflowEventInbox,
   workflowExecutionSchedule,
   workflowExecutionSteps,
   workflowExecutionEvents,

@@ -99,7 +99,8 @@ export function runRetriesSpent(attempt: number): boolean {
  */
 export type BoundInstant = Date | number;
 
-function instantOf(column: Column, now: BoundInstant): SQL {
+/** `now` bound as a parameter through `column`, in that column's encoding. */
+export function instantOf(column: Column, now: BoundInstant): SQL {
   return sql`${sql.param(now, column)}`;
 }
 

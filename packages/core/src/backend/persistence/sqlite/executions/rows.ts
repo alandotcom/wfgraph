@@ -258,6 +258,7 @@ export function sqliteExecutionSchedule(
     id: row.id,
     kind,
     executionId: row.executionId,
+    inboxId: row.inboxId,
     state,
     wakeAt: new Date(row.wakeAt),
     attempt: row.attempt,

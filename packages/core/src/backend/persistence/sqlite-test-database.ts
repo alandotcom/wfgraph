@@ -7,6 +7,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
 import {
   conformanceCipher,
@@ -23,6 +24,16 @@ export async function createSqliteTestDatabase(): Promise<ConformanceDatabase> {
       connect(
         await wfSqlite({ filename }).open(options?.cipher ?? conformanceCipher)
       ),
+    execute: async (statement) => {
+      const database = new DatabaseSync(filename, { timeout: 5_000 });
+      try {
+        database.exec(
+          typeof statement === "string" ? statement : statement.sqlite
+        );
+      } finally {
+        database.close();
+      }
+    },
     drop: () => rm(directory, { recursive: true, force: true }),
   };
 }

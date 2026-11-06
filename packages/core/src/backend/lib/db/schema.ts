@@ -40,6 +40,10 @@ import {
   STEP_MEMO_STATUSES,
   type StepMemoStatus,
 } from "@wfgraph/shared/lifecycle/execution-schedule";
+import {
+  EVENT_INBOX_STATUSES,
+  type EventInboxStatus,
+} from "@wfgraph/shared/lifecycle/event-inbox";
 
 // Every table here is unqualified, and the Postgres schema holding them is the
 // host's `database.schema` option: the connection's search_path names it, on the
@@ -552,15 +556,102 @@ const scheduleStateLiterals = EXECUTION_SCHEDULE_STATES.map(
 const stepMemoStatusLiterals = STEP_MEMO_STATUSES.map(
   (status) => `'${status}'`
 ).join(", ");
+/** The inbox statuses as SQL literals, safe to interpolate for the same reason. */
+const eventInboxStatusLiterals = EVENT_INBOX_STATUSES.map(
+  (status) => `'${status}'`
+).join(", ");
+
+/**
+ * The event inbox: one row per Event arrival. The row is the durable record of
+ * the arrival, and its id is the `delivery_id` every run the arrival opens
+ * carries. A `pending` row has one `delivery` schedule row, which the executor
+ * claims to deliver it; settling the delivery marks the row `delivered` or
+ * `failed` and deletes that schedule row with its step memo.
+ *
+ * A host that shares this database raises an Event inside its own transaction
+ * with one statement, the same on both backends:
+ *
+ *   insert into workflow_event_inbox (name, data, idempotency_key, connection_id)
+ *   values ($1, $2, $3, $4)
+ *   on conflict do nothing
+ *
+ * `name` is a catalog Event name and `data` its payload as a JSON object; both
+ * are required. `idempotency_key` is optional: a second row with the same
+ * name, Connection and key is refused while the first row exists, and
+ * `on conflict do nothing` turns that refusal into a no-op. `connection_id` is
+ * optional and names the Connection an integration Event arrived through.
+ * `id` defaults to a random UUID, and a host may set its own. The host leaves
+ * `received_at` and `status` to their defaults, the insert time and `pending`,
+ * and writes no schedule row: the executor's poll (`scheduleUnscheduledInbox`)
+ * gives every `pending` row without one a schedule row, so the arrival is
+ * delivered after the host's transaction commits and the next poll runs.
+ */
+export const workflowEventInbox = pgTable(
+  "workflow_event_inbox",
+  {
+    id: text("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()::text`),
+    name: text("name").notNull(),
+    data: jsonb("data").notNull().$type<JsonObject>(),
+    connectionId: text("connection_id"),
+    idempotencyKey: text("idempotency_key"),
+    receivedAt: timestamp("received_at").notNull().default(utcNow()),
+    status: text("status")
+      .notNull()
+      .default("pending")
+      .$type<EventInboxStatus>(),
+    /** Why the delivery failed for good, on a `failed` row, and null otherwise. */
+    error: text("error"),
+    /** When the delivery settled, on a `delivered` or `failed` row. */
+    settledAt: timestamp("settled_at"),
+  },
+  (table) => [
+    check(
+      "workflow_event_inbox_status_check",
+      sql`${table.status} in (${sql.raw(eventInboxStatusLiterals)})`
+    ),
+    check(
+      "workflow_event_inbox_settled_check",
+      sql`(${table.status} = 'pending' and ${table.settledAt} is null and ${table.error} is null) or (${table.status} = 'delivered' and ${table.settledAt} is not null and ${table.error} is null) or (${table.status} = 'failed' and ${table.settledAt} is not null and ${table.error} is not null)`
+    ),
+    check(
+      "workflow_event_inbox_data_check",
+      sql`jsonb_typeof(${table.data}) = 'object'`
+    ),
+    // The idempotency key is unique per Event name and Connection. A row with
+    // no Connection counts as the empty string here, which no Connection id
+    // is, so two rows without a Connection still collide on their key while
+    // two Connections receiving the same vendor id stay distinct. A row with
+    // no key is never a duplicate.
+    uniqueIndex("workflow_event_inbox_idempotency_uidx")
+      .on(
+        table.name,
+        sql`coalesce(${table.connectionId}, '')`,
+        table.idempotencyKey
+      )
+      .where(sql`${table.idempotencyKey} is not null`),
+    // The poll's question: the oldest rows still waiting to be delivered.
+    index("workflow_event_inbox_pending_idx")
+      .on(table.receivedAt, table.id)
+      .where(sql`${table.status} = 'pending'`),
+    // The retention sweep's question: settled rows past the window.
+    index("workflow_event_inbox_settled_idx")
+      .on(table.receivedAt)
+      .where(sql`${table.status} <> 'pending'`),
+  ]
+);
 
 /**
  * One claimable row per body the database executor still has to run: a
- * workflow run, which names its Execution, or an Event's delivery.
+ * workflow run, which names its Execution, or an Event's delivery, which names
+ * its inbox row.
  *
  * A worker claims a due row under a lease, replays the body against the step
  * memo the row owns, and releases the row as `queued` or `waiting`. A run's
- * terminal write deletes its row, and the memo rows go with it, so the table
- * holds the working set and its partial indexes stay small.
+ * terminal write deletes its row, and a settled delivery deletes its own, and
+ * the memo rows go with each, so the table holds the working set and its
+ * partial indexes stay small.
  */
 export const workflowExecutionSchedule = pgTable(
   "workflow_execution_schedule",
@@ -574,6 +665,13 @@ export const workflowExecutionSchedule = pgTable(
      * row names each Execution. A `delivery` row names none.
      */
     executionId: text("execution_id").references(() => workflowExecutions.id, {
+      onDelete: "cascade",
+    }),
+    /**
+     * The inbox row this row delivers. A `delivery` row always names one, and
+     * at most one row names each inbox row. A `run` row names none.
+     */
+    inboxId: text("inbox_id").references(() => workflowEventInbox.id, {
       onDelete: "cascade",
     }),
     state: text("state").notNull().$type<ExecutionScheduleState>(),
@@ -614,12 +712,13 @@ export const workflowExecutionSchedule = pgTable(
       sql`${table.state} in (${sql.raw(scheduleStateLiterals)})`
     ),
     check(
-      "workflow_execution_schedule_run_execution_check",
-      sql`${table.kind} <> 'run' or ${table.executionId} is not null`
+      "workflow_execution_schedule_subject_check",
+      sql`(${table.kind} = 'run' and ${table.executionId} is not null and ${table.inboxId} is null) or (${table.kind} = 'delivery' and ${table.inboxId} is not null and ${table.executionId} is null)`
     ),
     uniqueIndex("workflow_execution_schedule_execution_uidx").on(
       table.executionId
     ),
+    uniqueIndex("workflow_execution_schedule_inbox_uidx").on(table.inboxId),
     // The claim's question: the due rows, oldest first.
     index("workflow_execution_schedule_due_idx")
       .on(table.wakeAt, table.id)
@@ -737,6 +836,7 @@ export const tables = {
   workflowWaitStates,
   workflowExecutionSchedule,
   workflowExecutionSteps,
+  workflowEventInbox,
   workflowEventSubscriptions,
   integrations,
   oauthAuthorizationAttempts,

@@ -140,6 +140,13 @@ export function sharedPostgresTestDatabase(): {
               options?.cipher ?? conformanceCipher
             )
           ),
+        execute: (statement) =>
+          withAdminClient(async (client) => {
+            await client.unsafe(`set search_path to "${schema}"`);
+            await client.unsafe(
+              typeof statement === "string" ? statement : statement.postgresql
+            );
+          }),
         // This is one statement, so the foreign keys between these tables never
         // decide an order. It uses `restart identity` because a case may read a
         // sequence back.

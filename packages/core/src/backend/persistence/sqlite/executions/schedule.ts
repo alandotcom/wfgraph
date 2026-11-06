@@ -22,6 +22,7 @@ import type {
   ParkWake,
   ScheduleRowKey,
 } from "#src/backend/services/executions/repo/contracts";
+import type { AnyFence } from "#src/backend/services/executions/repo/schedule";
 import { ownershipLost } from "#src/backend/services/executions/repo/fencing";
 import {
   claimAttempt,
@@ -59,12 +60,6 @@ import {
   sqliteExecutionSchedule,
 } from "#src/backend/persistence/sqlite/executions/rows";
 
-/**
- * A fence as a fenced write reads it: a `RunFence` also names the Execution
- * its schedule row must still run.
- */
-type AnyFence = OwnerFence & { executionId?: string | undefined };
-
 function holdsLease(database: SqliteExecutor, fence: AnyFence) {
   return database
     .select({ id: workflowExecutionSchedule.id })
@@ -75,6 +70,9 @@ function holdsLease(database: SqliteExecutor, fence: AnyFence) {
         fence.executionId === undefined
           ? undefined
           : eq(workflowExecutionSchedule.executionId, fence.executionId),
+        fence.inboxId === undefined
+          ? undefined
+          : eq(workflowExecutionSchedule.inboxId, fence.inboxId),
         eq(workflowExecutionSchedule.state, "leased"),
         eq(workflowExecutionSchedule.ownerToken, fence.ownerToken)
       )
@@ -87,8 +85,9 @@ type Owned<A> = { owned: true; value: A } | { owned: false };
 
 /**
  * Runs one write of a pass in the write transaction, after checking that the
- * pass's schedule row is still leased under its token and, for a `RunFence`,
- * still names its run. Nothing runs when it is not, which answers `LeaseLost`.
+ * pass's schedule row is still leased under its token and still names the
+ * fence's run or inbox row when the fence names one. Nothing runs when it is
+ * not, which answers `LeaseLost`.
  */
 export function writeFenced<A>(
   store: SqliteDatabase,
@@ -239,9 +238,13 @@ export function wakeExecutions<A, E>(
 
 /** The schedule row a `ScheduleRowKey` names. */
 function scheduleRow(key: ScheduleRowKey): SQL {
-  return "scheduleId" in key
-    ? eq(workflowExecutionSchedule.id, key.scheduleId)
-    : eq(workflowExecutionSchedule.executionId, key.executionId);
+  if ("scheduleId" in key) {
+    return eq(workflowExecutionSchedule.id, key.scheduleId);
+  }
+  if ("executionId" in key) {
+    return eq(workflowExecutionSchedule.executionId, key.executionId);
+  }
+  return eq(workflowExecutionSchedule.inboxId, key.inboxId);
 }
 
 const memoColumns = {

@@ -1,0 +1,559 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "fdbdc300-99e8-4d56-850c-40acf958a906",
+  "prevIds": [
+    "a3dea168-5c50-49cf-9733-8f673aade48c"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_event_inbox"
+      ],
+      "writes": [
+        "s|tbl|public.workflow_event_inbox",
+        "n|tbl|public.workflow_event_inbox",
+        "e|tbl|public.workflow_event_inbox",
+        "n|rel|public.workflow_event_inbox",
+        "n|type|public.workflow_event_inbox",
+        "n|rel|public.workflow_event_inbox_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "drop_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_schedule"
+      ],
+      "writes": [
+        "s|ck|public.workflow_execution_schedule.workflow_execution_schedule_run_execution_check",
+        "n|ck|public.workflow_execution_schedule.workflow_execution_schedule_run_execution_check",
+        "e|ck|public.workflow_execution_schedule.workflow_execution_schedule_run_execution_check",
+        "n|con|public.workflow_execution_schedule.workflow_execution_schedule_run_execution_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public",
+        "e|col|public.workflow_execution_schedule.kind",
+        "e|col|public.workflow_execution_schedule.execution_id"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_execution_schedule",
+        "inbox_id"
+      ],
+      "writes": [
+        "s|col|public.workflow_execution_schedule.inbox_id",
+        "n|col|public.workflow_execution_schedule.inbox_id",
+        "e|col|public.workflow_execution_schedule.inbox_id"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_event_inbox",
+        "workflow_event_inbox_idempotency_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_event_inbox_idempotency_uidx",
+        "n|idx|public.workflow_event_inbox_idempotency_uidx",
+        "e|idx|public.workflow_event_inbox_idempotency_uidx",
+        "n|rel|public.workflow_event_inbox_idempotency_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_event_inbox",
+        "n|sch|public",
+        "n|col|public.workflow_event_inbox.name",
+        "n|col|public.workflow_event_inbox.idempotency_key"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_event_inbox",
+        "workflow_event_inbox_pending_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_event_inbox_pending_idx",
+        "n|idx|public.workflow_event_inbox_pending_idx",
+        "e|idx|public.workflow_event_inbox_pending_idx",
+        "n|rel|public.workflow_event_inbox_pending_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_event_inbox",
+        "n|sch|public",
+        "n|col|public.workflow_event_inbox.received_at",
+        "n|col|public.workflow_event_inbox.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_event_inbox",
+        "workflow_event_inbox_settled_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_event_inbox_settled_idx",
+        "n|idx|public.workflow_event_inbox_settled_idx",
+        "e|idx|public.workflow_event_inbox_settled_idx",
+        "n|rel|public.workflow_event_inbox_settled_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_event_inbox",
+        "n|sch|public",
+        "n|col|public.workflow_event_inbox.received_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_execution_schedule",
+        "workflow_execution_schedule_inbox_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_execution_schedule_inbox_uidx",
+        "n|idx|public.workflow_execution_schedule_inbox_uidx",
+        "e|idx|public.workflow_execution_schedule_inbox_uidx",
+        "n|rel|public.workflow_execution_schedule_inbox_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public",
+        "n|col|public.workflow_execution_schedule.inbox_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_schedule"
+      ],
+      "writes": [
+        "s|fk|public.workflow_execution_schedule.workflow_execution_schedule_1rpjXQCjTAIp_fkey",
+        "n|fk|public.workflow_execution_schedule.workflow_execution_schedule_1rpjXQCjTAIp_fkey",
+        "e|fk|public.workflow_execution_schedule.workflow_execution_schedule_1rpjXQCjTAIp_fkey",
+        "n|con|public.workflow_execution_schedule.workflow_execution_schedule_1rpjXQCjTAIp_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public",
+        "n|tbl|public.workflow_event_inbox",
+        "n|sch|public",
+        "n|col|public.workflow_execution_schedule.inbox_id",
+        "n|col|public.workflow_event_inbox.id",
+        "e|uniqueness|public.workflow_event_inbox.id"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_schedule"
+      ],
+      "writes": [
+        "s|ck|public.workflow_execution_schedule.workflow_execution_schedule_subject_check",
+        "n|ck|public.workflow_execution_schedule.workflow_execution_schedule_subject_check",
+        "e|ck|public.workflow_execution_schedule.workflow_execution_schedule_subject_check",
+        "n|con|public.workflow_execution_schedule.workflow_execution_schedule_subject_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public",
+        "n|col|public.workflow_execution_schedule.kind",
+        "n|col|public.workflow_execution_schedule.execution_id",
+        "n|col|public.workflow_execution_schedule.inbox_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "workflow_event_inbox",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "gen_random_uuid()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "data",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "connection_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "idempotency_key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "received_at",
+        "type": "timestamp",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "(now() at time zone 'utc')",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'pending'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "error",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "settled_at",
+        "type": "timestamp",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "inbox_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "workflow_event_inbox_idempotency_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "name",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "coalesce(\"connection_id\", '')",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "idempotency_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"idempotency_key\" is not null",
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "workflow_event_inbox_pending_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "received_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"status\" = 'pending'",
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "workflow_event_inbox_settled_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "received_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"status\" <> 'pending'",
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "workflow_execution_schedule_inbox_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "inbox_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "workflow_execution_schedule_1rpjXQCjTAIp_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "inbox_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "workflow_event_inbox",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "workflow_event_inbox_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "workflow_event_inbox_status_check",
+        "value": "\"status\" in ('pending', 'delivered', 'failed')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "workflow_event_inbox_settled_check",
+        "value": "(\"status\" = 'pending' and \"settled_at\" is null and \"error\" is null) or (\"status\" = 'delivered' and \"settled_at\" is not null and \"error\" is null) or (\"status\" = 'failed' and \"settled_at\" is not null and \"error\" is not null)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_event_inbox",
+        "name": "workflow_event_inbox_data_check",
+        "value": "jsonb_typeof(\"data\") = 'object'",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "workflow_execution_schedule_subject_check",
+        "value": "(\"kind\" = 'run' and \"execution_id\" is not null and \"inbox_id\" is null) or (\"kind\" = 'delivery' and \"inbox_id\" is not null and \"execution_id\" is null)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"workflow_execution_schedule\",\"workflow_execution_schedule_run_execution_check\"]"
+    }
+  ]
+}

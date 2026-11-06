@@ -46,6 +46,10 @@ import {
   makeScheduleMethods,
   type ScheduleRepoMethods,
 } from "#src/backend/services/executions/repo/schedule";
+import {
+  type InboxRepoMethods,
+  makeInboxMethods,
+} from "#src/backend/services/executions/repo/inbox";
 import { makeFencedWrites } from "#src/backend/services/executions/repo/fenced-writes";
 import type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fencing";
 import type {
@@ -168,11 +172,15 @@ type CrossTableRepoMethods = {
  * different lifetime: a workflow is edited, its runs accumulate and are swept.
  * The four polling endpoints the editor keeps open ask only through here.
  *
- * The shape is assembled from six slices, one file each beside this one
+ * The shape is assembled from seven slices, one file each beside this one
  * (`runs.ts`, `node-logs.ts`, `waits.ts`, `audit.ts`, `schedule.ts` for the
- * database executor's schedule rows and step memo, and `claims.ts` for the
- * producers that claim a run's parks), plus the cross-table methods above
- * that only this file can implement.
+ * database executor's schedule rows and step memo, `claims.ts` for the
+ * producers that claim a run's parks, and `inbox.ts` for the event inbox),
+ * plus the cross-table methods above that only this file can implement. The
+ * event inbox is a slice here because a delivery is a body on the same
+ * executor: its schedule row and step memo are this aggregate's tables, and a
+ * settling delivery writes its inbox row and deletes its schedule row in one
+ * transaction.
  */
 export class ExecutionRepo extends Context.Service<
   ExecutionRepo,
@@ -182,6 +190,7 @@ export class ExecutionRepo extends Context.Service<
     AuditRepoMethods &
     ScheduleRepoMethods &
     ClaimsRepoMethods &
+    InboxRepoMethods &
     CrossTableRepoMethods
 >()("@wfgraph/core/ExecutionRepo") {}
 
@@ -198,6 +207,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         ...makeAuditMethods(database),
         ...makeScheduleMethods(database),
         ...makeClaimsMethods(database),
+        ...makeInboxMethods(database),
         fenced: makeFencedWrites(database),
 
         startForEntity: ({

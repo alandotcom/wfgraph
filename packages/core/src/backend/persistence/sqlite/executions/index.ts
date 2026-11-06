@@ -33,6 +33,7 @@ import {
 } from "#src/backend/persistence/sqlite/executions/audit";
 import { makeSqliteFencedWrites } from "#src/backend/persistence/sqlite/executions/fenced-writes";
 import { makeSqliteClaimsMethods } from "#src/backend/persistence/sqlite/executions/claims";
+import { makeSqliteInboxMethods } from "#src/backend/persistence/sqlite/executions/inbox";
 import {
   endExecutions,
   insertRunSchedule,
@@ -241,6 +242,7 @@ export function makeSqliteExecutionRepo(
     ...makeSqliteAuditMethods(store),
     ...makeSqliteScheduleMethods(store),
     ...makeSqliteClaimsMethods(store),
+    ...makeSqliteInboxMethods(store),
     fenced: makeSqliteFencedWrites(store),
     startForEntity: (input) =>
       store.write((database) => startForEntity(database, input)),

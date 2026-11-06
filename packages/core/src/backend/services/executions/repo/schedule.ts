@@ -69,13 +69,18 @@ export type LeaseLock = "share" | "update";
 
 /**
  * A fence as a fenced write reads it: a `RunFence` also names the Execution
- * its schedule row must still run.
+ * its schedule row must still run, and a `DeliveryFence` the inbox row its
+ * schedule row must still deliver.
  */
-type AnyFence = OwnerFence & { executionId?: string | undefined };
+export type AnyFence = OwnerFence & {
+  executionId?: string | undefined;
+  inboxId?: string | undefined;
+};
 
 /**
  * The schedule row a fence names, while it is still leased under the fence's
- * token and, for a `RunFence`, still names the fence's Execution.
+ * token and still names the fence's Execution or inbox row when the fence
+ * names one.
  */
 function leasedUnder(fence: AnyFence): SQL | undefined {
   return and(
@@ -83,6 +88,9 @@ function leasedUnder(fence: AnyFence): SQL | undefined {
     fence.executionId === undefined
       ? undefined
       : eq(workflowExecutionSchedule.executionId, fence.executionId),
+    fence.inboxId === undefined
+      ? undefined
+      : eq(workflowExecutionSchedule.inboxId, fence.inboxId),
     eq(workflowExecutionSchedule.state, "leased"),
     eq(workflowExecutionSchedule.ownerToken, fence.ownerToken)
   );
@@ -404,9 +412,13 @@ export type PassWrites = {
 
 /** The schedule row a `ScheduleRowKey` names. */
 function scheduleRow(key: ScheduleRowKey): SQL {
-  return "scheduleId" in key
-    ? eq(workflowExecutionSchedule.id, key.scheduleId)
-    : eq(workflowExecutionSchedule.executionId, key.executionId);
+  if ("scheduleId" in key) {
+    return eq(workflowExecutionSchedule.id, key.scheduleId);
+  }
+  if ("executionId" in key) {
+    return eq(workflowExecutionSchedule.executionId, key.executionId);
+  }
+  return eq(workflowExecutionSchedule.inboxId, key.inboxId);
 }
 
 /** Resolves every overdue park of the claimed runs as a timeout. */

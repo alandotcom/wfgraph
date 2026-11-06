@@ -36,6 +36,8 @@ git log --oneline 656f05d5.. -- \
   packages/core/src/backend/services/executions/repo/fenced-writes.ts \
   packages/core/src/backend/services/executions/repo/fencing.ts \
   packages/core/src/backend/services/executions/repo/release-policy.ts \
+  packages/core/src/backend/services/executions/repo/inbox.ts \
+  packages/core/src/backend/services/executions/repo/inbox-policy.ts \
   packages/core/src/backend/services/executions/repo/node-logs.ts \
   packages/core/src/backend/services/executions/repo/waits.ts \
   packages/core/src/backend/services/executions/repo/runs.ts \
@@ -373,8 +375,8 @@ the directories of those names under `services/workflows/`.
 | `Migration`: `MigrateWake`, `Requeue` | "Migration" | `repinVersion`, which writes the `migrate` wake on every park (`resolveOpenParks`) and re-queues a `waiting` run through `wakeExecutions` in the repin's own transaction: `Repin` followed at once by `MigrateWake`. |
 | `Migration`: `Prepare`, `Park`, `StillPinned` | "Migration" | the `createWaitState`, `reparkWaitState` and `markExecutionRunning` fences in `engine/wait.ts`; `readMissedWake` in `engine/wait.ts`, which answers an Event or claim wake from the wait row's `wake` column (`readWaitState` in `engine/db-store.ts`) when a re-park finds the row already woken, the `Park` action's `event` arm after the pass re-prepares under the version it loaded |
 | `Migration`: `Release`, `FenceRefusalCountsNoAttempt` | | `versionRefused` in `engine/wait.ts`, which fails with the `version_refused` kind; `decideFailedPass` in `executor/pass.ts`, which releases that failure as `fence_refused`; `decideRelease` in `repo/release-policy.ts`, which re-queues the run due at once and counts nothing |
-| `Intake`: `SendViaApp`, `SendInHostTransaction`, `PollInbox`, `InboxKeyIsUnique` | Section 7.1 and 7.3 | |
-| `Intake`: `ClaimDelivery`, `LifecycleStep`, `RecordMemo`, `FinishDelivery` | Section 7.2 | `runEventListener` in `lib/inngest/event-listener-function.ts` |
+| `Intake`: `SendViaApp`, `SendInHostTransaction`, `PollInbox`, `InboxKeyIsUnique` | Section 7.1 and 7.3 | `insertInboxEvent` in `repo/inbox.ts` and `sqlite/inbox.ts`, which inserts the inbox row and its `delivery` schedule row in one transaction and writes nothing for a key the unique index `workflow_event_inbox_idempotency_uidx` already holds (`InboxKeyIsUnique`); the host's insert documented at `workflowEventInbox` in `lib/db/schema.ts` (`SendInHostTransaction`); `scheduleUnscheduledInbox`, whose rows `awaitsSchedule` in `repo/inbox-policy.ts` picks (`PollInbox`). No source calls `insertInboxEvent` and no runner polls yet. |
+| `Intake`: `ClaimDelivery`, `LifecycleStep`, `RecordMemo`, `FinishDelivery` | Section 7.2 | `runEventListener` in `lib/inngest/event-listener-function.ts`; `finishDelivery` and `failDelivery` in `repo/inbox.ts` and `sqlite/inbox.ts`, which settle the inbox row and delete its schedule row and step memo in one transaction fenced on the owner token (`FinishDelivery`). The claim does not lease a `delivery` row yet. |
 | `Intake`: `StartWrite`, `DeliveryIdIsUnique`, `ExecutionAndScheduleTogether` | Section 7.1; scenario S13 | `answerFromCommittedDecision` in `lifecycle/deliver-event.ts`; `startForEntity` in `repo/index.ts` and `sqlite/executions/index.ts`, behind the driver's `startRun` (`executions/driver.ts`): the transaction that inserts the Execution also inserts its schedule row (`insertRunSchedule`) and its "run started" entry, which is `ExecutionAndScheduleTogether`; a start answered with the row its delivery already committed writes neither again. |
 | `Intake`: Concurrency in `StartWrite`, `SupersedeDropsSchedule` | CONTEXT.md "Concurrency", "Superseded" | `startWithConcurrency` in `lifecycle/concurrency.ts` |
 | `Intake`: `CancelWrite` | "Cancellation" | `requestCancelForEntity` in `repo/claims.ts` |

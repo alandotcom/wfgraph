@@ -52,6 +52,13 @@ export type OwnerFence = {
 export type RunFence = OwnerFence & { executionId: string };
 
 /**
+ * The fence of a pass over a `delivery` row, with the inbox row the row
+ * delivers. A write carrying it also checks that its schedule row still names
+ * that inbox row.
+ */
+export type DeliveryFence = OwnerFence & { inboxId: string };
+
+/**
  * A write the engine's store makes, unfenced, so it is never refused for
  * ownership: a pass makes it this way once it has written the run's terminal
  * record. `ExecutionRepo.fenced` offers the same write fenced on a pass.
@@ -66,6 +73,8 @@ export type ExecutionSchedule = {
   kind: ExecutionScheduleKind;
   /** The run the row schedules, and null on a `delivery` row. */
   executionId: string | null;
+  /** The inbox row the row delivers, and null on a `run` row. */
+  inboxId: string | null;
   state: ExecutionScheduleState;
   wakeAt: Date;
   /** The run's own failure count. See `workflow_execution_schedule.attempt`. */
@@ -79,10 +88,14 @@ export type ExecutionSchedule = {
 };
 
 /**
- * How a read names one schedule row: by its own id, or, for a `run` row, by
- * the Execution it runs, which at most one row names.
+ * How a read names one schedule row: by its own id, for a `run` row by the
+ * Execution it runs, or for a `delivery` row by the inbox row it delivers. At
+ * most one row names each Execution and each inbox row.
  */
-export type ScheduleRowKey = { scheduleId: string } | { executionId: string };
+export type ScheduleRowKey =
+  | { scheduleId: string }
+  | { executionId: string }
+  | { inboxId: string };
 
 /** What every leased schedule row carries, whatever it runs. */
 type ScheduleLease = {
@@ -571,3 +584,42 @@ export type ExecutionPageQuery = {
   cursor?: ExecutionCursor | undefined;
   limit: number;
 };
+
+/**
+ * An arrival as a source hands it to the inbox. `name` is a catalog Event
+ * name and `data` its payload.
+ */
+export type NewInboxEvent = {
+  name: string;
+  data: JsonObject;
+  /** The Connection an integration Event arrived through, or null. */
+  connectionId: string | null;
+  /**
+   * The source's own id for the arrival, or null for one with none. A second
+   * arrival with the same name, Connection and key is a duplicate while the
+   * first inbox row exists.
+   */
+  idempotencyKey: string | null;
+};
+
+/**
+ * What `insertInboxEvent` did with an arrival. A new arrival has its inbox row
+ * and its delivery schedule row. A duplicate is answered with the inbox row
+ * that holds its key, and nothing was written.
+ */
+export type InboxInsert =
+  | { duplicate: false; inboxId: string; scheduleId: string }
+  | { duplicate: true; inboxId: string };
+
+/** One row of `workflow_event_inbox`, by where its delivery stands. */
+export type InboxEvent = NewInboxEvent & {
+  id: string;
+  receivedAt: Date;
+} & (
+    | { status: "pending" }
+    | { status: "delivered"; settledAt: Date }
+    | { status: "failed"; settledAt: Date; error: string }
+  );
+
+/** A delivery schedule row the poll gave to an inbox row that had none. */
+export type ScheduledDelivery = { scheduleId: string; inboxId: string };

@@ -55,6 +55,12 @@ export type ConformanceConnection = {
   readonly close: () => Promise<void>;
 };
 
+/**
+ * A statement `ConformanceDatabase.execute` runs: one text both backends
+ * accept, or one text per backend where their column encodings differ.
+ */
+export type SqlStatement = string | { postgresql: string; sqlite: string };
+
 export type ConformanceDatabase = {
   /**
    * `cipher` defaults to {@link conformanceCipher}. A case passes another to
@@ -64,11 +70,18 @@ export type ConformanceDatabase = {
   readonly open: (options?: {
     cipher?: IntegrationCipher | undefined;
   }) => Promise<ConformanceConnection>;
+  /**
+   * Runs one SQL statement on a connection of its own, outside the
+   * repositories, the way a host sharing the database runs one. A case that
+   * plays a host's insert through the documented SQL contract writes it here,
+   * after the database's first `open` has migrated it.
+   */
+  readonly execute: (statement: SqlStatement) => Promise<void>;
   readonly drop: () => Promise<void>;
 };
 
 /** No `drop`: a case dropping its own database would outrun the sweep. */
-export type CaseDatabase = Pick<ConformanceDatabase, "open">;
+export type CaseDatabase = Pick<ConformanceDatabase, "open" | "execute">;
 
 export type PersistenceTestRegistry = {
   /** A fresh database and the one connection most cases need. */
@@ -117,6 +130,7 @@ export function usePersistenceRegistry(
     databases.push(database);
 
     return {
+      execute: database.execute,
       open: async (options) => {
         const connection = await database.open(options);
         // Idempotent, because the restart case closes its own connection

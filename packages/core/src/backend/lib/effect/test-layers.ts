@@ -386,6 +386,12 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   claimDue: refuse("claimDue"),
   wakePark: refuse("wakePark"),
   listStepMemo: refuse("listStepMemo"),
+  insertInboxEvent: refuse("insertInboxEvent"),
+  scheduleUnscheduledInbox: refuse("scheduleUnscheduledInbox"),
+  finishDelivery: refuse("finishDelivery"),
+  failDelivery: refuse("failDelivery"),
+  sweepDeliveredInbox: refuse("sweepDeliveredInbox"),
+  findInboxEvent: refuse("findInboxEvent"),
   // `fenced` answers a set of writes, each of which dies when called, the way
   // every other method here does.
   fenced: () => ({
