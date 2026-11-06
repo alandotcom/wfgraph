@@ -42,7 +42,8 @@ describe("wait node - delay mode", () => {
     expect(created[0]?.nodeId).toBe("wait_1");
     expect(created[0]?.executionId).toBe("exec_wait");
 
-    // The park's timeout is what is left of the delay: roughly an hour, allowing for the milliseconds the run itself took.
+    // The park's timeout is what is left of the delay: roughly an hour,
+    // allowing for the milliseconds the run itself took.
     const park = runtime.waits.find(
       (wait) => wait.stepId === "wait-park-wait_1-0"
     );

@@ -2,11 +2,11 @@
  * Regression tests for durable replay.
  *
  * The database executor re-runs the whole workflow body on every pass of a
- * run, after a wait resolves or a step is retried. Only work handed to `runtime.step` is
- * remembered, so anything else would fire its side effect again on every
- * resume. These tests model that with a fake runtime whose `step` memoizes by
- * id, then drive the engine twice against the same memo: the second pass is the
- * replay, and nodes that already ran must not run again.
+ * run, after a wait resolves or a step is retried. Only work handed to
+ * `runtime.step` is remembered, so anything else would fire its side effect
+ * again on every resume. These tests model that with a fake runtime whose
+ * `step` memoizes by id, then drive the engine twice against the same memo: the
+ * second pass is the replay, and nodes that already ran must not run again.
  */
 
 import { Effect, Schema, SchemaTransformation } from "effect";

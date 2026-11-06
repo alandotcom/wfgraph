@@ -1,7 +1,7 @@
 /**
  * The Wait node: the one action the engine runs itself and never wraps in a
  * step, because a park is a durable step of its own and steps do not nest.
- * This module memoizes its own persistence segments around the park instead, and
+ * This module memoizes its own persistence segments around the park, and
  * `executeWaitAction` is the whole of what the traversal calls. The loop below
  * drives both Wait modes, re-reading the mode from the config on every attempt.
  */

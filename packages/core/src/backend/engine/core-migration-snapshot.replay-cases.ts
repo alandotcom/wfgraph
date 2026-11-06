@@ -1,7 +1,7 @@
 /**
  * The Migration graph the migration-snapshot suite drives, and its case: the
- * node behind a migrated Wait reads an output a
- * pass under the earlier version produced.
+ * node behind a migrated Wait reads an output a pass under the earlier version
+ * produced.
  */
 
 import { expect, it } from "vitest";
@@ -128,8 +128,9 @@ export function defineMigrationSnapshotReplayCases(
   executor: ReplayExecutor
 ): void {
   // The node behind a migrated Wait reads the output of a node a pass under
-  // the earlier version ran. Each pass loads the version the run is pinned to, and the traversal it
-  // rebuilds from the memo holds `source`'s output under either graph.
+  // the earlier version ran. Each pass loads the version the run is pinned to,
+  // and the traversal it rebuilds from the memo holds `source`'s output under
+  // either graph.
   it.each([false, true])(
     "reads an output from before the migration behind the migrated Wait (return to original version: %s)",
     async (returnToOriginal) => {

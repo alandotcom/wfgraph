@@ -4,8 +4,8 @@
  * A cancel decides and then acts: the row flips behind a compare-and-set, then
  * the executor is told to stop the run, and a run that finished or claimed
  * termination first keeps its own outcome. A supersede has already been
- * decided -- `ExecutionRepo.startForEntity` flips those rows inside the lock
- * that made room for the newer start -- so all that is left is stopping the
+ * decided: `ExecutionRepo.startForEntity` flips those rows inside the lock
+ * that made room for the newer start, so all that is left is stopping the
  * runs and saying why on their timelines.
  *
  * The terminal write itself cancels the run's open wait rows and deletes its

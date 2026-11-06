@@ -1,7 +1,7 @@
 /**
  * The partial-progress graph the cancel suite drives, and its case: a Cancel
- * claim that halts a parked Wait keeps the outputs
- * and failures earlier passes recorded.
+ * claim that halts a parked Wait keeps the outputs and failures earlier passes
+ * recorded.
  */
 
 import { describe, expect, it } from "vitest";

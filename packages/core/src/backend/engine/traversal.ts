@@ -103,8 +103,8 @@ export class Traversal {
   /**
    * Every finished node's output, which templates and CEL conditions read.
    *
-   * Read-only to everyone outside, so `setOutput` and `markCompleted` stay the only way a node's output is written and the run's
-   * state has one author.
+   * Read-only to everyone outside, so `setOutput` and `markCompleted` stay the
+   * only way a node's output is written and the run's state has one author.
    */
   get outputs(): Readonly<NodeOutputs> {
     return this.nodeOutputs;

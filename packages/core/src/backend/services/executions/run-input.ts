@@ -1,7 +1,7 @@
 /**
  * The engine input for one run of a persisted Execution, read from the
  * execution row, its workflow, and the Workflow Version the row pins at the
- * moment of the read. Both executors load it at the start of every pass, so a
+ * moment of the read. The executor loads it at the start of every pass, so a
  * body always walks the version a Migration last pinned. A run that cannot be
  * loaded answers `RunInputUnavailable`, which no retry can mend. A caller that
  * loads many passes hands in a `RunVersionCache`, so each version is read once.

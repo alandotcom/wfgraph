@@ -129,10 +129,10 @@ export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {
  *
  * The attempt that ran a step gets the value the step returned, and every replay
  * after it gets the JSON that was stored. That asymmetry is the database
- * executor's, and copying it is what makes a value whose type differs between the two visible here: a live
- * `Date` read back as a string on the replay alone is the failure mode the engine
- * is least able to survive, and a runtime that round-tripped eagerly would hand
- * both passes the string and hide it.
+ * executor's, and copying it is what makes a value whose type differs between
+ * the two visible here: a live `Date` read back as a string on the replay alone
+ * is the failure mode the engine is least able to survive, and a runtime that
+ * round-tripped eagerly would hand both passes the string and hide it.
  */
 export function createInMemoryWorkflowRuntime(
   options: InMemoryRuntimeOptions = {}

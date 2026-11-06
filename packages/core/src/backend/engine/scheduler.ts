@@ -3,8 +3,9 @@
  *
  * One `NodeScheduler` is built per run and holds that run's ports and identity,
  * which is what every node is executed against. Node work is a strategy table
- * (`strategies/`); this class owns deferral, drain and cancel routing. What each node left behind is `Traversal`'s, and where a
- * cancellation routes the run is `CancelBoundary`'s.
+ * (`strategies/`); this class owns deferral, drain and cancel routing. What
+ * each node left behind is `Traversal`'s, and where a cancellation routes the
+ * run is `CancelBoundary`'s.
  */
 
 import {
