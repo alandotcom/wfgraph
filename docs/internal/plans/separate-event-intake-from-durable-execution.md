@@ -472,7 +472,12 @@ A leased invocation of that run fails its next fenced write and stops.
 parked row plus a re-queue. The replay loads the new version, the Wait driver's
 attempt loop sees the `migrate` wake and prepares again (exists, ADR-0019). The
 version fences on `createWaitState`, `reparkWaitState` and
-`markExecutionRunning` keep working unchanged. A refused fence ends the pass,
+`markExecutionRunning` keep working unchanged. An Event that arrives while
+the migrate wake is still pending replaces it: the claim takes a row whose
+pending wake is a migrate wake as it takes a waiting one, the next pass reads
+the Event, fails the version fence, and resumes the Wait on the version the
+run was moved to. A claim that refused the Event would lose it for that run,
+where the Inngest path honours it today. A refused fence ends the pass,
 and the next pass reloads the newer graph, which is the behaviour ADR-0019
 describes. The engine reports a refused fence as a failure kind of its own, and
 the release re-queues the run with `wake_at = now()` and the attempt counter
