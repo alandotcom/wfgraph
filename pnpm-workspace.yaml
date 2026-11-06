@@ -29,12 +29,12 @@ catalog:
   # The backend and the editor both log through logtape.
   "@logtape/logtape": ^2.4.2
   "@marcbachmann/cel-js": ^8.0.0
-  "@orpc/client": 2.0.0-beta.47
-  "@orpc/contract": 2.0.0-beta.47
-  "@orpc/effect": 2.0.0-beta.47
-  "@orpc/openapi": 2.0.0-beta.47
-  "@orpc/server": 2.0.0-beta.47
-  "@orpc/tanstack-query": 2.0.0-beta.47
+  "@orpc/client": 2.0.0-beta.48
+  "@orpc/contract": 2.0.0-beta.48
+  "@orpc/effect": 2.0.0-beta.48
+  "@orpc/openapi": 2.0.0-beta.48
+  "@orpc/server": 2.0.0-beta.48
+  "@orpc/tanstack-query": 2.0.0-beta.48
   "@standard-schema/spec": ^1.1.0
   "@testing-library/react": ^16.3.3
   "@types/react": ^19.3.0
