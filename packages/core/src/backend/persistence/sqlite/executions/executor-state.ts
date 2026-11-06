@@ -8,11 +8,13 @@
 import { Effect } from "effect";
 import { eq, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
+import { compact } from "es-toolkit/array";
 import type { ExecutorStateRepoMethods } from "#src/backend/services/executions/repo/executor-state";
 import {
   executorHolds,
   failingStepFields,
   failingStepsOf,
+  failingNodesOf,
   logOfNode,
   parkWakeKind,
   unconsumedWakeFields,
@@ -118,5 +120,24 @@ export function makeSqliteExecutorStateMethods(
 
     listExecutorHolds: (executionIds) =>
       store.read((database) => readHolds(database, executionIds)),
+
+    listFailingNodeIds: (executionId) =>
+      store.read((database) =>
+        database
+          .selectDistinct({ nodeId: workflowExecutionSteps.nodeId })
+          .from(workflowExecutionSteps)
+          .innerJoin(
+            workflowExecutionSchedule,
+            eq(workflowExecutionSchedule.id, workflowExecutionSteps.scheduleId)
+          )
+          .where(
+            failingNodesOf(
+              workflowExecutionSteps,
+              workflowExecutionSchedule,
+              executionId
+            )
+          )
+          .pipe(Effect.map((rows) => compact(rows.map((row) => row.nodeId))))
+      ),
   };
 }

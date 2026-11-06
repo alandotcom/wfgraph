@@ -253,6 +253,21 @@ export function failingStepsOf(
   );
 }
 
+/**
+ * The `failing` memo rows of the run `executionId`, read through its schedule
+ * row, which the query joins on `steps.scheduleId`.
+ */
+export function failingNodesOf(
+  steps: StepColumns,
+  schedule: { executionId: Column },
+  executionId: string
+) {
+  return and(
+    eq(schedule.executionId, executionId),
+    eq(steps.status, "failing")
+  );
+}
+
 /** The `workflow_wait_states` columns the wake read selects and filters on. */
 type WaitColumns = {
   id: Column;

@@ -267,6 +267,56 @@ export function describeExecutionExecutorStateConformance({
       });
     });
 
+    it("names each node of one run with a failing step once, and none once the run ends", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          /** Claims `executionId` and counts one failure on `stepId`. */
+          const fail = (
+            executionId: string,
+            stepId: string,
+            nodeId: string | null
+          ) =>
+            Effect.gen(function* () {
+              const { fence } = yield* claimRun(executionId, at(10_000));
+              yield* executions.fenced(fence).releasePass({
+                outcome: {
+                  kind: "step_failed",
+                  stepId,
+                  nodeId,
+                  error: "down",
+                  backoffMs: 0,
+                },
+                now: T0,
+              });
+            });
+
+          // Two failing steps of `fetch` and one of no node; the other run's
+          // failing step is not this run's.
+          const retrying = yield* scheduledRun(T0);
+          yield* fail(retrying, "node:fetch:read", "fetch");
+          yield* fail(retrying, "node:fetch:write", "fetch");
+          yield* fail(retrying, "lifecycle-read", null);
+          const other = yield* scheduledRun(T0);
+          yield* fail(other, "node:send:dispatch", "send");
+
+          const failingNodes = yield* executions.listFailingNodeIds(retrying);
+          const { fence } = yield* claimRun(other, at(10_000));
+          yield* executions
+            .fenced(fence)
+            .finishRun({ executionId: other, status: "failed" });
+          return {
+            failingNodes,
+            ended: yield* executions.listFailingNodeIds(other),
+          };
+        })
+      );
+
+      expect(result.failingNodes).toEqual(["fetch"]);
+      expect(result.ended).toEqual([]);
+    });
+
     it("reads where the executor holds each run on a list page in one call", async () => {
       const connection = await seeded(await openConnection());
       const result = await connection.run(

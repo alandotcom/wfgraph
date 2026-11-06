@@ -683,6 +683,7 @@ describe("workflow execution RPC", () => {
             failingSteps: [failingStep],
             unconsumedWakes: [],
           }),
+        listFailingNodeIds: () => Effect.succeed(["send"]),
       },
     });
     const app = createApiApp({

@@ -8,17 +8,6 @@ import {
 } from "#src/backend/lib/effect/test-layers";
 import { getExecutionStatus } from "#src/backend/services/executions/status";
 
-/** A failing memo row of `nodeId`, as the executor state read answers one. */
-function failingStep(stepId: string, nodeId: string | null) {
-  return {
-    stepId,
-    nodeId,
-    nodeName: null,
-    failures: 1,
-    error: "vendor timed out",
-  };
-}
-
 describe("getExecutionStatus", () => {
   layer(SilentAppLoggerLayer)((it) => {
     // A node parked on a Wait records a running status, so the read names the
@@ -42,25 +31,8 @@ describe("getExecutionStatus", () => {
                     ]),
                   listOpenWaitNodeIds: (executionId) =>
                     Effect.succeed(executionId === "exec_1" ? ["wait"] : []),
-                  // Two failing steps of one node, and one of no node.
-                  findExecutorState: () =>
-                    Effect.succeed({
-                      state: "waiting",
-                      wakeAt: new Date("2026-03-01T10:00:00.000Z"),
-                      attempt: 0,
-                      runningStepId: null,
-                      runningNodeId: null,
-                      runningNodeName: null,
-                      leaseExpiresAt: null,
-                      workerId: null,
-                      lastError: "vendor timed out",
-                      failingSteps: [
-                        failingStep("node:fetch:read", "fetch"),
-                        failingStep("node:fetch:write", "fetch"),
-                        failingStep("delivery-step", null),
-                      ],
-                      unconsumedWakes: [],
-                    }),
+                  listFailingNodeIds: (executionId) =>
+                    Effect.succeed(executionId === "exec_1" ? ["fetch"] : []),
                 })
               )
             )

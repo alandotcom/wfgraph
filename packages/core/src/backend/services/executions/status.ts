@@ -1,5 +1,4 @@
 import { Effect } from "effect";
-import { compact, uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
@@ -41,13 +40,15 @@ export const getExecutionStatus = Effect.fn("getExecutionStatus")(
       return yield* new NotFound({ error: "Execution not found" });
     }
 
-    const logs = yield* repo.listNodeStatuses(executionId);
-    const openWaitNodeIds = yield* repo.listOpenWaitNodeIds(executionId);
-    const executorState = heldByExecutor(execution.status)
-      ? yield* repo.findExecutorState(executionId)
-      : null;
-    const retryingNodeIds = uniq(
-      compact(executorState?.failingSteps.map((step) => step.nodeId) ?? [])
+    const [logs, openWaitNodeIds, retryingNodeIds] = yield* Effect.all(
+      [
+        repo.listNodeStatuses(executionId),
+        repo.listOpenWaitNodeIds(executionId),
+        heldByExecutor(execution.status)
+          ? repo.listFailingNodeIds(executionId)
+          : Effect.succeed([]),
+      ],
+      { concurrency: 3 }
     );
 
     // A run that stopped leaves its unfinished nodes recorded as pending or

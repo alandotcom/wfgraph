@@ -35,12 +35,19 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
       return yield* new NotFound({ error: "Execution not found" });
     }
 
-    const logs = yield* repo.listLogs(executionId);
-    const waits = yield* repo.listWaitingStates(executionId);
-    const termination =
-      execution.status === "exited"
-        ? yield* repo.findTerminationState(executionId)
-        : null;
+    const [logs, waits, termination, executorState] = yield* Effect.all(
+      [
+        repo.listLogs(executionId),
+        repo.listWaitingStates(executionId),
+        execution.status === "exited"
+          ? repo.findTerminationState(executionId)
+          : Effect.succeed(null),
+        heldByExecutor(execution.status)
+          ? repo.findExecutorState(executionId)
+          : Effect.succeed(null),
+      ],
+      { concurrency: 4 }
+    );
     const exitClaim =
       termination?.claim?.kind === "exit" ? termination.claim : null;
     const exit =
@@ -52,9 +59,6 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
             checkedAt: exitClaim.requestedAt.toISOString(),
           }
         : null;
-    const executorState = heldByExecutor(execution.status)
-      ? yield* repo.findExecutorState(executionId)
-      : null;
     const observedAt = yield* observedNow;
 
     return {

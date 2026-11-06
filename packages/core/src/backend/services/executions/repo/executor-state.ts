@@ -9,6 +9,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Effect } from "effect";
+import { compact } from "es-toolkit/array";
 import {
   workflowExecutionLogs,
   workflowExecutionSchedule,
@@ -25,6 +26,7 @@ import {
   executorHolds,
   failingStepFields,
   failingStepsOf,
+  failingNodesOf,
   logOfNode,
   parkWakeKind,
   unconsumedWakeFields,
@@ -48,6 +50,14 @@ export type ExecutorStateRepoMethods = {
   readonly listExecutorHolds: (
     executionIds: readonly string[]
   ) => Effect.Effect<Map<string, ExecutorHold>, DatabaseError>;
+  /**
+   * The nodes of one run with a step that failed and will run again, each
+   * once, in no order. One query, which the status poll makes twice a second.
+   * Empty for a run that ended, and for a failing step of no node.
+   */
+  readonly listFailingNodeIds: (
+    executionId: string
+  ) => Effect.Effect<string[], DatabaseError>;
 };
 
 /** The log rows that name the node a pass is running. */
@@ -126,5 +136,24 @@ export function makeExecutorStateMethods(
 
     listExecutorHolds: (executionIds) =>
       database.query((db) => readHolds(db, executionIds)),
+
+    listFailingNodeIds: (executionId) =>
+      database.query(async (db) => {
+        const rows = await db
+          .selectDistinct({ nodeId: workflowExecutionSteps.nodeId })
+          .from(workflowExecutionSteps)
+          .innerJoin(
+            workflowExecutionSchedule,
+            eq(workflowExecutionSchedule.id, workflowExecutionSteps.scheduleId)
+          )
+          .where(
+            failingNodesOf(
+              workflowExecutionSteps,
+              workflowExecutionSchedule,
+              executionId
+            )
+          );
+        return compact(rows.map((row) => row.nodeId));
+      }),
   };
 }
