@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 import {
   AppLogger,
   type EffectLogger,
@@ -80,52 +80,22 @@ export const internalFailureFromCause =
       });
     });
 
-/**
- * The same answer with the cause kept out of it for an external caller. The
- * caller gets a stated sentence; the cause goes to the log for the operator.
- *
- * It takes the logger as the Effect that produces one for the same reason the
- * function-level handler does: both are used from an `Effect.fn` transform, which runs
- * outside the generator that could have yielded `AppLogger`.
- */
-const statedInternalFailure =
-  (
-    logger: Effect.Effect<EffectLogger, never, AppLogger>,
-    message: string,
-    callerMessage: string
-  ) =>
-  (seamFailure: {
-    readonly cause: unknown;
-  }): Effect.Effect<never, InternalFailure, AppLogger> =>
-    Effect.gen(function* () {
-      const { cause } = seamFailure;
-      const serviceLogger = yield* logger;
-      yield* serviceLogger.error(`${message}: ${getErrorMessage(cause)}`, {
-        error: cause,
-      });
-      return yield* new InternalFailure({ error: callerMessage, cause });
-    });
-
 /** The `_tag` of each seam failure a service may meet. */
 type SeamFailureTag = "DatabaseError" | "InngestError" | "DriverError";
 
 type SeamFailure = { readonly _tag: SeamFailureTag; readonly cause: unknown };
 
-const seamFailureTags: ReadonlySet<string> = new Set<SeamFailureTag>([
-  "DatabaseError",
-  "InngestError",
-  "DriverError",
-]);
+const hasSeamFailureTag = Predicate.or(
+  Predicate.or(
+    Predicate.isTagged("DatabaseError"),
+    Predicate.isTagged("InngestError")
+  ),
+  Predicate.isTagged("DriverError")
+);
 
-/** Whether `error` is one of the seam failures, whichever the caller can meet. */
+/** Narrows a service's error channel to the seam failures it holds. */
 function isSeamFailure<E>(error: E): error is Extract<E, SeamFailure> {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "_tag" in error &&
-    typeof error._tag === "string" &&
-    seamFailureTags.has(error._tag)
-  );
+  return hasSeamFailureTag(error);
 }
 
 /**
@@ -150,33 +120,16 @@ export const catchSeamFailures =
     Exclude<E, Extract<E, SeamFailure>> | InternalFailure,
     R | AppLogger
   > =>
-    Effect.catchIf(
+    Effect.catchIf<
+      A,
+      E,
+      R,
+      Extract<E, SeamFailure>,
+      never,
+      InternalFailure,
+      AppLogger
+    >(
       self,
       isSeamFailure<E>,
-      internalFailureFromCause(logger, message, callerMessage),
-      Effect.fail
-    );
-
-/**
- * Every seam failure answered with one stated sentence, keeping storage and
- * request details private, as a pipeable step.
- */
-export const catchStatedSeamFailures =
-  (
-    logger: Effect.Effect<EffectLogger, never, AppLogger>,
-    message: string,
-    callerMessage: string
-  ) =>
-  <A, E, R>(
-    self: Effect.Effect<A, E, R>
-  ): Effect.Effect<
-    A,
-    Exclude<E, Extract<E, SeamFailure>> | InternalFailure,
-    R | AppLogger
-  > =>
-    Effect.catchIf(
-      self,
-      isSeamFailure<E>,
-      statedInternalFailure(logger, message, callerMessage),
-      Effect.fail
+      internalFailureFromCause(logger, message, callerMessage)
     );

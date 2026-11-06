@@ -28,10 +28,9 @@ it.each([false, true])(
     const runtime = ManagedRuntime.make(
       Layer.mergeAll(
         SilentAppLoggerLayer,
-        makeExecutionDriverLayer({
-          worker: createWorkerWake(),
-          persistence: instance.wakes,
-        }).pipe(Layer.provideMerge(instance.repositories))
+        makeExecutionDriverLayer([createWorkerWake()]).pipe(
+          Layer.provideMerge(instance.repositories)
+        )
       )
     );
     try {

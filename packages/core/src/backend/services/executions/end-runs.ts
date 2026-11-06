@@ -20,9 +20,10 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 /** This module's logger, as the Effect that produces it (see `list.ts`). */
-const loggerFor = Effect.map(AppLogger, (appLogger) =>
-  appLogger.get("run-ending")
-);
+const loggerFor = (workflowId: string) =>
+  Effect.map(AppLogger, (appLogger) =>
+    appLogger.get("run-ending").with({ workflowId })
+  );
 
 export type CancelInFlightRunsInput = {
   workflowId: string;
@@ -82,7 +83,7 @@ const recordEndingFailure = Effect.fn("recordEndingFailure")(function* (input: {
   eventName?: string | undefined;
 }) {
   const repo = yield* ExecutionRepo;
-  const logger = yield* loggerFor;
+  const logger = yield* loggerFor(input.workflowId);
 
   yield* repo
     .recordAuditEvent({
@@ -93,11 +94,10 @@ const recordEndingFailure = Effect.fn("recordEndingFailure")(function* (input: {
       metadata: { eventName: input.eventName, outcome: "write_failed" },
     })
     .pipe(
-      Effect.catch((auditError) =>
+      Effect.catchTag("DatabaseError", (failure) =>
         logger.error("Failed to record a refused ending", {
-          workflowId: input.workflowId,
-          executionId: input.executionId,
-          error: auditError,
+          run: { execution: input.executionId },
+          error: failure.cause,
         })
       )
     );
@@ -111,7 +111,7 @@ const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
   eventName?: string | undefined;
 }) {
   const repo = yield* ExecutionRepo;
-  const logger = yield* loggerFor;
+  const logger = yield* loggerFor(input.workflowId);
 
   return yield* repo
     .recordAuditEvent({
@@ -123,13 +123,12 @@ const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
     })
     .pipe(
       Effect.as(true),
-      Effect.catch((error) =>
+      Effect.catchTag("DatabaseError", (failure) =>
         logger
           .error("Failed to record the end of an execution", {
-            workflowId: input.workflowId,
-            executionId: input.executionId,
-            eventName: input.eventName,
-            error,
+            run: { execution: input.executionId },
+            event: { name: input.eventName },
+            error: failure.cause,
           })
           .pipe(Effect.as(false))
       )
@@ -183,7 +182,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
 }) {
   const { executionId, workflowId } = input;
   const repo = yield* ExecutionRepo;
-  const logger = yield* loggerFor;
+  const logger = yield* loggerFor(workflowId);
 
   const termination = yield* repo
     .endInFlight({
@@ -192,12 +191,11 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
       error: input.reason,
     })
     .pipe(
-      Effect.catch((error) =>
+      Effect.catchTag("DatabaseError", (failure) =>
         Effect.gen(function* () {
           yield* logger.error("Failed to end an execution", {
-            workflowId,
-            executionId,
-            error,
+            run: { execution: executionId },
+            error: failure.cause,
           });
           yield* recordEndingFailure({
             workflowId,
@@ -222,19 +220,14 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
       )
     ) {
       yield* logger.info("Execution already has a termination claim", {
-        workflowId,
-        executionId,
-        claim: termination.claim.kind,
+        run: { execution: executionId, claim: termination.claim.kind },
       });
       return runEndOutcome("claim-pending", executionId);
     }
 
     yield* logger.info(
       "Execution reached a terminal status before it could be ended",
-      {
-        workflowId,
-        executionId,
-      }
+      { run: { execution: executionId } }
     );
     return runEndOutcome("lost-race", executionId);
   }

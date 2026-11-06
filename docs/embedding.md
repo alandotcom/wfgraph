@@ -682,16 +682,17 @@ The `runner` option controls the loop:
 
 - To run one loop with the persistence backend's defaults, leave `runner` out.
 - To change some of the defaults, pass an object. A field you leave out keeps its default.
-- To run no loop in a process, pass `false`. Use it for a process that only serves requests.
-  At least one process connected to the same database must run a loop, or runs open and
-  never advance.
+- To run no loop in a process, pass `false`. Use it for a process that only serves requests,
+  beside processes that run `createWfGraphRunner` (see Run the loop in its own process). At
+  least one process connected to the same database must run a loop, or runs open and never
+  advance. SQLite refuses `false` at startup, because no other process can share its file.
 
-| Field         | PostgreSQL default | SQLite default | Description                                                                                |
-| ------------- | ------------------ | -------------- | ------------------------------------------------------------------------------------------ |
-| `concurrency` | 10                 | 1              | How many runs the loop advances at once                                                    |
-| `pollMs`      | 1,000              | 250            | How long the loop waits between checks for due runs when nothing wakes it, in milliseconds |
-| `leaseMs`     | 60,000             | 60,000         | How long the loop holds a run before another loop can take it over, in milliseconds        |
-| `heartbeatMs` | 20,000             | 20,000         | How often the loop renews its hold while a step runs, in milliseconds                      |
+| Field         | PostgreSQL default | SQLite default | Description                                                                                 |
+| ------------- | ------------------ | -------------- | ------------------------------------------------------------------------------------------- |
+| `concurrency` | 10                 | 1              | How many runs the loop advances at once. On PostgreSQL, at most the pool's `maxConnections` |
+| `pollMs`      | 1,000              | 250            | How long the loop waits between checks for due runs when nothing wakes it, in milliseconds  |
+| `leaseMs`     | 60,000             | 60,000         | How long the loop holds a run before another loop can take it over, in milliseconds         |
+| `heartbeatMs` | 20,000             | 20,000         | How often the loop renews its hold while a step runs, in milliseconds                       |
 
 Each field must be a positive integer, and `heartbeatMs` must be shorter than `leaseMs`.
 `createWfGraphApp` refuses any other value at startup.
@@ -702,6 +703,43 @@ const wfgraph = await createWfGraphApp({
   runner: { concurrency: 20, pollMs: 500 },
 });
 ```
+
+### Run the loop in its own process
+
+`createWfGraphRunner` runs the worker loop in a process that serves no HTTP, so a host can
+scale request handling and run execution separately. Pass it the same database,
+encryption key and extensions as the app, and give the app `runner: false`.
+
+```ts
+import { createWfGraphRunner } from "@wfgraph/core";
+import { wfPostgres } from "@wfgraph/core/postgres";
+
+const runner = await createWfGraphRunner({
+  persistence: wfPostgres({ url: process.env.DATABASE_URL }),
+  encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
+  extensions: { integrations: builtInIntegrations(), events, actions },
+  // The app's own values, which an OAuth token refresh builds its callback URLs from.
+  basePath: "/workflows",
+  publicUrl: "https://app.example.com",
+  runner: { concurrency: 20 },
+});
+
+process.once("SIGTERM", () => void runner.dispose());
+```
+
+| Option                    | Required | Description                                                                                   |
+| ------------------------- | -------- | --------------------------------------------------------------------------------------------- |
+| `persistence`             | Yes      | The app's database. SQLite is refused, because no other process can share its file            |
+| `encryption`              | Yes      | The app's key, which decrypts the credentials a step reads                                    |
+| `extensions`              | No       | The app's extension surface. A run reaches only the actions and Entities listed here          |
+| `basePath`, `publicUrl`   | No       | The app's values. A step that refreshes an OAuth token registers the callback URLs they build |
+| `entityResolverTimeoutMs` | No       | As on `createWfGraphApp`                                                                      |
+| `logger`                  | No       | As on `createWfGraphApp`                                                                      |
+| `runner`                  | No       | The loop's settings, as in the table under Configure the runner                               |
+
+It answers `{ dispose, [Symbol.asyncDispose] }`. `dispose()` drains the loop the way the
+app's does, then closes the database. Run one Workflow Graph per process: an app and a
+runner in the same process are not supported.
 
 ### How runs behave
 
@@ -721,8 +759,11 @@ const wfgraph = await createWfGraphApp({
   starts at one second and doubles up to one minute. A step that still fails fails its
   node, and the run's other branches continue.
 - **`dispose()` drains the loop.** It stops claiming runs and waits up to ten seconds for
-  the runs in progress. A run still in progress after that resumes from its last completed
-  step when a loop claims it after its lease expires.
+  the runs in progress. A run still in progress after that is released and resumes from its
+  last completed step when a loop next claims it. The loop then logs `Worker loop stopped`
+  with how many runs finished within the drain and how many were interrupted.
+- **A loop that stops on an unexpected error starts again.** It logs the error and
+  restarts after a backoff that starts at 200 milliseconds and grows to five seconds.
 - **Drain in-flight runs before you upgrade from a release that ran workflows on Inngest.**
   A run that Inngest held has no row for the loop to claim, so it never advances. Let each
   run finish, or cancel it, before you upgrade.
@@ -825,26 +866,27 @@ different migration tool puts the tables in `public`. This repository's
 
 ## Package exports
 
-| Entry                    | What it is                                                                                                                                           |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@wfgraph/core`          | The host-facing entry. It exports the authoring vocabulary, application and authorization contracts, `createWfGraphApp`, and `createRequestListener` |
-| `@wfgraph/core/postgres` | `wfPostgres` for a Node PostgreSQL pool                                                                                                              |
-| `@wfgraph/core/sqlite`   | `wfSqlite` for native Node SQLite                                                                                                                    |
-| `@wfgraph/core/worker`   | `wfWorker`, `wfHyperdrive`, and request-scoped PostgreSQL through Hyperdrive                                                                         |
-| `@wfgraph/core/plugin`   | What an integration package builds against                                                                                                           |
-| `@wfgraph/core/testing`  | `runAction`, `actionData` and `actionError`, for that package's own suite                                                                            |
-| `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                      |
-| `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                         |
-| `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                           |
-| `@wfgraph/plugins`       | Five static integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                      |
-| `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                        |
+| Entry                    | What it is                                                                                                                                                                                                                       |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@wfgraph/core`          | The host-facing entry. It exports the authoring vocabulary, application and authorization contracts, `createWfGraphApp`, `createWfGraphRunner` for a process that runs workflows and serves no HTTP, and `createRequestListener` |
+| `@wfgraph/core/postgres` | `wfPostgres` for a Node PostgreSQL pool                                                                                                                                                                                          |
+| `@wfgraph/core/sqlite`   | `wfSqlite` for native Node SQLite                                                                                                                                                                                                |
+| `@wfgraph/core/worker`   | `wfWorker`, `wfHyperdrive`, and request-scoped PostgreSQL through Hyperdrive                                                                                                                                                     |
+| `@wfgraph/core/plugin`   | What an integration package builds against                                                                                                                                                                                       |
+| `@wfgraph/core/testing`  | `runAction`, `actionData` and `actionError`, for that package's own suite                                                                                                                                                        |
+| `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                  |
+| `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                     |
+| `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                       |
+| `@wfgraph/plugins`       | Five static integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                                                                                                  |
+| `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                                                                                                    |
 
 Workflow Graph cannot serialize a React component, so that last record is the one part of the catalog
 that stays off `/api/extensions`. `@wfgraph/shared` stays private, and the build inlines it
 into whichever bundle needs it. `@wfgraph/core` and `@wfgraph/plugins` also include a
 `skills/` directory in the tarball; it is not a package export.
 
-`createWfGraphApp` is the Node host. `wfWorker` is the Cloudflare
+`createWfGraphApp` is the Node host, and `createWfGraphRunner` is the Node process that only
+runs workflows. `wfWorker` is the Cloudflare
 Worker host and serves the API while the platform's Assets binding or the
 application's router serves static files. The Worker host does not run workflows yet; see
 Cloudflare Workers and Hyperdrive.
@@ -860,7 +902,7 @@ Cloudflare Workers and Hyperdrive.
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                                                                          |
 | `inngest.id`              | Yes      | Inngest application ID. Inngest delivers Events; it runs no workflow                                                                                                                                                  |
 | `inngest.*`               | No       | isDev, baseUrl, eventKey, env, signingKey, signingKeyFallback, serveOrigin, servePath, connect, instanceId, gatewayUrl, maxWorkerConcurrency, connectTimeoutMs                                                        |
-| `runner`                  | No       | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none. See Workflow runs                                                              |
+| `runner`                  | No       | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none beside a `createWfGraphRunner` process. See Workflow runs                       |
 | `extensions.events`       | No       | `defineEvent` values                                                                                                                                                                                                  |
 | `extensions.actions`      | No       | `defineAction` values                                                                                                                                                                                                 |
 | `extensions.integrations` | No       | `defineIntegration` values                                                                                                                                                                                            |

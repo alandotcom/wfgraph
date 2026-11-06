@@ -4,11 +4,16 @@
  * moment of the read. The executor loads it at the start of every pass, so a
  * body always walks the version a Migration last pinned. A run that cannot be
  * loaded answers `RunInputUnavailable`, which no retry can mend. A caller that
- * loads many passes hands in a `RunVersionCache`, so each version is read once.
+ * loads many passes hands in a `RunVersionCache`, so each version is read and
+ * its graph parsed once.
  */
 
 import { Effect, Schema } from "effect";
-import type { WorkflowExecutionInput } from "#src/backend/engine/core";
+import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import type {
+  WorkflowExecutionInput,
+  WorkflowGraphData,
+} from "#src/backend/engine/core";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type { ExecutionSummary } from "#src/backend/services/executions/repo/contracts";
@@ -42,12 +47,16 @@ type RunVersion = Pick<
   "id" | "workflowId" | "graph" | "catalogFingerprint"
 >;
 
+/** A version with its graph's nodes and edges, parsed when it was cached. */
+type CachedRunVersion = RunVersion & { readonly parsed: WorkflowGraphData };
+
 /** How many versions a `RunVersionCache` holds before it drops the oldest. */
 const RUN_VERSION_CACHE_LIMIT = 256;
 
 /**
- * The Workflow Versions recent passes ran, by version id, so the next pass of
- * a run on the same version skips the read and the graph decode. A version row
+ * The Workflow Versions recent passes ran, by version id, each with its parsed
+ * graph, so the next pass of a run on the same version skips the read, the
+ * graph decode and the parse. A version row
  * is never updated once written, so a held entry never goes stale. A version a
  * run pins is deleted only with its workflow or its execution, and the load
  * reads both rows on every pass, so a deleted version is never served. It holds
@@ -55,8 +64,9 @@ const RUN_VERSION_CACHE_LIMIT = 256;
  * to one database, so each worker loop makes its own.
  */
 export type RunVersionCache = {
-  readonly get: (versionId: string) => RunVersion | undefined;
-  readonly set: (version: RunVersion) => void;
+  readonly get: (versionId: string) => CachedRunVersion | undefined;
+  /** Parses the version's graph and keeps both, answering the entry. */
+  readonly set: (version: RunVersion) => CachedRunVersion;
 };
 
 export function createRunVersionCache(
@@ -64,7 +74,7 @@ export function createRunVersionCache(
 ): RunVersionCache {
   // A Map iterates in insertion order, so re-inserting an entry on every use
   // keeps the entry used longest ago first.
-  const versions = new Map<string, RunVersion>();
+  const versions = new Map<string, CachedRunVersion>();
   return {
     get: (versionId) => {
       const version = versions.get(versionId);
@@ -74,30 +84,42 @@ export function createRunVersionCache(
       return version;
     },
     set: (version) => {
+      const cached: CachedRunVersion = {
+        ...version,
+        parsed: toWorkflowGraphData(version.graph),
+      };
       versions.delete(version.id);
-      versions.set(version.id, version);
-      if (versions.size <= limit) return;
-      const oldest = versions.keys().next();
-      if (oldest.done !== true) versions.delete(oldest.value);
+      versions.set(version.id, cached);
+      if (versions.size > limit) {
+        const oldest = versions.keys().next();
+        if (oldest.done !== true) versions.delete(oldest.value);
+      }
+      return cached;
     },
   };
 }
 
-/** The version from `cache` when it holds it, otherwise read and kept there. */
+/**
+ * The version from `cache` when it holds it, otherwise read and kept there.
+ * With no cache, the version comes back with no parsed graph.
+ */
 function findRunVersion(
   workflows: WorkflowRepo["Service"],
   versionId: string,
   cache: RunVersionCache | undefined
-): Effect.Effect<RunVersion | null, DatabaseError> {
+): Effect.Effect<
+  (RunVersion & { parsed?: WorkflowGraphData | undefined }) | null,
+  DatabaseError
+> {
   const cached = cache?.get(versionId);
   if (cached !== undefined) return Effect.succeed(cached);
-  return workflows.findVersionById(versionId).pipe(
-    Effect.tap((version) =>
-      Effect.sync(() => {
-        if (version !== null) cache?.set(version);
-      })
-    )
-  );
+  return workflows
+    .findVersionById(versionId)
+    .pipe(
+      Effect.map((version) =>
+        version === null || cache === undefined ? version : cache.set(version)
+      )
+    );
 }
 
 export function loadPersistedRunInput(
@@ -138,6 +160,7 @@ export function loadPersistedRunInput(
 
     return {
       graph: version.graph,
+      parsedGraph: version.parsed,
       workflowVersionId: version.id,
       catalogFingerprint: version.catalogFingerprint,
       startPayload: execution.input ?? {},

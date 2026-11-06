@@ -25,6 +25,8 @@ import {
 } from "#src/index";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { createWfGraphApp, type WfGraphApp } from "#src/app";
+import { createWfGraphRunner } from "#src/runner";
+import { recordedLogger } from "#src/backend/executor/testing/recorded-logger";
 import {
   createApiApp,
   machineRoutes,
@@ -380,7 +382,7 @@ describe("createWfGraphApp with host authentication", () => {
       })
     );
     const runtime = createWfGraphRuntime({
-      inngest,
+      inngest: inngest.client,
       extensions: assembleExtensions({}),
       appContext: { apiBasePath: "/wfgraph/api" },
       agent: { enabled: false },
@@ -388,10 +390,7 @@ describe("createWfGraphApp with host authentication", () => {
         database,
         createIntegrationCipher(BASE_OPTIONS.encryption)
       ),
-      wakes: {
-        worker: createWorkerWake(),
-        persistence: { kind: "poll", pollMs: 1_000 },
-      },
+      wakes: [createWorkerWake()],
     });
     try {
       const app = createApiApp({
@@ -852,14 +851,16 @@ describe("createWfGraphApp runner", () => {
   // The run is due before the app opens, so the loop the app starts on its
   // own is the only thing that can reach the held step. Dispose must wait for
   // that pass to end before it closes the database the pass writes to.
-  it("runs a loop by default and drains its pass on dispose", async () => {
+  it("runs a loop by default, drains its pass on dispose, and records how the pass ended", async () => {
     const filename = join(dir, "wfgraph.sqlite");
     const gate = createGate();
     const action = heldAction(gate);
     const seeded = await seedDueRun(filename, action);
+    const recorded = recordedLogger();
     try {
       const app = await createWfGraphApp({
         ...BASE_OPTIONS,
+        logger: recorded.logger,
         persistence: wfSqlite({ filename }),
         extensions: { actions: [action] },
       });
@@ -875,6 +876,44 @@ describe("createWfGraphApp runner", () => {
       gate.release();
       await disposal;
       expect(await seeded.status()).toBe("completed");
+      expect(
+        recorded.find("Worker loop stopped").map((record) => record.properties)
+      ).toEqual([{ runner: { drained: 1, interrupted: 0 } }]);
+    } finally {
+      await seeded.close();
+    }
+  });
+
+  it("restarts a loop that died, and the restarted loop advances the run", async () => {
+    const filename = join(dir, "wfgraph.sqlite");
+    const gate = createGate();
+    const action = heldAction(gate);
+    const seeded = await seedDueRun(filename, action);
+    const recorded = recordedLogger();
+    const runWorkerLoop = workerLoopModule.runWorkerLoop;
+    const loops = vi
+      .spyOn(workerLoopModule, "runWorkerLoop")
+      .mockImplementationOnce(() => Effect.die(new Error("loop broke")))
+      .mockImplementation((options) => runWorkerLoop(options));
+    try {
+      const app = await createWfGraphApp({
+        ...BASE_OPTIONS,
+        logger: recorded.logger,
+        persistence: wfSqlite({ filename }),
+        extensions: { actions: [action] },
+      });
+      await gate.entered;
+      gate.release();
+      await vi.waitFor(async () =>
+        expect(await seeded.status()).toBe("completed")
+      );
+      await app.dispose();
+
+      expect(loops).toHaveBeenCalledTimes(2);
+      expect(
+        recorded.find("The worker loop died; it restarts after a backoff")
+      ).toHaveLength(1);
+      expect(recorded.find("Worker loop stopped")).toHaveLength(1);
     } finally {
       await seeded.close();
     }
@@ -920,29 +959,31 @@ describe("createWfGraphApp runner", () => {
     });
   });
 
-  it("runs no loop when the host runs it elsewhere", async () => {
-    const loops = recordLoops();
+  // A SQLite file is the app's alone, so with no loop of its own nothing
+  // would ever advance its runs.
+  it("refuses runner: false on SQLite, and so does createWfGraphRunner", async () => {
     const filename = join(dir, "wfgraph.sqlite");
-    const gate = createGate();
-    const action = heldAction(gate);
-    const seeded = await seedDueRun(filename, action);
-    try {
-      const app = await createWfGraphApp({
+    await expect(
+      createWfGraphApp({
         ...BASE_OPTIONS,
         persistence: wfSqlite({ filename }),
-        extensions: { actions: [action] },
         runner: false,
-      });
-      // Past a SQLite poll, so a loop would have claimed the due run.
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      await app.dispose();
-
-      expect(loops).not.toHaveBeenCalled();
-      expect(gate.calls()).toBe(0);
-      expect(await seeded.status()).toBe("running");
-    } finally {
-      await seeded.close();
-    }
+      })
+    ).rejects.toThrow("cannot take runner: false on this persistence backend");
+    await expect(
+      createWfGraphRunner({
+        persistence: wfSqlite({ filename }),
+        encryption: BASE_OPTIONS.encryption,
+      })
+    ).rejects.toThrow(
+      "createWfGraphRunner cannot run on this persistence backend"
+    );
+    // Both refusals closed the file they opened, so it opens again.
+    const app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      persistence: wfSqlite({ filename }),
+    });
+    await app.dispose();
   });
 
   it("refuses runner settings a loop could not run with", async () => {

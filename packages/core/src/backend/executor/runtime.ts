@@ -259,8 +259,6 @@ function memoValue(value: unknown): JsonValue {
 
 export type ExecutorRuntimeInput = {
   executionId: string;
-  /** The run's own failure count at the claim. */
-  attempt: number;
   /** Every memo row of the run, loaded once at the claim, keyed by step id. */
   memo: ReadonlyMap<string, StepMemo>;
   /** The pass's writes, watched by `state`. */
@@ -279,7 +277,7 @@ export type ExecutorRuntimeInput = {
 export function createExecutorRuntime(
   input: ExecutorRuntimeInput
 ): WorkflowExecutionRuntime {
-  const { attempt, state, writes, runEffect } = input;
+  const { state, writes, runEffect } = input;
   const memo = new Map(input.memo);
 
   /**
@@ -312,8 +310,6 @@ export function createExecutorRuntime(
   }
 
   return {
-    attempt,
-
     run: async <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> => {
       const stored = memo.get(step.id);
       if (stored?.status === "succeeded") {

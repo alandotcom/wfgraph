@@ -133,9 +133,9 @@ design document's section 12.
 `createWfGraphApp` takes a `runner` option. Left out, the app runs one loop with the
 backend's defaults: concurrency 10 and a 1-second poll on PostgreSQL, concurrency 1 and a
 250 ms poll on SQLite, a 60-second lease and a 20-second heartbeat on both. `false` runs
-no loop in that process, so some other process on the same database has to run one. A
-process entry that runs a loop with no HTTP app is planned and was not built in this
-change. Disposing the app stops its loop and waits up to ten seconds for the passes in
+no loop in that process, so some other process on the same database has to run one:
+`createWfGraphRunner` runs the loop with no HTTP app, on PostgreSQL, and a SQLite app
+refuses `false` because no other process can share its file safely. Disposing the app stops its loop and waits up to ten seconds for the passes in
 flight.
 
 A producer wakes its own process's loop directly. On PostgreSQL it also announces the run

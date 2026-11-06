@@ -19,17 +19,18 @@ import {
 import {
   InngestClient,
   makeInngestClientLayer,
+  unavailableInngestClientLayer,
 } from "#src/backend/lib/effect/inngest-client";
 import { TracerBridgeLayer } from "#src/backend/lib/effect/tracer";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
-import type { InngestSurface } from "#src/backend/lib/inngest/client";
+import type { Inngest } from "inngest";
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import {
   ExecutionDriver,
-  type ExecutionDriverWakes,
   makeExecutionDriverLayer,
 } from "#src/backend/services/executions/driver";
+import type { RunWakeSink } from "#src/backend/services/executions/wakes";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   makeAppContextLayer,
@@ -69,7 +70,11 @@ export type WfGraphRepositories =
 
 /** Everything the app hands the Layer graph, as the app itself holds it. */
 export type WfGraphRuntimeParts = {
-  inngest: InngestSurface;
+  /**
+   * The Inngest client Events are forwarded on. `createWfGraphRunner` serves
+   * no route that forwards one, so it passes none.
+   */
+  inngest?: Inngest | undefined;
   extensions: ExtensionSet;
   /** Stable host URLs used by request handlers and background credential refreshes. */
   appContext: WfGraphAppContextValue;
@@ -85,7 +90,7 @@ export type WfGraphRuntimeParts = {
    * Who `ExecutionDriver` tells that a run fell due: the worker loop in this
    * process, and through the backend, loops in others.
    */
-  wakes: ExecutionDriverWakes;
+  wakes: readonly RunWakeSink[];
 };
 
 // A persistence backend composes the repository implementations. The runtime
@@ -111,18 +116,22 @@ function buildWfGraphLayer(
     makeExecutionDriverLayer(parts.wakes).pipe(
       Layer.provideMerge(parts.repositories)
     ),
-    makeInngestClientLayer(parts.inngest.client)
+    parts.inngest === undefined
+      ? unavailableInngestClientLayer
+      : makeInngestClientLayer(parts.inngest)
   );
 }
 
 /**
  * The Layer graph, built once and owned by the app that created it.
  *
- * `createWfGraphApp` makes one of these and disposes it. Ownership is what buys the
- * dependency injection: a service reaches its repository and its logger through
- * this graph, so a test swaps either one by handing over a different Layer
- * instead of stubbing a module. Construction is lazy, and the graph is built on
- * the first Effect the runtime runs, so making an app opens no connections.
+ * The setup `createWfGraphApp` and `createWfGraphRunner` share makes one of
+ * these and disposes it. Ownership is what buys the dependency injection: a
+ * service reaches its repository and its logger through this graph, so a test
+ * swaps either one by handing over a different Layer instead of stubbing a
+ * module. The graph is built on the first Effect the runtime runs: at boot for
+ * an app, whose Inngest functions read the extension surface through it, and
+ * at the worker loop's start for a runner.
  *
  * One Workflow Graph per process stays the only supported arrangement (ADR-0002).
  */

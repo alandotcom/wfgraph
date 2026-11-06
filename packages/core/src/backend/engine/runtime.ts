@@ -91,13 +91,6 @@ export type WorkflowExecutionRuntime = {
    * check to a value that already passed it.
    */
   run: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
-  /**
-   * Zero-indexed retry counter for the current attempt, which holds across every
-   * replay within that attempt and rises when the runtime retries the body. The
-   * database executor resets it on every release that counts no failure
-   * against the run, so no step id is keyed on it.
-   */
-  attempt: number;
 };
 
 export type InMemoryRuntimeOptions = {
@@ -109,8 +102,6 @@ export type InMemoryRuntimeOptions = {
   memo?: Map<string, unknown> | undefined;
   /** What `waitForEvent` answers for every park. Left out, every park times out. */
   waitAnswer?: WaitAnswer | undefined;
-  /** The attempt this runtime reports. See `WorkflowExecutionRuntime.attempt`. */
-  attempt?: number | undefined;
 };
 
 export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {
@@ -136,17 +127,13 @@ export type InMemoryWorkflowRuntime = WorkflowExecutionRuntime & {
 export function createInMemoryWorkflowRuntime(
   options: InMemoryRuntimeOptions = {}
 ): InMemoryWorkflowRuntime {
-  const {
-    waitAnswer = { kind: "woke", wake: { kind: "timeout" } },
-    attempt = 0,
-  } = options;
+  const { waitAnswer = { kind: "woke", wake: { kind: "timeout" } } } = options;
   const memo = options.memo ?? new Map<string, unknown>();
   const waits: Array<{ stepId: string; options: WaitForEventOptions }> = [];
 
   return {
     memo,
     waits,
-    attempt,
 
     waitForEvent: (step, waitOptions) => {
       waits.push({ stepId: step.id, options: waitOptions });

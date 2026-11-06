@@ -12,7 +12,7 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { InngestClient } from "#src/backend/lib/effect/inngest-client";
 import {
-  catchStatedSeamFailures,
+  catchSeamFailures,
   internalFailureFromCause,
 } from "#src/backend/lib/effect/internal-failure";
 import {
@@ -117,7 +117,7 @@ export const receiveWebhook = Effect.fn("receiveWebhook")(
   },
   (effect) =>
     effect.pipe(
-      catchStatedSeamFailures(
+      catchSeamFailures(
         webhookLogger,
         "Failed to receive webhook",
         "Could not receive this webhook"

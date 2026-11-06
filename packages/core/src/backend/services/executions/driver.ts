@@ -2,14 +2,14 @@
  * `ExecutionDriver`: what a producer asks of the durable executor, by intent.
  * Each method commits its row write through `ExecutionRepo` in one
  * transaction, then follows one rule: when the write made a schedule row due,
- * it wakes this process's worker loop and announces the wake to other
+ * it announces that once to every wake sink the app handed it, which reach
+ * this process's worker loop and, where the backend can, loops in other
  * processes. A lost wake costs at most one poll interval.
  */
 
 import { Clock, Context, Effect, Layer, Schema } from "effect";
-import type { WorkerWake } from "#src/backend/executor/worker-wake";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
-import type { WfGraphRunWakes } from "#src/backend/persistence/types";
+import type { RunWakeSink } from "#src/backend/services/executions/wakes";
 import {
   type CanceledOutletClaim,
   type EntityStartOutcome,
@@ -116,19 +116,10 @@ export class ExecutionDriver extends Context.Service<
   }
 >()("@wfgraph/core/ExecutionDriver") {}
 
-/**
- * Who the driver tells that a run fell due: `worker`, which the worker loop in
- * this process listens to, and the persistence backend's `wakes`, which reach
- * loops in other processes when the backend can.
- */
-export type ExecutionDriverWakes = {
-  worker: WorkerWake;
-  persistence: WfGraphRunWakes;
-};
-
 /** The database driver, over the app's `ExecutionRepo`. */
 export function makeExecutionDriverLayer(
-  wakes: ExecutionDriverWakes
+  /** Told once per committed write that made a schedule row due. */
+  sinks: readonly RunWakeSink[]
 ): Layer.Layer<ExecutionDriver, never, ExecutionRepo> {
   /**
    * Runs once a write has committed, and wakes the loops when `madeDue` says
@@ -137,10 +128,7 @@ export function makeExecutionDriverLayer(
   const runDue = (madeDue: boolean) =>
     Effect.sync(() => {
       if (!madeDue) return;
-      wakes.worker.wake();
-      if (wakes.persistence.kind === "notify") {
-        wakes.persistence.broadcast.announce();
-      }
+      for (const sink of sinks) sink.announce();
     });
 
   return Layer.effect(
@@ -148,21 +136,36 @@ export function makeExecutionDriverLayer(
     Effect.gen(function* () {
       const executions = yield* ExecutionRepo;
       return ExecutionDriver.of({
-        startRun: Effect.fn("ExecutionDriver.startRun")(function* (input) {
+        startRun: Effect.fn("wfgraph.driver.start_run")(function* (input) {
+          yield* Effect.annotateCurrentSpan(
+            "wfgraph.workflow.id",
+            input.execution.workflowId
+          );
           const outcome = yield* executions
             .startForEntity({ ...input, now: yield* now })
             .pipe(Effect.mapError(driverError));
+          yield* Effect.annotateCurrentSpan("wfgraph.outcome", outcome.status);
           // A start answered with the row an earlier attempt committed wakes
           // the loops again, which costs one claim that may lease nothing.
           if (outcome.status === "started") {
+            yield* Effect.annotateCurrentSpan(
+              "wfgraph.execution.id",
+              outcome.execution.id
+            );
             yield* runDue(true);
           }
           return outcome;
         }),
 
-        resolvePark: Effect.fn("ExecutionDriver.resolvePark")(
+        resolvePark: Effect.fn("wfgraph.driver.resolve_park")(
           function* (input) {
             const { target, payload } = input;
+            if (target.kind === "wait_state") {
+              yield* Effect.annotateCurrentSpan(
+                "wfgraph.wait.id",
+                target.waitStateId
+              );
+            }
             const at = yield* now;
             const claim = yield* (
               target.kind === "resume_token"
@@ -183,25 +186,50 @@ export function makeExecutionDriverLayer(
                     now: at,
                   })
             ).pipe(Effect.mapError(driverError));
+            if (claim !== null) {
+              yield* Effect.annotateCurrentSpan({
+                "wfgraph.execution.id": claim.waitState.executionId,
+                "wfgraph.wait.id": claim.waitState.id,
+                "wfgraph.driver.requeued": claim.requeued,
+              });
+            }
             yield* runDue(claim?.requeued === true);
             return claim;
           }
         ),
 
+        // One write claims the whole batch, so its runs are announced once.
         requestCanceledOutlet: Effect.fn(
-          "ExecutionDriver.requestCanceledOutlet"
+          "wfgraph.driver.request_canceled_outlet"
         )(function* (input) {
+          yield* Effect.annotateCurrentSpan(
+            "wfgraph.workflow.id",
+            input.workflowId
+          );
           const claims = yield* executions
             .requestCancelForEntity({ ...input, now: yield* now })
             .pipe(Effect.mapError(driverError));
+          yield* Effect.annotateCurrentSpan({
+            "wfgraph.execution.ids": claims.map((claim) => claim.executionId),
+            "wfgraph.driver.claims": claims.length,
+          });
           yield* runDue(claims.some((claim) => claim.requeued));
           return claims;
         }),
 
-        migrateRun: Effect.fn("ExecutionDriver.migrateRun")(function* (input) {
+        migrateRun: Effect.fn("wfgraph.driver.migrate_run")(function* (input) {
+          yield* Effect.annotateCurrentSpan({
+            "wfgraph.execution.id": input.executionId,
+            "wfgraph.workflow.version.id": input.fromVersionId,
+            "wfgraph.workflow.version.target_id": input.toVersionId,
+          });
           const repinned = yield* executions
             .repinVersion({ ...input, now: yield* now })
             .pipe(Effect.mapError(driverError));
+          yield* Effect.annotateCurrentSpan(
+            "wfgraph.driver.moved",
+            repinned.moved
+          );
           yield* runDue(repinned.moved && repinned.requeued);
           return repinned.moved;
         }),

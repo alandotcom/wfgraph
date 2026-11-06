@@ -1,6 +1,7 @@
 /**
  * The one entry point a host imports to embed Workflow Graph: the authoring vocabulary
- * (`defineEntity`, `defineEvent`, `defineAction`), `createWfGraphApp`, and `createRequestListener`
+ * (`defineEntity`, `defineEvent`, `defineAction`), `createWfGraphApp`, `createWfGraphRunner`
+ * for a process that advances runs and serves no HTTP, and `createRequestListener`
  * for mounting on node:http. A package of integrations builds against
  * `@wfgraph/core/plugin` instead, and `@wfgraph/core/migrate` applies migrations
  * without building an app.
@@ -55,6 +56,11 @@ export {
   type WfGraphPersistence,
   type WfGraphRunnerOptions,
 } from "#src/app";
+export {
+  createWfGraphRunner,
+  type CreateWfGraphRunnerOptions,
+  type WfGraphRunner,
+} from "#src/runner";
 export {
   WfGraphOperationIds,
   WfGraphOperations,

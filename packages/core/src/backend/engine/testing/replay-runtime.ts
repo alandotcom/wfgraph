@@ -192,9 +192,8 @@ export function createInMemoryReplayBackend(): ReplayDatabaseBackend {
 
   return {
     runtimeForPass: () => {
-      const { run, attempt } = createInMemoryWorkflowRuntime({ memo });
+      const { run } = createInMemoryWorkflowRuntime({ memo });
       return {
-        attempt,
         run,
         waitForEvent: ({ id: stepId }) => {
           const wake = wakes.get(stepId);
@@ -357,7 +356,6 @@ export async function driveWithReplay<T>(
     let stepFailure: { error: unknown } | undefined;
 
     const runtime: WorkflowExecutionRuntime = {
-      attempt: inner.attempt,
       // The wrapper sees only a memo miss, because the backend calls `fn` for
       // a step it has no stored value for and for nothing else.
       run: (step, fn) =>

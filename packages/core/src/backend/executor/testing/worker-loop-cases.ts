@@ -2,8 +2,8 @@
  * The database executor's worker loop on one persistence backend: how it stops,
  * how it outlives a pass that fails, how a heartbeat keeps a long step body's
  * lease, how a second loop recovers a run whose worker died, how a producer's
- * wake makes it claim before its next poll, and a shortened run of the
- * wall-clock wake timings. A runner per backend calls
+ * wake makes it claim before its next poll, how a tick drains within its
+ * budget, and a shortened run of the wall-clock wake timings. A runner per backend calls
  * `describeWorkerLoopCases`, so every backend answers the same assertions.
  *
  * Every case runs loops on the wall clock with short leases and polls, and
@@ -34,7 +34,9 @@ import {
 import { measureWakeTimings } from "#src/backend/executor/testing/wake-timing";
 import {
   runWorkerLoop,
+  tick,
   type WorkerLoopOptions,
+  type WorkerLoopOutcome,
 } from "#src/backend/executor/worker-loop";
 import { createWorkerWake } from "#src/backend/executor/worker-wake";
 import {
@@ -177,8 +179,11 @@ function describeCases(
   openConnection: () => Promise<ConformanceConnection>
 ): void {
   type Loop = {
-    /** Aborts the loop's signal and resolves once the loop has returned. */
-    stop: () => Promise<void>;
+    /**
+     * Aborts the loop's signal and resolves once the loop has returned, with
+     * what its passes in flight came to.
+     */
+    stop: () => Promise<WorkerLoopOutcome>;
   };
 
   type Harness = {
@@ -253,7 +258,7 @@ function describeCases(
         const done = connection.run(
           Effect.gen(function* () {
             const repo = yield* ExecutionRepo;
-            yield* runWorkerLoop({
+            return yield* runWorkerLoop({
               actions: () => actions,
               signal: controller.signal,
               pollMs: 20,
@@ -267,7 +272,7 @@ function describeCases(
         return {
           stop: async () => {
             controller.abort();
-            await done;
+            return await done;
           },
         };
       },
@@ -316,6 +321,70 @@ function describeCases(
       },
     };
   }
+
+  it("counts a pass that ended within the drain, and interrupts one that outlasted it", async () => {
+    const harness = await open();
+    const held = await harness.start(oneActionThenMark("test/held"));
+    const loop = harness.loop({ drainMs: 50 });
+    await heldStep.entered;
+
+    expect(await loop.stop()).toEqual({ drained: 0, interrupted: 1 });
+    // The interrupted pass released its run due at once.
+    expect((await harness.schedule(held))?.state).toBe("queued");
+
+    heldStep.release();
+    const again = harness.loop({});
+    expect(await harness.ended(held)).toBe("completed");
+    await again.stop();
+  });
+
+  it("abandons a claim the database never answers once the drain after the stop has passed", async () => {
+    const harness = await open();
+    let claims = 0;
+    const loop = harness.loop({
+      drainMs: 50,
+      wrap: (repo) => ({
+        ...repo,
+        claimDue: () => {
+          claims += 1;
+          return Effect.never;
+        },
+      }),
+    });
+    await waitUntil(() => claims > 0, "The loop never claimed");
+
+    expect(await loop.stop()).toEqual({ drained: 0, interrupted: 0 });
+  });
+
+  it("runs one drain step in a tick and answers what its passes came to", async () => {
+    const harness = await open();
+    const first = await harness.start(oneActionThenMark("test/send"));
+    const second = await harness.start(oneActionThenMark("test/send"));
+
+    const outcome = await harness.connection.run(
+      tick({ actions: () => actions, budgetMs: 10_000 })
+    );
+
+    expect(outcome).toEqual({ passed: 2, failed: 0, interrupted: 0 });
+    expect(await harness.ended(first, 0)).toBe("completed");
+    expect(await harness.ended(second, 0)).toBe("completed");
+  });
+
+  it("interrupts a tick's pass still running when its budget runs out, and releases the run due at once", async () => {
+    const harness = await open();
+    const held = await harness.start(oneActionThenMark("test/held"));
+
+    const outcome = await harness.connection.run(
+      tick({ actions: () => actions, budgetMs: 100 })
+    );
+
+    expect(outcome).toEqual({ passed: 0, failed: 0, interrupted: 1 });
+    expect((await harness.schedule(held))?.state).toBe("queued");
+    heldStep.release();
+    const loop = harness.loop({});
+    expect(await harness.ended(held)).toBe("completed");
+    await loop.stop();
+  });
 
   it("stops claiming once the stop signal aborts and returns after the pass in flight has released its run", async () => {
     const harness = await open();
@@ -573,7 +642,7 @@ function describeCases(
     await sleep(100);
     await harness.cancel(executionId);
     const wokenAt = Date.now();
-    wake.wake();
+    wake.announce();
 
     await harness.ended(executionId);
     await loop.stop();
@@ -604,7 +673,7 @@ function describeCases(
     await claimHeld.entered;
     const executionId = await harness.start(oneActionThenMark("test/send"));
     const wokenAt = Date.now();
-    wake.wake();
+    wake.announce();
     claimHeld.release();
 
     expect(await harness.ended(executionId)).toBe("completed");

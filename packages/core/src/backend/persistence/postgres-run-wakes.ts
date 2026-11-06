@@ -5,19 +5,9 @@
  * interval in a transaction of its own carries every row made due in it.
  */
 
-import type { Sql } from "postgres";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { RunWakeBroadcast } from "#src/backend/persistence/types";
-
-/** How long a loop on PostgreSQL sleeps between claims when nothing wakes it. */
-export const POSTGRES_POLL_MS = 1_000;
-
-/**
- * How many passes a loop on PostgreSQL runs at once. A pass spends most of its
- * time waiting on the database, so several overlap on one event loop.
- */
-export const POSTGRES_WORKER_CONCURRENCY = 10;
 
 /** How long a noted wake waits before the notification that carries it. */
 const FLUSH_MS = 50;
@@ -32,8 +22,20 @@ const CHANNEL = "wfgraph_run_wake";
 const logger = getAppLogger("executor");
 
 export type PostgresRunWakes = RunWakeBroadcast & {
-  /** Sends the notification still waiting, then stops the flush timer. */
+  /**
+   * Sends the notification still waiting, or waits for the one being sent,
+   * and stops the flush timer. `announce` does nothing once this is called.
+   */
   readonly close: () => Promise<void>;
+};
+
+/** The two calls of a postgres.js client the broadcast makes. */
+type NotifyClient = {
+  notify: (channel: string, payload: string) => PromiseLike<unknown>;
+  listen: (
+    channel: string,
+    onNotify: (payload: string) => void
+  ) => Promise<{ unlisten: () => Promise<void> }>;
 };
 
 /**
@@ -42,7 +44,7 @@ export type PostgresRunWakes = RunWakeBroadcast & {
  * postgres.js keeps for listening, which `client.end()` closes.
  */
 export function createPostgresRunWakes(input: {
-  client: Sql;
+  client: NotifyClient;
   schema: string;
 }): PostgresRunWakes {
   const { client, schema } = input;
@@ -53,12 +55,12 @@ export function createPostgresRunWakes(input: {
   // How many writes made rows due since the last flush.
   let pending = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // The notification being sent, which `close` waits for.
+  let sending: Promise<void> | undefined;
+  // Set by `close`, after which the pool is about to end and nothing is sent.
+  let closed = false;
 
-  const flush = async () => {
-    timer = undefined;
-    if (pending === 0) return;
-    const writes = pending;
-    pending = 0;
+  const send = async (writes: number) => {
     try {
       await client.notify(CHANNEL, payload);
     } catch (error) {
@@ -69,8 +71,20 @@ export function createPostgresRunWakes(input: {
     }
   };
 
+  const flush = async () => {
+    timer = undefined;
+    if (pending === 0) return;
+    const writes = pending;
+    pending = 0;
+    const sent = send(writes);
+    sending = sent;
+    await sent;
+    if (sending === sent) sending = undefined;
+  };
+
   return {
     announce: () => {
+      if (closed) return;
       pending += 1;
       if (timer !== undefined) return;
       timer = setTimeout(() => void flush(), FLUSH_MS);
@@ -87,7 +101,9 @@ export function createPostgresRunWakes(input: {
     },
 
     close: async () => {
+      closed = true;
       if (timer !== undefined) clearTimeout(timer);
+      await sending;
       await flush();
     },
   };

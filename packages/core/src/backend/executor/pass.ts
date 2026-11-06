@@ -176,7 +176,6 @@ export function openPass(input: {
     runtime: ({ memo, runEffect }) =>
       createExecutorRuntime({
         executionId,
-        attempt: claimed.attempt,
         memo,
         writes,
         findPark: executions.findPark,

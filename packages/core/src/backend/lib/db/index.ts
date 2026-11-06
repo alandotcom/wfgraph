@@ -117,6 +117,13 @@ export type DatabaseSurface = {
  * No process-level registry retains the handle. The app threads this value into
  * its own Layer graph and closes the same pool when disposed.
  */
+/**
+ * How long closing the pool waits for queries in flight, in seconds, before it
+ * rejects them and destroys their connections. A query the server never
+ * answers would otherwise hold the close, and the host's dispose, forever.
+ */
+const CLOSE_TIMEOUT_S = 5;
+
 export function createDatabaseSurface(
   config: NormalizedDatabaseConfig
 ): DatabaseSurface {
@@ -129,7 +136,7 @@ export function createDatabaseSurface(
     schema: config.schema,
     db: drizzle({ client, relations }),
     client,
-    close: () => client.end(),
+    close: () => client.end({ timeout: CLOSE_TIMEOUT_S }),
   };
 
   return surface;

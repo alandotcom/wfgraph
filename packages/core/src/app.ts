@@ -4,7 +4,6 @@ import { Hono } from "hono";
 import { createApiApp } from "#src/backend/api-app";
 import {
   assertValidEncryptionKey,
-  createIntegrationCipher,
   type EncryptionRuntimeConfig,
 } from "#src/backend/services/integrations/cipher";
 import {
@@ -18,49 +17,29 @@ import {
   normalizeBasePath,
   toMountRelativePath,
 } from "#src/backend/lib/http/mount-path";
-import {
-  assembleExtensions,
-  type ExtensionSet,
-  type WfGraphExtensions,
-} from "#src/backend/extensions/extension-set";
+import type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 import {
   createInngestSurface,
-  type InngestSurface,
   type WfGraphInngestConfig,
   type WorkerConnection,
 } from "#src/backend/lib/inngest/client";
 import { buildInngestFunctions } from "#src/backend/lib/inngest/functions";
 import { connect as connectInngestSdk } from "inngest/connect";
-import {
-  configureLoggingWithBridge,
-  warnWhenLoggingUnconfigured,
-} from "#src/backend/lib/log-config";
 import { getAppLogger } from "#src/backend/lib/logger";
 import {
   readAgentSettings,
   type WfGraphAgentConfig,
 } from "#src/backend/agent/config";
-import {
-  createWfGraphRuntime,
-  type WfGraphRuntime,
-} from "#src/backend/runtime";
-import type {
-  WfGraphPersistence,
-  WfGraphPersistenceInstance,
-} from "#src/backend/persistence/types";
+import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
-import { closeInOrder, failAfterClose } from "#src/backend/lib/close-in-order";
+import { failAfterClose } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
-import {
-  createWorkerWake,
-  type WorkerWake,
-} from "#src/backend/executor/worker-wake";
 import {
   assertValidRunnerOptions,
   type InProcessRunner,
-  startInProcessRunner,
   type WfGraphRunnerOptions,
 } from "#src/backend/executor/in-process-runner";
+import { openWfGraphSetup, type WfGraphSetup } from "#src/backend/setup";
 import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
@@ -120,8 +99,10 @@ export type WfGraphAppOptions = {
    *
    * Left out, the app runs one loop in its own process with the backend's
    * defaults. An object runs that loop with the fields it sets, and `false`
-   * runs none, for a host that advances runs in another process. Dispose stops
-   * the loop and waits up to ten seconds for the runs it is advancing.
+   * runs none, for a host that advances runs in another process with
+   * `createWfGraphRunner`. SQLite refuses `false`, since no other process can
+   * share its file. Dispose stops the loop and waits up to ten seconds for the
+   * runs it is advancing.
    */
   runner?: false | WfGraphRunnerOptions | undefined;
   /**
@@ -208,11 +189,44 @@ export async function createWfGraphApp(
   assertValidEncryptionKey(options.encryption.key);
   assertValidRunnerOptions(options.runner);
 
-  return await buildWfGraphApp(options, {
+  // One value for the Inngest client this app sends on, built before the
+  // runtime because the Layer graph takes it. Functions are registered once
+  // the runtime exists, on either Connect or HTTP serve.
+  const inngest = createInngestSurface(options.inngest, {
+    connect: connectInngestSdk,
+  });
+
+  const setup = await openWfGraphSetup({
+    logger: options.logger,
+    persistence: options.persistence,
+    encryption: options.encryption,
+    extensions: options.extensions,
+    entityResolverTimeoutMs: options.entityResolverTimeoutMs,
     basePath,
     publicUrl,
-    auth,
+    agent: readAgentSettings(options.agent),
+    inngest: inngest.client,
   });
+
+  // Everything past this point can fail with persistence already open, and
+  // with whatever the Layers acquired. A failure gives both back, the same as
+  // dispose does, so a host that catches a startup failure, corrects an option
+  // and calls again is not refused as a rebind.
+  try {
+    if (options.runner === false && setup.capabilities.processes === "one") {
+      throw new Error(
+        "createWfGraphApp cannot take runner: false on this persistence backend: no other process can share its database, so this app's own loop is the only one that can advance its runs"
+      );
+    }
+    return await assembleWfGraphApp(options, {
+      basePath,
+      auth,
+      setup,
+      inngest,
+    });
+  } catch (error) {
+    return await failAfterClose(error, [setup.close]);
+  }
 }
 
 /**
@@ -233,107 +247,28 @@ async function assertClientBundle(clientDir: string): Promise<void> {
   }
 }
 
-async function buildWfGraphApp(
-  options: WfGraphAppOptions,
-  startup: {
-    basePath: "" | `/${string}`;
-    publicUrl?: string | undefined;
-    auth: ResolvedAuth;
-  }
-): Promise<WfGraphApp> {
-  const { basePath, publicUrl, auth } = startup;
-
-  if (options.logger) {
-    configureLoggingWithBridge(options.logger);
-  } else {
-    warnWhenLoggingUnconfigured();
-  }
-
-  const cipher = createIntegrationCipher(options.encryption);
-
-  // Everything past this point can fail with persistence already open, and past
-  // `createWfGraphRuntime` with whatever the Layers acquired. A failure gives both
-  // back, the same as dispose does, so a host that catches a startup failure,
-  // corrects an option and calls again is not refused as a rebind.
-  let runtime: WfGraphRuntime | undefined;
-  let persistence: WfGraphPersistenceInstance | undefined;
-  try {
-    // One value for the Inngest client this app sends on, built before the
-    // runtime because the Layer graph takes it. Functions are registered later,
-    // once the runtime exists, on either Connect or HTTP serve.
-    const inngest = createInngestSurface(options.inngest, {
-      connect: connectInngestSdk,
-    });
-
-    const extensions = assembleExtensions(options.extensions ?? {}, {
-      entityResolverTimeoutMs: options.entityResolverTimeoutMs,
-    });
-
-    // A host who forgets to pass its integrations gets an empty editor and no
-    // error, so the counts go where a startup log is read.
-    const { events, actions, integrations } = extensions.catalog;
-    getAppLogger("extensions").info(
-      `Extension surface assembled: ${events.length} events, ${actions.length} actions, ${integrations.length} integrations`
-    );
-
-    persistence = await options.persistence.open(cipher);
-    getAppLogger("persistence").info("Persistence configured", {
-      persistence: persistence.description,
-    });
-
-    // The one wake this app's producers and its runner share.
-    const wake = createWorkerWake();
-
-    // The Layer graph this instance owns. Building it is lazy, so an app that
-    // never serves a migrated procedure never constructs a service.
-    runtime = createWfGraphRuntime({
-      inngest,
-      extensions,
-      appContext: {
-        publicUrl,
-        apiBasePath: `${basePath}/api`,
-      },
-      agent: readAgentSettings(options.agent),
-      repositories: persistence.repositories,
-      wakes: { worker: wake, persistence: persistence.wakes },
-    });
-
-    return await assembleWfGraphApp(options, {
-      basePath,
-      auth,
-      runtime,
-      inngest,
-      extensions,
-      persistence,
-      wake,
-    });
-  } catch (error) {
-    return await failAfterClose(error, [
-      async () => await runtime?.dispose(),
-      async () => await persistence?.close(),
-    ]);
-  }
-}
-
 /** Everything after the runtime exists: the routes, the editor, and dispose. */
 async function assembleWfGraphApp(
   options: WfGraphAppOptions,
   startup: {
     basePath: "" | `/${string}`;
     auth: ResolvedAuth;
-    runtime: WfGraphRuntime;
-    inngest: InngestSurface;
-    extensions: ExtensionSet;
-    persistence: WfGraphPersistenceInstance;
-    wake: WorkerWake;
+    setup: WfGraphSetup;
+    inngest: ReturnType<typeof createInngestSurface>;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, auth, runtime, inngest, extensions, persistence, wake } =
-    startup;
+  const { basePath, auth, setup, inngest } = startup;
+  const { runtime } = setup;
+  const startRunner =
+    options.runner === false
+      ? undefined
+      : setup.prepareRunner(options.runner ?? {});
 
   // Built once: Connect and HTTP serve are alternatives, and whichever path
-  // this app takes registers that same list. A broken extension surface fails
-  // at boot instead of on the first request or Connect handshake.
+  // this app takes registers that same list. Building the list runs the
+  // runtime's first Effect, which builds the Layer graph, so a graph that
+  // cannot build or a broken extension surface fails at boot instead of on the
+  // first request or Connect handshake.
   const functions = await buildInngestFunctions(inngest.client, runtime);
   const useConnect = options.inngest.connect === true;
   const apiApp = createApiApp({
@@ -390,16 +325,7 @@ async function assembleWfGraphApp(
   }
 
   // Last, so a boot that failed before this line leaves no loop running.
-  let runner: InProcessRunner | undefined =
-    options.runner === false
-      ? undefined
-      : startInProcessRunner({
-          runtime,
-          extensions,
-          persistence,
-          wake,
-          options: options.runner ?? {},
-        });
+  let runner: InProcessRunner | undefined = startRunner?.();
 
   const disposeOnce = async (): Promise<void> => {
     // Drain Connect before the runtime goes away: in-flight steps still need
@@ -421,11 +347,7 @@ async function assembleWfGraphApp(
     await runner?.stop();
     runner = undefined;
 
-    await closeInOrder([
-      () => runtime.dispose(),
-      // Last, because a Layer finalizer is free to use persistence while closing.
-      persistence.close,
-    ]);
+    await setup.close();
   };
   let disposal: Promise<void> | undefined;
   const dispose = (): Promise<void> => (disposal ??= disposeOnce());

@@ -1,28 +1,29 @@
 ---
 name: live-run
-description: Drive a real workflow run against the local stack and read what actually happened. Use when a change touches the engine, the Wait node, cancellation, the Inngest functions, or anything whose behaviour is decided by Inngest's executor rather than by Workflow Graph's own code, and a vitest suite therefore cannot settle the question. Triggers on "verify against inngest dev", "drive a real run", "measure the timing", "check it end to end", or a claim about when a run wakes, resumes, retries, or is cancelled.
+description: Drive a real workflow run against the local stack and read what actually happened. Use when a change touches the engine, the Wait node, cancellation, the database executor's worker loop, Event delivery through Inngest, or anything whose behaviour shows only in a running app on the wall clock, so a vitest suite cannot settle the question. Triggers on "drive a real run", "measure the timing", "check it end to end", "verify against inngest dev", or a claim about when a run wakes, resumes, retries, or is cancelled.
 ---
 
 # Driving a live run
 
+Runs execute on the database executor: the worker loop the example app starts
+claims a run's schedule row, replays its body against the step memo, and
+releases the row. Inngest delivers Events to the app and runs no workflow body.
 The test suite drives the engine through `createInMemoryWorkflowRuntime` and
-`driveWithReplay`. Both model Inngest rather than being it, so anything the
-executor decides is a question they answer from a stated model. When the change
-is to that model, or to what depends on it, the answer has to come from a real
-run.
+`driveWithReplay` on a virtual clock, so a question about the wall clock, about
+the loop's wakes, or about how an Event reaches a run has to be answered by a
+real run.
 
 Read the whole of this file before starting. The order below matters, and three
 of the steps have a trap in them.
 
 ## What a live run can settle that a test cannot
 
-- When a run wakes, and what a pause costs the branches beside it.
-- What `step.invoke` resolves to for a child that completed, was cancelled, or
-  failed.
-- What Inngest adds to an event on the way through.
-- Whether a function registers, and under which id.
+- When a run wakes after a Wait, a Cancel or an Event, measured by the wall
+  clock, and how late the worker loop claims it.
+- What Inngest adds to an Event on the way through, and whether the Event
+  listener function registers, and under which id.
 - What a row holds after a real replay, which is where a duration or a status
-  written by the wrong attempt shows up.
+  written by the wrong pass shows up.
 
 Everything else belongs in vitest, which is faster and repeatable.
 
@@ -52,9 +53,10 @@ demo account before calling protected API routes. Every account uses `password`;
 `editor` has the permissions a live run needs. Set `WFGRAPH_DEMO_USER=admin` in
 `.env.local` to skip the login page in development.
 
-Then give the Connect handshake another few seconds. The log line to look for is
-`Inngest Connect worker ready`. A run enqueued before that handshake sits
-unclaimed.
+The log line `Worker loop started` says the executor is running, and a manual
+run started through the RPC needs nothing else. An Event sent to the dev server
+reaches the app only after the Connect handshake: wait for `Inngest Connect
+worker ready` before sending one, or it sits undelivered.
 
 ## 2. Build a probe workflow
 
@@ -159,26 +161,31 @@ The node rows are what a timing claim rests on: a wait's duration is how long
 the run was parked, and the row of the node behind it says when the branch
 resumed.
 
-## 6. Read what Inngest did
+## 6. Read what the executor did
 
-The run log says what Workflow Graph recorded. This says what the executor actually ran,
-which is the only place a claim about invocations can be settled.
-
-**Trap.** The dev server holds its database open, so copy it first.
+The run log says what Workflow Graph recorded. The schedule row and the step memo
+say what the executor did with the run: the schedule row exists while the run is
+in flight and records when it is next due, and each memo row is one durable step.
+The terminal write deletes both, so read them while the run is still open.
 
 ```bash
-sqlite3 "file:.inngest/main.db?mode=ro" ".backup /tmp/x.db"
-sqlite3 /tmp/x.db "select json_extract(attributes,'\$.\"_inngest.step.name\"'),
-  json_extract(attributes,'\$.\"_inngest.step.op\"'),
-  json_extract(attributes,'\$.\"_inngest.started_at\"')
-  from spans where run_id='<run>' and
-  json_extract(attributes,'\$.\"_inngest.step.name\"') is not null
-  order by start_time;"
+WFGRAPH_DB="file:examples/wfgraph.sqlite?mode=ro"
+
+sqlite3 -box "$WFGRAPH_DB" "select state, attempt, running_step_id,
+  strftime('%H:%M:%f', wake_at/1000.0, 'unixepoch') wake_at, worker_id, last_error
+  from workflow_execution_schedule where execution_id='<exec>';"
+
+sqlite3 -box "$WFGRAPH_DB" "select s.step_id, s.status, s.failures,
+  strftime('%H:%M:%f', s.created_at/1000.0, 'unixepoch') created
+  from workflow_execution_steps s
+  join workflow_execution_schedule c on c.id = s.schedule_id
+  where c.execution_id='<exec>' order by s.created_at;"
 ```
 
-`executor.execution` spans are function invocations. The gap between two of them
-is what proves a branch stalled, and their count is what proves how many runs a
-graph took.
+The app's log under the `executor` category carries a record for each pass that
+failed and each claim the database refused, which is where a stalled loop
+shows. When the question is about Event delivery, the Inngest dev server's UI
+on `INNGEST_DEV_PORT` lists each Event and the listener run that delivered it.
 
 ## 7. Clean up
 
@@ -200,13 +207,11 @@ boot.
 
 ## Reporting what you measured
 
-State the numbers, the run id, and the time, the way `docs/adr/0011` and the
-comment on issue #14 do. A measurement with no id attached cannot be checked by
-the next person, and a claim about Inngest with no measurement behind it is the
-thing this skill exists to replace.
+State the numbers, the run id, and the time, the way `docs/adr/0021` does. A
+measurement with no id attached cannot be checked by the next person.
 
 If a measurement contradicts a comment in the tree, the comment is what changes.
-`advanceToLastPause` and `endTimersDueNow` in `engine/testing/replay-runtime.ts` state
-the executor policy the suite models: a measurement that disagrees with either
-is a bug in the model, and every test standing on it is then standing on
-something false.
+`driveWithReplay` in `engine/testing/replay-runtime.ts` states the wake policy
+the suite models, that a run wakes when any one of its parks resolves: a
+measurement that disagrees with it is a bug in the model, and every test
+standing on it is then standing on something false.

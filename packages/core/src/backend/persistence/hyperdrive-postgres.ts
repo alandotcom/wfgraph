@@ -8,10 +8,6 @@ import { relations } from "#src/backend/lib/db/schema";
 import type { DatabaseSurface } from "#src/backend/lib/db/index";
 import { makePostgresRepositories } from "#src/backend/persistence/postgres-repositories";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
-import {
-  POSTGRES_POLL_MS,
-  POSTGRES_WORKER_CONCURRENCY,
-} from "#src/backend/persistence/postgres-run-wakes";
 
 /** The part of Cloudflare's Hyperdrive binding Workflow Graph consumes. */
 export type HyperdriveBinding = {
@@ -73,9 +69,12 @@ export function wfHyperdrive(
         return {
           repositories: makePostgresRepositories(database, cipher),
           // Hyperdrive pools one connection per request, which cannot hold a
-          // `LISTEN` open.
-          wakes: { kind: "poll", pollMs: POSTGRES_POLL_MS },
-          workerConcurrency: POSTGRES_WORKER_CONCURRENCY,
+          // `LISTEN` open, and a tick runs its passes one at a time on it.
+          capabilities: {
+            connectionLimit: 1,
+            processes: "many",
+            loopDefaults: { concurrency: 1 },
+          },
           description: {
             backend: "postgres-hyperdrive",
             schema: database.schema,

@@ -1,13 +1,27 @@
 /**
- * The runner `createWfGraphApp` starts on PostgreSQL: the loop listens for the
+ * The runner on PostgreSQL: the loop `createWfGraphApp` starts listens for the
  * runs other processes make due, and dispose stops listening after the loop
- * has drained and before the database closes.
+ * has drained and before the database closes. `createWfGraphRunner` advances
+ * the runs of an app that runs no loop of its own.
  */
 
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
-import { Effect } from "effect";
+import { Effect, Layer, ManagedRuntime, Schema } from "effect";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { createWfGraphApp } from "#src/app";
-import { trustWfGraphUpstream } from "#src/index";
+import { defineAction, trustWfGraphUpstream } from "#src/index";
+import { createWfGraphRunner } from "#src/runner";
+import { assembleExtensions } from "#src/backend/extensions/extension-set";
+import {
+  actionNode,
+  edge,
+  lifecycleNode,
+  publishWorkflow,
+  startScheduledRun,
+} from "#src/backend/executor/testing/run-fixtures";
+import { recordedLogger } from "#src/backend/executor/testing/recorded-logger";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { catalogFingerprint } from "#src/backend/services/workflows/version-digest";
 import { migrateWfGraphDatabase } from "#src/migrate";
 import * as workerLoopModule from "#src/backend/executor/worker-loop";
 import { wfPostgres } from "#src/backend/persistence/postgres";
@@ -53,16 +67,17 @@ describePostgres("createWfGraphApp runner on PostgreSQL", () => {
     const persistence: WfGraphPersistence = {
       open: async (cipher) => {
         const instance = await wfPostgres({ url, schema }).open(cipher);
-        const { wakes } = instance;
-        if (wakes.kind !== "notify") throw new Error("Expected notify wakes");
+        const { capabilities } = instance;
+        const { broadcast } = capabilities;
+        if (broadcast === undefined) throw new Error("Expected a broadcast");
         return {
           ...instance,
-          wakes: {
-            ...wakes,
+          capabilities: {
+            ...capabilities,
             broadcast: {
-              ...wakes.broadcast,
+              ...broadcast,
               listen: async (onWake) => {
-                const listener = await wakes.broadcast.listen(() => {
+                const listener = await broadcast.listen(() => {
                   heard += 1;
                   onWake();
                 });
@@ -110,8 +125,9 @@ describePostgres("createWfGraphApp runner on PostgreSQL", () => {
       createIntegrationCipher(ENCRYPTION)
     );
     try {
-      if (other.wakes.kind !== "notify") throw new Error("Expected notify");
-      other.wakes.broadcast.announce();
+      const { broadcast } = other.capabilities;
+      if (broadcast === undefined) throw new Error("Expected a broadcast");
+      broadcast.announce();
       await vi.waitFor(() => expect(observed.heard()).toBe(1), {
         timeout: 2_000,
       });
@@ -126,5 +142,155 @@ describePostgres("createWfGraphApp runner on PostgreSQL", () => {
       "listener stopped",
       "persistence closed",
     ]);
+  });
+
+  const markAction = defineAction({
+    id: "test/mark",
+    label: "Mark",
+    description: "Completes at once",
+    input: Schema.Struct({}),
+    handler: () => ({}),
+  });
+
+  /**
+   * Publishes a workflow whose one action is `markAction` and schedules one
+   * run of it due now, through a connection of the case's own, the way an
+   * app with no loop of its own leaves a run for the runner. Answers how to
+   * read that run's status back.
+   */
+  async function seedDueRun(id: string) {
+    const instance = await wfPostgres({ url, schema }).open(
+      createIntegrationCipher(ENCRYPTION)
+    );
+    const runtime = ManagedRuntime.make(instance.repositories);
+    const executionId = await runtime.runPromise(
+      Effect.gen(function* () {
+        yield* publishWorkflow({
+          workflowId: `wf_${id}`,
+          versionId: `ver_${id}`,
+          graph: createSerializedWorkflowGraph({
+            nodes: [lifecycleNode(), actionNode("mark", "test/mark")],
+            edges: [edge("entry", "mark", "started")],
+          }),
+          catalogFingerprint: catalogFingerprint(
+            assembleExtensions({ actions: [markAction] }).catalog
+          ),
+        });
+        return yield* startScheduledRun({
+          workflowId: `wf_${id}`,
+          versionId: `ver_${id}`,
+          entityValue: `entity_${id}`,
+          wakeAt: new Date(),
+        });
+      })
+    );
+    return {
+      status: () =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const executions = yield* ExecutionRepo;
+            return (yield* executions.findSummaryById(executionId))?.status;
+          })
+        ),
+      close: async () => {
+        await runtime.dispose();
+        await instance.close();
+      },
+    };
+  }
+
+  it("advances a run in createWfGraphRunner beside an app with runner: false", async () => {
+    const loops = vi.spyOn(workerLoopModule, "runWorkerLoop");
+    const app = await createWfGraphApp({
+      auth: trustWfGraphUpstream(),
+      persistence: wfPostgres({ url, schema }),
+      encryption: ENCRYPTION,
+      inngest: { id: "wfgraph-app-pg-test", isDev: true },
+      extensions: { actions: [markAction] },
+      runner: false,
+    });
+    expect(loops).not.toHaveBeenCalled();
+
+    const seeded = await seedDueRun("runner_entry");
+    const recorded = recordedLogger();
+    try {
+      await using runner = await createWfGraphRunner({
+        persistence: wfPostgres({ url, schema }),
+        encryption: ENCRYPTION,
+        extensions: { actions: [markAction] },
+        logger: recorded.logger,
+      });
+      await vi.waitFor(
+        async () => expect(await seeded.status()).toBe("completed"),
+        { timeout: 5_000 }
+      );
+      expect(loops).toHaveBeenCalledTimes(1);
+      await runner.dispose();
+      expect(recorded.find("Worker loop stopped")).toHaveLength(1);
+    } finally {
+      await seeded.close();
+      await app.dispose();
+    }
+  });
+
+  it("logs a Layer graph that fails to build apart from a loop that died", async () => {
+    const loops = vi.spyOn(workerLoopModule, "runWorkerLoop");
+    const recorded = recordedLogger();
+    const runner = await createWfGraphRunner({
+      logger: recorded.logger,
+      encryption: ENCRYPTION,
+      persistence: {
+        open: async (cipher) => {
+          const instance = await wfPostgres({ url, schema }).open(cipher);
+          return {
+            ...instance,
+            repositories: Layer.merge(
+              instance.repositories,
+              Layer.effectDiscard(Effect.die(new Error("graph refused")))
+            ),
+          };
+        },
+      },
+    });
+    await vi.waitFor(() =>
+      expect(
+        recorded.find(
+          "Could not build the Layer graph the worker loop runs on; this process advances no runs"
+        )
+      ).toHaveLength(1)
+    );
+    await runner.dispose();
+
+    expect(loops).not.toHaveBeenCalled();
+    expect(
+      recorded.find("The worker loop died; it restarts after a backoff")
+    ).toHaveLength(0);
+  });
+
+  it("stops at once when its listener never connected", async () => {
+    const runner = await createWfGraphRunner({
+      encryption: ENCRYPTION,
+      persistence: {
+        open: async (cipher) => {
+          const instance = await wfPostgres({ url, schema }).open(cipher);
+          const { broadcast } = instance.capabilities;
+          if (broadcast === undefined) throw new Error("Expected a broadcast");
+          return {
+            ...instance,
+            capabilities: {
+              ...instance.capabilities,
+              broadcast: {
+                ...broadcast,
+                // A database that never answers the LISTEN.
+                listen: () => new Promise(() => {}),
+              },
+            },
+          };
+        },
+      },
+    });
+    const startedAt = Date.now();
+    await runner.dispose();
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
   });
 });

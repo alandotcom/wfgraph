@@ -12,11 +12,16 @@ import {
 } from "#src/backend/lib/db/migrations";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import { makePostgresRepositories } from "#src/backend/persistence/postgres-repositories";
-import {
-  createPostgresRunWakes,
-  POSTGRES_POLL_MS,
-  POSTGRES_WORKER_CONCURRENCY,
-} from "#src/backend/persistence/postgres-run-wakes";
+import { createPostgresRunWakes } from "#src/backend/persistence/postgres-run-wakes";
+
+/** How long a loop on PostgreSQL sleeps between claims when nothing wakes it. */
+const POSTGRES_POLL_MS = 1_000;
+
+/**
+ * How many passes a loop on PostgreSQL runs at once. A pass spends most of its
+ * time waiting on the database, so several overlap on one event loop.
+ */
+const POSTGRES_WORKER_CONCURRENCY = 10;
 
 export type PostgresPersistenceOptions = DatabaseRuntimeConfig & {
   migrations?: MigrationsOptions | undefined;
@@ -45,8 +50,15 @@ export function wfPostgres(
         });
         return {
           repositories: makePostgresRepositories(database, cipher),
-          wakes: { kind: "notify", pollMs: POSTGRES_POLL_MS, broadcast },
-          workerConcurrency: POSTGRES_WORKER_CONCURRENCY,
+          capabilities: {
+            broadcast,
+            connectionLimit: config.maxConnections,
+            processes: "many",
+            loopDefaults: {
+              pollMs: POSTGRES_POLL_MS,
+              concurrency: POSTGRES_WORKER_CONCURRENCY,
+            },
+          },
           description: {
             backend: "postgres",
             ...describeConnection(database.client, database.schema),

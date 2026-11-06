@@ -60,8 +60,20 @@ export type { WorkflowActions } from "#src/backend/engine/actions";
 export type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 export type { WorkflowStore } from "#src/backend/engine/store";
 
+/** A graph's nodes and edges, parsed from its serialized form. */
+export type WorkflowGraphData = {
+  readonly nodes: WorkflowNode[];
+  readonly edges: WorkflowEdge[];
+};
+
 export type WorkflowExecutionInput = {
   graph: SerializedWorkflowGraph;
+  /**
+   * `graph`'s nodes and edges already parsed, from a caller that keeps them
+   * with the version so the passes of one version share one parse. Parsed
+   * from `graph` when absent. The engine reads them and never writes them.
+   */
+  parsedGraph?: WorkflowGraphData | undefined;
   /** The published version this run pins. */
   workflowVersionId: string;
   /**
@@ -152,29 +164,6 @@ type EndedWorkflowExecution = RunProgress & {
 };
 
 /**
- * The nodes and edges parsed from each graph a run has walked, by the graph
- * object itself. The database executor hands every pass of a version the same
- * graph object, so the version is parsed once while that object lives, and an
- * entry goes when its graph is collected. The engine reads the parsed nodes
- * and edges and never writes them, which is what lets passes share one copy.
- */
-const parsedGraphs = new WeakMap<
-  SerializedWorkflowGraph,
-  { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
->();
-
-function parsedGraph(graph: SerializedWorkflowGraph): {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-} {
-  const known = parsedGraphs.get(graph);
-  if (known !== undefined) return known;
-  const parsed = toWorkflowGraphData(graph);
-  parsedGraphs.set(graph, parsed);
-  return parsed;
-}
-
-/**
  * Builds the traversal, the cancel boundary and the scheduler one run walks
  * with.
  */
@@ -193,7 +182,7 @@ function prepareRun(
     workflowId,
     runMode = "live",
   } = input;
-  const { nodes, edges } = parsedGraph(graph);
+  const { nodes, edges } = input.parsedGraph ?? toWorkflowGraphData(graph);
 
   const traversal = new Traversal(nodes, edges);
   const lifecycleNodes = traversal.lifecycleNodes;

@@ -67,10 +67,9 @@ describe("published Event metadata on native SQLite", () => {
             },
           ],
         }),
-        makeExecutionDriverLayer({
-          worker: createWorkerWake(),
-          persistence: instance.wakes,
-        }).pipe(Layer.provide(instance.repositories))
+        makeExecutionDriverLayer([createWorkerWake()]).pipe(
+          Layer.provide(instance.repositories)
+        )
       )
     );
 

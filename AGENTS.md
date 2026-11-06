@@ -259,8 +259,9 @@ takes a durability runtime, an Effect-native store for the run's trace, and a
 `WorkflowActions` for what an action id dispatches to. `runBody` (`backend/executor/run-body.ts`)
 fills all three for one pass of the database executor, and `runWorkerLoop`
 (`backend/executor/worker-loop.ts`) runs the passes; `createWfGraphApp` starts that loop in
-its own process. The engine imports neither the database, the assembled surface, Inngest,
-nor Drizzle.
+its own process, and `createWfGraphRunner` starts it in a process that serves no HTTP. Both
+stand on `openWfGraphSetup` (`backend/setup.ts`). The engine imports neither the database,
+the assembled surface, Inngest, nor Drizzle.
 
 **The host configures logtape, and a record is one unit of work** (ADR-0013).
 `backend/lib/logger.ts` is `getAppLogger` and the `wfgraph` root, and it calls no
@@ -350,13 +351,16 @@ pass, so the engine uses no `Effect.fork`.
 
 **A producer resolves a park and re-queues the run in one transaction.** The Event or manual
 resume claim (`claimWaitingStateById`, `claimWaitingStateByToken`), the Cancel claim
-(`requestCancelForEntity`), the Migration repin (`repinVersion`) and the Exit claim (the
-fenced `requestExit`) each write their wake onto the wait rows and move a sleeping schedule
-row to `queued`, locking the schedule row before anything else. A start writes the new
+(`requestCancelForEntity`) and the Migration repin (`repinVersion`) each write their wake
+onto the wait rows and move a sleeping schedule row to `queued`, locking the schedule row
+before anything else. The Exit claim (the fenced `requestExit`) is written by a pass that
+holds the run's lease, so it resolves the run's parks and leaves the schedule row to that
+pass's release, which re-queues the run. A start writes the new
 run's schedule row and its "run started" entry in the transaction that inserts the
 Execution (`startForEntity`), so no open run is ever unscheduled. `ExecutionDriver`
-(`services/executions/driver.ts`) is what a service calls, and it wakes the worker loop after
-the write. A pass's release (`releasePass`) takes the same lock and re-queues a run whose park
+(`services/executions/driver.ts`) is what a service calls, and after the write it announces
+to each `RunWakeSink` the app handed it: the in-process wake, and the backend's broadcast to
+other processes when it has one. A pass's release (`releasePass`) takes the same lock and re-queues a run whose park
 holds a wake no pass consumed. The TLA+ models in `.claude/skills/verify-durable-executor`
 check every order of these writes; run its `check.sh` after changing one. `driveWithReplay`
 (`engine/testing/replay-runtime.ts`) is how a test sees a run pass by pass: it wakes the run
@@ -469,10 +473,12 @@ is the one home of the seven core entry points.
 runtime sees only the four aggregate repository services; backend-specific
 connection, schema, migration, query, and concurrency code stays under
 `backend/persistence/`. `@wfgraph/core/postgres` is the long-lived Node
-PostgreSQL backend, `@wfgraph/core/sqlite` is native Node SQLite, and
-`@wfgraph/core/worker` opens PostgreSQL through Hyperdrive per request. A new
-backend implements the repository contracts rather than adding a database
-handle to `WfGraphServices`.
+PostgreSQL backend and `@wfgraph/core/sqlite` is native Node SQLite.
+`@wfgraph/core/worker` holds the Hyperdrive backend and `wfWorker`, which refuses
+to start until the tick driver of phase 5 ships, since a Worker has no
+long-lived process to run the worker loop in. A new backend implements the
+repository contracts rather than adding a database handle to `WfGraphServices`,
+and states what it offers the worker loops as `WfGraphRunCapabilities`.
 
 Schema is `packages/core/src/backend/lib/db/schema.ts`, on PostgreSQL 15 or newer.
 Generate migrations with `pnpm run db:generate` and apply them with `pnpm run db:migrate`.
@@ -493,7 +499,7 @@ rebaselined migration set either fails drizzle's journal-name upgrade or re-runs
 
 SQLite owns its separate normalized schema and migrates it on open. Its write
 transaction is `BEGIN IMMEDIATE`; do not split a repository decision into
-separate read and write transactions. The Worker/Hyperdrive backend requires
+separate read and write transactions. The Hyperdrive backend requires
 query caching disabled and verifies that the origin role's default
 `search_path` resolves to the configured schema. PostgreSQL migrations for a
 Worker deployment run out of band through `@wfgraph/core/migrate`.
@@ -631,4 +637,4 @@ The app refuses to start without `INTEGRATION_ENCRYPTION_KEY` (64-char hex). Put
 
 - The live PostgreSQL suite wants `docker compose up -d` and `WFGRAPH_TEST_DATABASE_URL`; without them `pnpm run test:postgres` skips every case.
 - **Node 24 or newer is required** (`engines` is `>=24`). `.node-version` selects Node 24 as the repository default, but newer supported versions do not require a version switch.
-- For driving a real workflow against Inngest (not vitest), use `.claude/skills/live-run/SKILL.md`.
+- For driving a real workflow run on the local stack (not vitest), use `.claude/skills/live-run/SKILL.md`.

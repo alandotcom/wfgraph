@@ -93,7 +93,7 @@ const recordMigrationAudit = Effect.fn("recordMigrationAudit")(
       .pipe(
         Effect.catchTag("DatabaseError", (failure) =>
           logger.error("Failed to record a run migration", {
-            run: { executionId: input.executionId },
+            run: { execution: input.executionId },
             error: failure.cause,
           })
         )
@@ -211,7 +211,7 @@ const migrateOne = Effect.fn("migrateOne")(
         Effect.gen(function* () {
           const logger = yield* loggerFor(input.workflowId);
           yield* logger.error("Failed to migrate a workflow run", {
-            run: { executionId: input.classification.candidate.id },
+            run: { execution: input.classification.candidate.id },
             error: failure.cause,
           });
 

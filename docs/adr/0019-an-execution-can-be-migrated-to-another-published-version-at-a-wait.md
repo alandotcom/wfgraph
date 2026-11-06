@@ -108,3 +108,26 @@ A migrate call is bounded by concurrency rather than by count. It accepts every
 execution id the caller names and moves eight runs at a time, so a workflow with
 a very large in-flight population makes one request run for a long time, and
 splitting such a population across calls is the caller's choice.
+
+## Amendment: why `waits_nested` still refuses a run on the database executor (2026-11-05)
+
+ADR-0021 moved runs onto the database executor, and the reason for `waits_nested` changed
+with it. A run on that executor holds every branch in one body, so the branch entered at
+the upper Wait no longer parks a second time on a row another branch holds. A Migration of
+a run whose parks the target version nests would still go wrong, in a different way.
+
+The repin writes a `migrate` wake onto every park of the run and re-queues it. The next
+pass, under the target graph, reaches the upper Wait, reads its wake and parks there again.
+It cannot reach the lower Wait, which now sits below the upper one, so the lower Wait's
+wake stays unread until the upper Wait resumes. A pass's release re-queues at once a run
+whose park holds a wake no pass read, which is the rule that keeps a wake from being lost.
+For such a run that rule fires on every pass: the run is claimed, replayed and released
+again without pause until the upper Wait's deadline, which may be hours away.
+
+The replay case "leaves a lower Wait's migrate wake unread until the upper Wait resumes
+when the target graph nests them" in
+`packages/core/src/backend/engine/core-wait-migrate.replay-cases.ts` shows the unread wake,
+and the case "re-queues at once a run whose lower Wait holds a wake the pass could not
+reach" in `packages/core/src/backend/services/workflows/migration/migration.test.ts` shows
+the release re-queueing that run. The preflight therefore keeps refusing the run with
+`waits_nested`.

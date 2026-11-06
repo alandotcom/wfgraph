@@ -28,33 +28,33 @@ import type { WorkflowMode } from "@wfgraph/shared/graph/types";
  * The ids come back so the delivery can keep the same Event off those runs'
  * waits: they are ending, and waking one would resume a run on its way out.
  */
-export const requestCanceledOutlet = Effect.fn("requestCanceledOutlet")(
-  function* (
-    input: {
-      workflowId: string;
-      runMode: WorkflowMode;
-      eventName: string;
-      payload: JsonObject;
-    } & ExecutionEntitySelector
-  ) {
-    const driver = yield* ExecutionDriver;
+export const requestCanceledOutlet = Effect.fn(
+  "wfgraph.execution.request_canceled_outlet"
+)(function* (
+  input: {
+    workflowId: string;
+    runMode: WorkflowMode;
+    eventName: string;
+    payload: JsonObject;
+  } & ExecutionEntitySelector
+) {
+  const driver = yield* ExecutionDriver;
 
-    const claims = yield* driver.requestCanceledOutlet(input);
+  const claims = yield* driver.requestCanceledOutlet(input);
 
-    yield* Effect.forEach(
-      claims,
-      (claim) =>
-        recordCancelRequested({
-          workflowId: input.workflowId,
-          eventName: input.eventName,
-          claim,
-        }),
-      { concurrency: DEFAULT_QUERY_CONNECTIONS }
-    );
+  yield* Effect.forEach(
+    claims,
+    (claim) =>
+      recordCancelRequested({
+        workflowId: input.workflowId,
+        eventName: input.eventName,
+        claim,
+      }),
+    { concurrency: DEFAULT_QUERY_CONNECTIONS }
+  );
 
-    return claims.map((claim) => claim.executionId);
-  }
-);
+  return claims.map((claim) => claim.executionId);
+});
 
 /**
  * Records one claim on its run's timeline. The claim has already landed, so a
@@ -67,7 +67,9 @@ const recordCancelRequested = Effect.fn("recordCancelRequested")(
     claim: CanceledOutletClaim;
   }) {
     const repo = yield* ExecutionRepo;
-    const logger = (yield* AppLogger).get("lifecycle-cancel");
+    const logger = (yield* AppLogger)
+      .get("lifecycle-cancel")
+      .with({ workflowId: input.workflowId });
     const { executionId, resolvedParks } = input.claim;
 
     yield* repo
@@ -82,12 +84,11 @@ const recordCancelRequested = Effect.fn("recordCancelRequested")(
         },
       })
       .pipe(
-        Effect.catch((error) =>
+        Effect.catchTag("DatabaseError", (failure) =>
           logger.error("Failed to record a cancellation request", {
-            workflowId: input.workflowId,
-            executionId,
-            eventName: input.eventName,
-            error,
+            run: { execution: executionId },
+            event: { name: input.eventName },
+            error: failure.cause,
           })
         )
       );

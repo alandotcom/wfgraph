@@ -2,7 +2,7 @@
  * The database `ExecutionDriver` on one persistence backend: what each method
  * writes, and which loops it wakes. A runner per backend calls
  * `describeExecutionDriverCases`, so every backend answers the same assertions;
- * a backend whose `wakes` broadcast across processes also runs the cases that
+ * a backend whose broadcast carries wakes across processes also runs the cases that
  * stand two apps on one database.
  *
  * Loops run on the wall clock with a 30 s poll, so a run they act on within a
@@ -125,7 +125,7 @@ function countedWake(): { wake: WorkerWake; calls: () => number } {
 
 export function describeExecutionDriverCases(
   harness: PersistenceConformanceHarness & {
-    /** Whether the backend's `wakes` reach loops in other processes. */
+    /** Whether the backend's broadcast reaches loops in other processes. */
     crossProcess: boolean;
   }
 ): void {
@@ -212,10 +212,10 @@ function startOn(workflow: PublishedWorkflow, deliveryId?: string) {
 function appOn(connection: ConformanceConnection): App {
   marks = new Map();
   const worker = countedWake();
-  const driver = makeExecutionDriverLayer({
-    worker: worker.wake,
-    persistence: connection.wakes,
-  });
+  const { broadcast } = connection.capabilities;
+  const driver = makeExecutionDriverLayer(
+    broadcast === undefined ? [worker.wake] : [worker.wake, broadcast]
+  );
   const findStatus = (executionId: string) =>
     connection.run(
       Effect.flatMap(ExecutionRepo, (executions) =>
@@ -523,11 +523,11 @@ function describeCrossProcessCases(
     const database = await openDatabase();
     const producer = appOn(await database.open());
     const consumer = appOn(await database.open());
-    const { wakes } = consumer.connection;
-    if (wakes.kind !== "notify") {
+    const { broadcast } = consumer.connection.capabilities;
+    if (broadcast === undefined) {
       throw new Error("The backend broadcasts no wakes across processes");
     }
-    return { producer, consumer, broadcast: wakes.broadcast };
+    return { producer, consumer, broadcast };
   }
 
   it("wakes a loop in another process within about 200 ms of a run made due, with a 30 s poll", async () => {
@@ -539,7 +539,9 @@ function describeCrossProcessCases(
     let claims = 0;
     let claimedAt = Number.NaN;
     const claimedIds: string[] = [];
-    const listening = await broadcast.listen(() => consumer.worker.wake.wake());
+    const listening = await broadcast.listen(() =>
+      consumer.worker.wake.announce()
+    );
     const loop = consumer.loop({
       onClaim: (executionIds) => {
         claims += 1;

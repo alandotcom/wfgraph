@@ -116,9 +116,9 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
     return cancelled;
   },
   (effect, executionId) =>
-    // One seam left: `cancelInFlightRuns` answers with the ids a write failed
-    // on rather than failing, so the only way out of this body is a refused
-    // query.
+    // `cancelInFlightRuns` contains each run's refused write and reports that
+    // run in `failedExecutionIds`, so a `DatabaseError` here comes from this
+    // body's own reads or its timeline entry.
     effect.pipe(
       Effect.catchTag(
         "DatabaseError",

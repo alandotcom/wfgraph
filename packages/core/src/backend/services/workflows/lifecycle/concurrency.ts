@@ -74,93 +74,93 @@ export type StartOutcome =
       inFlightExecutionIds: string[];
     };
 
-export const startWithConcurrency = Effect.fn("startWithConcurrency")(
-  function* (input: StartWithConcurrencyInput) {
-    const { workflow, start, runMode, payload, logger } = input;
-    const driver = yield* ExecutionDriver;
+export const startWithConcurrency = Effect.fn(
+  "wfgraph.execution.start_with_concurrency"
+)(function* (input: StartWithConcurrencyInput) {
+  const { workflow, start, runMode, payload, logger } = input;
+  const driver = yield* ExecutionDriver;
 
-    if (
-      input.concurrency !== "unlimited" &&
-      start.entityValue === undefined &&
-      start.entityType === undefined
-    ) {
-      return yield* refuseStart({
-        workflow,
-        start,
-        runMode,
-        logger,
-        reason: "entity_value_missing",
-        inFlightExecutionIds: [],
-      });
-    }
-
-    const executionIdentity =
-      start.entityType === undefined
-        ? { entityValue: start.entityValue }
-        : { entityType: start.entityType, entityId: start.entityId };
-    const execution: NewExecution = {
-      workflowId: workflow.id,
-      workflowVersionId: workflow.versionId,
-      startSource: start.source,
+  if (
+    input.concurrency !== "unlimited" &&
+    start.entityValue === undefined &&
+    start.entityType === undefined
+  ) {
+    return yield* refuseStart({
+      workflow,
+      start,
       runMode,
-      startEventName: start.eventName,
-      input: payload,
-      deliveryId: start.deliveryId,
-      ...executionIdentity,
-    };
-    const opened = yield* driver.startRun({
-      execution,
-      concurrency: input.concurrency,
-      supersededReason: supersededReason(start.eventName),
-      admissionDecisionId:
-        start.source === "event" && start.entityType && start.deliveryId
-          ? startAdmissionDecisionId(workflow.id, start.deliveryId)
-          : undefined,
-      startedEntry: yield* runStartedEntry(execution),
+      logger,
+      reason: "entity_value_missing",
+      inFlightExecutionIds: [],
     });
-
-    if (opened.status === "admission_refused") {
-      return {
-        status: "not_started" as const,
-        reason: opened.reason,
-        inFlightExecutionIds: [],
-      };
-    }
-
-    if (opened.status === "refused") {
-      return yield* refuseStart({
-        workflow,
-        start,
-        runMode,
-        logger,
-        reason: "concurrency_first_wins",
-        inFlightExecutionIds: opened.inFlightExecutionIds,
-      });
-    }
-
-    // The displaced rows already say `superseded` and lost their schedule rows
-    // in the same transaction, so what is left is putting the reason on their
-    // timelines. The ids whose entry the database refused travel back to the
-    // caller.
-    const announced =
-      opened.supersededExecutionIds.length > 0
-        ? yield* announceSupersededRuns({
-            workflowId: workflow.id,
-            executionIds: opened.supersededExecutionIds,
-            reason: supersededReason(start.eventName),
-            eventName: start.eventName,
-          })
-        : { failedExecutionIds: [] as string[] };
-
-    const outcome: StartOutcome = {
-      status: "started",
-      executionId: opened.execution.id,
-      supersededExecutionIds: opened.supersededExecutionIds,
-      failedToSupersede: announced.failedExecutionIds,
-    };
-    return outcome;
   }
-);
+
+  const executionIdentity =
+    start.entityType === undefined
+      ? { entityValue: start.entityValue }
+      : { entityType: start.entityType, entityId: start.entityId };
+  const execution: NewExecution = {
+    workflowId: workflow.id,
+    workflowVersionId: workflow.versionId,
+    startSource: start.source,
+    runMode,
+    startEventName: start.eventName,
+    input: payload,
+    deliveryId: start.deliveryId,
+    ...executionIdentity,
+  };
+  const opened = yield* driver.startRun({
+    execution,
+    concurrency: input.concurrency,
+    supersededReason: supersededReason(start.eventName),
+    admissionDecisionId:
+      start.source === "event" && start.entityType && start.deliveryId
+        ? startAdmissionDecisionId(workflow.id, start.deliveryId)
+        : undefined,
+    startedEntry: yield* runStartedEntry(execution),
+  });
+
+  if (opened.status === "admission_refused") {
+    return {
+      status: "not_started" as const,
+      reason: opened.reason,
+      inFlightExecutionIds: [],
+    };
+  }
+
+  if (opened.status === "refused") {
+    return yield* refuseStart({
+      workflow,
+      start,
+      runMode,
+      logger,
+      reason: "concurrency_first_wins",
+      inFlightExecutionIds: opened.inFlightExecutionIds,
+    });
+  }
+
+  // The displaced rows already say `superseded` and lost their schedule rows
+  // in the same transaction, so what is left is putting the reason on their
+  // timelines. The ids whose entry the database refused travel back to the
+  // caller.
+  const announced =
+    opened.supersededExecutionIds.length > 0
+      ? yield* announceSupersededRuns({
+          workflowId: workflow.id,
+          executionIds: opened.supersededExecutionIds,
+          reason: supersededReason(start.eventName),
+          eventName: start.eventName,
+        })
+      : { failedExecutionIds: [] as string[] };
+
+  const outcome: StartOutcome = {
+    status: "started",
+    executionId: opened.execution.id,
+    supersededExecutionIds: opened.supersededExecutionIds,
+    failedToSupersede: announced.failedExecutionIds,
+  };
+  return outcome;
+});
 
 function supersededReason(eventName: string | undefined): string {
   return eventName

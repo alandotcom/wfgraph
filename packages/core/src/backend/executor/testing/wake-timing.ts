@@ -424,7 +424,7 @@ async function observeRun(input: {
           now: new Date(cancelAt),
         })
       );
-      input.wake.wake();
+      input.wake.announce();
       continue;
     }
     // eslint-disable-next-line eslint/no-await-in-loop -- a read per tick, by design

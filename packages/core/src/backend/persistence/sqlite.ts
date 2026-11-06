@@ -58,8 +58,14 @@ export function wfSqlite(
           Layer.succeed(ExecutionRepo, makeSqliteExecutionRepo(database))
         ),
         // Every loop runs in the one process that writes the file.
-        wakes: { kind: "poll", pollMs: SQLITE_POLL_MS },
-        workerConcurrency: SQLITE_WORKER_CONCURRENCY,
+        capabilities: {
+          connectionLimit: 1,
+          processes: "one",
+          loopDefaults: {
+            pollMs: SQLITE_POLL_MS,
+            concurrency: SQLITE_WORKER_CONCURRENCY,
+          },
+        },
         description: { backend: "sqlite", filename },
         close: database.close,
       };

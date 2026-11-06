@@ -4,7 +4,8 @@ description: >
   Embed Workflow Graph with createWfGraphApp: fetch handler, createRequestListener,
   auth, INTEGRATION_ENCRYPTION_KEY, Inngest, clientBundle, publicUrl, basePath,
   MCP authoring, configureWfGraphLogging, wfPostgres, wfSqlite, wfWorker,
-  migrateWfGraphDatabase.
+  migrateWfGraphDatabase, and createWfGraphRunner for a process that only runs
+  workflows.
   Load when mounting the host app or choosing persistence. Not for defineEvent,
   defineEntity, defineAction, or defineIntegration (those are sub-skills).
 metadata:
@@ -108,7 +109,9 @@ required. Loop defaults and the `runner` fields: `docs/embedding.md`
 ("Workflow runs").
 
 - `runner` left out runs one loop. `runner: false` runs none in that process;
-  some process on the same database must run one.
+  some process on the same database must run one, such as a
+  `createWfGraphRunner` process ("Run the loop in its own process"). SQLite
+  refuses `runner: false`, and `createWfGraphRunner` refuses SQLite.
 - SQLite runs every pass on the host's main thread (`node:sqlite` is
   synchronous). Concurrency defaults to 1 there.
 - `runner.heartbeatMs` must be shorter than `runner.leaseMs`; startup refuses
@@ -173,7 +176,7 @@ Source: alandotcom/wfgraph:docs/embedding.md (PostgreSQL migrations)
 Wrong: `createWfGraphApp({ ..., runner: false })` in every process.
 
 Correct: leave `runner` out (or pass an object) in at least one process
-connected to the same database.
+connected to the same database, or run `createWfGraphRunner` beside the apps.
 
 Runs open and never advance: nothing claims their schedule rows.
 

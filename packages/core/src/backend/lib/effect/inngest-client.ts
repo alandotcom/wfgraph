@@ -61,3 +61,16 @@ export function makeInngestClientLayer(
       }),
   });
 }
+
+/**
+ * The bus for a process that forwards no Event, such as the one
+ * `createWfGraphRunner` starts. Only the webhook route forwards one, and that
+ * process serves no route, so a send reaching this is a defect.
+ */
+export const unavailableInngestClientLayer: Layer.Layer<InngestClient> =
+  Layer.succeed(InngestClient, {
+    sendCatalogEvent: () =>
+      Effect.die(
+        new Error("This process has no Inngest client to forward Events on")
+      ),
+  });
