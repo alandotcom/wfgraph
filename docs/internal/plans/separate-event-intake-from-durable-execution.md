@@ -1075,10 +1075,17 @@ keeps compatibility machinery alive for the next one.
    A delivery that fails for good is recorded on its inbox row with its error
    and logged once; the editor shows nothing new in this phase.
 
-4. **Inngest leaves the core.** The Inngest source entry is the only Inngest
-   code left; `inngest` leaves `createWfGraphApp` and the core's peer
-   dependencies; `scripts/dev.ts` drops the CLI; `docs/events.md`, both
-   published skills and the example app change; one major-version changeset.
+4. **Inngest leaves the core.** The forwarders ship as the `@wfgraph/core/inngest`
+   subpath, the only Inngest code left, with `inngest` an optional peer
+   dependency (the owner's choice over a separate package, which would need a
+   hand-published first version). `inngest` leaves `createWfGraphApp`, the
+   Worker entry and the core's required peer dependencies; the forwarder-only
+   pieces in the extension set move to the entry. The example app drops
+   Inngest (the owner's choice), so `pnpm run dev` runs the app and Vite and
+   `scripts/dev.ts` drops the CLI; the reliability suite sends with
+   `app.events.send` and needs no Inngest dev server. `docs/events.md`,
+   `docs/embedding.md`, both published skills and AGENTS.md change, with one
+   major-version changeset.
 5. **Worker driver.** `tick`, cron, queue consumer, optional DO alarms, with
    Design E as the documented fallback.
 6. **Cron source and the Runs view fields** of S14. A cron schedule row is a
