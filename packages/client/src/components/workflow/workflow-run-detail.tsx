@@ -1,6 +1,15 @@
 import { useAtomValue } from "jotai";
-import { type RefObject, useState } from "react";
+import { Fragment, type RefObject, useState } from "react";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
+import { useNowMs } from "#src/hooks/effects";
+import { cn } from "@wfgraph/shared/utils";
+import {
+  type ExecutorSchedule,
+  executorActivityCopy,
+  executorDetails,
+  type NodeNamer,
+  serverNowMs,
+} from "#src/lib/run-executor-activity";
 import { parseConditionModel } from "@wfgraph/shared/conditions/conditions";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { Button } from "#src/components/ui/button";
@@ -34,6 +43,11 @@ export type WorkflowRunDetailProps = {
   events: ExecutionEvent[];
   exit: ExecutionExit | null;
   waits: ExecutionWait[];
+  /**
+   * Where the database executor holds the run, with the browser's clock when
+   * that answer arrived. Null once the run has ended and before its logs load.
+   */
+  executor: RunExecutorHold | null;
   isCanceling: boolean;
   isResuming: boolean;
   onCancel?: ((executionId: string) => void) | undefined;
@@ -57,6 +71,86 @@ export type WorkflowRunDetailProps = {
       }
     | undefined;
 };
+
+/** An open run's executor schedule, and when the browser received it. */
+export type RunExecutorHold = {
+  schedule: ExecutorSchedule;
+  receivedAtMs: number;
+};
+
+/**
+ * What the database executor is doing about an in-progress run: one headline,
+ * an optional second line, and the schedule's facts behind a disclosure. Shows
+ * nothing for a run asleep on its parks, which the waits section explains. A
+ * one-second clock keeps the elapsed times and the warning threshold current
+ * between polls.
+ */
+function RunExecutorSection({
+  hold,
+  nameOf,
+}: {
+  hold: RunExecutorHold;
+  nameOf: NodeNamer;
+}) {
+  const browserNowMs = useNowMs({ intervalMs: 1000, enabled: true });
+  const { schedule } = hold;
+  const nowMs = serverNowMs({
+    observedAt: schedule.observedAt,
+    receivedAtMs: hold.receivedAtMs,
+    nowMs: browserNowMs,
+  });
+  const copy =
+    schedule.activity === null
+      ? null
+      : executorActivityCopy({ activity: schedule.activity, nameOf, nowMs });
+  if (copy === null) {
+    return null;
+  }
+  const warns = copy.tone === "warning";
+
+  return (
+    <section
+      aria-label="Executor"
+      className={cn(
+        "space-y-1.5 rounded-md border p-3",
+        warns && "border-warning/40"
+      )}
+    >
+      <p
+        className={cn(
+          "break-words font-medium text-sm leading-5",
+          warns && "text-warning"
+        )}
+      >
+        {copy.headline}
+      </p>
+      {copy.detail === null ? null : (
+        <p className="break-words text-muted-foreground text-xs leading-5">
+          {copy.detail}
+        </p>
+      )}
+      <CollapsibleSection title="Executor details">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
+          {executorDetails({ schedule, nowMs }).map((fact) => (
+            <Fragment key={fact.term}>
+              <dt className="text-muted-foreground text-xs leading-5">
+                {fact.term}
+              </dt>
+              <dd
+                className={cn(
+                  "break-words text-sm leading-5",
+                  fact.mono && "font-mono text-xs"
+                )}
+              >
+                {fact.value}
+              </dd>
+            </Fragment>
+          ))}
+        </dl>
+      </CollapsibleSection>
+    </section>
+  );
+}
 
 function exitSummary(input: {
   exit: ExecutionExit;
@@ -95,6 +189,7 @@ export function WorkflowRunDetail({
   events,
   exit,
   waits,
+  executor,
   isCanceling,
   isResuming,
   onCancel,
@@ -141,6 +236,14 @@ export function WorkflowRunDetail({
   const exitConditionFields = exit
     ? getEntityConditionFields(catalog, exit.entityType)
     : [];
+  // The executor names a node from its log row; a node with none yet is named
+  // from the pinned graph, and by its id when that has not loaded.
+  const nameOf: NodeNamer = ({ nodeId, nodeName }) =>
+    nodeId === null
+      ? null
+      : (nodeName ??
+        executionGraph?.nodes.find((node) => node.id === nodeId)?.data.label ??
+        nodeId);
   const primaryWait = activeWaits[0];
   const outcome =
     execution.status === "waiting" && primaryWait
@@ -166,6 +269,10 @@ export function WorkflowRunDetail({
         ref={scroll?.ref}
       >
         <div className="space-y-4">
+          {executor !== null && isRunInProgress(execution.status) ? (
+            <RunExecutorSection hold={executor} nameOf={nameOf} />
+          ) : null}
+
           {notice ? (
             <p className="rounded-md border bg-muted/30 p-2 text-muted-foreground text-xs">
               {notice}

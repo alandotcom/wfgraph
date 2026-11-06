@@ -176,12 +176,16 @@ export function toWorkflowExecutions(payload: {
  * not here -- it is immutable once published, so it rides `getVersionGraph`
  * instead, fetched once per `workflowVersionId` and cached forever rather than
  * retransmitted on every poll of this payload.
+ *
+ * The executor's schedule stays in its wire form, ISO strings and all, because
+ * the copy that reads it measures time against its `observedAt`.
  */
 export function toExecutionDetail(payload: ExecutionLogsResult): {
   logs: ExecutionLog[];
   waits: ExecutionWait[];
   execution: WorkflowExecution & { workflowVersionId: string };
   exit: ExecutionExit | null;
+  schedule: ExecutionLogsResult["schedule"];
 } {
   return {
     logs: toExecutionLogs(payload),
@@ -196,6 +200,7 @@ export function toExecutionDetail(payload: ExecutionLogsResult): {
     exit: payload.exit
       ? { ...payload.exit, checkedAt: new Date(payload.exit.checkedAt) }
       : null,
+    schedule: payload.schedule,
   };
 }
 

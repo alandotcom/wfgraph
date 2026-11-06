@@ -17,7 +17,8 @@ import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
-import { WorkflowRunDetail } from "./workflow-run-detail";
+import { type RunExecutorHold, WorkflowRunDetail } from "./workflow-run-detail";
+import type { ExecutorSchedule } from "#src/lib/run-executor-activity";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 const BASE_EXECUTION: WorkflowExecution = {
@@ -46,6 +47,7 @@ function renderDetail(
     waits?: Parameters<typeof WorkflowRunDetail>[0]["waits"];
     events?: ExecutionEvent[];
     exit?: Parameters<typeof WorkflowRunDetail>[0]["exit"];
+    executor?: RunExecutorHold;
     catalog?: ExtensionCatalog;
     nodes?: WorkflowNode[];
     executionNodes?: WorkflowNode[];
@@ -77,6 +79,7 @@ function renderDetail(
               events={extras?.events ?? []}
               execution={execution}
               exit={extras?.exit ?? null}
+              executor={extras?.executor ?? null}
               focusLogId={extras?.focusLogId}
               onFocusRestored={extras?.onFocusRestored}
               onSelectLog={extras?.onSelectLog ?? vi.fn()}
@@ -117,6 +120,94 @@ describe("WorkflowRunDetail", () => {
     const view = renderDetail({ ...BASE_EXECUTION, status: "waiting" });
 
     expect(view.getByRole("button", { name: "Cancel" })).toBeTruthy();
+  });
+
+  describe("executor section", () => {
+    const schedule: ExecutorSchedule = {
+      observedAt: "2026-02-22T10:05:00.000Z",
+      activity: null,
+      state: "queued",
+      wakeAt: "2026-02-22T10:06:00.000Z",
+      attempt: 0,
+      retryLimit: 4,
+      runningStepId: null,
+      runningNodeId: null,
+      runningNodeName: null,
+      leaseExpiresAt: null,
+      workerId: null,
+      lastError: null,
+      failingSteps: [],
+      unconsumedWakes: [],
+    };
+
+    // The executor names a node it has no log row for by id, and the pinned
+    // graph's label takes its place.
+    it("states what the executor is doing, with its schedule behind a disclosure", () => {
+      const view = renderDetail(BASE_EXECUTION, {
+        executionNodes: [
+          {
+            id: "send",
+            type: "action",
+            position: { x: 0, y: 0 },
+            data: { label: "Send reminder", type: "action", config: {} },
+          },
+        ],
+        executor: {
+          receivedAtMs: Date.now(),
+          schedule: {
+            ...schedule,
+            activity: {
+              kind: "retrying",
+              nodeId: "send",
+              nodeName: null,
+              nextTryAt: "2026-02-22T10:06:00.000Z",
+              failures: 1,
+              retryLimit: 4,
+              error: "Twilio answered 503",
+            },
+          },
+        },
+      });
+
+      const section = view.getByRole("region", { name: "Executor" });
+      expect(section.textContent).toContain("Retrying “Send reminder” at");
+      expect(section.textContent).toContain("try 2 of 5");
+      expect(section.textContent).toContain("Twilio answered 503");
+      expect(section.textContent).not.toContain("Run failures");
+
+      fireEvent.click(view.getByRole("button", { name: "Executor details" }));
+      expect(section.textContent).toContain("Run failures");
+      expect(section.textContent).toContain("0 of 4");
+    });
+
+    it("says nothing new for a run asleep on its parks, or for a run that ended", () => {
+      const asleep = renderDetail(BASE_EXECUTION, {
+        executor: {
+          receivedAtMs: Date.now(),
+          schedule: {
+            ...schedule,
+            state: "waiting",
+            activity: { kind: "waiting" },
+          },
+        },
+      });
+      expect(asleep.queryByRole("region", { name: "Executor" })).toBeNull();
+      asleep.unmount();
+
+      const ended = renderDetail(
+        { ...BASE_EXECUTION, status: "completed" },
+        {
+          executor: {
+            receivedAtMs: Date.now(),
+            schedule: {
+              ...schedule,
+              activity: { kind: "unclaimed", dueSince: schedule.wakeAt },
+            },
+          },
+        }
+      );
+      expect(ended.queryByRole("region", { name: "Executor" })).toBeNull();
+    });
   });
 
   it("hides the cancel button once the run has finished", () => {

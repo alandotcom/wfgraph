@@ -371,6 +371,14 @@ export function useWorkflowRuns(): WorkflowRunsState {
         events: identity.events,
         exit: reads.detailQuery.data?.exit ?? null,
         waits,
+        executor: reads.detailQuery.data?.schedule
+          ? {
+              schedule: reads.detailQuery.data.schedule,
+              // When this answer reached the browser, which the elapsed
+              // times are measured from on top of the server's clock.
+              receivedAtMs: reads.detailQuery.dataUpdatedAt,
+            }
+          : null,
         isCanceling:
           cancelExecution.isPending &&
           cancelExecution.variables?.executionId === execution.id,
