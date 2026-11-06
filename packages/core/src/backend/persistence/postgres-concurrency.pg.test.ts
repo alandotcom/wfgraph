@@ -10,7 +10,10 @@ import { expect, it, vi } from "vitest";
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  type ClaimedRun,
+  ExecutionRepo,
+} from "#src/backend/services/executions/repo";
 import type { ConformanceConnection } from "#src/backend/persistence/persistence-conformance-test-support";
 import {
   seedPublishedWorkflow,
@@ -665,7 +668,10 @@ describePostgres("PostgreSQL concurrency", () => {
           leaseMs: 60_000,
           now,
         });
-        const own = claimed.find((row) => row.executionId === executionId);
+        const own = claimed.find(
+          (row): row is ClaimedRun =>
+            row.kind === "run" && row.executionId === executionId
+        );
         if (!own) throw new Error("The run was not claimed");
         const parkOn = (nodeId: string, offsetMs: number) =>
           executions.startWait({
@@ -864,7 +870,7 @@ describePostgres("PostgreSQL concurrency", () => {
       const winners = claims.flat();
 
       expect(winners, `round ${round}`).toHaveLength(1);
-      expect(winners[0]?.executionId).toBe(executionId);
+      expect(winners[0]).toMatchObject({ kind: "run", executionId });
     }
   });
 });

@@ -118,11 +118,20 @@ export type ClaimedRun = ScheduleLease & {
 };
 
 /**
+ * A `delivery` row a claim leased: one arrival's delivery, which names its
+ * inbox row.
+ */
+export type ClaimedDelivery = ScheduleLease & {
+  kind: "delivery";
+  inboxId: string;
+};
+
+/**
  * A schedule row a claim leased to one worker's pass, by what the row runs.
  * `kind` picks the pass's body, and each kind the claim leases is one member
  * of this union. `CLAIMED_SCHEDULE_KINDS` names the kinds the claim leases.
  */
-export type ClaimedSchedule = ClaimedRun;
+export type ClaimedSchedule = ClaimedRun | ClaimedDelivery;
 
 /**
  * How a pass that wrote no terminal record ended, which decides the schedule
@@ -214,20 +223,30 @@ export type WaitResumeClaim = {
 };
 
 /**
- * A run a Cancel Event claimed for its Canceled outlet, and what the claim did
- * to the run's parks in the same transaction.
+ * A run a Cancel Event's claim answers for, by who claimed it for its Canceled
+ * outlet.
+ *
+ * - `claimed`: this write claimed the run, and `resolvedParks` and `requeued`
+ *   say what it did to the run's parks in the same transaction.
+ * - `claimed_earlier`: an earlier attempt of the same delivery claimed the run,
+ *   and this write changed nothing. A retried delivery still answers it, so
+ *   the arrival stays off the Waits of the run it claimed, including a Wait
+ *   the run's Canceled outlet parked since.
  */
-export type CanceledOutletClaim = {
-  executionId: string;
-  /**
-   * How many parks the claim resolved with a `cancel` wake. Every park open
-   * when the claim landed is on the Started side, since a Canceled-side Wait
-   * parks only under a Cancel claim.
-   */
-  resolvedParks: number;
-  /** Whether the claim made the run due, as `ParkResolution.requeued` says. */
-  requeued: boolean;
-};
+export type CanceledOutletClaim =
+  | {
+      kind: "claimed";
+      executionId: string;
+      /**
+       * How many parks the claim resolved with a `cancel` wake. Every park
+       * open when the claim landed is on the Started side, since a
+       * Canceled-side Wait parks only under a Cancel claim.
+       */
+      resolvedParks: number;
+      /** Whether the claim made the run due, as `ParkResolution.requeued` says. */
+      requeued: boolean;
+    }
+  | { kind: "claimed_earlier"; executionId: string };
 
 /**
  * What a Migration's repin did. A run that moved is made due unless a pass
@@ -237,8 +256,16 @@ export type RepinOutcome =
   | { moved: false }
   | { moved: true; requeued: boolean };
 
-/** One row of `workflow_executions`, as the Runs view and the engine see it. */
-export type WorkflowExecution = typeof workflowExecutions.$inferSelect;
+/**
+ * One row of `workflow_executions`, as the Runs view and the engine see it.
+ *
+ * `cancel_delivery_id` is left out: only the Cancel producer reads it, inside
+ * its own write.
+ */
+export type WorkflowExecution = Omit<
+  typeof workflowExecutions.$inferSelect,
+  "cancelDeliveryId"
+>;
 
 /**
  * One row of `workflow_execution_logs`, one node's attempt within a run.

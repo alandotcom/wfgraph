@@ -348,7 +348,12 @@ beforeEach(() => {
   recordAuditEventMock.mockImplementation(() => Effect.void);
   requestCanceledOutletMock.mockImplementation(() =>
     Effect.succeed([
-      { executionId: "exec_running", resolvedParks: 0, requeued: false },
+      {
+        kind: "claimed",
+        executionId: "exec_running",
+        resolvedParks: 0,
+        requeued: false,
+      },
     ])
   );
   resolveParkMock.mockImplementation(() =>
@@ -691,12 +696,14 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           canceledExecutionIds: ["exec_running"],
         });
+        // An arrival with no delivery id records none on the claim.
         assert.deepStrictEqual(requestCanceledOutletMock.mock.calls[0]?.[0], {
           workflowId: "wf_1",
           entityValue: "appt_8813",
           runMode: "live",
           eventName: "app/appointment.canceled",
           payload,
+          deliveryId: undefined,
         });
         assert.strictEqual(startRunMock.mock.calls.length, 0);
       })

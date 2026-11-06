@@ -26,6 +26,7 @@ import {
   createGate,
   delay,
   edge,
+  noDeliveries,
   lifecycleNode,
   publishWorkflow,
   startScheduledRun,
@@ -192,7 +193,9 @@ function describeCases(
     start: (graph: SerializedWorkflowGraph) => Promise<string>;
     /** Starts a loop on this connection, polling every 20 ms unless told. */
     loop: (
-      options: Partial<Omit<WorkerLoopOptions, "signal" | "actions">> & {
+      options: Partial<
+        Omit<WorkerLoopOptions, "signal" | "actions" | "delivery">
+      > & {
         wrap?: (repo: ExecutionRepo["Service"]) => ExecutionRepo["Service"];
         logger?: Layer.Layer<never> | undefined;
       }
@@ -260,6 +263,7 @@ function describeCases(
             const repo = yield* ExecutionRepo;
             return yield* runWorkerLoop({
               actions: () => actions,
+              delivery: noDeliveries,
               signal: controller.signal,
               pollMs: 20,
               ...options,
@@ -362,7 +366,7 @@ function describeCases(
     const second = await harness.start(oneActionThenMark("test/send"));
 
     const outcome = await harness.connection.run(
-      tick({ actions: () => actions, budgetMs: 10_000 })
+      tick({ actions: () => actions, delivery: noDeliveries, budgetMs: 10_000 })
     );
 
     expect(outcome).toEqual({ passed: 2, failed: 0, interrupted: 0 });
@@ -375,7 +379,7 @@ function describeCases(
     const held = await harness.start(oneActionThenMark("test/held"));
 
     const outcome = await harness.connection.run(
-      tick({ actions: () => actions, budgetMs: 100 })
+      tick({ actions: () => actions, delivery: noDeliveries, budgetMs: 100 })
     );
 
     expect(outcome).toEqual({ passed: 0, failed: 0, interrupted: 1 });
@@ -590,7 +594,7 @@ function describeCases(
             Effect.tap((claimed) =>
               Effect.sync(() => {
                 const own = claimed.find(
-                  (row) => row.executionId === executionId
+                  (row) => row.kind === "run" && row.executionId === executionId
                 );
                 if (own) leaseExpiresAt = own.leaseExpiresAt.getTime();
               })

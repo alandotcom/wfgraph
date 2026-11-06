@@ -67,13 +67,60 @@ type WorkflowDelivery = {
 };
 
 /**
- * The steps this handler needs, named here rather than taken from the SDK's
- * context, so the shape it depends on is stated in one readable place and a test
- * can stand in for it.
+ * The steps a delivery needs, named here rather than taken from the SDK's
+ * context, so the shape it depends on is stated in one readable place, a test
+ * can stand in for it, and the database executor's runtime fills it too.
  */
-type EventListenerSteps = {
+export type EventListenerSteps = {
   run: <T>(id: string, fn: () => Promise<T>) => Promise<T>;
 };
+
+/**
+ * The arrival one delivery belongs to, which names it in every record and row
+ * the delivery writes.
+ *
+ * - `inbox`: an inbox row the database executor delivers. Its id is the
+ *   delivery id both halves write: the lifecycle's committed decision and
+ *   every wake.
+ * - `inngest`: an Inngest event. The lifecycle's decision is keyed by the
+ *   event's own id, which is the sender's idempotency id wherever they sent
+ *   one. A wake is keyed by that id, or by the function run's id when the
+ *   event has none, each in a namespace of its own so a host-chosen event id
+ *   cannot collide with a run id.
+ */
+export type EventArrival =
+  | { kind: "inbox"; inboxId: string }
+  | {
+      kind: "inngest";
+      eventId?: string | undefined;
+      runId?: string | undefined;
+    };
+
+/** The delivery ids `arrival` gives the lifecycle half and the wait half. */
+function deliveryIdsOf(arrival: EventArrival): {
+  lifecycle: string | undefined;
+  wait: string | undefined;
+} {
+  if (arrival.kind === "inbox") {
+    return { lifecycle: arrival.inboxId, wait: arrival.inboxId };
+  }
+  return {
+    lifecycle: arrival.eventId,
+    wait:
+      arrival.eventId !== undefined
+        ? `event:${arrival.eventId}`
+        : arrival.runId !== undefined
+          ? `run:${arrival.runId}`
+          : undefined,
+  };
+}
+
+/** The log fields that name `arrival`. */
+function arrivalLogFields(arrival: EventArrival) {
+  return arrival.kind === "inbox"
+    ? { inboxId: arrival.inboxId }
+    : omitUndefined({ eventId: arrival.eventId, runId: arrival.runId });
+}
 
 /**
  * The deliver halves this listener fans out through.
@@ -103,12 +150,16 @@ export const defaultDeliverPorts: EventListenerDeliverPorts = {
  * bounded pages before any signal is sent. Each page's delivery is a sibling
  * durable step, so a retry uses the original rows and does not discover a later
  * sequential Wait the same arrival caused.
+ *
+ * The caller has already gated `payload` through the Event's schema, and
+ * passes the decoded value as `validatedPayload`.
  */
 export async function runEventListener(input: {
   event: AnyEventDefinition;
   payload: JsonObject;
-  /** Names the arrival in every line and row this delivery writes. */
-  arrival: { eventId?: string; runId?: string };
+  /** What `event.decodePayloadValue` answered for `payload`. */
+  validatedPayload: unknown;
+  arrival: EventArrival;
   /**
    * The Connection this arrival came through. Absent for a host Event.
    */
@@ -118,46 +169,18 @@ export async function runEventListener(input: {
   deliver: EventListenerDeliverPorts;
 }): Promise<{ eventName: string; workflows: WorkflowDelivery[] }> {
   const { event, payload, runtime, step, deliver } = input;
-  // The SDK always supplies runId, even when its optional Event id is absent.
-  // Separate namespaces keep a host-chosen Event id from colliding with a run.
-  const waitDeliveryId =
-    input.arrival.eventId !== undefined
-      ? `event:${input.arrival.eventId}`
-      : input.arrival.runId !== undefined
-        ? `run:${input.arrival.runId}`
-        : undefined;
+  const deliveryIds = deliveryIdsOf(input.arrival);
   const arrivalLogger = logger.with({
     eventName: event.name,
-    ...input.arrival,
+    ...arrivalLogFields(input.arrival),
   });
-
-  // The gate, because what arrives is a host's own message onto the bus rather
-  // than a contract between Workflow Graph's two halves. A refusal is not
-  // retried, because the same payload fails the same way on the next attempt.
-  const decoded = await runtime.runPromise(
-    event.decodePayloadValue(payload).pipe(
-      Effect.match({
-        onSuccess: (value) => ({ success: true as const, value }),
-        onFailure: (rejection) => ({ success: false as const, rejection }),
-      })
-    )
-  );
-  if (!decoded.success) {
-    const { rejection } = decoded;
-    // The thrown sentence reaches Inngest's own run history, which a host can
-    // read, so it takes the answer string; the log line takes the operator's.
-    arrivalLogger.warn("Refused an event payload", { error: rejection.detail });
-    throw new NonRetriableError(
-      `Payload refused for Event "${event.name}": ${rejection.error}`
-    );
-  }
 
   const deliveredEvent = {
     name: event.name,
     correlationPath: event.correlationPath,
     connectionId: input.connectionId,
     entityBindings: event.entities,
-    validatedPayload: decoded.value,
+    validatedPayload: input.validatedPayload,
   };
 
   const subscribers = await step.run(
@@ -184,9 +207,7 @@ export async function runEventListener(input: {
                 subscriber,
                 event: deliveredEvent,
                 payload,
-                // Inngest's id for this arrival, which is the sender's own
-                // idempotency id wherever they sent one.
-                deliveryId: input.arrival.eventId,
+                deliveryId: deliveryIds.lifecycle,
               })
             )
         )
@@ -250,7 +271,7 @@ export async function runEventListener(input: {
                 event: deliveredEvent,
                 payload,
                 candidates: page.candidates,
-                deliveryId: waitDeliveryId,
+                deliveryId: deliveryIds.wait,
               })
             )
         );
@@ -324,10 +345,10 @@ export function createInngestEventListenerFunction(input: {
         toEventPayload(delivered.data),
         { connectionStamped }
       );
-      return await runEventListener({
+      return await listenToInngestEvent({
         event,
         payload,
-        arrival: { eventId: delivered.id, runId },
+        arrival: { kind: "inngest", eventId: delivered.id, runId },
         connectionId,
         runtime,
         step,
@@ -335,4 +356,36 @@ export function createInngestEventListenerFunction(input: {
       });
     }
   );
+}
+
+/**
+ * One Inngest event, gated and fanned out. The gate runs here because what
+ * arrives is a host's own message onto the bus rather than a contract between
+ * Workflow Graph's two halves. A refusal is not retried, because the same
+ * payload fails the same way on the next attempt.
+ */
+export async function listenToInngestEvent(
+  input: Omit<Parameters<typeof runEventListener>[0], "validatedPayload">
+): ReturnType<typeof runEventListener> {
+  const { event, payload, runtime } = input;
+  const decoded = await runtime.runPromise(
+    event.decodePayloadValue(payload).pipe(
+      Effect.match({
+        onSuccess: (value) => ({ success: true as const, value }),
+        onFailure: (rejection) => ({ success: false as const, rejection }),
+      })
+    )
+  );
+  if (!decoded.success) {
+    const { rejection } = decoded;
+    // The thrown sentence reaches Inngest's own run history, which a host can
+    // read, so it takes the answer string; the log line takes the operator's.
+    logger
+      .with({ eventName: event.name, ...arrivalLogFields(input.arrival) })
+      .warn("Refused an event payload", { error: rejection.detail });
+    throw new NonRetriableError(
+      `Payload refused for Event "${event.name}": ${rejection.error}`
+    );
+  }
+  return await runEventListener({ ...input, validatedPayload: decoded.value });
 }

@@ -25,6 +25,7 @@ import {
   delay,
   edge,
   lifecycleNode,
+  noDeliveries,
   publishWorkflow,
   START_EVENT,
   waitNode,
@@ -43,7 +44,10 @@ import {
   ExecutionDriver,
   makeExecutionDriverLayer,
 } from "#src/backend/services/executions/driver";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  type ClaimedRun,
+  ExecutionRepo,
+} from "#src/backend/services/executions/repo";
 
 /** When each `test/mark` node ran, by node id. */
 let marks = new Map<string, number>();
@@ -268,13 +272,18 @@ function appOn(connection: ConformanceConnection): App {
                 .pipe(
                   Effect.tap((claimed) =>
                     Effect.sync(() =>
-                      onClaim?.(claimed.map((row) => row.executionId))
+                      onClaim?.(
+                        claimed.flatMap((row) =>
+                          row.kind === "run" ? [row.executionId] : []
+                        )
+                      )
                     )
                   )
                 ),
           };
           yield* runWorkerLoop({
             actions: () => actions,
+            delivery: noDeliveries,
             signal: controller.signal,
             pollMs: LONG_POLL_MS,
             wake: worker.wake,
@@ -384,7 +393,12 @@ function describeCases(
     expect(await app.ended(run.executionId)).toBe("canceled");
     await loop.stop();
     expect(claims).toEqual([
-      { executionId: run.executionId, resolvedParks: 1, requeued: true },
+      {
+        kind: "claimed",
+        executionId: run.executionId,
+        resolvedParks: 1,
+        requeued: true,
+      },
     ]);
     expect(app.worker.calls()).toBe(wakesBefore + 1);
     // Well inside the poll, with a second of slack for a loaded machine.
@@ -457,7 +471,8 @@ function describeCases(
         const driver = yield* ExecutionDriver;
         const executions = yield* ExecutionRepo;
         const claimed = (yield* claimAll).find(
-          (row) => row.executionId === run.executionId
+          (row): row is ClaimedRun =>
+            row.kind === "run" && row.executionId === run.executionId
         );
         if (claimed === undefined) throw new Error("The run was not claimed");
         yield* executions
@@ -502,7 +517,12 @@ function describeCases(
       Date.now() + 30 * 60 * 1000
     );
     expect(result.claims).toEqual([
-      { executionId: run.executionId, resolvedParks: 0, requeued: true },
+      {
+        kind: "claimed",
+        executionId: run.executionId,
+        resolvedParks: 0,
+        requeued: true,
+      },
     ]);
     expect(result.wakes).toBe(1);
     expect(result.schedule?.state).toBe("queued");

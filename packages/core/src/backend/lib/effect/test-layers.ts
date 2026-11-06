@@ -401,6 +401,11 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
       (name) => refuse(`fenced.${name}`)
     ),
   }),
+  fencedDelivery: () =>
+    mapValues(
+      keyBy(PASS_WRITE_NAMES, (name) => name),
+      (name) => refuse(`fencedDelivery.${name}`)
+    ),
 };
 
 export function stubExecutionRepo(

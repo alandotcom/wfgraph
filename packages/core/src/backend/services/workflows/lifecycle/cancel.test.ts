@@ -22,7 +22,12 @@ type Repo = ExecutionRepo["Service"];
 
 /** A run the Cancel claim took, with the parks the claim resolved. */
 function claim(executionId: string, resolvedParks = 0): CanceledOutletClaim {
-  return { executionId, resolvedParks, requeued: resolvedParks > 0 };
+  return {
+    kind: "claimed",
+    executionId,
+    resolvedParks,
+    requeued: resolvedParks > 0,
+  };
 }
 
 const requestCanceledOutletMock = vi.fn<

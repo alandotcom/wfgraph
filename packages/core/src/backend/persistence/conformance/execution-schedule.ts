@@ -69,8 +69,8 @@ export function describeExecutionScheduleConformance({
         claimOne(first, "worker_a"),
         claimOne(second, "worker_b"),
       ]);
-      const leased = [...fromFirst, ...fromSecond].map(
-        (row) => row.executionId
+      const leased = [...fromFirst, ...fromSecond].flatMap((row) =>
+        row.kind === "run" ? [row.executionId] : []
       );
 
       // Each claimer leased one row, the two rows due by then, and neither
@@ -90,7 +90,12 @@ export function describeExecutionScheduleConformance({
             leaseMs: LEASE_MS,
             now: at(5_000),
           });
-          return { fresh, claimed: claimed.map((row) => row.executionId) };
+          return {
+            fresh,
+            claimed: claimed.map((row) =>
+              row.kind === "run" ? row.executionId : null
+            ),
+          };
         })
       );
       expect(sequential.claimed).toEqual([sequential.fresh]);

@@ -14,7 +14,7 @@ import {
   noWorkflowEntities,
   type WorkflowEntities,
 } from "#src/backend/engine/entities";
-import type { PassBody } from "#src/backend/executor/pass";
+import type { PassBody, RunPass } from "#src/backend/executor/pass";
 import type {
   DatabaseError,
   LeaseLost,
@@ -39,7 +39,7 @@ export function runBody(input: {
    */
   actions: () => WorkflowActions;
   entities?: WorkflowEntities | undefined;
-}): PassBody<ExecutionRepo | WorkflowRepo> {
+}): PassBody<RunPass, ExecutionRepo | WorkflowRepo> {
   const entities = input.entities ?? noWorkflowEntities;
   const versions = createRunVersionCache();
   return {

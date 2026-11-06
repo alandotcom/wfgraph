@@ -25,6 +25,7 @@ import {
   CANCELABLE,
   cancelEntity,
   delay,
+  noDeliveries,
   edge,
   lifecycleNode,
   publishWorkflow,
@@ -311,6 +312,7 @@ export async function measureWakeTimings(input: {
   const loop = run(
     runWorkerLoop({
       actions: () => actions,
+      delivery: noDeliveries,
       signal: controller.signal,
       wake,
       pollMs: input.pollMs,

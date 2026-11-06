@@ -171,4 +171,13 @@ export const sqliteMigrations = [
     hash: "862d3e8898e27856813391ba476fcf79509cce247ee26928b9822c155697907b",
     name: "20261106035242_special_bromley",
   },
+  {
+    sql: [
+      "ALTER TABLE `workflow_executions` ADD `cancel_delivery_id` text;",
+    ],
+    bps: true,
+    folderMillis: 1793938702000,
+    hash: "62b69c7c31076ae25e76cbb3e1a095d1aa1cb4a64f2a7171415b418264989dd3",
+    name: "20261106041822_worthless_the_hood",
+  },
 ] satisfies readonly MigrationMeta[];

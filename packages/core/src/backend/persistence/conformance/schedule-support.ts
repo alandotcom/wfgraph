@@ -5,6 +5,7 @@
 
 import { Effect } from "effect";
 import {
+  type ClaimedRun,
   ExecutionRepo,
   type RunFence,
 } from "#src/backend/services/executions/repo";
@@ -59,7 +60,10 @@ export function claimRun(executionId: string, now: Date) {
       leaseMs: LEASE_MS,
       now,
     });
-    const own = claimed.find((row) => row.executionId === executionId);
+    const own = claimed.find(
+      (row): row is ClaimedRun =>
+        row.kind === "run" && row.executionId === executionId
+    );
     if (!own) throw new Error("The run was not claimed");
     const fence: RunFence = {
       scheduleId: own.scheduleId,

@@ -324,6 +324,10 @@ export const workflowExecutions = pgTable(
     terminationNodeId: text("termination_node_id"),
     cancelEventName: text("cancel_event_name"),
     cancelPayload: jsonb("cancel_payload").$type<JsonObject>(),
+    // The delivery that wrote the Cancel claim, so a retried delivery answers
+    // the runs its own first attempt claimed. Null when the arrival carried no
+    // delivery id.
+    cancelDeliveryId: text("cancel_delivery_id"),
   },
   (table) => [
     check(

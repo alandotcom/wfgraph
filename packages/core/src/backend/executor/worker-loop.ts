@@ -1,10 +1,12 @@
 /**
  * The database executor's worker loop, the drain step it repeats, and `tick`,
  * one drain step within a budget for a host with no long-lived process. A
- * drain step claims due schedule rows and starts one leased pass per claimed
- * row. The loop runs a drain step every `pollMs`, sooner when a run one of its
- * own passes released falls due or its `wake` is called, and keeps at most
- * `concurrency` passes running. The loop's Effect succeeds once `signal` has
+ * drain step claims due schedule rows, runs and deliveries alike, and starts
+ * one leased pass per claimed row. The loop runs a drain step every `pollMs`,
+ * sooner when a row one of its own passes released falls due or its `wake` is
+ * called, and keeps at most `concurrency` passes running. Once per `pollMs`,
+ * and once per tick, it first gives the inbox rows a host inserted itself
+ * their delivery schedule rows. The loop's Effect succeeds once `signal` has
  * aborted and every pass in flight has ended, or once `drainMs` has passed and
  * the passes still running are interrupted. A pass that fails leaves its row
  * leased, so a later claim sweeps it once the lease expires. An interrupted
@@ -34,6 +36,10 @@ import {
 } from "#src/backend/executor/pass";
 import { runBody } from "#src/backend/executor/run-body";
 import {
+  deliveryBody,
+  type DeliverySettings,
+} from "#src/backend/executor/delivery-body";
+import {
   type ClaimedSchedule,
   ExecutionRepo,
 } from "#src/backend/services/executions/repo";
@@ -52,6 +58,9 @@ export const DEFAULT_HEARTBEAT_MS = 20_000;
 
 /** How many passes one loop runs at once. */
 const DEFAULT_CONCURRENCY = 10;
+
+/** How many host-inserted inbox rows one poll schedules at most. */
+const INBOX_POLL_LIMIT = 100;
 
 /** What every drain step of one worker shares. */
 export type DrainOptions<R> = {
@@ -167,7 +176,7 @@ const drainPass = Effect.fnUntraced(function* <R>(
     claimed,
   });
   const pass = Effect.yieldNow.pipe(
-    Effect.andThen(leasedPass(claimed, options.bodies[claimed.kind], options)),
+    Effect.andThen(leasedPass(claimed, options.bodies, options)),
     Effect.map((result): DrainedPass => ({ kind: "passed", claimed, result }))
   );
   const bounded =
@@ -202,11 +211,38 @@ const drainPass = Effect.fnUntraced(function* <R>(
   );
 });
 
+/**
+ * The poll for inbox rows a host inserted inside its own transaction: gives up
+ * to `INBOX_POLL_LIMIT` of them their delivery schedule rows, due at `now`, so
+ * the claim that follows finds them. A poll the database fails is logged, and
+ * the next one finds the same rows.
+ */
+const scheduleHostInsertedInbox = Effect.fn("wfgraph.executor.poll_inbox")(
+  function* (now: Date) {
+    const executions = yield* ExecutionRepo;
+    const scheduled = yield* executions
+      .scheduleUnscheduledInbox({ now, limit: INBOX_POLL_LIMIT })
+      .pipe(
+        Effect.catchTag("DatabaseError", (error) =>
+          Effect.logError(
+            "Could not schedule the inbox rows a host inserted"
+          ).pipe(Effect.annotateLogs({ error }), Effect.as([]))
+        )
+      );
+    yield* Effect.annotateCurrentSpan(
+      "wfgraph.executor.scheduled",
+      scheduled.length
+    );
+  }
+);
+
 /** What every drain step of a loop or a tick is built from. */
 type DrainSettings = {
   /** Builds the action surface for one pass; see `runBody`. */
   actions: () => WorkflowActions;
   entities?: WorkflowEntities | undefined;
+  /** What a delivery's pass needs; see `deliveryBody`. */
+  delivery: DeliverySettings;
   /** How many passes run at once. Defaults to 10. */
   concurrency?: number | undefined;
   /** Defaults to 60 s. */
@@ -266,6 +302,7 @@ function drainOptionsFor(
   return {
     bodies: {
       run: runBody({ actions: settings.actions, entities: settings.entities }),
+      delivery: deliveryBody(settings.delivery),
     },
     workerId: settings.workerId ?? `worker_${generateId()}`,
     leaseMs: settings.leaseMs ?? DEFAULT_LEASE_MS,
@@ -288,10 +325,10 @@ export type TickOutcome = Record<DrainedPass["kind"], number>;
 
 /**
  * One drain step within a budget, for a host whose platform invokes it, such
- * as a Cron Trigger or a Queue consumer on a Cloudflare Worker: claims up to
- * `concurrency` due rows, runs one pass over each, and succeeds once every
- * pass has ended or the budget has run out. It sleeps for nothing, so the
- * platform's next invocation is what finds the runs due later.
+ * as a Cron Trigger or a Queue consumer on a Cloudflare Worker: polls the
+ * inbox, claims up to `concurrency` due rows, runs one pass over each, and
+ * succeeds once every pass has ended or the budget has run out. It sleeps for
+ * nothing, so the platform's next invocation is what finds the rows due later.
  */
 export function tick(
   options: TickOptions
@@ -301,6 +338,7 @@ export function tick(
     Effect.scoped(
       Effect.gen(function* () {
         const deadline = new Date(drain.now().getTime() + options.budgetMs);
+        yield* scheduleHostInsertedInbox(drain.now());
         const passes = yield* drainOnce(drain, {
           limit: options.concurrency ?? DEFAULT_CONCURRENCY,
           deadline,
@@ -342,6 +380,9 @@ export function runWorkerLoop(
   let running = 0;
   // Whether the last claim took every free slot, so a due row may be waiting.
   let full = false;
+  // When the loop last polled the inbox, so a loop woken often still polls
+  // only once per `pollMs`.
+  let inboxPolledAt = Number.NEGATIVE_INFINITY;
   // Completed to cut the loop's current sleep short. Replaced at the top of
   // every iteration, before the claim, so completing it during a claim makes
   // the loop skip its sleep and claim again.
@@ -394,6 +435,14 @@ export function runWorkerLoop(
       const claimAt = now().getTime();
       for (const [scheduleId, wakeAt] of releasedWakes) {
         if (wakeAt <= claimAt) releasedWakes.delete(scheduleId);
+      }
+
+      if (claimAt - inboxPolledAt >= pollMs) {
+        inboxPolledAt = claimAt;
+        // A stopped loop abandons a poll the database never answers, as it
+        // abandons a claim.
+        const poll = scheduleHostInsertedInbox(new Date(claimAt));
+        yield* abandon === undefined ? poll : Effect.raceFirst(poll, abandon);
       }
 
       const free = concurrency - running;

@@ -43,7 +43,9 @@ import {
 import {
   endExecutions,
   insertRunSchedule,
+  makePassWrites,
   makeScheduleMethods,
+  type PassWrites,
   type ScheduleRepoMethods,
 } from "#src/backend/services/executions/repo/schedule";
 import {
@@ -53,6 +55,7 @@ import {
 import { makeFencedWrites } from "#src/backend/services/executions/repo/fenced-writes";
 import type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fencing";
 import type {
+  DeliveryFence,
   EntityStartOutcome,
   RunFence,
   StartAdmissionDecision,
@@ -66,6 +69,7 @@ export type {
   FencedExecutionWrites,
   StoreWrites,
 } from "#src/backend/services/executions/repo/fencing";
+export type { PassWrites } from "#src/backend/services/executions/repo/schedule";
 
 async function findAdmissionRefusal(
   database: WfGraphDatabase | WfGraphTransaction,
@@ -162,6 +166,13 @@ type CrossTableRepoMethods = {
    * the unfenced writes of the same names.
    */
   readonly fenced: (fence: RunFence) => FencedExecutionWrites;
+  /**
+   * The writes only a pass makes, fenced on the owner token of a pass over a
+   * `delivery` row and on the row still naming the fence's inbox row. A
+   * delivery makes no store writes of its own; the services its steps call
+   * write unfenced, and its step memo row is what makes a step run once.
+   */
+  readonly fencedDelivery: (fence: DeliveryFence) => PassWrites;
 };
 
 /**
@@ -209,6 +220,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         ...makeClaimsMethods(database),
         ...makeInboxMethods(database),
         fenced: makeFencedWrites(database),
+        fencedDelivery: (fence) => makePassWrites(database, fence),
 
         startForEntity: ({
           execution,

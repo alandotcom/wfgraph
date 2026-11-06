@@ -37,6 +37,7 @@ import { makeSqliteInboxMethods } from "#src/backend/persistence/sqlite/executio
 import {
   endExecutions,
   insertRunSchedule,
+  makeSqlitePassWrites,
   makeSqliteScheduleMethods,
 } from "#src/backend/persistence/sqlite/executions/schedule";
 import {
@@ -244,6 +245,7 @@ export function makeSqliteExecutionRepo(
     ...makeSqliteClaimsMethods(store),
     ...makeSqliteInboxMethods(store),
     fenced: makeSqliteFencedWrites(store),
+    fencedDelivery: (fence) => makeSqlitePassWrites(store, fence),
     startForEntity: (input) =>
       store.write((database) => startForEntity(database, input)),
     findAdmissionRefusal: (input) =>

@@ -13,10 +13,12 @@ import { createWorkflowActions } from "#src/backend/extensions/workflow-actions"
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { leasedPass } from "#src/backend/executor/pass";
 import { runBody } from "#src/backend/executor/run-body";
+import { deliveryBody } from "#src/backend/executor/delivery-body";
 import {
   actionNode,
   edge,
   lifecycleNode,
+  noDeliveries,
   publishWorkflow,
   startScheduledRun,
 } from "#src/backend/executor/testing/run-fixtures";
@@ -81,7 +83,10 @@ describe("runBody", () => {
       );
       const parses = vi.spyOn(graphModule, "toWorkflowGraphData");
 
-      const body = runBody({ actions: () => actions });
+      const bodies = {
+        run: runBody({ actions: () => actions }),
+        delivery: deliveryBody(noDeliveries),
+      };
       // Counts the version reads that reach the database.
       let versionReads = 0;
       const results = await runtime.runPromise(
@@ -102,7 +107,7 @@ describe("runBody", () => {
             now: new Date(),
           });
           return yield* Effect.forEach(claimed, (row) =>
-            leasedPass(row, body, {
+            leasedPass(row, bodies, {
               workerId: "worker_1",
               now: () => new Date(),
               leaseMs: 60_000,

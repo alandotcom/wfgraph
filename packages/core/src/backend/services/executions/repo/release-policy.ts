@@ -104,12 +104,10 @@ export function instantOf(column: Column, now: BoundInstant): SQL {
   return sql`${sql.param(now, column)}`;
 }
 
-/**
- * The kinds of schedule row the claim leases, one per pass body. A `delivery`
- * row is left alone until a body runs it.
- */
+/** The kinds of schedule row the claim leases, one per pass body. */
 const CLAIMED_SCHEDULE_KINDS = [
   "run",
+  "delivery",
 ] as const satisfies readonly ExecutionScheduleKind[];
 
 function sqlLiterals(values: readonly string[]): SQL {
@@ -416,45 +414,60 @@ export type DueSchedule = { scheduleId: string; executionId: string | null };
 
 /**
  * What `requestCancelForEntity` answers, from the runs its claim flagged, the
- * run of each park its `cancel` wake resolved, and the rows it made due.
+ * run of each park its `cancel` wake resolved, the rows it made due, and the
+ * runs an earlier attempt of the same delivery flagged.
  */
 export function canceledOutletClaims(produced: {
-  result: { flagged: readonly string[]; resolved: readonly string[] };
+  result: {
+    flagged: readonly string[];
+    resolved: readonly string[];
+    claimedEarlier: readonly string[];
+  };
   due: readonly DueSchedule[];
 }): CanceledOutletClaim[] {
-  const parksByRun = countBy(produced.result.resolved, (id) => id);
+  const { flagged, resolved, claimedEarlier } = produced.result;
+  const parksByRun = countBy(resolved, (id) => id);
   const due = new Set(produced.due.map((row) => row.executionId));
-  return produced.result.flagged.map((executionId) => ({
-    executionId,
-    resolvedParks: parksByRun[executionId] ?? 0,
-    requeued: due.has(executionId),
-  }));
+  const flaggedNow = new Set(flagged);
+  return [
+    ...flagged.map((executionId): CanceledOutletClaim => ({
+      kind: "claimed",
+      executionId,
+      resolvedParks: parksByRun[executionId] ?? 0,
+      requeued: due.has(executionId),
+    })),
+    ...claimedEarlier
+      .filter((executionId) => !flaggedNow.has(executionId))
+      .map((executionId): CanceledOutletClaim => ({
+        kind: "claimed_earlier",
+        executionId,
+      })),
+  ];
 }
 
 /**
  * A row the claim just leased, as its pass sees it. The claim wrote the token
  * and the lease expiry and leases only the kinds `CLAIMED_SCHEDULE_KINDS`
- * names, and a `run` row always names its Execution, so a row missing any of
- * them is a defect.
+ * names, a `run` row always names its Execution, and a `delivery` row its
+ * inbox row, so a row missing any of them is a defect.
  */
 function claimedSchedule(
   row: ExecutionSchedule
 ): Effect.Effect<ClaimedSchedule> {
-  const { ownerToken, leaseExpiresAt, executionId } = row;
-  if (
-    row.kind === "run" &&
-    ownerToken !== null &&
-    leaseExpiresAt !== null &&
-    executionId !== null
-  ) {
-    return Effect.succeed({
-      kind: row.kind,
+  const { ownerToken, leaseExpiresAt, executionId, inboxId } = row;
+  if (ownerToken !== null && leaseExpiresAt !== null) {
+    const lease = {
       scheduleId: row.id,
-      executionId,
       ownerToken,
       attempt: row.attempt,
       leaseExpiresAt,
-    });
+    };
+    if (row.kind === "run" && executionId !== null) {
+      return Effect.succeed({ kind: "run", executionId, ...lease });
+    }
+    if (row.kind === "delivery" && inboxId !== null) {
+      return Effect.succeed({ kind: "delivery", inboxId, ...lease });
+    }
   }
   return Effect.die(
     new Error(

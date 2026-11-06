@@ -1,0 +1,47 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "3ba3b6dd-6b5d-4c9d-93fa-5de692ac7c90",
+  "prevIds": [
+    "fdbdc300-99e8-4d56-850c-40acf958a906"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_executions",
+        "cancel_delivery_id"
+      ],
+      "writes": [
+        "s|col|public.workflow_executions.cancel_delivery_id",
+        "n|col|public.workflow_executions.cancel_delivery_id",
+        "e|col|public.workflow_executions.cancel_delivery_id"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_executions",
+        "name": "cancel_delivery_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

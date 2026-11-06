@@ -652,7 +652,7 @@ describe("run persistence through the store port", () => {
         startStepLog: () =>
           Effect.fail(
             new LeaseLost({
-              message: "The pass no longer holds this run's lease",
+              message: "The pass no longer holds its schedule row's lease",
             })
           ),
       },

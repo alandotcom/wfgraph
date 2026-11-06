@@ -125,6 +125,11 @@ export type ClaimsRepoMethods = {
    * so the next pass reads the claim at its `lifecycle-check` step and routes
    * the Canceled outlet. The rows keep their status: the run ends itself once
    * its outlet has run.
+   *
+   * The claim records `deliveryId` on each run it flags. A retried delivery
+   * finds the runs its first attempt flagged that way and answers them as
+   * `claimed_earlier`, whatever they have done since, so a retry that flags
+   * nothing still names the runs its arrival claimed.
    */
   readonly requestCancelForEntity: (
     input: {
@@ -132,6 +137,8 @@ export type ClaimsRepoMethods = {
       runMode: WorkflowExecution["runMode"];
       eventName: string;
       payload: JsonObject;
+      /** The arrival's delivery id, or undefined for an arrival with none. */
+      deliveryId?: string | undefined;
       now: Date;
     } & ExecutionEntitySelector
   ) => Effect.Effect<CanceledOutletClaim[], DatabaseError>;
@@ -302,15 +309,19 @@ async function requestCancelForEntityWrite(
           eq(workflowExecutions.entityType, input.entityType),
           eq(workflowExecutions.entityId, input.entityId)
         );
-  const claimable = and(
+  const sameRuns = and(
     eq(workflowExecutions.workflowId, input.workflowId),
     entityPredicate,
-    eq(workflowExecutions.runMode, input.runMode),
+    eq(workflowExecutions.runMode, input.runMode)
+  );
+  const claimable = and(
+    sameRuns,
     inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES]),
     // The first boundary claim owns the run. A second Cancel Event or a
     // concurrent exit cannot replace its kind or payload.
     isNull(workflowExecutions.terminationKind)
   );
+  const { deliveryId } = input;
   const produced = await wakeExecutions(
     db,
     {
@@ -324,8 +335,25 @@ async function requestCancelForEntityWrite(
       },
     },
     async (tx, candidateIds) => {
+      const claimedEarlier =
+        deliveryId === undefined
+          ? []
+          : await tx
+              .select({ id: workflowExecutions.id })
+              .from(workflowExecutions)
+              .where(
+                and(
+                  sameRuns,
+                  eq(workflowExecutions.terminationKind, "cancel"),
+                  eq(workflowExecutions.cancelDeliveryId, deliveryId)
+                )
+              );
+      const earlierIds = claimedEarlier.map((row) => row.id);
       if (candidateIds.length === 0) {
-        return { result: { flagged: [], resolved: [] }, woken: [] };
+        return {
+          result: { flagged: [], resolved: [], claimedEarlier: earlierIds },
+          woken: [],
+        };
       }
       const flagged = await tx
         .update(workflowExecutions)
@@ -334,6 +362,7 @@ async function requestCancelForEntityWrite(
           terminationRequestedAt: input.now,
           cancelEventName: input.eventName,
           cancelPayload: input.payload,
+          cancelDeliveryId: deliveryId ?? null,
         })
         .where(
           and(inArray(workflowExecutions.id, [...candidateIds]), claimable)
@@ -344,7 +373,7 @@ async function requestCancelForEntityWrite(
         kind: "cancel",
       });
       return {
-        result: { flagged: flaggedIds, resolved },
+        result: { flagged: flaggedIds, resolved, claimedEarlier: earlierIds },
         woken: flaggedIds,
       };
     }

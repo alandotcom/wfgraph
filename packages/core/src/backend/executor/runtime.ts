@@ -1,16 +1,17 @@
 /**
- * The database executor's `WorkflowExecutionRuntime` for one pass of one run.
+ * The database executor's `WorkflowExecutionRuntime` for one pass of one
+ * schedule row.
  *
  * A pass replays the body against the step memo it loaded when it claimed the
- * run. `run` answers a step whose memo row `succeeded` with its value, fails a
+ * row. `run` answers a step whose memo row `succeeded` with its value, fails a
  * step whose row is `failed`, and otherwise runs the step and records its
- * value; `waitForEvent` answers the wake on the park's wait row and otherwise
- * records the parking step and answers `parked`, which ends the branch for
- * this pass. Every write is fenced on the pass's owner token until the pass
- * writes the run's terminal record. Once the pass stops, because a step threw
- * or the lease was lost, it starts no step and writes nothing more: each
- * attempt fails with `LeaseLost`, which ends the body. The caller reads
- * `PassState` to decide the release.
+ * value. For a run, `waitForEvent` answers the wake on the park's wait row and
+ * otherwise records the parking step and answers `parked`, which ends the
+ * branch for this pass; a delivery parks nothing. Every write is fenced on the
+ * pass's owner token until the pass writes the run's terminal record. Once the
+ * pass stops, because a step threw or the lease was lost, it starts no step
+ * and writes nothing more: each attempt fails with `LeaseLost`, which ends the
+ * body. The caller reads `PassState` to decide the release.
  */
 
 import { Effect, Schema } from "effect";
@@ -33,6 +34,7 @@ import type {
   FencedExecutionWrites,
   ParkState,
   ParkWake,
+  PassWrites,
   StepMemo,
   StoreWrites,
 } from "#src/backend/services/executions/repo";
@@ -187,21 +189,40 @@ function watchedPassWrite<I>(
 }
 
 /**
- * The pass's writes, each watched by `state`. `unfenced` is the repository's
- * own store writes, which the pass makes once it has ended the run. The
- * release and the schedule row's deletion are passed through unwatched: a pass
- * whose step threw still writes its release, and a pass that found its run no
- * longer in flight deletes its row before it runs anything.
+ * The writes only a pass makes, each watched by `state`. The release and the
+ * schedule row's deletion are passed through unwatched: a pass whose step
+ * threw still writes its release, and a pass that found its subject gone
+ * deletes its row before it runs anything.
  */
-export function watchPassWrites(input: {
-  fenced: FencedExecutionWrites;
+export function watchPassOnlyWrites(input: {
+  fenced: PassWrites;
+  state: PassState;
+}): PassWrites {
+  const { fenced, state } = input;
+  return {
+    renewLease: watchedPassWrite(fenced.renewLease, state),
+    writeStepMemo: watchedPassWrite(fenced.writeStepMemo, state),
+    recordParkStep: watchedPassWrite(fenced.recordParkStep, state),
+    releasePass: fenced.releasePass,
+    dropSchedule: fenced.dropSchedule,
+  };
+}
+
+/**
+ * A run pass's writes: the store writes the engine reaches, each watched by
+ * `state`, beside `passWrites`, the pass's own writes already watched by the
+ * same state. `unfenced` is the repository's own store writes, which the pass
+ * makes once it has ended the run.
+ */
+export function watchStoreWrites(input: {
+  fenced: StoreWrites;
   unfenced: StoreWrites;
+  passWrites: PassWrites;
   state: PassState;
 }): FencedExecutionWrites {
-  const { fenced, unfenced, state } = input;
-  const fencedStore: StoreWrites = fenced;
+  const { fenced, unfenced, passWrites, state } = input;
   const store = buildStoreWrites((name) =>
-    watchedStoreWrite(fencedStore[name], unfenced[name], state)
+    watchedStoreWrite(fenced[name], unfenced[name], state)
   );
   return {
     ...store,
@@ -213,11 +234,7 @@ export function watchPassWrites(input: {
           })
         )
       ),
-    renewLease: watchedPassWrite(fenced.renewLease, state),
-    writeStepMemo: watchedPassWrite(fenced.writeStepMemo, state),
-    recordParkStep: watchedPassWrite(fenced.recordParkStep, state),
-    releasePass: fenced.releasePass,
-    dropSchedule: fenced.dropSchedule,
+    ...passWrites,
   };
 }
 
@@ -257,16 +274,26 @@ function memoValue(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value ?? null));
 }
 
-export type ExecutorRuntimeInput = {
-  executionId: string;
-  /** Every memo row of the run, loaded once at the claim, keyed by step id. */
-  memo: ReadonlyMap<string, StepMemo>;
-  /** The pass's writes, watched by `state`. */
-  writes: FencedExecutionWrites;
+/**
+ * How a run's pass reads and marks its parks. A pass with none, a delivery's,
+ * answers a Wait with a defect, since nothing it runs parks.
+ */
+export type ParkAccess = {
   /** Reads one park's row. */
   findPark: (
     waitStateId: string
   ) => Effect.Effect<ParkState | null, DatabaseError>;
+  /** Records the parking step on a park's row, watched by the pass's state. */
+  recordParkStep: PassWrites["recordParkStep"];
+};
+
+export type ExecutorRuntimeInput = {
+  /** Every memo row of the schedule row, loaded once at the claim, keyed by step id. */
+  memo: ReadonlyMap<string, StepMemo>;
+  /** Records a step's value, watched by `state`. */
+  writeStepMemo: PassWrites["writeStepMemo"];
+  /** How a Wait parks, or undefined for a pass that parks nothing. */
+  parks: ParkAccess | undefined;
   state: PassState;
   /** Where the lease ends if renewed now, which every memo write renews to. */
   leaseExpiresAt: () => Date;
@@ -277,7 +304,7 @@ export type ExecutorRuntimeInput = {
 export function createExecutorRuntime(
   input: ExecutorRuntimeInput
 ): WorkflowExecutionRuntime {
-  const { state, writes, runEffect } = input;
+  const { state, runEffect, parks } = input;
   const memo = new Map(input.memo);
 
   /**
@@ -296,7 +323,7 @@ export function createExecutorRuntime(
 
   async function remember(stepId: string, value: JsonValue): Promise<void> {
     await runEffect(
-      writes.writeStepMemo({
+      input.writeStepMemo({
         stepId,
         value,
         leaseExpiresAt: input.leaseExpiresAt(),
@@ -365,10 +392,15 @@ export function createExecutorRuntime(
       if (isStopped(state)) {
         return { kind: "parked" };
       }
+      if (parks === undefined) {
+        throw new Error(
+          `Step ${step.id} parks, and this pass runs nothing that parks`
+        );
+      }
       const { waitStateId } = options;
       const park = await forStep(
         step.id,
-        runEffect(input.findPark(waitStateId))
+        runEffect(parks.findPark(waitStateId))
       );
       if (!park) {
         const gone = new Error(
@@ -390,7 +422,7 @@ export function createExecutorRuntime(
       if (park.parkStepId !== step.id) {
         await forStep(
           step.id,
-          runEffect(writes.recordParkStep({ waitStateId, parkStepId: step.id }))
+          runEffect(parks.recordParkStep({ waitStateId, parkStepId: step.id }))
         );
       }
       return { kind: "parked" };

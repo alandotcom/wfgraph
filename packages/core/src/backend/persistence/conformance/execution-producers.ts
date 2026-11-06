@@ -646,8 +646,18 @@ export function describeExecutionProducerConformance({
 
       expect(result.claims).toEqual(
         expect.arrayContaining([
-          { executionId: result.sleeping, resolvedParks: 2, requeued: true },
-          { executionId: result.leased, resolvedParks: 1, requeued: false },
+          {
+            kind: "claimed",
+            executionId: result.sleeping,
+            resolvedParks: 2,
+            requeued: true,
+          },
+          {
+            kind: "claimed",
+            executionId: result.leased,
+            resolvedParks: 1,
+            requeued: false,
+          },
         ])
       );
       expect(result.claims).toHaveLength(2);
@@ -665,6 +675,80 @@ export function describeExecutionProducerConformance({
       // A leased run is re-queued by its release, which reads the wake.
       expect(result.leasedSchedule).toMatchObject({ state: "leased" });
       expect(result.claim).toMatchObject({
+        kind: "cancel",
+        eventName: "appointment/cancelled",
+      });
+    });
+
+    it("answers a delivery's retried Cancel claim with the runs its first attempt claimed, writing nothing, and leaves them out of another delivery's answer", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              runMode: "live",
+              entityValue: "appointment_1",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+            startedEntry: notYetDue.startedEntry,
+            now: T0,
+          });
+          if (started.status !== "started") throw new Error("Start refused");
+          const cancel = (deliveryId: string, now: Date) =>
+            executions.requestCancelForEntity({
+              workflowId: "wf_1",
+              runMode: "live",
+              entityValue: "appointment_1",
+              eventName: "appointment/cancelled",
+              payload: { reason: "customer left" },
+              deliveryId,
+              now,
+            });
+          const first = yield* cancel("inbox_1", at(1_000));
+          const scheduleAfterFirst = yield* executions.findSchedule({
+            executionId: started.execution.id,
+          });
+          const retried = yield* cancel("inbox_1", at(2_000));
+          const other = yield* cancel("inbox_2", at(3_000));
+          return {
+            executionId: started.execution.id,
+            first,
+            retried,
+            other,
+            scheduleAfterFirst,
+            scheduleAfterRetry: yield* executions.findSchedule({
+              executionId: started.execution.id,
+            }),
+            termination: yield* executions.findTerminationState(
+              started.execution.id
+            ),
+          };
+        })
+      );
+
+      // The run was already due, so the claim made nothing due.
+      expect(result.first).toEqual([
+        {
+          kind: "claimed",
+          executionId: result.executionId,
+          resolvedParks: 0,
+          requeued: false,
+        },
+      ]);
+      expect(result.retried).toEqual([
+        { kind: "claimed_earlier", executionId: result.executionId },
+      ]);
+      expect(result.other).toEqual([]);
+      // The retry wrote nothing: the run keeps the first claim's time and the
+      // schedule row the first claim made due.
+      expect(result.scheduleAfterRetry).toEqual(result.scheduleAfterFirst);
+      expect(result.termination?.claim).toMatchObject({
         kind: "cancel",
         eventName: "appointment/cancelled",
       });

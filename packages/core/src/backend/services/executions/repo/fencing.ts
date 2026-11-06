@@ -24,7 +24,7 @@ import type { WaitsRepoMethods } from "#src/backend/services/executions/repo/wai
  */
 export function ownershipLost(): LeaseLost {
   return new LeaseLost({
-    message: "The pass no longer holds this run's lease",
+    message: "The pass no longer holds its schedule row's lease",
   });
 }
 
@@ -83,7 +83,7 @@ type StoreWriteSignatures = {
  * `createDbWorkflowStore` binds them. `ExecutionRepo.fenced` fills it on a pass
  * of the database executor, where a write may also answer `LeaseLost`. The
  * unfenced methods of `ExecutionRepo` fill it once the pass has written the
- * run's terminal record (`watchPassWrites` in `executor/runtime.ts`).
+ * run's terminal record (`watchStoreWrites` in `executor/runtime.ts`).
  */
 export type StoreWrites = {
   readonly [Name in StoreWriteName]: StoreWriteOf<Name>;

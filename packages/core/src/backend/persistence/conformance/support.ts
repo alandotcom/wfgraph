@@ -7,7 +7,7 @@
  */
 
 import { afterAll, afterEach } from "vitest";
-import { Effect, ManagedRuntime } from "effect";
+import { Effect, type Layer, ManagedRuntime } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -50,6 +50,11 @@ export type ConformanceConnection = {
     WfGraphRepositories,
     never
   >["runPromise"];
+  /**
+   * The backend's repository Layer, over the same database handle `run`
+   * uses, for a case that builds the app's whole Layer graph on it.
+   */
+  readonly repositories: Layer.Layer<WfGraphRepositories>;
   /** What the backend offers worker loops, as the instance supplied it. */
   readonly capabilities: WfGraphRunCapabilities;
   readonly close: () => Promise<void>;
@@ -97,6 +102,7 @@ export function connect(
 
   return {
     run: runtime.runPromise.bind(runtime),
+    repositories: instance.repositories,
     capabilities: instance.capabilities,
     close: async () => {
       await runtime.dispose();
@@ -138,6 +144,7 @@ export function usePersistenceRegistry(
         let closed = false;
         const registered: ConformanceConnection = {
           run: connection.run,
+          repositories: connection.repositories,
           capabilities: connection.capabilities,
           close: async () => {
             if (closed) {

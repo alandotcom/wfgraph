@@ -100,6 +100,8 @@ export class ExecutionDriver extends Context.Service<
         runMode: WorkflowExecution["runMode"];
         eventName: string;
         payload: JsonObject;
+        /** The arrival's delivery id, which a retried delivery is answered by. */
+        deliveryId?: string | undefined;
       } & ExecutionEntitySelector
     ) => Effect.Effect<CanceledOutletClaim[], DriverError>;
     /**
@@ -213,7 +215,9 @@ export function makeExecutionDriverLayer(
             "wfgraph.execution.ids": claims.map((claim) => claim.executionId),
             "wfgraph.driver.claims": claims.length,
           });
-          yield* runDue(claims.some((claim) => claim.requeued));
+          yield* runDue(
+            claims.some((claim) => claim.kind === "claimed" && claim.requeued)
+          );
           return claims;
         }),
 

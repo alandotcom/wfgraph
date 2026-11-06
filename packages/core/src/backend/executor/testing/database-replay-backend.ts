@@ -1,7 +1,7 @@
 /**
  * A `ReplayDatabaseBackend` over a real database, so the replay suites'
  * database-executor cases run each pass through the pass the worker loop
- * opens (`openPass`: its fenced and watched writes, its memo, its runtime and
+ * opens (`openRunPass`: its fenced and watched writes, its memo, its runtime and
  * its release) and the repository's claim and producer, with the harness's
  * virtual clock as every `now`.
  *
@@ -24,10 +24,11 @@ import type {
   WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
 import type { ReplayDatabaseBackend } from "#src/backend/engine/testing/replay-runtime";
-import { type OpenPass, openPass } from "#src/backend/executor/pass";
+import { openRunPass, type RunPass } from "#src/backend/executor/pass";
 import type { ConformanceConnection } from "#src/backend/persistence/conformance/support";
 import {
   ExecutionRepo,
+  type ClaimedRun,
   type ParkWake,
 } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -122,7 +123,7 @@ export function openDatabaseReplayBackend(
     /** Mirror rows by the step that parked on them. */
     const rowsByStep = new Map<string, string>();
     /** The pass currently holding the lease. */
-    let current: OpenPass | null = null;
+    let current: RunPass | null = null;
     /** The harness's virtual clock, as the last pass or release read it. */
     let clockMs = 0;
 
@@ -197,7 +198,10 @@ export function openDatabaseReplayBackend(
             now: virtual(now),
           })
         );
-        const own = claimed.find((row) => row.executionId === executionId);
+        const own = claimed.find(
+          (row): row is ClaimedRun =>
+            row.kind === "run" && row.executionId === executionId
+        );
         if (!own) {
           throw new Error(
             `The database did not hand the run back at ${now} ms: its release put the run to sleep past the moment the harness woke it`
@@ -207,7 +211,7 @@ export function openDatabaseReplayBackend(
         clockMs = now;
         // The pass the worker loop's passes open, with the harness running the
         // body and writing the release in `endParkedPass`.
-        const pass = openPass({
+        const pass = openRunPass({
           claimed: own,
           executions: repo,
           now: () => virtual(clockMs),

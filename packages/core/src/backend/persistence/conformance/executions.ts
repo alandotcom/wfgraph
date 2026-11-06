@@ -516,6 +516,7 @@ export function describeExecutionConformance({
       // The claim makes the run due at once, though its start was not yet due.
       expect(result.cancel).toEqual([
         {
+          kind: "claimed",
           executionId: started.execution.id,
           resolvedParks: 0,
           requeued: true,
@@ -859,7 +860,12 @@ export function describeExecutionConformance({
       expect(result.settled).toBe(true);
       // The resume claim before it already made the run due.
       expect(result.cancelled).toEqual([
-        { executionId: result.executionId, resolvedParks: 0, requeued: false },
+        {
+          kind: "claimed",
+          executionId: result.executionId,
+          resolvedParks: 0,
+          requeued: false,
+        },
       ]);
       expect(result.pendingCancel).toEqual({
         eventName: "appointment/cancelled",

@@ -179,17 +179,34 @@ function requestCancelForEntityWrite(
           eq(workflowExecutions.entityType, input.entityType),
           eq(workflowExecutions.entityId, input.entityId)
         );
-  const where = and(
+  const sameRuns = and(
     eq(workflowExecutions.workflowId, input.workflowId),
     entityPredicate,
-    eq(workflowExecutions.runMode, input.runMode),
+    eq(workflowExecutions.runMode, input.runMode)
+  );
+  const where = and(
+    sameRuns,
     inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
     isNull(workflowExecutions.terminationKind)
   );
+  const { deliveryId } = input;
   return wakeExecutions(
     database,
     input.now,
     Effect.gen(function* () {
+      const claimedEarlier =
+        deliveryId === undefined
+          ? []
+          : yield* database
+              .select({ id: workflowExecutions.id })
+              .from(workflowExecutions)
+              .where(
+                and(
+                  sameRuns,
+                  eq(workflowExecutions.terminationKind, "cancel"),
+                  eq(workflowExecutions.cancelDeliveryId, deliveryId)
+                )
+              );
       const flagged = yield* database
         .update(workflowExecutions)
         .set({
@@ -197,6 +214,7 @@ function requestCancelForEntityWrite(
           terminationRequestedAt: input.now.getTime(),
           cancelEventName: input.eventName,
           cancelPayload: encodeJson(input.payload),
+          cancelDeliveryId: deliveryId ?? null,
         })
         .where(where)
         .returning({ id: workflowExecutions.id });
@@ -205,7 +223,11 @@ function requestCancelForEntityWrite(
         kind: "cancel",
       });
       return {
-        result: { flagged: flaggedIds, resolved },
+        result: {
+          flagged: flaggedIds,
+          resolved,
+          claimedEarlier: claimedEarlier.map((row) => row.id),
+        },
         woken: flaggedIds,
       };
     })

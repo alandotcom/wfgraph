@@ -5,22 +5,11 @@
  */
 
 import { parse as parseCel } from "@marcbachmann/cel-js";
-import { compact } from "es-toolkit/array";
 import { celStringLiteral } from "#src/conditions/cel-string-literal";
+import { sourceFilterSegments } from "#src/lifecycle/event-source-filter";
 
 /** A path segment CEL reads as a plain field rather than as an expression. */
 const PLAIN_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-/** A source filter's path, as segments, refusing one that names no field. */
-function sourceFilterSegments(path: string): string[] {
-  const segments = compact(path.split(".").map((segment) => segment.trim()));
-
-  if (segments.length === 0) {
-    throw new Error("A source filter needs a payload path to compare");
-  }
-
-  return segments;
-}
 
 /**
  * One payload path compared against one literal, as Inngest evaluates it.

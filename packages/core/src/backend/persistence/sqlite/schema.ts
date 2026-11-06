@@ -123,6 +123,10 @@ export const workflowExecutions = sqliteTable(
     terminationNodeId: text("termination_node_id"),
     cancelEventName: text("cancel_event_name"),
     cancelPayload: text("cancel_payload"),
+    // The delivery that wrote the Cancel claim, so a retried delivery answers
+    // the runs its own first attempt claimed. Null when the arrival carried no
+    // delivery id.
+    cancelDeliveryId: text("cancel_delivery_id"),
   },
   (table) => [
     uniqueIndex("workflow_executions_workflow_id_delivery_id_uidx").on(

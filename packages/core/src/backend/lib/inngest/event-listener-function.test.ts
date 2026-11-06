@@ -10,6 +10,7 @@ import { defineEvent } from "#src/backend/extensions/define-event";
 import {
   createInngestEventListenerFunction,
   type EventListenerDeliverPorts,
+  listenToInngestEvent,
   runEventListener,
 } from "#src/backend/lib/inngest/event-listener-function";
 import type { WaitCandidatePage } from "#src/backend/services/workflows/lifecycle/deliver-event";
@@ -135,6 +136,32 @@ function fakeDeliver(): EventListenerDeliverPorts & {
 }
 
 describe("runEventListener", () => {
+  // An inbox row names one arrival in both halves, so the lifecycle's committed
+  // decision and every wake carry the same id.
+  it("keys the lifecycle decision and the wakes of an inbox arrival by the inbox id", async () => {
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
+      Effect.succeed([subscriber({ roles: ["start", "wait"] })])
+    );
+
+    await runEventListener({
+      event: appointmentCreated,
+      payload,
+      validatedPayload: payload,
+      arrival: { kind: "inbox", inboxId: "inbox_1" },
+      runtime: testRuntime(),
+      step: recordingStep().step,
+      deliver,
+    });
+
+    expect(deliver.applyLifecycle.mock.calls[0]?.[0].deliveryId).toBe(
+      "inbox_1"
+    );
+    expect(deliver.deliverWaitCandidates.mock.calls[0]?.[0].deliveryId).toBe(
+      "inbox_1"
+    );
+  });
+
   // Candidate pages finish before their sibling delivery steps, and replaying
   // the lifecycle step after a wait failure would open a second run.
   it("runs the lifecycle and the waits as siblings per workflow", async () => {
@@ -156,10 +183,10 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    const result = await runEventListener({
+    const result = await listenToInngestEvent({
       event: appointmentCreated,
       payload,
-      arrival: { eventId: "evt_1" },
+      arrival: { kind: "inngest", eventId: "evt_1" },
       runtime: testRuntime(),
       step: recorder.step,
       deliver,
@@ -191,10 +218,10 @@ describe("runEventListener", () => {
     const recorder = recordingStep();
     const wirePayload = { appointment: { id: "  appt_1  " } };
 
-    await runEventListener({
+    await listenToInngestEvent({
       event: transformedEvent,
       payload: wirePayload,
-      arrival: {},
+      arrival: { kind: "inngest" },
       runtime: testRuntime(),
       step: recorder.step,
       deliver,
@@ -227,10 +254,10 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    await runEventListener({
+    await listenToInngestEvent({
       event: appointmentCreated,
       payload,
-      arrival: {},
+      arrival: { kind: "inngest" },
       runtime: testRuntime(),
       step: recorder.step,
       deliver,
@@ -257,10 +284,10 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    await runEventListener({
+    await listenToInngestEvent({
       event: appointmentCreated,
       payload,
-      arrival: {},
+      arrival: { kind: "inngest" },
       runtime: testRuntime(),
       step: recorder.step,
       deliver,
@@ -284,10 +311,10 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    const result = await runEventListener({
+    const result = await listenToInngestEvent({
       event: appointmentCreated,
       payload,
-      arrival: {},
+      arrival: { kind: "inngest" },
       runtime: testRuntime(),
       step: recorder.step,
       deliver,
@@ -320,10 +347,10 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    const result = await runEventListener({
+    const result = await listenToInngestEvent({
       event: appointmentCreated,
       payload,
-      arrival: { eventId: "dlv_9" },
+      arrival: { kind: "inngest", eventId: "dlv_9" },
       runtime: testRuntime(),
       step: recorder.step,
       deliver,
@@ -349,10 +376,21 @@ describe("runEventListener", () => {
   });
 
   it.each([
-    { arrival: { runId: "run_9" }, deliveryId: "run:run_9" },
     {
-      arrival: { eventId: "run:run_9", runId: "run_9" },
+      arrival: { kind: "inngest", runId: "run_9" } as const,
+      deliveryId: "run:run_9",
+    },
+    {
+      arrival: {
+        kind: "inngest",
+        eventId: "run:run_9",
+        runId: "run_9",
+      } as const,
       deliveryId: "event:run:run_9",
+    },
+    {
+      arrival: { kind: "inbox", inboxId: "inbox_9" } as const,
+      deliveryId: "inbox_9",
     },
   ])(
     "identifies Wait delivery as $deliveryId",
@@ -361,7 +399,7 @@ describe("runEventListener", () => {
       deliver.listSubscribers.mockReturnValue(
         Effect.succeed([subscriber({ roles: ["wait"] })])
       );
-      await runEventListener({
+      await listenToInngestEvent({
         event: appointmentCreated,
         payload,
         arrival,
@@ -436,13 +474,15 @@ describe("runEventListener", () => {
     const input = {
       event: appointmentCreated,
       payload,
-      arrival: { eventId: "evt_early" },
+      arrival: { kind: "inngest", eventId: "evt_early" } as const,
       runtime: testRuntime(),
       step: recorder.step,
       deliver,
     };
 
-    await expect(runEventListener(input)).rejects.toBeInstanceOf(DatabaseError);
+    await expect(listenToInngestEvent(input)).rejects.toBeInstanceOf(
+      DatabaseError
+    );
 
     // The original Wait's action parks a second Wait before Inngest retries
     // this delivery step. The saved step result keeps the later row outside
@@ -453,7 +493,7 @@ describe("runEventListener", () => {
       hasMore: false,
     };
 
-    const result = await runEventListener(input);
+    const result = await listenToInngestEvent(input);
 
     expect(candidatePagesBeforeFirstDelivery).toBe(2);
     expect(deliver.listWaitCandidates).toHaveBeenCalledTimes(2);
@@ -493,10 +533,10 @@ describe("runEventListener", () => {
     );
     const recorder = recordingStep();
 
-    await runEventListener({
+    await listenToInngestEvent({
       event: appointmentCreated,
       payload,
-      arrival: {},
+      arrival: { kind: "inngest" },
       runtime: testRuntime(),
       step: recorder.step,
       deliver,
@@ -515,10 +555,10 @@ describe("runEventListener", () => {
     const recorder = recordingStep();
 
     await expect(
-      runEventListener({
+      listenToInngestEvent({
         event: appointmentCreated,
         payload: { appointment: {} },
-        arrival: {},
+        arrival: { kind: "inngest" },
         runtime: testRuntime(),
         step: recorder.step,
         deliver: fakeDeliver(),
@@ -540,10 +580,10 @@ describe("runEventListener", () => {
       )
     );
 
-    const failure = await runEventListener({
+    const failure = await listenToInngestEvent({
       event: appointmentCreated,
       payload,
-      arrival: {},
+      arrival: { kind: "inngest" },
       runtime: testRuntime(stubWorkflowRepo()),
       step: recordingStep().step,
       deliver,

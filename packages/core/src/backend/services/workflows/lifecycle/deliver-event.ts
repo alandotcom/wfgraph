@@ -363,6 +363,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
         runMode: workflow.mode,
         eventName: input.event.name,
         payload: input.payload,
+        deliveryId: input.deliveryId,
         ...selector,
       });
 

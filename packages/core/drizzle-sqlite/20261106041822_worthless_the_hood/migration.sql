@@ -1,0 +1,1 @@
+ALTER TABLE `workflow_executions` ADD `cancel_delivery_id` text;

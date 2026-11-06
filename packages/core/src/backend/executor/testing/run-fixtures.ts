@@ -6,17 +6,30 @@
 
 import { Effect } from "effect";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode,
 } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
+import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
+import type { DeliverySettings } from "#src/backend/executor/delivery-body";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { deriveEventSubscriptions } from "#src/backend/services/workflows/lifecycle/subscriptions";
 
 export const START_EVENT = "app/appointment.created";
 export const CANCEL_EVENT = "app/appointment.canceled";
+
+/**
+ * The delivery settings of a loop or pass that delivers no inbox row: no
+ * catalog Events, and a runtime whose services a delivery would never reach.
+ */
+export const noDeliveries: DeliverySettings = {
+  events: [],
+  runtime: stubWfGraphRuntime(),
+};
 
 export function lifecycleNode(config: JsonObject = {}): WorkflowNode {
   return {
@@ -109,21 +122,31 @@ export function createGate() {
 
 /**
  * Inserts a workflow and publishes `graph` as its first version. A workflow's
- * name is unique, so the workflow is named after its id.
+ * name is unique, so the workflow is named after its id. With `subscribe`, the
+ * workflow's Event subscriptions are derived from the graph as a save derives
+ * them, so a delivered Event finds it; without, it has none.
  */
 export function publishWorkflow(input: {
   workflowId: string;
   versionId: string;
   graph: SerializedWorkflowGraph;
   catalogFingerprint: string;
+  subscribe?: boolean | undefined;
 }): Effect.Effect<void, DatabaseError, WorkflowRepo> {
   return Effect.gen(function* () {
     const workflows = yield* WorkflowRepo;
+    const eventSubscriptions =
+      input.subscribe === true
+        ? deriveEventSubscriptions({
+            workflowId: input.workflowId,
+            nodes: toWorkflowGraphData(input.graph).nodes,
+          })
+        : [];
     yield* workflows.insert({
       id: input.workflowId,
       name: input.workflowId,
       graph: input.graph,
-      eventSubscriptions: [],
+      eventSubscriptions,
     });
     yield* workflows.insertPublishedVersion({
       workflowId: input.workflowId,
@@ -135,7 +158,7 @@ export function publishWorkflow(input: {
       draftGraph: input.graph,
       catalogFingerprint: input.catalogFingerprint,
       graphDigest: `digest-${input.versionId}`,
-      eventSubscriptions: [],
+      eventSubscriptions,
     });
   });
 }

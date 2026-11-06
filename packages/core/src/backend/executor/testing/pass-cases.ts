@@ -23,6 +23,7 @@ import { DatabaseError } from "#src/backend/lib/effect/database";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { leasedPass, type PassResult } from "#src/backend/executor/pass";
 import { runBody } from "#src/backend/executor/run-body";
+import { deliveryBody } from "#src/backend/executor/delivery-body";
 import {
   actionNode,
   CANCEL_EVENT,
@@ -31,6 +32,7 @@ import {
   delay,
   edge,
   lifecycleNode,
+  noDeliveries,
   onEvent,
   publishWorkflow,
   startScheduledRun,
@@ -268,7 +270,10 @@ function describeCases(
             if (!claimed) return null;
             return yield* leasedPass(
               claimed,
-              runBody({ actions: () => actions }),
+              {
+                run: runBody({ actions: () => actions }),
+                delivery: deliveryBody(noDeliveries),
+              },
               {
                 workerId: options.workerId ?? "worker_1",
                 now,

@@ -166,6 +166,7 @@ export function startInProcessRunner(input: {
       // Built per pass, so a decrypted credential lives as long as its pass.
       actions: () => createWorkflowActions(extensions, runtime),
       entities: createWorkflowEntities(extensions),
+      delivery: { events: extensions.events, runtime },
       signal,
       drainMs: RUNNER_DRAIN_MS,
       wake: wakes.local,
