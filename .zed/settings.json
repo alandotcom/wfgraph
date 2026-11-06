@@ -15,7 +15,7 @@
     "typescript-language-server": {
       "binary": {
         "path": "/usr/bin/env",
-        "arguments": ["./node_modules/typescript/bin/tsc", "--lsp", "--stdio"]
+        "arguments": ["./node_modules/.bin/tsrs", "--lsp", "--stdio"]
       }
     }
   },

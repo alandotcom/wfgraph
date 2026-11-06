@@ -85,8 +85,9 @@ that tracks the TypeScript 7.1 beta. `effect-tsgo tsrs` runs the Effect-patched 
 `@effect/tsgo` ships for the installed `tsrs` version, so the two pins move together: a `tsrs`
 that release does not ship falls back to an older tsrs. `prepare` patches the installed tsrs
 with that same build, which is the language server `.vscode/settings.json` starts through
-`node_modules/tsrs/tsdk`. oxlint finds `tsrs-lint` in `node_modules/.bin`. The `typescript`
-package stays for tsdown's declaration output alone.
+`node_modules/tsrs/tsdk` and `.zed/settings.json` starts as `tsrs --lsp --stdio`. oxlint
+finds `tsrs-lint` in `node_modules/.bin`. The `typescript` package stays for tsdown's
+declaration output alone.
 
 `pnpm run test:postgres` is the live PostgreSQL suite, and it skips every case unless
 `WFGRAPH_TEST_DATABASE_URL` names a server, so a green `pnpm run test` on a machine with no
