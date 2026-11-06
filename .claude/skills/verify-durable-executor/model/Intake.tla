@@ -59,14 +59,18 @@ VARIABLES
   eligRefused,  \* each inbox row: refused by admission Entity Eligibility
   refusedChanged, \* an arrival Eligibility refused changed a run anyway
   faults,
-  opened        \* Executions opened per Start arrival
+  opened,       \* Executions opened per Start arrival
+  cancelSet,    \* the runs the Cancel arrival's first write claimed
+  lostResend    \* a resend of a failed key answered duplicate and left the row failed
 
-vars == <<mode, sends, inbox, failed, dsched, dholder, written, memo, pc, cur, exec, esched,
+vars == <<mode, sends, inbox, failed, cancelSet, lostResend, dsched, dholder, written, memo, pc, cur, exec, esched,
           refused, eligRefused, refusedChanged, faults, opened>>
 
 \* The guards the design depends on.
 InboxKeyIsUnique == TRUE                 \* unique (name, idempotency_key) on the inbox
 FailRecordsTheRow == TRUE                \* failDelivery marks the inbox row failed with the schedule row's deletion
+ResendRedeliversFailed == TRUE           \* a send whose key holds a failed row resets it to pending and schedules it
+CancelDecisionIsRecorded == TRUE         \* a Cancel's claim records its decision, and a retried claim answers from it
 DeliveryIdIsUnique == TRUE               \* unique (workflow_id, delivery_id) on executions
 RefusalIsConsulted == TRUE               \* answerFromCommittedDecision reads a prior refusal first
 EligibilityBeforeConcurrency == TRUE     \* Precedence: admission Eligibility, then Concurrency
@@ -80,7 +84,7 @@ Init ==
   /\ mode \in {"newest", "first"}
   /\ sends = [k \in Arrivals |-> 0]
   /\ inbox = [r \in Rows |-> "none"] /\ dsched = [r \in Rows |-> "none"]
-  /\ failed = [r \in Rows |-> FALSE]
+  /\ failed = [r \in Rows |-> FALSE] /\ cancelSet = {} /\ lostResend = FALSE
   /\ dholder = [r \in Rows |-> 0]
   /\ written = [r \in Rows |-> FALSE] /\ memo = [r \in Rows |-> FALSE]
   /\ pc = [w \in Workers |-> "idle"] /\ cur = [w \in Workers |-> <<"c", 1>>]
@@ -104,11 +108,19 @@ SendViaApp(k) ==
   /\ sends[k] < SendCap(k)
   /\ LET r == NewRow(k) IN
        /\ sends' = [sends EXCEPT ![k] = @ + 1]
-       /\ IF inbox[r] = "none"
-            THEN /\ inbox' = [inbox EXCEPT ![r] = "present"]
+       /\ CASE inbox[r] = "none" ->
+                 /\ inbox' = [inbox EXCEPT ![r] = "present"]
                  /\ dsched' = [dsched EXCEPT ![r] = "queued"]
-            ELSE UNCHANGED <<inbox, dsched, failed>>
-  /\ UNCHANGED <<mode, dholder, written, memo, pc, cur, execVars, faults, failed>>
+                 /\ UNCHANGED <<failed, lostResend>>
+            [] failed[r] /\ ResendRedeliversFailed ->
+                 /\ failed' = [failed EXCEPT ![r] = FALSE]
+                 /\ dsched' = [dsched EXCEPT ![r] = "queued"]
+                 /\ UNCHANGED <<inbox, lostResend>>
+            [] failed[r] ->
+                 /\ lostResend' = TRUE
+                 /\ UNCHANGED <<inbox, dsched, failed>>
+            [] OTHER -> UNCHANGED <<inbox, dsched, failed, lostResend>>
+  /\ UNCHANGED <<mode, dholder, written, memo, pc, cur, execVars, faults, cancelSet>>
 
 \* The host's own transaction inserts the inbox row; its delivery waits for the poll.
 SendInHostTransaction(k) ==
@@ -116,13 +128,13 @@ SendInHostTransaction(k) ==
   /\ LET r == NewRow(k) IN
        /\ sends' = [sends EXCEPT ![k] = @ + 1]
        /\ inbox' = [inbox EXCEPT ![r] = "present"]
-  /\ UNCHANGED <<mode, dsched, dholder, written, memo, pc, cur, execVars, faults, failed>>
+  /\ UNCHANGED <<mode, dsched, dholder, written, memo, pc, cur, execVars, faults, failed, cancelSet, lostResend>>
 
 \* The poll schedules the delivery of an inbox row that has none.
 PollInbox(r) ==
   /\ inbox[r] = "present" /\ dsched[r] = "none"
   /\ dsched' = [dsched EXCEPT ![r] = "queued"]
-  /\ UNCHANGED <<mode, sends, inbox, dholder, written, memo, pc, cur, execVars, faults, failed>>
+  /\ UNCHANGED <<mode, sends, inbox, dholder, written, memo, pc, cur, execVars, faults, failed, cancelSet, lostResend>>
 
 -----------------------------------------------------------------------------
 (* Delivery, section 7.2. *)
@@ -132,12 +144,12 @@ ClaimDelivery(w, r) ==
   /\ dsched' = [dsched EXCEPT ![r] = "leased"] /\ dholder' = [dholder EXCEPT ![r] = w]
   /\ cur' = [cur EXCEPT ![w] = r]
   /\ pc' = [pc EXCEPT ![w] = IF memo[r] THEN "finish" ELSE "write"]
-  /\ UNCHANGED <<mode, sends, inbox, written, memo, execVars, faults, failed>>
+  /\ UNCHANGED <<mode, sends, inbox, written, memo, execVars, faults, failed, cancelSet, lostResend>>
 
 DeliveryFenced(w) ==
   /\ pc[w] # "idle" /\ ~LeaseHeldBy(w)
   /\ pc' = [pc EXCEPT ![w] = "idle"]
-  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, cur, execVars, faults, failed>>
+  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, cur, execVars, faults, failed, cancelSet, lostResend>>
 
 \* The Execution a second run of the same delivery would insert.
 SecondCopy(x) == <<x[1], x[2], 2>>
@@ -168,11 +180,11 @@ StartWrite(r) ==
            /\ eligRefused' = [eligRefused EXCEPT ![r] = TRUE]
            /\ IF ~EligibilityBeforeConcurrency /\ mode = "newest" /\ Live # {}
                 THEN Supersede(<<"none">>) /\ refusedChanged' = TRUE
-                ELSE UNCHANGED <<exec, esched, refusedChanged, failed>>
+                ELSE UNCHANGED <<exec, esched, refusedChanged, failed, cancelSet, lostResend>>
            /\ UNCHANGED opened
     ELSE IF mode = "first" /\ Live # {}
       THEN /\ refused' = [refused EXCEPT ![r] = TRUE]
-           /\ UNCHANGED <<exec, esched, opened, eligRefused, refusedChanged, failed>>
+           /\ UNCHANGED <<exec, esched, opened, eligRefused, refusedChanged, failed, cancelSet, lostResend>>
     ELSE
       /\ exec' = [y \in Execs |->
                    IF y = x THEN "running"
@@ -183,32 +195,38 @@ StartWrite(r) ==
                      ELSE IF y \in Live /\ mode = "newest" /\ SupersedeDropsSchedule THEN "gone"
                      ELSE esched[y]]
       /\ opened' = [opened EXCEPT ![k] = @ + 1]
-      /\ UNCHANGED <<refused, eligRefused, refusedChanged, failed>>
+      /\ UNCHANGED <<refused, eligRefused, refusedChanged, failed, cancelSet, lostResend>>
 
-\* requestCancelForEntity for the Cancel arrival: claim every live run.
-CancelWrite ==
-  /\ exec' = [y \in Execs |-> IF exec[y] = "running" THEN "claimed" ELSE exec[y]]
-  /\ UNCHANGED <<esched, refused, eligRefused, refusedChanged, opened, failed>>
+\* requestCancelForEntity for the Cancel arrival. Its first write claims every
+\* live run and records that decision; a write run again after a crash
+\* answers from the recorded decision and claims nothing new.
+CancelWrite(r) ==
+  /\ IF written[r] /\ CancelDecisionIsRecorded
+       THEN UNCHANGED <<exec, cancelSet>>
+       ELSE /\ exec' = [y \in Execs |-> IF exec[y] = "running" THEN "claimed" ELSE exec[y]]
+            /\ cancelSet' = IF written[r] THEN cancelSet
+                            ELSE {y \in Execs : exec[y] = "running"}
+  /\ UNCHANGED <<esched, refused, eligRefused, refusedChanged, opened, failed, lostResend>>
 
 LifecycleStep(w) ==
   /\ pc[w] = "write" /\ LeaseHeldBy(w)
   /\ LET r == cur[w] IN
-       /\ IF r[1] = "c" THEN CancelWrite ELSE StartWrite(r)
+       /\ IF r[1] = "c" THEN CancelWrite(r) ELSE StartWrite(r) /\ UNCHANGED cancelSet
        /\ written' = [written EXCEPT ![r] = TRUE]
   /\ pc' = [pc EXCEPT ![w] = "memo"]
-  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, memo, cur, faults, failed>>
+  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, memo, cur, faults, failed, lostResend>>
 
 RecordMemo(w) ==
   /\ pc[w] = "memo" /\ LeaseHeldBy(w)
   /\ memo' = [memo EXCEPT ![cur[w]] = TRUE]
   /\ pc' = [pc EXCEPT ![w] = "finish"]
-  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, cur, execVars, faults, failed>>
+  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, cur, execVars, faults, failed, cancelSet, lostResend>>
 
 FinishDelivery(w) ==
   /\ pc[w] = "finish" /\ LeaseHeldBy(w)
   /\ dsched' = [dsched EXCEPT ![cur[w]] = "gone"] /\ dholder' = [dholder EXCEPT ![cur[w]] = 0]
   /\ pc' = [pc EXCEPT ![w] = "idle"]
-  /\ UNCHANGED <<mode, sends, inbox, written, memo, cur, execVars, faults, failed>>
+  /\ UNCHANGED <<mode, sends, inbox, written, memo, cur, execVars, faults, failed, cancelSet, lostResend>>
 
 \* The delivery fails for good: its payload is refused or its retries are spent.
 \* failDelivery records the inbox row as failed in the transaction that deletes
@@ -220,7 +238,7 @@ FailDelivery(w) ==
   /\ dsched' = [dsched EXCEPT ![cur[w]] = IF FailRecordsTheRow THEN "gone" ELSE "none"]
   /\ dholder' = [dholder EXCEPT ![cur[w]] = 0]
   /\ pc' = [pc EXCEPT ![w] = "idle"]
-  /\ UNCHANGED <<mode, sends, inbox, written, memo, cur, execVars, faults>>
+  /\ UNCHANGED <<mode, sends, inbox, written, memo, cur, execVars, faults, cancelSet, lostResend>>
 
 -----------------------------------------------------------------------------
 (* Faults, and the runs themselves. *)
@@ -228,7 +246,7 @@ FailDelivery(w) ==
 CrashWorker(w) ==
   /\ pc[w] # "idle" /\ faults < MaxFaults
   /\ pc' = [pc EXCEPT ![w] = "idle"] /\ faults' = faults + 1
-  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, cur, execVars, failed>>
+  /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, cur, execVars, failed, cancelSet, lostResend>>
 
 \* The lease sweep re-queues a delivery whose holder is no longer working on it.
 SweepDelivery(r) ==
@@ -238,7 +256,7 @@ SweepDelivery(r) ==
      \/ faults < MaxFaults
   /\ faults' = IF pc[dholder[r]] = "idle" \/ cur[dholder[r]] # r THEN faults ELSE faults + 1
   /\ dsched' = [dsched EXCEPT ![r] = "queued"] /\ dholder' = [dholder EXCEPT ![r] = 0]
-  /\ UNCHANGED <<mode, sends, inbox, written, memo, pc, cur, execVars, failed>>
+  /\ UNCHANGED <<mode, sends, inbox, written, memo, pc, cur, execVars, failed, cancelSet, lostResend>>
 
 \* An Execution's run finishes, as the run model describes in full. It runs
 \* only while its schedule row exists, which is what a worker claims.
@@ -246,20 +264,20 @@ RunCompletes(x) ==
   /\ exec[x] = "running" /\ esched[x] = "present"
   /\ exec' = [exec EXCEPT ![x] = "completed"] /\ esched' = [esched EXCEPT ![x] = "gone"]
   /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused, eligRefused, refusedChanged,
-                 opened, faults, failed>>
+                 opened, faults, failed, cancelSet, lostResend>>
 
 RunEndsCanceled(x) ==
   /\ exec[x] = "claimed" /\ esched[x] = "present"
   /\ exec' = [exec EXCEPT ![x] = "canceled"] /\ esched' = [esched EXCEPT ![x] = "gone"]
   /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused, eligRefused, refusedChanged,
-                 opened, faults, failed>>
+                 opened, faults, failed, cancelSet, lostResend>>
 
 \* A superseded run that still has a schedule row would be claimed and run on.
 SupersededRunRuns(x) ==
   /\ exec[x] = "superseded" /\ esched[x] = "present"
   /\ exec' = [exec EXCEPT ![x] = "completed"] /\ esched' = [esched EXCEPT ![x] = "gone"]
   /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused, eligRefused, refusedChanged,
-                 opened, faults, failed>>
+                 opened, faults, failed, cancelSet, lostResend>>
 
 AllDone ==
   /\ \A k \in Arrivals : sends[k] = SendCap(k)
@@ -317,7 +335,17 @@ EveryOpenRunIsScheduled ==
 \* A superseded run does no more work.
 SupersededRunsStop == \A x \in Execs : exec[x] = "superseded" => esched[x] # "present"
 
-\* A delivery that failed for good stays settled: nothing schedules it again.
+\* A Cancel arrival claims only the runs that were live when its claim first
+\* committed, however often its delivery runs the claim.
+CancelClaimsOnlyEarlierRuns ==
+  \A y \in Execs : exec[y] \in {"claimed", "canceled"} => y \in cancelSet
+
+\* A resend of a key whose delivery failed is delivered again, not answered
+\* as a duplicate of the failed row.
+NoResendOfAFailedKeyIsLost == ~lostResend
+
+\* A delivery that failed for good stays settled: nothing but a resend of its
+\* key schedules it again.
 FailedArrivalStaysSettled == \A r \in Rows : failed[r] => dsched[r] = "gone"
 
 \* Every arrival in the inbox is delivered.
@@ -332,6 +360,7 @@ ReachRefusalAnsweredOnRetry == \E r \in Rows : eligRefused[r] /\ written[r] /\ ~
 ReachRefusedStart  == \E r \in Rows : refused[r]
 ReachCanceledRun   == \E x \in Execs : exec[x] = "canceled"
 ReachRedelivery    == \E r \in Rows : written[r] /\ ~memo[r] /\ dsched[r] = "queued"
+ReachResentAfterFailure == \E r \in Rows : r[1] = "s1" /\ ~failed[r] /\ dsched[r] = "gone" /\ sends["s1"] = 2 /\ written[r]
 ReachFailedDelivery == \E r \in Rows : failed[r] /\ dsched[r] = "gone"
 ReachHostTransactionDelivered == \E r \in Rows : inbox[r] = "present" /\ dsched[r] = "gone" /\ written[r]
 =============================================================================
