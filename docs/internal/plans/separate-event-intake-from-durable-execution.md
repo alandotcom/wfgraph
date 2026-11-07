@@ -1171,9 +1171,14 @@ keeps compatibility machinery alive for the next one.
      first occurrence.
    - It takes effect at Publish, like the Start Events, and a draft never fires.
      Republishing keeps the timer of an unchanged schedule.
-   - A fire missed while no worker ran runs once, for the most recent missed
-     slot. A paused workflow does not fire, and on resume the next fire is
-     computed from the resume time.
+   - A fire missed while no worker ran runs once, for the most recent slot at
+     or before the fire's commit time. A paused workflow does not fire: pause
+     deletes the workflow's timer rows and resume writes them again in
+     `setPaused`'s transaction, so a timer row exists exactly while its
+     schedule can fire.
+   - Every next fire time (after a fire, a Publish that adds or edits a
+     schedule, or a resume) is the first slot strictly after now. A timer
+     therefore never fires a slot at or before the write that created it.
    - The run carries no payload. Its Entity Value is `workflow:<id>`, so
      first-wins skips a fire while a run is going (a Refused Start) and
      newest-wins supersedes it. A save refuses a schedule on a workflow that
@@ -1183,6 +1188,14 @@ keeps compatibility machinery alive for the next one.
      by workflow and schedule. Its pass opens the run and advances `wake_at` in
      one transaction fenced on its lease, which makes a fire exactly once. The
      fire does not go through the inbox, because a fire is not a catalog Event.
+   - The fire reads the published version inside that transaction, since a
+     Publish keeps an unchanged schedule's row and the lease a pass holds on
+     it. It reads the workflow row without locking it, because Publish and
+     pause lock the workflow row before the timer rows.
+   - Publish deletes the row of an edited schedule and inserts a fresh one,
+     so the edit drops any lease a pass held on the old expression.
+   - The `Cron` model of `verify-durable-executor` checks each of these
+     rules, with a mutation for each.
    - The Runs view titles the run "Scheduled run" with the schedule's
      description, and shows the scheduled time beside the start time when they
      differ by more than a minute.
