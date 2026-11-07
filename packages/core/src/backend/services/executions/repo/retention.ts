@@ -5,13 +5,13 @@
  * statements.
  */
 
-import { asc, inArray } from "drizzle-orm";
 import type { Effect } from "effect";
 import {
   workflowEventInbox,
   workflowExecutionEvents,
   workflowExecutions,
 } from "#src/backend/lib/db/schema";
+import { deleteOldestBatch } from "#src/backend/lib/db/batched-delete";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import {
   sweepableExecution,
@@ -51,55 +51,29 @@ export function makeRetentionMethods(
   const inbox = { table: workflowEventInbox, id: workflowEventInbox.id };
   return {
     sweepEndedExecutions: (input) =>
-      database.query(async (db) => {
-        const swept = await db
-          .delete(workflowExecutions)
-          .where(
-            inArray(
-              workflowExecutions.id,
-              db
-                .select({ id: workflowExecutions.id })
-                .from(workflowExecutions)
-                .where(
-                  sweepableExecution(workflowExecutions, inbox, input.olderThan)
-                )
-                .orderBy(asc(workflowExecutions.completedAt))
-                .limit(input.limit)
-                // Two sweeps that overlap, such as two Workers' Cron Trigger
-                // ticks, each take the rows the other has not locked. A run
-                // whose row another transaction holds, such as an audit insert
-                // naming it, waits for the next sweep.
-                .for("update", { skipLocked: true })
-            )
-          )
-          .returning({ id: workflowExecutions.id });
-        return swept.length;
-      }),
+      database.query((db) =>
+        deleteOldestBatch(db, {
+          table: workflowExecutions,
+          id: workflowExecutions.id,
+          where: sweepableExecution(workflowExecutions, inbox, input.olderThan),
+          oldestFirst: workflowExecutions.completedAt,
+          limit: input.limit,
+        })
+      ),
 
     sweepWorkflowAuditEvents: (input) =>
-      database.query(async (db) => {
-        const swept = await db
-          .delete(workflowExecutionEvents)
-          .where(
-            inArray(
-              workflowExecutionEvents.id,
-              db
-                .select({ id: workflowExecutionEvents.id })
-                .from(workflowExecutionEvents)
-                .where(
-                  sweepableWorkflowAudit(
-                    workflowExecutionEvents,
-                    inbox,
-                    input.olderThan
-                  )
-                )
-                .orderBy(asc(workflowExecutionEvents.createdAt))
-                .limit(input.limit)
-                .for("update", { skipLocked: true })
-            )
-          )
-          .returning({ id: workflowExecutionEvents.id });
-        return swept.length;
-      }),
+      database.query((db) =>
+        deleteOldestBatch(db, {
+          table: workflowExecutionEvents,
+          id: workflowExecutionEvents.id,
+          where: sweepableWorkflowAudit(
+            workflowExecutionEvents,
+            inbox,
+            input.olderThan
+          ),
+          oldestFirst: workflowExecutionEvents.createdAt,
+          limit: input.limit,
+        })
+      ),
   };
 }

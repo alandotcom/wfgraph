@@ -1,12 +1,10 @@
 import {
   and,
   arrayContains,
-  asc,
   desc,
   eq,
   inArray,
   isNull,
-  lt,
   ne,
   sql,
 } from "drizzle-orm";
@@ -27,9 +25,11 @@ import type {
   WfGraphDatabase,
   WfGraphTransaction,
 } from "#src/backend/lib/db/index";
+import { deleteOldestBatch } from "#src/backend/lib/db/batched-delete";
 import { Database, type DatabaseError } from "#src/backend/lib/effect/database";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import type { WorkflowUpdateData } from "#src/backend/services/workflows/mappers";
+import { sweepableDraftSnapshot } from "#src/backend/services/workflows/repo/retention-policy";
 import { makeWorkflowVersionQueries } from "#src/backend/services/workflows/repo/version-queries";
 import type { WorkflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
@@ -978,38 +978,26 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
           }),
 
         sweepUnreferencedDraftSnapshots: (input) =>
-          database.query(async (db) => {
+          database.query((db) =>
             // The `last_pinned_at` bound is the guard against a concurrent
             // reuse, as the method's contract describes. A reuse still in
-            // progress holds the row's lock, so `SKIP LOCKED` passes the row
-            // by. A reuse that committed after this statement's snapshot moved
-            // the row, so taking the lock rechecks the bound against the moved
-            // value and drops the row.
-            const swept = await db
-              .delete(workflowVersions)
-              .where(
-                inArray(
-                  workflowVersions.id,
-                  db
-                    .select({ id: workflowVersions.id })
-                    .from(workflowVersions)
-                    .where(
-                      and(
-                        // A literal, so the planner can match the partial
-                        // index on draft snapshots.
-                        sql`${workflowVersions.kind} = 'draft_snapshot'`,
-                        lt(workflowVersions.lastPinnedAt, input.olderThan),
-                        sql`not exists (select 1 from ${workflowExecutions} where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id})`
-                      )
-                    )
-                    .orderBy(asc(workflowVersions.lastPinnedAt))
-                    .limit(input.limit)
-                    .for("update", { skipLocked: true })
-                )
-              )
-              .returning({ id: workflowVersions.id });
-            return swept.length;
-          }),
+            // progress holds the row, which the batch passes by, and one that
+            // committed moved the row out of the bound.
+            deleteOldestBatch(db, {
+              table: workflowVersions,
+              id: workflowVersions.id,
+              where: sweepableDraftSnapshot(
+                workflowVersions,
+                {
+                  table: workflowExecutions,
+                  workflowVersionId: workflowExecutions.workflowVersionId,
+                },
+                input.olderThan
+              ),
+              oldestFirst: workflowVersions.lastPinnedAt,
+              limit: input.limit,
+            })
+          ),
       };
     })
   );

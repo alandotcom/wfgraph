@@ -6,13 +6,14 @@
  * inbox row, the order every fenced write takes a schedule row first.
  */
 
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import {
   workflowEventInbox,
   workflowExecutionSchedule,
 } from "#src/backend/lib/db/schema";
 import type { WfGraphTransaction } from "#src/backend/lib/db/index";
+import { deleteOldestBatch } from "#src/backend/lib/db/batched-delete";
 import type {
   Database,
   DatabaseError,
@@ -284,27 +285,15 @@ export function makeInboxMethods(
       }),
 
     sweepSettledInbox: (input) =>
-      database.query(async (db) => {
-        const swept = await db
-          .delete(workflowEventInbox)
-          .where(
-            inArray(
-              workflowEventInbox.id,
-              db
-                .select({ id: workflowEventInbox.id })
-                .from(workflowEventInbox)
-                .where(sweepableInbox(workflowEventInbox, input.olderThan))
-                .orderBy(asc(workflowEventInbox.receivedAt))
-                .limit(input.limit)
-                // Two sweeps that overlap, such as two Workers' Cron Trigger
-                // ticks, each take the rows the other has not locked, so
-                // neither waits on the other's delete.
-                .for("update", { skipLocked: true })
-            )
-          )
-          .returning({ id: workflowEventInbox.id });
-        return swept.length;
-      }),
+      database.query((db) =>
+        deleteOldestBatch(db, {
+          table: workflowEventInbox,
+          id: workflowEventInbox.id,
+          where: sweepableInbox(workflowEventInbox, input.olderThan),
+          oldestFirst: workflowEventInbox.receivedAt,
+          limit: input.limit,
+        })
+      ),
 
     findInboxEvent: (inboxId) =>
       database.query(async (db) => {

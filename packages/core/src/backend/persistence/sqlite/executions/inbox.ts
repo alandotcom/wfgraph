@@ -6,7 +6,7 @@
  */
 
 import { Effect } from "effect";
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type {
   DeliveryFence,
@@ -31,6 +31,7 @@ import {
   workflowExecutionSchedule,
 } from "#src/backend/persistence/sqlite/schema";
 import { writeFenced } from "#src/backend/persistence/sqlite/executions/schedule";
+import { deleteOldestBatch } from "#src/backend/persistence/sqlite/batched-delete";
 import { optionalJsonObject } from "#src/backend/persistence/sqlite/executions/rows";
 
 type SqliteInboxRow = typeof workflowEventInbox.$inferSelect;
@@ -210,23 +211,13 @@ export function makeSqliteInboxMethods(
 
     sweepSettledInbox: (input) =>
       store.write((database) =>
-        database
-          .delete(workflowEventInbox)
-          .where(
-            inArray(
-              workflowEventInbox.id,
-              database
-                .select({ id: workflowEventInbox.id })
-                .from(workflowEventInbox)
-                .where(
-                  sweepableInbox(workflowEventInbox, input.olderThan.getTime())
-                )
-                .orderBy(asc(workflowEventInbox.receivedAt))
-                .limit(input.limit)
-            )
-          )
-          .returning({ id: workflowEventInbox.id })
-          .pipe(Effect.map((swept) => swept.length))
+        deleteOldestBatch(database, {
+          table: workflowEventInbox,
+          id: workflowEventInbox.id,
+          where: sweepableInbox(workflowEventInbox, input.olderThan.getTime()),
+          oldestFirst: workflowEventInbox.receivedAt,
+          limit: input.limit,
+        })
       ),
 
     findInboxEvent: (inboxId) =>

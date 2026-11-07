@@ -1,6 +1,5 @@
 import {
   and,
-  asc,
   desc,
   eq,
   inArray,
@@ -23,12 +22,14 @@ import {
   type WorkflowVersionUsageRow,
 } from "#src/backend/services/workflows/repo";
 import { workflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
+import { sweepableDraftSnapshot } from "#src/backend/services/workflows/repo/retention-policy";
 import type {
   SqliteDatabase,
   SqliteExecutor,
   SqliteReadExecutor,
 } from "#src/backend/persistence/sqlite/database";
 import { encodeGraph } from "#src/backend/persistence/sqlite/database";
+import { deleteOldestBatch } from "#src/backend/persistence/sqlite/batched-delete";
 import {
   workflowEventSubscriptions,
   workflowExecutions,
@@ -829,35 +830,20 @@ export function makeSqliteWorkflowRepo(
       ),
     sweepUnreferencedDraftSnapshots: (input) =>
       store.write((database) =>
-        database
-          .delete(workflowVersions)
-          .where(
-            inArray(
-              workflowVersions.id,
-              database
-                .select({ id: workflowVersions.id })
-                .from(workflowVersions)
-                .where(
-                  and(
-                    // A literal, so the planner can match the partial index
-                    // on draft snapshots.
-                    sql`${workflowVersions.kind} = 'draft_snapshot'`,
-                    lt(
-                      workflowVersions.lastPinnedAt,
-                      input.olderThan.getTime()
-                    ),
-                    sql`not exists (
-                      select 1 from ${workflowExecutions}
-                      where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id}
-                    )`
-                  )
-                )
-                .orderBy(asc(workflowVersions.lastPinnedAt))
-                .limit(input.limit)
-            )
-          )
-          .returning({ id: workflowVersions.id })
-          .pipe(Effect.map((swept) => swept.length))
+        deleteOldestBatch(database, {
+          table: workflowVersions,
+          id: workflowVersions.id,
+          where: sweepableDraftSnapshot(
+            workflowVersions,
+            {
+              table: workflowExecutions,
+              workflowVersionId: workflowExecutions.workflowVersionId,
+            },
+            input.olderThan.getTime()
+          ),
+          oldestFirst: workflowVersions.lastPinnedAt,
+          limit: input.limit,
+        })
       ),
   };
 }
