@@ -1,6 +1,6 @@
 ---
 name: verify-durable-executor
-description: Model-check the database executor that replaces Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, steps inside a handler, admission Entity Eligibility, Concurrency, or the drivers' leases, heartbeats, polling and Worker platform limits, when a change touches the executor's code (packages/core/src/backend/executor, the Worker's tick driver in packages/core/src/backend/worker.ts, the schedule, step memo and fenced writes in services/executions/repo and persistence/sqlite/executions, the engine's parked Waits), or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
+description: Model-check the database executor that replaces Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, steps inside a handler, admission Entity Eligibility, Concurrency, cron schedule timers and how Publish and pause rewrite them, or the drivers' leases, heartbeats, polling and Worker platform limits, when a change touches the executor's code (packages/core/src/backend/executor, the Worker's tick driver in packages/core/src/backend/worker.ts, the schedule, step memo and fenced writes in services/executions/repo and persistence/sqlite/executions, the engine's parked Waits), or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
 ---
 
 # Verify the durable executor design
@@ -11,7 +11,7 @@ a step memo, producers that wake a Wait by writing its wait row, and an inbox
 whose deliveries run on the same executor. The order in which those writes land
 decides whether a run is stranded, woken twice, opened twice, or run after it
 ended. No unit test explores every order. This skill checks every order, up to
-stated bounds, with seven TLA+ models and `tla-ts`, a TLC-compatible model
+stated bounds, with eight TLA+ models and `tla-ts`, a TLC-compatible model
 checker that runs on Node with no JVM.
 
 Read this whole file before running anything.
@@ -63,7 +63,11 @@ git log --oneline b014dc55.. -- \
   packages/core/src/backend/services/executions/send-event.ts \
   packages/core/src/backend/services/integrations/webhook-intake.ts \
   packages/core/src/backend/lib/inngest/event-forwarder.ts \
-  packages/core/src/backend/services/workflows/migration/migrate.ts
+  packages/core/src/backend/services/workflows/migration/migrate.ts \
+  packages/core/src/backend/services/workflows/publish.ts \
+  packages/core/src/backend/services/workflows/repo.ts \
+  packages/core/src/backend/services/workflows/bulk-actions.ts \
+  packages/core/src/backend/persistence/sqlite/workflows.ts
 ```
 
 The first command shows an edit you have not committed yet. Output from the
@@ -90,7 +94,7 @@ check:
   by mistake, and a pass from that model checks less than it claims.
 
 It exits 0 when everything holds and is reached, 1 otherwise, and 2 when
-`tla-ts` cannot check a model. The whole run takes under two minutes on a
+`tla-ts` cannot check a model. The whole run takes about three minutes on a
 many-core machine, most of it the `Arrivals` and `Intake` models.
 
 `mutations.sh` first checks the models as written. Then it removes one guard of
@@ -101,7 +105,7 @@ reaches, `STALE` for a recorded finding that no longer reproduces, `NEW` for
 a rule that breaks and is not a recorded finding, and `AMBIGUOUS` when a
 mutation's text occurs more than once in its model, since the mutation would
 then change only the first occurrence. Any of those fails the suite.
-It takes about three minutes.
+It takes about four minutes.
 
 Both scripts run `tla-ts@0.0.8` through `pnpm dlx` on every core, so nothing is
 installed into the workspace. `MODEL_DIR` points `check.sh` at a copy of the
@@ -115,11 +119,11 @@ pass or fail.
 
 ## The models
 
-Each model checks every behaviour of a small configuration. Two workers, a
-retry limit of 2 (the design's 4, scaled down), and one crash or expired lease
-per behaviour run through all seven. Liveness rules assume workers keep
-working and the lease sweep keeps running. Events, cancels, crashes and
-Migrations are free never to happen.
+Each model checks every behaviour of a small configuration. Two workers and one
+crash or expired lease per behaviour run through all eight, and every model
+that counts retries uses a limit of 2 (the design's 4, scaled down). Liveness
+rules assume workers keep working and the lease sweep keeps running. Events,
+cancels, crashes, Migrations, Publishes and pauses are free never to happen.
 
 ### `DurableExecutor`: one run
 
@@ -231,7 +235,7 @@ Both Concurrency modes, newest wins and first wins, are checked. Admission
 Entity Eligibility decides before Concurrency, and the host's resolver is asked
 again on every attempt, so a re-run delivery may get a different answer. An
 Execution's own run is one step here, because `DurableExecutor` checks what
-happens inside one. About 195,000 states.
+happens inside one. About 304,000 states.
 
 | Rule | The promise | The harm when it breaks |
 | --- | --- | --- |
@@ -326,12 +330,57 @@ with every write under `BEGIN IMMEDIATE`, allow a subset of the interleavings th
 two-worker models check, and the models already treat each guarded write as
 atomic. Its ticker is the `node` driver's poll.
 
+### `Cron`: schedule timers, Publish and pause
+
+Decision 9 in section 12 of the design doc, modelled before any cron code
+exists. A schedule's timer is a `kind = 'cron'` row of
+`workflow_execution_schedule`, keyed by workflow and schedule, which workers
+claim under a lease. A fire is one transaction fenced on the lease: it opens
+the run through the admission of a manual start that names no Event, for the
+Entity Value `workflow:<id>`, and advances `wake_at` to the first slot after
+now. Under first wins a fire while a run is going writes a Refused Start and
+still advances; under newest wins it supersedes the run. A row claimed late
+fires once, for the most recent slot it missed.
+
+Publish rewrites the timer rows in the transaction that activates the version:
+it keeps the row of an unchanged schedule, replaces the row of an edited or
+added schedule with a new row due at its first slot after now, and deletes the
+row of a removed one. Pause deletes the workflow's timer rows in the
+transaction that sets `is_paused`, and resume writes one per published
+schedule, due at its first slot after the resume. A timer row therefore exists
+exactly while its schedule is published and the workflow is unpaused, and the
+lease fence is the one guard that keeps a pass from firing after a Publish, a
+pause or an expired lease.
+
+One workflow with two schedules, "a" and "b". The published version starts
+with "a" on expression 1, which fires at every instant, and holds no "b";
+expression 2 fires at every even instant. One Publish may keep, edit or remove
+"a" and add "b". The workflow may be paused and resumed once. A clock of three
+units advances whether or not a worker has claimed a due row, which is how a
+fire is missed. Both Concurrency modes are checked, with runs reduced to how
+many are live for `workflow:<id>`. About 68,000 states.
+
+| Rule | The promise | The harm when it breaks |
+| --- | --- | --- |
+| `OneFirePerSlot` | Each schedule fires each slot at most once, as a run or a Refused Start, and fires its slots in order. | A 9:00 report is sent twice, or a slot before an edit fires after it. |
+| `NoFireWithoutTheLease` | No fire commits from a pass that lost its lease. | A worker whose lease expired fires beside the worker that took the row over. |
+| `NoFireWhilePaused` | A fire never opens a run on a paused workflow. | A paused workflow keeps sending its scheduled messages. |
+| `NoFireForAnUnpublishedSchedule` | A fire never opens a run for a schedule the published version no longer holds, or holds with another expression. | A schedule removed or edited at Publish fires on its old timing. |
+| `TimersMatchThePublishedSchedules` | A timer row exists exactly for each schedule of the published version of an unpaused workflow, written for that schedule's expression. | A published schedule never fires, or a removed one keeps a timer. |
+| `FireRunsTheLatestSlot` | A fire runs the most recent slot at or before the moment it commits. | A worker that was down for an hour runs the slot from an hour ago, or every missed slot in turn. |
+| `NoFireBeforeTheTimerStarted` | A timer never fires a slot at or before the Publish or resume that wrote it. | Resuming at 9:30 runs the 9:00 slot the pause skipped. |
+| `FireRunsThePublishedVersion` | A fire opens its run on the version published when the fire commits. | A scheduled run starts on a version that was replaced while its pass ran. |
+| `OneLiveScheduledRun` | Under either Concurrency mode, at most one scheduled run is live for `workflow:<id>`. | A slow run and the next fire overlap. |
+| `EveryDueTimerFires` (liveness) | Every timer row that comes due fires, or is deleted. | A schedule stops firing after a Refused Start. |
+
 ## Bounds and assumptions
 
 - The bounds above: two workers, two versions and two Migrations, three
   arrivals in `Intake`, one arrival fanned out to two workflows in `Delivery`
   with pages of one row, two arrivals and two payloads in `Arrivals`, a clock
-  of twenty units in `Timing`, a retry limit of 2, one fault per behaviour.
+  of twenty units in `Timing`, two schedules, two cron expressions, one
+  Publish, one pause and resume, and a clock of three units in `Cron`, a retry
+  limit of 2, one fault per behaviour.
 - Counters stop one past the retry limit, because nothing compares them further.
 - The `CountersBounded` constraints cap observer counters at 2 so a mutated
   model stays finite. In the models as written, every counter stays at most 1
@@ -351,9 +400,10 @@ atomic. Its ticker is the `node` driver's poll.
 - `NOTIFY` is not modelled. The design treats it as a latency optimisation and
   relies on the poll for correctness, which is what the models check: a worker
   finds every due row by polling.
-- Clock time is abstract in every model except `Timing`, where a timeout is
-  "the deadline passed". `Timing` uses the design's ratios, not its seconds,
-  and models no retry backoff.
+- Clock time is abstract in every model except `Timing` and `Cron`. In
+  `Timing` a timeout is "the deadline passed", and the model uses the design's
+  ratios, not its seconds, and models no retry backoff. In `Cron` the clock
+  numbers the slots a schedule fires at.
 
 ## Coverage record
 
@@ -386,7 +436,7 @@ the directories of those names under `services/workflows/`.
 | `Migration`: `MigrateWake`, `Requeue` | "Migration" | `repinVersion`, which writes the `migrate` wake on every park (`resolveOpenParks`) and re-queues a `waiting` run through `wakeExecutions` in the repin's own transaction: `Repin` followed at once by `MigrateWake`. |
 | `Migration`: `Prepare`, `Park`, `StillPinned` | "Migration" | the `createWaitState`, `reparkWaitState` and `markExecutionRunning` fences in `engine/wait.ts`; `readMissedWake` in `engine/wait.ts`, which answers an Event or claim wake from the wait row's `wake` column (`readWaitState` in `engine/db-store.ts`) when a re-park finds the row already woken, the `Park` action's `event` arm after the pass re-prepares under the version it loaded |
 | `Migration`: `Release`, `FenceRefusalCountsNoAttempt` | | `versionRefused` in `engine/wait.ts`, which fails with the `version_refused` kind; `decideFailedPass` in `executor/pass.ts`, which releases that failure as `fence_refused`; `decideRelease` in `repo/release-policy.ts`, which re-queues the run due at once and counts nothing |
-| `Intake`: `SendViaApp`, `SendInHostTransaction`, `PollInbox`, `InboxKeyIsUnique` | Section 7.1 and 7.3 | `insertInboxEvent` in `repo/inbox.ts` and `sqlite/inbox.ts`, through `writeArrival` in each, which inserts the inbox row and its `delivery` schedule row in one transaction and writes nothing for a key a `pending` or `delivered` row already holds under the unique index `workflow_event_inbox_idempotency_uidx` (`InboxKeyIsUnique`); a key a `failed` row holds reopens that row as `pending` with a new schedule row (`resendOnHeldKey` in `repo/inbox-policy.ts`), which is `SendViaApp`'s `ResendRedeliversFailed` arm; the host's insert documented at `workflowEventInbox` in `lib/db/schema.ts` (`SendInHostTransaction`); `scheduleUnscheduledInbox`, whose rows `awaitsSchedule` in `repo/inbox-policy.ts` picks, called once per poll by `runWorkerLoop` and once per `tick` (`scheduleHostInsertedInbox`, through `inboxUpkeep` in `executor/worker-loop.ts`), which is `PollInbox`. Every source reaches it through the driver's `receiveEvent` (`executions/driver.ts`), which is `SendViaApp`: `sendEvent` (`executions/send-event.ts`), webhook intake (`integrations/webhook-intake.ts`), and the Inngest forwarder (`createInngestEventForwarder` in `lib/inngest/event-forwarder.ts`), which calls `app.events.send` and so reaches `sendEvent` keyed by the Inngest event id. |
+| `Intake`: `SendViaApp`, `SendInHostTransaction`, `PollInbox`, `InboxKeyIsUnique` | Section 7.1 and 7.3 | `insertInboxEvent` in `repo/inbox.ts` and `sqlite/inbox.ts`, through `writeArrival` in each, which inserts the inbox row and its `delivery` schedule row in one transaction and writes nothing for a key a `pending` or `delivered` row already holds under the unique index `workflow_event_inbox_idempotency_uidx` (`InboxKeyIsUnique`); a key a `failed` row holds reopens that row as `pending` with a new schedule row (`resendOnHeldKey` in `repo/inbox-policy.ts`), which is `SendViaApp`'s `ResendRedeliversFailed` arm; the host's insert documented at `workflowEventInbox` in `lib/db/schema.ts` (`SendInHostTransaction`); `scheduleUnscheduledInbox`, whose rows `awaitsSchedule` in `repo/inbox-policy.ts` picks, called once per poll by `runWorkerLoop` and once per `tick` (the `poll` of `executorUpkeep` in `executor/upkeep.ts`), which is `PollInbox`. Every source reaches it through the driver's `receiveEvent` (`executions/driver.ts`), which is `SendViaApp`: `sendEvent` (`executions/send-event.ts`), webhook intake (`integrations/webhook-intake.ts`), and the Inngest forwarder (`createInngestEventForwarder` in `lib/inngest/event-forwarder.ts`), which calls `app.events.send` and so reaches `sendEvent` keyed by the Inngest event id. |
 | `Intake`: `ClaimDelivery`, `LifecycleStep`, `RecordMemo`, `FinishDelivery` | Section 7.2 | A claim for the `delivery` kind leases them (`dueSchedule` and `claimedSchedule` in `repo/release-policy.ts`), in the worker loop's delivery lane (`lanesFor` in `executor/worker-loop.ts`), and `leasedPass` opens them with `openDeliveryPass` in `executor/pass.ts`, whose writes are fenced on the owner token and the inbox row (`ExecutionRepo.fencedDelivery`). `deliveryBody` in `executor/delivery-body.ts` runs `fanOutDelivery` (`executor/delivery-fanout.ts`) on the pass's step port (`createPassSteps` in `executor/runtime.ts`), then `finishDelivery`; a refused payload, a row naming no Event, or a step past its retries ends in `failDelivery`. A row a forwarder or webhook intake recorded under an umbrella source name is resolved to the Event whose `source.when` accepts its data (`resolveArrival` on the extension set, which the delivery body reads from the `Extensions` service, built by `arrivalResolver` in `extensions/arrival-resolution.ts`, which `sendEvent` also calls); a row no Event on its source accepts is owed nothing and ends in `finishDelivery` (`unmatched_source`). The model has one Event per arrival, so each of its arrivals is a row that resolution has already named. Both, in `repo/inbox.ts` and `sqlite/inbox.ts`, settle the inbox row and delete its schedule row and step memo in one transaction fenced on the owner token (`FinishDelivery`, `FailRecordsTheRow`). |
 | `Intake`: `StartWrite`, `DeliveryIdIsUnique`, `ExecutionAndScheduleTogether` | Section 7.1; scenario S13 | `answerFromCommittedDecision` in `lifecycle/deliver-event.ts`; `startForEntity` in `repo/index.ts` and `sqlite/executions/index.ts`, behind the driver's `startRun` (`executions/driver.ts`): the transaction that inserts the Execution also inserts its schedule row (`insertRunSchedule`) and its "run started" entry, which is `ExecutionAndScheduleTogether`; a start answered with the row its delivery already committed writes neither again. |
 | `Intake`: Concurrency in `StartWrite`, `SupersedeDropsSchedule` | CONTEXT.md "Concurrency", "Superseded" | `startWithConcurrency` in `lifecycle/concurrency.ts` |
@@ -408,6 +458,10 @@ the directories of those names under `services/workflows/`.
 | `Timing`: `NodeLease`, `NodeHeartbeat`, `NodePoll`, `Expire`, `SweepLateness` | "Wake latency" | `DEFAULT_LEASE_MS`, `DEFAULT_HEARTBEAT_MS` and the `pollMs` option of `runWorkerLoop` in `executor/worker-loop.ts`; `renewLeaseWhileRunning` in `executor/pass.ts`; the expired-lease sweep in `claimDue`. The loop also claims at a released run's own `wake_at` and on a same-process wake (`createWorkerWake`), both sooner than the poll the model bounds, and on a run another process's producer announced through the PostgreSQL backend's `NOTIFY` broadcast (`makeExecutionDriverLayer` in `executions/driver.ts`). |
 | `Timing`: `WorkerLease`, `WorkerCron`, `WorkerBudget`, `QueueMaxDelay`, `Kill`, `WorkerUsesCron` | Section 8, "Cloudflare Worker over Hyperdrive" | `WORKER_LEASE_MS` (5 minutes), `WORKER_HEARTBEAT_MS` (1 minute), `WORKER_TICK_BUDGET_MS` (14 minutes) and `WORKER_TICK_CLAIM_WINDOW_MS` (10 minutes) in `worker.ts`, whose `scheduled` handler is the host's one-minute Cron Trigger (`WorkerCron`, `WorkerUsesCron`) and whose `queue` handler is the Queue consumer; `tick` in `executor/worker-loop.ts`, which cuts a pass still running at the budget, releasing its row due at once with one failure counted against its running step, as the model's `Kill` followed by the lease sweep counts it. `Kill` is the platform ending the invocation at its 15-minute wall time, which the lease recovers; the model's `WorkerBudget` is that wall time, so the code's 5-minute lease over 15 minutes is the model's 2:6 ratio unscaled, and the tick's own 14-minute budget cuts its passes before the kill. The tick's pass limit (`WORKER_TICK_PASS_LIMIT`), which bounds its CPU time, ends a tick early, which the model's next cron or queue invocation covers. A wake message names no row and carries no delay (`createQueueWake` in `executor/queue-wake.ts`), so every deadline is the cron's, which is the model's `QueueMaxDelay` arm with the sleep longer than the cap. |
 | `Timing`: `ClaimWaitsForTheDeadline` | | the `wake_at <= now` condition on `queued` and `waiting` rows in `claimDue` |
+| `Cron`: `Claim`, `ClaimWhenDue` | Section 12, decision 9; section 11, phase 6 | Planned: a `cron` member of the claimed-schedule union, with an entry in `PASS_KINDS` (`executor/pass.ts`) and in the worker loop's lanes (`executor/worker-loop.ts`), claimed by `claimDue` under the same `wake_at <= now` condition (`dueSchedule` in `repo/release-policy.ts`). The cron row names the `workflow_schedules` row it fires in a subject column of its own. |
+| `Cron`: `Fire`, `FiredSlot`, `NextWake`, `FireAndAdvanceTogether`, `RefusalStillAdvances`, `FireReadsThePublishedVersion`, `RefusedStart` | Section 12, decision 9 | Planned: `fireCronTimer` in `repo/schedule.ts` and `sqlite/schedule.ts`, one transaction fenced on the owner token through `writeFenced` that reads the published version, opens the run through the manual-start admission (`startWithConcurrency` in `lifecycle/concurrency.ts`, then `startForEntity`) for the Entity Value `workflow:<id>`, and sets `wake_at` to `nextCronFire` of the row's expression after the transaction's own now, whether the start opened a run or wrote a Refused Start. `nextCronFire` is a planned pure function, strictly after its argument. |
+| `Cron`: `Publish`, `Republished`, `RemovedTimerIsDeleted`, `EditClearsTheLease`, `StartWake` | Section 12, decision 9 | Planned: `replaceCronTimers`, called by `insertPublishedVersion` in `services/workflows/repo.ts` and `persistence/sqlite/workflows.ts` in the transaction that writes the event subscription index, which keeps the row of an unchanged schedule, deletes the row of a removed one, and replaces the row of an edited one with a new row whose owner token is empty. |
+| `Cron`: `Pause`, `Resume`, `PauseDeletesTimers` | Section 12, decision 9 | Planned: `setPaused` in `services/workflows/repo.ts` and `persistence/sqlite/workflows.ts`, reached through `setPausedState` in `services/workflows/bulk-actions.ts`, deletes the workflow's cron rows when it pauses and writes one per published schedule, due at `nextCronFire` after now, when it resumes, in the transaction that sets `is_paused`. |
 
 Last confirmed against: the design doc and the code at `b014dc55`
 (`feat/durable-executor`), the migration as it merges: runs and deliveries on
@@ -420,6 +474,11 @@ pass interrupted by dispose's drain releasing its row with nothing counted (no
 model has a graceful stop; it acts as a crash whose lease is swept at once). Move these commits
 forward only after you have read the covered sections and files at the new
 commit and confirmed that the models still describe them.
+
+`Cron` was written against decision 9 of the design doc at `065ccf33`, before
+any cron code existed, so its rows above name planned functions. When the cron
+code lands, replace each planned name with the function that was written and
+confirm the model still describes it.
 
 ## Telling a real bug from a modelling error
 
@@ -502,8 +561,22 @@ back to show the rule still catches it:
   `DuplicateSendIsOneArrival` holds within `events.retentionMs`; a resend after
   the sweep deleted the first row is a new arrival by design (ADR-0022). The
   sweep deletes only `delivered` and `failed` rows (`sweepableInbox` in
-  `repo/inbox-policy.ts`, run by `sweepSettledInbox` through `inboxUpkeep` in `executor/worker-loop.ts`, from the worker loop and from `tick`), whose
+  `repo/inbox-policy.ts`, run by `sweepSettledInbox` through `executorUpkeep` in `executor/upkeep.ts`, from the worker loop and from `tick`), whose
   schedule rows their settling write already deleted, so no rule about a
   pending delivery depends on it.
 - Retry backoff timing, `NOTIFY` latency, database failover, and real clock
   values. `Timing` checks the design's ratios.
+- Run-history retention (decision 8). No model deletes an Execution, so the
+  guard that keeps a run and its admission refusal while their delivery's inbox
+  row exists is checked by the conformance suite alone.
+- Lock order and deadlock. Every model treats a guarded write as one atomic
+  step, so a deadlock PostgreSQL aborts with 40P01 is outside them. For cron,
+  a fire takes the cron row's lock first, as its fence, while Publish and
+  pause lock the workflow row before the cron rows; a fire that then locks the
+  workflow row takes the two in the opposite order.
+- A cron expression's time zone, and the local times daylight saving skips or
+  repeats. Each is a property of `nextCronFire`, a pure function, which `Cron`
+  replaces with two expressions on an integer clock.
+- Deleting a workflow, which deletes its cron rows by cascade and fences a pass
+  holding one as a pause does, and manual starts sharing the Entity Value
+  `workflow:<id>` with scheduled runs.

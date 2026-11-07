@@ -83,6 +83,17 @@ Timing|no-cron-sweep|WorkerUsesCron == TRUE|WorkerUsesCron == FALSE|DeadlineHono
 Timing|claim-ignores-the-deadline|ClaimWaitsForTheDeadline == TRUE|ClaimWaitsForTheDeadline == FALSE|NoResumeBeforeTheDeadline
 Timing|budget-shorter-than-a-step|WorkerBudget == 6|WorkerBudget == 3|EveryRunEndsInTime
 Timing|sweep-runs-late|SweepLateness == 0|SweepLateness == 3|DeadWorkerRecoveredInTime
+Cron|fire-and-advance-apart|FireAndAdvanceTogether == TRUE|FireAndAdvanceTogether == FALSE|OneFirePerSlot
+Cron|no-lease-fence|LeaseHeldBy(w) == holder[cur[w]] = w|LeaseHeldBy(w) == TRUE|NoFireWithoutTheLease OneFirePerSlot NoFireWhilePaused NoFireForAnUnpublishedSchedule
+Cron|edit-keeps-the-lease|EditClearsTheLease == TRUE|EditClearsTheLease == FALSE|NoFireForAnUnpublishedSchedule
+Cron|removed-timer-kept|RemovedTimerIsDeleted == TRUE|RemovedTimerIsDeleted == FALSE|TimersMatchThePublishedSchedules NoFireForAnUnpublishedSchedule
+Cron|pause-keeps-the-timers|PauseDeletesTimers == TRUE|PauseDeletesTimers == FALSE|NoFireWhilePaused TimersMatchThePublishedSchedules
+Cron|next-fire-includes-now|StartWake(e) == NextAfter(e, now)|StartWake(e) == LatestSlot(e, now)|NoFireBeforeTheTimerStarted OneFirePerSlot
+Cron|claim-ignores-the-wake|ClaimWhenDue(s) == wakeAt[s] <= now|ClaimWhenDue(s) == TRUE|OneFirePerSlot NoFireBeforeTheTimerStarted
+Cron|fire-runs-the-oldest-missed-slot|FiredSlot(w) == LatestSlot(claimedExpr[w], now)|FiredSlot(w) == wakeAt[cur[w]]|FireRunsTheLatestSlot
+Cron|fire-pins-the-claimed-version|FireReadsThePublishedVersion == TRUE|FireReadsThePublishedVersion == FALSE|FireRunsThePublishedVersion
+Cron|first-wins-ignores-live-run|RefusedStart == mode = "first" /\ live > 0|RefusedStart == FALSE|OneLiveScheduledRun
+Cron|refusal-does-not-advance|RefusalStillAdvances == TRUE|RefusalStillAdvances == FALSE|EveryDueTimerFires OneFirePerSlot
 MUTATIONS
 )
 
