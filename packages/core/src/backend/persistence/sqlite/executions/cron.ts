@@ -32,7 +32,7 @@ import {
   workflowExecutionSchedule,
   workflows,
 } from "#src/backend/persistence/sqlite/schema";
-import { admitStart } from "#src/backend/persistence/sqlite/executions/admission";
+import { admitWithConcurrency } from "#src/backend/persistence/sqlite/executions/admission";
 import { recordAuditEventWrite } from "#src/backend/persistence/sqlite/executions/audit";
 import { writeFenced } from "#src/backend/persistence/sqlite/executions/schedule";
 import { sqliteExecutionSchedule } from "#src/backend/persistence/sqlite/executions/rows";
@@ -192,7 +192,7 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
             timer === undefined ? input.now : new Date(timer.wakeAt)
           );
           const nextWakeAt = cronWakeAfter(input.schedule, input.now);
-          const start = yield* admitStart(database, {
+          const start = yield* admitWithConcurrency(database, {
             ...input.start,
             execution: {
               ...input.start.execution,
@@ -200,11 +200,6 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
             },
             now: input.now,
           });
-          if (start.status === "admission_refused") {
-            throw new Error(
-              "A scheduled start met an Entity admission refusal"
-            );
-          }
           if (start.status === "refused") {
             const refused = input.refusedEntry(slot);
             yield* recordAuditEventWrite({

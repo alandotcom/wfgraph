@@ -19,7 +19,7 @@ import type {
   LeaseLost,
 } from "#src/backend/lib/effect/database";
 import type { CronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
-import { admitStart } from "#src/backend/services/executions/repo/admission";
+import { admitWithConcurrency } from "#src/backend/services/executions/repo/admission";
 import { recordAuditEventWrite } from "#src/backend/services/executions/repo/audit";
 import {
   cronFireVerdict,
@@ -270,7 +270,7 @@ export function makeCronMethods(
             timer?.wakeAt ?? input.now
           );
           const nextWakeAt = cronWakeAfter(input.schedule, input.now);
-          const start = await admitStart(tx, {
+          const start = await admitWithConcurrency(tx, {
             ...input.start,
             execution: {
               ...input.start.execution,
@@ -278,11 +278,6 @@ export function makeCronMethods(
             },
             now: input.now,
           });
-          if (start.status === "admission_refused") {
-            throw new Error(
-              "A scheduled start met an Entity admission refusal"
-            );
-          }
           if (start.status === "refused") {
             const refused = input.refusedEntry(slot);
             await recordAuditEventWrite({

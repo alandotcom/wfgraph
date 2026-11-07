@@ -1,9 +1,9 @@
 /**
  * The admission of a new run on SQLite, as the PostgreSQL backend's
- * `repo/admission.ts` describes it. `admitStart` runs inside the caller's
+ * `repo/admission.ts` describes it. Each function runs inside the caller's
  * write transaction, which holds the one writer, so the in-flight read and the
  * insert are one decision: `startForEntity` opens a transaction of its own, and
- * a cron fire runs it inside the transaction fenced on its timer's lease.
+ * a cron fire runs `admitWithConcurrency` in the one fenced on its timer.
  */
 
 import { Effect } from "effect";
@@ -13,6 +13,7 @@ import {
   isEntityEligibilityReason,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type {
+  ConcurrencyStartOutcome,
   EntityStartOutcome,
   NewExecution,
   StartForEntityInput,
@@ -141,27 +142,41 @@ function openRun(
 
 /**
  * Decides a start and opens its run in the caller's write transaction. An
- * Entity admission refusal recorded for this delivery answers first, then the
- * delivery's own row. First-wins refuses a start while a run for the entity
- * is in flight, and newest-wins ends those runs `superseded`, settling their
- * schedule and wait rows, before it opens the new one.
+ * Entity admission refusal recorded for this delivery answers first, and
+ * `admitWithConcurrency` decides the rest.
  */
 export function admitStart(
   database: SqliteExecutor,
   input: StartForEntityInput
 ): Effect.Effect<EntityStartOutcome, unknown> {
-  const { execution, concurrency, admissionDecisionId } = input;
+  const { admissionDecisionId, ...start } = input;
   return Effect.gen(function* () {
     if (admissionDecisionId) {
       const refusal = yield* findAdmissionRefusal(database, {
-        workflowId: execution.workflowId,
+        workflowId: start.execution.workflowId,
         decisionId: admissionDecisionId,
       });
       if (refusal) {
         return { status: "admission_refused" as const, reason: refusal };
       }
     }
+    return yield* admitWithConcurrency(database, start);
+  });
+}
 
+/**
+ * Decides a start that consults no Entity admission decision and opens its
+ * run in the caller's write transaction. The delivery's own row answers
+ * first. First-wins refuses a start while a run for the entity is in flight,
+ * and newest-wins ends those runs `superseded`, settling their schedule and
+ * wait rows, before it opens the new one.
+ */
+export function admitWithConcurrency(
+  database: SqliteExecutor,
+  input: Omit<StartForEntityInput, "admissionDecisionId">
+): Effect.Effect<ConcurrencyStartOutcome, unknown> {
+  const { execution, concurrency } = input;
+  return Effect.gen(function* () {
     // Whatever status the arrival's own row is in, it is the answer: the run
     // may have finished while the step was being retried, and opening a
     // second one would run the graph twice for one Event.
