@@ -259,7 +259,8 @@ export function startInProcessRunner(input: {
       deliveryConcurrency: settings.concurrency.delivery,
       pollMs: settings.pollMs,
       inboxRetentionMs: settings.retention.inboxMs,
-      runRetentionMs: settings.retention.runMs,
+      // Null when no run window is set, so the record says retention is off.
+      runRetentionMs: settings.retention.runMs ?? null,
       broadcast: wakes.broadcast !== undefined,
     },
   });
