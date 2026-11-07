@@ -2,6 +2,7 @@
 // provides, so nothing here imports the bare one.
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect } from "effect";
+import { TestClock } from "effect/testing";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
   SilentAppLoggerLayer,
@@ -98,6 +99,27 @@ describe("postWorkflowsBulkLifecycle", () => {
         ]);
         assert.deepStrictEqual(repo.calls.deletes, []);
       })
+    );
+
+    it.effect(
+      "resumes a paused workflow with the service's clock, which its cron timers are due after",
+      () =>
+        Effect.gen(function* () {
+          const repo = makeWorkflowRepo({ wf_1: true });
+          yield* TestClock.adjust("30 minutes");
+
+          const result = yield* postWorkflowsBulkLifecycle({
+            workflowIds: ["wf_1"],
+            action: "resume",
+          }).pipe(Effect.provide(repo.layer));
+
+          assert.deepStrictEqual(result.results, [
+            { workflowId: "wf_1", action: "resume", ok: true },
+          ]);
+          assert.deepStrictEqual(repo.calls.pauseWrites, [
+            { workflowId: "wf_1", isPaused: false, now: new Date(30 * 60_000) },
+          ]);
+        })
     );
 
     it.effect("writes nothing for a workflow already in the target state", () =>

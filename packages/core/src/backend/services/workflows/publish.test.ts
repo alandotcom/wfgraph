@@ -1,5 +1,6 @@
 import { assert, describe, it as standalone, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
+import { TestClock } from "effect/testing";
 import type {
   PublishedWorkflowVersion,
   Workflow,
@@ -172,6 +173,7 @@ describe("publishWorkflow", () => {
             }),
         });
 
+        yield* TestClock.adjust("90 minutes");
         const result = yield* publishWorkflow({
           workflowId: "wf_1",
           graph: draft.graph,
@@ -184,6 +186,9 @@ describe("publishWorkflow", () => {
         assert.strictEqual(inserted.length, 1);
         assert.strictEqual(inserted[0]?.version, 1);
         assert.strictEqual(inserted[0]?.expectedPublishedVersionId, null);
+        // The repository writes the version's cron timers due after this
+        // instant, which is the service's clock.
+        assert.deepStrictEqual(inserted[0]?.now, new Date(90 * 60_000));
         assert.ok(inserted[0]?.eventSubscriptions.length === 1);
         assert.strictEqual(
           inserted[0]?.eventSubscriptions[0]?.eventName,
