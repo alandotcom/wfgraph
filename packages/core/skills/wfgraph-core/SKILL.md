@@ -132,16 +132,17 @@ Loop defaults and the `runner` fields: `docs/embedding.md` ("Workflow runs").
 - Event deliveries take slots of their own (`runner.deliveryConcurrency`,
   default 1), so a long run holding every run slot does not delay a Cancel.
 - The loop deletes settled inbox rows older than `events.retentionMs` (default
-  seven days, a positive integer or startup refuses). It never deletes a
-  pending row. Every process running a loop sweeps with its own
-  `events.retentionMs`, so set the same window in the app and every runner.
+  seven days, a positive integer of at most 100 years or startup refuses).
+  It never deletes a pending row. Every process running a loop sweeps with its
+  own `events.retentionMs`, so set the same window in the app and every runner.
 - Run history is kept forever unless `runs.retentionMs` is set. With it, the
   loop deletes ended Executions older than the window, with their logs and
   timelines, workflow audit rows naming no run, and draft snapshots no run
-  references. Published versions stay. Startup refuses a value below the
-  inbox window (`events.retentionMs`, default seven days), because a
-  redelivered inbox row is answered from the run it opened. Set the same
-  window in the app and every runner.
+  references and no Draft run pinned within the window (`last_pinned_at`).
+  Published versions stay. A run, or a Refused Start, recorded for an Event's
+  delivery is kept while that delivery's inbox row exists, because a
+  redelivery is answered from it. Startup refuses a value outside one hour to
+  100 years. Set the same window in the app and every runner.
 - `dispose()` stops the loop and waits up to ten seconds for passes in flight.
 - Runs that an earlier release left in Inngest have no schedule row and never
   advance. Drain them before upgrading.

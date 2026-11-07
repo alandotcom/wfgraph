@@ -730,10 +730,10 @@ const wfgraph = await createWfGraphApp({
 
 `events.retentionMs` sets how long an inbox row is kept after its Event arrived, once its
 delivery has settled. It defaults to 604,800,000, which is seven days, and must be a positive
-integer; a zero, negative or fractional value fails at startup. Once an hour, the loop
-deletes up to 1,000 `delivered` or `failed` rows that arrived earlier than the window,
-beside its claims rather than ahead of them; when a sweep reaches that limit, the next one
-runs a poll interval later. A `pending` row is never deleted.
+integer of at most 100 years; a zero, negative, fractional or larger value fails at startup.
+Once an hour, the loop deletes up to 1,000 `delivered` or `failed` rows that arrived earlier
+than the window, beside its claims rather than ahead of them; when a sweep reaches that
+limit, the next one runs a poll interval later. A `pending` row is never deleted.
 
 The window is also the deduplication window. A send whose idempotency key matches a row
 still kept is answered with that row and starts nothing, and once the sweep has deleted the
@@ -765,16 +765,27 @@ settled inbox rows. Each sweep deletes up to 1,000 rows of each kind, in this or
 2. Workflow audit rows that belong to no run, such as a Refused Start or a Cancel Event that
    reached no run, written before the window.
 3. Draft snapshots that no remaining Execution references and that no Draft run has pinned
-   since the window began.
+   since the window began. Each snapshot records in `last_pinned_at` when a Draft run last
+   pinned it.
 
-A run in flight is never deleted, however long ago it started. Published versions are
-never deleted, so the version history stays whole. When any kind reaches its limit, the
-next sweep runs a poll interval later. Partial indexes on both backends serve the sweep.
+A run that an Event's delivery opened is kept while that delivery's inbox row exists, and so
+is a Refused Start recorded for a delivery, however old either one is. A redelivered inbox
+row is answered from the run or the refusal its first delivery recorded, so deleting either
+one while the row can still be delivered again would open a second run. Once the inbox sweep
+has deleted the row (see Keep settled Events for a window), the next run-history sweep
+deletes the run or the refusal when it is past its own window. A run in flight is never
+deleted, however long ago it started. Published versions are never deleted, so the version
+history stays whole.
 
-The value must be a positive integer, and at least the inbox window, which is
-`events.retentionMs` or seven days when that is unset. Startup refuses anything else. A
-redelivered inbox row is answered from the Execution its first delivery opened, so deleting
-the run while its inbox row can still be delivered again would open a second run.
+When any kind reaches its limit, the next sweep runs a poll interval later. A sweep the
+database fails is logged, and the next try comes an hour later. Partial indexes on both
+backends serve the sweep.
+
+The value must be an integer from one hour (3,600,000) to 100 years, and startup refuses
+anything else. A Draft run freezes its snapshot in one transaction and pins it with the
+insert of its Execution in a later one, and the sweep keeps a snapshot reused between the two
+only because the window is far longer than that gap. A window past 100 years would put the
+sweep's cutoff out of the range a JavaScript `Date` holds.
 
 Every process that runs a loop sweeps with its own window, as with `events.retentionMs`.
 Set the same `runs.retentionMs` in the app and in every `createWfGraphRunner`. On a
@@ -1116,8 +1127,8 @@ Cloudflare Workers and Hyperdrive.
 | `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                                                                                      |
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                                                                           |
 | `events.key`              | No       | Shared secret that mounts `POST /api/events`. A sender presents it as `Authorization: Bearer <key>`. Unset, the route is not mounted. A blank value, or one holding whitespace, fails at startup. See `docs/events.md` |
-| `events.retentionMs`      | No       | How long a settled inbox row is kept after its Event arrived, in milliseconds. Defaults to seven days. See Keep settled Events for a window                                                                            |
-| `runs.retentionMs`        | No       | How long an ended run is kept after it completed, in milliseconds. Unset, run history is never deleted. At least the inbox window. See Delete run history after a window                                               |
+| `events.retentionMs`      | No       | How long a settled inbox row is kept after its Event arrived, in milliseconds, at most 100 years. Defaults to seven days. See Keep settled Events for a window                                                         |
+| `runs.retentionMs`        | No       | How long an ended run is kept after it completed, in milliseconds, from one hour to 100 years. Unset, run history is never deleted. See Delete run history after a window                                              |
 | `runner`                  | No       | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none beside a `createWfGraphRunner` process. See Workflow runs                        |
 | `extensions.events`       | No       | `defineEvent` values                                                                                                                                                                                                   |
 | `extensions.actions`      | No       | `defineAction` values                                                                                                                                                                                                  |

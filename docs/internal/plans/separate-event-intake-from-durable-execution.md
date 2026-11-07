@@ -1136,19 +1136,32 @@ keeps compatibility machinery alive for the next one.
      measured from `completed_at`.
    - The sweep runs in the upkeep that already sweeps the inbox: hourly in the
      worker loop, and on a Worker's Cron Trigger tick. It deletes in batches of
-     1,000.
+     1,000, and a sweep the database fails is tried again an hour later.
    - It deletes terminal Executions, which takes their logs, run-scoped audit
      rows and wait rows by cascade. It also deletes the workflow-scoped audit
      rows (`run_refused`, `cancel_not_delivered`) past the same window, and
-     draft snapshots no Execution references. Published versions stay.
-   - Startup refuses a `runs.retentionMs` shorter than `events.retentionMs`.
-     An Execution's `(workflow_id, delivery_id)` is the record a redelivered
-     inbox row is answered from, so deleting the run while its inbox row can
-     still be delivered again would open a second run.
+     draft snapshots that no Execution references and whose `last_pinned_at`,
+     written each time a Draft run pins the snapshot, is past the window.
+     Published versions stay.
+   - The sweep keeps an Execution, and a refusal recorded for a delivery, while
+     that delivery's inbox row exists. An Execution's
+     `(workflow_id, delivery_id)` is the record a redelivered inbox row is
+     answered from, so deleting the run while its inbox row can still be
+     delivered again would open a second run. The repositories enforce this,
+     so it holds for a pending row, a failed row a resend reopened, settled
+     rows a full inbox batch left behind, and processes configured with
+     different windows. A startup floor tying the run window to the inbox
+     window would have covered none of those four cases.
+   - Startup refuses a `runs.retentionMs` shorter than one hour, because a Draft
+     run freezes its snapshot in one transaction and pins it in a later one,
+     and the sweep keeps a snapshot reused in between only while the window is
+     far longer than that gap. It refuses either window longer than 100 years,
+     which would put the sweep's cutoff outside the range a `Date` holds.
    - The Runs view states the window, sent by the server the way the stall
      threshold is.
-   - A partial index on `completed_at` serves the sweep on both backends. Time
-     partitioning waits until volume calls for it.
+   - Partial indexes on `completed_at` and on draft snapshots'
+     `last_pinned_at` serve the sweep on both backends. Time partitioning waits
+     until volume calls for it.
 9. Decided 2026-11-06: cron schedules (phase 6). A scheduled run is a manual
    run of the published version that names no Event, started by the clock.
    - A schedule is a Lifecycle Rule: `schedules` beside `allowManualStart`, a

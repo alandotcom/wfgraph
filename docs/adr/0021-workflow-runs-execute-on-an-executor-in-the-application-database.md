@@ -192,19 +192,31 @@ audit rows that name no run, such as a Refused Start, since nothing else would e
 them. Draft snapshots that no Execution referenced went too: a snapshot exists only to be
 the graph a Draft run pinned, so once its runs were gone it described nothing. Published
 versions stayed, because they are the workflow's version history and the base a builder
-compares a draft against, whether or not any run still pins them. A snapshot's
-`published_at` was moved forward each time a Draft run reused it, so the sweep could not
-delete a snapshot between the reuse and the insert of the run that pins it.
+compares a draft against, whether or not any run still pins them.
 
-Startup refused a run window shorter than the inbox window (`events.retentionMs`, seven
-days by default). A redelivered inbox row is answered from the Execution its first
-delivery opened, through the run's `(workflow_id, delivery_id)`. Deleting the run while its
-inbox row could still be delivered again would have opened a second run for one Event.
+A draft snapshot gained `last_pinned_at`, written each time a Draft run pinned it, and the
+sweep deleted only a snapshot whose `last_pinned_at` was older than the window. A Draft run
+freezes its snapshot in one transaction and inserts the Execution that pins it in a later
+one, so a snapshot reused in between was safe only while the window was far longer than
+that gap. Startup refused a run window shorter than one hour for that reason, and refused
+either window longer than 100 years, since a larger one put the sweep's cutoff outside the
+range a `Date` holds.
+
+A redelivered inbox row is answered from the Execution or the refusal its first delivery
+recorded, through `(workflow_id, delivery_id)`. Deleting either while the inbox row could
+still be delivered again would have opened a second run for one Event, so the sweep kept an
+Execution, and a refusal recorded for a delivery, for as long as that delivery's inbox row
+existed. A startup floor refusing a run window shorter than the inbox window was considered
+and dropped. It could not cover a pending inbox row, a failed row a resend reopened with its
+old `received_at`, settled rows a full inbox batch left behind, or two processes configured
+with different windows, and the condition the sweep read from the database covered all
+four.
 
 The sweep ran in the upkeep that already swept the inbox: hourly in the worker loop, and on
 a Worker's Cron Trigger tick, in batches of 1,000, with the next sweep a poll interval later
-when a batch came back full. That upkeep already ran beside the claims on every backend and
-had the cadence, batching and failure handling the run sweep needed, so a second schedule
-would have added a second set of timers for the same job. Partial indexes on
-`completed_at` and on draft snapshots' `published_at` served it on both backends. Time
+when a batch came back full. A sweep the database failed was logged and counted as
+finished, so an outage cost one try an hour. That upkeep already ran beside the claims on
+every backend and had the cadence, batching and failure handling the run sweep needed, so a
+second schedule would have added a second set of timers for the same job. Partial indexes on
+`completed_at` and on draft snapshots' `last_pinned_at` served it on both backends. Time
 partitioning of the run tables was deferred until volume calls for it.

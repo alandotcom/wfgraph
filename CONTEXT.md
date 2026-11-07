@@ -287,7 +287,8 @@ run freezes for itself. It has no number, stays out of the version history, and
 is never published. A draft save edits the workflow's own graph and creates no
 version. Published versions form durable history, and an Execution remains
 pinned to the version it started against. The run retention sweep deletes a
-draft snapshot once no Execution references it, and never a published version.
+draft snapshot once no Execution references it and no Draft run has pinned it
+within the window, and never deletes a published version.
 
 **Version Usage**:
 The current published version and every Workflow Version an active Execution
@@ -312,8 +313,9 @@ One run of one workflow, started by a Start Event, a schedule, or a manual
 test. Pins the Workflow Version it started against, and a Migration is the one
 way that pin moves. Ends with exactly one status: completed, canceled,
 superseded, exited, or failed. An ended Execution is kept until the host's run
-retention window passes, when a sweep deletes it with its node logs and
-timeline; a host that sets no window keeps every run.
+retention window passes and, for a run an Event's delivery opened, until that
+delivery's inbox row is deleted. A sweep then deletes it with its node logs and
+timeline. A host that sets no window keeps every run.
 _Avoid_: workflow (a workflow is the definition; an Execution is one run of it)
 
 **Migration**:
