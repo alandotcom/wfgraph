@@ -1184,9 +1184,10 @@ keeps compatibility machinery alive for the next one.
      therefore never fires a slot at or before the write that created it.
    - The run carries no payload. Its Entity Value is `workflow:<id>`, so
      first-wins skips a fire while a run is going (a Refused Start) and
-     newest-wins supersedes it. A save refuses a schedule on a workflow that
-     tracks an Entity (ADR-0020), and Publish refuses one on a graph whose Event
-     Split needs an Event.
+     newest-wins supersedes it. A workflow that tracks an Entity cannot have a
+     schedule (ADR-0020): the Lifecycle editor shows that refusal while the
+     draft holds both, and Publish refuses the workflow. Publish also refuses a
+     schedule on a graph whose Event Split needs an Event.
    - The timer is a `kind = 'cron'` row of `workflow_execution_schedule`, keyed
      by workflow and schedule. Its pass opens the run and advances `wake_at` in
      one transaction fenced on its lease, which makes a fire exactly once. The

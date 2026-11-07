@@ -131,8 +131,9 @@ export const cronSchedulesSchema = Schema.Array(cronScheduleSchema).check(
 );
 
 /**
- * The first reason a save refuses a list of schedules: its sentence, and the
- * index and field of the schedule it is about. A duplicate names neither.
+ * The first reason `cronSchedulesSchema` refuses a list of schedules: its
+ * sentence, and the index and field of the schedule it is about. A duplicate
+ * names neither.
  */
 export type ScheduleIssue = {
   message: string;
@@ -143,7 +144,7 @@ export type ScheduleIssue = {
 const decodeSchedules = Schema.decodeUnknownResult(cronSchedulesSchema);
 const formatScheduleIssues = SchemaIssue.makeFormatterStandardSchemaV1();
 
-/** Why a save would refuse `schedules`, or undefined when it accepts them. */
+/** Why `cronSchedulesSchema` refuses `schedules`, or undefined when it accepts them. */
 export function findScheduleIssue(
   schedules: readonly CronSchedule[]
 ): ScheduleIssue | undefined {

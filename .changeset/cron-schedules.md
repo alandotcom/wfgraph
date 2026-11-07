@@ -3,7 +3,7 @@
 "@wfgraph/client": minor
 ---
 
-A workflow's Lifecycle Rules can hold cron schedules that start runs. Each schedule is a 5-field cron expression read in an IANA time zone, and a workflow can hold several. A save refuses a schedule on a workflow that tracks an Entity, and Publish refuses one on a graph with an Event Split.
+A workflow's Lifecycle Rules can hold cron schedules that start runs. Each schedule is a 5-field cron expression read in an IANA time zone, and a workflow can hold several. A workflow that tracks an Entity cannot have a schedule: the Lifecycle editor shows that refusal, and Publish refuses the workflow. Publish also refuses a schedule on a graph with an Event Split.
 
 Publishing a version that declares schedules writes one timer per schedule, due at the schedule's first time after the Publish. The database executor fires a timer when it falls due: it starts a run of the published version with no payload, as a manual run naming no Event would start, and moves the timer to the schedule's next time. A timer claimed late, such as after the workers were down, fires once, for the most recent time it missed. Concurrency treats every scheduled run as being about the workflow itself, so first-wins records a Refused Start for a fire while a run is going and newest-wins supersedes that run. Pausing a workflow deletes its timers and resuming writes them again, due at each schedule's first time after the resume, so a paused workflow skips the times it was paused through. Republishing keeps the timer of an unchanged schedule, and a draft never fires.
 
@@ -19,4 +19,4 @@ The Lifecycle editor gains a Schedule section. A Workflow Builder adds a schedul
 
 The Runs view titles a scheduled run "Scheduled run" in the run list, the run's overview and the All Runs page, and shows the schedule's description as the line beneath the title, in a Schedule row of the overview, and under the workflow's name on the All Runs page. When a scheduled run started more than a minute after the time it was scheduled for, the overview shows a Scheduled row with that time above the Started row.
 
-The build agent's `set_lifecycle_rules` tool takes `schedules` for the complete set, or `addSchedules` and `removeSchedules` to change the stored ones. It refuses an invalid expression, an unknown time zone, a duplicate, or a schedule on a workflow that tracks an Entity, with the reason a save would give.
+The build agent's `set_lifecycle_rules` tool takes `schedules` for the complete set, or `addSchedules` and `removeSchedules` to change the stored ones. It refuses an invalid expression, an unknown time zone, a duplicate, or a schedule on a workflow that tracks an Entity, with the reason the Lifecycle editor shows.

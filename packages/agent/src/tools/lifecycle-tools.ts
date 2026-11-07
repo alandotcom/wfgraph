@@ -95,8 +95,8 @@ const scheduleInputSchema = Schema.Struct({
 type ScheduleInput = typeof scheduleInputSchema.Type;
 
 /**
- * The schedules held to the rules a save holds them to, or the reason they
- * fail, naming the schedule it is about where it is about one.
+ * The schedules held to `cronSchedulesSchema`, or the reason they fail,
+ * naming the schedule it is about where it is about one.
  */
 function readSchedules(
   schedules: readonly ScheduleInput[]

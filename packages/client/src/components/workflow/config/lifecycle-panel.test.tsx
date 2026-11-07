@@ -1371,9 +1371,9 @@ describe("LifecyclePanel Entity eligibility", () => {
 });
 
 describe("LifecyclePanel refusals", () => {
-  // The panel runs the same check the save is refused by, so the sentence is
-  // there before a builder waits for a toast to tell them.
-  it("shows the refusal a save would answer with", () => {
+  // The panel runs the same check Publish refuses a workflow by, so the
+  // sentence is there before a builder waits for a toast to tell them.
+  it("shows the refusal Publish would answer with", () => {
     const view = renderWithCatalog(
       <ControlledPanel
         initialConfig={{

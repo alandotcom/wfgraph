@@ -89,7 +89,7 @@ describe("time input", () => {
 describe("readScheduleRows", () => {
   const NOTHING_SAVED = new Map();
 
-  it("saves every row a save accepts", () => {
+  it("saves every row the stored rules can hold", () => {
     const reading = readScheduleRows(
       [row("0 9 * * 1-5"), row("0 9 * * 1-5", "UTC")],
       NOTHING_SAVED
