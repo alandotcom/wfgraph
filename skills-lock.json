@@ -5,13 +5,13 @@
       "source": "effect-ts/skills",
       "sourceType": "github",
       "skillPath": "skills/effect-ts/SKILL.md",
-      "computedHash": "6bdb9b95aa83071eca2f67ae947b7d398a22e9e6e08f6cfa35de9516b03efa6e"
+      "computedHash": "cb225ba5dda169883dfee680fba6c570c89245ba19242a9bc5c3f2ac8218a55f"
     },
     "eval-audit": {
       "source": "ai-evals-course/evals-skills",
       "sourceType": "github",
       "skillPath": "skills/eval-audit/SKILL.md",
-      "computedHash": "61dc5dc1763fe031616a603c020e6dd54068e45d6135feea94f068f4cbb9150f"
+      "computedHash": "873291d8c32c1ecf1b07b89ddba61defac24fdadd40ecb4795f13d345ccf996b"
     },
     "react-flow": {
       "source": "existential-birds/beagle",
