@@ -35,6 +35,9 @@ export const workflows = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [
+    // Deleting a version runs the `on delete set null` action of this foreign
+    // key, which finds the workflows naming that version through this index.
+    index("workflows_published_version_idx").on(table.publishedVersionId),
     check("workflows_is_paused_check", sql`${table.isPaused} in (0, 1)`),
     check("workflows_mode_check", sql`${table.mode} in ('live', 'test')`),
     check(
@@ -67,6 +70,11 @@ export const workflowVersions = sqliteTable(
       "workflow_versions_kind_check",
       sql`${table.kind} in ('published', 'draft_snapshot')`
     ),
+    // The retention sweep's scan of draft snapshots, oldest first. A published
+    // version is never swept, so the index leaves those rows out.
+    index("versions_draft_snapshot_published_idx")
+      .on(table.publishedAt)
+      .where(sql`${table.kind} = 'draft_snapshot'`),
   ]
 );
 
@@ -155,6 +163,14 @@ export const workflowExecutions = sqliteTable(
     index("executions_workflow_in_flight_version_started_idx")
       .on(table.workflowId, table.workflowVersionId, table.startedAt)
       .where(sql`${table.status} in ('pending', 'running', 'waiting')`),
+    // Deleting a version finds its runs through this index, for the cascade
+    // and for the check that a draft snapshot is unreferenced.
+    index("executions_workflow_version_idx").on(table.workflowVersionId),
+    // The retention sweep's scan, oldest ended run first. Only an ended run
+    // carries `completed_at`, so the in-flight rows stay out of the index.
+    index("executions_completed_idx")
+      .on(table.completedAt)
+      .where(sql`${table.completedAt} is not null`),
     check(
       "workflow_executions_status_check",
       sql`${table.status} in ('pending', 'running', 'waiting', 'completed', 'failed', 'canceled', 'exited', 'superseded')`

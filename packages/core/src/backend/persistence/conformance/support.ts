@@ -107,6 +107,22 @@ export type ConformanceDatabase = {
 /** No `drop`: a case dropping its own database would outrun the sweep. */
 export type CaseDatabase = Pick<ConformanceDatabase, "open" | "execute">;
 
+/**
+ * Sets one timestamp column to `at` on the rows `where` selects, for a case
+ * that needs a row older than the clock its repository write read. PostgreSQL
+ * reads the ISO text as UTC, and SQLite stores epoch milliseconds.
+ */
+export function setTimestamp(
+  database: CaseDatabase,
+  input: { table: string; column: string; where: string; at: Date }
+): Promise<void> {
+  const update = `update ${input.table} set ${input.column} =`;
+  return database.execute({
+    postgresql: `${update} '${input.at.toISOString()}' where ${input.where}`,
+    sqlite: `${update} ${input.at.getTime()} where ${input.where}`,
+  });
+}
+
 export type PersistenceTestRegistry = {
   /** A fresh database and the one connection most cases need. */
   readonly openConnection: () => Promise<ConformanceConnection>;

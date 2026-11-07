@@ -323,6 +323,7 @@ const workflowRepoStubs: WorkflowRepo["Service"] = {
   insertPublishedVersion: refuse("insertPublishedVersion"),
   freezeDraftSnapshot: refuse("freezeDraftSnapshot"),
   deleteUnreferencedDraftSnapshot: refuse("deleteUnreferencedDraftSnapshot"),
+  sweepUnreferencedDraftSnapshots: refuse("sweepUnreferencedDraftSnapshots"),
 };
 
 /**
@@ -399,6 +400,8 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   failDelivery: refuse("failDelivery"),
   sweepSettledInbox: refuse("sweepSettledInbox"),
   findInboxEvent: refuse("findInboxEvent"),
+  sweepEndedExecutions: refuse("sweepEndedExecutions"),
+  sweepWorkflowAuditEvents: refuse("sweepWorkflowAuditEvents"),
   // `fenced` answers a set of writes, each of which dies when called, the way
   // every other method here does.
   fenced: () => ({

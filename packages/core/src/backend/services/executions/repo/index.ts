@@ -56,6 +56,10 @@ import {
   type ExecutorStateRepoMethods,
   makeExecutorStateMethods,
 } from "#src/backend/services/executions/repo/executor-state";
+import {
+  makeRetentionMethods,
+  type RetentionRepoMethods,
+} from "#src/backend/services/executions/repo/retention";
 import { makeFencedWrites } from "#src/backend/services/executions/repo/fenced-writes";
 import type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fencing";
 import type {
@@ -190,11 +194,12 @@ type CrossTableRepoMethods = {
  * different lifetime: a workflow is edited, its runs accumulate and are swept.
  * The four polling endpoints the editor keeps open ask only through here.
  *
- * The shape is assembled from eight slices, one file each beside this one
+ * The shape is assembled from nine slices, one file each beside this one
  * (`runs.ts`, `node-logs.ts`, `waits.ts`, `audit.ts`, `schedule.ts` for the
  * database executor's schedule rows and step memo, `executor-state.ts` for
  * the Runs view's reads of them, `claims.ts` for the producers that claim a
- * run's parks, and `inbox.ts` for the event inbox),
+ * run's parks, `inbox.ts` for the event inbox, and `retention.ts` for the
+ * run-history retention sweep),
  * plus the cross-table methods above that only this file can implement. The
  * event inbox is a slice here because a delivery is a body on the same
  * executor: its schedule row and step memo are this aggregate's tables, and a
@@ -211,6 +216,7 @@ export class ExecutionRepo extends Context.Service<
     ExecutorStateRepoMethods &
     ClaimsRepoMethods &
     InboxRepoMethods &
+    RetentionRepoMethods &
     CrossTableRepoMethods
 >()("@wfgraph/core/ExecutionRepo") {}
 
@@ -229,6 +235,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         ...makeExecutorStateMethods(database),
         ...makeClaimsMethods(database),
         ...makeInboxMethods(database),
+        ...makeRetentionMethods(database),
         fenced: makeFencedWrites(database),
         fencedDelivery: (fence) => makePassWrites(database, fence),
 

@@ -164,7 +164,11 @@ export const workflowVersions = pgTable(
     catalogFingerprint: text("catalog_fingerprint").notNull(),
     /** Content hash of the graph's semantic projection. */
     graphDigest: text("graph_digest").notNull(),
-    /** When the row was created, by a Publish or by a Draft run. */
+    /**
+     * When a Publish created the row. On a draft snapshot, when a Draft run
+     * last pinned it: a run that reuses the snapshot moves this forward, so the
+     * retention sweep, which reads it, keeps a snapshot a run is about to pin.
+     */
     publishedAt: timestamp("published_at").notNull().default(utcNow()),
   },
   (table) => [
@@ -185,6 +189,11 @@ export const workflowVersions = pgTable(
       "workflow_versions_version_kind_check",
       sql`(${table.kind} = 'published') = (${table.version} is not null)`
     ),
+    // The retention sweep's scan of draft snapshots, oldest first. A published
+    // version is never swept, so the index leaves those rows out.
+    index("workflow_versions_draft_snapshot_published_at_idx")
+      .on(table.publishedAt)
+      .where(sql`${table.kind} = 'draft_snapshot'`),
   ]
 );
 
@@ -387,6 +396,11 @@ export const workflowExecutions = pgTable(
     index("workflow_executions_workflow_version_id_idx").on(
       table.workflowVersionId
     ),
+    // The retention sweep's scan, oldest ended run first. Only an ended run
+    // carries `completed_at`, so the in-flight rows stay out of the index.
+    index("workflow_executions_completed_at_idx")
+      .on(table.completedAt)
+      .where(sql`${table.completedAt} is not null`),
   ]
 );
 

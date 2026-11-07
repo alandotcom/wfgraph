@@ -82,11 +82,11 @@ describe("freezeDraftSnapshot", () => {
     new Date(),
   ];
 
-  // With no existing snapshot, the lookup returns nothing, so the insert runs
-  // and returns the minted row.
+  // With no existing snapshot, the reuse update matches nothing, so the insert
+  // runs and returns the minted row.
   function run(existing: string | null = null) {
     const { layer: databaseLayer, statements } = stubDatabase((statement) =>
-      statement.query.startsWith("select")
+      statement.query.startsWith("update")
         ? existing
           ? [snapshotRow(existing)]
           : []

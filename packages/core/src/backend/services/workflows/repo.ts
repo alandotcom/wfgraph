@@ -1,4 +1,15 @@
-import { and, arrayContains, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import {
+  and,
+  arrayContains,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  ne,
+  sql,
+} from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
   type PublishedWorkflowVersion,
@@ -355,7 +366,9 @@ export class WorkflowRepo extends Context.Service<
      * this catalog, and an Execution already references that snapshot, that row
      * comes back instead of a new one. So `versionId` is a proposal, and the
      * caller pins the returned `id`. Repeated runs of an unchanged canvas share
-     * one row from the second run onward.
+     * one row from the second run onward. Reusing a row moves its `publishedAt`
+     * to now, which keeps `sweepUnreferencedDraftSnapshots` from deleting it
+     * before the caller's Execution is inserted.
      *
      * A snapshot no Execution references yet belongs to the request that
      * inserted it, which can still release it, so this never hands one to
@@ -382,6 +395,22 @@ export class WorkflowRepo extends Context.Service<
     readonly deleteUnreferencedDraftSnapshot: (
       versionId: string
     ) => Effect.Effect<boolean, DatabaseError>;
+    /**
+     * The run-history retention sweep's share of this aggregate: delete up to
+     * `limit` draft snapshots that no Execution references and whose
+     * `publishedAt` is before `olderThan`, oldest first, answering how many
+     * went. A published version is never deleted. Run it after the Executions
+     * sweep, which is what leaves a snapshot unreferenced.
+     *
+     * `freezeDraftSnapshot` hands out a referenced snapshot and the caller
+     * inserts the Execution pinning it in a later transaction. The reuse moves
+     * `publishedAt` to now, so a snapshot whose last referencing run was swept
+     * in between stays until a sweep whose window has passed that reuse.
+     */
+    readonly sweepUnreferencedDraftSnapshots: (input: {
+      olderThan: Date;
+      limit: number;
+    }) => Effect.Effect<number, DatabaseError>;
   }
 >()("@wfgraph/core/WorkflowRepo") {}
 
@@ -871,23 +900,37 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             // a row would let this run pin an id the other request is about to
             // delete. A referenced row can never be deleted, because
             // `deleteUnreferencedDraftSnapshot` refuses it.
+            //
+            // The reuse moves `published_at` to now in the same statement, as
+            // `sweepUnreferencedDraftSnapshots` describes. When the sweep holds
+            // the row and deletes it first, this update matches nothing and a
+            // new snapshot is inserted.
             const [existing] = await db
-              .select()
-              .from(workflowVersions)
+              .update(workflowVersions)
+              .set({ publishedAt: new Date() })
               .where(
-                and(
-                  eq(workflowVersions.workflowId, input.workflowId),
-                  eq(workflowVersions.kind, "draft_snapshot"),
-                  eq(
-                    workflowVersions.catalogFingerprint,
-                    input.catalogFingerprint
-                  ),
-                  eq(workflowVersions.graph, input.graph),
-                  sql`exists (select 1 from ${workflowExecutions} where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id})`
+                inArray(
+                  workflowVersions.id,
+                  db
+                    .select({ id: workflowVersions.id })
+                    .from(workflowVersions)
+                    .where(
+                      and(
+                        eq(workflowVersions.workflowId, input.workflowId),
+                        eq(workflowVersions.kind, "draft_snapshot"),
+                        eq(
+                          workflowVersions.catalogFingerprint,
+                          input.catalogFingerprint
+                        ),
+                        eq(workflowVersions.graph, input.graph),
+                        sql`exists (select 1 from ${workflowExecutions} where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id})`
+                      )
+                    )
+                    .orderBy(desc(workflowVersions.publishedAt))
+                    .limit(1)
                 )
               )
-              .orderBy(desc(workflowVersions.publishedAt))
-              .limit(1);
+              .returning();
             if (existing) {
               return existing;
             }
@@ -928,6 +971,40 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               )
               .returning({ id: workflowVersions.id });
             return deleted.length > 0;
+          }),
+
+        sweepUnreferencedDraftSnapshots: (input) =>
+          database.query(async (db) => {
+            // The `published_at` bound is the guard against a concurrent
+            // reuse, as the method's contract describes. A reuse still in
+            // progress holds the row's lock, so `SKIP LOCKED` passes the row
+            // by. A reuse that committed after this statement's snapshot moved
+            // the row, so taking the lock rechecks the bound against the moved
+            // value and drops the row.
+            const swept = await db
+              .delete(workflowVersions)
+              .where(
+                inArray(
+                  workflowVersions.id,
+                  db
+                    .select({ id: workflowVersions.id })
+                    .from(workflowVersions)
+                    .where(
+                      and(
+                        // A literal, so the planner can match the partial
+                        // index on draft snapshots.
+                        sql`${workflowVersions.kind} = 'draft_snapshot'`,
+                        lt(workflowVersions.publishedAt, input.olderThan),
+                        sql`not exists (select 1 from ${workflowExecutions} where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id})`
+                      )
+                    )
+                    .orderBy(asc(workflowVersions.publishedAt))
+                    .limit(input.limit)
+                    .for("update", { skipLocked: true })
+                )
+              )
+              .returning({ id: workflowVersions.id });
+            return swept.length;
           }),
       };
     })

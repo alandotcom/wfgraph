@@ -14,9 +14,9 @@ const LEGACY_SCHEMA_FINGERPRINTS = new Map([
 ]);
 const CURRENT_SCHEMA_FINGERPRINTS = new Set([
   // A database created by all generated migrations.
-  "c6c5f4859b77e15a4409e7af9daed28a5c9874d5ab62180359d31dbffbf78fe5",
+  "977c19f3cc42dc2149b12e4c5ff4eeb03f7f8b4b1ff296299e406a4a0b0e3b88",
   // An adopted version-6 or version-7 database keeps its original table DDL.
-  "af5afebf8f2bc78a2bcae63f3e64f8018d6e415010903ae46f2b91c747381b0d",
+  "4913d195d314644e9e2697cb32d06ae9e916bcd56b4c5ae0491dd4364b0f1f57",
 ]);
 const EXPECTED_TABLES = [
   "integrations",

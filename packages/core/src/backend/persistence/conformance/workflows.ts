@@ -9,15 +9,76 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { compareText } from "@wfgraph/shared/types/string";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-import type { PersistenceTestRegistry } from "#src/backend/persistence/conformance/support";
+import type {
+  CaseDatabase,
+  PersistenceTestRegistry,
+} from "#src/backend/persistence/conformance/support";
 import {
   emptyGraph,
   notYetDue,
   seedPublishedWorkflow,
+  setTimestamp,
 } from "#src/backend/persistence/conformance/support";
+import { T0, at } from "#src/backend/persistence/conformance/schedule-support";
+
+/** The retention window the sweep cases pass: an hour after `T0`. */
+const RETENTION_CUTOFF = at(3_600_000);
+
+/** A graph of its own for each snapshot, so no freeze reuses another's row. */
+function snapshotGraph(name: string) {
+  return createSerializedWorkflowGraph({
+    nodes: [],
+    edges: [],
+    attributes: { snapshot: name },
+  });
+}
+
+/** Freezes the empty graph as a draft snapshot of `wf_1`, proposing `versionId`. */
+function freezeEmptyDraft(versionId: string) {
+  return Effect.gen(function* () {
+    const workflows = yield* WorkflowRepo;
+    return yield* workflows.freezeDraftSnapshot({
+      workflowId: "wf_1",
+      versionId,
+      graph: emptyGraph,
+      catalogFingerprint: "catalog",
+      graphDigest: "draft-digest",
+    });
+  });
+}
+
+/** Inserts a completed draft run of `wf_1` pinned to `versionId`. */
+function pinDraftRun(versionId: string) {
+  return Effect.gen(function* () {
+    const executions = yield* ExecutionRepo;
+    return yield* executions.insertTerminal({
+      workflowId: "wf_1",
+      workflowVersionId: versionId,
+      startSource: "manual",
+      runMode: "test",
+      input: {},
+      status: "completed",
+    });
+  });
+}
+
+/** Sets the `published_at` of the version `versionId` names to `when`. */
+function setPublishedAt(
+  database: CaseDatabase,
+  versionId: string,
+  when: Date
+): Promise<void> {
+  return setTimestamp(database, {
+    table: "workflow_versions",
+    column: "published_at",
+    where: `id = '${versionId}'`,
+    at: when,
+  });
+}
 
 export function describeWorkflowConformance({
   openConnection,
+  openDatabase,
 }: PersistenceTestRegistry): void {
   describe("workflows", () => {
     it("increments draft revisions and rejects stale graph writes", async () => {
@@ -878,6 +939,143 @@ export function describeWorkflowConformance({
       expect(result.whileRunning).toHaveLength(1);
       expect(result.whilePaused).toEqual([]);
       expect(result.paused).toMatchObject({ id: "wf_1", isPaused: true });
+    });
+
+    it("sweeps draft snapshots no Execution references from before the window, a batch at a time, and never a published version", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      await seedPublishedWorkflow(connection);
+
+      await connection.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          const executions = yield* ExecutionRepo;
+          for (const versionId of [
+            "snap_oldest",
+            "snap_old",
+            "snap_young",
+            "snap_pinned",
+          ]) {
+            yield* workflows.freezeDraftSnapshot({
+              workflowId: "wf_1",
+              versionId,
+              graph: snapshotGraph(versionId),
+              catalogFingerprint: "catalog",
+              graphDigest: versionId,
+            });
+          }
+          yield* executions.insertTerminal({
+            workflowId: "wf_1",
+            workflowVersionId: "snap_pinned",
+            startSource: "manual",
+            runMode: "test",
+            input: {},
+            status: "completed",
+          });
+        })
+      );
+      const publishedAt = [
+        ["ver_1", T0],
+        ["snap_oldest", T0],
+        ["snap_old", at(1_000)],
+        ["snap_pinned", at(2_000)],
+        ["snap_young", at(7_200_000)],
+      ] as const;
+      await Promise.all(
+        publishedAt.map(([versionId, when]) =>
+          setPublishedAt(database, versionId, when)
+        )
+      );
+
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          const window = { olderThan: RETENTION_CUTOFF };
+          const firstSweep = yield* workflows.sweepUnreferencedDraftSnapshots({
+            ...window,
+            limit: 1,
+          });
+          const oldestAfterFirstSweep =
+            yield* workflows.findVersionById("snap_oldest");
+          const oldAfterFirstSweep =
+            yield* workflows.findVersionById("snap_old");
+          const sweeps = [
+            firstSweep,
+            yield* workflows.sweepUnreferencedDraftSnapshots({
+              ...window,
+              limit: 10,
+            }),
+            yield* workflows.sweepUnreferencedDraftSnapshots({
+              ...window,
+              limit: 10,
+            }),
+          ];
+          const kept = yield* Effect.forEach(
+            ["ver_1", "snap_old", "snap_young", "snap_pinned"],
+            (versionId) =>
+              workflows
+                .findVersionById(versionId)
+                .pipe(Effect.map((version) => version?.id ?? null))
+          );
+          return {
+            sweeps,
+            oldestAfterFirstSweep,
+            oldAfterFirstSweep: oldAfterFirstSweep?.id ?? null,
+            kept,
+          };
+        })
+      );
+
+      expect(result.sweeps).toEqual([1, 1, 0]);
+      expect(result.oldestAfterFirstSweep).toBeNull();
+      expect(result.oldAfterFirstSweep).toBe("snap_old");
+      expect(result.kept).toEqual(["ver_1", null, "snap_young", "snap_pinned"]);
+    });
+
+    it("keeps a reused draft snapshot through a sweep that removes its last run, so the run reusing it can pin it", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      await seedPublishedWorkflow(connection);
+
+      const earlierRun = await connection.run(
+        Effect.gen(function* () {
+          yield* freezeEmptyDraft("snap_shared");
+          return yield* pinDraftRun("snap_shared");
+        })
+      );
+      await setPublishedAt(database, "snap_shared", T0);
+      await setTimestamp(database, {
+        table: "workflow_executions",
+        column: "completed_at",
+        where: `id = '${earlierRun.id}'`,
+        at: T0,
+      });
+
+      // A draft start freezes the canvas, which reuses the snapshot the
+      // earlier run pinned, and inserts its own Execution in a later
+      // transaction. Both sweeps run in between: the first removes the earlier
+      // run, which leaves the snapshot unreferenced.
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          const executions = yield* ExecutionRepo;
+          const reused = yield* freezeEmptyDraft("snap_proposed");
+          const window = { olderThan: RETENTION_CUTOFF, limit: 10 };
+          const sweptRuns = yield* executions.sweepEndedExecutions(window);
+          const sweptSnapshots =
+            yield* workflows.sweepUnreferencedDraftSnapshots(window);
+          const pinned = yield* pinDraftRun(reused.id);
+          return { reused, sweptRuns, sweptSnapshots, pinned };
+        })
+      );
+
+      expect(result.reused.id).toBe("snap_shared");
+      expect(result.reused.publishedAt.getTime()).toBeGreaterThan(
+        RETENTION_CUTOFF.getTime()
+      );
+      expect(result.sweptRuns).toBe(1);
+      expect(result.sweptSnapshots).toBe(0);
+      expect(result.pinned.workflowVersionId).toBe("snap_shared");
     });
   });
 }

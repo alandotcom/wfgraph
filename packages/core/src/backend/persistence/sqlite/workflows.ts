@@ -1,4 +1,16 @@
-import { and, desc, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { Effect } from "effect";
 import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
@@ -741,6 +753,8 @@ export function makeSqliteWorkflowRepo(
           // Identical graphs encode to identical text. Reuse only a snapshot an
           // Execution already references: an unreferenced snapshot is private
           // to another start that may still delete it after a refused gate.
+          // The reuse moves `published_at` to now, as the contract on
+          // `WorkflowRepo.sweepUnreferencedDraftSnapshots` describes.
           const graph = encodeGraph(input.graph);
           const existing = yield* database
             .select()
@@ -763,7 +777,17 @@ export function makeSqliteWorkflowRepo(
             .orderBy(desc(workflowVersions.publishedAt))
             .limit(1)
             .get();
-          if (existing) return sqliteWorkflowVersion(existing);
+          if (existing) {
+            const reused = yield* database
+              .update(workflowVersions)
+              .set({ publishedAt: Date.now() })
+              .where(eq(workflowVersions.id, existing.id))
+              .returning()
+              .get();
+            if (!reused)
+              throw new Error("The reused draft snapshot is missing");
+            return sqliteWorkflowVersion(reused);
+          }
           yield* database.insert(workflowVersions).values({
             id: input.versionId,
             workflowId: input.workflowId,
@@ -800,6 +824,35 @@ export function makeSqliteWorkflowRepo(
           .returning({ id: workflowVersions.id })
           .get()
           .pipe(Effect.map(Boolean))
+      ),
+    sweepUnreferencedDraftSnapshots: (input) =>
+      store.write((database) =>
+        database
+          .delete(workflowVersions)
+          .where(
+            inArray(
+              workflowVersions.id,
+              database
+                .select({ id: workflowVersions.id })
+                .from(workflowVersions)
+                .where(
+                  and(
+                    // A literal, so the planner can match the partial index
+                    // on draft snapshots.
+                    sql`${workflowVersions.kind} = 'draft_snapshot'`,
+                    lt(workflowVersions.publishedAt, input.olderThan.getTime()),
+                    sql`not exists (
+                      select 1 from ${workflowExecutions}
+                      where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id}
+                    )`
+                  )
+                )
+                .orderBy(asc(workflowVersions.publishedAt))
+                .limit(input.limit)
+            )
+          )
+          .returning({ id: workflowVersions.id })
+          .pipe(Effect.map((swept) => swept.length))
       ),
   };
 }

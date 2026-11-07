@@ -1,0 +1,2 @@
+CREATE INDEX "workflow_executions_completed_at_idx" ON "workflow_executions" ("completed_at") WHERE "completed_at" is not null;--> statement-breakpoint
+CREATE INDEX "workflow_versions_draft_snapshot_published_at_idx" ON "workflow_versions" ("published_at") WHERE "kind" = 'draft_snapshot';

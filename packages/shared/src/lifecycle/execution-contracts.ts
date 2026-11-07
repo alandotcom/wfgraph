@@ -1,3 +1,5 @@
+import { difference } from "es-toolkit/array";
+
 /**
  * Every status an Execution can hold, and the one place the vocabulary is
  * written: the column's type, the RPC literals, and the run-history filter all
@@ -91,6 +93,16 @@ export const IN_FLIGHT_EXECUTION_STATUSES = [
   "running",
   "waiting",
 ] as const satisfies readonly WorkflowExecutionStatus[];
+
+/**
+ * The statuses a run ends in: every status outside
+ * `IN_FLIGHT_EXECUTION_STATUSES`. The run-history retention sweep deletes only
+ * a run holding one of these.
+ */
+export const TERMINAL_EXECUTION_STATUSES = difference(
+  WORKFLOW_EXECUTION_STATUSES,
+  IN_FLIGHT_EXECUTION_STATUSES
+);
 
 /**
  * What opened a run. A schedule tick and a manual start carry no payload, so

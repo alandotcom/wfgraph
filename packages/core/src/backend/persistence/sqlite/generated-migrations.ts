@@ -209,4 +209,16 @@ export const sqliteMigrations = [
     hash: "e5c54c3101a4a96d5c757674f47ed71ebccd1060122b74fe6056064ecc644d1f",
     name: "20261106190634_tranquil_eddie_brock",
   },
+  {
+    sql: [
+      "CREATE INDEX `executions_workflow_version_idx` ON `workflow_executions` (`workflow_version_id`);",
+      "\nCREATE INDEX `executions_completed_idx` ON `workflow_executions` (`completed_at`) WHERE \"workflow_executions\".\"completed_at\" is not null;",
+      "\nCREATE INDEX `versions_draft_snapshot_published_idx` ON `workflow_versions` (`published_at`) WHERE \"workflow_versions\".\"kind\" = 'draft_snapshot';",
+      "\nCREATE INDEX `workflows_published_version_idx` ON `workflows` (`published_version_id`);",
+    ],
+    bps: true,
+    folderMillis: 1794009657000,
+    hash: "718ed205df6885d5bc239594440f7388c6aa0104b37f1864a6c126b5e37961b4",
+    name: "20261107000057_daffy_magik",
+  },
 ] satisfies readonly MigrationMeta[];
