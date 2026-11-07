@@ -170,7 +170,9 @@ type CrossTableRepoMethods = {
    * wait states and schedule rows follow the runs by cascade; the audit rows
    * are deleted here beside them, in the same transaction, because half a
    * deletion leaves rows pointing at a run that is gone. The runs' schedule
-   * rows are locked first, in the order every fenced write takes them.
+   * rows are locked first, in the order every fenced write takes them, and
+   * the runs themselves next, in the order the run-history sweep takes them,
+   * before any audit row is deleted.
    */
   readonly deleteAllForWorkflow: (
     workflowId: string
@@ -499,6 +501,13 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                     )
                   )
                   .orderBy(asc(workflowExecutionSchedule.id))
+                  .for("update");
+                // Runs before audit rows, the order the run sweep's cascade takes.
+                await tx
+                  .select({ id: workflowExecutions.id })
+                  .from(workflowExecutions)
+                  .where(eq(workflowExecutions.workflowId, workflowId))
+                  .orderBy(asc(workflowExecutions.id))
                   .for("update");
                 await tx
                   .delete(workflowExecutionEvents)

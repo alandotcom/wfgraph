@@ -200,21 +200,26 @@ function deleteHarness() {
 
 describe("deleteAllForWorkflow", () => {
   // A pass's fenced write holds its schedule row before it writes the
-  // execution row, so the delete takes the schedule rows first too.
-  it("locks the runs' schedule rows, then deletes the audit rows and the runs, by workflow id, and nothing else", async () => {
+  // execution row, so the delete takes the schedule rows first too. The run
+  // sweep holds an execution row before its cascade reaches the run's audit
+  // rows, so the delete takes the execution rows before the audit rows.
+  it("locks the runs' schedule rows and then the runs, then deletes the audit rows and the runs, by workflow id, and nothing else", async () => {
     const { run, statements } = deleteHarness();
 
     await run();
 
-    expect(statements).toHaveLength(3);
+    expect(statements).toHaveLength(4);
     expect(statements[0]?.query).toContain(
       'from "workflow_execution_schedule"'
     );
     expect(statements[0]?.query).toContain("for update");
-    expect(statements[1]?.query).toContain(
+    expect(statements[1]?.query).toMatch(
+      /^select .* from "workflow_executions" .* order by "workflow_executions"."id" asc for update$/
+    );
+    expect(statements[2]?.query).toContain(
       'delete from "workflow_execution_events"'
     );
-    expect(statements[2]?.query).toContain('delete from "workflow_executions"');
+    expect(statements[3]?.query).toContain('delete from "workflow_executions"');
     for (const statement of statements) {
       expect(statement.query).toContain('"workflow_id" = $1');
       expect(statement.params).toEqual(["wf_1"]);

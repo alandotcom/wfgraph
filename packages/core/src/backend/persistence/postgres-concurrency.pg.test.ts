@@ -267,6 +267,89 @@ describePostgres("PostgreSQL concurrency", () => {
     }
   });
 
+  // The run sweep locks an ended run's row and then deletes it, and the
+  // cascade takes the run's audit rows. Deleting a workflow's runs takes the
+  // same rows, so it locks the run rows before it deletes any audit row.
+  it("deletes a workflow's runs behind the run sweep without a deadlock", async () => {
+    const schema = mintTestSchemaName();
+    const url = requirePostgresTestUrl();
+    await migrateWfGraphDatabase({ url, schema });
+    const connection = connect(
+      await wfPostgres({ url, schema }).open(conformanceCipher)
+    );
+    try {
+      await seedPublishedWorkflow(connection);
+      const executionId = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            supersededReason: "newer start",
+            ...notYetDue,
+          });
+          if (started.status !== "started") throw new Error("Start refused");
+          yield* executions.finishRun({
+            executionId: started.execution.id,
+            status: "completed",
+          });
+          return started.execution.id;
+        })
+      );
+      await withAdminClient(async (sweep) => {
+        await sweep.unsafe("begin");
+        let deletion: Promise<number> | undefined;
+        try {
+          const [backend] = await sweep.unsafe<{ pid: number }[]>(
+            "select pg_backend_pid() as pid"
+          );
+          if (!backend) throw new Error("Backend not found");
+          // The sweep's subquery: hold the ended run's row.
+          await sweep.unsafe(
+            `select id from "${schema}".workflow_executions where id = $1 for update`,
+            [executionId]
+          );
+          deletion = connection.run(
+            Effect.flatMap(ExecutionRepo, (executions) =>
+              executions.deleteAllForWorkflow("wf_1")
+            )
+          );
+          await vi.waitFor(async () => {
+            const blocked = await withAdminClient((observer) =>
+              observer.unsafe(
+                "select pid from pg_stat_activity where $1::integer = any(pg_blocking_pids(pid))",
+                [backend.pid]
+              )
+            );
+            expect(blocked.length).toBeGreaterThan(0);
+          });
+          // The sweep's delete, whose cascade takes the run's audit rows,
+          // which the deletion must not be holding while it waits for the run.
+          await sweep.unsafe(
+            `delete from "${schema}".workflow_executions where id = $1`,
+            [executionId]
+          );
+          await sweep.unsafe("commit");
+          expect(await deletion).toBe(0);
+        } finally {
+          await sweep.unsafe("rollback");
+          await deletion?.catch(() => undefined);
+        }
+      });
+    } finally {
+      await connection.close();
+      await withAdminClient((client) =>
+        client.unsafe(`drop schema "${schema}" cascade`)
+      );
+    }
+  });
+
   it("allows only one graph write for a shared draft revision", async () => {
     const racers = await openRacers(2);
     await racers[0].run(
