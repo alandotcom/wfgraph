@@ -160,7 +160,7 @@ function supersededReason(eventName: string | undefined): string {
  * its "run started" entry, and the reason a displaced run is ended with. An
  * Event's admission decision is the caller's to add.
  */
-export const startRequestFor = Effect.fn("startRequestFor")(function* (
+export const startRequestFor = Effect.fnUntraced(function* (
   input: Omit<StartWithConcurrencyInput, "logger">
 ) {
   const { workflow, start } = input;
@@ -192,23 +192,21 @@ export const startRequestFor = Effect.fn("startRequestFor")(function* (
  * already say `superseded` and lost their schedule rows in the start's own
  * transaction. Answers the ids whose entry the database refused.
  */
-export const announceDisplacedRuns = Effect.fn("announceDisplacedRuns")(
-  function* (input: {
-    workflowId: string;
-    supersededExecutionIds: string[];
-    eventName?: string | undefined;
-  }) {
-    if (input.supersededExecutionIds.length === 0) {
-      return { failedExecutionIds: [] as string[] };
-    }
-    return yield* announceSupersededRuns({
-      workflowId: input.workflowId,
-      executionIds: input.supersededExecutionIds,
-      reason: supersededReason(input.eventName),
-      eventName: input.eventName,
-    });
+export const announceDisplacedRuns = Effect.fnUntraced(function* (input: {
+  workflowId: string;
+  supersededExecutionIds: string[];
+  eventName?: string | undefined;
+}) {
+  if (input.supersededExecutionIds.length === 0) {
+    return { failedExecutionIds: [] as string[] };
   }
-);
+  return yield* announceSupersededRuns({
+    workflowId: input.workflowId,
+    executionIds: input.supersededExecutionIds,
+    reason: supersededReason(input.eventName),
+    eventName: input.eventName,
+  });
+});
 
 /**
  * A refusal, recorded.

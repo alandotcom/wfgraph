@@ -456,6 +456,15 @@ export type PassBodies<R> = {
   readonly [K in ScheduleKind]: PassBody<PassOf<K>, R>;
 };
 
+/** The `cron` log group that names a cron row's timer. */
+export function cronLogSubject(claimed: ClaimedCron) {
+  return {
+    workflow: claimed.workflowId,
+    expression: claimed.schedule.cron,
+    timeZone: claimed.schedule.timeZone,
+  };
+}
+
 /** What a pass needs to know about one kind of schedule row. */
 type PassKind<K extends ScheduleKind> = {
   /**
@@ -505,13 +514,7 @@ const PASS_KINDS: { readonly [K in ScheduleKind]: PassKind<K> } = {
     spanAttributes: (claimed) => ({
       "wfgraph.workflow.id": claimed.workflowId,
     }),
-    logSubject: (claimed) => ({
-      cron: {
-        workflow: claimed.workflowId,
-        expression: claimed.schedule.cron,
-        timeZone: claimed.schedule.timeZone,
-      },
-    }),
+    logSubject: (claimed) => ({ cron: cronLogSubject(claimed) }),
   },
 };
 
@@ -893,7 +896,7 @@ function logPassRecord(input: {
   result: PassResult;
 }): Effect.Effect<void> {
   const { claimed, workerId, ms, result } = input;
-  const record = passRecord(result);
+  const record = passRecord(result, claimed);
   if (record === null) return Effect.void;
   const annotations = passAnnotations(claimed, workerId);
   return Effect.logWithLevel(record.level)(
@@ -922,8 +925,15 @@ const RECORD_LEVEL: Record<UnavailableSeverity, PassRecord["level"]> = {
   warn: "Warn",
 };
 
-/** The record a pass writes for `result`, or null for none. */
-function passRecord(result: PassResult): PassRecord | null {
+/**
+ * The record a pass over `claimed` writes for `result`, or null for none. A
+ * cron row's `subject_failed` is a skipped slot, whose record the cron body
+ * writes itself.
+ */
+function passRecord(
+  result: PassResult,
+  claimed: ClaimedSchedule
+): PassRecord | null {
   switch (result.kind) {
     case "retry":
       return {
@@ -937,11 +947,13 @@ function passRecord(result: PassResult): PassRecord | null {
         outcome: { kind: result.kind, step: result.stepId },
       };
     case "subject_failed":
-      return {
-        level: "Error",
-        outcome: { kind: result.kind },
-        error: result.error,
-      };
+      return claimed.kind === "cron"
+        ? null
+        : {
+            level: "Error",
+            outcome: { kind: result.kind },
+            error: result.error,
+          };
     case "fence_refused":
       return result.fence === "version"
         ? { level: "Info", outcome: { kind: "version_refused" } }

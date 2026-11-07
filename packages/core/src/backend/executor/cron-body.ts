@@ -8,6 +8,7 @@
 import { Effect } from "effect";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
+  cronLogSubject,
   type CronPass,
   type OpenedBody,
   type PassBody,
@@ -33,21 +34,15 @@ const RECORDS = {
   { message: string; level: "Info" | "Warn" }
 >;
 
-/** The `run` group of a fire's record, for a fire that ran a slot. */
+/** The `run` group of a fire's record, for a fire that read a version. */
 function runFields(outcome: ScheduleFireOutcome) {
   switch (outcome.kind) {
     case "started":
       return {
-        run: {
-          execution: outcome.executionId,
-          version: outcome.versionId,
-          slot: outcome.slot,
-        },
+        run: { execution: outcome.executionId, version: outcome.versionId },
       };
     case "refused":
-      return { run: { version: outcome.versionId, slot: outcome.slot } };
-    case "skipped":
-      return { run: { slot: outcome.slot } };
+      return { run: { version: outcome.versionId } };
     default:
       return {};
   }
@@ -79,13 +74,21 @@ function outcomeFields(outcome: ScheduleFireOutcome) {
   }
 }
 
-/** The fire's one record, grouped by its timer, its run and its outcome. */
+/**
+ * The fire's one record, grouped by its timer, which carries the slot the
+ * fire was for, its run and its outcome. A skip after spent retries writes it
+ * too, so the pass writes no record of its own for that.
+ */
 function logFire(pass: CronPass, outcome: ScheduleFireOutcome) {
   const { message, level } = RECORDS[outcome.kind];
   return Effect.logWithLevel(level)(message).pipe(
     Effect.annotateLogs(
       omitUndefined({
         ...passAnnotations(pass.claimed, pass.workerId),
+        cron: omitUndefined({
+          ...cronLogSubject(pass.claimed),
+          slot: outcome.kind === "dropped" ? undefined : outcome.slot,
+        }),
         ...runFields(outcome),
         outcome: outcomeFields(outcome),
         error: outcome.kind === "skipped" ? outcome.error : undefined,
@@ -113,9 +116,13 @@ export function cronBody(): PassBody<CronPass, CronServices> {
     fail: (pass, error) =>
       skipSpentSchedule({
         writes: pass.writes,
+        workflowId: pass.claimed.workflowId,
         schedule: pass.claimed.schedule,
         error,
         now: pass.now(),
-      }).pipe(Effect.asVoid),
+      }).pipe(
+        Effect.tap((outcome) => logFire(pass, outcome)),
+        Effect.asVoid
+      ),
   };
 }

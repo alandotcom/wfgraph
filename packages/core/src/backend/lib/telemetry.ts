@@ -29,6 +29,8 @@ export type ServiceSpanFacts = {
   versionNumber?: number | undefined;
   /** The version a Migration moves runs onto. */
   targetVersionId?: string | undefined;
+  /** The slot a cron schedule's fire is for, as an ISO timestamp. */
+  scheduleSlot?: string | undefined;
   /**
    * How the call ended, in one machine word: a status, a refusal reason, or the
    * code a failure carries. Never a sentence, because a sentence quotes values.
@@ -55,6 +57,7 @@ export function annotateServiceSpan(
         "wfgraph.workflow.version.base_id": facts.baseVersionId,
         "wfgraph.workflow.version.number": facts.versionNumber,
         "wfgraph.workflow.version.target_id": facts.targetVersionId,
+        "wfgraph.schedule.slot": facts.scheduleSlot,
         "wfgraph.outcome": facts.outcome,
       },
       isNil

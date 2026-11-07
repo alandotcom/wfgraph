@@ -17,6 +17,7 @@ import {
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
+import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { runWorkflowExecutionPreflight } from "#src/backend/services/executions/preflight";
 import type {
@@ -141,6 +142,15 @@ export type ScheduleFireOutcome =
   | { kind: "skipped"; slot: Date; nextWakeAt: Date; error: string }
   | Extract<CronFire, { kind: "dropped" }>;
 
+/** Puts how a fire ended on its span: the outcome's kind and its slot. */
+function annotateFireOutcome(outcome: ScheduleFireOutcome) {
+  return annotateServiceSpan({
+    outcome: outcome.kind,
+    scheduleSlot:
+      outcome.kind === "dropped" ? undefined : encodeIsoTimestamp(outcome.slot),
+  });
+}
+
 /**
  * Fires the timer of `schedule`, which a cron pass over `workflowId` holds
  * the lease on, through the pass's `writes`, at the pass's clock `now`.
@@ -152,6 +162,7 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
     schedule: CronSchedule;
     now: () => Date;
   }) {
+    yield* annotateServiceSpan({ workflowId: input.workflowId });
     const { writes, schedule } = input;
     const workflows = yield* WorkflowRepo;
     const driver = yield* ExecutionDriver;
@@ -286,7 +297,10 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
 
     for (let tries = 0; tries < STALE_FIRE_ATTEMPTS; tries += 1) {
       const outcome = yield* attempt;
-      if (outcome.kind !== "stale") return outcome;
+      if (outcome.kind !== "stale") {
+        yield* annotateFireOutcome(outcome);
+        return outcome;
+      }
     }
     return yield* new PublicationKeptMoving({
       message:
@@ -296,18 +310,20 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
 );
 
 /**
- * Skips the slot of `schedule`'s timer through a cron pass's `writes`, at the
- * pass's clock `now`, for a fire whose retries are spent: a Refused Start says
- * starting it failed on every retry, and the timer moves on, recording
- * `error`.
+ * Skips the slot of `schedule`'s timer through the `writes` of a cron pass
+ * over `workflowId`, at the pass's clock `now`, for a fire whose retries are
+ * spent: a Refused Start says starting it failed on every retry, and the
+ * timer moves on, recording `error`.
  */
 export const skipSpentSchedule = Effect.fn("wfgraph.schedule.skip_spent")(
   function* (input: {
     writes: CronPassWrites;
+    workflowId: string;
     schedule: CronSchedule;
     error: string;
     now: Date;
   }) {
+    yield* annotateServiceSpan({ workflowId: input.workflowId });
     const { schedule, error } = input;
     const times = yield* slotTimesAt(schedule, input.now);
     yield* input.writes.skipCronSlot({
@@ -321,6 +337,7 @@ export const skipSpentSchedule = Effect.fn("wfgraph.schedule.skip_spent")(
       }),
     });
     const skipped: ScheduleFireOutcome = { kind: "skipped", ...times, error };
+    yield* annotateFireOutcome(skipped);
     return skipped;
   }
 );
