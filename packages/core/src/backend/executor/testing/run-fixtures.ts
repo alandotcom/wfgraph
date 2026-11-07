@@ -174,6 +174,7 @@ export function publishWorkflow(input: {
       catalogFingerprint: input.catalogFingerprint,
       graphDigest: `digest-${input.versionId}`,
       eventSubscriptions,
+      now: new Date(),
     });
   });
 }

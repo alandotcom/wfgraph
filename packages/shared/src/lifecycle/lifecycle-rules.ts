@@ -21,13 +21,16 @@ import {
   inheritConnections,
   stampConnection,
 } from "#src/lifecycle/event-connections";
-import { cronSchedulesSchema } from "#src/lifecycle/cron-schedule";
+import {
+  type CronSchedule,
+  cronSchedulesSchema,
+} from "#src/lifecycle/cron-schedule";
 import {
   entityEligibilitySchema,
   trackedEntitySchema,
 } from "#src/lifecycle/entity-eligibility";
 import { graphSplitsOnEvent } from "#src/lifecycle/event-split";
-import type { NodeConfigSource } from "#src/graph/node-config";
+import { isLifecycleNode, type NodeConfigSource } from "#src/graph/node-config";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 
 /**
@@ -211,6 +214,18 @@ export function hasStartSource(rules: LifecycleRules): boolean {
 /** Whether a clock starts runs of this workflow. */
 export function hasSchedule(rules: LifecycleRules | undefined): boolean {
   return (rules?.schedules?.length ?? 0) > 0;
+}
+
+/**
+ * The cron schedules a graph's entry node declares, or none when it carries no
+ * rules. A version's timers are written from this list when the version is
+ * published and when its workflow resumes.
+ */
+export function graphCronSchedules(
+  nodes: readonly NodeConfigSource[]
+): readonly CronSchedule[] {
+  const entry = nodes.find(isLifecycleNode);
+  return readLifecycleRules(entry?.data.config)?.schedules ?? [];
 }
 
 /**

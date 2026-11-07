@@ -32,6 +32,11 @@ import {
   workflows,
 } from "#src/backend/persistence/sqlite/schema";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { versionCronSchedules } from "#src/backend/services/executions/repo/cron-policy";
+import {
+  deleteCronTimers,
+  replaceCronTimers,
+} from "#src/backend/persistence/sqlite/executions/cron";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 const SQLITE_IN_FLIGHT_EXECUTION_STATUSES = IN_FLIGHT_EXECUTION_STATUSES.map(
@@ -298,12 +303,36 @@ export function makeSqliteWorkflowRepo(
             )
           )
       ),
-    setPaused: ({ workflowId, isPaused }) =>
+    setPaused: ({ workflowId, isPaused, now }) =>
       store.write((database) =>
-        database
-          .update(workflows)
-          .set({ isPaused: isPaused ? 1 : 0, updatedAt: Date.now() })
-          .where(eq(workflows.id, workflowId))
+        Effect.gen(function* () {
+          const updated = yield* database
+            .update(workflows)
+            .set({ isPaused: isPaused ? 1 : 0, updatedAt: Date.now() })
+            .where(eq(workflows.id, workflowId))
+            .returning({ publishedVersionId: workflows.publishedVersionId })
+            .get();
+          if (!updated) return;
+          if (isPaused) {
+            yield* deleteCronTimers(database, workflowId);
+            return;
+          }
+          const published =
+            updated.publishedVersionId === null
+              ? undefined
+              : yield* database
+                  .select()
+                  .from(workflowVersions)
+                  .where(eq(workflowVersions.id, updated.publishedVersionId))
+                  .get();
+          yield* replaceCronTimers(database, {
+            workflowId,
+            schedules: published
+              ? versionCronSchedules(sqliteWorkflowVersion(published).graph)
+              : [],
+            now,
+          });
+        })
       ),
     updateMetadata: ({ workflowId, updates }) =>
       store.write((database) =>
@@ -653,6 +682,14 @@ export function makeSqliteWorkflowRepo(
             input.eventSubscriptions
           );
           const workflow = yield* findWorkflow(database, input.workflowId);
+          yield* replaceCronTimers(database, {
+            workflowId: input.workflowId,
+            schedules:
+              workflow === null || workflow.isPaused
+                ? []
+                : versionCronSchedules(input.graph),
+            now: input.now,
+          });
           const versionRow = yield* database
             .select()
             .from(workflowVersions)

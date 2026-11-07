@@ -327,6 +327,13 @@ export const workflowExecutions = pgTable(
     output: jsonb("output").$type<JsonValue>(),
     error: text("error"),
     startedAt: timestamp("started_at").notNull().default(utcNow()),
+    /**
+     * The slot a scheduled run fired for: the latest time its cron schedule
+     * named at or before the fire. Null on every run a schedule did not start.
+     * A fire claimed late runs once, for the latest slot, so this can sit
+     * before `started_at`.
+     */
+    scheduledFor: timestamp("scheduled_for"),
     waitingAt: timestamp("waiting_at"),
     cancelledAt: timestamp("cancelled_at"),
     completedAt: timestamp("completed_at"),
@@ -708,14 +715,17 @@ export const workflowCancelDecisions = pgTable(
 
 /**
  * One claimable row per body the database executor still has to run: a
- * workflow run, which names its Execution, or an Event's delivery, which names
- * its inbox row.
+ * workflow run, which names its Execution, an Event's delivery, which names
+ * its inbox row, or a cron schedule's timer, which names its workflow and its
+ * schedule.
  *
  * A worker claims a due row under a lease, replays the body against the step
  * memo the row owns, and releases the row as `queued` or `waiting`. A run's
  * terminal write deletes its row, and a settled delivery deletes its own, and
  * the memo rows go with each, so the table holds the working set and its
- * partial indexes stay small.
+ * partial indexes stay small. A timer row lives while its schedule can fire:
+ * Publish writes and deletes timer rows, pause deletes them, resume writes
+ * them again, and each fire moves its row's `wake_at` to the next slot.
  */
 export const workflowExecutionSchedule = pgTable(
   "workflow_execution_schedule",
@@ -738,10 +748,24 @@ export const workflowExecutionSchedule = pgTable(
     inboxId: text("inbox_id").references(() => workflowEventInbox.id, {
       onDelete: "cascade",
     }),
+    /**
+     * The workflow whose schedule a `cron` row times. Only a `cron` row names
+     * one; a `run` or `delivery` row reaches its workflow through its subject.
+     */
+    workflowId: text("workflow_id").references(() => workflows.id, {
+      onDelete: "cascade",
+    }),
+    /**
+     * The 5-field cron expression and the IANA time zone of the schedule a
+     * `cron` row times. The pair identifies the schedule within its workflow,
+     * as the Lifecycle Rules key it. Null on every other kind.
+     */
+    cron: text("cron"),
+    timeZone: text("time_zone"),
     state: text("state").notNull().$type<ExecutionScheduleState>(),
     /**
      * When the row is due. Queued: now, or the end of a retry backoff. Waiting:
-     * the earliest deadline among the run's open parks.
+     * the earliest deadline among the run's open parks, or a timer's next slot.
      */
     wakeAt: timestamp("wake_at").notNull(),
     /**
@@ -783,12 +807,19 @@ export const workflowExecutionSchedule = pgTable(
     ),
     check(
       "workflow_execution_schedule_subject_check",
-      sql`(${table.kind} = 'run' and ${table.executionId} is not null and ${table.inboxId} is null) or (${table.kind} = 'delivery' and ${table.inboxId} is not null and ${table.executionId} is null)`
+      sql`(${table.kind} = 'run' and ${table.executionId} is not null and ${table.inboxId} is null and ${table.workflowId} is null and ${table.cron} is null and ${table.timeZone} is null) or (${table.kind} = 'delivery' and ${table.inboxId} is not null and ${table.executionId} is null and ${table.workflowId} is null and ${table.cron} is null and ${table.timeZone} is null) or (${table.kind} = 'cron' and ${table.workflowId} is not null and ${table.cron} is not null and ${table.timeZone} is not null and ${table.executionId} is null and ${table.inboxId} is null)`
     ),
     uniqueIndex("workflow_execution_schedule_execution_uidx").on(
       table.executionId
     ),
     uniqueIndex("workflow_execution_schedule_inbox_uidx").on(table.inboxId),
+    // One timer per schedule. A row of another kind leaves the three columns
+    // null, and nulls are distinct in a unique index, so only timers collide.
+    uniqueIndex("workflow_execution_schedule_cron_uidx").on(
+      table.workflowId,
+      table.cron,
+      table.timeZone
+    ),
     // The claim's question: the due rows, oldest first.
     index("workflow_execution_schedule_due_idx")
       .on(table.wakeAt, table.id)

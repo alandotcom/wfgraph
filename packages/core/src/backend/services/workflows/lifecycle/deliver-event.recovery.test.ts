@@ -302,6 +302,7 @@ function createExecution(): WorkflowExecution {
     cancelEventName: null,
     cancelPayload: null,
     workflowVersionId: "ver_1",
+    scheduledFor: null,
   };
 }
 

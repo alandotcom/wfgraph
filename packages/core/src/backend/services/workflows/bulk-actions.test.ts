@@ -29,7 +29,11 @@ function makeWorkflowRepo(
   const states = { ...pausedStates };
   const refused = new Set(unreadable);
   const calls = {
-    pauseWrites: [] as Array<{ workflowId: string; isPaused: boolean }>,
+    pauseWrites: [] as Array<{
+      workflowId: string;
+      isPaused: boolean;
+      now: Date;
+    }>,
     deletes: [] as string[],
   };
 
@@ -87,8 +91,10 @@ describe("postWorkflowsBulkLifecycle", () => {
             error: "Workflow not found",
           },
         ]);
+        // The write carries the service's clock, which the timers a resume
+        // writes are due after; the test clock starts at the epoch.
         assert.deepStrictEqual(repo.calls.pauseWrites, [
-          { workflowId: "wf_1", isPaused: true },
+          { workflowId: "wf_1", isPaused: true, now: new Date(0) },
         ]);
         assert.deepStrictEqual(repo.calls.deletes, []);
       })

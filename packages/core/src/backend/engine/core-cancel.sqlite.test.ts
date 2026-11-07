@@ -146,6 +146,7 @@ describe("a Canceled-side Wait over native SQLite", () => {
             catalogFingerprint: "catalog",
             graphDigest: "digest",
             eventSubscriptions: [],
+            now: new Date(),
           });
 
           const executions = yield* ExecutionRepo;

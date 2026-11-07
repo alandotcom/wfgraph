@@ -168,6 +168,7 @@ export function sqliteExecution(row: SqliteExecutionRow): WorkflowExecution {
     ...executionListColumns(row),
     workflowVersionId: row.workflowVersionId,
     deliveryId: row.deliveryId,
+    scheduledFor: row.scheduledFor === null ? null : new Date(row.scheduledFor),
     input: optionalJsonObject(row.input, "input"),
     output: optionalJsonValue(row.output, "output"),
     entityType: row.entityType,
@@ -250,7 +251,7 @@ export function sqliteExecutionSchedule(
   row: SqliteScheduleRow
 ): ExecutionSchedule {
   const { kind, state } = row;
-  if (kind !== "run" && kind !== "delivery") {
+  if (kind !== "run" && kind !== "delivery" && kind !== "cron") {
     throw new Error("Invalid SQLite schedule kind");
   }
   if (state !== "queued" && state !== "leased" && state !== "waiting") {
@@ -261,6 +262,9 @@ export function sqliteExecutionSchedule(
     kind,
     executionId: row.executionId,
     inboxId: row.inboxId,
+    workflowId: row.workflowId,
+    cron: row.cron,
+    timeZone: row.timeZone,
     state,
     wakeAt: new Date(row.wakeAt),
     attempt: row.attempt,

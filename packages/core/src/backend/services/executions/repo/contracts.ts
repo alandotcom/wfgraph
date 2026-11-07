@@ -25,7 +25,9 @@ import type {
   JsonValue,
 } from "@wfgraph/shared/types/json";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
+import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import type { CronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
 
 export type {
   ExecutionScheduleKind,
@@ -59,12 +61,19 @@ export type RunFence = OwnerFence & { executionId: string };
 export type DeliveryFence = OwnerFence & { inboxId: string };
 
 /**
- * The fence of a pass over a schedule row of any kind. A `RunFence` names the
- * Execution the row runs and a `DeliveryFence` the inbox row it delivers, and
- * a fenced write also checks that its schedule row still names it
- * (`leasedUnderFence` in `release-policy.ts`).
+ * The fence of a pass over a `cron` row, with the workflow whose schedule the
+ * row times. A write carrying it also checks that its schedule row still names
+ * that workflow.
  */
-export type PassFence = RunFence | DeliveryFence;
+export type CronFence = OwnerFence & { workflowId: string };
+
+/**
+ * The fence of a pass over a schedule row of any kind. A `RunFence` names the
+ * Execution the row runs, a `DeliveryFence` the inbox row it delivers and a
+ * `CronFence` the workflow it times, and a fenced write also checks that its
+ * schedule row still names it (`leasedUnderFence` in `release-policy.ts`).
+ */
+export type PassFence = RunFence | DeliveryFence | CronFence;
 
 /**
  * A write the engine's store makes, unfenced, so it is never refused for
@@ -81,8 +90,14 @@ export type ExecutionSchedule = {
   kind: ExecutionScheduleKind;
   /** The run the row schedules, and null on a `delivery` row. */
   executionId: string | null;
-  /** The inbox row the row delivers, and null on a `run` row. */
+  /** The inbox row the row delivers, and null on any other kind. */
   inboxId: string | null;
+  /** The workflow a `cron` row's schedule belongs to, and null on any other kind. */
+  workflowId: string | null;
+  /** A `cron` row's schedule expression, and null on any other kind. */
+  cron: string | null;
+  /** A `cron` row's schedule time zone, and null on any other kind. */
+  timeZone: string | null;
   state: ExecutionScheduleState;
   wakeAt: Date;
   /** The run's own failure count. See `workflow_execution_schedule.attempt`. */
@@ -148,7 +163,7 @@ export type ClaimedSchedule = ClaimedRun | ClaimedDelivery;
  * kind in a lane of its own, so runs and deliveries never wait for each
  * other's slots.
  */
-export type ClaimLane = { kind: ExecutionScheduleKind; limit: number };
+export type ClaimLane = { kind: ClaimedSchedule["kind"]; limit: number };
 
 /**
  * How a pass that did not end its row's subject ended, which decides the
@@ -508,6 +523,8 @@ export type NewExecution = {
    * time it is asked for.
    */
   deliveryId?: string | undefined;
+  /** The slot a scheduled run fired for. Absent on every other start. */
+  scheduledFor?: Date | undefined;
 } & (
   | {
       /** Stable typed identity for a workflow guarded by Entity Eligibility. */
@@ -820,3 +837,68 @@ export type InboxEvent = NewInboxEvent & {
 
 /** A delivery schedule row the poll gave to an inbox row that had none. */
 export type ScheduledDelivery = { scheduleId: string; inboxId: string };
+
+/** What a start answers when no Entity admission decision is in play. */
+export type ConcurrencyStartOutcome = Extract<
+  EntityStartOutcome,
+  { status: "started" | "refused" }
+>;
+
+/**
+ * What `ExecutionRepo.fireCronTimer` is asked to do: fire the leased timer
+ * `fence` names, admitting the run the way a manual start of the published
+ * version that names no Event is admitted.
+ */
+export type FireCronTimerInput = {
+  fence: CronFence;
+  /** The schedule the claimed row times. */
+  schedule: CronSchedule;
+  /**
+   * What the caller's preflight checked: the published version, the
+   * workflow's Published mode, and the schedules that version declares. The
+   * fire commits only while the workflow still publishes this version in this
+   * mode.
+   */
+  expected: {
+    versionId: string;
+    mode: WorkflowMode;
+    schedules: readonly CronSchedule[];
+  };
+  /**
+   * The run to open, as `startForEntity` takes it. The fire writes the slot it
+   * computed onto the row as `scheduledFor`.
+   */
+  start: Omit<StartForEntityInput, "now" | "admissionDecisionId">;
+  /**
+   * The Refused Start a first-wins refusal writes, as a workflow-scoped
+   * `run_refused` audit row. The fire adds the ids of the runs it deferred to
+   * under `inFlightExecutionIds`.
+   */
+  refusedEntry: { message: string; metadata: JsonObject };
+  /** The fire's clock: the slot it fires and the next wake are read from it. */
+  now: Date;
+};
+
+/**
+ * What a fire did.
+ *
+ * - `fired`: the transaction opened the run, or wrote a Refused Start, for
+ *   `slot`, and moved the timer to `nextWakeAt` with its lease released.
+ * - `stale`: the workflow publishes another version, or runs in another
+ *   Published mode, than the caller's preflight checked. Nothing was written,
+ *   and the caller checks the version it now publishes and fires again.
+ * - `dropped`: the timer should not exist, because its workflow is paused,
+ *   unpublished, or publishes no such schedule. The transaction deleted it.
+ */
+export type CronFire =
+  | {
+      kind: "fired";
+      slot: Date;
+      nextWakeAt: Date;
+      start: ConcurrencyStartOutcome;
+    }
+  | { kind: "stale" }
+  | {
+      kind: "dropped";
+      reason: "workflow_paused" | "not_published" | "schedule_unpublished";
+    };

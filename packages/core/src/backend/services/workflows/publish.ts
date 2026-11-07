@@ -1,9 +1,10 @@
 /**
  * Publish mints an immutable workflow version from the editor graph, rewrites
- * the event subscription index from that graph, and points the workflow at it.
+ * the event subscription index and the cron timers from that graph, and points
+ * the workflow at it.
  */
 
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import {
@@ -120,6 +121,7 @@ export const publishWorkflow = Effect.fn("wfgraph.workflow.publish")(
       graphDigest: digest,
       draftGraph: prepared.graph,
       eventSubscriptions: prepared.subscriptionsFor(workflowId),
+      now: new Date(yield* Clock.currentTimeMillis),
     });
     if (published && "stale" in published) {
       yield* logger.warn("Rejected workflow publish: version race", {

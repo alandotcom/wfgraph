@@ -43,9 +43,11 @@ export type ParkWake =
 
 /**
  * What a schedule row runs: a workflow run (`run`), which names its Execution,
- * or an Event's delivery to the workflows subscribed to it (`delivery`).
+ * an Event's delivery to the workflows subscribed to it (`delivery`), which
+ * names its inbox row, or the timer of one cron schedule (`cron`), which names
+ * its workflow and the schedule's expression and time zone.
  */
-export const EXECUTION_SCHEDULE_KINDS = ["run", "delivery"] as const;
+export const EXECUTION_SCHEDULE_KINDS = ["run", "delivery", "cron"] as const;
 export type ExecutionScheduleKind = (typeof EXECUTION_SCHEDULE_KINDS)[number];
 
 /**

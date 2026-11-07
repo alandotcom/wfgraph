@@ -56,6 +56,7 @@ it.each([false, true])(
             catalogFingerprint: "catalog",
             graphDigest: "graph",
             eventSubscriptions: [],
+            now: new Date(),
           });
           if (!version || "stale" in version || "draftConflict" in version) {
             throw new Error("Could not publish fixture");

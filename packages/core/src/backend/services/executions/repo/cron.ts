@@ -1,0 +1,288 @@
+/**
+ * The cron timer slice of `ExecutionRepo` on PostgreSQL, and the timer writes
+ * Publish and pause make inside their own transactions. `cron-policy.ts` makes
+ * the decisions. A fire locks its timer row first, as its fence, and reads the
+ * workflow row without locking it; Publish and pause lock the workflow row
+ * before the timer rows, so the two never wait on each other in a cycle.
+ */
+
+import { and, asc, eq, inArray } from "drizzle-orm";
+import { Effect } from "effect";
+import { workflowExecutionSchedule } from "#src/backend/lib/db/schema";
+import type {
+  WfGraphDatabase,
+  WfGraphTransaction,
+} from "#src/backend/lib/db/index";
+import type {
+  Database,
+  DatabaseError,
+  LeaseLost,
+} from "#src/backend/lib/effect/database";
+import type { CronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
+import { admitStart } from "#src/backend/services/executions/repo/admission";
+import { recordAuditEventWrite } from "#src/backend/services/executions/repo/audit";
+import {
+  cronFireVerdict,
+  cronSlotAt,
+  cronTimerChanges,
+  type CronTimerRow,
+  cronWakeAfter,
+} from "#src/backend/services/executions/repo/cron-policy";
+import {
+  writeFenced,
+  writeFencedSerializable,
+} from "#src/backend/services/executions/repo/schedule";
+import type {
+  CronFence,
+  CronFire,
+  ExecutionSchedule,
+  FireCronTimerInput,
+} from "#src/backend/services/executions/repo/contracts";
+
+type Executor = WfGraphDatabase | WfGraphTransaction;
+
+/** A workflow's timer rows. */
+function timersOf(workflowId: string) {
+  return and(
+    eq(workflowExecutionSchedule.kind, "cron"),
+    eq(workflowExecutionSchedule.workflowId, workflowId)
+  );
+}
+
+/** The lease columns a fire or a skipped slot clears as it moves the timer on. */
+const RELEASED_LEASE = {
+  state: "waiting",
+  attempt: 0,
+  runningStepId: null,
+  runningNodeId: null,
+  leaseExpiresAt: null,
+  ownerToken: null,
+  workerId: null,
+} as const;
+
+/**
+ * Writes one timer per schedule of `workflowId`, each `waiting` and due at the
+ * schedule's first slot after `now`, with no lease.
+ */
+export async function insertCronTimers(
+  tx: Executor,
+  input: {
+    workflowId: string;
+    schedules: readonly CronSchedule[];
+    now: Date;
+  }
+): Promise<void> {
+  if (input.schedules.length === 0) return;
+  await tx.insert(workflowExecutionSchedule).values(
+    input.schedules.map((schedule) => ({
+      kind: "cron" as const,
+      workflowId: input.workflowId,
+      cron: schedule.cron,
+      timeZone: schedule.timeZone,
+      state: "waiting" as const,
+      wakeAt: cronWakeAfter(schedule, input.now),
+    }))
+  );
+}
+
+/**
+ * Rewrites a workflow's timers to match `schedules`, in the transaction that
+ * activates the version declaring them, as `cronTimerChanges` decides. The
+ * caller has locked the workflow row and passes no schedules for a paused
+ * workflow, which keeps no timers.
+ */
+export async function replaceCronTimers(
+  tx: Executor,
+  input: {
+    workflowId: string;
+    schedules: readonly CronSchedule[];
+    now: Date;
+  }
+): Promise<void> {
+  const held = await tx
+    .select({
+      id: workflowExecutionSchedule.id,
+      cron: workflowExecutionSchedule.cron,
+      timeZone: workflowExecutionSchedule.timeZone,
+    })
+    .from(workflowExecutionSchedule)
+    .where(timersOf(input.workflowId))
+    .orderBy(asc(workflowExecutionSchedule.id))
+    .for("update");
+  const rows = held.flatMap((row): CronTimerRow[] =>
+    row.cron === null || row.timeZone === null
+      ? []
+      : [{ id: row.id, cron: row.cron, timeZone: row.timeZone }]
+  );
+  const { deleteIds, insert } = cronTimerChanges({
+    rows,
+    schedules: input.schedules,
+  });
+  if (deleteIds.length > 0) {
+    await tx
+      .delete(workflowExecutionSchedule)
+      .where(inArray(workflowExecutionSchedule.id, deleteIds));
+  }
+  await insertCronTimers(tx, { ...input, schedules: insert });
+}
+
+/** Deletes every timer of a workflow, as a pause does. */
+export async function deleteCronTimers(
+  tx: Executor,
+  workflowId: string
+): Promise<void> {
+  await tx.delete(workflowExecutionSchedule).where(timersOf(workflowId));
+}
+
+/**
+ * Locks every timer of a workflow, ordered by id, so a write that deletes the
+ * workflow takes them before the workflow row, in the order a fire takes them.
+ */
+export async function lockCronTimers(
+  tx: Executor,
+  workflowId: string
+): Promise<void> {
+  await tx
+    .select({ id: workflowExecutionSchedule.id })
+    .from(workflowExecutionSchedule)
+    .where(timersOf(workflowId))
+    .orderBy(asc(workflowExecutionSchedule.id))
+    .for("update");
+}
+
+/** The cron timer slice of `ExecutionRepo`. */
+export type CronRepoMethods = {
+  /**
+   * Fire the leased timer `input.fence` names, in one serializable
+   * transaction that first takes the timer row for update under the fence,
+   * so a pass that lost its lease writes nothing.
+   *
+   * It reads the workflow row and decides with `cronFireVerdict`. A fire that
+   * may commit admits the run as `startForEntity` does, for the latest slot
+   * at or before `input.now`, which it writes as the run's `scheduledFor`. A
+   * first-wins refusal writes the Refused Start instead. Either way the timer
+   * moves to its first slot after `input.now` and its lease is released, in
+   * the same transaction, so each slot fires once.
+   */
+  readonly fireCronTimer: (
+    input: FireCronTimerInput
+  ) => Effect.Effect<CronFire, DatabaseError | LeaseLost>;
+  /**
+   * Move the leased timer on to its first slot after `now` without firing,
+   * releasing its lease and recording `error`, for a fire that cannot run:
+   * its graph no longer passes the preflight, or its retries are spent.
+   * Answers the timer's next wake.
+   */
+  readonly skipCronSlot: (input: {
+    fence: CronFence;
+    schedule: CronSchedule;
+    error: string;
+    now: Date;
+  }) => Effect.Effect<Date, DatabaseError | LeaseLost>;
+  /** Every timer of a workflow, earliest `wake_at` first. */
+  readonly listCronTimers: (
+    workflowId: string
+  ) => Effect.Effect<ExecutionSchedule[], DatabaseError>;
+};
+
+export function makeCronMethods(
+  database: Database["Service"]
+): CronRepoMethods {
+  return {
+    fireCronTimer: (input) =>
+      writeFencedSerializable(
+        database,
+        input.fence,
+        async (tx): Promise<CronFire> => {
+          const thisTimer = eq(
+            workflowExecutionSchedule.id,
+            input.fence.scheduleId
+          );
+          const workflow = await tx.query.workflows.findFirst({
+            where: { id: input.fence.workflowId },
+            columns: { isPaused: true, publishedVersionId: true, mode: true },
+          });
+          // The timer row cascades with its workflow, and the fence found it.
+          if (!workflow) {
+            throw new Error("A leased timer's workflow is missing");
+          }
+          const verdict = cronFireVerdict(workflow, input);
+          if (verdict !== "fire") {
+            if (verdict.kind === "dropped") {
+              await tx.delete(workflowExecutionSchedule).where(thisTimer);
+            }
+            return verdict;
+          }
+
+          const [timer] = await tx
+            .select({ wakeAt: workflowExecutionSchedule.wakeAt })
+            .from(workflowExecutionSchedule)
+            .where(thisTimer);
+          const slot = cronSlotAt(
+            input.schedule,
+            input.now,
+            timer?.wakeAt ?? input.now
+          );
+          const nextWakeAt = cronWakeAfter(input.schedule, input.now);
+          const start = await admitStart(tx, {
+            ...input.start,
+            execution: { ...input.start.execution, scheduledFor: slot },
+            now: input.now,
+          });
+          if (start.status === "admission_refused") {
+            throw new Error(
+              "A scheduled start met an Entity admission refusal"
+            );
+          }
+          if (start.status === "refused") {
+            await recordAuditEventWrite({
+              workflowId: input.fence.workflowId,
+              eventType: "run_refused",
+              message: input.refusedEntry.message,
+              metadata: {
+                ...input.refusedEntry.metadata,
+                inFlightExecutionIds: start.inFlightExecutionIds,
+              },
+            })(tx);
+          }
+          await tx
+            .update(workflowExecutionSchedule)
+            .set({ ...RELEASED_LEASE, wakeAt: nextWakeAt, lastError: null })
+            .where(thisTimer);
+          return { kind: "fired", slot, nextWakeAt, start };
+        },
+        "update"
+      ),
+
+    skipCronSlot: (input) =>
+      writeFenced(
+        database,
+        input.fence,
+        async (tx) => {
+          const nextWakeAt = cronWakeAfter(input.schedule, input.now);
+          await tx
+            .update(workflowExecutionSchedule)
+            .set({
+              ...RELEASED_LEASE,
+              wakeAt: nextWakeAt,
+              lastError: input.error,
+            })
+            .where(eq(workflowExecutionSchedule.id, input.fence.scheduleId));
+          return nextWakeAt;
+        },
+        "update"
+      ),
+
+    listCronTimers: (workflowId) =>
+      database.query((db) =>
+        db
+          .select()
+          .from(workflowExecutionSchedule)
+          .where(timersOf(workflowId))
+          .orderBy(
+            asc(workflowExecutionSchedule.wakeAt),
+            asc(workflowExecutionSchedule.id)
+          )
+      ),
+  };
+}

@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
@@ -41,7 +41,8 @@ const itemLoggerFor = (input: {
  *
  * A pause that changes nothing writes nothing: the read that decides is also
  * the read that tells a missing workflow from a present one, and this path is
- * asked about whole selections at a time.
+ * asked about whole selections at a time. A pause deletes the workflow's cron
+ * timers and a resume writes them again, in the write that sets the flag.
  *
  * A refused query is this workflow's verdict and travels no further, which is
  * the same boundary the delete branch gets from `deleteWorkflow`. Without it one
@@ -71,6 +72,7 @@ const setPausedState = Effect.fn("setWorkflowPausedState")(
       yield* repo.setPaused({
         workflowId: input.workflowId,
         isPaused: input.isPaused,
+        now: new Date(yield* Clock.currentTimeMillis),
       });
     }
 

@@ -1524,6 +1524,7 @@ export function describeExecutionWaitConformance({
             catalogFingerprint: "catalog",
             graphDigest: "digest-2",
             eventSubscriptions: [],
+            now: new Date(),
           });
 
           const started = yield* executions.startForEntity({

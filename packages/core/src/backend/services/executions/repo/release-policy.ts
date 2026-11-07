@@ -245,14 +245,22 @@ type LeaseColumns = {
   id: Column;
   executionId: Column;
   inboxId: Column;
+  workflowId: Column;
   state: Column;
   ownerToken: Column;
 };
 
+/** The subject column a fence holds its schedule row to, with its value. */
+function fencedSubject(columns: LeaseColumns, fence: PassFence): SQL {
+  if ("executionId" in fence) return eq(columns.executionId, fence.executionId);
+  if ("inboxId" in fence) return eq(columns.inboxId, fence.inboxId);
+  return eq(columns.workflowId, fence.workflowId);
+}
+
 /**
  * The schedule row `fence` names, while it is still `leased` under the
- * fence's owner token and still names the fence's Execution or inbox row.
- * Every fenced write of either backend stands on a row this selects.
+ * fence's owner token and still names the fence's Execution, inbox row or
+ * workflow. Every fenced write of either backend stands on a row this selects.
  */
 export function leasedUnderFence(
   columns: LeaseColumns,
@@ -260,9 +268,7 @@ export function leasedUnderFence(
 ): SQL | undefined {
   return and(
     eq(columns.id, fence.scheduleId),
-    "executionId" in fence
-      ? eq(columns.executionId, fence.executionId)
-      : eq(columns.inboxId, fence.inboxId),
+    fencedSubject(columns, fence),
     eq(columns.state, "leased"),
     eq(columns.ownerToken, fence.ownerToken)
   );

@@ -322,6 +322,7 @@ function describeCases(
               catalogFingerprint: actions.catalogFingerprint(),
               graphDigest: "digest-2",
               eventSubscriptions: [],
+              now: new Date(),
             });
           })
         ),

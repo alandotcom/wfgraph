@@ -88,6 +88,7 @@ describePostgres("PostgreSQL concurrency", () => {
             catalogFingerprint: "catalog",
             graphDigest: "digest-2",
             eventSubscriptions: [],
+            now: new Date(),
           });
           const started = yield* executions.startForEntity({
             execution: {
@@ -541,6 +542,7 @@ describePostgres("PostgreSQL concurrency", () => {
             catalogFingerprint: "catalog",
             graphDigest: `digest_${version}`,
             eventSubscriptions: [],
+            now: new Date(),
           });
         })
       );
@@ -605,6 +607,7 @@ describePostgres("PostgreSQL concurrency", () => {
             catalogFingerprint: "catalog",
             graphDigest: `digest_${versionId}`,
             eventSubscriptions: [],
+            now: new Date(),
           });
         })
       );

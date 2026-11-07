@@ -129,11 +129,12 @@ export function writeFenced<A>(
  */
 export function writeFencedSerializable<A>(
   database: Database["Service"],
-  fence: RunFence,
-  write: (tx: WfGraphTransaction) => Promise<A>
+  fence: PassFence,
+  write: (tx: WfGraphTransaction) => Promise<A>,
+  lock: LeaseLock = "share"
 ): Effect.Effect<A, DatabaseError | LeaseLost> {
   return serializableTransaction(database, async (tx): Promise<Owned<A>> =>
-    (await holdsLease(tx, fence, "share"))
+    (await holdsLease(tx, fence, lock))
       ? { owned: true, value: await write(tx) }
       : { owned: false }
   ).pipe(Effect.flatMap(answerOwned));

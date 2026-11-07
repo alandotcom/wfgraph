@@ -402,6 +402,9 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   findInboxEvent: refuse("findInboxEvent"),
   sweepEndedExecutions: refuse("sweepEndedExecutions"),
   sweepWorkflowAuditEvents: refuse("sweepWorkflowAuditEvents"),
+  fireCronTimer: refuse("fireCronTimer"),
+  skipCronSlot: refuse("skipCronSlot"),
+  listCronTimers: refuse("listCronTimers"),
   // `fenced` answers a set of writes, each of which dies when called, the way
   // every other method here does.
   fenced: () => ({

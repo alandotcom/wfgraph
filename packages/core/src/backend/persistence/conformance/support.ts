@@ -236,6 +236,7 @@ export function seedPublishedWorkflow(
         catalogFingerprint: "catalog",
         graphDigest: "digest",
         eventSubscriptions: options.eventSubscriptions ?? [],
+        now: new Date(),
       });
     })
   );
@@ -259,6 +260,7 @@ export const publishSecondVersion = Effect.gen(function* () {
     catalogFingerprint: "catalog",
     graphDigest: "digest-2",
     eventSubscriptions: [],
+    now: new Date(),
   });
 });
 

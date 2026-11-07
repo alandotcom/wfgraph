@@ -25,6 +25,12 @@ import {
 import { makeWorkflowVersionQueries } from "#src/backend/services/workflows/repo/version-queries";
 import type { WorkflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
+import {
+  deleteCronTimers,
+  lockCronTimers,
+  replaceCronTimers,
+} from "#src/backend/services/executions/repo/cron";
+import { versionCronSchedules } from "#src/backend/services/executions/repo/cron-policy";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 export { type WorkflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
@@ -207,9 +213,16 @@ export class WorkflowRepo extends Context.Service<
     readonly findPausedById: (
       workflowId: string
     ) => Effect.Effect<{ id: string; isPaused: boolean } | null, DatabaseError>;
+    /**
+     * Pause or resume a workflow, with its cron timers in the same
+     * transaction: a pause deletes them, and a resume writes one per schedule
+     * of the published version, due at its first slot after `now`, keeping
+     * any the workflow already has. A workflow never published has none.
+     */
     readonly setPaused: (input: {
       workflowId: string;
       isPaused: boolean;
+      now: Date;
     }) => Effect.Effect<void, DatabaseError>;
     /** Updates fields that do not change the editable graph revision. */
     readonly updateMetadata: (input: {
@@ -222,6 +235,10 @@ export class WorkflowRepo extends Context.Service<
       expectedDraftRevision: number;
       updates: WorkflowUpdateData & { graph: SerializedWorkflowGraph };
     }) => Effect.Effect<WorkflowDraftWriteResult, DatabaseError>;
+    /**
+     * Delete a workflow, and everything that cascades with it. Its cron
+     * timers are locked first, in the order a fire takes them.
+     */
     readonly deleteById: (
       workflowId: string
     ) => Effect.Effect<void, DatabaseError>;
@@ -336,7 +353,12 @@ export class WorkflowRepo extends Context.Service<
     /**
      * Claim a new version number (optimistic: insert only if still free), then
      * point the workflow at it only when the reviewed publication pointer still
-     * matches, align the draft, and rewrite subscriptions.
+     * matches, align the draft, and rewrite subscriptions and cron timers.
+     *
+     * The timers follow the schedules `graph` declares: the timer of an
+     * unchanged schedule is kept, lease and all, the timer of an edited or
+     * removed one is deleted, and an edited or added schedule gets a timer due
+     * at its first slot after `now`. A paused workflow keeps no timers.
      */
     readonly insertPublishedVersion: (input: {
       workflowId: string;
@@ -351,6 +373,7 @@ export class WorkflowRepo extends Context.Service<
       graphDigest: string;
       draftGraph: SerializedWorkflowGraph;
       eventSubscriptions: WorkflowEventSubscriptionRow[];
+      now: Date;
     }) => Effect.Effect<InsertPublishedVersionResult, DatabaseError>;
   } & DraftSnapshotRepoMethods
 >()("@wfgraph/core/WorkflowRepo") {}
@@ -623,12 +646,36 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
           }),
 
         setPaused: (input) =>
-          database.query(async (db) => {
-            await db
-              .update(workflows)
-              .set({ isPaused: input.isPaused, updatedAt: new Date() })
-              .where(eq(workflows.id, input.workflowId));
-          }),
+          database.query((db) =>
+            db.transaction(async (tx) => {
+              const [updated] = await tx
+                .update(workflows)
+                .set({ isPaused: input.isPaused, updatedAt: new Date() })
+                .where(eq(workflows.id, input.workflowId))
+                .returning({
+                  publishedVersionId: workflows.publishedVersionId,
+                });
+              if (!updated) return;
+              if (input.isPaused) {
+                await deleteCronTimers(tx, input.workflowId);
+                return;
+              }
+              const published =
+                updated.publishedVersionId === null
+                  ? undefined
+                  : await tx.query.workflowVersions.findFirst({
+                      where: { id: updated.publishedVersionId },
+                      columns: { graph: true },
+                    });
+              await replaceCronTimers(tx, {
+                workflowId: input.workflowId,
+                schedules: published
+                  ? versionCronSchedules(published.graph)
+                  : [],
+                now: input.now,
+              });
+            })
+          ),
 
         updateMetadata: (input) =>
           database.query(async (db) => {
@@ -679,9 +726,15 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
           ),
 
         deleteById: (workflowId) =>
-          database.query(async (db) => {
-            await db.delete(workflows).where(eq(workflows.id, workflowId));
-          }),
+          database.query((db) =>
+            db.transaction(async (tx) => {
+              // A fire holds its timer row and then reads the workflow row, so
+              // the timers go first here, or the cascade would take them after
+              // the workflow row and the two could deadlock.
+              await lockCronTimers(tx, workflowId);
+              await tx.delete(workflows).where(eq(workflows.id, workflowId));
+            })
+          ),
 
         findCurrent,
 
@@ -805,6 +858,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                   expectedDraftRevision: input.expectedDraftRevision,
                   draftGraph: input.draftGraph,
                   eventSubscriptions: input.eventSubscriptions,
+                  now: input.now,
                 });
                 if (activated) {
                   return activated;
@@ -842,6 +896,7 @@ async function activatePublishedVersion(
     expectedDraftRevision: number;
     draftGraph: SerializedWorkflowGraph;
     eventSubscriptions: WorkflowEventSubscriptionRow[];
+    now: Date;
   }
 ): Promise<{ workflow: Workflow; version: PublishedWorkflowVersion } | null> {
   const updated = await tx
@@ -879,6 +934,14 @@ async function activatePublishedVersion(
       .insert(workflowEventSubscriptions)
       .values(input.eventSubscriptions);
   }
+
+  await replaceCronTimers(tx, {
+    workflowId: input.workflowId,
+    schedules: workflow.isPaused
+      ? []
+      : versionCronSchedules(input.version.graph),
+    now: input.now,
+  });
 
   return { workflow, version: input.version };
 }

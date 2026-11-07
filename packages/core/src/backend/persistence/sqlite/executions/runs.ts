@@ -167,6 +167,7 @@ export function insertExecution(
         output: encodeJson(terminal?.output),
         error: terminal?.error ?? null,
         startedAt: now,
+        scheduledFor: input.scheduledFor?.getTime() ?? null,
         cancelledAt: status === "canceled" ? now : null,
         completedAt: isTerminal ? now : null,
       })

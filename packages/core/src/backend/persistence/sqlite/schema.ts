@@ -126,6 +126,7 @@ export const workflowExecutions = sqliteTable(
     output: text("output"),
     error: text("error"),
     startedAt: integer("started_at").notNull(),
+    scheduledFor: integer("scheduled_for"),
     waitingAt: integer("waiting_at"),
     cancelledAt: integer("cancelled_at"),
     completedAt: integer("completed_at"),
@@ -389,6 +390,11 @@ export const workflowExecutionSchedule = sqliteTable(
     inboxId: text("inbox_id").references(() => workflowEventInbox.id, {
       onDelete: "cascade",
     }),
+    workflowId: text("workflow_id").references(() => workflows.id, {
+      onDelete: "cascade",
+    }),
+    cron: text("cron"),
+    timeZone: text("time_zone"),
     state: text("state").notNull(),
     wakeAt: integer("wake_at").notNull(),
     attempt: integer("attempt").notNull().default(0),
@@ -402,6 +408,11 @@ export const workflowExecutionSchedule = sqliteTable(
   (table) => [
     uniqueIndex("schedule_execution_uidx").on(table.executionId),
     uniqueIndex("schedule_inbox_uidx").on(table.inboxId),
+    uniqueIndex("schedule_cron_uidx").on(
+      table.workflowId,
+      table.cron,
+      table.timeZone
+    ),
     index("schedule_due_idx")
       .on(table.wakeAt, table.id)
       .where(sql`${table.state} in ('queued', 'waiting')`),
@@ -410,7 +421,7 @@ export const workflowExecutionSchedule = sqliteTable(
       .where(sql`${table.state} = 'leased'`),
     check(
       "workflow_execution_schedule_kind_check",
-      sql`${table.kind} in ('run', 'delivery')`
+      sql`${table.kind} in ('run', 'delivery', 'cron')`
     ),
     check(
       "workflow_execution_schedule_state_check",
@@ -418,7 +429,7 @@ export const workflowExecutionSchedule = sqliteTable(
     ),
     check(
       "workflow_execution_schedule_subject_check",
-      sql`(${table.kind} = 'run' and ${table.executionId} is not null and ${table.inboxId} is null) or (${table.kind} = 'delivery' and ${table.inboxId} is not null and ${table.executionId} is null)`
+      sql`(${table.kind} = 'run' and ${table.executionId} is not null and ${table.inboxId} is null and ${table.workflowId} is null and ${table.cron} is null and ${table.timeZone} is null) or (${table.kind} = 'delivery' and ${table.inboxId} is not null and ${table.executionId} is null and ${table.workflowId} is null and ${table.cron} is null and ${table.timeZone} is null) or (${table.kind} = 'cron' and ${table.workflowId} is not null and ${table.cron} is not null and ${table.timeZone} is not null and ${table.executionId} is null and ${table.inboxId} is null)`
     ),
   ]
 );

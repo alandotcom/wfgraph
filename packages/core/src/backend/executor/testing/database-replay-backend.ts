@@ -97,6 +97,7 @@ export function openDatabaseReplayBackend(
           catalogFingerprint: "catalog",
           graphDigest: "digest",
           eventSubscriptions: [],
+          now: new Date(),
         });
         const started = yield* executions.startForEntity({
           execution: {

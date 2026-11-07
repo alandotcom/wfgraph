@@ -12,7 +12,6 @@ import { Effect, Layer, Schema } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type { ExecutionScheduleKind } from "@wfgraph/shared/lifecycle/execution-schedule";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { defineAction } from "#src/backend/extensions/define-action";
@@ -46,6 +45,7 @@ import type {
   ConformanceConnection,
 } from "#src/backend/persistence/conformance/support";
 import {
+  type ClaimLane,
   ExecutionRepo,
   type InboxEvent,
 } from "#src/backend/services/executions/repo";
@@ -360,7 +360,7 @@ export function useDeliveryHarness(
           const repo = yield* ExecutionRepo;
           const workflows = yield* WorkflowRepo;
           const worker = options.wrap?.(repo) ?? repo;
-          const claimOne = (kind: ExecutionScheduleKind) =>
+          const claimOne = (kind: ClaimLane["kind"]) =>
             worker.claimDue({
               lanes: [{ kind, limit: 1 }],
               workerId: "worker_1",

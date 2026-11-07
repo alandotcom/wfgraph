@@ -102,6 +102,7 @@ describe("published Event metadata on native SQLite", () => {
             graphDigest: "graph_1",
             draftGraph: graphV1,
             eventSubscriptions: v1Subscriptions,
+            now: new Date(),
           });
           if (!v1 || "stale" in v1 || "draftConflict" in v1) {
             throw new Error("Could not publish v1");
@@ -128,6 +129,7 @@ describe("published Event metadata on native SQLite", () => {
               workflowId: WORKFLOW_ID,
               nodes: lifecycleNodes("current.id"),
             }),
+            now: new Date(),
           });
           if (!v2 || "stale" in v2 || "draftConflict" in v2) {
             throw new Error("Could not publish v2");

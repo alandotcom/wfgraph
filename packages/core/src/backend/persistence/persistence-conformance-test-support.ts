@@ -20,6 +20,7 @@ import { describeExecutionFencingConformance } from "#src/backend/persistence/co
 import { describeExecutionProducerConformance } from "#src/backend/persistence/conformance/execution-producers";
 import { describeExecutionInboxConformance } from "#src/backend/persistence/conformance/execution-inbox";
 import { describeExecutionRetentionConformance } from "#src/backend/persistence/conformance/execution-retention";
+import { describeExecutionCronConformance } from "#src/backend/persistence/conformance/execution-cron";
 import { describeDraftSnapshotConformance } from "#src/backend/persistence/conformance/draft-snapshots";
 import { describeIntegrationConformance } from "#src/backend/persistence/conformance/integrations";
 
@@ -73,6 +74,7 @@ export function describePersistenceConformance(
     describeExecutionProducerConformance(registry);
     describeExecutionInboxConformance(registry);
     describeExecutionRetentionConformance(registry);
+    describeExecutionCronConformance(registry);
     describeIntegrationConformance(registry);
   });
 }

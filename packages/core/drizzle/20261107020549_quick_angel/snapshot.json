@@ -1,0 +1,310 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "8fa2bf71-159c-444f-a1a7-d579f2f01b21",
+  "prevIds": [
+    "147cbb82-8832-406d-92d1-caee2f13e25d"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_execution_schedule",
+        "workflow_id"
+      ],
+      "writes": [
+        "s|col|public.workflow_execution_schedule.workflow_id",
+        "n|col|public.workflow_execution_schedule.workflow_id",
+        "e|col|public.workflow_execution_schedule.workflow_id"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_execution_schedule",
+        "cron"
+      ],
+      "writes": [
+        "s|col|public.workflow_execution_schedule.cron",
+        "n|col|public.workflow_execution_schedule.cron",
+        "e|col|public.workflow_execution_schedule.cron"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_execution_schedule",
+        "time_zone"
+      ],
+      "writes": [
+        "s|col|public.workflow_execution_schedule.time_zone",
+        "n|col|public.workflow_execution_schedule.time_zone",
+        "e|col|public.workflow_execution_schedule.time_zone"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_executions",
+        "scheduled_for"
+      ],
+      "writes": [
+        "s|col|public.workflow_executions.scheduled_for",
+        "n|col|public.workflow_executions.scheduled_for",
+        "e|col|public.workflow_executions.scheduled_for"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_execution_schedule",
+        "workflow_execution_schedule_cron_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_execution_schedule_cron_uidx",
+        "n|idx|public.workflow_execution_schedule_cron_uidx",
+        "e|idx|public.workflow_execution_schedule_cron_uidx",
+        "n|rel|public.workflow_execution_schedule_cron_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public",
+        "n|col|public.workflow_execution_schedule.workflow_id",
+        "n|col|public.workflow_execution_schedule.cron",
+        "n|col|public.workflow_execution_schedule.time_zone"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_schedule"
+      ],
+      "writes": [
+        "s|fk|public.workflow_execution_schedule.workflow_execution_schedule_workflow_id_workflows_id_fkey",
+        "n|fk|public.workflow_execution_schedule.workflow_execution_schedule_workflow_id_workflows_id_fkey",
+        "e|fk|public.workflow_execution_schedule.workflow_execution_schedule_workflow_id_workflows_id_fkey",
+        "n|con|public.workflow_execution_schedule.workflow_execution_schedule_workflow_id_workflows_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public",
+        "n|tbl|public.workflows",
+        "n|sch|public",
+        "n|col|public.workflow_execution_schedule.workflow_id",
+        "n|col|public.workflows.id",
+        "e|uniqueness|public.workflows.id"
+      ]
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_schedule"
+      ],
+      "writes": [
+        "s|ck|public.workflow_execution_schedule.workflow_execution_schedule_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public",
+        "n|col|public.workflow_execution_schedule.kind",
+        "n|col|public.workflow_execution_schedule.cron",
+        "e|col|public.workflow_execution_schedule.kind"
+      ],
+      "sqlHash": "aa6d09c418a59a98"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_schedule"
+      ],
+      "writes": [
+        "s|ck|public.workflow_execution_schedule.workflow_execution_schedule_subject_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public",
+        "n|col|public.workflow_execution_schedule.kind",
+        "n|col|public.workflow_execution_schedule.execution_id",
+        "n|col|public.workflow_execution_schedule.inbox_id",
+        "n|col|public.workflow_execution_schedule.workflow_id",
+        "n|col|public.workflow_execution_schedule.cron",
+        "n|col|public.workflow_execution_schedule.time_zone",
+        "e|col|public.workflow_execution_schedule.kind",
+        "e|col|public.workflow_execution_schedule.execution_id",
+        "e|col|public.workflow_execution_schedule.inbox_id"
+      ],
+      "sqlHash": "f79ff2639e44b0ef"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "workflow_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "cron",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "time_zone",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_executions",
+        "name": "scheduled_for",
+        "type": "timestamp",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "workflow_execution_schedule_cron_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "workflow_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "cron",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "time_zone",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "workflow_execution_schedule_workflow_id_workflows_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "workflow_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "workflows",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"workflow_execution_schedule\",\"workflow_execution_schedule_kind_check\"]",
+      "set": {
+        "value": "\"kind\" in ('run', 'delivery', 'cron')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"workflow_execution_schedule\",\"workflow_execution_schedule_subject_check\"]",
+      "set": {
+        "value": "(\"kind\" = 'run' and \"execution_id\" is not null and \"inbox_id\" is null and \"workflow_id\" is null and \"cron\" is null and \"time_zone\" is null) or (\"kind\" = 'delivery' and \"inbox_id\" is not null and \"execution_id\" is null and \"workflow_id\" is null and \"cron\" is null and \"time_zone\" is null) or (\"kind\" = 'cron' and \"workflow_id\" is not null and \"cron\" is not null and \"time_zone\" is not null and \"execution_id\" is null and \"inbox_id\" is null)"
+      }
+    }
+  ]
+}

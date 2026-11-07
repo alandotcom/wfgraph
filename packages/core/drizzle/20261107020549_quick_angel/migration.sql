@@ -1,0 +1,8 @@
+ALTER TABLE "workflow_execution_schedule" ADD COLUMN "workflow_id" text;--> statement-breakpoint
+ALTER TABLE "workflow_execution_schedule" ADD COLUMN "cron" text;--> statement-breakpoint
+ALTER TABLE "workflow_execution_schedule" ADD COLUMN "time_zone" text;--> statement-breakpoint
+ALTER TABLE "workflow_executions" ADD COLUMN "scheduled_for" timestamp;--> statement-breakpoint
+CREATE UNIQUE INDEX "workflow_execution_schedule_cron_uidx" ON "workflow_execution_schedule" ("workflow_id","cron","time_zone");--> statement-breakpoint
+ALTER TABLE "workflow_execution_schedule" ADD CONSTRAINT "workflow_execution_schedule_workflow_id_workflows_id_fkey" FOREIGN KEY ("workflow_id") REFERENCES "workflows"("id") ON DELETE CASCADE;--> statement-breakpoint
+ALTER TABLE "workflow_execution_schedule" DROP CONSTRAINT "workflow_execution_schedule_kind_check", ADD CONSTRAINT "workflow_execution_schedule_kind_check" CHECK ("kind" in ('run', 'delivery', 'cron'));--> statement-breakpoint
+ALTER TABLE "workflow_execution_schedule" DROP CONSTRAINT "workflow_execution_schedule_subject_check", ADD CONSTRAINT "workflow_execution_schedule_subject_check" CHECK (("kind" = 'run' and "execution_id" is not null and "inbox_id" is null and "workflow_id" is null and "cron" is null and "time_zone" is null) or ("kind" = 'delivery' and "inbox_id" is not null and "execution_id" is null and "workflow_id" is null and "cron" is null and "time_zone" is null) or ("kind" = 'cron' and "workflow_id" is not null and "cron" is not null and "time_zone" is not null and "execution_id" is null and "inbox_id" is null));

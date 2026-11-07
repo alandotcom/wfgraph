@@ -121,6 +121,7 @@ export function describeWorkflowConformance({
             catalogFingerprint: "catalog",
             graphDigest: "digest-2",
             eventSubscriptions: [],
+            now: new Date(),
           });
           yield* workflows.insertPublishedVersion({
             workflowId: "wf_1",
@@ -133,6 +134,7 @@ export function describeWorkflowConformance({
             catalogFingerprint: "catalog",
             graphDigest: "digest-3",
             eventSubscriptions: [],
+            now: new Date(),
           });
           const snapshot = yield* workflows.freezeDraftSnapshot({
             workflowId: "wf_1",
@@ -232,6 +234,7 @@ export function describeWorkflowConformance({
             catalogFingerprint: "catalog",
             graphDigest: "other-digest",
             eventSubscriptions: [],
+            now: new Date(),
           });
           yield* executions.startForEntity({
             execution: {
@@ -388,6 +391,7 @@ export function describeWorkflowConformance({
               catalogFingerprint: "catalog",
               graphDigest: "same-graph",
               eventSubscriptions: [],
+              now: new Date(),
             });
           }
           yield* workflows.insertPublishedVersion({
@@ -401,6 +405,7 @@ export function describeWorkflowConformance({
             catalogFingerprint: "catalog",
             graphDigest: "same-graph",
             eventSubscriptions: [],
+            now: new Date(),
           });
 
           return {
@@ -476,6 +481,7 @@ export function describeWorkflowConformance({
                   connectionId: null,
                 },
               ],
+              now: new Date(),
             });
           })
         )
@@ -516,6 +522,7 @@ export function describeWorkflowConformance({
             catalogFingerprint: "catalog",
             graphDigest: "digest",
             eventSubscriptions: [],
+            now: new Date(),
           });
           // This one is never published, the state a canvas test run is also
           // in: the draft read has to answer it while the published read does
@@ -551,6 +558,7 @@ export function describeWorkflowConformance({
               catalogFingerprint: "catalog",
               graphDigest: "digest",
               eventSubscriptions: [],
+              now: new Date(),
             }),
             orphan: yield* workflows.findVersionById("ver_orphan"),
           };
@@ -616,6 +624,7 @@ export function describeWorkflowConformance({
                 connectionId: null,
               },
             ],
+            now: new Date(),
           });
 
           const executions = yield* ExecutionRepo;
@@ -720,6 +729,7 @@ export function describeWorkflowConformance({
                 connectionId: null,
               },
             ],
+            now: new Date(),
           });
 
           const executions = yield* ExecutionRepo;
@@ -758,7 +768,11 @@ export function describeWorkflowConformance({
           );
           // Pausing has to close both arms. A workflow paused mid-run would
           // otherwise keep waking on the wait it already parked.
-          yield* workflows.setPaused({ workflowId: "wf_1", isPaused: true });
+          yield* workflows.setPaused({
+            workflowId: "wf_1",
+            isPaused: true,
+            now: new Date(),
+          });
 
           return {
             whileRunning,
