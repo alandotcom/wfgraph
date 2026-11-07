@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_executions" DROP CONSTRAINT "workflow_executions_schedule_check", ADD CONSTRAINT "workflow_executions_schedule_check" CHECK (("scheduled_for" is null and "schedule_cron" is null and "schedule_time_zone" is null) or ("scheduled_for" is not null and "schedule_cron" is not null and "schedule_time_zone" is not null and "start_source" = 'schedule'));

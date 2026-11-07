@@ -19,7 +19,11 @@ import type {
   WorkflowMode,
 } from "@wfgraph/shared/graph/types";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import { describeCronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
+import {
+  type CronSchedule,
+  describeCronSchedule,
+} from "@wfgraph/shared/lifecycle/cron-schedule";
+import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
 /**
@@ -229,22 +233,50 @@ const SCHEDULED_REFUSAL_CLAUSES: Partial<
   concurrency_first_wins: "a run is still going and Concurrency is first-wins",
 };
 
-/**
- * The schedule that started a run, in words, such as "Every weekday at 9:00 AM
- * (America/New_York)", or null for a run no schedule started. The run lists
- * and the logs answer this in place of the pair, so the client needs no
- * describer of its own.
- */
-export function describeRunSchedule(row: {
+/** A run row's three schedule columns, which are all set or all null. */
+type ScheduledRunColumns = {
+  scheduledFor: Date | null;
   scheduleCron: string | null;
   scheduleTimeZone: string | null;
-}): string | null {
-  return row.scheduleCron === null || row.scheduleTimeZone === null
+};
+
+/**
+ * The slot a scheduled run fired for and the schedule that fired it, or null
+ * for a run no schedule started. `workflow_executions_schedule_check` holds
+ * the three columns to all or none, so a partial set reads as none.
+ */
+function scheduledRun(
+  row: ScheduledRunColumns
+): { slot: Date; schedule: CronSchedule } | null {
+  const { scheduledFor, scheduleCron, scheduleTimeZone } = row;
+  return scheduledFor === null ||
+    scheduleCron === null ||
+    scheduleTimeZone === null
     ? null
-    : describeCronSchedule({
-        cron: row.scheduleCron,
-        timeZone: row.scheduleTimeZone,
-      });
+    : {
+        slot: scheduledFor,
+        schedule: { cron: scheduleCron, timeZone: scheduleTimeZone },
+      };
+}
+
+/**
+ * The fields the run lists and the logs answer for a run's schedule: the slot
+ * it fired for, as an ISO timestamp, and the schedule in words, such as
+ * "Every weekday at 9:00 AM (America/New_York)". Both are null for a run no
+ * schedule started. The client reads the description, so it needs no
+ * describer of its own.
+ */
+export function scheduledRunFields(row: ScheduledRunColumns): {
+  scheduledFor: string | null;
+  scheduleDescription: string | null;
+} {
+  const scheduled = scheduledRun(row);
+  return scheduled === null
+    ? { scheduledFor: null, scheduleDescription: null }
+    : {
+        scheduledFor: encodeIsoTimestamp(scheduled.slot),
+        scheduleDescription: describeCronSchedule(scheduled.schedule),
+      };
 }
 
 /** The slot a scheduled start was for, and the zone its schedule reads time in. */

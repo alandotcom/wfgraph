@@ -493,7 +493,7 @@ export function describeExecutionCronConformance({
       expect(result.summary).toMatchObject(scheduled);
     });
 
-    it("holds a run's schedule columns to both or neither, and to a scheduled run alone", async () => {
+    it("holds a run's three schedule columns to all or none, and to a scheduled run alone", async () => {
       const { database, connection } = await withWorkflow(openDatabase);
       const scheduleId = await connection.run(
         Effect.gen(function* () {
@@ -519,15 +519,26 @@ export function describeExecutionCronConformance({
           `update workflow_executions set schedule_time_zone = null where ${run}`
         )
       ).rejects.toThrow();
+      // The slot without the schedule, and the schedule without the slot.
+      await expect(
+        database.execute(
+          `update workflow_executions set schedule_cron = null, schedule_time_zone = null where ${run}`
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `update workflow_executions set scheduled_for = null where ${run}`
+        )
+      ).rejects.toThrow();
       await expect(
         database.execute(
           `update workflow_executions set start_source = 'manual' where ${run}`
         )
       ).rejects.toThrow();
-      // Clearing both is allowed, which is the shape of every other run.
+      // Clearing all three is allowed, which is the shape of every other run.
       await expect(
         database.execute(
-          `update workflow_executions set schedule_cron = null, schedule_time_zone = null where ${run}`
+          `update workflow_executions set scheduled_for = null, schedule_cron = null, schedule_time_zone = null where ${run}`
         )
       ).resolves.toBeUndefined();
     });
@@ -716,7 +727,10 @@ export function describeExecutionCronConformance({
             now: at(minutes(5)),
             versionId: "ver_1",
           });
-          const afterStale = { timers: yield* timers(database), runs: yield* runs };
+          const afterStale = {
+            timers: yield* timers(database),
+            runs: yield* runs,
+          };
           const fired = yield* fire({
             fence,
             schedule: EVERY_FIVE,
@@ -888,7 +902,11 @@ export function describeExecutionCronConformance({
             now: at(minutes(5)),
             schedules: [],
           });
-          return { dropped, timers: yield* timers(database), runs: yield* runs };
+          return {
+            dropped,
+            timers: yield* timers(database),
+            runs: yield* runs,
+          };
         })
       );
 
@@ -983,7 +1001,11 @@ export function describeExecutionCronConformance({
             error: "The workflow's graph will not run",
             now: at(minutes(6)),
           });
-          return { skipped, timers: yield* timers(database), refusals: yield* refusals };
+          return {
+            skipped,
+            timers: yield* timers(database),
+            refusals: yield* refusals,
+          };
         })
       );
 

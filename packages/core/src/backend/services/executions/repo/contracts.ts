@@ -583,9 +583,11 @@ export type StartForEntityInput = {
  * list beside runs that did execute.
  *
  * Its status is the caller's to choose, from the three a run can be in when it
- * never executed.
+ * never executed. A schedule never opens one, since a fire that does not run
+ * writes a Refused Start, so it carries no `scheduled`.
  */
 export type NewTerminalExecution = NewExecution & {
+  scheduled?: never;
   status: Extract<
     WorkflowExecution["status"],
     "completed" | "failed" | "canceled"

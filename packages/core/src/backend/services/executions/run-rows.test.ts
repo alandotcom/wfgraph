@@ -17,6 +17,7 @@ import {
   buildRunStartedAuditMessage,
   recordPausedRunIgnored,
   runStartedEntry,
+  scheduledRunFields,
 } from "#src/backend/services/executions/run-rows";
 
 function createExecution(
@@ -133,6 +134,31 @@ describe("buildRunStartedAuditMessage", () => {
     ).toBe(
       "Event-triggered run of v7 started for app/appointment.created, to test recipients"
     );
+  });
+});
+
+describe("scheduledRunFields", () => {
+  it("answers the slot as an ISO timestamp and the schedule in words", () => {
+    expect(
+      scheduledRunFields({
+        scheduledFor: new Date("2026-03-02T14:00:00.000Z"),
+        scheduleCron: "0 9 * * 1-5",
+        scheduleTimeZone: "America/New_York",
+      })
+    ).toEqual({
+      scheduledFor: "2026-03-02T14:00:00.000Z",
+      scheduleDescription: expect.stringContaining("America/New_York"),
+    });
+  });
+
+  it("answers both as null for a run no schedule started", () => {
+    expect(
+      scheduledRunFields({
+        scheduledFor: null,
+        scheduleCron: null,
+        scheduleTimeZone: null,
+      })
+    ).toEqual({ scheduledFor: null, scheduleDescription: null });
   });
 });
 

@@ -189,7 +189,7 @@ export const workflowExecutions = sqliteTable(
     ),
     check(
       "workflow_executions_schedule_check",
-      sql`(${table.scheduleCron} is null and ${table.scheduleTimeZone} is null) or (${table.scheduleCron} is not null and ${table.scheduleTimeZone} is not null and ${table.startSource} = 'schedule')`
+      sql`(${table.scheduledFor} is null and ${table.scheduleCron} is null and ${table.scheduleTimeZone} is null) or (${table.scheduledFor} is not null and ${table.scheduleCron} is not null and ${table.scheduleTimeZone} is not null and ${table.startSource} = 'schedule')`
     ),
     check(
       "workflow_executions_termination_check",
