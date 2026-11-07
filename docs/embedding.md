@@ -1178,10 +1178,14 @@ Read these once:
   lexical lifetime, declare the app with `await using`. For a long-running host, call
   `await dispose()` from its shutdown handler. Both forms run the same idempotent shutdown:
   they stop the worker loop and wait up to ten seconds for the runs it is advancing,
-  finalize the Effect runtime, and close persistence. Dispose the app after you close any
-  Inngest `connect` or route that registers the forwarders, since a forwarder sends
-  through the app. One Workflow Graph per process remains the supported arrangement; each
-  app owns its persistence instance, encryption key, and assembled surface.
+  finalize the Effect runtime, and close persistence. A host that registers the forwarders
+  from `@wfgraph/core/inngest` can close that Inngest `connect` or route before disposing
+  the app, which saves one retry. A forwarder that sends after dispose fails its step as a
+  storage failure, Inngest retries the step on whichever process serves the forwarders
+  next, and the event inbox stores the Event once because the retry carries the same
+  Inngest event id. Either order loses no Event. One Workflow Graph per process remains
+  the supported arrangement; each app owns its persistence instance, encryption key, and
+  assembled surface.
 
 ## Logging
 
