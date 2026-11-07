@@ -411,6 +411,30 @@ describe("Runs Browse edge cases", () => {
     await waitFor(() => expect(rows()).toHaveLength(2));
   });
 
+  // A host that deletes old runs says so beside the list, so a builder knows
+  // why an old run is gone; a host that keeps every run says nothing.
+  it("states the host's run retention window above the runs, and nothing without one", async () => {
+    served.items = [execution("exec_live", "completed")];
+    const { view, queryClient, rows, title, back } = await renderRunsReveal({
+      view: "runs",
+      executionId: "exec_live",
+    });
+    await waitFor(() => expect(title()).toBe("Run #1"));
+    back();
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(view.queryByText(/Runs are deleted/)).toBeNull();
+
+    served.runRetentionMs = 30 * 24 * 60 * 60 * 1000;
+    await act(async () => {
+      await queryClient.refetchQueries();
+    });
+    await waitFor(() =>
+      expect(
+        view.getByText("Runs are deleted 30 days after they finish.")
+      ).toBeTruthy()
+    );
+  });
+
   it("explains a deep link past the list and a run that leaves the list", async () => {
     served.items = [execution("exec_live", "running")];
     const { view, queryClient, title, show } = await renderRunsReveal({

@@ -171,6 +171,7 @@ function renderPanel({
       items: [],
       observedAt: "2026-03-01T10:00:00.000Z",
       overdueAfterMs: 60_000,
+      runRetentionMs: null,
       supersededCount: 0,
       refusedStarts: [],
       cancelNotDelivered: [],

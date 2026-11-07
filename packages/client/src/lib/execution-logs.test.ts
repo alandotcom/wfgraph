@@ -37,6 +37,7 @@ describe("toWorkflowExecutions", () => {
       items: [rawExecution],
       observedAt: "2026-03-01T10:00:10.000Z",
       overdueAfterMs: 60_000,
+      runRetentionMs: null,
       supersededCount: 3,
       refusedStarts: [
         {
@@ -83,6 +84,7 @@ describe("toWorkflowExecutions", () => {
       ],
       observedAt: "2026-03-01T10:00:10.000Z",
       overdueAfterMs: 120_000,
+      runRetentionMs: null,
       supersededCount: 0,
       refusedStarts: [],
       cancelNotDelivered: [],
@@ -103,6 +105,7 @@ describe("toWorkflowExecutions", () => {
       items: [{ ...rawExecution, completedAt: null }],
       observedAt: "2026-03-01T10:00:10.000Z",
       overdueAfterMs: 60_000,
+      runRetentionMs: null,
       supersededCount: 0,
       refusedStarts: [],
       cancelNotDelivered: [],

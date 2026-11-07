@@ -258,6 +258,15 @@ const executorReadingFields = {
 };
 
 /**
+ * How long the host keeps a run after it finishes, in milliseconds, before the
+ * retention sweep deletes it, or null when the host keeps every run. Both run
+ * lists carry it so the Runs view can say why old runs are gone.
+ */
+const runRetentionFields = {
+  runRetentionMs: Schema.NullOr(positiveInteger),
+};
+
+/**
  * A run as the two list procedures carry it.
  *
  * Start and result payloads stay off this shape: both lists poll (the editor
@@ -740,6 +749,8 @@ export const workflowContract = {
           items: listOf(workflowExecutionSchema),
           /** Read each row's `activity` against these. See `executorReadingFields`. */
           ...executorReadingFields,
+          /** See `runRetentionFields`. */
+          ...runRetentionFields,
           supersededCount: Schema.Finite,
           /**
            * Up to 50 recent starts that opened no run. Concurrency, a missing
@@ -784,6 +795,8 @@ export const workflowContract = {
           items: listOf(workflowGlobalExecutionSchema),
           /** Read each row's `activity` against these. See `executorReadingFields`. */
           ...executorReadingFields,
+          /** See `runRetentionFields`. */
+          ...runRetentionFields,
           nextCursor: Schema.NullOr(workflowGlobalExecutionsCursorSchema),
         })
       )

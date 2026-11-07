@@ -279,6 +279,7 @@ export function wfWorker<Env>(
         apiBasePath: `${basePath}/api`,
         // A Worker runs no polling loop: its Cron Trigger runs a tick.
         overdueAfterMs: overdueAfterMs(undefined),
+        runRetentionMs: config.runs?.retentionMs,
       },
       agent,
       wakes: wake === undefined ? [] : [wake],

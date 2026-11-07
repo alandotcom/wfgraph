@@ -257,6 +257,7 @@ export function installRunsRevealRpc() {
   installAuthorizationGrantsForTests(WfGraphOperationIds);
   served.items = [];
   served.supersededCount = 0;
+  served.runRetentionMs = null;
   served.refusedStarts = [];
   served.cancelNotDelivered = [];
   served.graphs = {};

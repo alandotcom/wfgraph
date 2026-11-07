@@ -1,5 +1,8 @@
 ---
 "@wfgraph/core": minor
+"@wfgraph/client": minor
 ---
 
 Workflow Graph can delete old run history when a host asks. `runs: { retentionMs }` on `createWfGraphApp`, `createWfGraphRunner` and the `wfWorker` config sets how long an ended run is kept after it completed. Once an hour, in the same upkeep that sweeps the event inbox, the worker loop deletes ended Executions older than the window with their node logs, wait rows and timelines, then workflow audit rows that name no run, such as Refused Starts, then draft snapshots no Execution references. A Worker runs the sweep on its Cron Trigger tick. A run in flight is never deleted, and published versions always stay. The option is off by default, so a host that leaves it out keeps every run. Startup refuses a value that is not a positive integer or that is shorter than the inbox window (`events.retentionMs`, seven days by default), because a redelivered inbox row is answered from the run its first delivery opened, and deleting that run early would open a second one. Migrations on both backends add partial indexes on `workflow_executions.completed_at` and on draft snapshots' `published_at`, and on SQLite also indexes on `workflow_executions.workflow_version_id` and `workflows.published_version_id`, which serve the sweep and the deletes it cascades into.
+
+The editor states the window so a builder knows why old runs are gone: a workflow's Runs list and the All Runs list read "Runs are deleted 30 days after they finish." for a 30-day window, and say nothing when the host keeps every run. `getExecutions` and `getExecutionsGlobal` carry the window as `runRetentionMs`, null when unset, so the client and core must be on the same version.

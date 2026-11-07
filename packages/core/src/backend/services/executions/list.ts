@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
 import { redactSensitiveText } from "#src/backend/lib/utils/redact";
@@ -91,8 +92,8 @@ const loggerFor = (workflowId: string) =>
 /**
  * Everything the editor's Runs view reads, in one answer.
  *
- * The runs, how many superseded ones were left out, and workflow-level audit
- * rows that opened no run. The response separates Refused Starts from
+ * The runs, how many superseded ones were left out, workflow-level audit rows
+ * that opened no run, and the host's run retention window. The response separates Refused Starts from
  * Cancellation Failures. One payload rather than three procedures avoids extra
  * traffic while the panel polls every two seconds.
  *
@@ -139,12 +140,14 @@ export const getWorkflowExecutions = Effect.fn("getWorkflowExecutions")(
       );
     const { now, reading } = yield* executorReading;
     const activities = yield* readRunListActivities(executions, now);
+    const { runRetentionMs } = yield* WfGraphAppContext;
 
     return {
       items: executions.map((row) =>
         toWorkflowExecutionItem(row, activities.get(row.id) ?? null)
       ),
       ...reading,
+      runRetentionMs,
       supersededCount,
       refusedStarts: refusedStarts.map(toWorkflowAuditItem),
       cancelNotDelivered: cancelNotDelivered.map(toWorkflowAuditItem),

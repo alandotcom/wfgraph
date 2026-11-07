@@ -145,6 +145,27 @@ describe("getWorkflowExecutionsGlobal", () => {
           startedAt: "2026-02-18T19:39:00.000Z",
           id: "exec_2",
         });
+        assert.isNull(result.runRetentionMs);
+      })
+    );
+
+    it.effect("answers the host's run retention window", () =>
+      Effect.gen(function* () {
+        const repo = makeExecutionRepo(page);
+
+        const result = yield* getWorkflowExecutionsGlobal({ limit: 2 }).pipe(
+          Effect.provide(
+            Layer.merge(
+              repo.layer,
+              makeAppContextLayer({
+                apiBasePath: "/api",
+                runRetentionMs: 2_592_000_000,
+              })
+            )
+          )
+        );
+
+        assert.strictEqual(result.runRetentionMs, 2_592_000_000);
       })
     );
 

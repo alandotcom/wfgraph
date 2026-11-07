@@ -162,6 +162,7 @@ describe("workflow executions RPC output contract", () => {
     const result = await decode({
       items: [],
       ...reading,
+      runRetentionMs: null,
       supersededCount: 0,
       refusedStarts: [
         {
@@ -234,6 +235,7 @@ describe("workflow executions RPC output contract", () => {
     const result = await decode({
       items: activities.map((activity) => ({ ...listItem, activity })),
       ...reading,
+      runRetentionMs: null,
       supersededCount: 0,
       refusedStarts: [],
       cancelNotDelivered: [],
@@ -255,10 +257,41 @@ describe("workflow executions RPC output contract", () => {
         },
       ],
       ...reading,
+      runRetentionMs: null,
       nextCursor: null,
     });
 
     expect(result).toHaveProperty("issues");
+  });
+
+  // The window is a host option, so a positive number of milliseconds or null
+  // for a host that keeps every run.
+  it("carries the host's run retention window on both lists, and refuses a window that is not positive", async () => {
+    const decodeList = getOutputDecoder(rpcContract.workflow.getExecutions);
+    const decodeGlobal = getOutputDecoder(
+      rpcContract.workflow.getExecutionsGlobal
+    );
+    const list = (runRetentionMs: number | null) =>
+      decodeList({
+        items: [],
+        ...reading,
+        runRetentionMs,
+        supersededCount: 0,
+        refusedStarts: [],
+        cancelNotDelivered: [],
+      });
+
+    expect(await list(2_592_000_000)).toHaveProperty("value");
+    expect(await list(null)).toHaveProperty("value");
+    expect(await list(0)).toHaveProperty("issues");
+    expect(
+      await decodeGlobal({
+        items: [],
+        ...reading,
+        runRetentionMs: 2_592_000_000,
+        nextCursor: null,
+      })
+    ).toHaveProperty("value");
   });
 });
 

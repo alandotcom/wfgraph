@@ -1,5 +1,7 @@
 import { type ReactNode } from "react";
 import { Button } from "#src/components/ui/button";
+import { runRetentionNotice } from "#src/lib/run-retention";
+import { cn } from "@wfgraph/shared/utils";
 import { WorkflowCancellationFailures } from "./workflow-cancellation-failures";
 import { WorkflowRefusedStarts } from "./workflow-refused-starts";
 import type { WorkflowRunsState } from "./use-workflow-runs";
@@ -77,8 +79,27 @@ export function RunUnavailableMessage({ retry }: { retry: () => void }) {
 }
 
 /**
+ * The host's run retention window as one quiet line, or nothing when the host
+ * keeps every run.
+ */
+export function RunRetentionNote({
+  runRetentionMs,
+  className,
+}: {
+  runRetentionMs: number | null;
+  className?: string | undefined;
+}) {
+  const notice = runRetentionNotice(runRetentionMs);
+  if (notice === null) return null;
+  return (
+    <p className={cn("text-muted-foreground text-xs", className)}>{notice}</p>
+  );
+}
+
+/**
  * What sits above the run rows: the superseded count and its Show or Hide, the
- * Refused Starts, and the Cancellation Failures, followed by `children`.
+ * Refused Starts, the Cancellation Failures, and the run retention window,
+ * followed by `children`.
  */
 export function RunsListNotices({
   runs,
@@ -114,6 +135,7 @@ export function RunsListNotices({
       <WorkflowCancellationFailures
         cancelNotDelivered={runs.cancelNotDelivered}
       />
+      <RunRetentionNote className="px-1" runRetentionMs={runs.runRetentionMs} />
       {children}
     </div>
   );

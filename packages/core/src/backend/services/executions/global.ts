@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
 import { redactSensitiveText } from "#src/backend/lib/utils/redact";
@@ -167,12 +168,14 @@ export const getWorkflowExecutionsGlobal = Effect.fn(
     const pageRows = hasMore ? rows.slice(0, requestedLimit) : rows;
     const { now, reading } = yield* executorReading;
     const activities = yield* readRunListActivities(pageRows, now);
+    const { runRetentionMs } = yield* WfGraphAppContext;
 
     return {
       items: pageRows.map((row) =>
         toGlobalExecutionItem(row, activities.get(row.id) ?? null)
       ),
       ...reading,
+      runRetentionMs,
       nextCursor: buildNextCursor({ hasMore, pageRows }),
     };
   },

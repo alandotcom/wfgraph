@@ -18,7 +18,8 @@ export const DEFAULT_OVERDUE_AFTER_MS = 60_000;
 
 /**
  * Stable host facts that background services cannot derive from a request:
- * its URLs, and how often its workers look for due runs.
+ * its URLs, how often its workers look for due runs, and how long it keeps run
+ * history.
  */
 export type WfGraphAppContextValue = {
   /** The normalized public origin. OAuth remains unavailable when it is absent. */
@@ -34,11 +35,21 @@ export type WfGraphAppContextValue = {
    * left out.
    */
   readonly overdueAfterMs?: number | undefined;
+  /**
+   * The host's `runs.retentionMs`, which the Runs view states so a builder
+   * knows why old runs are gone. Null or left out when the host keeps every
+   * run.
+   */
+  readonly runRetentionMs?: number | null | undefined;
 };
 
 export class WfGraphAppContext extends Context.Service<
   WfGraphAppContext,
-  WfGraphAppContextValue & { readonly overdueAfterMs: number }
+  WfGraphAppContextValue & {
+    readonly overdueAfterMs: number;
+    /** The host's `runs.retentionMs`, or null when it keeps every run. */
+    readonly runRetentionMs: number | null;
+  }
 >()("@wfgraph/core/WfGraphAppContext") {}
 
 export function makeAppContextLayer(
@@ -60,5 +71,6 @@ export function makeAppContextLayer(
     ...value,
     oauth,
     overdueAfterMs: value.overdueAfterMs ?? DEFAULT_OVERDUE_AFTER_MS,
+    runRetentionMs: value.runRetentionMs ?? null,
   });
 }

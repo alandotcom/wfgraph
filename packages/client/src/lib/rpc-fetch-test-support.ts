@@ -102,6 +102,8 @@ type RawExecution = {
 export type WorkflowRunRpcFixture = {
   items: RawExecution[];
   supersededCount: number;
+  /** The host's run retention window. Null or left out: the host keeps every run. */
+  runRetentionMs?: number | null;
   refusedStarts?: Array<{ id: string; message: string; createdAt: string }>;
   cancelNotDelivered?: Array<{
     id: string;
@@ -146,6 +148,7 @@ export async function answerWorkflowRunRpc(
         })),
         observedAt: "2026-03-01T10:00:00.000Z",
         overdueAfterMs: 60_000,
+        runRetentionMs: served.runRetentionMs ?? null,
         supersededCount: served.supersededCount,
         refusedStarts: served.refusedStarts ?? [],
         cancelNotDelivered: served.cancelNotDelivered ?? [],

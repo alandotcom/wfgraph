@@ -154,16 +154,19 @@ export function toWorkflowExecutions(payload: {
   readonly items: readonly RawExecution[];
   readonly observedAt: string;
   readonly overdueAfterMs: number;
+  readonly runRetentionMs: number | null;
   readonly supersededCount: number;
   readonly refusedStarts: readonly RawRefusedStart[];
   readonly cancelNotDelivered: readonly RawRefusedStart[];
 }): {
   executions: WorkflowExecution[];
+  runRetentionMs: number | null;
   supersededCount: number;
   refusedStarts: RefusedStart[];
   cancelNotDelivered: CancelNotDelivered[];
 } {
   return {
+    runRetentionMs: payload.runRetentionMs,
     supersededCount: payload.supersededCount,
     refusedStarts: payload.refusedStarts.map((refusal) => ({
       ...refusal,

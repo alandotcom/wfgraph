@@ -168,6 +168,7 @@ export async function openWfGraphSetup(
       publicUrl: options.publicUrl,
       apiBasePath: `${options.basePath}/api`,
       overdueAfterMs: overdueAfterMs(pollMs),
+      runRetentionMs: options.runRetentionMs,
     },
     agent: options.agent,
     wakes: wakes.sinks,

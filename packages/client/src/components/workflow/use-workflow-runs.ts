@@ -115,6 +115,8 @@ export type WorkflowRunsState = {
   toggleSuperseded: () => void;
   refusedStarts: RefusedStart[];
   cancelNotDelivered: CancelNotDelivered[];
+  /** How long the host keeps a finished run, or null when it keeps every run. */
+  runRetentionMs: number | null;
   /**
    * The run row to focus, once the run list shows its settled rows, or null.
    * The list calls `clearRowFocus` after it has looked for the row.
@@ -422,6 +424,7 @@ export function useWorkflowRuns(): WorkflowRunsState {
     toggleSuperseded: () => setShowSuperseded(!showSuperseded),
     refusedStarts: executionsQuery.data?.refusedStarts ?? [],
     cancelNotDelivered: executionsQuery.data?.cancelNotDelivered ?? [],
+    runRetentionMs: executionsQuery.data?.runRetentionMs ?? null,
     focusRunId: screen.kind === "list" && screen.settled ? focusRequest : null,
     clearRowFocus: () => setFocusRequest(null),
     selectRun: (id) => {

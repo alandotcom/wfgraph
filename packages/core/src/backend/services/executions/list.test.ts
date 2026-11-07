@@ -150,6 +150,31 @@ describe("getWorkflowExecutions", () => {
         // The answer carries the server's clock and the host's threshold once.
         assert.strictEqual(result.observedAt, "2026-03-01T10:02:00.000Z");
         assert.strictEqual(result.overdueAfterMs, 60_000);
+        // A host that set no run window keeps every run.
+        assert.isNull(result.runRetentionMs);
+      })
+    );
+
+    it.effect("answers the host's run retention window", () =>
+      Effect.gen(function* () {
+        const repos = makeRepos([execution("exec_1", "completed")]);
+
+        const result = yield* getWorkflowExecutions({
+          workflowId: "wf_1",
+          includeSuperseded: false,
+        }).pipe(
+          Effect.provide(
+            Layer.merge(
+              repos.layer,
+              makeAppContextLayer({
+                apiBasePath: "/api",
+                runRetentionMs: 2_592_000_000,
+              })
+            )
+          )
+        );
+
+        assert.strictEqual(result.runRetentionMs, 2_592_000_000);
       })
     );
 

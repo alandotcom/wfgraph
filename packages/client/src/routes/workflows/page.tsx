@@ -35,6 +35,7 @@ import {
 } from "#src/components/ui/dropdown-menu";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import { RunHistorySearch } from "#src/components/workflows/run-history-search";
+import { RunRetentionNote } from "#src/components/workflow/workflow-runs";
 import {
   RunHistoryTable,
   type RunHistoryTableRow,
@@ -706,6 +707,11 @@ export default function WorkflowsPage() {
                   <p className="text-muted-foreground text-xs">
                     Combined run history across workflows.
                   </p>
+                  <RunRetentionNote
+                    runRetentionMs={
+                      runsQuery.data?.pages[0]?.runRetentionMs ?? null
+                    }
+                  />
                 </div>
                 <Button
                   disabled={isLoadingRuns || isLoadingMoreRuns}
