@@ -48,7 +48,9 @@ import {
 } from "#src/backend/executor/worker-loop";
 import { createWorkerWake } from "#src/backend/executor/worker-wake";
 import {
+  type CaseDatabase,
   type ConformanceConnection,
+  setTimestamp,
   usePersistenceRegistry,
 } from "#src/backend/persistence/conformance/support";
 import type { PersistenceConformanceHarness } from "#src/backend/persistence/persistence-conformance-test-support";
@@ -132,17 +134,15 @@ export function describeWorkerLoopCases(
     return;
   }
   describe(title, () => {
-    const { openConnection } = usePersistenceRegistry(
+    const { openDatabase } = usePersistenceRegistry(
       harness.createDatabase,
       harness.teardown
     );
-    describeCases(openConnection);
+    describeCases(openDatabase);
   });
 }
 
-function describeCases(
-  openConnection: () => Promise<ConformanceConnection>
-): void {
+function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
   type Loop = {
     /**
      * Aborts the loop's signal and resolves once the loop has returned, with
@@ -152,6 +152,8 @@ function describeCases(
   };
 
   type Harness = {
+    /** The case's database, for a statement outside the repositories. */
+    database: CaseDatabase;
     connection: ConformanceConnection;
     /** Starts an Execution of `graph`, due now, and answers its id. */
     start: (graph: SerializedWorkflowGraph) => Promise<string>;
@@ -185,7 +187,8 @@ function describeCases(
   async function open(): Promise<Harness> {
     heldStep = createGate();
     marks = new Map();
-    const connection = await openConnection();
+    const database = await openDatabase();
+    const connection = await database.open();
     // The workflow and entity each run was started for, by Execution id.
     const started = new Map<
       string,
@@ -199,6 +202,7 @@ function describeCases(
       );
 
     return {
+      database,
       connection,
       start: async (graph) => {
         runs += 1;
@@ -826,7 +830,7 @@ function describeCases(
     // it is.
     const pending = await harness.send({ receivedAt: minuteAgo });
     const sweeping = harness.loop({
-      retentionMs: 30_000,
+      inboxRetentionMs: 30_000,
       wrap: (repo) => ({
         ...repo,
         claimDue: (input) =>
@@ -862,7 +866,7 @@ function describeCases(
         tick({
           actions: () => actions,
           ...LOOP_SETTINGS,
-          retentionMs: 30_000,
+          inboxRetentionMs: 30_000,
           budgetMs: 10_000,
           sweep,
         }).pipe(Effect.provide(noDeliveryServices))
@@ -873,6 +877,106 @@ function describeCases(
 
     await runTick(true);
     expect(await harness.inbox(old)).toBeNull();
+  });
+
+  /** The run window the run-history cases sweep with: one hour. */
+  const RUN_RETENTION_MS = 60 * 60 * 1000;
+
+  /**
+   * Runs one workflow to its end on a loop of its own, and answers the run's
+   * id. With `completedAgoMs`, the run's `completed_at` is then moved that far
+   * back.
+   */
+  async function endedRun(
+    harness: Harness,
+    completedAgoMs?: number
+  ): Promise<string> {
+    const executionId = await harness.start(oneActionThenMark("test/send"));
+    const running = harness.loop({});
+    expect(await harness.ended(executionId)).toBe("completed");
+    await running.stop();
+    if (completedAgoMs !== undefined) {
+      await setTimestamp(harness.database, {
+        table: "workflow_executions",
+        column: "completed_at",
+        where: `id = '${executionId}'`,
+        at: new Date(Date.now() - completedAgoMs),
+      });
+    }
+    return executionId;
+  }
+
+  function runExists(harness: Harness, executionId: string) {
+    return harness.connection.run(
+      Effect.flatMap(ExecutionRepo, (executions) =>
+        executions.existsById(executionId)
+      )
+    );
+  }
+
+  /** One tick on the case's connection, sweeping when `sweep` is set. */
+  function sweepTick(
+    harness: Harness,
+    options: { sweep: boolean; runRetentionMs?: number | undefined }
+  ) {
+    return harness.connection.run(
+      tick({
+        actions: () => actions,
+        ...LOOP_SETTINGS,
+        budgetMs: 10_000,
+        ...options,
+      }).pipe(Effect.provide(noDeliveryServices))
+    );
+  }
+
+  it("deletes ended runs past the run window, and keeps a younger one and an in-flight one however old", async () => {
+    const harness = await open();
+    const old = await endedRun(harness, 2 * RUN_RETENTION_MS);
+    const young = await endedRun(harness);
+    const inFlight = await harness.start(oneActionThenMark("test/send"));
+    await setTimestamp(harness.database, {
+      table: "workflow_executions",
+      column: "started_at",
+      where: `id = '${inFlight}'`,
+      at: new Date("2020-01-01T00:00:00.000Z"),
+    });
+
+    // A loop that claims nothing leaves the in-flight run where it is.
+    const sweeping = harness.loop({
+      runRetentionMs: RUN_RETENTION_MS,
+      wrap: (repo) => ({ ...repo, claimDue: () => Effect.succeed([]) }),
+    });
+    await waitUntil(
+      async () => !(await runExists(harness, old)),
+      "The sweep did not delete the ended run past the window"
+    );
+    await sweeping.stop();
+
+    expect(await runExists(harness, young)).toBe(true);
+    expect(await harness.schedule(inFlight)).toMatchObject({ state: "queued" });
+  });
+
+  it("keeps every ended run when no run window is set", async () => {
+    const harness = await open();
+    const old = await endedRun(harness, 2 * RUN_RETENTION_MS);
+
+    await sweepTick(harness, { sweep: true });
+
+    expect(await runExists(harness, old)).toBe(true);
+  });
+
+  it("sweeps run history in a tick only when the tick is told to", async () => {
+    const harness = await open();
+    const old = await endedRun(harness, 2 * RUN_RETENTION_MS);
+
+    await sweepTick(harness, {
+      sweep: false,
+      runRetentionMs: RUN_RETENTION_MS,
+    });
+    expect(await runExists(harness, old)).toBe(true);
+
+    await sweepTick(harness, { sweep: true, runRetentionMs: RUN_RETENTION_MS });
+    expect(await runExists(harness, old)).toBe(false);
   });
 
   it("claims once more right after a claim that a wake arrived during", async () => {

@@ -59,6 +59,7 @@ export {
   type WfGraphLogger,
   type WfGraphPersistence,
   type WfGraphRunnerOptions,
+  type WfGraphRunsOptions,
 } from "#src/app";
 export {
   createWfGraphRunner,

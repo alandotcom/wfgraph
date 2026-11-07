@@ -65,7 +65,9 @@ export type WfGraphSetupOptions = {
   /** The host's `runner` option, or `false` for a process that runs no loop. */
   runner: WfGraphRunnerOptions | false | undefined;
   /** The host's `events.retentionMs`. */
-  retentionMs: number | undefined;
+  inboxRetentionMs: number | undefined;
+  /** The host's `runs.retentionMs`. */
+  runRetentionMs: number | undefined;
 };
 
 export type WfGraphSetup = {
@@ -177,11 +179,7 @@ export async function openWfGraphSetup(
     const settings =
       options.runner === false
         ? undefined
-        : resolveRunnerSettings(
-            capabilities,
-            options.runner ?? {},
-            options.retentionMs
-          );
+        : resolveRunnerSettings(capabilities, options.runner ?? {}, options);
 
     return {
       runtime,

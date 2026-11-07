@@ -21,7 +21,7 @@ import { readEntityResolverTimeoutMs } from "#src/backend/extensions/entity-reso
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { createWorkflowEntities } from "#src/backend/extensions/workflow-entities";
 import {
-  assertValidRetentionMs,
+  assertValidRetentionOptions,
   resolveTickSettings,
 } from "#src/backend/executor/in-process-runner";
 import {
@@ -33,6 +33,7 @@ import {
   assertValidEventsKey,
   type WfGraphEventsOptions,
 } from "#src/backend/host-events";
+import type { WfGraphRunsOptions } from "#src/backend/host-runs";
 import {
   assertValidEncryptionKey,
   createIntegrationCipher,
@@ -118,6 +119,11 @@ export type WfGraphWorkerRequestConfig = {
    * `createWfGraphApp`. Each Cron Trigger tick sweeps with `retentionMs`.
    */
   events?: WfGraphEventsOptions | undefined;
+  /**
+   * How long run history is kept, as on `createWfGraphApp`. Each Cron Trigger
+   * tick sweeps with it; a Queue tick does not.
+   */
+  runs?: WfGraphRunsOptions | undefined;
   /**
    * The Queue producer binding that carries run wakes, such as
    * `env.WFGRAPH_WAKES`, whose consumer is this Worker's `queue` handler.
@@ -250,7 +256,11 @@ export function wfWorker<Env>(
   ): Promise<Invocation> => {
     assertValidEncryptionKey(config.encryption.key);
     assertValidEventsKey(config.events?.key, "wfWorker");
-    assertValidRetentionMs(config.events?.retentionMs, "wfWorker");
+    assertValidRetentionOptions({
+      inboxRetentionMs: config.events?.retentionMs,
+      runRetentionMs: config.runs?.retentionMs,
+      caller: "wfWorker",
+    });
     const extensions =
       staticExtensions ??
       assembleExtensions(extensionResolver?.(env) ?? {}, {
@@ -301,10 +311,10 @@ export function wfWorker<Env>(
       const config = options.request(env);
       const invocation = await open(env, config, undefined);
       const { runtime, extensions, capabilities } = invocation;
-      const settings = resolveTickSettings(
-        capabilities,
-        config.events?.retentionMs
-      );
+      const settings = resolveTickSettings(capabilities, {
+        inboxRetentionMs: config.events?.retentionMs,
+        runRetentionMs: config.runs?.retentionMs,
+      });
       await runWithClose(async () => {
         outcome = await runtime.runPromise(
           tick({

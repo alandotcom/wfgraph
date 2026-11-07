@@ -751,6 +751,42 @@ const wfgraph = await createWfGraphApp({
 });
 ```
 
+### Delete run history after a window
+
+Run history stays in your database until you ask Workflow Graph to delete it.
+`runs.retentionMs` sets how long an ended run is kept after it completed, in milliseconds.
+With no value, nothing is deleted.
+
+With a value, the loop sweeps run history once an hour, in the same upkeep that deletes
+settled inbox rows. Each sweep deletes up to 1,000 rows of each kind, in this order:
+
+1. Executions that ended (`completed`, `failed`, `canceled`, `exited` or `superseded`)
+   before the window. Each run's node logs, wait rows and timeline go with it.
+2. Workflow audit rows that belong to no run, such as a Refused Start or a Cancel Event that
+   reached no run, written before the window.
+3. Draft snapshots that no remaining Execution references and that no Draft run has pinned
+   since the window began.
+
+A run in flight is never deleted, however long ago it started. Published versions are
+never deleted, so the version history stays whole. When any kind reaches its limit, the
+next sweep runs a poll interval later. Partial indexes on both backends serve the sweep.
+
+The value must be a positive integer, and at least the inbox window, which is
+`events.retentionMs` or seven days when that is unset. Startup refuses anything else. A
+redelivered inbox row is answered from the Execution its first delivery opened, so deleting
+the run while its inbox row can still be delivered again would open a second run.
+
+Every process that runs a loop sweeps with its own window, as with `events.retentionMs`.
+Set the same `runs.retentionMs` in the app and in every `createWfGraphRunner`. On a
+Cloudflare Worker, the Cron Trigger's tick runs the sweep.
+
+```ts
+const wfgraph = await createWfGraphApp({
+  // auth, persistence, encryption, extensions
+  runs: { retentionMs: 90 * 24 * 60 * 60 * 1000 },
+});
+```
+
 ### Run the loop in its own process
 
 `createWfGraphRunner` runs the worker loop in a process that serves no HTTP, so a host can
@@ -784,6 +820,7 @@ process.once("SIGTERM", () => void runner.dispose());
 | `logger`                  | No       | As on `createWfGraphApp`                                                                      |
 | `runner`                  | No       | The loop's settings, as in the table under Configure the runner                               |
 | `events.retentionMs`      | No       | How long this loop keeps a settled inbox row. See Keep settled Events for a window            |
+| `runs.retentionMs`        | No       | How long this loop keeps an ended run. See Delete run history after a window                  |
 
 It answers `{ events, dispose, [Symbol.asyncDispose] }`. `events.send` raises an Event the
 way the app's does. `dispose()` drains the loop the way the app's does, then closes the
@@ -911,6 +948,7 @@ invocation of each handler, and it answers these fields:
 | `encryption.key`     | Yes      | As on `createWfGraphApp`                                                                                                                     |
 | `events.key`         | No       | Mounts `POST /api/events`, as on `createWfGraphApp`. A blank value, or one holding whitespace, fails the invocation before persistence opens |
 | `events.retentionMs` | No       | How long a settled inbox row is kept, as on `createWfGraphApp`. Each Cron Trigger tick sweeps with it                                        |
+| `runs.retentionMs`   | No       | How long an ended run is kept, as on `createWfGraphApp`. Each Cron Trigger tick sweeps with it. Unset, run history is never deleted          |
 | `wakeQueue`          | No       | The Queue producer binding that carries run wakes. Its consumer must be this Worker. See Wake runs through a Queue                           |
 | `agent`              | No       | As on `createWfGraphApp`                                                                                                                     |
 
@@ -978,8 +1016,9 @@ backlog in turn. These limits apply to each tick:
   its passes and why it stopped (`stopped: "pass_limit"`); the next tick takes the rest.
 - **Statements.** Hyperdrive ends any statement after 60 seconds. Each statement a tick makes
   is short, and no transaction is held across a step.
-- **Retention.** Only the Cron Trigger's tick runs the retention sweep, once a minute. A
-  Queue tick does not, so it stays as short as the work its wake found.
+- **Retention.** Only the Cron Trigger's tick runs the retention sweeps, of the inbox and,
+  with `runs.retentionMs`, of run history, once a minute. A Queue tick does not, so it stays
+  as short as the work its wake found.
 - **Observability.** Each tick writes one record, `Tick finished` or `Tick failed`, grouped
   under `tick` with its trigger, its worker id (`cf-worker:cron:<id>` or
   `cf-worker:queue:<id>`, which is also written on each row it leases) and its duration, with
@@ -1078,6 +1117,7 @@ Cloudflare Workers and Hyperdrive.
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                                                                           |
 | `events.key`              | No       | Shared secret that mounts `POST /api/events`. A sender presents it as `Authorization: Bearer <key>`. Unset, the route is not mounted. A blank value, or one holding whitespace, fails at startup. See `docs/events.md` |
 | `events.retentionMs`      | No       | How long a settled inbox row is kept after its Event arrived, in milliseconds. Defaults to seven days. See Keep settled Events for a window                                                                            |
+| `runs.retentionMs`        | No       | How long an ended run is kept after it completed, in milliseconds. Unset, run history is never deleted. At least the inbox window. See Delete run history after a window                                               |
 | `runner`                  | No       | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none beside a `createWfGraphRunner` process. See Workflow runs                        |
 | `extensions.events`       | No       | `defineEvent` values                                                                                                                                                                                                   |
 | `extensions.actions`      | No       | `defineAction` values                                                                                                                                                                                                  |

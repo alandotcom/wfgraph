@@ -38,6 +38,7 @@ import {
   type WfGraphEvents,
   type WfGraphEventsOptions,
 } from "#src/backend/host-events";
+import type { WfGraphRunsOptions } from "#src/backend/host-runs";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
 export {
@@ -59,6 +60,7 @@ export {
   type WfGraphEvents,
   type WfGraphEventsOptions,
 } from "#src/backend/host-events";
+export type { WfGraphRunsOptions } from "#src/backend/host-runs";
 
 export type WfGraphAppOptions = {
   /**
@@ -98,6 +100,8 @@ export type WfGraphAppOptions = {
   encryption: EncryptionRuntimeConfig;
   /** Event intake over HTTP. See `WfGraphEventsOptions`. */
   events?: WfGraphEventsOptions | undefined;
+  /** How long run history is kept. See `WfGraphRunsOptions`. Off when absent. */
+  runs?: WfGraphRunsOptions | undefined;
   /**
    * The worker loop that advances workflow runs stored in `persistence`.
    *
@@ -201,7 +205,8 @@ export async function createWfGraphApp(
     agent: readAgentSettings(options.agent),
     caller: "createWfGraphApp",
     runner: options.runner,
-    retentionMs: options.events?.retentionMs,
+    inboxRetentionMs: options.events?.retentionMs,
+    runRetentionMs: options.runs?.retentionMs,
   });
 
   // Everything past this point can fail with persistence already open, and

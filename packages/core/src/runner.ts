@@ -15,6 +15,7 @@ import type {
   WfGraphEvents,
   WfGraphEventsOptions,
 } from "#src/backend/host-events";
+import type { WfGraphRunsOptions } from "#src/backend/host-runs";
 import { openWfGraphSetup } from "#src/backend/setup";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 
@@ -42,6 +43,11 @@ export type CreateWfGraphRunnerOptions = {
    * `events.retentionMs` describes. Set the same window the app sets.
    */
   events?: Pick<WfGraphEventsOptions, "retentionMs"> | undefined;
+  /**
+   * How long this loop keeps run history, as `createWfGraphApp`'s
+   * `runs.retentionMs` describes. Set the same window the app sets.
+   */
+  runs?: WfGraphRunsOptions | undefined;
 };
 
 export type WfGraphRunner = {
@@ -79,7 +85,8 @@ export async function createWfGraphRunner(
     agent: { enabled: false },
     caller: "createWfGraphRunner",
     runner: options.runner,
-    retentionMs: options.events?.retentionMs,
+    inboxRetentionMs: options.events?.retentionMs,
+    runRetentionMs: options.runs?.retentionMs,
   });
 
   let runner: InProcessRunner;

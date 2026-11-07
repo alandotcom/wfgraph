@@ -115,6 +115,61 @@ describe("createWfGraphApp events", () => {
     );
   });
 
+  it("refuses a runs.retentionMs the sweep could not use, and so does createWfGraphRunner", async () => {
+    for (const retentionMs of [0, -1, 1.5, Number.NaN]) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- one refusal per value
+      await expect(
+        createWfGraphApp({ ...BASE_OPTIONS, runs: { retentionMs } })
+      ).rejects.toThrow(
+        "createWfGraphApp's runs.retentionMs must be a positive integer"
+      );
+    }
+    await expect(
+      createWfGraphRunner({
+        persistence: wfSqlite(),
+        encryption: BASE_OPTIONS.encryption,
+        runs: { retentionMs: 0 },
+      })
+    ).rejects.toThrow(
+      "createWfGraphRunner's runs.retentionMs must be a positive integer"
+    );
+  });
+
+  // An Execution is the record a redelivered inbox row is answered from, so a
+  // run window shorter than the inbox window could open a run twice.
+  it("refuses a runs.retentionMs shorter than the inbox window, defaulted or set", async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const floor =
+      "createWfGraphApp's runs.retentionMs must be at least the inbox window";
+    await expect(
+      createWfGraphApp({ ...BASE_OPTIONS, runs: { retentionMs: 6 * day } })
+    ).rejects.toThrow(floor);
+    await expect(
+      createWfGraphApp({
+        ...BASE_OPTIONS,
+        events: { retentionMs: 2 * day },
+        runs: { retentionMs: day },
+      })
+    ).rejects.toThrow(floor);
+    await expect(
+      createWfGraphRunner({
+        persistence: wfSqlite(),
+        encryption: BASE_OPTIONS.encryption,
+        runs: { retentionMs: day },
+      })
+    ).rejects.toThrow(
+      "createWfGraphRunner's runs.retentionMs must be at least the inbox window"
+    );
+
+    const app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      persistence: wfSqlite(),
+      events: { retentionMs: day },
+      runs: { retentionMs: day },
+    });
+    await app.dispose();
+  });
+
   it("opens a run that completes from app.events.send and from POST /api/events", async () => {
     const filename = join(dir, "wfgraph.sqlite");
     // A connection of the case's own publishes the workflow before the app

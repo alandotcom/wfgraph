@@ -172,3 +172,39 @@ A run whose step exhausts its retries fails that node and ends with a terminal r
 where under Inngest its execution row read `running` forever. Each pass opens its own
 `wfgraph.workflow.execution` span, so a run that parks and wakes appears as one trace per
 pass.
+
+## Amendment, 2026-11-06: run history is pruned on request
+
+Moving execution into the application database moved run history there too.
+`workflow_executions`, `workflow_execution_logs`, `workflow_execution_events` and the
+closed `workflow_wait_states` rows grew with every run, in a database the adopter owns and
+pays for, with nothing that deleted them.
+
+Workflow Graph gained a host option, `runs: { retentionMs }`, on `createWfGraphApp`,
+`createWfGraphRunner` and the `wfWorker` config. It was made off by default, because the
+rows are the adopter's audit record and deleting them is a decision about their data that
+a library should not make for them. One window covered every terminal status and was
+measured from `completed_at`.
+
+The sweep deleted ended Executions, which took their logs, run-scoped audit rows and wait
+rows through the existing `ON DELETE CASCADE` keys. It also deleted the workflow-scoped
+audit rows that name no run, such as a Refused Start, since nothing else would ever remove
+them. Draft snapshots that no Execution referenced went too: a snapshot exists only to be
+the graph a Draft run pinned, so once its runs were gone it described nothing. Published
+versions stayed, because they are the workflow's version history and the base a builder
+compares a draft against, whether or not any run still pins them. A snapshot's
+`published_at` was moved forward each time a Draft run reused it, so the sweep could not
+delete a snapshot between the reuse and the insert of the run that pins it.
+
+Startup refused a run window shorter than the inbox window (`events.retentionMs`, seven
+days by default). A redelivered inbox row is answered from the Execution its first
+delivery opened, through the run's `(workflow_id, delivery_id)`. Deleting the run while its
+inbox row could still be delivered again would have opened a second run for one Event.
+
+The sweep ran in the upkeep that already swept the inbox: hourly in the worker loop, and on
+a Worker's Cron Trigger tick, in batches of 1,000, with the next sweep a poll interval later
+when a batch came back full. That upkeep already ran beside the claims on every backend and
+had the cadence, batching and failure handling the run sweep needed, so a second schedule
+would have added a second set of timers for the same job. Partial indexes on
+`completed_at` and on draft snapshots' `published_at` served it on both backends. Time
+partitioning of the run tables was deferred until volume calls for it.

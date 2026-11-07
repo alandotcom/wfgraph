@@ -177,7 +177,7 @@ describe("wfWorker", () => {
     ).toThrow("entityResolverTimeoutMs must be a positive integer");
   });
 
-  it("refuses an events option no invocation could run with, before it opens persistence", async () => {
+  it("refuses an events or runs option no invocation could run with, before it opens persistence", async () => {
     let opened = 0;
     const persistence: WfGraphPersistence = {
       open: async (cipher) => {
@@ -185,13 +185,17 @@ describe("wfWorker", () => {
         return await stubPersistence(stubRepositories()).open(cipher);
       },
     };
-    const worker = (events: { key?: string; retentionMs?: number }) =>
+    const worker = (
+      events: { key?: string; retentionMs?: number },
+      runs?: { retentionMs?: number }
+    ) =>
       wfWorker({
         request: () => ({
           auth: trustWfGraphUpstream(),
           persistence,
           encryption: ENCRYPTION,
           events,
+          runs,
         }),
       });
 
@@ -206,6 +210,17 @@ describe("wfWorker", () => {
       worker({ retentionMs: 0 }).scheduled({ cron: "* * * * *" }, {})
     ).rejects.toThrow(
       "wfWorker's events.retentionMs must be a positive integer"
+    );
+    await expect(
+      worker({}, { retentionMs: 1.5 }).scheduled({ cron: "* * * * *" }, {})
+    ).rejects.toThrow("wfWorker's runs.retentionMs must be a positive integer");
+    await expect(
+      worker({ retentionMs: 60_000 }, { retentionMs: 30_000 }).scheduled(
+        { cron: "* * * * *" },
+        {}
+      )
+    ).rejects.toThrow(
+      "wfWorker's runs.retentionMs must be at least the inbox window"
     );
     expect(opened).toBe(0);
   });

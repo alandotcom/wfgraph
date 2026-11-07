@@ -13,6 +13,7 @@ export type {
   WfGraphWakeQueue,
 } from "#src/backend/executor/queue-wake";
 export type { WfGraphEventsOptions } from "#src/backend/host-events";
+export type { WfGraphRunsOptions } from "#src/backend/host-runs";
 export {
   defineWfGraphAuth,
   trustWfGraphUpstream,
