@@ -1,0 +1,80 @@
+library:
+  name: wfgraph
+  version: 0.0.0
+domains: []
+skills:
+  [
+    {
+      name: wfgraph-core,
+      slug: wfgraph-core,
+      domain: uncategorized,
+      description: "Embed Workflow Graph with createWfGraphApp: fetch handler,
+        createRequestListener, auth, INTEGRATION_ENCRYPTION_KEY, clientBundle,
+        publicUrl, basePath, MCP authoring, configureWfGraphLogging,
+        wfPostgres, wfSqlite, wfWorker with its Cron Trigger and wake Queue,
+        migrateWfGraphDatabase, and createWfGraphRunner for a process that
+        only runs workflows, plus @wfgraph/core/inngest for a host that keeps
+        inngest.send. Load when mounting the host app or choosing persistence.
+        Not for defineEvent, defineEntity, defineAction, or defineIntegration
+        (those are sub-skills).\n",
+      packages: ["@wfgraph/core"],
+      tasks: [],
+      covers: [],
+    },
+    {
+      name: events,
+      slug: events,
+      domain: wfgraph-core,
+      description: "defineEvent and defineEntity: Event schemas, typed Entity
+        bindings, current-state resolvers, Lifecycle Entity Eligibility,
+        correlationPath, umbrella source filters, and intake through
+        app.events.send, POST /api/events, or inngest.send with the forwarders
+        from @wfgraph/core/inngest. Load when declaring host Events or
+        Entities, sending Events, choosing Lifecycle start/cancel behavior, or
+        deciding between payload and current-state rules.\n",
+      packages: ["@wfgraph/core"],
+      tasks: [],
+      covers: [],
+    },
+    {
+      name: host-actions,
+      slug: host-actions,
+      domain: wfgraph-core,
+      description:
+        "defineAction for host-owned steps: Promise handlers, Standard
+        Schema input and output, authored config forms, dependent option
+        callbacks, step.run, readCredentials, sideEffect. Load when adding
+        application actions beside integrations. Not for defineIntegration
+        (Effect plugin path).\n",
+      packages: ["@wfgraph/core"],
+      tasks: [],
+      covers: [],
+    },
+    {
+      name: integrations,
+      slug: integrations,
+      domain: wfgraph-core,
+      description: "Write a Workflow Graph integration with defineIntegration,
+        callExternal, IntegrationOAuth, runAction, and checkIntegration
+        against @wfgraph/core/plugin. Load when building a vendor plugin,
+        credential forms, OAuth adapters, or integration tests. Not for host
+        defineAction.\n",
+      packages: ["@wfgraph/core"],
+      tasks: [],
+      covers: [],
+    },
+    {
+      name: wfgraph-plugins,
+      slug: wfgraph-plugins,
+      domain: uncategorized,
+      description:
+        "builtInIntegrations, slack(options?) OAuth factory, clerk linear
+        posthog resend twilio value exports, publicUrl OAuth routes,
+        @wfgraph/plugins/ui. Load when turning on the six built-in
+        integrations or wiring Slack, Resend, or PostHog OAuth in the host.\n",
+      packages: ["@wfgraph/plugins"],
+      tasks: [],
+      covers: [],
+    },
+  ]
+gaps: []
