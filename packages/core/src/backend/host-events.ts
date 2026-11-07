@@ -26,7 +26,8 @@ export type WfGraphEventsOptions = {
   key?: string | undefined;
   /**
    * How long a delivered or failed inbox row is kept after it arrived, in
-   * milliseconds. Defaults to seven days. This is also the deduplication
+   * milliseconds: a positive integer of at most 100 years, or startup refuses
+   * it. Defaults to seven days. This is also the deduplication
    * window: a send whose idempotency key matches a row still kept answers
    * with that row, and once the sweep has deleted the row the same key is a
    * new arrival. Every process that runs a worker loop sweeps with its own

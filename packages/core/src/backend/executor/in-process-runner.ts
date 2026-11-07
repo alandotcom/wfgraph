@@ -24,6 +24,7 @@ import type {
   AppRunWakes,
   WorkerWake,
 } from "#src/backend/executor/worker-wake";
+import type { RetentionWindows } from "#src/backend/host-retention";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type {
   RunWakeBroadcast,
@@ -68,13 +69,6 @@ export type WfGraphRunnerOptions = {
 /** How many deliveries a loop or a tick runs at once when the host sets none. */
 const DEFAULT_DELIVERY_CONCURRENCY = 1;
 
-/**
- * How long a settled inbox row is kept after it arrived when the host sets no
- * `events.retentionMs`: seven days, so a host retrying a send over a weekend
- * still finds its first row.
- */
-const DEFAULT_INBOX_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-
 /** How long `stop` waits for passes in flight before it interrupts them. */
 const RUNNER_DRAIN_MS = 10_000;
 
@@ -97,58 +91,13 @@ const RESTART_BACKOFF = Schedule.min([
 
 const logger = getAppLogger("executor");
 
-/** The host's two retention windows, as it set them. */
-export type RetentionOptions = {
-  /** `events.retentionMs`. */
-  inboxRetentionMs: number | undefined;
-  /** `runs.retentionMs`. */
-  runRetentionMs: number | undefined;
-};
-
 /**
- * Refuses an `events.retentionMs` or a `runs.retentionMs` the retention sweeps
- * could not run with. A run window shorter than the inbox window is refused,
- * as `WfGraphRunsOptions` explains. `caller` names the function the host
- * called.
- */
-export function assertValidRetentionOptions(
-  input: RetentionOptions & { caller: string }
-): void {
-  const { inboxRetentionMs, runRetentionMs, caller } = input;
-  if (
-    inboxRetentionMs !== undefined &&
-    (!Number.isInteger(inboxRetentionMs) || inboxRetentionMs <= 0)
-  ) {
-    throw new Error(
-      `${caller}'s events.retentionMs must be a positive integer of milliseconds. Leave it out to keep settled inbox rows for seven days.`
-    );
-  }
-  if (runRetentionMs === undefined) return;
-  if (!Number.isInteger(runRetentionMs) || runRetentionMs <= 0) {
-    throw new Error(
-      `${caller}'s runs.retentionMs must be a positive integer of milliseconds. Leave it out to keep every run.`
-    );
-  }
-  if (runRetentionMs < (inboxRetentionMs ?? DEFAULT_INBOX_RETENTION_MS)) {
-    throw new Error(
-      `${caller}'s runs.retentionMs must be at least the inbox window, which is events.retentionMs or seven days when that is unset. A redelivered inbox row is answered from the run its first delivery opened, so deleting the run while the row can still be delivered again would open a second run.`
-    );
-  }
-}
-
-/**
- * Refuses a `runner` option or a retention window a loop could not run with,
- * so the mistake fails at startup. `caller` names the function the host
- * called.
+ * Refuses a `runner` option a loop could not run with, so the mistake fails
+ * at startup.
  */
 export function assertValidRunnerOptions(
-  input: RetentionOptions & {
-    runner: false | WfGraphRunnerOptions | undefined;
-    caller: string;
-  }
+  options: false | WfGraphRunnerOptions | undefined
 ): void {
-  assertValidRetentionOptions(input);
-  const options = input.runner;
   if (options === false || options === undefined) return;
   for (const key of [
     "concurrency",
@@ -192,19 +141,17 @@ function resolveLaneConcurrency(
 /** The settings a tick runs with, which a host does not tune. */
 export type TickSettings = {
   concurrency: LaneConcurrency;
-  inboxRetentionMs: number;
-  runRetentionMs: number | undefined;
+  retention: RetentionWindows;
 };
 
 /** Resolves a tick's settings from the backend's defaults and the host's retention windows. */
 export function resolveTickSettings(
   capabilities: WfGraphRunCapabilities,
-  retention: RetentionOptions
+  retention: RetentionWindows
 ): TickSettings {
   return {
     concurrency: resolveLaneConcurrency(capabilities, {}),
-    inboxRetentionMs: retention.inboxRetentionMs ?? DEFAULT_INBOX_RETENTION_MS,
-    runRetentionMs: retention.runRetentionMs,
+    retention,
   };
 }
 
@@ -214,8 +161,7 @@ export type RunnerSettings = {
   pollMs: number;
   leaseMs: number | undefined;
   heartbeatMs: number | undefined;
-  inboxRetentionMs: number;
-  runRetentionMs: number | undefined;
+  retention: RetentionWindows;
 };
 
 /**
@@ -225,7 +171,7 @@ export type RunnerSettings = {
 export function resolveRunnerSettings(
   capabilities: WfGraphRunCapabilities,
   options: WfGraphRunnerOptions,
-  retention: RetentionOptions
+  retention: RetentionWindows
 ): RunnerSettings {
   const pollMs = options.pollMs ?? capabilities.loopDefaults.pollMs;
   if (pollMs === undefined) {
@@ -238,8 +184,7 @@ export function resolveRunnerSettings(
     pollMs,
     leaseMs: options.leaseMs,
     heartbeatMs: options.heartbeatMs,
-    inboxRetentionMs: retention.inboxRetentionMs ?? DEFAULT_INBOX_RETENTION_MS,
-    runRetentionMs: retention.runRetentionMs,
+    retention,
   };
 }
 
@@ -313,8 +258,8 @@ export function startInProcessRunner(input: {
       concurrency: settings.concurrency.run,
       deliveryConcurrency: settings.concurrency.delivery,
       pollMs: settings.pollMs,
-      inboxRetentionMs: settings.inboxRetentionMs,
-      runRetentionMs: settings.runRetentionMs ?? null,
+      inboxRetentionMs: settings.retention.inboxMs,
+      runRetentionMs: settings.retention.runMs,
       broadcast: wakes.broadcast !== undefined,
     },
   });

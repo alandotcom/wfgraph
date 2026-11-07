@@ -15,6 +15,7 @@ import type {
   WfGraphEvents,
   WfGraphEventsOptions,
 } from "#src/backend/host-events";
+import { resolveRetention } from "#src/backend/host-retention";
 import type { WfGraphRunsOptions } from "#src/backend/host-runs";
 import { openWfGraphSetup } from "#src/backend/setup";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
@@ -73,6 +74,11 @@ export async function createWfGraphRunner(
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);
   assertValidEncryptionKey(options.encryption.key);
+  const retention = resolveRetention({
+    events: options.events,
+    runs: options.runs,
+    caller: "createWfGraphRunner",
+  });
 
   const setup = await openWfGraphSetup({
     logger: options.logger,
@@ -83,10 +89,8 @@ export async function createWfGraphRunner(
     basePath,
     publicUrl,
     agent: { enabled: false },
-    caller: "createWfGraphRunner",
     runner: options.runner,
-    inboxRetentionMs: options.events?.retentionMs,
-    runRetentionMs: options.runs?.retentionMs,
+    retention,
   });
 
   let runner: InProcessRunner;

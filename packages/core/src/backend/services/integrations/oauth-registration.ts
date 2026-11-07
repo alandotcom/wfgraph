@@ -9,7 +9,7 @@ export type OAuthUrls = {
 /** Build the provider-facing URLs shared by routes and background refreshes. */
 export function oauthUrlsFor(
   integrationType: string,
-  context: WfGraphAppContextValue
+  context: Pick<WfGraphAppContextValue, "oauth">
 ): OAuthUrls | null {
   if (!context.oauth) {
     return null;
@@ -22,7 +22,7 @@ export function oauthUrlsFor(
 }
 
 export function oauthRegistrationContext(
-  context: WfGraphAppContextValue,
+  context: Pick<WfGraphAppContextValue, "oauth">,
   urls: OAuthUrls
 ): OAuthRegistrationContext {
   if (!context.oauth) {

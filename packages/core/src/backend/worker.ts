@@ -20,10 +20,7 @@ import {
 import { readEntityResolverTimeoutMs } from "#src/backend/extensions/entity-resolution";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { createWorkflowEntities } from "#src/backend/extensions/workflow-entities";
-import {
-  assertValidRetentionOptions,
-  resolveTickSettings,
-} from "#src/backend/executor/in-process-runner";
+import { resolveTickSettings } from "#src/backend/executor/in-process-runner";
 import {
   createQueueWake,
   type WfGraphWakeQueue,
@@ -33,6 +30,10 @@ import {
   assertValidEventsKey,
   type WfGraphEventsOptions,
 } from "#src/backend/host-events";
+import {
+  resolveRetention,
+  type RetentionWindows,
+} from "#src/backend/host-retention";
 import type { WfGraphRunsOptions } from "#src/backend/host-runs";
 import {
   assertValidEncryptionKey,
@@ -208,6 +209,8 @@ type Invocation = {
   runtime: WfGraphRuntime;
   extensions: ExtensionSet;
   capabilities: WfGraphRunCapabilities;
+  /** The config's retention windows, checked before persistence opened. */
+  retention: RetentionWindows;
   close: () => Promise<void>;
 };
 
@@ -256,9 +259,9 @@ export function wfWorker<Env>(
   ): Promise<Invocation> => {
     assertValidEncryptionKey(config.encryption.key);
     assertValidEventsKey(config.events?.key, "wfWorker");
-    assertValidRetentionOptions({
-      inboxRetentionMs: config.events?.retentionMs,
-      runRetentionMs: config.runs?.retentionMs,
+    const retention = resolveRetention({
+      events: config.events,
+      runs: config.runs,
       caller: "wfWorker",
     });
     const extensions =
@@ -279,7 +282,7 @@ export function wfWorker<Env>(
         apiBasePath: `${basePath}/api`,
         // A Worker runs no polling loop: its Cron Trigger runs a tick.
         overdueAfterMs: overdueAfterMs(undefined),
-        runRetentionMs: config.runs?.retentionMs,
+        runRetentionMs: retention.runMs,
       },
       agent,
       wakes: wake === undefined ? [] : [wake],
@@ -290,6 +293,7 @@ export function wfWorker<Env>(
       runtime,
       extensions,
       capabilities: persistence.capabilities,
+      retention,
       close,
     };
   };
@@ -311,11 +315,8 @@ export function wfWorker<Env>(
     try {
       const config = options.request(env);
       const invocation = await open(env, config, undefined);
-      const { runtime, extensions, capabilities } = invocation;
-      const settings = resolveTickSettings(capabilities, {
-        inboxRetentionMs: config.events?.retentionMs,
-        runRetentionMs: config.runs?.retentionMs,
-      });
+      const { runtime, extensions, capabilities, retention } = invocation;
+      const settings = resolveTickSettings(capabilities, retention);
       await runWithClose(async () => {
         outcome = await runtime.runPromise(
           tick({

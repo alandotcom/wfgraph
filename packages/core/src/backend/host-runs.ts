@@ -14,12 +14,12 @@ export type WfGraphRunsOptions = {
    * Execution references. Published versions are never deleted, and a run
    * still in flight is never deleted however old it is.
    *
-   * It must be at least the inbox window, `events.retentionMs` or its
-   * seven-day default. A redelivered inbox row is answered from the
-   * Execution its first delivery opened, so deleting the run while its inbox
-   * row can still be delivered again would open a second run. Every process
-   * that runs a worker loop sweeps with its own window, so set the same one
-   * in each.
+   * It must be an integer from one hour to 100 years, or startup refuses it.
+   * A Draft run's snapshot is frozen in one transaction and pinned by the
+   * insert of its Execution in a later one, and the sweep keeps a snapshot
+   * reused in between only because the window is far longer than that gap.
+   * Every process that runs a worker loop sweeps with its own window, so set
+   * the same one in each.
    */
   retentionMs?: number | undefined;
 };

@@ -38,6 +38,7 @@ import {
   type WfGraphEvents,
   type WfGraphEventsOptions,
 } from "#src/backend/host-events";
+import { resolveRetention } from "#src/backend/host-retention";
 import type { WfGraphRunsOptions } from "#src/backend/host-runs";
 
 export type { EncryptionRuntimeConfig } from "#src/backend/services/integrations/cipher";
@@ -193,6 +194,11 @@ export async function createWfGraphApp(
 
   assertValidEncryptionKey(options.encryption.key);
   assertValidEventsKey(options.events?.key, "createWfGraphApp");
+  const retention = resolveRetention({
+    events: options.events,
+    runs: options.runs,
+    caller: "createWfGraphApp",
+  });
 
   const setup = await openWfGraphSetup({
     logger: options.logger,
@@ -203,10 +209,8 @@ export async function createWfGraphApp(
     basePath,
     publicUrl,
     agent: readAgentSettings(options.agent),
-    caller: "createWfGraphApp",
     runner: options.runner,
-    inboxRetentionMs: options.events?.retentionMs,
-    runRetentionMs: options.runs?.retentionMs,
+    retention,
   });
 
   // Everything past this point can fail with persistence already open, and

@@ -51,6 +51,7 @@ import {
   ExecutionRepo,
 } from "#src/backend/services/executions/repo";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
+import type { RetentionWindows } from "#src/backend/host-retention";
 import { UNDATED_PARK_WAKE_AT } from "#src/backend/services/executions/repo/release-policy";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import type { WorkerWake } from "#src/backend/executor/worker-wake";
@@ -439,14 +440,14 @@ export type ExecutorUpkeep = {
 /**
  * The upkeep of one loop or tick. A new upkeep polls and sweeps at its first
  * call, so a tick, which builds one per invocation, polls and sweeps every
- * time it runs. Without `runRetentionMs`, run history is never swept.
+ * time it runs. Without `retention.runMs`, run history is never swept.
  */
 export function executorUpkeep(input: {
   pollMs: number;
-  inboxRetentionMs: number;
-  runRetentionMs?: number | undefined;
+  retention: RetentionWindows;
 }): ExecutorUpkeep {
-  const { pollMs, inboxRetentionMs, runRetentionMs } = input;
+  const { pollMs } = input;
+  const { inboxMs: inboxRetentionMs, runMs: runRetentionMs } = input.retention;
   let polledAt = Number.NEGATIVE_INFINITY;
   let sweepAt = Number.NEGATIVE_INFINITY;
   return {
@@ -543,16 +544,6 @@ type DrainSettings = {
    * deadline from the wall clock, so a live loop keeps the default.
    */
   now?: (() => Date) | undefined;
-  /**
-   * How long a delivered or failed inbox row is kept after it arrived, in
-   * milliseconds, before the retention sweep deletes it.
-   */
-  inboxRetentionMs: number;
-  /**
-   * How long an ended run is kept after it completed, in milliseconds, before
-   * the run-history sweep deletes it. Absent, run history is never swept.
-   */
-  runRetentionMs?: number | undefined;
 };
 
 export type WorkerLoopOptions = DrainSettings & {
@@ -570,6 +561,8 @@ export type WorkerLoopOptions = DrainSettings & {
   drainMs?: number | undefined;
   /** How long the loop sleeps between claims when nothing wakes it sooner. */
   pollMs: number;
+  /** The windows the loop's retention sweeps delete past. */
+  retention: RetentionWindows;
   /** Wakes the loop to claim at once, for a producer in the same process. */
   wake?: WorkerWake | undefined;
 };
@@ -636,6 +629,8 @@ export type TickOptions = DrainSettings & {
   passLimit?: number | undefined;
   /** Whether the tick runs the retention sweeps. */
   sweep: boolean;
+  /** The windows the tick's retention sweeps delete past. */
+  retention: RetentionWindows;
 };
 
 /**
@@ -729,8 +724,7 @@ export const tick = Effect.fn("wfgraph.executor.tick")(function* (
     Effect.gen(function* () {
       const upkeep = executorUpkeep({
         pollMs: 0,
-        inboxRetentionMs: options.inboxRetentionMs,
-        runRetentionMs: options.runRetentionMs,
+        retention: options.retention,
       });
       yield* raceAbandon(upkeep.poll(startedAt), budgetRunsOut, undefined);
       const sweep = options.sweep ? upkeep.sweepDue(startedAt) : undefined;
@@ -807,11 +801,7 @@ export function runWorkerLoop(
   const { pollMs, signal } = options;
   const drain = drainOptionsFor(options);
   const { now } = drain;
-  const upkeep = executorUpkeep({
-    pollMs,
-    inboxRetentionMs: options.inboxRetentionMs,
-    runRetentionMs: options.runRetentionMs,
-  });
+  const upkeep = executorUpkeep({ pollMs, retention: options.retention });
   // A claim the database never answers would hold a stopped loop forever, so
   // once the stop arrives the claim has the drain to answer.
   const { drainMs } = options;

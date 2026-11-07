@@ -26,6 +26,7 @@ import {
 } from "#src/backend/executor/in-process-runner";
 import { createAppRunWakes } from "#src/backend/executor/worker-wake";
 import { createHostEvents, type WfGraphEvents } from "#src/backend/host-events";
+import type { RetentionWindows } from "#src/backend/host-retention";
 import { closeInOrder, failAfterClose } from "#src/backend/lib/close-in-order";
 import {
   configureLoggingWithBridge,
@@ -60,14 +61,10 @@ export type WfGraphSetupOptions = {
   /** The normalized public origin, absent when OAuth is unavailable. */
   publicUrl?: string | undefined;
   agent: AgentSettings;
-  /** The function the host called, which a refused option's message names. */
-  caller: string;
   /** The host's `runner` option, or `false` for a process that runs no loop. */
   runner: WfGraphRunnerOptions | false | undefined;
-  /** The host's `events.retentionMs`. */
-  inboxRetentionMs: number | undefined;
-  /** The host's `runs.retentionMs`. */
-  runRetentionMs: number | undefined;
+  /** The host's retention windows, from `resolveRetention`. */
+  retention: RetentionWindows;
 };
 
 export type WfGraphSetup = {
@@ -129,7 +126,7 @@ export async function openWfGraphRuntime(
 export async function openWfGraphSetup(
   options: WfGraphSetupOptions
 ): Promise<WfGraphSetup> {
-  assertValidRunnerOptions(options);
+  assertValidRunnerOptions(options.runner);
   if (options.logger) {
     configureLoggingWithBridge(options.logger);
   } else {
@@ -168,7 +165,7 @@ export async function openWfGraphSetup(
       publicUrl: options.publicUrl,
       apiBasePath: `${options.basePath}/api`,
       overdueAfterMs: overdueAfterMs(pollMs),
-      runRetentionMs: options.runRetentionMs,
+      runRetentionMs: options.retention.runMs,
     },
     agent: options.agent,
     wakes: wakes.sinks,
@@ -180,7 +177,11 @@ export async function openWfGraphSetup(
     const settings =
       options.runner === false
         ? undefined
-        : resolveRunnerSettings(capabilities, options.runner ?? {}, options);
+        : resolveRunnerSettings(
+            capabilities,
+            options.runner ?? {},
+            options.retention
+          );
 
     return {
       runtime,

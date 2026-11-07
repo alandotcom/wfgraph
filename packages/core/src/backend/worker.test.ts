@@ -211,17 +211,15 @@ describe("wfWorker", () => {
     ).rejects.toThrow(
       "wfWorker's events.retentionMs must be a positive integer"
     );
-    await expect(
-      worker({}, { retentionMs: 1.5 }).scheduled({ cron: "* * * * *" }, {})
-    ).rejects.toThrow("wfWorker's runs.retentionMs must be a positive integer");
-    await expect(
-      worker({ retentionMs: 60_000 }, { retentionMs: 30_000 }).scheduled(
-        { cron: "* * * * *" },
-        {}
-      )
-    ).rejects.toThrow(
-      "wfWorker's runs.retentionMs must be at least the inbox window"
-    );
+    // Under the one-hour minimum, and not an integer.
+    for (const retentionMs of [30 * 60 * 1000, 1.5]) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- one refusal per value
+      await expect(
+        worker({}, { retentionMs }).scheduled({ cron: "* * * * *" }, {})
+      ).rejects.toThrow(
+        "wfWorker's runs.retentionMs must be an integer of milliseconds from one hour to 100 years."
+      );
+    }
     expect(opened).toBe(0);
   });
 

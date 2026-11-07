@@ -830,7 +830,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     // it is.
     const pending = await harness.send({ receivedAt: minuteAgo });
     const sweeping = harness.loop({
-      inboxRetentionMs: 30_000,
+      retention: { inboxMs: 30_000, runMs: undefined },
       wrap: (repo) => ({
         ...repo,
         claimDue: (input) =>
@@ -866,7 +866,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
         tick({
           actions: () => actions,
           ...LOOP_SETTINGS,
-          inboxRetentionMs: 30_000,
+          retention: { inboxMs: 30_000, runMs: undefined },
           budgetMs: 10_000,
           sweep,
         }).pipe(Effect.provide(noDeliveryServices))
@@ -914,17 +914,21 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     );
   }
 
-  /** One tick on the case's connection, sweeping when `sweep` is set. */
+  /**
+   * One tick on the case's connection, sweeping when `sweep` is set, with the
+   * default inbox window and `runMs` as the run window.
+   */
   function sweepTick(
     harness: Harness,
-    options: { sweep: boolean; runRetentionMs?: number | undefined }
+    options: { sweep: boolean; runMs?: number | undefined }
   ) {
     return harness.connection.run(
       tick({
         actions: () => actions,
         ...LOOP_SETTINGS,
         budgetMs: 10_000,
-        ...options,
+        sweep: options.sweep,
+        retention: { ...LOOP_SETTINGS.retention, runMs: options.runMs },
       }).pipe(Effect.provide(noDeliveryServices))
     );
   }
@@ -943,7 +947,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
 
     // A loop that claims nothing leaves the in-flight run where it is.
     const sweeping = harness.loop({
-      runRetentionMs: RUN_RETENTION_MS,
+      retention: { ...LOOP_SETTINGS.retention, runMs: RUN_RETENTION_MS },
       wrap: (repo) => ({ ...repo, claimDue: () => Effect.succeed([]) }),
     });
     await waitUntil(
@@ -969,13 +973,10 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     const harness = await open();
     const old = await endedRun(harness, 2 * RUN_RETENTION_MS);
 
-    await sweepTick(harness, {
-      sweep: false,
-      runRetentionMs: RUN_RETENTION_MS,
-    });
+    await sweepTick(harness, { sweep: false, runMs: RUN_RETENTION_MS });
     expect(await runExists(harness, old)).toBe(true);
 
-    await sweepTick(harness, { sweep: true, runRetentionMs: RUN_RETENTION_MS });
+    await sweepTick(harness, { sweep: true, runMs: RUN_RETENTION_MS });
     expect(await runExists(harness, old)).toBe(false);
   });
 

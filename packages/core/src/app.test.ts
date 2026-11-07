@@ -767,8 +767,7 @@ describe("createWfGraphApp runner", () => {
       pollMs: 250,
       leaseMs: undefined,
       heartbeatMs: undefined,
-      inboxRetentionMs: 7 * 24 * 60 * 60 * 1000,
-      runRetentionMs: undefined,
+      retention: { inboxMs: 7 * 24 * 60 * 60 * 1000, runMs: undefined },
       drainMs: 10_000,
     });
   });
@@ -795,8 +794,7 @@ describe("createWfGraphApp runner", () => {
       pollMs: 50,
       leaseMs: 9_000,
       heartbeatMs: 3_000,
-      inboxRetentionMs: 86_400_000,
-      runRetentionMs: 30 * 86_400_000,
+      retention: { inboxMs: 86_400_000, runMs: 30 * 86_400_000 },
     });
   });
 

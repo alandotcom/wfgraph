@@ -37,15 +37,14 @@ export type WfGraphAppContextValue = {
   readonly overdueAfterMs?: number | undefined;
   /**
    * The host's `runs.retentionMs`, which the Runs view states so a builder
-   * knows why old runs are gone. Null or left out when the host keeps every
-   * run.
+   * knows why old runs are gone. Left out when the host keeps every run.
    */
-  readonly runRetentionMs?: number | null | undefined;
+  readonly runRetentionMs?: number | undefined;
 };
 
 export class WfGraphAppContext extends Context.Service<
   WfGraphAppContext,
-  WfGraphAppContextValue & {
+  Omit<WfGraphAppContextValue, "runRetentionMs"> & {
     readonly overdueAfterMs: number;
     /** The host's `runs.retentionMs`, or null when it keeps every run. */
     readonly runRetentionMs: number | null;

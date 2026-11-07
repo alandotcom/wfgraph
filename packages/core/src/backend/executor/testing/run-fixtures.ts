@@ -43,7 +43,7 @@ export const noDeliveryServices = Layer.mergeAll(
  */
 export const LOOP_SETTINGS = {
   concurrency: { run: 10, delivery: 1 },
-  inboxRetentionMs: 7 * 24 * 60 * 60 * 1000,
+  retention: { inboxMs: 7 * 24 * 60 * 60 * 1000, runMs: undefined },
 } as const;
 
 export function lifecycleNode(config: JsonObject = {}): WorkflowNode {
