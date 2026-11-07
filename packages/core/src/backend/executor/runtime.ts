@@ -221,10 +221,12 @@ export function watchPassOnlyWrites(input: {
 }
 
 /**
- * A cron pass's writes: the fire and the skip, each fenced and watched by
- * `state` as a store write is, beside `passWrites`, the pass's own writes
- * already watched by the same state. A timer has no terminal record, so the
- * pass never ends its subject and every write stays fenced.
+ * A cron pass's writes: the fire, the skip and the row's deletion, each
+ * fenced and watched by `state` as a store write is, beside `passWrites`, the
+ * pass's own writes already watched by the same state. A timer has no
+ * terminal record, so the pass never ends its subject and every write stays
+ * fenced. A deletion the fence refuses, because the workflow's deletion took
+ * the row, stops the pass as a lost lease, which writes no release.
  */
 export function watchCronWrites(input: {
   fenced: CronPassWrites;
@@ -234,6 +236,12 @@ export function watchCronWrites(input: {
   const { fenced, passWrites, state } = input;
   return {
     ...passWrites,
+    dropSchedule: () =>
+      watchedStoreWrite(
+        fenced.dropSchedule,
+        fenced.dropSchedule,
+        state
+      )(undefined),
     fireCronTimer: watchedStoreWrite(
       fenced.fireCronTimer,
       fenced.fireCronTimer,

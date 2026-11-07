@@ -206,13 +206,20 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
       const loaded = yield* workflows.findByIdWithPublishedVersionForRun(
         input.workflowId
       );
-      // Publish writes a timer only for a published version, no write takes a
-      // workflow's publication away, and a timer cascades with its workflow.
-      // A workflow deleted since the claim took the timer with it, so the
-      // pass's release finds the row gone and writes nothing.
-      if (!loaded?.publishedVersion) {
+      // A workflow deleted since the claim took its timer row with it by
+      // cascade. Deleting the row through the pass's fence finds it gone,
+      // which stops the pass as a lost lease, with no release written.
+      if (loaded === null) {
+        yield* writes.dropSchedule();
         return yield* Effect.die(
-          new Error("A leased cron timer's workflow is gone or unpublished")
+          new Error("A deleted workflow's cron timer outlived its cascade")
+        );
+      }
+      // Publish writes a timer only for a published version, and no write
+      // takes a workflow's publication away.
+      if (loaded.publishedVersion === null) {
+        return yield* Effect.die(
+          new Error("A leased cron timer's workflow is unpublished")
         );
       }
       const { workflow, publishedVersion: version } = loaded;

@@ -104,22 +104,31 @@ const bodies = {
  * Runs one leased pass over the cron row `claimed(attempt)`, whose writes
  * answer the fire with `fire` and record every release and skip. The
  * workflow publishes `VERSION` at every read unless `loadFails`, when the read
- * fails as the database would.
+ * fails as the database would, or `deleted`, when the read finds no workflow
+ * and the fence finds the timer row gone with it.
  */
 async function runPass(input: {
   attempt: number;
   fire: () => Effect.Effect<CronFire, DatabaseError | LeaseLost>;
   loadFails?: boolean | undefined;
+  deleted?: boolean | undefined;
 }) {
   const fires: number[] = [];
   const releases: PassOutcome[] = [];
   const skips: SkipCronSlotInput[] = [];
+  const drops: number[] = [];
   const unexpected = (name: string) => () =>
     Effect.die(new Error(`The pass's ${name} was not expected`));
   const writes: CronPassWrites = {
     renewLease: unexpected("renewLease"),
     writeStepMemo: unexpected("writeStepMemo"),
-    dropSchedule: unexpected("dropSchedule"),
+    dropSchedule: () =>
+      Effect.suspend(() => {
+        drops.push(drops.length + 1);
+        return input.deleted === true
+          ? Effect.fail(new LeaseLost({ message: "row gone" }))
+          : Effect.die(new Error("The pass's dropSchedule was not expected"));
+      }),
     releasePass: (release) =>
       Effect.sync(() => {
         releases.push(release.outcome);
@@ -151,15 +160,17 @@ async function runPass(input: {
       findByIdWithPublishedVersionForRun: () =>
         input.loadFails === true
           ? Effect.fail(new DatabaseError({ cause: new Error("down") }))
-          : Effect.succeed({
-              workflow: {
-                id: "wf_1",
-                name: "Nightly report",
-                mode: "live" as const,
-                isPaused: false,
-              },
-              publishedVersion: VERSION,
-            }),
+          : input.deleted === true
+            ? Effect.succeed(null)
+            : Effect.succeed({
+                workflow: {
+                  id: "wf_1",
+                  name: "Nightly report",
+                  mode: "live" as const,
+                  isPaused: false,
+                },
+                publishedVersion: VERSION,
+              }),
       findVersionById: () => Effect.succeed(VERSION),
     }),
     recording.layer
@@ -171,7 +182,7 @@ async function runPass(input: {
       leaseMs: 60_000,
     }).pipe(Effect.provide(services))
   );
-  return { result, fires, releases, skips, lines: recording.lines };
+  return { result, fires, releases, skips, drops, lines: recording.lines };
 }
 
 describe("cron pass", () => {
@@ -205,6 +216,29 @@ describe("cron pass", () => {
     expect(pass.result).toEqual({ kind: "fence_refused", fence: "owner" });
     expect(pass.releases).toEqual([]);
     expect(pass.skips).toEqual([]);
+  });
+
+  it("ends a pass whose workflow was deleted after the claim as a lost lease, with no release and no error record", async () => {
+    const pass = await runPass({
+      attempt: 0,
+      fire: () => Effect.die(new Error("No fire was expected")),
+      deleted: true,
+    });
+
+    expect(pass.drops).toHaveLength(1);
+    expect(pass.result).toEqual({ kind: "fence_refused", fence: "owner" });
+    expect(pass.releases).toEqual([]);
+    expect(pass.skips).toEqual([]);
+    expect(pass.fires).toEqual([]);
+    // The pass's own lease-lost record, a warning, and nothing else.
+    expect(pass.lines).toEqual([
+      {
+        message: "Executor pass did not settle its row",
+        annotations: expect.objectContaining({
+          outcome: { kind: "lease_lost" },
+        }),
+      },
+    ]);
   });
 
   it("skips the slot when a failure spends the row's last retry, with the fire's one record", async () => {
