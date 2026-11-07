@@ -24,6 +24,7 @@ import {
 } from "#src/backend/lib/effect/test-layers";
 import { makeExtensionsLayer } from "#src/backend/lib/effect/extensions";
 import { makeExecutionDriverLayer } from "#src/backend/services/executions/driver";
+import { STEP_RETRY_LIMIT } from "#src/backend/services/executions/repo/release-policy";
 import {
   actionNode,
   CANCELABLE,
@@ -468,6 +469,97 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       expect.objectContaining({ state: "waiting", ownerToken: null }),
     ]);
     expect(after.timers[0]?.wakeAt.getTime()).toBeGreaterThan(before.getTime());
+  });
+
+  // A timer has no run to end failed, so a fire whose retries are spent skips
+  // its slot, and the Refused Start is how a builder learns the slot did not run.
+  it("skips the slot of a cron timer whose retries are spent, with a Refused Start", async () => {
+    const harness = await open();
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode({
+          lifecycleRules: {
+            startEvents: [],
+            cancelEvents: [],
+            concurrency: "unlimited",
+            schedules: [{ cron: "* * * * *", timeZone: "UTC" }],
+          },
+        }),
+        actionNode("work", "test/send"),
+      ],
+      edges: [edge("entry", "work", "started")],
+    });
+    await harness.connection.run(
+      publishWorkflow({
+        workflowId: "wf_cron_spent",
+        versionId: "ver_cron_spent",
+        graph,
+        catalogFingerprint: actions.catalogFingerprint(),
+      })
+    );
+    await setTimestamp(harness.database, {
+      table: "workflow_execution_schedule",
+      column: "wake_at",
+      where: "kind = 'cron'",
+      at: new Date(Date.now() - 60_000),
+    });
+    // Past the limit, as the timer's earlier passes would have left it.
+    await harness.database.execute(
+      `update workflow_execution_schedule set attempt = ${STEP_RETRY_LIMIT + 1} where kind = 'cron'`
+    );
+
+    await harness.connection.run(
+      tick({
+        actions: () => actions,
+        ...LOOP_SETTINGS,
+        budgetMs: 10_000,
+        sweep: false,
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            makeExtensionsLayer(extensionSet),
+            makeExecutionDriverLayer([])
+          )
+        )
+      )
+    );
+    const after = await harness.connection.run(
+      Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        return {
+          runs: yield* executions.listByWorkflow({
+            workflowId: "wf_cron_spent",
+            includeSuperseded: true,
+          }),
+          refusals: yield* executions.listWorkflowEvents({
+            workflowId: "wf_cron_spent",
+            eventType: "run_refused",
+          }),
+          timers: yield* executions.listCronTimers("wf_cron_spent"),
+        };
+      })
+    );
+
+    expect(after.runs).toEqual([]);
+    expect(after.refusals).toEqual([
+      expect.objectContaining({
+        message: expect.stringMatching(
+          /^Refused the \d{1,2}:\d{2} [AP]M scheduled run: starting it failed on every retry$/
+        ),
+        metadata: expect.objectContaining({
+          reason: "scheduled_start_failed",
+          startSource: "schedule",
+        }),
+      }),
+    ]);
+    expect(after.timers).toEqual([
+      expect.objectContaining({
+        state: "waiting",
+        attempt: 0,
+        ownerToken: null,
+      }),
+    ]);
   });
 
   // The Worker's tick runs one run at a time on Hyperdrive's one connection,

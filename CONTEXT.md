@@ -195,7 +195,9 @@ A start that opened no Execution, because the Start Event's Start Filter
 declined the arrival, first-wins Concurrency found a run for the entity already
 going, the payload carried nothing at the Correlation Path Concurrency needs, a
 manual start was not allowed, or a manual start named no Event into a graph that
-splits on one. Recorded as an audit row with no Execution behind it.
+splits on one. A schedule's slot that did not run is one too: the published
+version no longer passed the checks a run starts with, or the fire failed on
+every retry. Recorded as an audit row with no Execution behind it.
 
 **Canceled Branch**:
 The branch behind the Canceled outlet. Runs inside the same Execution, so it

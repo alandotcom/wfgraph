@@ -9,7 +9,8 @@ import { getRelativeTime } from "@wfgraph/shared/utils/time";
  * A refusal writes a `run_refused` audit row and no execution row. First-wins
  * Concurrency can find a run for the entity already going, the payload can lack
  * the Correlation Path value Concurrency needs, a manual start can be refused,
- * or the Start Filter can decline the arrival. A cancellation delivery failure
+ * the Start Filter can decline the arrival, or a schedule can skip a slot it
+ * could not run. A cancellation delivery failure
  * uses `cancel_not_delivered` and renders under Cancellation Failures.
  *
  * The rows arrive with the runs they belong beside, so this renders and reads

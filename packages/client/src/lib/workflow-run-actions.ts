@@ -47,6 +47,12 @@ export const IGNORED_REASON_MESSAGES = {
     "Current Entity State does not satisfy Entity Eligibility, so no run was started.",
   entity_not_found:
     "The tracked Entity no longer exists, so no run was started.",
+  // Neither reaches this map either: only a schedule's timer skips a slot with
+  // these reasons, and a skipped slot is read from the Refused Starts list.
+  published_version_not_runnable:
+    "The published version no longer passes the checks a run starts with, so no run was started.",
+  scheduled_start_failed:
+    "Starting the scheduled run failed on every retry, so no run was started.",
 } satisfies Record<WorkflowExecutionIgnoredReason, string>;
 
 /**

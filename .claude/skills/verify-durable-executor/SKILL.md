@@ -518,8 +518,9 @@ code adds five steps the model leaves out, none of which a rule depends on:
   published when the fire commits.
 - A slot whose published graph the preflight refuses, or a pass whose
   retries are spent, moves the timer on without firing (`skipCronSlot`),
-  as a Refused Start advances it, and records the reason in `last_error`. The
-  model has no graph that cannot run.
+  as a Refused Start advances it, writes a Refused Start for the slot in the
+  same fenced transaction, and records the reason in `last_error`. The model
+  has no graph that cannot run.
 - A cron pass renews no lease, so no heartbeat races the fire's own release
   of it.
 - PostgreSQL's `deleteById` locks a workflow's timers before deleting the

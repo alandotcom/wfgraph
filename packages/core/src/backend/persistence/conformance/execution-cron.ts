@@ -15,6 +15,7 @@ import type { CronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   type CronFence,
+  type CronRefusedEntry,
   ExecutionRepo,
   type FireCronTimerInput,
 } from "#src/backend/services/executions/repo";
@@ -152,6 +153,26 @@ async function leaseTimer(
   return { scheduleId, workflowId: WORKFLOW_ID, ownerToken };
 }
 
+/**
+ * A Refused Start for `reason` that names the slot it was written for, so a
+ * case reads which slot the write decided.
+ */
+function refusedEntry(reason: string): CronRefusedEntry {
+  return (slot) => ({
+    message: `Refused the ${slot.toISOString()} scheduled run`,
+    metadata: { reason },
+  });
+}
+
+/** Every Refused Start of the workflow, newest first. */
+const refusals = Effect.gen(function* () {
+  const executions = yield* ExecutionRepo;
+  return yield* executions.listWorkflowEvents({
+    workflowId: WORKFLOW_ID,
+    eventType: "run_refused",
+  });
+});
+
 /** A fire of `schedule` under `fence`, as the cron pass makes it. */
 function fire(input: {
   fence: CronFence;
@@ -185,10 +206,7 @@ function fire(input: {
         supersededReason: "Superseded by a newer start",
         startedEntry: notYetDue.startedEntry,
       },
-      refusedEntry: {
-        message: "Refused a start from scheduled run",
-        metadata: { reason: "concurrency_first_wins" },
-      },
+      refusedEntry: refusedEntry("concurrency_first_wins"),
       now: input.now,
     };
     return yield* executions.fireCronTimer(request);
@@ -459,6 +477,7 @@ export function describeExecutionCronConformance({
               fence: stale,
               schedule: EVERY_FIVE,
               error: "skipped",
+              refusedEntry: refusedEntry("published_version_not_runnable"),
               now: at(minutes(5)),
             })
           );
@@ -467,12 +486,14 @@ export function describeExecutionCronConformance({
             skipped: skipped._tag,
             timers: yield* timers,
             runs: yield* runs,
+            refusals: yield* refusals,
           };
         })
       );
 
       expect(result.fired).toBe("LeaseLost");
       expect(result.skipped).toBe("LeaseLost");
+      expect(result.refusals).toEqual([]);
       expect(result.timers).toEqual([
         expect.objectContaining({
           state: "leased",
@@ -666,7 +687,6 @@ export function describeExecutionCronConformance({
 
       const result = await connection.run(
         Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
           const refused = yield* fire({
             fence: second,
             schedule: EVERY_FIVE,
@@ -675,10 +695,7 @@ export function describeExecutionCronConformance({
           });
           return {
             refused,
-            refusals: yield* executions.listWorkflowEvents({
-              workflowId: WORKFLOW_ID,
-              eventType: "run_refused",
-            }),
+            refusals: yield* refusals,
             timers: yield* timers,
             runs: yield* runs,
           };
@@ -697,7 +714,7 @@ export function describeExecutionCronConformance({
       });
       expect(result.refusals).toEqual([
         expect.objectContaining({
-          message: "Refused a start from scheduled run",
+          message: `Refused the ${at(minutes(10)).toISOString()} scheduled run`,
           metadata: {
             reason: "concurrency_first_wins",
             inFlightExecutionIds: [firstRunId],
@@ -808,7 +825,7 @@ export function describeExecutionCronConformance({
       expect(result.runs).toEqual([]);
     });
 
-    it("skips a slot without firing: moves the timer past now, releases its lease and records why", async () => {
+    it("skips a slot without firing: writes a Refused Start for the slot, moves the timer past now, releases its lease and records why", async () => {
       const { database, connection } = await withWorkflow(openDatabase);
       const scheduleId = await connection.run(
         Effect.gen(function* () {
@@ -825,17 +842,36 @@ export function describeExecutionCronConformance({
       const result = await connection.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
-          const nextWakeAt = yield* executions.skipCronSlot({
+          const skipped = yield* executions.skipCronSlot({
             fence,
             schedule: EVERY_FIVE,
             error: "The workflow's graph will not run",
+            refusedEntry: refusedEntry("published_version_not_runnable"),
             now: at(minutes(6)),
           });
-          return { nextWakeAt, timers: yield* timers, runs: yield* runs };
+          return {
+            skipped,
+            timers: yield* timers,
+            runs: yield* runs,
+            refusals: yield* refusals,
+          };
         })
       );
 
-      expect(result.nextWakeAt).toEqual(at(minutes(10)));
+      // 09:05 is the latest slot at or before the skip at 09:06.
+      expect(result.skipped).toEqual({
+        slot: at(minutes(5)),
+        nextWakeAt: at(minutes(10)),
+      });
+      expect(result.refusals).toEqual([
+        expect.objectContaining({
+          workflowId: WORKFLOW_ID,
+          executionId: null,
+          eventType: "run_refused",
+          message: `Refused the ${at(minutes(5)).toISOString()} scheduled run`,
+          metadata: { reason: "published_version_not_runnable" },
+        }),
+      ]);
       expect(result.timers).toEqual([
         expect.objectContaining({
           state: "waiting",

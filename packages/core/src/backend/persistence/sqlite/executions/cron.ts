@@ -10,7 +10,10 @@ import { Effect } from "effect";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { CronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
-import type { CronRepoMethods } from "#src/backend/services/executions/repo/cron";
+import type {
+  CronRepoMethods,
+  SkippedCronSlot,
+} from "#src/backend/services/executions/repo/cron";
 import type { CronFire } from "#src/backend/services/executions/repo/contracts";
 import {
   cronFireVerdict,
@@ -187,12 +190,13 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
             );
           }
           if (start.status === "refused") {
+            const refused = input.refusedEntry(slot);
             yield* recordAuditEventWrite({
               workflowId: input.fence.workflowId,
               eventType: "run_refused",
-              message: input.refusedEntry.message,
+              message: refused.message,
               metadata: {
-                ...input.refusedEntry.metadata,
+                ...refused.metadata,
                 inFlightExecutionIds: start.inFlightExecutionIds,
               },
             })(database);
@@ -211,18 +215,42 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
       ),
 
     skipCronSlot: (input) =>
-      writeFenced(store, input.fence, (database) => {
-        const nextWakeAt = cronWakeAfter(input.schedule, input.now);
-        return database
-          .update(workflowExecutionSchedule)
-          .set({
-            ...RELEASED_LEASE,
-            wakeAt: nextWakeAt.getTime(),
-            lastError: input.error,
-          })
-          .where(eq(workflowExecutionSchedule.id, input.fence.scheduleId))
-          .pipe(Effect.as(nextWakeAt));
-      }),
+      writeFenced(store, input.fence, (database) =>
+        Effect.gen(function* () {
+          const thisTimer = eq(
+            workflowExecutionSchedule.id,
+            input.fence.scheduleId
+          );
+          const timer = yield* database
+            .select({ wakeAt: workflowExecutionSchedule.wakeAt })
+            .from(workflowExecutionSchedule)
+            .where(thisTimer)
+            .get();
+          const slot = cronSlotAt(
+            input.schedule,
+            input.now,
+            timer === undefined ? input.now : new Date(timer.wakeAt)
+          );
+          const nextWakeAt = cronWakeAfter(input.schedule, input.now);
+          const refused = input.refusedEntry(slot);
+          yield* recordAuditEventWrite({
+            workflowId: input.fence.workflowId,
+            eventType: "run_refused",
+            message: refused.message,
+            metadata: refused.metadata,
+          })(database);
+          yield* database
+            .update(workflowExecutionSchedule)
+            .set({
+              ...RELEASED_LEASE,
+              wakeAt: nextWakeAt.getTime(),
+              lastError: input.error,
+            })
+            .where(thisTimer);
+          const skipped: SkippedCronSlot = { slot, nextWakeAt };
+          return skipped;
+        })
+      ),
 
     listCronTimers: (workflowId) =>
       store.read((database) =>

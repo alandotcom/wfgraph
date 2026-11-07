@@ -857,6 +857,16 @@ export type ConcurrencyStartOutcome = Extract<
 >;
 
 /**
+ * A Refused Start for a cron slot, written as a workflow-scoped `run_refused`
+ * audit row. The slot is decided inside the write's own transaction, so the
+ * caller hands the entry over as a function of it.
+ */
+export type CronRefusedEntry = (slot: Date) => {
+  message: string;
+  metadata: JsonObject;
+};
+
+/**
  * What `ExecutionRepo.fireCronTimer` is asked to do: fire the leased timer
  * `fence` names, admitting the run the way a manual start of the published
  * version that names no Event is admitted.
@@ -882,11 +892,10 @@ export type FireCronTimerInput = {
    */
   start: Omit<StartForEntityInput, "now" | "admissionDecisionId">;
   /**
-   * The Refused Start a first-wins refusal writes, as a workflow-scoped
-   * `run_refused` audit row. The fire adds the ids of the runs it deferred to
-   * under `inFlightExecutionIds`.
+   * The Refused Start a first-wins refusal writes. The fire adds the ids of
+   * the runs it deferred to under `inFlightExecutionIds`.
    */
-  refusedEntry: { message: string; metadata: JsonObject };
+  refusedEntry: CronRefusedEntry;
   /** The fire's clock: the slot it fires and the next wake are read from it. */
   now: Date;
 };

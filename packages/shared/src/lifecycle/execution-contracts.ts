@@ -139,6 +139,11 @@ export type WorkflowExecutionStartSource =
  *   workflow's positive Entity Eligibility condition.
  * - `entity_not_found`: the host reported that the tracked Entity no longer
  *   exists.
+ * - `published_version_not_runnable`: a schedule fell due while the published
+ *   version no longer passes the checks a run starts with, such as an action
+ *   the app no longer defines, so the slot was skipped.
+ * - `scheduled_start_failed`: a scheduled fire failed on every one of its
+ *   retries, so the slot was skipped.
  *
  * The two Start Filter reasons reach no manual start, because a manual start is a person asking
  * for this run rather than an arrival being admitted. They are listed here so the
@@ -155,6 +160,8 @@ export const WORKFLOW_EXECUTION_IGNORED_REASONS = [
   "start_filter_unevaluable",
   "entity_condition_not_met",
   "entity_not_found",
+  "published_version_not_runnable",
+  "scheduled_start_failed",
 ] as const;
 
 export type WorkflowExecutionIgnoredReason =

@@ -2,7 +2,7 @@
  * The pass body of a `cron` schedule row: fire the timer with `fireSchedule`
  * and write the fire's one record. The fire's own transaction releases the
  * lease, so a body that fired ends its pass with no release to write. A body
- * whose retries are spent skips the slot it was firing.
+ * whose retries are spent skips the slot it was firing, with a Refused Start.
  */
 
 import { Effect, Predicate } from "effect";
@@ -17,6 +17,7 @@ import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import {
   fireSchedule,
   type ScheduleFireOutcome,
+  scheduledRefusal,
 } from "#src/backend/services/workflows/lifecycle/scheduled-start";
 
 /** Every service a cron row's pass reads. */
@@ -66,6 +67,8 @@ function runFields(outcome: ScheduleFireOutcome) {
       };
     case "refused":
       return { run: { version: outcome.versionId, slot: outcome.slot } };
+    case "skipped":
+      return { run: { slot: outcome.slot } };
     default:
       return {};
   }
@@ -139,6 +142,11 @@ export function cronBody(): PassBody<CronPass, CronServices> {
             fence: pass.fence,
             schedule: pass.claimed.schedule,
             error,
+            refusedEntry: scheduledRefusal({
+              schedule: pass.claimed.schedule,
+              reason: "scheduled_start_failed",
+              extra: { error },
+            }),
             now: pass.now(),
           })
         );

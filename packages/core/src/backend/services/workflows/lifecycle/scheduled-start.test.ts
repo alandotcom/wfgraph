@@ -18,6 +18,7 @@ import {
 import type {
   CronFence,
   CronFire,
+  CronRefusedEntry,
   FireCronTimerInput,
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
@@ -125,7 +126,11 @@ function makeServices(input: {
 }) {
   const reads = { versions: 0 };
   const fired: FireCronTimerInput[] = [];
-  const skipped: { error: string; now: Date }[] = [];
+  const skipped: {
+    error: string;
+    now: Date;
+    refusal: ReturnType<CronRefusedEntry>;
+  }[] = [];
   const provided = Layer.mergeAll(
     SilentAppLoggerLayer,
     stubExtensions(),
@@ -154,8 +159,15 @@ function makeServices(input: {
     stubExecutionRepo({
       skipCronSlot: (skip) =>
         Effect.sync(() => {
-          skipped.push({ error: skip.error, now: skip.now });
-          return new Date("2026-03-01T09:10:00.000Z");
+          skipped.push({
+            error: skip.error,
+            now: skip.now,
+            refusal: skip.refusedEntry(SLOT),
+          });
+          return {
+            slot: SLOT,
+            nextWakeAt: new Date("2026-03-01T09:10:00.000Z"),
+          };
         }),
     }),
     stubExecutionDriver({
@@ -225,10 +237,19 @@ describe("fireSchedule", () => {
             entityValue: "workflow:wf_1",
           });
           assert.strictEqual(request?.start.concurrency, "first-wins");
-          assert.strictEqual(
-            request?.refusedEntry.message,
-            "Refused a start from scheduled run: a run for this entity is already going and Concurrency is first-wins"
-          );
+          // The schedule reads time in UTC, so the 09:05 UTC slot is 9:05 AM.
+          assert.deepStrictEqual(request?.refusedEntry(SLOT), {
+            message:
+              "Refused the 9:05 AM scheduled run: a run is still going and Concurrency is first-wins",
+            metadata: {
+              entityValue: "workflow:wf_1",
+              runMode: "live",
+              reason: "concurrency_first_wins",
+              startSource: "schedule",
+              schedule: EVERY_FIVE,
+              scheduledFor: "2026-03-01T09:05:00.000Z",
+            },
+          });
           assert.strictEqual(request?.now, NOW);
         })
     );
@@ -275,7 +296,23 @@ describe("fireSchedule", () => {
           assert.strictEqual(outcome.kind, "skipped");
           assert.strictEqual(services.fired.length, 0);
           assert.strictEqual(services.skipped.length, 1);
-          assert.deepStrictEqual(services.skipped[0]?.now, NOW);
+          const [skip] = services.skipped;
+          assert.deepStrictEqual(skip?.now, NOW);
+          // The skip writes a Refused Start a builder reads in the Runs view,
+          // and keeps the preflight's own error on its metadata.
+          assert.strictEqual(
+            skip?.refusal.message,
+            "Refused the 9:05 AM scheduled run: the published version no longer passes the checks a run starts with"
+          );
+          assert.deepStrictEqual(skip?.refusal.metadata, {
+            versionId: "ver_3",
+            runMode: "live",
+            error: skip?.error ?? "",
+            reason: "published_version_not_runnable",
+            startSource: "schedule",
+            schedule: EVERY_FIVE,
+            scheduledFor: "2026-03-01T09:05:00.000Z",
+          });
         })
     );
   });

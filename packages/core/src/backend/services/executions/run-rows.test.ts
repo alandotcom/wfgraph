@@ -171,6 +171,42 @@ describe("buildIgnoredRunAuditMessage", () => {
       "Refused a start from manual run: a run for this entity is already going and Concurrency is first-wins"
     );
   });
+
+  // A scheduled run has no Event to name, so its slot's time tells one fire
+  // from the next, read in the zone the schedule is written in.
+  it("names a scheduled start by its slot's time in the schedule's zone", () => {
+    const slot = {
+      at: new Date("2026-03-02T14:00:00.000Z"),
+      timeZone: "America/New_York",
+    };
+    expect(
+      buildIgnoredRunAuditMessage({
+        startSource: "schedule",
+        reason: "concurrency_first_wins",
+        slot,
+      })
+    ).toBe(
+      "Refused the 9:00 AM scheduled run: a run is still going and Concurrency is first-wins"
+    );
+    expect(
+      buildIgnoredRunAuditMessage({
+        startSource: "schedule",
+        reason: "published_version_not_runnable",
+        slot: { ...slot, at: new Date("2026-03-02T21:30:00.000Z") },
+      })
+    ).toBe(
+      "Refused the 4:30 PM scheduled run: the published version no longer passes the checks a run starts with"
+    );
+    expect(
+      buildIgnoredRunAuditMessage({
+        startSource: "schedule",
+        reason: "scheduled_start_failed",
+        slot,
+      })
+    ).toBe(
+      "Refused the 9:00 AM scheduled run: starting it failed on every retry"
+    );
+  });
 });
 
 // The two blocks below take their `it` from the `layer` callback, typed with the

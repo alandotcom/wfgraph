@@ -184,14 +184,80 @@ export function buildRunStartedAuditMessage(input: {
 }
 
 /**
+ * Why a start was refused, as the clause after the colon of its sentence.
+ * `workflow_paused` is worded on its own, because a paused workflow's request
+ * is ignored rather than refused.
+ */
+const REFUSAL_CLAUSES = {
+  concurrency_first_wins:
+    "a run for this entity is already going and Concurrency is first-wins",
+  entity_value_missing:
+    "nothing at this workflow's Correlation Path, and Concurrency needs an entity to compare",
+  manual_start_not_allowed:
+    "this workflow does not list manual runs as a start source",
+  start_event_required:
+    "this workflow splits on the Event a run is on, and this start named none",
+  start_filter_not_met:
+    "the payload does not satisfy this workflow's start filter",
+  // The filter's own error is not repeated here. It is a message from the CEL
+  // library about a payload this row does not carry, and it goes to the log,
+  // which is where an operator reads it.
+  start_filter_unevaluable:
+    "this workflow's start filter could not be read against the payload",
+  entity_condition_not_met:
+    "current Entity State does not satisfy Entity Eligibility",
+  entity_not_found: "the tracked Entity no longer exists",
+  // The preflight's own error goes on the row's metadata and the timer's
+  // `last_error` instead, since it can list several problems at length.
+  published_version_not_runnable:
+    "the published version no longer passes the checks a run starts with",
+  scheduled_start_failed: "starting it failed on every retry",
+} as const satisfies Record<
+  Exclude<WorkflowExecutionIgnoredReason, "workflow_paused">,
+  string
+>;
+
+/**
+ * The clauses a scheduled run words differently. Every scheduled run is about
+ * the workflow itself, so first-wins found a run going, and "this entity"
+ * would name nothing a builder can see.
+ */
+const SCHEDULED_REFUSAL_CLAUSES: Partial<
+  Record<keyof typeof REFUSAL_CLAUSES, string>
+> = {
+  concurrency_first_wins: "a run is still going and Concurrency is first-wins",
+};
+
+/** The slot a scheduled start was for, and the zone its schedule reads time in. */
+export type ScheduledSlot = { at: Date; timeZone: string };
+
+/**
+ * The slot's wall-clock time in its schedule's zone, such as "9:00 AM". `Intl`
+ * separates the period with a narrow no-break space, which is written as a
+ * plain space so the stored sentence matches what a person types.
+ */
+function slotClockTime(slot: ScheduledSlot): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: slot.timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+  })
+    .format(slot.at)
+    .replace(/\s/gu, " ");
+}
+
+/**
  * The sentence a Refused Start is recorded with, and the one a paused workflow's
- * ignored run gets. Both open with the same three words as the panel's heading, so
- * a builder reading a row knows which list it belongs to.
+ * ignored run gets. A refusal opens with "Refused", the first word of the
+ * panel's heading, so a builder reading a row knows which list it belongs to.
+ * A scheduled start that names its `slot` is called by the slot's time, as in
+ * "Refused the 9:00 AM scheduled run: ...".
  */
 export function buildIgnoredRunAuditMessage(input: {
   startSource: WorkflowExecutionStartSource;
   reason: WorkflowExecutionIgnoredReason;
   eventName?: string | undefined;
+  slot?: ScheduledSlot | undefined;
 }): string {
   const subject = IGNORED_SUBJECTS[input.startSource];
 
@@ -199,40 +265,14 @@ export function buildIgnoredRunAuditMessage(input: {
     return `Ignored ${subject} because workflow is paused`;
   }
 
+  if (input.startSource === "schedule" && input.slot) {
+    const clause =
+      SCHEDULED_REFUSAL_CLAUSES[input.reason] ?? REFUSAL_CLAUSES[input.reason];
+    return `Refused the ${slotClockTime(input.slot)} ${subject}: ${clause}`;
+  }
+
   const named = input.eventName ? `${subject} ${input.eventName}` : subject;
-
-  if (input.reason === "concurrency_first_wins") {
-    return `Refused a start from ${named}: a run for this entity is already going and Concurrency is first-wins`;
-  }
-
-  if (input.reason === "entity_value_missing") {
-    return `Refused a start from ${named}: nothing at this workflow's Correlation Path, and Concurrency needs an entity to compare`;
-  }
-
-  if (input.reason === "start_event_required") {
-    return `Refused a start from ${named}: this workflow splits on the Event a run is on, and this start named none`;
-  }
-
-  if (input.reason === "start_filter_not_met") {
-    return `Refused a start from ${named}: the payload does not satisfy this workflow's start filter`;
-  }
-
-  if (input.reason === "entity_not_found") {
-    return `Refused a start from ${named}: the tracked Entity no longer exists`;
-  }
-
-  if (input.reason === "entity_condition_not_met") {
-    return `Refused a start from ${named}: current Entity State does not satisfy Entity Eligibility`;
-  }
-
-  // The filter's own error is not repeated here. It is a message from the CEL
-  // library about a payload this row does not carry, and it goes to the log,
-  // which is where an operator reads it.
-  if (input.reason === "start_filter_unevaluable") {
-    return `Refused a start from ${named}: this workflow's start filter could not be read against the payload`;
-  }
-
-  return `Refused a start from ${named}: this workflow does not list manual runs as a start source`;
+  return `Refused a start from ${named}: ${REFUSAL_CLAUSES[input.reason]}`;
 }
 
 /**
