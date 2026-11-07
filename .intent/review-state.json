@@ -99,12 +99,12 @@
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "611885ee72c66506b6d990aaf9e9d1b25879860e21afbe6d6813a7701807bad3",
+      "fingerprint": "d4805ac617f19b028734d239c8a286e2d40521f2d7f6d14f0f9355b2b2a81569",
       "snapshot": {
         "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
         "_artifacts/domain_map.yaml": "5dd4cbfd1b28f4fa04eb149980f47353de9b9ba8aa86e5754591f9ea2a011d03",
-        "_artifacts/skill_spec.md": "0b9ae1af25477fa46d940dfbd9e5b1317e4d283059e22afe91cfecacb9909013",
-        "_artifacts/skill_tree.yaml": "f848187b58f916de60cf1c90612def5a3283c38ba4e5d94d7fa1dcaa628e27e5",
+        "_artifacts/skill_spec.md": "c155c737161e08bbc8e725d13482fa69484ac8ed34522cab1dee0ff3c2b9d2b2",
+        "_artifacts/skill_tree.yaml": "597e37516c5fe2b6dc9b9e20ab9f3722fc67e79438aac459dc1de1a6b077548a",
         "docs/embedding.md": "69f52bc8060678d8cdf93539ab4419df046df0ce7f4fc599ba6621e4bd216a34",
         "docs/events.md": "b7690fd2be3ee688359e17f2438416ac4e2aab290c837ce13bdb5bab73bd3d09",
         "docs/integrations.md": "3286a74c669550439377f611e8cd6ecf38751cf0986002d2f6448f73c2dcdf50",
@@ -115,11 +115,11 @@
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "14a493074ecf5765ddc54b1520bfd4ed106fcd72d2d08437fb0beef59147ac8a"
       },
-      "head": "3ba1808741203578fc60bc3727e761b953a5577e",
+      "head": "b31a9ce30b8f4df6c558dc2101a9b869b037482e",
       "outcome": "updated",
-      "reason": "Added the batch 1 note that intent stale 0.5.6 reports the three planned tree entries as unresolved paths because it ignores status: planned; the rest of domain_map.yaml, skill_spec.md and skill_tree.yaml is unchanged from the outcome recorded for this batch.",
+      "reason": "Added review.ignore with .changeset/** to skill_tree.yaml and recorded it as maintainer decision 7 in skill_spec.md, so a changeset is never reported as an unmapped change. domain_map.yaml is unchanged and still accurate; no skill or source changed.",
       "evidence": [
-        "Changed: _artifacts/skill_spec.md at 3ba1808741203578fc60bc3727e761b953a5577e"
+        "Changed: _artifacts/skill_spec.md, _artifacts/skill_tree.yaml at b31a9ce30b8f4df6c558dc2101a9b869b037482e"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {

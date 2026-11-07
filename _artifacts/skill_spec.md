@@ -52,6 +52,12 @@ integrations). The published skills ship inside the `@wfgraph/core` and
    that a Setup section carries a complete example with imports. The short
    wrong and correct forms in each skill's Common Mistakes section remain,
    because they show a mistake rather than a setup.
+7. **Skill reviews ignore changesets.** `skill_tree.yaml` lists `.changeset/**`
+   under `review.ignore`. A changeset is the release note for a change and holds
+   no guidance a skill teaches, so `intent maintainer review` no longer reports
+   one as an unmapped change that needs its own `out-of-scope` outcome. The
+   change the changeset describes is still reviewed through the source paths
+   the skills list.
 
 ## Domains
 
