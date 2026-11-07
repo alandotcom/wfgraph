@@ -1196,6 +1196,13 @@ keeps compatibility machinery alive for the next one.
      Publish keeps an unchanged schedule's row and the lease a pass holds on
      it. It reads the workflow row without locking it, because Publish and
      pause lock the workflow row before the timer rows.
+   - Publish writes each timer row it keeps to its own value. The fire is a
+     serializable transaction that locks its timer row first, so a fire
+     whose snapshot predates the Publish and that waited for that lock fails
+     with a serialization error once the Publish commits, and retries on a
+     fresh snapshot that reads the version the Publish activated. A row
+     Publish only locked would let that fire open a run on the replaced
+     version.
    - Publish deletes the row of an edited schedule and inserts a fresh one,
      so the edit drops any lease a pass held on the old expression.
    - The `Cron` model of `verify-durable-executor` checks each of these
