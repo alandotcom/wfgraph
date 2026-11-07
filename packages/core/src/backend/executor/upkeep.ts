@@ -20,8 +20,11 @@ const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 /**
  * How many rows each sweep deletes at most, in one statement, for all four
  * sweeps. A sweep that deletes this many may have left more past its window.
+ * It is 500 because `node:sqlite` runs on the host's main thread and holds the
+ * one writer: 500 ended runs with their logs, timelines and wait rows took
+ * about 25 ms to delete on SQLite, and 1,000 took about 45 ms.
  */
-const SWEEP_BATCH = 1_000;
+const SWEEP_BATCH = 500;
 
 /**
  * The poll for inbox rows a host inserted inside its own transaction: gives up

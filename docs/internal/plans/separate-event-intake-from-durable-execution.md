@@ -1136,7 +1136,7 @@ keeps compatibility machinery alive for the next one.
      measured from `completed_at`.
    - The sweep runs in the upkeep that already sweeps the inbox: hourly in the
      worker loop, and on a Worker's Cron Trigger tick. It deletes in batches of
-     1,000, and a sweep the database fails is tried again an hour later.
+     500, and a sweep the database fails is tried again an hour later.
    - It deletes terminal Executions, which takes their logs, run-scoped audit
      rows and wait rows by cascade. It also deletes the workflow-scoped audit
      rows (`run_refused`, `cancel_not_delivered`) past the same window, and

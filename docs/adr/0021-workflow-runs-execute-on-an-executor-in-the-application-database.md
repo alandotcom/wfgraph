@@ -213,7 +213,7 @@ with different windows, and the condition the sweep read from the database cover
 four.
 
 The sweep ran in the upkeep that already swept the inbox: hourly in the worker loop, and on
-a Worker's Cron Trigger tick, in batches of 1,000, with the next sweep a poll interval later
+a Worker's Cron Trigger tick, in batches of 500, with the next sweep a poll interval later
 when a batch came back full. A sweep the database failed was logged and counted as
 finished, so an outage cost one try an hour. That upkeep already ran beside the claims on
 every backend and had the cadence, batching and failure handling the run sweep needed, so a

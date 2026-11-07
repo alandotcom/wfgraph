@@ -731,7 +731,7 @@ const wfgraph = await createWfGraphApp({
 `events.retentionMs` sets how long an inbox row is kept after its Event arrived, once its
 delivery has settled. It defaults to 604,800,000, which is seven days, and must be a positive
 integer of at most 100 years; a zero, negative, fractional or larger value fails at startup.
-Once an hour, the loop deletes up to 1,000 `delivered` or `failed` rows that arrived earlier
+Once an hour, the loop deletes up to 500 `delivered` or `failed` rows that arrived earlier
 than the window, beside its claims rather than ahead of them; when a sweep reaches that
 limit, the next one runs a poll interval later. A `pending` row is never deleted.
 
@@ -758,7 +758,7 @@ Run history stays in your database until you ask Workflow Graph to delete it.
 With no value, nothing is deleted.
 
 With a value, the loop sweeps run history once an hour, in the same upkeep that deletes
-settled inbox rows. Each sweep deletes up to 1,000 rows of each kind, in this order:
+settled inbox rows. Each sweep deletes up to 500 rows of each kind, in this order:
 
 1. Executions that ended (`completed`, `failed`, `canceled`, `exited` or `superseded`)
    before the window. Each run's node logs, wait rows and timeline go with it.
