@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { rejectUnknownKeys } from "#src/types/schema";
 import { formatSchemaFailure } from "#src/types/schema-message";
 import {
+  clockTime,
   type CronSchedule,
   cronSchedulesSchema,
+  cronShape,
   describeCronSchedule,
   latestSlotAtOrBefore,
   nextFireAfter,
@@ -348,5 +350,38 @@ describe("describeCronSchedule", () => {
     expect(describeCronSchedule(inNewYork(cron))).toBe(
       `${words} (America/New_York)`
     );
+  });
+});
+
+describe("cronShape", () => {
+  it.each([
+    ["* * * * *", { kind: "minutes", step: 1 }],
+    ["*/15 * * * *", { kind: "minutes", step: 15 }],
+    ["5 * * * *", { kind: "hourly", minute: 5 }],
+    ["0 9 * * *", { kind: "daily", hour: 9, minute: 0 }],
+    ["30 17 * * 1-5", { kind: "weekdays", hour: 17, minute: 30 }],
+    ["0 9 * * 5", { kind: "weekly", weekday: 5, hour: 9, minute: 0 }],
+    ["0 9 * * 7", { kind: "weekly", weekday: 0, hour: 9, minute: 0 }],
+    ["0 12 1 * *", { kind: "monthly", day: 1, hour: 12, minute: 0 }],
+    ["*/0 * * * *", { kind: "custom" }],
+    ["0 9 1,15 * *", { kind: "custom" }],
+    ["0 9 * 6 *", { kind: "custom" }],
+    ["0 9,17 * * *", { kind: "custom" }],
+    ["0 9 * * 1,3", { kind: "custom" }],
+    ["0 9 1 * 1", { kind: "custom" }],
+    ["not a cron", { kind: "custom" }],
+  ])("reads %s", (cron, shape) => {
+    expect(cronShape(cron)).toEqual(shape);
+  });
+});
+
+describe("clockTime", () => {
+  it("writes the instant's time in the zone on a 12-hour clock with a plain space", () => {
+    expect(clockTime(new Date("2026-11-09T14:00:00Z"), NEW_YORK)).toBe(
+      "9:00 AM"
+    );
+    expect(clockTime(new Date("2026-11-09T05:30:00Z"), "UTC")).toBe("5:30 AM");
+    expect(clockTime(new Date("2026-11-09T00:00:00Z"), "UTC")).toBe("12:00 AM");
+    expect(clockTime(new Date("2026-11-09T12:30:00Z"), "UTC")).toBe("12:30 PM");
   });
 });

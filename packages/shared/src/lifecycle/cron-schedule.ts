@@ -210,10 +210,28 @@ const WEEKDAY_NAMES = [
 ] as const;
 
 /**
+ * The shape of a cron expression, for the shapes a schedule can be described
+ * and picked by. Every field it names is a plain number in range, and the
+ * month field is `*`. `weekday` counts from Sunday as 0, so an expression
+ * writing Sunday as 7 reads as 0. Anything else, including a string that is
+ * not five fields, is `custom`.
+ */
+export type CronShape =
+  | { kind: "minutes"; step: number }
+  | { kind: "hourly"; minute: number }
+  | { kind: "daily"; hour: number; minute: number }
+  | { kind: "weekdays"; hour: number; minute: number }
+  | { kind: "weekly"; weekday: number; hour: number; minute: number }
+  | { kind: "monthly"; day: number; hour: number; minute: number }
+  | { kind: "custom" };
+
+const CUSTOM: CronShape = { kind: "custom" };
+
+/**
  * A cron field holding one plain number from `min` to `max`, or undefined for
  * anything else, such as a wildcard, a step, a range or a list.
  */
-export function cronFieldNumber(
+function fieldNumber(
   field: string,
   min: number,
   max: number
@@ -225,61 +243,104 @@ export function cronFieldNumber(
   return value >= min && value <= max ? value : undefined;
 }
 
-/** A 12-hour clock time, such as 9:00 AM or 12:30 PM. */
-function clockTime(hour: number, minute: number): string {
-  const period = hour < 12 ? "AM" : "PM";
-  const hourOnDial = hour % 12 === 0 ? 12 : hour % 12;
-  return `${hourOnDial}:${String(minute).padStart(2, "0")} ${period}`;
+/** The minutes between runs a minute field names: 1 for a wildcard, n for a step of n. */
+function minuteStep(field: string): number | undefined {
+  if (field === "*") {
+    return 1;
+  }
+  const step = Number(/^\*\/(\d+)$/.exec(field)?.[1]);
+  return step >= 1 ? step : undefined;
+}
+
+/** Which of the described shapes `cron` has, or `custom`. */
+export function cronShape(cron: string): CronShape {
+  const fields = cron.split(" ");
+  if (fields.length !== 5) {
+    return CUSTOM;
+  }
+  const [minuteField, hourField, dayOfMonth, month, dayOfWeek] = fields;
+  if (month !== "*") {
+    return CUSTOM;
+  }
+
+  if (hourField === "*") {
+    if (dayOfMonth !== "*" || dayOfWeek !== "*") {
+      return CUSTOM;
+    }
+    const step = minuteStep(minuteField);
+    if (step !== undefined) {
+      return { kind: "minutes", step };
+    }
+    const minute = fieldNumber(minuteField, 0, 59);
+    return minute === undefined ? CUSTOM : { kind: "hourly", minute };
+  }
+
+  const minute = fieldNumber(minuteField, 0, 59);
+  const hour = fieldNumber(hourField, 0, 23);
+  if (minute === undefined || hour === undefined) {
+    return CUSTOM;
+  }
+  if (dayOfMonth === "*") {
+    if (dayOfWeek === "*") {
+      return { kind: "daily", hour, minute };
+    }
+    if (dayOfWeek === "1-5") {
+      return { kind: "weekdays", hour, minute };
+    }
+    const weekday = fieldNumber(dayOfWeek, 0, 7);
+    return weekday === undefined
+      ? CUSTOM
+      : { kind: "weekly", weekday: weekday % 7, hour, minute };
+  }
+  const day = fieldNumber(dayOfMonth, 1, 31);
+  return day !== undefined && dayOfWeek === "*"
+    ? { kind: "monthly", day, hour, minute }
+    : CUSTOM;
 }
 
 /**
- * The expression in words for the shapes a schedule picker offers, and the
+ * The wall-clock time of `instant` in `timeZone` on a 12-hour English clock,
+ * such as "9:00 AM" or "12:30 PM". `Intl` separates the period with a narrow
+ * no-break space, which is written as a plain space so the text matches what
+ * a person types.
+ */
+export function clockTime(instant: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+  })
+    .format(instant)
+    .replace(/\s/gu, " ");
+}
+
+/** An hour and minute on the 12-hour clock `clockTime` writes. */
+function clockTimeOf(hour: number, minute: number): string {
+  return clockTime(new Date(Date.UTC(2000, 0, 1, hour, minute)), "UTC");
+}
+
+/**
+ * The expression in words for the shapes `cronShape` names, and the
  * expression itself for anything else.
  */
 function describeExpression(cron: string): string {
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = cron.split(" ");
-  if (month !== "*") {
-    return cron;
+  const shape = cronShape(cron);
+  switch (shape.kind) {
+    case "minutes":
+      return shape.step === 1 ? "Every minute" : `Every ${shape.step} minutes`;
+    case "hourly":
+      return `Every hour at :${String(shape.minute).padStart(2, "0")}`;
+    case "daily":
+      return `Every day at ${clockTimeOf(shape.hour, shape.minute)}`;
+    case "weekdays":
+      return `Every weekday at ${clockTimeOf(shape.hour, shape.minute)}`;
+    case "weekly":
+      return `Every ${WEEKDAY_NAMES[shape.weekday]} at ${clockTimeOf(shape.hour, shape.minute)}`;
+    case "monthly":
+      return `On day ${shape.day} of every month at ${clockTimeOf(shape.hour, shape.minute)}`;
+    default:
+      return cron;
   }
-  const everyDay = dayOfMonth === "*" && dayOfWeek === "*";
-
-  if (hour === "*" && everyDay) {
-    if (minute === "*") {
-      return "Every minute";
-    }
-    const step = /^\*\/(\d+)$/.exec(minute)?.[1];
-    if (step) {
-      return step === "1" ? "Every minute" : `Every ${step} minutes`;
-    }
-    const minuteOfHour = cronFieldNumber(minute, 0, 59);
-    return minuteOfHour === undefined
-      ? cron
-      : `Every hour at :${String(minuteOfHour).padStart(2, "0")}`;
-  }
-
-  const minuteOfHour = cronFieldNumber(minute, 0, 59);
-  const hourOfDay = cronFieldNumber(hour, 0, 23);
-  if (minuteOfHour === undefined || hourOfDay === undefined) {
-    return cron;
-  }
-  const time = clockTime(hourOfDay, minuteOfHour);
-
-  if (everyDay) {
-    return `Every day at ${time}`;
-  }
-  if (dayOfMonth === "*") {
-    if (dayOfWeek === "1-5") {
-      return `Every weekday at ${time}`;
-    }
-    const weekday = cronFieldNumber(dayOfWeek, 0, 7);
-    return weekday === undefined
-      ? cron
-      : `Every ${WEEKDAY_NAMES[weekday % 7]} at ${time}`;
-  }
-  const day = cronFieldNumber(dayOfMonth, 1, 31);
-  return day !== undefined && dayOfWeek === "*"
-    ? `On day ${day} of every month at ${time}`
-    : cron;
 }
 
 /**

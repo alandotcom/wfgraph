@@ -7,8 +7,9 @@
 
 import { uniq } from "es-toolkit/array";
 import {
+  clockTime,
   type CronSchedule,
-  cronFieldNumber,
+  cronShape,
   describeCronSchedule,
   findScheduleIssue,
   nextFireTimes,
@@ -62,45 +63,41 @@ type ClockTime = { hour: number; minute: number };
 const DEFAULT_TIME: ClockTime = { hour: 9, minute: 0 };
 const DEFAULT_WEEKDAY = "1";
 
-/** The fixed minute and hour of an expression, or undefined when either varies. */
+/**
+ * The fixed time of day an expression names, or undefined for a shape with
+ * none, such as an hourly or Custom expression.
+ */
 export function readClockTime(cron: string): ClockTime | undefined {
-  const [minute, hour] = cron.split(" ");
-  const minuteOfHour = cronFieldNumber(minute, 0, 59);
-  const hourOfDay = cronFieldNumber(hour, 0, 23);
-  return minuteOfHour === undefined || hourOfDay === undefined
-    ? undefined
-    : { hour: hourOfDay, minute: minuteOfHour };
+  const shape = cronShape(cron);
+  switch (shape.kind) {
+    case "daily":
+    case "weekdays":
+    case "weekly":
+    case "monthly":
+      return { hour: shape.hour, minute: shape.minute };
+    default:
+      return undefined;
+  }
 }
 
 /** The single day of week an expression names, as a `WEEKDAYS` value. */
 export function readWeekday(cron: string): string | undefined {
-  const day = cronFieldNumber(cron.split(" ")[4], 0, 7);
-  return day === undefined ? undefined : String(day % 7);
+  const shape = cronShape(cron);
+  return shape.kind === "weekly" ? String(shape.weekday) : undefined;
 }
 
 /** The preset whose controls can show this expression, or Custom. */
 export function presetOf(cron: string): SchedulePreset {
-  const fields = cron.split(" ");
-  if (fields.length !== 5) {
-    return "custom";
+  const shape = cronShape(cron);
+  switch (shape.kind) {
+    case "hourly":
+    case "daily":
+    case "weekdays":
+    case "weekly":
+      return shape.kind;
+    default:
+      return "custom";
   }
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = fields;
-  if (dayOfMonth !== "*" || month !== "*") {
-    return "custom";
-  }
-  if (hour === "*" && dayOfWeek === "*") {
-    return cronFieldNumber(minute, 0, 59) === undefined ? "custom" : "hourly";
-  }
-  if (readClockTime(cron) === undefined) {
-    return "custom";
-  }
-  if (dayOfWeek === "*") {
-    return "daily";
-  }
-  if (dayOfWeek === "1-5") {
-    return "weekdays";
-  }
-  return readWeekday(cron) === undefined ? "custom" : "weekly";
 }
 
 /**
@@ -219,7 +216,7 @@ export function isValidRow(row: ScheduleRow): boolean {
 
 /**
  * A fire time in the schedule's own zone, such as "Mon Nov 9, 9:00 AM". The
- * description beside it names the zone and uses this 12-hour English clock.
+ * description beside it names the zone and uses the same 12-hour English clock.
  */
 export function formatFireTime(instant: Date, timeZone: string): string {
   const parts = Object.fromEntries(
@@ -227,14 +224,12 @@ export function formatFireTime(instant: Date, timeZone: string): string {
       weekday: "short",
       month: "short",
       day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
       timeZone,
     })
       .formatToParts(instant)
       .map((part) => [part.type, part.value])
   );
-  return `${parts.weekday} ${parts.month} ${parts.day}, ${parts.hour}:${parts.minute} ${parts.dayPeriod}`;
+  return `${parts.weekday} ${parts.month} ${parts.day}, ${clockTime(instant, timeZone)}`;
 }
 
 /** The schedule in words with its next `count` fire times after `now`. */
