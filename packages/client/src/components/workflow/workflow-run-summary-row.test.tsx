@@ -178,6 +178,63 @@ describe("WorkflowRunSummaryRow", () => {
     ).toBe("customer_7");
   });
 
+  it("titles a scheduled run by its source, not the workflow's own Entity Value", () => {
+    expect(
+      getRunIdentity(
+        {
+          ...BASE_EXECUTION,
+          entityValue: "workflow:wf_1",
+          startEventName: null,
+          startSource: "schedule",
+          scheduledFor: new Date("2026-02-22T10:00:00Z"),
+        },
+        8
+      )
+    ).toEqual({ title: "Scheduled run", context: null });
+  });
+
+  it("shows a scheduled run's slot beside its start only when the run started more than a minute late", () => {
+    const scheduled: WorkflowExecution = {
+      ...BASE_EXECUTION,
+      entityValue: "workflow:wf_1",
+      startEventName: null,
+      startSource: "schedule",
+    };
+    const format = (value: Date) =>
+      value.toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+    const slot = new Date("2026-02-22T09:00:00Z");
+
+    const late = render(
+      <WorkflowRunSummaryRow
+        execution={{ ...scheduled, scheduledFor: slot }}
+        runNumber={3}
+        variant="header"
+      />
+    );
+    expect(late.getByText("Scheduled run")).toBeTruthy();
+    expect(late.getByText("Scheduled")).toBeTruthy();
+    expect(late.getByText(format(slot))).toBeTruthy();
+    expect(late.getByText(format(BASE_EXECUTION.startedAt))).toBeTruthy();
+    late.unmount();
+
+    // Thirty seconds is a worker claiming a due timer, not a late start.
+    const onTime = render(
+      <WorkflowRunSummaryRow
+        execution={{
+          ...scheduled,
+          scheduledFor: new Date("2026-02-22T09:59:30Z"),
+        }}
+        runNumber={3}
+        variant="header"
+      />
+    );
+    expect(onTime.queryByText("Scheduled")).toBeNull();
+    expect(onTime.getByText("Started")).toBeTruthy();
+  });
+
   it("labels an eventless manual run instead of its internal workflow entity", () => {
     expect(
       getRunIdentity(

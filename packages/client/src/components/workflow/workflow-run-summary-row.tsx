@@ -40,6 +40,11 @@ type WorkflowRunSummaryRowProps = {
   receivedAtMs?: number | null | undefined;
 };
 
+/**
+ * The run's title and the line beneath it. A scheduled run carries no payload
+ * and its Entity Value is the workflow's own (`workflow:<id>`), so it is
+ * titled by its source alone.
+ */
 export function getRunIdentity(
   execution: WorkflowExecution,
   runNumber: number
@@ -50,6 +55,9 @@ export function getRunIdentity(
   if (eventName) {
     return { title: eventName, context: entity || null };
   }
+  if (execution.startSource === "schedule") {
+    return { title: "Scheduled run", context: null };
+  }
   if (
     execution.startSource === "manual" &&
     entity === `workflow:${execution.workflowId}`
@@ -58,9 +66,6 @@ export function getRunIdentity(
   }
   if (entity) {
     return { title: entity, context: null };
-  }
-  if (execution.startSource === "schedule") {
-    return { title: "Scheduled run", context: null };
   }
   if (execution.startSource === "manual") {
     return { title: "Manual run", context: null };
@@ -203,6 +208,35 @@ function ListSummary({
   );
 }
 
+/**
+ * How far a scheduled run's start may trail its slot before the overview shows
+ * the slot as a fact of its own. A worker claims a due timer within moments,
+ * so a gap past this means the run started late.
+ */
+const LATE_START_MS = 60_000;
+
+/**
+ * The slot a scheduled run fired for, when the run started more than
+ * `LATE_START_MS` after it, and null otherwise.
+ */
+function lateScheduledSlot(execution: WorkflowExecution): Date | null {
+  const { scheduledFor, startedAt } = execution;
+  if (scheduledFor === null) {
+    return null;
+  }
+  return Math.abs(startedAt.getTime() - scheduledFor.getTime()) > LATE_START_MS
+    ? scheduledFor
+    : null;
+}
+
+/** A date and time in the reader's locale, as the overview prints each one. */
+function formatOverviewTime(value: Date): string {
+  return value.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
 function MetadataRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2 text-xs">
@@ -228,6 +262,7 @@ function HeaderSummary({
   focusOnMount?: boolean | undefined;
 }) {
   const identity = getRunIdentity(execution, runNumber);
+  const lateSlot = lateScheduledSlot(execution);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useAfterCommit(focusOnMount, () => {
@@ -282,12 +317,12 @@ function HeaderSummary({
         {identity.context ? (
           <MetadataRow label="Entity" value={identity.context} />
         ) : null}
+        {lateSlot ? (
+          <MetadataRow label="Scheduled" value={formatOverviewTime(lateSlot)} />
+        ) : null}
         <MetadataRow
           label="Started"
-          value={execution.startedAt.toLocaleString(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })}
+          value={formatOverviewTime(execution.startedAt)}
         />
         <MetadataRow
           label="Graph"

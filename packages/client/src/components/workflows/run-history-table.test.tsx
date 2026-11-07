@@ -116,6 +116,29 @@ describe("RunHistoryTable", () => {
     expect(view.getAllByText("v4")).toHaveLength(2);
   });
 
+  it("names a scheduled run by its source in place of the workflow's own Entity Value", () => {
+    const view = render(
+      <RunHistoryTable
+        hasNextPage={false}
+        isLoading={false}
+        isLoadingMore={false}
+        onLoadMore={() => undefined}
+        onOpenRun={() => undefined}
+        runs={[
+          run({
+            id: "exec_scheduled",
+            startSource: "schedule",
+            entityValue: "workflow:wf_1",
+            scheduledFor: "2026-08-22T09:00:00.000Z",
+          }),
+        ]}
+      />
+    );
+
+    expect(view.getByText("Scheduled run")).toBeTruthy();
+    expect(view.queryByText("workflow:wf_1")).toBeNull();
+  });
+
   // The wait is measured on the server's clock the list carries, so the
   // browser's own clock, here years later, does not decide it.
   it("says what the executor is doing beneath an in-progress run's status", () => {

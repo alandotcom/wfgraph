@@ -174,9 +174,17 @@ function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
             >
               {run.workflowName}
             </button>
-            <div className="truncate font-mono text-muted-foreground text-xs">
-              {run.startEventName ?? run.entityValue ?? run.workflowId}
-            </div>
+            {/* A scheduled run's Entity Value is the workflow's own id, which
+                says nothing a reader can use, so it is named by its source. */}
+            {run.startSource === "schedule" && run.startEventName === null ? (
+              <div className="truncate text-muted-foreground text-xs">
+                Scheduled run
+              </div>
+            ) : (
+              <div className="truncate font-mono text-muted-foreground text-xs">
+                {run.startEventName ?? run.entityValue ?? run.workflowId}
+              </div>
+            )}
           </div>
         );
       },
