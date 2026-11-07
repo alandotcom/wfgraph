@@ -27,7 +27,7 @@ import {
   type LifecycleRules,
   readLifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
+import { graphSplitsOnEvent } from "@wfgraph/shared/lifecycle/event-split";
 import type {
   SerializedWorkflowGraph,
   WorkflowNode,
@@ -189,7 +189,7 @@ function checkGraphAndCatalog(input: {
     workflowGraph: graphValidation.graph,
     workflowNodes: graphValidation.nodes,
     lifecycleRules: readLifecycleRules(lifecycleNode?.data.config),
-    hasEventSplit: graphValidation.nodes.some(isEventSplitNode),
+    hasEventSplit: graphSplitsOnEvent(graphValidation.nodes),
   };
 }
 

@@ -50,3 +50,14 @@ export function isEventSplitActionType(value: unknown): boolean {
 export function isEventSplitNode(node: NodeConfigSource | undefined): boolean {
   return isEventSplitActionNode(node);
 }
+
+/**
+ * Whether any node in the graph splits a run by its Arriving Event. A run that
+ * names no Event, which is a scheduled run or a manual run naming none, leaves
+ * such a node by no outlet, so a graph holding one refuses those runs.
+ */
+export function graphSplitsOnEvent(
+  nodes: readonly NodeConfigSource[]
+): boolean {
+  return nodes.some(isEventSplitNode);
+}

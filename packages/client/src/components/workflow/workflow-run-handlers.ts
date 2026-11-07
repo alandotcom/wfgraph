@@ -61,7 +61,7 @@ import {
   readEntryLifecycleRules,
   readEntryTestPayloads,
 } from "#src/lib/test-payload";
-import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
+import { graphSplitsOnEvent } from "@wfgraph/shared/lifecycle/event-split";
 import {
   initialLifecycleRules,
   manualStartAllowed,
@@ -146,7 +146,7 @@ function runOverlayGraphFacts(
   return {
     startEvents: rules.startEvents,
     allowManualStart: manualStartAllowed(rules),
-    hasEventSplit: nodes.some(isEventSplitNode),
+    hasEventSplit: graphSplitsOnEvent(nodes),
     savedPayloads: readEntryTestPayloads(nodes),
     sends: runSends({ nodes, edges, catalog }),
   };
