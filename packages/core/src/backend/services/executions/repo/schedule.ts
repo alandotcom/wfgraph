@@ -45,6 +45,7 @@ import type {
 } from "#src/backend/services/executions/repo/contracts";
 import {
   claimAttempt,
+  CLEARED_LEASE,
   claimedSchedules,
   countStepFailure,
   decideRelease,
@@ -769,11 +770,7 @@ export function makePassWrites(
               wakeAt: released.wakeAt,
               attempt: released.attempt,
               lastError: released.lastError,
-              runningStepId: null,
-              runningNodeId: null,
-              leaseExpiresAt: null,
-              ownerToken: null,
-              workerId: null,
+              ...CLEARED_LEASE,
             })
             .where(thisSchedule);
           return {

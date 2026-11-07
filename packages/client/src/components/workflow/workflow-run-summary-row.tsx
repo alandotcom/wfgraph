@@ -4,6 +4,7 @@ import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
+import { workflowEntityValue } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   type ExecutionLog,
   isRunInProgress,
@@ -60,7 +61,7 @@ export function getRunIdentity(
   }
   if (
     execution.startSource === "manual" &&
-    entity === `workflow:${execution.workflowId}`
+    entity === workflowEntityValue(execution.workflowId)
   ) {
     return { title: "Manual run", context: null };
   }

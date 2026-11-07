@@ -27,6 +27,7 @@ import {
   type CronTimerRow,
   cronWakeAfter,
 } from "#src/backend/services/executions/repo/cron-policy";
+import { CLEARED_LEASE } from "#src/backend/services/executions/repo/release-policy";
 import type {
   SqliteDatabase,
   SqliteExecutor,
@@ -55,15 +56,11 @@ function timersOf(workflowId: string) {
   );
 }
 
-/** The lease columns a fire or a skipped slot clears as it moves the timer on. */
+/** The columns a fire or a skipped slot resets as it moves the timer on. */
 const RELEASED_LEASE = {
   state: "waiting",
   attempt: 0,
-  runningStepId: null,
-  runningNodeId: null,
-  leaseExpiresAt: null,
-  ownerToken: null,
-  workerId: null,
+  ...CLEARED_LEASE,
 } as const;
 
 /**

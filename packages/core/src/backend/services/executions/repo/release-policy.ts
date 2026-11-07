@@ -105,6 +105,19 @@ export const TIMEOUT_WAKE: ParkWake = { kind: "timeout" };
 export const UNDATED_PARK_WAKE_AT = new Date("9999-12-31T00:00:00.000Z");
 
 /**
+ * The schedule row's lease columns, cleared: no owner token, worker, lease
+ * expiry or running step. A pass's release and a cron timer's move to its
+ * next slot both write them, on either backend.
+ */
+export const CLEARED_LEASE = {
+  runningStepId: null,
+  runningNodeId: null,
+  leaseExpiresAt: null,
+  ownerToken: null,
+  workerId: null,
+} as const;
+
+/**
  * The wait row statuses a run's terminal write cancels: every park still
  * waiting, and every park holding a wake no pass consumed. A terminal write
  * also deletes the run's schedule row, which deletes its step memo with it.

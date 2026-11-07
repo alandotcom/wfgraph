@@ -25,14 +25,18 @@ import type {
 import { UNDATED_PARK_WAKE_AT } from "#src/backend/services/executions/repo/release-policy";
 
 /**
- * The schedules a version declares, read from its graph's entry node. Publish
- * writes a version's timers from them, and so does a resume of the version a
- * workflow publishes.
+ * The schedules a workflow keeps a timer for: those `graph`, its published
+ * version's graph, declares on its entry node, and none while the workflow is
+ * paused or publishes no version. Publish and a resume each write the
+ * workflow's timers from this.
  */
-export function versionCronSchedules(
-  graph: SerializedWorkflowGraph
-): readonly CronSchedule[] {
-  return graphCronSchedules(toWorkflowGraphData(graph).nodes);
+export function timerSchedules(input: {
+  isPaused: boolean;
+  graph: SerializedWorkflowGraph | undefined;
+}): readonly CronSchedule[] {
+  return input.isPaused || input.graph === undefined
+    ? []
+    : graphCronSchedules(toWorkflowGraphData(input.graph).nodes);
 }
 
 /** A timer row as the timer writes read it: its id and the schedule it times. */

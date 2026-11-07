@@ -30,7 +30,7 @@ import {
   lockCronTimers,
   replaceCronTimers,
 } from "#src/backend/services/executions/repo/cron";
-import { versionCronSchedules } from "#src/backend/services/executions/repo/cron-policy";
+import { timerSchedules } from "#src/backend/services/executions/repo/cron-policy";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 export { type WorkflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
@@ -670,9 +670,10 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                     });
               await replaceCronTimers(tx, {
                 workflowId: input.workflowId,
-                schedules: published
-                  ? versionCronSchedules(published.graph)
-                  : [],
+                schedules: timerSchedules({
+                  isPaused: input.isPaused,
+                  graph: published?.graph,
+                }),
                 now: input.now,
               });
             })
@@ -945,9 +946,10 @@ async function activatePublishedVersion(
 
   await replaceCronTimers(tx, {
     workflowId: input.workflowId,
-    schedules: workflow.isPaused
-      ? []
-      : versionCronSchedules(input.version.graph),
+    schedules: timerSchedules({
+      isPaused: workflow.isPaused,
+      graph: input.version.graph,
+    }),
     now: input.now,
   });
 

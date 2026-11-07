@@ -10,13 +10,17 @@ import {
   type CronSchedule,
   latestSlotAtOrBefore,
 } from "@wfgraph/shared/lifecycle/cron-schedule";
-import type { WorkflowExecutionIgnoredReason } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  type WorkflowExecutionIgnoredReason,
+  workflowEntityValue,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { runWorkflowExecutionPreflight } from "#src/backend/services/executions/preflight";
 import type {
+  CronFire,
   CronPassWrites,
   CronPublication,
   CronRefusal,
@@ -139,10 +143,7 @@ export type ScheduleFireOutcome =
       inFlightExecutionIds: string[];
     }
   | { kind: "skipped"; slot: Date; nextWakeAt: Date; error: string }
-  | {
-      kind: "dropped";
-      reason: "workflow_paused" | "not_published" | "schedule_unpublished";
-    };
+  | Extract<CronFire, { kind: "dropped" }>;
 
 /**
  * Fires the timer of `schedule`, which a cron pass over `workflowId` holds
@@ -240,7 +241,7 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
       }
 
       const rules = preflight.checked.lifecycleRules ?? emptyLifecycleRules;
-      const entityValue = `workflow:${workflow.id}`;
+      const entityValue = workflowEntityValue(workflow.id);
       const request = yield* startRequestFor({
         workflow: toWorkflowRunTarget({
           workflow,

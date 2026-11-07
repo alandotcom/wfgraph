@@ -32,9 +32,10 @@ import type { JsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { getValueByPath } from "@wfgraph/shared/utils/object-path";
-import type {
-  WorkflowExecuteResponse,
-  WorkflowExecutionIgnoredReason,
+import {
+  type WorkflowExecuteResponse,
+  type WorkflowExecutionIgnoredReason,
+  workflowEntityValue,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 import {
@@ -94,7 +95,7 @@ function readManualEntityValue(input: {
     }
   }
 
-  return `workflow:${input.workflowId}`;
+  return workflowEntityValue(input.workflowId);
 }
 
 /** The Start Events a workflow takes, as the refusal sentence lists them. */

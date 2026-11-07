@@ -22,6 +22,7 @@ import {
   type FireCronTimerInput,
 } from "#src/backend/services/executions/repo";
 import { cronWakeAfter } from "#src/backend/services/executions/repo/cron-policy";
+import { workflowEntityValue } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   type CaseDatabase,
@@ -234,7 +235,7 @@ function fire(input: {
           workflowVersionId: versionId,
           startSource: "schedule",
           runMode: "live",
-          entityValue: `workflow:${WORKFLOW_ID}`,
+          entityValue: workflowEntityValue(WORKFLOW_ID),
           input: {},
         },
         concurrency: input.concurrency ?? "unlimited",
@@ -463,7 +464,7 @@ export function describeExecutionCronConformance({
             workflowId: WORKFLOW_ID,
             workflowVersionId: "ver_1",
             startSource: "schedule",
-            entityValue: `workflow:${WORKFLOW_ID}`,
+            entityValue: workflowEntityValue(WORKFLOW_ID),
             scheduledFor: at(minutes(5)),
             status: "running",
           },

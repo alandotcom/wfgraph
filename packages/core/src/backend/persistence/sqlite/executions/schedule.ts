@@ -26,6 +26,7 @@ import type {
 import { ownershipLost } from "#src/backend/services/executions/repo/fencing";
 import {
   claimAttempt,
+  CLEARED_LEASE,
   claimedSchedules,
   countStepFailure,
   decideRelease,
@@ -575,11 +576,7 @@ export function makeSqlitePassWrites(
               wakeAt: released.wakeAt.getTime(),
               attempt: released.attempt,
               lastError: released.lastError,
-              runningStepId: null,
-              runningNodeId: null,
-              leaseExpiresAt: null,
-              ownerToken: null,
-              workerId: null,
+              ...CLEARED_LEASE,
             })
             .where(thisSchedule);
           return {

@@ -32,7 +32,7 @@ import {
   workflows,
 } from "#src/backend/persistence/sqlite/schema";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
-import { versionCronSchedules } from "#src/backend/services/executions/repo/cron-policy";
+import { timerSchedules } from "#src/backend/services/executions/repo/cron-policy";
 import {
   deleteCronTimers,
   replaceCronTimers,
@@ -327,9 +327,10 @@ export function makeSqliteWorkflowRepo(
                   .get();
           yield* replaceCronTimers(database, {
             workflowId,
-            schedules: published
-              ? versionCronSchedules(sqliteWorkflowVersion(published).graph)
-              : [],
+            schedules: timerSchedules({
+              isPaused,
+              graph: published && sqliteWorkflowVersion(published).graph,
+            }),
             now,
           });
         })
@@ -684,10 +685,10 @@ export function makeSqliteWorkflowRepo(
           const workflow = yield* findWorkflow(database, input.workflowId);
           yield* replaceCronTimers(database, {
             workflowId: input.workflowId,
-            schedules:
-              workflow === null || workflow.isPaused
-                ? []
-                : versionCronSchedules(input.graph),
+            schedules: timerSchedules({
+              isPaused: workflow?.isPaused ?? true,
+              graph: input.graph,
+            }),
             now: input.now,
           });
           const versionRow = yield* database

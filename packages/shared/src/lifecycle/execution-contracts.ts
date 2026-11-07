@@ -118,6 +118,14 @@ export type WorkflowExecutionStartSource =
   (typeof WORKFLOW_EXECUTION_START_SOURCES)[number];
 
 /**
+ * The Entity Value of a run about the workflow itself, such as a scheduled
+ * run or a manual start that names no entity: `workflow:<id>`.
+ */
+export function workflowEntityValue(workflowId: string): string {
+  return `workflow:${workflowId}`;
+}
+
+/**
  * Why a request produced no new run: the RPC contract's literal union and this
  * type union both derive from it, so the two cannot drift.
  *
