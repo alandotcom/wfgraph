@@ -25,7 +25,6 @@ import {
   cronFireVerdict,
   type CronFireWorkflow,
   cronPublicationVerdict,
-  cronSlotAt,
   cronTimerChanges,
   type CronTimerRow,
   cronWakeAfter,
@@ -35,27 +34,14 @@ import {
   writeFencedSerializable,
 } from "#src/backend/services/executions/repo/schedule";
 import type {
-  CronFence,
   CronFire,
-  CronPublication,
-  CronRefusedEntry,
   CronSkip,
   ExecutionSchedule,
   FireCronTimerInput,
+  SkipCronSlotInput,
 } from "#src/backend/services/executions/repo/contracts";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
-
-/** What `skipCronSlot` is asked to do. */
-export type SkipCronSlotInput = {
-  fence: CronFence;
-  schedule: CronSchedule;
-  /** The publication the preflight checked, or none after spent retries. */
-  expected?: CronPublication | undefined;
-  error: string;
-  refusedEntry: CronRefusedEntry;
-  now: Date;
-};
 
 /** A workflow's timer rows. */
 function timersOf(workflowId: string) {
@@ -205,22 +191,20 @@ export type CronRepoMethods = {
    * so a pass that lost its lease writes nothing.
    *
    * It reads the workflow row and decides with `cronFireVerdict`. A fire that
-   * may commit admits the run as `startForEntity` does, for the latest slot
-   * at or before `input.now`, which it writes as the run's `scheduledFor`, with
-   * the schedule as `scheduleCron` and `scheduleTimeZone`. A
-   * first-wins refusal writes the Refused Start instead. Either way the timer
-   * moves to its first slot after `input.now` and its lease is released, in
-   * the same transaction, so each slot fires once.
+   * may proceed admits the run as `startForEntity` does, writing `input.slot`
+   * as the run's `scheduledFor`, with the schedule as `scheduleCron` and
+   * `scheduleTimeZone`. A first-wins refusal writes the Refused Start instead.
+   * Either way the timer moves to `input.nextWakeAt` and its lease is
+   * released, in the same transaction, so each slot fires once.
    */
   readonly fireCronTimer: (
     input: FireCronTimerInput
   ) => Effect.Effect<CronFire, DatabaseError | LeaseLost>;
   /**
-   * Skip the slot a fire at `now` would run, for a fire that cannot run: its
-   * graph no longer passes the preflight, or its retries are spent. In one
-   * transaction fenced on the lease, it writes `refusedEntry` for that slot as
-   * a Refused Start, and moves the timer on to its first slot after `now`,
-   * releasing its lease and recording `error`.
+   * Skip the slot a fire cannot run: its graph no longer passes the
+   * preflight, or its retries are spent. In one transaction fenced on the
+   * lease, it writes `refusedEntry` as a Refused Start, and moves the timer
+   * to `nextWakeAt`, releasing its lease and recording `error`.
    *
    * With `expected`, the publication the preflight checked, it first reads
    * the workflow row and decides with `cronPublicationVerdict`, writing
@@ -260,41 +244,34 @@ export function makeCronMethods(
             return verdict;
           }
 
-          const [timer] = await tx
-            .select({ wakeAt: workflowExecutionSchedule.wakeAt })
-            .from(workflowExecutionSchedule)
-            .where(thisTimer);
-          const slot = cronSlotAt(
-            input.schedule,
-            input.now,
-            timer?.wakeAt ?? input.now
-          );
-          const nextWakeAt = cronWakeAfter(input.schedule, input.now);
           const start = await admitWithConcurrency(tx, {
             ...input.start,
             execution: {
               ...input.start.execution,
-              scheduled: { slot, schedule: input.schedule },
+              scheduled: { slot: input.slot, schedule: input.schedule },
             },
             now: input.now,
           });
           if (start.status === "refused") {
-            const refused = input.refusedEntry(slot);
             await recordAuditEventWrite({
               workflowId: input.fence.workflowId,
               eventType: "run_refused",
-              message: refused.message,
+              message: input.refusedEntry.message,
               metadata: {
-                ...refused.metadata,
+                ...input.refusedEntry.metadata,
                 inFlightExecutionIds: start.inFlightExecutionIds,
               },
             })(tx);
           }
           await tx
             .update(workflowExecutionSchedule)
-            .set({ ...RELEASED_LEASE, wakeAt: nextWakeAt, lastError: null })
+            .set({
+              ...RELEASED_LEASE,
+              wakeAt: input.nextWakeAt,
+              lastError: null,
+            })
             .where(thisTimer);
-          return { kind: "fired", slot, nextWakeAt, start };
+          return { kind: "fired", start };
         },
         "update"
       ),
@@ -320,32 +297,21 @@ export function makeCronMethods(
               return verdict;
             }
           }
-          const [timer] = await tx
-            .select({ wakeAt: workflowExecutionSchedule.wakeAt })
-            .from(workflowExecutionSchedule)
-            .where(thisTimer);
-          const slot = cronSlotAt(
-            input.schedule,
-            input.now,
-            timer?.wakeAt ?? input.now
-          );
-          const nextWakeAt = cronWakeAfter(input.schedule, input.now);
-          const refused = input.refusedEntry(slot);
           await recordAuditEventWrite({
             workflowId: input.fence.workflowId,
             eventType: "run_refused",
-            message: refused.message,
-            metadata: refused.metadata,
+            message: input.refusedEntry.message,
+            metadata: input.refusedEntry.metadata,
           })(tx);
           await tx
             .update(workflowExecutionSchedule)
             .set({
               ...RELEASED_LEASE,
-              wakeAt: nextWakeAt,
+              wakeAt: input.nextWakeAt,
               lastError: input.error,
             })
             .where(thisTimer);
-          return { kind: "skipped", slot, nextWakeAt };
+          return { kind: "skipped" };
         },
         "update"
       ),

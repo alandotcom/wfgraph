@@ -1,14 +1,13 @@
 /**
  * The decisions behind a cron schedule's timer row, made once for both
  * backends: which timers Publish keeps, deletes and writes, when a new timer
- * and a fired timer next wake, which slot a fire runs, and whether a fire may
- * commit against the workflow as its transaction reads it.
+ * and a fired timer next wake, and whether a fire or a skip may write its
+ * slot against the workflow as its transaction reads it.
  */
 
 import { differenceWith, partition } from "es-toolkit/array";
 import {
   type CronSchedule,
-  latestSlotAtOrBefore,
   nextFireAfter,
   sameSchedule,
 } from "@wfgraph/shared/lifecycle/cron-schedule";
@@ -70,20 +69,6 @@ export function cronTimerChanges(input: {
  */
 export function cronWakeAfter(schedule: CronSchedule, now: Date): Date {
   return nextFireAfter(schedule, now) ?? UNDATED_PARK_WAKE_AT;
-}
-
-/**
- * The slot a fire at `now` runs: the latest one at or before `now`. A timer
- * claimed late fires once, for the slot it missed last. The claim found the
- * row due, so `wakeAt`, itself a slot, is at or before `now` and answers for
- * an expression croner finds no earlier slot of.
- */
-export function cronSlotAt(
-  schedule: CronSchedule,
-  now: Date,
-  wakeAt: Date
-): Date {
-  return latestSlotAtOrBefore(schedule, now) ?? wakeAt;
 }
 
 /** The workflow row as a fire or a skip reads it. */

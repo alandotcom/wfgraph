@@ -18,10 +18,9 @@ import {
 import type {
   CronFence,
   CronFire,
-  CronPublication,
-  CronRefusedEntry,
   CronSkip,
   FireCronTimerInput,
+  SkipCronSlotInput,
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
 import { fireSchedule } from "#src/backend/services/workflows/lifecycle/scheduled-start";
@@ -35,6 +34,8 @@ const FENCE: CronFence = {
 const NOW = new Date("2026-03-01T09:05:30.000Z");
 /** The latest slot of `EVERY_FIVE` at or before `NOW`. */
 const SLOT = new Date("2026-03-01T09:05:00.000Z");
+/** The first slot of `EVERY_FIVE` strictly after `NOW`. */
+const NEXT_WAKE = new Date("2026-03-01T09:10:00.000Z");
 
 const scheduledRules: LifecycleRules = {
   startEvents: [],
@@ -132,12 +133,7 @@ function makeServices(input: {
 }) {
   const reads = { versions: 0 };
   const fired: FireCronTimerInput[] = [];
-  const skipped: {
-    error: string;
-    expected: CronPublication | undefined;
-    now: Date;
-    refusal: ReturnType<CronRefusedEntry>;
-  }[] = [];
+  const skipped: SkipCronSlotInput[] = [];
   const provided = Layer.mergeAll(
     SilentAppLoggerLayer,
     stubExtensions(),
@@ -167,19 +163,8 @@ function makeServices(input: {
       skipCronSlot: (skip) =>
         Effect.sync((): CronSkip => {
           const answer = input.skips?.[skipped.length];
-          skipped.push({
-            error: skip.error,
-            expected: skip.expected,
-            now: skip.now,
-            refusal: skip.refusedEntry(SLOT),
-          });
-          return (
-            answer ?? {
-              kind: "skipped",
-              slot: SLOT,
-              nextWakeAt: new Date("2026-03-01T09:10:00.000Z"),
-            }
-          );
+          skipped.push(skip);
+          return answer ?? { kind: "skipped" };
         }),
     }),
     stubExecutionDriver({
@@ -197,8 +182,6 @@ function makeServices(input: {
 
 const firedRun: CronFire = {
   kind: "fired",
-  slot: SLOT,
-  nextWakeAt: new Date("2026-03-01T09:10:00.000Z"),
   start: {
     status: "started",
     execution: execution("exec_1"),
@@ -228,7 +211,7 @@ describe("fireSchedule", () => {
             executionId: "exec_1",
             versionId: "ver_2",
             slot: SLOT,
-            nextWakeAt: new Date("2026-03-01T09:10:00.000Z"),
+            nextWakeAt: NEXT_WAKE,
             superseded: 0,
             failedToSupersede: [],
           });
@@ -249,8 +232,12 @@ describe("fireSchedule", () => {
             entityValue: "workflow:wf_1",
           });
           assert.strictEqual(request?.start.concurrency, "first-wins");
+          // The pass's clock reads 09:05:30, so the fire runs the 09:05 slot
+          // and moves the timer to 09:10.
+          assert.deepStrictEqual(request?.slot, SLOT);
+          assert.deepStrictEqual(request?.nextWakeAt, NEXT_WAKE);
           // The schedule reads time in UTC, so the 09:05 UTC slot is 9:05 AM.
-          assert.deepStrictEqual(request?.refusedEntry(SLOT), {
+          assert.deepStrictEqual(request?.refusedEntry, {
             message:
               "Refused the 9:05 AM scheduled run: a run is still going and Concurrency is first-wins",
             metadata: {
@@ -305,11 +292,16 @@ describe("fireSchedule", () => {
             now: () => NOW,
           }).pipe(Effect.provide(services.provided));
 
-          assert.strictEqual(outcome.kind, "skipped");
+          assert.deepStrictEqual(outcome, {
+            kind: "skipped",
+            slot: SLOT,
+            nextWakeAt: NEXT_WAKE,
+            error: services.skipped[0]?.error ?? "",
+          });
           assert.strictEqual(services.fired.length, 0);
           assert.strictEqual(services.skipped.length, 1);
           const [skip] = services.skipped;
-          assert.deepStrictEqual(skip?.now, NOW);
+          assert.deepStrictEqual(skip?.nextWakeAt, NEXT_WAKE);
           // The skip writes only while the workflow still publishes what the
           // preflight checked.
           assert.deepStrictEqual(skip?.expected, {
@@ -319,10 +311,10 @@ describe("fireSchedule", () => {
           // The skip writes a Refused Start a builder reads in the Runs view,
           // and keeps the preflight's own error on its metadata.
           assert.strictEqual(
-            skip?.refusal.message,
+            skip?.refusedEntry.message,
             "Refused the 9:05 AM scheduled run: the published version no longer passes the checks a run starts with"
           );
-          assert.deepStrictEqual(skip?.refusal.metadata, {
+          assert.deepStrictEqual(skip?.refusedEntry.metadata, {
             versionId: "ver_3",
             runMode: "live",
             error: skip?.error ?? "",

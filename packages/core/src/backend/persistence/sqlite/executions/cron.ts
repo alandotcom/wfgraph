@@ -19,7 +19,6 @@ import {
   cronFireVerdict,
   type CronFireWorkflow,
   cronPublicationVerdict,
-  cronSlotAt,
   cronTimerChanges,
   type CronTimerRow,
   cronWakeAfter,
@@ -181,33 +180,21 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
             return verdict;
           }
 
-          const timer = yield* database
-            .select({ wakeAt: workflowExecutionSchedule.wakeAt })
-            .from(workflowExecutionSchedule)
-            .where(thisTimer)
-            .get();
-          const slot = cronSlotAt(
-            input.schedule,
-            input.now,
-            timer === undefined ? input.now : new Date(timer.wakeAt)
-          );
-          const nextWakeAt = cronWakeAfter(input.schedule, input.now);
           const start = yield* admitWithConcurrency(database, {
             ...input.start,
             execution: {
               ...input.start.execution,
-              scheduled: { slot, schedule: input.schedule },
+              scheduled: { slot: input.slot, schedule: input.schedule },
             },
             now: input.now,
           });
           if (start.status === "refused") {
-            const refused = input.refusedEntry(slot);
             yield* recordAuditEventWrite({
               workflowId: input.fence.workflowId,
               eventType: "run_refused",
-              message: refused.message,
+              message: input.refusedEntry.message,
               metadata: {
-                ...refused.metadata,
+                ...input.refusedEntry.metadata,
                 inFlightExecutionIds: start.inFlightExecutionIds,
               },
             })(database);
@@ -216,11 +203,11 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
             .update(workflowExecutionSchedule)
             .set({
               ...RELEASED_LEASE,
-              wakeAt: nextWakeAt.getTime(),
+              wakeAt: input.nextWakeAt.getTime(),
               lastError: null,
             })
             .where(thisTimer);
-          const fired: CronFire = { kind: "fired", slot, nextWakeAt, start };
+          const fired: CronFire = { kind: "fired", start };
           return fired;
         })
       ),
@@ -246,33 +233,21 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
               return verdict;
             }
           }
-          const timer = yield* database
-            .select({ wakeAt: workflowExecutionSchedule.wakeAt })
-            .from(workflowExecutionSchedule)
-            .where(thisTimer)
-            .get();
-          const slot = cronSlotAt(
-            input.schedule,
-            input.now,
-            timer === undefined ? input.now : new Date(timer.wakeAt)
-          );
-          const nextWakeAt = cronWakeAfter(input.schedule, input.now);
-          const refused = input.refusedEntry(slot);
           yield* recordAuditEventWrite({
             workflowId: input.fence.workflowId,
             eventType: "run_refused",
-            message: refused.message,
-            metadata: refused.metadata,
+            message: input.refusedEntry.message,
+            metadata: input.refusedEntry.metadata,
           })(database);
           yield* database
             .update(workflowExecutionSchedule)
             .set({
               ...RELEASED_LEASE,
-              wakeAt: nextWakeAt.getTime(),
+              wakeAt: input.nextWakeAt.getTime(),
               lastError: input.error,
             })
             .where(thisTimer);
-          const skipped: CronSkip = { kind: "skipped", slot, nextWakeAt };
+          const skipped: CronSkip = { kind: "skipped" };
           return skipped;
         })
       ),

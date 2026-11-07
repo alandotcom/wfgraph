@@ -865,13 +865,9 @@ export type ConcurrencyStartOutcome = Extract<
 
 /**
  * A Refused Start for a cron slot, written as a workflow-scoped `run_refused`
- * audit row. The slot is decided inside the write's own transaction, so the
- * caller hands the entry over as a function of it.
+ * audit row.
  */
-export type CronRefusedEntry = (slot: Date) => {
-  message: string;
-  metadata: JsonObject;
-};
+export type CronRefusedEntry = { message: string; metadata: JsonObject };
 
 /**
  * The publication a cron pass's preflight checked: the published version and
@@ -882,8 +878,9 @@ export type CronPublication = { versionId: string; mode: WorkflowMode };
 
 /**
  * What `ExecutionRepo.fireCronTimer` is asked to do: fire the leased timer
- * `fence` names, admitting the run the way a manual start of the published
- * version that names no Event is admitted.
+ * `fence` names for `slot`, admitting the run the way a manual start of the
+ * published version that names no Event is admitted, and move the timer to
+ * `nextWakeAt`.
  */
 export type FireCronTimerInput = {
   fence: CronFence;
@@ -895,17 +892,36 @@ export type FireCronTimerInput = {
    */
   expected: CronPublication & { schedules: readonly CronSchedule[] };
   /**
-   * The run to open, as `startForEntity` takes it. The fire writes the slot it
-   * computed and `schedule` onto the row as `scheduled`.
+   * The run to open, as `startForEntity` takes it. The fire writes `slot` and
+   * `schedule` onto the row as `scheduled`.
    */
   start: Omit<StartForEntityInput, "now" | "admissionDecisionId">;
+  /** The slot this fire runs: the schedule's latest at or before `now`. */
+  slot: Date;
+  /** The timer's next wake: the schedule's first slot strictly after `now`. */
+  nextWakeAt: Date;
   /**
    * The Refused Start a first-wins refusal writes. The fire adds the ids of
    * the runs it deferred to under `inFlightExecutionIds`.
    */
   refusedEntry: CronRefusedEntry;
-  /** The fire's clock: the slot it fires and the next wake are read from it. */
+  /** The fire's clock, at which a run it opens falls due. */
   now: Date;
+};
+
+/**
+ * What `ExecutionRepo.skipCronSlot` is asked to do: write `refusedEntry` for
+ * the slot a fire cannot run, and move the leased timer `fence` names to
+ * `nextWakeAt`, recording `error`.
+ */
+export type SkipCronSlotInput = {
+  fence: CronFence;
+  /** The publication the preflight checked, or none after spent retries. */
+  expected?: CronPublication | undefined;
+  /** The timer's next wake: the schedule's first slot strictly after now. */
+  nextWakeAt: Date;
+  error: string;
+  refusedEntry: CronRefusedEntry;
 };
 
 /**
@@ -926,23 +942,16 @@ export type CronRefusal =
 
 /**
  * What a fire did: `fired` when the transaction opened the run, or wrote a
- * Refused Start, for `slot`, and moved the timer to `nextWakeAt` with its
- * lease released, and otherwise the `CronRefusal` that stopped it.
+ * Refused Start, for its slot, and moved the timer on with its lease
+ * released, and otherwise the `CronRefusal` that stopped it.
  */
 export type CronFire =
-  | {
-      kind: "fired";
-      slot: Date;
-      nextWakeAt: Date;
-      start: ConcurrencyStartOutcome;
-    }
+  | { kind: "fired"; start: ConcurrencyStartOutcome }
   | CronRefusal;
 
 /**
- * What a skip did: `skipped` when the transaction wrote a Refused Start for
- * `slot` and moved the timer to `nextWakeAt` with its lease released, and
- * otherwise the `CronRefusal` that stopped it.
+ * What a skip did: `skipped` when the transaction wrote its Refused Start and
+ * moved the timer on with its lease released, and otherwise the
+ * `CronRefusal` that stopped it.
  */
-export type CronSkip =
-  | { kind: "skipped"; slot: Date; nextWakeAt: Date }
-  | CronRefusal;
+export type CronSkip = { kind: "skipped" } | CronRefusal;

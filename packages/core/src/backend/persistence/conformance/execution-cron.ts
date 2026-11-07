@@ -9,14 +9,19 @@
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import type { CronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
+import {
+  type CronSchedule,
+  latestSlotAtOrBefore,
+} from "@wfgraph/shared/lifecycle/cron-schedule";
 import type { Concurrency } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   type CronFence,
+  type CronPublication,
   type CronRefusedEntry,
   ExecutionRepo,
   type FireCronTimerInput,
 } from "#src/backend/services/executions/repo";
+import { cronWakeAfter } from "#src/backend/services/executions/repo/cron-policy";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
   type CaseDatabase,
@@ -152,14 +157,47 @@ async function leaseTimer(
 }
 
 /**
- * A Refused Start for `reason` that names the slot it was written for, so a
- * case reads which slot the write decided.
+ * The slot a pass whose clock reads `now` fires, and the wake it moves the
+ * timer to, as the cron pass computes them before it writes.
  */
-function refusedEntry(reason: string): CronRefusedEntry {
-  return (slot) => ({
+function slotTimes(schedule: CronSchedule, now: Date) {
+  const slot = latestSlotAtOrBefore(schedule, now);
+  if (slot === undefined) throw new Error("The schedule has no slot by now");
+  return { slot, nextWakeAt: cronWakeAfter(schedule, now) };
+}
+
+/**
+ * A Refused Start for `reason` that names the slot it was written for, so a
+ * case reads which slot was written.
+ */
+function refusedEntry(reason: string, slot: Date): CronRefusedEntry {
+  return {
     message: `Refused the ${slot.toISOString()} scheduled run`,
     metadata: { reason },
-  });
+  };
+}
+
+/**
+ * A skip of the slot `schedule` runs at `now` under `fence`, as the cron
+ * pass makes it, against `expected` when the preflight checked one.
+ */
+function skip(input: {
+  fence: CronFence;
+  schedule: CronSchedule;
+  now: Date;
+  expected?: CronPublication | undefined;
+  error: string;
+}) {
+  const { slot, nextWakeAt } = slotTimes(input.schedule, input.now);
+  return Effect.flatMap(ExecutionRepo, (executions) =>
+    executions.skipCronSlot({
+      fence: input.fence,
+      expected: input.expected,
+      nextWakeAt,
+      error: input.error,
+      refusedEntry: refusedEntry("published_version_not_runnable", slot),
+    })
+  );
 }
 
 /** Every Refused Start of the workflow, newest first. */
@@ -183,6 +221,7 @@ function fire(input: {
   return Effect.gen(function* () {
     const executions = yield* ExecutionRepo;
     const versionId = input.versionId ?? "ver_1";
+    const { slot, nextWakeAt } = slotTimes(input.schedule, input.now);
     const request: FireCronTimerInput = {
       fence: input.fence,
       schedule: input.schedule,
@@ -204,7 +243,9 @@ function fire(input: {
         supersededReason: "Superseded by a newer start",
         startedEntry: notYetDue.startedEntry,
       },
-      refusedEntry: refusedEntry("concurrency_first_wins"),
+      slot,
+      nextWakeAt,
+      refusedEntry: refusedEntry("concurrency_first_wins", slot),
       now: input.now,
     };
     return yield* executions.fireCronTimer(request);
@@ -373,7 +414,7 @@ export function describeExecutionCronConformance({
       });
       expect(result.fired).toMatchObject({
         kind: "fired",
-        slot: at(minutes(5)),
+        start: { execution: { scheduledFor: at(minutes(5)) } },
       });
     });
 
@@ -417,8 +458,6 @@ export function describeExecutionCronConformance({
 
       expect(result.fired).toMatchObject({
         kind: "fired",
-        slot: at(minutes(5)),
-        nextWakeAt: at(minutes(10)),
         start: {
           status: "started",
           execution: {
@@ -508,16 +547,14 @@ export function describeExecutionCronConformance({
 
       const result = await connection.run(
         Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
           const fired = yield* Effect.flip(
             fire({ fence: stale, schedule: EVERY_FIVE, now: at(minutes(5)) })
           );
           const skipped = yield* Effect.flip(
-            executions.skipCronSlot({
+            skip({
               fence: stale,
               schedule: EVERY_FIVE,
               error: "skipped",
-              refusedEntry: refusedEntry("published_version_not_runnable"),
               now: at(minutes(5)),
             })
           );
@@ -573,8 +610,6 @@ export function describeExecutionCronConformance({
 
       expect(result.fired).toMatchObject({
         kind: "fired",
-        slot: at(minutes(25)),
-        nextWakeAt: at(minutes(30)),
         start: { execution: { scheduledFor: at(minutes(25)) } },
       });
       expect(result.runs).toHaveLength(1);
@@ -748,8 +783,6 @@ export function describeExecutionCronConformance({
       const firstRunId = opened.start.execution.id;
       expect(result.refused).toMatchObject({
         kind: "fired",
-        slot: at(minutes(10)),
-        nextWakeAt: at(minutes(15)),
         start: { status: "refused", inFlightExecutionIds: [firstRunId] },
       });
       expect(result.refusals).toEqual([
@@ -881,13 +914,11 @@ export function describeExecutionCronConformance({
 
       const result = await connection.run(
         Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
-          const skipped = yield* executions.skipCronSlot({
+          const skipped = yield* skip({
             fence,
             schedule: EVERY_FIVE,
             expected: { versionId: "ver_1", mode: "live" },
             error: "The workflow's graph will not run",
-            refusedEntry: refusedEntry("published_version_not_runnable"),
             now: at(minutes(6)),
           });
           return {
@@ -900,11 +931,7 @@ export function describeExecutionCronConformance({
       );
 
       // 09:05 is the latest slot at or before the skip at 09:06.
-      expect(result.skipped).toEqual({
-        kind: "skipped",
-        slot: at(minutes(5)),
-        nextWakeAt: at(minutes(10)),
-      });
+      expect(result.skipped).toEqual({ kind: "skipped" });
       expect(result.refusals).toEqual([
         expect.objectContaining({
           workflowId: WORKFLOW_ID,
@@ -941,19 +968,17 @@ export function describeExecutionCronConformance({
 
       const result = await connection.run(
         Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
           // The Publish keeps the unchanged schedule's timer, lease and all.
           yield* publish({
             version: 2,
             schedules: [EVERY_FIVE],
             now: at(minutes(2)),
           });
-          const skipped = yield* executions.skipCronSlot({
+          const skipped = yield* skip({
             fence,
             schedule: EVERY_FIVE,
             expected: { versionId: "ver_1", mode: "live" },
             error: "The workflow's graph will not run",
-            refusedEntry: refusedEntry("published_version_not_runnable"),
             now: at(minutes(6)),
           });
           return { skipped, timers: yield* timers, refusals: yield* refusals };

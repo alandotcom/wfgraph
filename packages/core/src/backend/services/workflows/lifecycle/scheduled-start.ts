@@ -7,7 +7,10 @@
  */
 
 import { Effect, Schema } from "effect";
-import type { CronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
+import {
+  type CronSchedule,
+  latestSlotAtOrBefore,
+} from "@wfgraph/shared/lifecycle/cron-schedule";
 import type { WorkflowExecutionIgnoredReason } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -21,6 +24,7 @@ import {
   type CronRefusedEntry,
   ExecutionRepo,
 } from "#src/backend/services/executions/repo";
+import { cronWakeAfter } from "#src/backend/services/executions/repo/cron-policy";
 import {
   buildIgnoredRunAuditMessage,
   toWorkflowRunTarget,
@@ -53,19 +57,42 @@ class PublicationKeptMoving extends Schema.TaggedError<
 const EVENT_SPLIT_ERROR =
   "This workflow splits on the Event a run is on, and a scheduled run names none";
 
+/** The slot a fire runs, and the wake its timer moves to. */
+type SlotTimes = { slot: Date; nextWakeAt: Date };
+
 /**
- * The Refused Start for a slot of `schedule` that does not run, for `reason`,
- * worded with the slot's time in the schedule's zone. `extra` is what one
- * reason knows and the others do not, such as the preflight's error, and it
- * stays on the row's metadata.
+ * The slot a fire at `now` runs, the schedule's latest at or before `now`, so
+ * a timer claimed late fires once, for the slot it missed last, and the
+ * timer's next wake, the schedule's first slot strictly after `now`. The claim
+ * found the timer due at a slot at or before `now`, so an expression croner
+ * finds no such slot for is a defect.
+ */
+function slotTimesAt(
+  schedule: CronSchedule,
+  now: Date
+): Effect.Effect<SlotTimes> {
+  const slot = latestSlotAtOrBefore(schedule, now);
+  return slot === undefined
+    ? Effect.die(
+        new Error("A due cron timer's schedule has no slot at or before now")
+      )
+    : Effect.succeed({ slot, nextWakeAt: cronWakeAfter(schedule, now) });
+}
+
+/**
+ * The Refused Start for `slot` of `schedule`, which does not run, for
+ * `reason`, worded with the slot's time in the schedule's zone. `extra` is
+ * what one reason knows and the others do not, such as the preflight's error,
+ * and it stays on the row's metadata.
  */
 export function scheduledRefusal(input: {
   schedule: CronSchedule;
+  slot: Date;
   reason: WorkflowExecutionIgnoredReason;
   extra?: JsonObject | undefined;
 }): CronRefusedEntry {
-  const { schedule, reason } = input;
-  return (slot) => ({
+  const { schedule, slot, reason } = input;
+  return {
     message: buildIgnoredRunAuditMessage({
       startSource: "schedule",
       reason,
@@ -80,7 +107,7 @@ export function scheduledRefusal(input: {
       schedule: { cron: schedule.cron, timeZone: schedule.timeZone },
       scheduledFor: encodeIsoTimestamp(slot),
     },
-  });
+  };
 }
 
 /**
@@ -91,8 +118,9 @@ export function scheduledRefusal(input: {
  *   database refused.
  * - `refused`: first-wins deferred to the runs in flight, and the fire
  *   recorded a Refused Start for `slot`.
- * - `skipped`: the published graph cannot run, so the fire recorded a Refused
- *   Start for `slot` and moved the timer on to `nextWakeAt`, recording `error`.
+ * - `skipped`: the published graph cannot run, or the fire's retries are
+ *   spent, so the fire recorded a Refused Start for `slot` and moved the
+ *   timer on to `nextWakeAt`, recording `error`.
  * - `dropped`: the timer should not exist, and the fire deleted it.
  */
 export type ScheduleFireOutcome =
@@ -133,15 +161,21 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
     // records why. The skip writes it only while the workflow still publishes
     // `expected`, so a Publish that repaired the graph since the preflight
     // gets its slot fired instead.
-    const skip = (error: string, expected: CronPublication) =>
-      Effect.map(
+    const skip = (refusal: {
+      times: SlotTimes;
+      expected: CronPublication;
+      error: string;
+    }) => {
+      const { times, expected, error } = refusal;
+      return Effect.map(
         executions.skipCronSlot({
           fence,
-          schedule,
           expected,
+          nextWakeAt: times.nextWakeAt,
           error,
           refusedEntry: scheduledRefusal({
             schedule,
+            slot: times.slot,
             reason: "published_version_not_runnable",
             extra: {
               versionId: expected.versionId,
@@ -149,14 +183,17 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
               error,
             },
           }),
-          now: input.now(),
         }),
         (skipped): ScheduleFireOutcome | CronRefusal =>
-          skipped.kind === "skipped" ? { ...skipped, error } : skipped
+          skipped.kind === "skipped"
+            ? { kind: "skipped", ...times, error }
+            : skipped
       );
+    };
 
     // One check of the published version, ending in one fire or one skip.
-    // `stale` means the version or the mode moved since the preflight.
+    // `stale` means the version or the mode moved since the preflight. The
+    // clock is read once, before the transaction, and decides the slot.
     const attempt = Effect.gen(function* () {
       const loaded = yield* workflows.findByIdWithPublishedVersionForRun(
         fence.workflowId
@@ -177,6 +214,8 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
         versionId: version.id,
         mode: workflow.mode,
       };
+      const now = input.now();
+      const times = yield* slotTimesAt(schedule, now);
 
       const preflight = yield* runWorkflowExecutionPreflight({
         workflow: { graph: version.graph },
@@ -192,12 +231,12 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
         })
       );
       if (!preflight.ok) {
-        return yield* skip(preflight.error, expected);
+        return yield* skip({ times, expected, error: preflight.error });
       }
       // Publish refuses a schedule on a graph with an Event Split, so this
       // answers a version published before that rule.
       if (preflight.checked.hasEventSplit) {
-        return yield* skip(EVENT_SPLIT_ERROR, expected);
+        return yield* skip({ times, expected, error: EVENT_SPLIT_ERROR });
       }
 
       const rules = preflight.checked.lifecycleRules ?? emptyLifecycleRules;
@@ -219,12 +258,14 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
         schedule,
         expected: { ...expected, schedules: rules.schedules ?? [] },
         start: request,
+        ...times,
         refusedEntry: scheduledRefusal({
           schedule,
+          slot: times.slot,
           reason: "concurrency_first_wins",
           extra: { entityValue, runMode: workflow.mode },
         }),
-        now: input.now(),
+        now,
       });
 
       if (fired.kind !== "fired") return fired;
@@ -232,8 +273,7 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
         const refused: ScheduleFireOutcome = {
           kind: "refused",
           versionId: version.id,
-          slot: fired.slot,
-          nextWakeAt: fired.nextWakeAt,
+          ...times,
           inFlightExecutionIds: fired.start.inFlightExecutionIds,
         };
         return refused;
@@ -248,8 +288,7 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
         kind: "started",
         executionId: execution.id,
         versionId: version.id,
-        slot: fired.slot,
-        nextWakeAt: fired.nextWakeAt,
+        ...times,
         superseded: supersededExecutionIds.length,
         failedToSupersede: announced.failedExecutionIds,
       };
@@ -264,5 +303,36 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
       message:
         "The published version or the Published mode changed during every fire attempt",
     });
+  }
+);
+
+/**
+ * Skips the slot of the leased timer `fence` names, at the pass's clock
+ * `now`, for a fire whose retries are spent: a Refused Start says starting it
+ * failed on every retry, and the timer moves on, recording `error`.
+ */
+export const skipSpentSchedule = Effect.fn("wfgraph.schedule.skip_spent")(
+  function* (input: {
+    fence: CronFence;
+    schedule: CronSchedule;
+    error: string;
+    now: Date;
+  }) {
+    const { fence, schedule, error } = input;
+    const executions = yield* ExecutionRepo;
+    const times = yield* slotTimesAt(schedule, input.now);
+    yield* executions.skipCronSlot({
+      fence,
+      nextWakeAt: times.nextWakeAt,
+      error,
+      refusedEntry: scheduledRefusal({
+        schedule,
+        slot: times.slot,
+        reason: "scheduled_start_failed",
+        extra: { error },
+      }),
+    });
+    const skipped: ScheduleFireOutcome = { kind: "skipped", ...times, error };
+    return skipped;
   }
 );

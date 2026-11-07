@@ -13,17 +13,16 @@ import {
   type PassBody,
   passAnnotations,
 } from "#src/backend/executor/pass";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import {
   fireSchedule,
   type ScheduleFireOutcome,
-  scheduledRefusal,
+  skipSpentSchedule,
 } from "#src/backend/services/workflows/lifecycle/scheduled-start";
 
 /** Every service a cron row's pass reads. */
 export type CronServices =
-  | ExecutionRepo
-  | Effect.Services<ReturnType<typeof fireSchedule>>;
+  | Effect.Services<ReturnType<typeof fireSchedule>>
+  | Effect.Services<ReturnType<typeof skipSpentSchedule>>;
 
 /**
  * Stops the pass as a lost lease when `effect` finds its timer no longer
@@ -134,22 +133,14 @@ export function cronBody(): PassBody<CronPass, CronServices> {
           ),
       } satisfies OpenedBody<null, CronServices>),
     fail: (pass, error) =>
-      Effect.gen(function* () {
-        const executions = yield* ExecutionRepo;
-        yield* watched(
-          pass,
-          executions.skipCronSlot({
-            fence: pass.fence,
-            schedule: pass.claimed.schedule,
-            error,
-            refusedEntry: scheduledRefusal({
-              schedule: pass.claimed.schedule,
-              reason: "scheduled_start_failed",
-              extra: { error },
-            }),
-            now: pass.now(),
-          })
-        );
-      }),
+      watched(
+        pass,
+        skipSpentSchedule({
+          fence: pass.fence,
+          schedule: pass.claimed.schedule,
+          error,
+          now: pass.now(),
+        })
+      ).pipe(Effect.asVoid),
   };
 }

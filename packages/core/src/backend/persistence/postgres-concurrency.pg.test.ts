@@ -1198,8 +1198,10 @@ describePostgres("PostgreSQL concurrency", () => {
                   supersededReason: "newer start",
                   startedEntry: notYetDue.startedEntry,
                 },
-                refusedEntry: () => ({ message: "Refused", metadata: {} }),
-                now: new Date(),
+                slot: new Date("2026-03-01T09:05:00.000Z"),
+                nextWakeAt: new Date("2026-03-01T09:10:00.000Z"),
+                refusedEntry: { message: "Refused", metadata: {} },
+                now: new Date("2026-03-01T09:06:00.000Z"),
               })
             )
           );
