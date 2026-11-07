@@ -26,6 +26,14 @@
 (* Concurrency is chosen per behaviour: "newest" (newest wins) or "first"  *)
 (* (first wins). An Execution's own run is abstracted to one step that     *)
 (* finishes it; the run model checks what happens inside one.              *)
+(*                                                                         *)
+(* The retention sweeps delete rows at any moment, since a host's two      *)
+(* windows are independent and either can be short: the inbox sweep a     *)
+(* settled inbox row, the run sweep an ended Execution, and the audit      *)
+(* sweep a recorded refusal. The run and audit sweeps each keep a row while *)
+(* the inbox row of the arrival it answers for exists, which is what a     *)
+(* redelivery of that row reads in place of deciding again. A send whose   *)
+(* key a swept row held inserts a new row under a new id.                  *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -33,7 +41,7 @@ CONSTANTS Workers, MaxFaults
 
 Starts   == {"s1", "s2"}
 Arrivals == Starts \cup {"c"}
-Copies   == {1, 2}                    \* an inbox row for a key, and a duplicate row
+Copies   == {1, 2}                    \* an inbox row for a key, and a second row for it
 
 \* How many times the host sends each arrival: "s1" twice, to exercise the
 \* inbox key, and the others once.
@@ -44,7 +52,7 @@ Execs    == Starts \X Copies \X Copies \* Execution ids: the inbox row, and a se
 VARIABLES
   mode,         \* Concurrency of this workflow: "newest" | "first"
   sends,        \* host sends per arrival
-  inbox,        \* each inbox row: "none" | "present"
+  inbox,        \* each inbox row: "none" | "present" | "swept"
   failed,       \* each inbox row: its delivery failed for good (a refused payload or spent retries)
   dsched,       \* each delivery's schedule row: "none" | "queued" | "leased" | "gone"
   dholder,      \* each delivery's lease holder, 0 for none
@@ -53,18 +61,17 @@ VARIABLES
   pc,           \* each worker: "idle" | "write" | "memo" | "finish"
   cur,          \* each worker: the delivery its pass is on
   exec,         \* each Execution: "none" | "running" | "claimed" | "completed"
-                \*   | "canceled" | "superseded"
+                \*   | "canceled" | "superseded" | "swept" (the run sweep deleted it)
   esched,       \* each Execution's schedule row: "none" | "present" | "gone"
-  refused,      \* each inbox row of a Start arrival: recorded as a Refused Start
+  refused,      \* each inbox row of a Start arrival: its Refused Start's audit row exists
   eligRefused,  \* each inbox row: refused by admission Entity Eligibility
   refusedChanged, \* an arrival Eligibility refused changed a run anyway
   faults,
-  opened,       \* Executions opened per Start arrival
   cancelSet,    \* the runs the Cancel arrival's first write claimed
   lostResend    \* a resend of a failed key answered duplicate and left the row failed
 
 vars == <<mode, sends, inbox, failed, cancelSet, lostResend, dsched, dholder, written, memo, pc, cur, exec, esched,
-          refused, eligRefused, refusedChanged, faults, opened>>
+          refused, eligRefused, refusedChanged, faults>>
 
 \* The guards the design depends on.
 InboxKeyIsUnique == TRUE                 \* unique (name, idempotency_key) on the inbox
@@ -76,6 +83,8 @@ RefusalIsConsulted == TRUE               \* answerFromCommittedDecision reads a 
 EligibilityBeforeConcurrency == TRUE     \* Precedence: admission Eligibility, then Concurrency
 ExecutionAndScheduleTogether == TRUE     \* one transaction inserts both rows
 SupersedeDropsSchedule == TRUE           \* a supersede deletes the run's schedule row
+RunSweepKeepsInboxRuns == TRUE           \* sweepableExecution: the run's inbox row is gone
+AuditSweepKeepsInboxRefusals == TRUE     \* sweepableWorkflowAudit: the refusal's inbox row is gone
 LeaseHeldBy(w) == dholder[cur[w]] = w
 
 Live == {x \in Execs : exec[x] = "running"}
@@ -91,17 +100,17 @@ Init ==
   /\ exec = [x \in Execs |-> "none"] /\ esched = [x \in Execs |-> "none"]
   /\ refused = [r \in Rows |-> FALSE] /\ faults = 0
   /\ eligRefused = [r \in Rows |-> FALSE] /\ refusedChanged = FALSE
-  /\ opened = [k \in Starts |-> 0]
 
-execVars == <<exec, esched, refused, eligRefused, refusedChanged, opened>>
+execVars == <<exec, esched, refused, eligRefused, refusedChanged>>
 
 -----------------------------------------------------------------------------
 (* Sources, section 7.3. *)
 
-\* The inbox row a send writes: the key's existing row when the key is unique.
+\* The inbox row a send writes: the key's existing row when the key is unique,
+\* and a row under a new id when the retention sweep deleted the key's row.
 NewRow(k) ==
   IF inbox[<<k, 1>>] = "none" THEN <<k, 1>>
-  ELSE IF InboxKeyIsUnique THEN <<k, 1>> ELSE <<k, 2>>
+  ELSE IF inbox[<<k, 1>>] = "present" /\ InboxKeyIsUnique THEN <<k, 1>> ELSE <<k, 2>>
 
 \* app.events.send: the inbox row and its delivery's schedule row in one transaction.
 SendViaApp(k) ==
@@ -169,7 +178,8 @@ StartWrite(r) ==
       first == <<k, r[2], 1>>
       x == IF exec[first] = "none" THEN first ELSE SecondCopy(first)
   IN
-  IF exec[first] # "none" /\ DeliveryIdIsUnique
+  \* findByDelivery finds the run unless the run sweep deleted it.
+  IF exec[first] \notin {"none", "swept"} /\ DeliveryIdIsUnique
     THEN UNCHANGED execVars
   ELSE IF refused[r] /\ RefusalIsConsulted
     THEN UNCHANGED execVars
@@ -181,10 +191,9 @@ StartWrite(r) ==
            /\ IF ~EligibilityBeforeConcurrency /\ mode = "newest" /\ Live # {}
                 THEN Supersede(<<"none">>) /\ refusedChanged' = TRUE
                 ELSE UNCHANGED <<exec, esched, refusedChanged, failed, cancelSet, lostResend>>
-           /\ UNCHANGED opened
     ELSE IF mode = "first" /\ Live # {}
       THEN /\ refused' = [refused EXCEPT ![r] = TRUE]
-           /\ UNCHANGED <<exec, esched, opened, eligRefused, refusedChanged, failed, cancelSet, lostResend>>
+           /\ UNCHANGED <<exec, esched, eligRefused, refusedChanged, failed, cancelSet, lostResend>>
     ELSE
       /\ exec' = [y \in Execs |->
                    IF y = x THEN "running"
@@ -194,7 +203,6 @@ StartWrite(r) ==
                      IF y = x THEN (IF ExecutionAndScheduleTogether THEN "present" ELSE "none")
                      ELSE IF y \in Live /\ mode = "newest" /\ SupersedeDropsSchedule THEN "gone"
                      ELSE esched[y]]
-      /\ opened' = [opened EXCEPT ![k] = @ + 1]
       /\ UNCHANGED <<refused, eligRefused, refusedChanged, failed, cancelSet, lostResend>>
 
 \* requestCancelForEntity for the Cancel arrival. Its first write claims every
@@ -206,7 +214,7 @@ CancelWrite(r) ==
        ELSE /\ exec' = [y \in Execs |-> IF exec[y] = "running" THEN "claimed" ELSE exec[y]]
             /\ cancelSet' = IF written[r] THEN cancelSet
                             ELSE {y \in Execs : exec[y] = "running"}
-  /\ UNCHANGED <<esched, refused, eligRefused, refusedChanged, opened, failed, lostResend>>
+  /\ UNCHANGED <<esched, refused, eligRefused, refusedChanged, failed, lostResend>>
 
 LifecycleStep(w) ==
   /\ pc[w] = "write" /\ LeaseHeldBy(w)
@@ -264,20 +272,63 @@ RunCompletes(x) ==
   /\ exec[x] = "running" /\ esched[x] = "present"
   /\ exec' = [exec EXCEPT ![x] = "completed"] /\ esched' = [esched EXCEPT ![x] = "gone"]
   /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused, eligRefused, refusedChanged,
-                 opened, faults, failed, cancelSet, lostResend>>
+                 faults, failed, cancelSet, lostResend>>
 
 RunEndsCanceled(x) ==
   /\ exec[x] = "claimed" /\ esched[x] = "present"
   /\ exec' = [exec EXCEPT ![x] = "canceled"] /\ esched' = [esched EXCEPT ![x] = "gone"]
   /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused, eligRefused, refusedChanged,
-                 opened, faults, failed, cancelSet, lostResend>>
+                 faults, failed, cancelSet, lostResend>>
 
 \* A superseded run that still has a schedule row would be claimed and run on.
 SupersededRunRuns(x) ==
   /\ exec[x] = "superseded" /\ esched[x] = "present"
   /\ exec' = [exec EXCEPT ![x] = "completed"] /\ esched' = [esched EXCEPT ![x] = "gone"]
   /\ UNCHANGED <<mode, sends, inbox, dsched, dholder, written, memo, pc, cur, refused, eligRefused, refusedChanged,
-                 opened, faults, failed, cancelSet, lostResend>>
+                 faults, failed, cancelSet, lostResend>>
+
+-----------------------------------------------------------------------------
+(* Retention, decisions 7 and 8. Each sweep deletes a row whenever its guard *)
+(* allows, which stands for every choice of window and every batch order.   *)
+
+\* sweepSettledInbox: a delivered or failed row (sweepableInbox). A pending row
+\* is never swept. The row's schedule row is already gone. The model sweeps the
+\* row of "s2" alone, the Start sent once, which keeps the state count near the
+\* largest model's:
+\*   - A send after the sweep is a new arrival under a new id (ADR-0022), which
+\*     doubles the state space and checks nothing a first arrival does not, so
+\*     the twice-sent "s1" is not swept.
+\*   - A Cancel arrival's row answers a redelivery from its
+\*     workflow_cancel_decisions row, which goes with the inbox row by cascade,
+\*     so sweeping it changes nothing a rule reads.
+\* The run and audit sweeps take any row their guard allows, so a mutation that
+\* drops a guard deletes the records of "s1" while its row is pending or failed.
+SweepInbox(r) ==
+  /\ r[1] = "s2" /\ sends[r[1]] = SendCap(r[1])
+  /\ inbox[r] = "present" /\ dsched[r] = "gone"
+  /\ inbox' = [inbox EXCEPT ![r] = "swept"]
+  /\ UNCHANGED <<mode, sends, failed, dsched, dholder, written, memo, pc, cur, execVars, faults, cancelSet,
+                 lostResend>>
+
+\* sweepEndedExecutions: an Execution with a terminal status, which the run
+\* sweep keeps while the inbox row that opened it exists (sweepableExecution).
+SweepRun(x) ==
+  /\ exec[x] \in {"completed", "canceled", "superseded"}
+  /\ RunSweepKeepsInboxRuns => inbox[<<x[1], x[2]>>] # "present"
+  /\ exec' = [exec EXCEPT ![x] = "swept"]
+  /\ UNCHANGED <<mode, sends, inbox, failed, dsched, dholder, written, memo, pc, cur, esched, refused,
+                 eligRefused, refusedChanged, faults, cancelSet, lostResend>>
+
+\* sweepWorkflowAuditEvents: a Refused Start's workflow audit row, which the
+\* audit sweep keeps while the inbox row its metadata names exists
+\* (sweepableWorkflowAudit). The Entity admission refusal findAdmissionRefusal
+\* reads is one of these rows.
+SweepRefusal(r) ==
+  /\ refused[r]
+  /\ AuditSweepKeepsInboxRefusals => inbox[r] # "present"
+  /\ refused' = [refused EXCEPT ![r] = FALSE]
+  /\ UNCHANGED <<mode, sends, inbox, failed, dsched, dholder, written, memo, pc, cur, exec, esched,
+                 eligRefused, refusedChanged, faults, cancelSet, lostResend>>
 
 AllDone ==
   /\ \A k \in Arrivals : sends[k] = SendCap(k)
@@ -295,7 +346,8 @@ Next ==
   \/ \E k \in Arrivals : SendViaApp(k) \/ SendInHostTransaction(k)
   \/ \E r \in Rows : PollInbox(r) \/ SweepDelivery(r)
   \/ \E w \in Workers : WorkerStep(w) \/ CrashWorker(w)
-  \/ \E x \in Execs : RunCompletes(x) \/ RunEndsCanceled(x) \/ SupersededRunRuns(x)
+  \/ \E x \in Execs : RunCompletes(x) \/ RunEndsCanceled(x) \/ SupersededRunRuns(x) \/ SweepRun(x)
+  \/ \E r \in Rows : SweepInbox(r) \/ SweepRefusal(r)
   \/ AllDone
 
 Spec == Init /\ [][Next]_vars
@@ -312,11 +364,17 @@ FairSpec ==
 -----------------------------------------------------------------------------
 (* Rules. *)
 
-\* Sending the same arrival twice puts one row in the inbox.
-DuplicateSendIsOneArrival == \A k \in Arrivals : inbox[<<k, 2>>] = "none"
+\* Sending the same arrival twice puts one row in the inbox: two rows never
+\* hold one key. A send after the retention sweep deleted the key's row is a
+\* new arrival (ADR-0022).
+DuplicateSendIsOneArrival == \A k \in Arrivals : ~(inbox[<<k, 1>>] = "present" /\ inbox[<<k, 2>>] = "present")
 
-\* Each Start arrival opens at most one Execution, however often its delivery runs.
-EachArrivalOpensAtMostOneRun == \A k \in Starts : opened[k] <= 1
+\* No inbox row ever has two Executions, however often its delivery runs and
+\* whatever the retention sweeps delete: an Execution the run sweep deleted
+\* still counts.
+OneRunPerInboxRow ==
+  \A k \in Starts, i \in Copies : \A c \in Copies :
+    exec[<<k, i, c>>] # "none" => \A d \in Copies \ {c} : exec[<<k, i, d>>] = "none"
 
 \* An arrival's admission is decided once: one Eligibility refused never opens a run.
 AdmissionDecidedOnce ==
@@ -363,4 +421,12 @@ ReachRedelivery    == \E r \in Rows : written[r] /\ ~memo[r] /\ dsched[r] = "que
 ReachResentAfterFailure == \E r \in Rows : r[1] = "s1" /\ ~failed[r] /\ dsched[r] = "gone" /\ sends["s1"] = 2 /\ written[r]
 ReachFailedDelivery == \E r \in Rows : failed[r] /\ dsched[r] = "gone"
 ReachHostTransactionDelivered == \E r \in Rows : inbox[r] = "present" /\ dsched[r] = "gone" /\ written[r]
-=============================================================================
+\* An ended run whose inbox row may still be delivered again: pending through a
+\* retry, or failed with a resend of its key still to come.
+EndedRunOf(r) ==
+  /\ r[1] \in Starts
+  /\ exec[<<r[1], r[2], 1>>] \in {"completed", "canceled", "superseded"} /\ inbox[r] = "present"
+ReachRunKeptForARetry        == \E r \in Rows : EndedRunOf(r) /\ dsched[r] = "queued" /\ written[r] /\ ~memo[r]
+ReachRunKeptForAResend       == EndedRunOf(<<"s1", 1>>) /\ failed[<<"s1", 1>>] /\ sends["s1"] = 1
+ReachRunSwept                == \E x \in Execs : exec[x] = "swept"
+ReachRefusalSwept            == \E r \in Rows : eligRefused[r] /\ ~refused[r]=============================================================================

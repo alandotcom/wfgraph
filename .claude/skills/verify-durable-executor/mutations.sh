@@ -51,8 +51,10 @@ Delivery|wake-the-runs-it-settled|ExcludeSettledRuns == TRUE|ExcludeSettledRuns 
 Delivery|scan-and-wake-page-by-page|SavePagesBeforeWaking == TRUE|SavePagesBeforeWaking == FALSE|NoSecondWaitFromOneArrival
 Delivery|wake-claims-a-woken-row|WakeIsUnclaimed(r) == row[r] = "waiting"|WakeIsUnclaimed(r) == row[r] \in {"waiting", "woken"}|EachWaitWokenOnce
 Delivery|scan-drops-running-runs|/\ run[RunOf[r]] \in {"running", "claimed"}|/\ run[RunOf[r]] = "claimed"|SurvivingWaitsAreWoken
-Intake|inbox-key-not-unique|InboxKeyIsUnique == TRUE|InboxKeyIsUnique == FALSE|DuplicateSendIsOneArrival EachArrivalOpensAtMostOneRun
-Intake|delivery-id-not-unique|DeliveryIdIsUnique == TRUE|DeliveryIdIsUnique == FALSE|EachArrivalOpensAtMostOneRun
+Intake|inbox-key-not-unique|InboxKeyIsUnique == TRUE|InboxKeyIsUnique == FALSE|DuplicateSendIsOneArrival
+Intake|delivery-id-not-unique|DeliveryIdIsUnique == TRUE|DeliveryIdIsUnique == FALSE|OneRunPerInboxRow
+Intake|run-sweep-keyed-on-age|RunSweepKeepsInboxRuns == TRUE|RunSweepKeepsInboxRuns == FALSE|OneRunPerInboxRow
+Intake|audit-sweep-drops-the-refusal|AuditSweepKeepsInboxRefusals == TRUE|AuditSweepKeepsInboxRefusals == FALSE|AdmissionDecidedOnce
 Intake|schedule-row-inserted-later|ExecutionAndScheduleTogether == TRUE|ExecutionAndScheduleTogether == FALSE|EveryOpenRunIsScheduled
 Intake|supersede-keeps-schedule|SupersedeDropsSchedule == TRUE|SupersedeDropsSchedule == FALSE|SupersededRunsStop
 Intake|first-wins-ignores-live-run|ELSE IF mode = "first" /\ Live # {}|ELSE IF FALSE|OneLiveRunPerEntity

@@ -1,6 +1,6 @@
 ---
 name: verify-durable-executor
-description: Model-check the database executor that replaces Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, steps inside a handler, admission Entity Eligibility, Concurrency, cron schedule timers and how Publish and pause rewrite them, or the drivers' leases, heartbeats, polling and Worker platform limits, when a change touches the executor's code (packages/core/src/backend/executor, the Worker's tick driver in packages/core/src/backend/worker.ts, the schedule, step memo and fenced writes in services/executions/repo and persistence/sqlite/executions, the engine's parked Waits), or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
+description: Model-check the database executor that replaces Inngest (Design A and the event inbox in docs/internal/plans/separate-event-intake-from-durable-execution.md) with TLA+ models run by tla-ts. Use when a change touches that design's claim, lease, pass, release, park resolution, cancellation, Exit claim, retries, Migration (including a Wait that changes mode), inbox, delivery fan-out to several workflows, Wait wakes from one or several arrivals, Wait match expressions, steps inside a handler, admission Entity Eligibility, Concurrency, cron schedule timers and how Publish and pause rewrite them, the inbox and run-history retention sweeps, or the drivers' leases, heartbeats, polling and Worker platform limits, when a change touches the executor's code (packages/core/src/backend/executor, the Worker's tick driver in packages/core/src/backend/worker.ts, the schedule, step memo and fenced writes in services/executions/repo and persistence/sqlite/executions, the engine's parked Waits), or when a change touches the existing code the design reuses (claimWaitState, openResume's version fence, admitNode, finishRun, startForEntity, repinVersion, answerFromCommittedDecision). Triggers on "verify the executor", "model-check the design", "does the release still hold", or a claim that a run cannot be stranded, woken twice, opened twice, or run after it ended.
 ---
 
 # Verify the durable executor design
@@ -42,6 +42,9 @@ git log --oneline b014dc55.. -- \
   packages/core/src/backend/services/executions/repo/node-logs.ts \
   packages/core/src/backend/services/executions/repo/waits.ts \
   packages/core/src/backend/services/executions/repo/runs.ts \
+  packages/core/src/backend/services/executions/repo/retention-policy.ts \
+  packages/core/src/backend/services/executions/repo/retention.ts \
+  packages/core/src/backend/executor/upkeep.ts \
   packages/core/src/backend/services/executions/repo/claims.ts \
   packages/core/src/backend/services/executions/repo/index.ts \
   packages/core/src/backend/persistence/sqlite/executions \
@@ -94,7 +97,7 @@ check:
   by mistake, and a pass from that model checks less than it claims.
 
 It exits 0 when everything holds and is reached, 1 otherwise, and 2 when
-`tla-ts` cannot check a model. The whole run takes about three minutes on a
+`tla-ts` cannot check a model. The whole run takes about four minutes on a
 many-core machine, most of it the `Arrivals` and `Intake` models.
 
 `mutations.sh` first checks the models as written. Then it removes one guard of
@@ -105,7 +108,7 @@ reaches, `STALE` for a recorded finding that no longer reproduces, `NEW` for
 a rule that breaks and is not a recorded finding, and `AMBIGUOUS` when a
 mutation's text occurs more than once in its model, since the mutation would
 then change only the first occurrence. Any of those fails the suite.
-It takes about four minutes.
+It takes about six minutes.
 
 Both scripts run `tla-ts@0.0.8` through `pnpm dlx` on every core, so nothing is
 installed into the workspace. `MODEL_DIR` points `check.sh` at a copy of the
@@ -235,13 +238,31 @@ Both Concurrency modes, newest wins and first wins, are checked. Admission
 Entity Eligibility decides before Concurrency, and the host's resolver is asked
 again on every attempt, so a re-run delivery may get a different answer. An
 Execution's own run is one step here, because `DurableExecutor` checks what
-happens inside one. About 304,000 states.
+happens inside one.
+
+The retention sweeps of decisions 7 and 8 delete rows at any moment their
+guards allow, which stands for every choice of the two windows and every batch
+order. Those guards are:
+
+- **The inbox sweep** deletes a settled inbox row, never a `pending` one.
+- **The run sweep** deletes an ended Execution only once the inbox row that
+  opened it is gone.
+- **The audit sweep** deletes a Refused Start's audit row, including the Entity
+  admission refusal a redelivery reads, only once the inbox row it names is
+  gone.
+
+An inbox row outlives a run window in three ways: `pending` through retries, a
+`failed` row a resend reopens with its old `received_at`, or a settled row a
+full inbox batch left behind. The model needs no separate case for any of them,
+because nothing forces the inbox sweep to run. The inbox sweep takes the
+once-sent Start alone, since a send after the sweep is a new arrival under a
+new id (ADR-0022) that would double the state space. About 506,000 states.
 
 | Rule | The promise | The harm when it breaks |
 | --- | --- | --- |
-| `DuplicateSendIsOneArrival` | Sending the same arrival twice puts one row in the inbox. | A retried send starts two runs. |
-| `EachArrivalOpensAtMostOneRun` | Each Start arrival opens at most one Execution, however often its delivery runs. | A crash during delivery starts a second run. |
-| `AdmissionDecidedOnce` | An arrival Entity Eligibility refused never later opens a run. | A retried delivery starts a run for an ineligible Entity. |
+| `DuplicateSendIsOneArrival` | Two inbox rows never hold one idempotency key, so sending the same arrival twice puts one row in the inbox. | A retried send starts two runs. |
+| `OneRunPerInboxRow` | No inbox row ever has two Executions, however often its delivery runs and whatever the retention sweeps delete. | A crash during delivery, or a redelivery after the run sweep deleted the first run, starts a second run. |
+| `AdmissionDecidedOnce` | An arrival Entity Eligibility refused never later opens a run, even after the audit sweep. | A retried delivery starts a run for an ineligible Entity. |
 | `RefusedArrivalChangesNothing` | An arrival Entity Eligibility refused supersedes nothing. | An ineligible reschedule cancels the reminders already running. |
 | `OneLiveRunPerEntity` | Under one-at-a-time Concurrency, at most one run per Entity is live. | Two reminder sequences run for one appointment. |
 | `EveryOpenRunIsScheduled` | Every open Execution has a schedule row. | A run is opened that nothing will ever execute. |
@@ -376,7 +397,7 @@ many are live for `workflow:<id>`. About 68,000 states.
 ## Bounds and assumptions
 
 - The bounds above: two workers, two versions and two Migrations, three
-  arrivals in `Intake`, one arrival fanned out to two workflows in `Delivery`
+  arrivals in `Intake` with the inbox sweep on one of them, one arrival fanned out to two workflows in `Delivery`
   with pages of one row, two arrivals and two payloads in `Arrivals`, a clock
   of twenty units in `Timing`, two schedules, two cron expressions, one
   Publish, one pause and resume, and a clock of three units in `Cron`, a retry
@@ -447,6 +468,9 @@ the directories of those names under `services/workflows/`.
 | `Delivery`: `ScanAllPages`, `Candidate`, `ExcludeSettledRuns`, `SavePagesBeforeWaking` | Section 7.2 | `listWaitCandidatePage` in `lifecycle/deliver-event.ts`; `listWaitsForEvent` in `repo/waits.ts` |
 | `Delivery`: `WakeSavedPage`, `RecordWokenPage`, `WakeIsUnclaimed` | Section 7.2; "The runtime", `run(step, fn)` | `deliverWaitCandidates` in `lifecycle/deliver-event.ts`; `resumeWaitsMatchingEvent` in `lifecycle/resume-waits.ts`; `claimWaitingStateById` in `repo/claims.ts` |
 | `Intake`: `StartWrite` admission arm, `RefusalIsConsulted`, `EligibilityBeforeConcurrency` | CONTEXT.md "Entity Eligibility", "Precedence" | `answerFromCommittedDecision` in `lifecycle/deliver-event.ts`; `recordStartRefusal` and `startAdmissionDecisionId` in `executions/run-rows.ts` |
+| `Intake`: `SweepInbox` | Section 12, decision 7 | `sweepSettledInbox` in `repo/inbox.ts` and `sqlite/inbox.ts`, on `sweepableInbox` in `repo/inbox-policy.ts`, which takes `delivered` and `failed` rows alone; run by `executorUpkeep` in `executor/upkeep.ts` from the worker loop and from `tick`. A send whose key a swept row held inserts a new row under a new id (`generateId` in `insertInboxEvent`), which `NewRow` models. |
+| `Intake`: `SweepRun`, `RunSweepKeepsInboxRuns`, and `StartWrite` finding no swept run | Section 12, decision 8 | `sweepEndedExecutions` in `repo/retention.ts` and `sqlite/retention.ts`, on `sweepableExecution` in `repo/retention-policy.ts`: a terminal run that completed before the window and whose inbox row (`delivery_id`) is gone. Both backends delete through `deleteOldestBatch` (`lib/db/batched-delete.ts` and `persistence/sqlite/batched-delete.ts`), a batch at a time; `executorUpkeep` runs it after the inbox sweep. A swept run is one `findByDelivery` (`repo/runs.ts`) no longer finds. |
+| `Intake`: `SweepRefusal`, `AuditSweepKeepsInboxRefusals` | Section 12, decision 8 | `sweepWorkflowAuditEvents` in `repo/retention.ts` and `sqlite/retention.ts`, on `sweepableWorkflowAudit` in `repo/retention-policy.ts`: an audit row naming no Execution whose metadata `deliveryId` names no inbox row. The Entity admission refusal `findAdmissionRefusal` reads (`repo/index.ts`) is one such row. |
 | `Arrivals`: `OfferOne`, `CanClaim`, `ClaimNeedsTheToken`, `RowIsWaiting` | "Resolving a park"; section 7.2 | `resumeOneWait` in `lifecycle/resume-waits.ts`; `claimWaitingStateById` in `repo/claims.ts` |
 | `Arrivals`: the refresh branch of `OfferOne`, `RefreshOnRotatedToken` | ADR-0019 | `canRefreshWaitCandidate` in `lifecycle/resume-waits.ts` |
 | `Arrivals`: `Scan`, `Record` | Section 7.2 | `listWaitCandidatePage` and `deliverWaitCandidates` in `lifecycle/deliver-event.ts` |
@@ -474,6 +498,9 @@ pass interrupted by dispose's drain releasing its row with nothing counted (no
 model has a graceful stop; it acts as a crash whose lease is swept at once). Move these commits
 forward only after you have read the covered sections and files at the new
 commit and confirmed that the models still describe them.
+
+The retention sweeps in `Intake` (`SweepInbox`, `SweepRun`, `SweepRefusal`)
+were confirmed against decisions 7 and 8 and the retention code at `065ccf33`.
 
 `Cron` was written against decision 9 of the design doc at `065ccf33`, before
 any cron code existed, so its rows above name planned functions. When the cron
@@ -557,18 +584,15 @@ back to show the rule still catches it:
 - More than one Execution inside the run model. Concurrency is checked in
   `Intake`, with each run reduced to one step.
 - A delivery's retry count. `Intake` lets a delivery fail for good at most once per row and records it (`FailDelivery`); how many retries come first is the Handler model's per-step count.
-- The inbox retention sweep. `Intake` keeps every inbox row, so
-  `DuplicateSendIsOneArrival` holds within `events.retentionMs`; a resend after
-  the sweep deleted the first row is a new arrival by design (ADR-0022). The
-  sweep deletes only `delivered` and `failed` rows (`sweepableInbox` in
-  `repo/inbox-policy.ts`, run by `sweepSettledInbox` through `executorUpkeep` in `executor/upkeep.ts`, from the worker loop and from `tick`), whose
-  schedule rows their settling write already deleted, so no rule about a
-  pending delivery depends on it.
+- A send after the inbox sweep deleted its key's row. It is a new arrival under
+  a new id by design (ADR-0022), and `Intake` sweeps only the row of the Start
+  it sends once, so it never makes one. The inbox sweep of a Cancel arrival's
+  row, which takes its `workflow_cancel_decisions` row by cascade, is left out
+  for the same reason.
+- The draft snapshot sweep (`sweepUnreferencedDraftSnapshots`), which no rule
+  about a run's admission reads.
 - Retry backoff timing, `NOTIFY` latency, database failover, and real clock
   values. `Timing` checks the design's ratios.
-- Run-history retention (decision 8). No model deletes an Execution, so the
-  guard that keeps a run and its admission refusal while their delivery's inbox
-  row exists is checked by the conformance suite alone.
 - Lock order and deadlock. Every model treats a guarded write as one atomic
   step, so a deadlock PostgreSQL aborts with 40P01 is outside them. For cron,
   a fire takes the cron row's lock first, as its fence, while Publish and
