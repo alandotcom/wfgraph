@@ -959,4 +959,120 @@ describePostgres("PostgreSQL concurrency", () => {
       expect(winners[0]).toMatchObject({ kind: "run", executionId });
     }
   });
+
+  /** Waits until a statement on another connection waits on backend `pid`. */
+  const waitUntilBlockedBy = (pid: number) =>
+    vi.waitFor(async () => {
+      const blocked = await withAdminClient((observer) =>
+        observer.unsafe(
+          "select pid from pg_stat_activity where $1::integer = any(pg_blocking_pids(pid))",
+          [pid]
+        )
+      );
+      expect(blocked.length).toBeGreaterThan(0);
+    });
+
+  /**
+   * Plays one transaction's statements on an admin connection against a schema
+   * holding the published workflow `wf_1` with one cron timer, `timer_1`:
+   * `holds` first, then `deleteById("wf_1")` on the repositories until it
+   * waits on that transaction, then `afterBlocked`, then a commit. The
+   * deletion must finish without a deadlock and leave no workflow.
+   */
+  const deleteWorkflowBehind = async (input: {
+    holds: readonly string[];
+    afterBlocked: readonly string[];
+  }) => {
+    const schema = mintTestSchemaName();
+    const url = requirePostgresTestUrl();
+    await migrateWfGraphDatabase({ url, schema });
+    const connection = connect(
+      await wfPostgres({ url, schema }).open(conformanceCipher)
+    );
+    try {
+      await seedPublishedWorkflow(connection);
+      await withAdminClient((client) =>
+        client.unsafe(
+          `insert into "${schema}".workflow_execution_schedule (id, kind, workflow_id, cron, time_zone, state, wake_at) values ('timer_1', 'cron', 'wf_1', '*/5 * * * *', 'UTC', 'waiting', now())`
+        )
+      );
+      await withAdminClient(async (other) => {
+        await other.unsafe(`set search_path to "${schema}"`);
+        let deletion: Promise<void> | undefined;
+        try {
+          const [backend] = await other.unsafe<{ pid: number }[]>(
+            "select pg_backend_pid() as pid"
+          );
+          if (!backend) throw new Error("Backend not found");
+          for (const statement of input.holds) await other.unsafe(statement);
+          deletion = connection.run(
+            Effect.flatMap(WorkflowRepo, (workflows) =>
+              workflows.deleteById("wf_1")
+            )
+          );
+          await waitUntilBlockedBy(backend.pid);
+          for (const statement of input.afterBlocked)
+            await other.unsafe(statement);
+          await other.unsafe("commit");
+          await deletion;
+        } finally {
+          await other.unsafe("rollback");
+          await deletion?.catch(() => undefined);
+        }
+      });
+      const left = await connection.run(
+        Effect.flatMap(WorkflowRepo, (workflows) => workflows.findById("wf_1"))
+      );
+      expect(left).toBeNull();
+    } finally {
+      await connection.close();
+      await withAdminClient((client) =>
+        client.unsafe(`drop schema "${schema}" cascade`)
+      );
+    }
+  };
+
+  // Publish updates the workflow row and then locks its timers. A deletion
+  // that took the timers before the workflow row deadlocked against it.
+  it("deletes a workflow behind a Publish rewriting its timers without a deadlock", async () => {
+    await deleteWorkflowBehind({
+      holds: [
+        "begin",
+        "update workflows set updated_at = now() where id = 'wf_1'",
+      ],
+      afterBlocked: [
+        "select id from workflow_execution_schedule where kind = 'cron' and workflow_id = 'wf_1' order by id for update",
+        "update workflow_execution_schedule set wake_at = wake_at where id = 'timer_1'",
+      ],
+    });
+  });
+
+  // A pause sets `is_paused` and then deletes the workflow's timers, in the
+  // order Publish takes the same rows.
+  it("deletes a workflow behind a pause deleting its timers without a deadlock", async () => {
+    await deleteWorkflowBehind({
+      holds: [
+        "begin",
+        "update workflows set is_paused = true where id = 'wf_1'",
+      ],
+      afterBlocked: [
+        "delete from workflow_execution_schedule where kind = 'cron' and workflow_id = 'wf_1'",
+      ],
+    });
+  });
+
+  // A fire holds its timer row as its fence, and its run's insert then takes
+  // a key-share lock on the workflow row, which the deletion's
+  // `no key update` lock allows while it waits for the timer.
+  it("deletes a workflow behind a fire holding its timer without a deadlock", async () => {
+    await deleteWorkflowBehind({
+      holds: [
+        "begin isolation level serializable",
+        "select id from workflow_execution_schedule where id = 'timer_1' for update",
+      ],
+      afterBlocked: [
+        "select id from workflows where id = 'wf_1' for key share",
+      ],
+    });
+  });
 });

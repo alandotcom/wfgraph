@@ -236,8 +236,9 @@ export class WorkflowRepo extends Context.Service<
       updates: WorkflowUpdateData & { graph: SerializedWorkflowGraph };
     }) => Effect.Effect<WorkflowDraftWriteResult, DatabaseError>;
     /**
-     * Delete a workflow, and everything that cascades with it. Its cron
-     * timers are locked first, in the order a fire takes them.
+     * Delete a workflow, and everything that cascades with it. The workflow
+     * row is locked first and its cron timers next, in the lock order
+     * `repo/cron.ts` states.
      */
     readonly deleteById: (
       workflowId: string
@@ -728,9 +729,16 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
         deleteById: (workflowId) =>
           database.query((db) =>
             db.transaction(async (tx) => {
-              // A fire holds its timer row and then reads the workflow row, so
-              // the timers go first here, or the cascade would take them after
-              // the workflow row and the two could deadlock.
+              // Publish and pause hold the workflow row and then lock its
+              // timers, so the workflow row goes first here too. A fire holds
+              // its timer row and then takes a key-share lock on the workflow
+              // row through its run's insert, which `no key update` allows, so
+              // the fire commits while this waits for its timer.
+              await tx
+                .select({ id: workflows.id })
+                .from(workflows)
+                .where(eq(workflows.id, workflowId))
+                .for("no key update");
               await lockCronTimers(tx, workflowId);
               await tx.delete(workflows).where(eq(workflows.id, workflowId));
             })

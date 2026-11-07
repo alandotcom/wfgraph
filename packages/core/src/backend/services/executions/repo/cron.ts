@@ -1,9 +1,9 @@
 /**
- * The cron timer slice of `ExecutionRepo` on PostgreSQL, and the timer writes
- * Publish and pause make inside their own transactions. `cron-policy.ts` makes
- * the decisions. A fire locks its timer row first, as its fence, and reads the
- * workflow row without locking it; Publish and pause lock the workflow row
- * before the timer rows, so the two never wait on each other in a cycle.
+ * The PostgreSQL cron timer slice of `ExecutionRepo`. Lock order: workflow row,
+ * timer rows by id, run schedule rows, execution rows. Publish, pause, resume
+ * and `deleteById` take them in that order. A fire locks its timer, and its run
+ * insert then key-shares the workflow row, which their no-key locks allow.
+ * `deleteAllForWorkflow` and the retention sweeps start at run schedule rows.
  */
 
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -140,7 +140,7 @@ export async function deleteCronTimers(
 
 /**
  * Locks every timer of a workflow, ordered by id, so a write that deletes the
- * workflow takes them before the workflow row, in the order a fire takes them.
+ * workflow holds them, after the workflow row, before its cascade reaches them.
  */
 export async function lockCronTimers(
   tx: Executor,

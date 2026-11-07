@@ -46,6 +46,9 @@ git log --oneline b014dc55.. -- \
   packages/core/src/backend/services/executions/repo/retention.ts \
   packages/core/src/backend/executor/upkeep.ts \
   packages/core/src/backend/services/executions/repo/claims.ts \
+  packages/core/src/backend/services/executions/repo/admission.ts \
+  packages/core/src/backend/services/executions/repo/cron.ts \
+  packages/core/src/backend/services/executions/repo/cron-policy.ts \
   packages/core/src/backend/services/executions/repo/index.ts \
   packages/core/src/backend/persistence/sqlite/executions \
   packages/core/src/backend/lib/db/schema.ts \
@@ -523,8 +526,8 @@ code adds five steps the model leaves out, none of which a rule depends on:
   has no graph that cannot run.
 - A cron pass renews no lease, so no heartbeat races the fire's own release
   of it.
-- PostgreSQL's `deleteById` locks a workflow's timers before deleting the
-  workflow, in the order a fire takes them.
+- PostgreSQL's `deleteById` locks the workflow row and then its timers
+  before it deletes the workflow, in the order Publish and pause take them.
 
 ## Telling a real bug from a modelling error
 
@@ -618,7 +621,9 @@ back to show the rule still catches it:
   pause lock the workflow row before the cron rows. The fire reads the
   workflow row without locking it, and the key-share lock its run's insert
   takes on that row does not wait for Publish's or pause's update, which
-  changes no key. `deleteById` locks the timers before the workflow row.
+  changes no key. `deleteById` locks the workflow row `for no key update` and
+  then the timers, which is the lock order the header of `repo/cron.ts` states
+  for every write that touches a timer.
 - A cron expression's time zone, and the local times daylight saving skips or
   repeats. Each is a property of `nextFireAfter` and `latestSlotAtOrBefore`
   (`@wfgraph/shared/lifecycle/cron-schedule`), pure functions over croner,
