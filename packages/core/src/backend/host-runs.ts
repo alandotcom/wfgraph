@@ -16,8 +16,8 @@ export type WfGraphRunsOptions = {
    *
    * It must be at least the inbox window, `events.retentionMs` or its
    * seven-day default. A redelivered inbox row is answered from the
-   * Execution its first delivery opened, so a run deleted while its inbox row
-   * can still be delivered again would be opened a second time. Every process
+   * Execution its first delivery opened, so deleting the run while its inbox
+   * row can still be delivered again would open a second run. Every process
    * that runs a worker loop sweeps with its own window, so set the same one
    * in each.
    */

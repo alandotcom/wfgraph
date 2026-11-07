@@ -93,9 +93,10 @@ const loggerFor = (workflowId: string) =>
  * Everything the editor's Runs view reads, in one answer.
  *
  * The runs, how many superseded ones were left out, workflow-level audit rows
- * that opened no run, and the host's run retention window. The response separates Refused Starts from
- * Cancellation Failures. One payload rather than three procedures avoids extra
- * traffic while the panel polls every two seconds.
+ * that opened no run, and the host's run retention window. The response
+ * separates Refused Starts from Cancellation Failures. One payload rather than
+ * three procedures avoids extra traffic while the panel polls every two
+ * seconds.
  *
  * Start and result payloads stay off the rows: the panel never paints them, and
  * a poll that retransmitted JSONB for fifty runs would be the same shape of

@@ -9,9 +9,9 @@
  * loop and `tick` both keep their tables through `executorUpkeep`: a poll that
  * schedules the inbox rows a host inserted itself, and a sweep that deletes
  * settled inbox rows and, when asked, ended runs past their windows. The
- * loop's Effect succeeds once `signal` has
- * aborted and every pass in flight has ended, or once `drainMs` has passed
- * and the passes still running are interrupted. A pass that fails leaves its
+ * loop's Effect succeeds once `signal` has aborted and every pass in flight
+ * has ended, or once `drainMs` has passed and the passes still running are
+ * interrupted. A pass that fails leaves its
  * row leased, so a later claim sweeps it once the lease expires. A pass the
  * loop's drain interrupts releases its row due at once and counts no failure;
  * a pass a tick's budget cuts counts one against the step it was running.

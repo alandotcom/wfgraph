@@ -778,15 +778,12 @@ export function makeSqliteWorkflowRepo(
             .limit(1)
             .get();
           if (existing) {
-            const reused = yield* database
+            const publishedAt = Date.now();
+            yield* database
               .update(workflowVersions)
-              .set({ publishedAt: Date.now() })
-              .where(eq(workflowVersions.id, existing.id))
-              .returning()
-              .get();
-            if (!reused)
-              throw new Error("The reused draft snapshot is missing");
-            return sqliteWorkflowVersion(reused);
+              .set({ publishedAt })
+              .where(eq(workflowVersions.id, existing.id));
+            return sqliteWorkflowVersion({ ...existing, publishedAt });
           }
           yield* database.insert(workflowVersions).values({
             id: input.versionId,

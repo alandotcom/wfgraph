@@ -126,7 +126,7 @@ export function assertValidRetentionOptions(
   if (runRetentionMs === undefined) return;
   if (!Number.isInteger(runRetentionMs) || runRetentionMs <= 0) {
     throw new Error(
-      `${caller}'s runs.retentionMs must be a positive integer of milliseconds. Leave it out to keep run history until the host deletes it.`
+      `${caller}'s runs.retentionMs must be a positive integer of milliseconds. Leave it out to keep every run.`
     );
   }
   if (runRetentionMs < (inboxRetentionMs ?? DEFAULT_INBOX_RETENTION_MS)) {

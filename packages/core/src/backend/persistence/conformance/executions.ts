@@ -35,7 +35,7 @@ const EVENT_ARRIVAL = {
 /** When a claim or a Cancel claim writes, which a re-queue is due at. */
 const NOW = new Date("2026-01-01T00:00:00.000Z");
 
-/** The retention window the sweep cases pass: an hour after `T0`. */
+/** The `olderThan` cutoff the sweep cases pass: an hour after `T0`. */
 const RETENTION_CUTOFF = at(3_600_000);
 
 /** Sets the `completed_at` of the Execution `executionId` names to `when`. */

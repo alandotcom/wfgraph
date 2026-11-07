@@ -21,7 +21,7 @@ import {
 } from "#src/backend/persistence/conformance/support";
 import { T0, at } from "#src/backend/persistence/conformance/schedule-support";
 
-/** The retention window the sweep cases pass: an hour after `T0`. */
+/** The `olderThan` cutoff the sweep cases pass: an hour after `T0`. */
 const RETENTION_CUTOFF = at(3_600_000);
 
 /** A graph of its own for each snapshot, so no freeze reuses another's row. */
@@ -949,7 +949,6 @@ export function describeWorkflowConformance({
       await connection.run(
         Effect.gen(function* () {
           const workflows = yield* WorkflowRepo;
-          const executions = yield* ExecutionRepo;
           for (const versionId of [
             "snap_oldest",
             "snap_old",
@@ -964,14 +963,7 @@ export function describeWorkflowConformance({
               graphDigest: versionId,
             });
           }
-          yield* executions.insertTerminal({
-            workflowId: "wf_1",
-            workflowVersionId: "snap_pinned",
-            startSource: "manual",
-            runMode: "test",
-            input: {},
-            status: "completed",
-          });
+          yield* pinDraftRun("snap_pinned");
         })
       );
       const publishedAt = [
