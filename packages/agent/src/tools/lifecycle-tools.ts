@@ -114,6 +114,80 @@ function readSchedules(
   };
 }
 
+/**
+ * The schedules an edit leaves the workflow with, or the reason the edit is
+ * refused. `schedules` replaces the stored set; `addSchedules` and
+ * `removeSchedules` change it, and each removal must name a schedule the set
+ * holds. An empty result is `undefined`, which the rules store as no
+ * schedules.
+ */
+function resolveSchedules(input: {
+  input: {
+    readonly schedules?: readonly ScheduleInput[] | undefined;
+    readonly addSchedules?: readonly ScheduleInput[] | undefined;
+    readonly removeSchedules?: readonly ScheduleInput[] | undefined;
+  };
+  stored: readonly CronSchedule[] | undefined;
+}):
+  | { ok: true; schedules: CronSchedule[] | undefined }
+  | { ok: false; reason: string } {
+  const edit = input.input;
+  if (
+    edit.schedules !== undefined &&
+    (edit.addSchedules !== undefined || edit.removeSchedules !== undefined)
+  ) {
+    return {
+      ok: false,
+      reason:
+        "Choose schedules, or addSchedules and removeSchedules, not both in one edit.",
+    };
+  }
+  const base = edit.schedules ?? input.stored ?? [];
+  const removals = edit.removeSchedules ?? [];
+  const missing = removals.find(
+    (removal) => !base.some((schedule) => sameSchedule(schedule, removal))
+  );
+  if (missing) {
+    return {
+      ok: false,
+      reason: `No stored schedule is "${missing.cron}" in ${missing.timeZone}, so there is nothing to remove. Remove a schedule by its exact cron and timeZone.`,
+    };
+  }
+  const reading = readSchedules([
+    ...base.filter(
+      (schedule) => !removals.some((removal) => sameSchedule(schedule, removal))
+    ),
+    ...(edit.addSchedules ?? []),
+  ]);
+  if (!reading.ok) {
+    return reading;
+  }
+  return {
+    ok: true,
+    schedules: reading.schedules.length > 0 ? reading.schedules : undefined,
+  };
+}
+
+/**
+ * The sentence `set_lifecycle_rules` answers with: what starts a run, each
+ * schedule in words, and the Entity the workflow tracks. `created` says the
+ * edit also created the Lifecycle Node.
+ */
+function rulesSummary(rules: LifecycleRules, created: boolean): string {
+  const scheduled = hasSchedule(rules);
+  const startsOn =
+    rules.startEvents.join(", ") ||
+    (scheduled ? "its schedules" : "manual start only");
+  const schedules = scheduled
+    ? `; scheduled ${(rules.schedules ?? []).map(describeCronSchedule).join("; ")}`
+    : "";
+  const tracks = rules.trackedEntity
+    ? `; tracks ${rules.trackedEntity.type}`
+    : "";
+  const verb = created ? "Created the Lifecycle Node and set" : "Set";
+  return `${verb} the rules: starts on ${startsOn}${schedules}${tracks}.`;
+}
+
 export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
   description:
     "Declare when a run starts and is cancelled, the cron schedules that start runs, which Entity it tracks, and optional Entity Eligibility. A Start Filter checks an Event before a run opens. A Cancel Filter checks an Event before it cancels a run. Creates the Lifecycle Node if the workflow has none. Find exact Event names with list_events, then use describe_event for filter fields, Entity bindings, and field types.",
@@ -437,42 +511,14 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           });
         }
 
-        if (
-          input.schedules !== undefined &&
-          (input.addSchedules !== undefined ||
-            input.removeSchedules !== undefined)
-        ) {
-          return Effect.fail({
-            reason:
-              "Choose schedules, or addSchedules and removeSchedules, not both in one edit.",
-          });
+        const scheduleResolution = resolveSchedules({
+          input,
+          stored: stored?.schedules,
+        });
+        if (!scheduleResolution.ok) {
+          return Effect.fail({ reason: scheduleResolution.reason });
         }
-        const baseSchedules = input.schedules ?? stored?.schedules ?? [];
-        const missing = (input.removeSchedules ?? []).find(
-          (removal) =>
-            !baseSchedules.some((schedule) => sameSchedule(schedule, removal))
-        );
-        if (missing) {
-          return Effect.fail({
-            reason: `No stored schedule is "${missing.cron}" in ${missing.timeZone}, so there is nothing to remove. Remove a schedule by its exact cron and timeZone.`,
-          });
-        }
-        const scheduleReading = readSchedules([
-          ...baseSchedules.filter(
-            (schedule) =>
-              !(input.removeSchedules ?? []).some((removal) =>
-                sameSchedule(schedule, removal)
-              )
-          ),
-          ...(input.addSchedules ?? []),
-        ]);
-        if (!scheduleReading.ok) {
-          return Effect.fail({ reason: scheduleReading.reason });
-        }
-        const schedules =
-          scheduleReading.schedules.length > 0
-            ? scheduleReading.schedules
-            : undefined;
+        const { schedules } = scheduleResolution;
 
         if (
           startEvents.length === 0 &&
@@ -810,7 +856,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           draft.update(applyEdit),
           omitUndefined({
             nodeId: entry.id,
-            summary: `${created ? "Created the Lifecycle Node and set" : "Set"} the rules: starts on ${rules.startEvents.join(", ") || (hasSchedule(rules) ? "its schedules" : "manual start only")}${hasSchedule(rules) ? `; scheduled ${(rules.schedules ?? []).map(describeCronSchedule).join("; ")}` : ""}${rules.trackedEntity ? `; tracks ${rules.trackedEntity.type}` : ""}.`,
+            summary: rulesSummary(rules, created),
             warning,
           })
         );
