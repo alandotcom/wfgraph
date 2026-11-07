@@ -71,7 +71,7 @@ skills:
       - runs.retentionMs
       - dispose and Symbol.asyncDispose
       - mcp
-      - configureWfGraphLogging
+      - configureWfGraphLogging (the one-line console setup; the rest lives in observability)
       - wfWorker and wfHyperdrive
       - createWfGraphInngestFunctions
     tasks:
@@ -519,8 +519,8 @@ skills:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/plugins/README.md
 
-  # Planned sub-skills of wfgraph-core, approved by the maintainer in batch 1.
-  # auth is implemented; observability and cloudflare-worker have no SKILL.md yet.
+  # Sub-skills of wfgraph-core approved by the maintainer in batch 1. auth and
+  # observability are implemented; cloudflare-worker has no SKILL.md yet.
   - name: auth
     slug: auth
     domain: embedding
@@ -592,7 +592,6 @@ skills:
   - name: observability
     slug: observability
     domain: embedding
-    status: planned
     description: >-
       A developer routes Workflow Graph's log records and trace spans to the
       host's logging and tracing backends.
@@ -601,17 +600,59 @@ skills:
       - "@wfgraph/core"
     covers:
       - configureWfGraphLogging
-      - logger option
+      - logger option on createWfGraphApp, createWfGraphRunner and wfWorker
       - LogTape category wfgraph
-      - OpenTelemetry tracer provider
-      - Sentry
-      - stable span names
+      - the record groups (http, rpc, run, node, outcome, error)
+      - OpenTelemetry tracer provider on the global API
+      - Sentry and @logtape/sentry
+      - stable span names and the wfgraph-workflows scope
     tasks:
-      - Receive log records with configureWfGraphLogging, a logger option, or a LogTape configuration that sinks the wfgraph category.
+      - Receive log records with configureWfGraphLogging, a logger option, or a LogTape configuration that sinks the wfgraph category, choosing by what logging the host already has.
+      - Set up logging the same way in every process, including a createWfGraphRunner process, a Worker and a migration job.
       - Register an OpenTelemetry provider or initialize Sentry so Workflow Graph's spans export.
-      - Build dashboards and alerts on the stable span names and attributes.
+      - Build dashboards and alerts on the stable span names and attributes, joining a run's passes on wfgraph.execution.id.
+    failure_modes:
+      - mistake: A LogTape configuration with no wfgraph sink
+        mechanism: Workflow Graph configures no LogTape of its own, so a host configuration that names only its own categories drops every wfgraph record, and only a start-up warning says so.
+        wrong_pattern: |
+          configure({ sinks: { console }, loggers: [{ category: "my-app", sinks: ["console"] }] })
+        correct_pattern: |
+          loggers: [{ category: "my-app", sinks: ["console"] }, { category: "wfgraph", sinks: ["console"], lowestLevel: "info" }]
+        source: alandotcom/wfgraph:docs/embedding.md (Logging)
+        priority: HIGH
+        status: active
+      - mistake: A second LogTape configuration
+        mechanism: The logger option and configureWfGraphLogging each install a LogTape configuration and replace any other in the process, so the host's own categories stop reaching their sinks.
+        wrong_pattern: |
+          A host with its own LogTape configure call that also passes logger, or also calls configureWfGraphLogging()
+        correct_pattern: |
+          Add a wfgraph logger entry to the host's own configuration.
+        source: alandotcom/wfgraph:docs/embedding.md (Logging)
+        priority: HIGH
+        status: active
+      - mistake: A tracer provider that is never registered
+        mechanism: Workflow Graph reads only the global OpenTelemetry API and takes no provider option, so an unregistered provider receives nothing.
+        wrong_pattern: |
+          new NodeTracerProvider({ spanProcessors: [processor] }) with no register()
+        correct_pattern: |
+          provider.register(), or trace.setGlobalTracerProvider(provider)
+        source: alandotcom/wfgraph:docs/embedding.md (Tracing)
+        priority: HIGH
+        status: active
+      - mistake: One trace per run
+        mechanism: Each pass opens a root wfgraph.workflow.execution span and nothing carries trace context across a Wait, so one run appears as several traces.
+        wrong_pattern: |
+          A dashboard that expects a whole run under one trace id
+        correct_pattern: |
+          Group pass spans by wfgraph.execution.id.
+        source: alandotcom/wfgraph:docs/embedding.md (Tracing)
+        priority: MEDIUM
+        status: active
     sources:
       - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:packages/core/src/logging.ts
+      - alandotcom/wfgraph:packages/core/src/backend/lib/log-config.ts
+      - alandotcom/wfgraph:packages/core/src/backend/lib/telemetry.ts
 
   - name: cloudflare-worker
     slug: cloudflare-worker
@@ -671,7 +712,7 @@ cross_references:
     reason: auth is a required createWfGraphApp option; the auth skill owns the policy guidance.
   - from: wfgraph-core
     to: observability
-    reason: Start-up warns when no logging is configured; the planned observability skill will own logging and tracing.
+    reason: Start-up warns when no logging is configured; wfgraph-core keeps the one-line console setup and observability owns the rest of logging and tracing.
   - from: wfgraph-core
     to: cloudflare-worker
     reason: The Worker bullets and failure modes in wfgraph-core move to the planned cloudflare-worker skill.
@@ -683,7 +724,7 @@ gaps:
     status: open
   - skill: wfgraph-core
     question: Discovery checks for every skill, executable task checks for the five batch 1 skills, and a fresh consumer session for any skill.
-    context: Task checks live in packages/evals/src/skills/ and exist for auth. No isolated agent session was available, so activation and consumer behavior are unverified for every skill.
+    context: Task checks live in packages/evals/src/skills/ and exist for auth and observability. No isolated agent session was available, so activation and consumer behavior are unverified for every skill.
     status: open
   - skill: auth
     question: docs/embedding.md (createWfGraphApp options) says Workflow Graph refuses to start without auth, but the app starts and answers 500 to every operator request; only the type requires the option. Should the manual say so?

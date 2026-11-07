@@ -3,24 +3,24 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "43f32817e24b58abd2cf42e954bad47501ab8290ff681b1ebe0c57eb1caa9665",
+      "fingerprint": "2b51aa6cee5ddaa2bd0a3ea9f549f35406edf1f99c9aef4201497dbe66b5dcd8",
       "snapshot": {
         "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
         "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
-        "packages/core/skills/wfgraph-core/SKILL.md": "1c4b79fd5916a49d2fcf55c6440a5cacd9d4ecc1881e41e587a9282d9d2181f5",
+        "packages/core/skills/wfgraph-core/SKILL.md": "fb6446d533d7a00674df65254b7a44c8489bb2b4507bbe5e83d7a92acb9013f0",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "7a60527feff8cf53533809334068f6a50e74fa8d4d1b15a731ba0cc951cab457",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "6e6fd837d58cce2410d032bcb57099dfc399f5c5fe7025c1245d1c028895f825",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720",
-        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27"
+        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27",
+        "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e727932fcb7efc71a3fc085624a3c19e18ae79841fd904ef77da0b0905209fd"
       },
-      "head": "c774d9c7714e7ab8935f8b365d0f23690a8e3d28",
+      "head": "807145b543fe5563175a5e6d0975b3ec8c862c81",
       "outcome": "updated",
-      "reason": "Added the auth routing row, replaced the two policy bullets with one bullet that keeps the required option and routes to auth, routed the OAuth cookie rule to auth, and corrected the Missing authorization boundary mistake: a probe of createWfGraphApp without auth showed the app starts and answers 500 to every operator request, so the skill no longer says Workflow Graph refuses to start.",
+      "reason": "Added the observability routing row and replaced the logging bullet with the one-line configureWfGraphLogging setup a host needs to start, routing the logger option, the host's own LogTape configuration and tracing to observability. The payload sentence moved to observability's record description.",
       "evidence": [
-        "packages/core/src/app.ts (resolveAuth runs without a check)",
-        "probe: createWfGraphApp({ persistence: wfSqlite(), encryption }) resolved and GET /api/rest/workflows answered 500",
-        "packages/core/skills/wfgraph-core/auth/SKILL.md",
-        "pnpm exec intent validate: 6 skill files passed"
+        "packages/core/skills/wfgraph-core/observability/SKILL.md",
+        "packages/core/src/backend/lib/log-config.ts (warnWhenLoggingUnconfigured)",
+        "pnpm exec intent validate: 7 skill files passed"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -95,28 +95,32 @@
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "dda24d4e2ff7563d6904ff4c1454bebc32e590aa26128e73a67c59acff0d48ce",
+      "fingerprint": "8c9ada67e75a907a6b7c0a2eba74826fe1acf01c02306159081c9a5b3e4b1d03",
       "snapshot": {
         "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
-        "_artifacts/domain_map.yaml": "be8d2fad92a81660917f919ad490e36c0c4907072e6e94830ef773f88a416008",
-        "_artifacts/skill_spec.md": "3e97204636f2f0e7c4057f6c12e86895d906e3e9bd829801fd834319d8ef8253",
-        "_artifacts/skill_tree.yaml": "63886a813ad039b67da3259a612ce60c16056f3541dcb791f3a6f8aaa8140001",
+        "_artifacts/domain_map.yaml": "f967b94ad029929cbe64b5d56b9024cafd73dccd46a0d2786659034d3393796b",
+        "_artifacts/skill_spec.md": "a82d6d93b8496199c62ad95066611e3f65e0db1eae1afb048db1ec04b187fb93",
+        "_artifacts/skill_tree.yaml": "026530e15f372bb01cd2b6255739a57f445f42304697f57ca44d3affb12da1ca",
         "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
         "docs/events.md": "b7690fd2be3ee688359e17f2438416ac4e2aab290c837ce13bdb5bab73bd3d09",
         "docs/integrations.md": "3286a74c669550439377f611e8cd6ecf38751cf0986002d2f6448f73c2dcdf50",
-        "packages/core/skills/wfgraph-core/SKILL.md": "1c4b79fd5916a49d2fcf55c6440a5cacd9d4ecc1881e41e587a9282d9d2181f5",
+        "packages/core/skills/wfgraph-core/SKILL.md": "fb6446d533d7a00674df65254b7a44c8489bb2b4507bbe5e83d7a92acb9013f0",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "7a60527feff8cf53533809334068f6a50e74fa8d4d1b15a731ba0cc951cab457",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "6e6fd837d58cce2410d032bcb57099dfc399f5c5fe7025c1245d1c028895f825",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27",
+        "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e727932fcb7efc71a3fc085624a3c19e18ae79841fd904ef77da0b0905209fd",
         "packages/core/src/backend/lib/http/authorize.ts": "cd6c5ff58b4d7a6bd9a96c9dd4c5d3f54f2b65604a59902c0031fccb00847f9b",
+        "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
+        "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
+        "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "14a493074ecf5765ddc54b1520bfd4ed106fcd72d2d08437fb0beef59147ac8a",
         "packages/shared/src/authorization/operations.ts": "15958bfe40b707b615f98b19e8d4d30a515dbcd9626e4ed393b91158e0379b5c"
       },
-      "head": "c774d9c7714e7ab8935f8b365d0f23690a8e3d28",
+      "head": "807145b543fe5563175a5e6d0975b3ec8c862c81",
       "outcome": "updated",
-      "reason": "auth is implemented in all three records: the tree entry drops status planned and carries the skill's description and sources; domain_map.yaml records its covers, tasks, four failure modes, the corrected wfgraph-core mechanism and two documentation gaps; skill_spec.md records the inventory, failure modes, cross-references, coverage, batch 2 history with its checks and unverified items, and the remaining work.",
+      "reason": "observability is implemented in all three records: the tree entry drops status planned and carries the skill's description and sources; domain_map.yaml records covers, tasks and four failure modes; skill_spec.md records the inventory, failure modes, coverage, the batch 3 history with the catalog decision, checks and unverified claims, and the remaining work.",
       "evidence": [
         "_artifacts/domain_map.yaml",
         "_artifacts/skill_spec.md",
@@ -175,16 +179,79 @@
       ]
     },
     "source:packages/evals/src/skills/host.ts": {
-      "fingerprint": "a416e349275da88816d59642350dc68077a6d06d818c9e77752dc45aeb62bc11",
+      "fingerprint": "ddaeeee606e986c07a541083f9028f0d3bdfc58c9e4cc38f0d4cce0acaf94f13",
       "snapshot": {
-        "packages/evals/src/skills/host.ts": "abfab462d7eea3f5ab71840cafe50cb5890ec51486e8214f26b023c83ec8f9af"
+        "packages/evals/src/skills/host.ts": "0cfacda0e20d6fdd35d6e8427c5ff62deb29de7b0b52655c916c3d4ef24a55a6"
       },
-      "head": "c774d9c7714e7ab8935f8b365d0f23690a8e3d28",
+      "head": "807145b543fe5563175a5e6d0975b3ec8c862c81",
       "outcome": "out-of-scope",
-      "reason": "An executable task check for the auth skill (decision 5). It grades the guidance and is no source of it, so no skill reads it.",
+      "reason": "An executable task check or its shared fixture (decision 5). It grades the guidance and is no source of it, so no skill reads it.",
       "evidence": [
         "packages/evals/src/skills/host.ts",
-        "pnpm exec vitest run --project node packages/evals/src/skills: 4 auth cases passed, including the grants-everything policy (rejected at 'expected 200 to be 401') and the store read inside allows (rejected at the one-read assertion)"
+        "pnpm exec vitest run --project node packages/evals/src/skills: tracing (3 cases) and logging (3 cases) passed; the unregistered provider fails at 'no wfgraph.workflow.execution span for the run', the configuration with no wfgraph entry fails at 'no wfgraph start-up record', and the logger option on top of the host configuration leaves the host sink empty"
+      ]
+    },
+    "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
+      "fingerprint": "d0770172f3c371820e47fd43847afcf52b8d61b07c47aaea7f8efac913cfdd74",
+      "snapshot": {
+        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
+        "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e727932fcb7efc71a3fc085624a3c19e18ae79841fd904ef77da0b0905209fd",
+        "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
+        "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
+        "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
+      },
+      "head": "807145b543fe5563175a5e6d0975b3ec8c862c81",
+      "outcome": "updated",
+      "reason": "New skill from docs/embedding.md (Logging, Tracing, Sentry, Any other backend), checked against logging.ts (reset: true, LOG_LEVEL and LOG_FORMAT, TTY default), log-config.ts (the bridge resets any configuration; the start-up warning names the wfgraph category), setup.ts and worker.ts (runner and Worker take logger and warn), db/migrations.ts (wfgraph.migrations), telemetry.ts (wfgraph-workflows scope), engine/core.ts (wfgraph.workflow.execution) and api-app.ts (one wfgraph.http record with an http group). Sentry, @logtape/sentry, the service span table and one root span per pass rest on the manual.",
+      "evidence": [
+        "docs/embedding.md",
+        "packages/core/src/logging.ts",
+        "packages/core/src/backend/lib/log-config.ts",
+        "packages/core/src/backend/lib/telemetry.ts",
+        "packages/core/src/backend/api-app.ts",
+        "packages/core/src/backend/lib/db/migrations.ts",
+        "pnpm exec intent validate: 7 skill files passed",
+        "pnpm exec vitest run --project node packages/evals/src/skills: tracing (3 cases) and logging (3 cases) passed; the unregistered provider fails at 'no wfgraph.workflow.execution span for the run', the configuration with no wfgraph entry fails at 'no wfgraph start-up record', and the logger option on top of the host configuration leaves the host sink empty",
+        "Discovery and a fresh consumer session: unverified, no isolated agent session available"
+      ]
+    },
+    "source:packages/evals/src/skills/observability/logging.test.ts": {
+      "fingerprint": "f7b9e4046cfb3c14d3e427344152b7e5c4b475bd530b856e7e1e993bf6476543",
+      "snapshot": {
+        "packages/evals/src/skills/observability/logging.test.ts": "cb2c5557e1d4a2c9ea3c883be72a77865aacf8d7367db0e52c969a72a475a59b"
+      },
+      "head": "807145b543fe5563175a5e6d0975b3ec8c862c81",
+      "outcome": "out-of-scope",
+      "reason": "An executable task check or its shared fixture (decision 5). It grades the guidance and is no source of it, so no skill reads it.",
+      "evidence": [
+        "packages/evals/src/skills/observability/logging.test.ts",
+        "pnpm exec vitest run --project node packages/evals/src/skills: tracing (3 cases) and logging (3 cases) passed; the unregistered provider fails at 'no wfgraph.workflow.execution span for the run', the configuration with no wfgraph entry fails at 'no wfgraph start-up record', and the logger option on top of the host configuration leaves the host sink empty"
+      ]
+    },
+    "source:packages/evals/src/skills/observability/tracing.test.ts": {
+      "fingerprint": "1983730bcc59738e487d1380c2fa38522d1ac362e7d308ec76bcd97c5ad0bd10",
+      "snapshot": {
+        "packages/evals/src/skills/observability/tracing.test.ts": "ada89d4486864b109e244ca54d6fb42bd3690b2b4ac1ad1d56c0e935020297dd"
+      },
+      "head": "807145b543fe5563175a5e6d0975b3ec8c862c81",
+      "outcome": "out-of-scope",
+      "reason": "An executable task check or its shared fixture (decision 5). It grades the guidance and is no source of it, so no skill reads it.",
+      "evidence": [
+        "packages/evals/src/skills/observability/tracing.test.ts",
+        "pnpm exec vitest run --project node packages/evals/src/skills: tracing (3 cases) and logging (3 cases) passed; the unregistered provider fails at 'no wfgraph.workflow.execution span for the run', the configuration with no wfgraph entry fails at 'no wfgraph start-up record', and the logger option on top of the host configuration leaves the host sink empty"
+      ]
+    },
+    "source:pnpm-workspace.yaml": {
+      "fingerprint": "7b1017f6e3d133f68c022160477329a8a89dd1359811d380bcb0176d00650ad6",
+      "snapshot": {
+        "pnpm-workspace.yaml": "6765d43491473fde3563924eaae2136805caa989b10b14385feca75d6ebfc12a"
+      },
+      "head": "807145b543fe5563175a5e6d0975b3ec8c862c81",
+      "outcome": "out-of-scope",
+      "reason": "The catalog gained @opentelemetry/api and @opentelemetry/sdk-trace-base because core and the evals task checks both declare them. No skill teaches workspace dependency versions.",
+      "evidence": [
+        "pnpm-workspace.yaml",
+        "npm view @opentelemetry/api version: 1.10.0; npm view @opentelemetry/sdk-trace-base version: 2.12.0 with peer @opentelemetry/api >=1.3.0 <1.10.0"
       ]
     }
   }

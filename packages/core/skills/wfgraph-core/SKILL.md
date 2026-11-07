@@ -53,13 +53,14 @@ its own `serve` or `connect`: see wfgraph-core/events.
 
 ## Sub-skills
 
-| Need to...                               | Load                      |
-| ---------------------------------------- | ------------------------- |
-| Write the `auth` access policy           | wfgraph-core/auth         |
-| `defineEvent`, `defineEntity`, Lifecycle | wfgraph-core/events       |
-| `defineAction` (Promise host actions)    | wfgraph-core/host-actions |
-| Write a vendor integration               | wfgraph-core/integrations |
-| Turn on Clerk/Linear/Resend/Slack/Twilio | wfgraph-plugins           |
+| Need to...                               | Load                       |
+| ---------------------------------------- | -------------------------- |
+| Write the `auth` access policy           | wfgraph-core/auth          |
+| Route logs and traces                    | wfgraph-core/observability |
+| `defineEvent`, `defineEntity`, Lifecycle | wfgraph-core/events        |
+| `defineAction` (Promise host actions)    | wfgraph-core/host-actions  |
+| Write a vendor integration               | wfgraph-core/integrations  |
+| Turn on Clerk/Linear/Resend/Slack/Twilio | wfgraph-plugins            |
 
 ## Embedding pitfalls
 
@@ -73,9 +74,10 @@ its own `serve` or `connect`: see wfgraph-core/events.
 - Mount `createRequestListener(wfgraph)` **before** any body parser, at the
   same path as `basePath`. Express strips the matched path; the adapter reads
   `req.originalUrl`. A drained body makes webhook signature verification fail.
-- Call `configureWfGraphLogging()` before `createWfGraphApp`, or pass `logger`,
-  or sink LogTape category `wfgraph`. With none of those, start-up warns once.
-  Never log a request body, Event payload, or step output.
+- With no logging set up, Workflow Graph's records are dropped and start-up
+  warns once. The quickest setup is `configureWfGraphLogging()` from
+  `@wfgraph/core/logging`, called before `createWfGraphApp`. A host with its
+  own logger or LogTape configuration, and tracing: wfgraph-core/observability.
 - OAuth needs `publicUrl` (HTTPS except loopback). The callback stays behind
   `auth`, so the session must ride on a cookie: wfgraph-core/auth. Slack/Resend
   on/off: wfgraph-plugins.

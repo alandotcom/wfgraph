@@ -10,6 +10,9 @@
     "evals": "vitest run --config vitest.evals.config.ts"
   },
   "devDependencies": {
+    "@logtape/logtape": "catalog:",
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/sdk-trace-base": "catalog:",
     "@wfgraph/agent": "workspace:*",
     "@wfgraph/core": "workspace:*",
     "@wfgraph/shared": "workspace:*",

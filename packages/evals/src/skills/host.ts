@@ -167,3 +167,62 @@ export async function publishWorkflow(
     },
   });
 }
+
+const startedRun = Schema.Struct({
+  status: Schema.Literal("running"),
+  executionId: Schema.String,
+});
+
+const runList = Schema.Struct({
+  items: Schema.Array(
+    Schema.Struct({ id: Schema.String, status: Schema.String })
+  ),
+});
+
+/** The ids of one workflow run `runPublishedWorkflow` started and finished. */
+export type FinishedRun = { workflowId: string; executionId: string };
+
+/**
+ * Creates and publishes `manualStartGraph`, starts it by hand over REST, and
+ * waits until the app's worker loop reports the run completed.
+ */
+export async function runPublishedWorkflow(
+  app: WfGraphApp
+): Promise<FinishedRun> {
+  const workflow = await createWorkflow(app);
+  const published = await publishWorkflow(app, workflow);
+  if (!published.ok) {
+    throw new Error(`Publishing the workflow answered ${published.status}`);
+  }
+  const started = await rest(app, {
+    method: "POST",
+    path: `/workflow/${workflow.id}/execute`,
+    body: {},
+  });
+  const { executionId } = Schema.decodeUnknownSync(startedRun)(
+    await started.json()
+  );
+  await waitFor(async () => {
+    const response = await rest(app, {
+      method: "GET",
+      path: `/workflows/${workflow.id}/executions`,
+    });
+    const { items } = Schema.decodeUnknownSync(runList)(await response.json());
+    return items.some(
+      (item) => item.id === executionId && item.status === "completed"
+    );
+  });
+  return { workflowId: workflow.id, executionId };
+}
+
+/** Polls `done` every 20 ms for up to five seconds. */
+async function waitFor(done: () => Promise<boolean>): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    // eslint-disable-next-line eslint/no-await-in-loop -- each poll waits on the last
+    if (await done()) return;
+    // eslint-disable-next-line eslint/no-await-in-loop -- each poll waits on the last
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("The workflow run did not complete within five seconds");
+}

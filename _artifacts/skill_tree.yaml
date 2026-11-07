@@ -184,18 +184,26 @@ skills:
     domain: embedding
     package: packages/core
     path: skills/wfgraph-core/observability/SKILL.md
-    status: planned
-    description:
-      "Use when routing an embedded Workflow Graph app's logs and traces:
-      configureWfGraphLogging, the logger option, a LogTape sink for the wfgraph category,
-      an OpenTelemetry tracer provider, Sentry, or the stable span names. For mounting
-      the app use wfgraph-core."
-    purpose:
+    description: >
+      Use when sending an embedded Workflow Graph app's logs or traces somewhere:
+      calling configureWfGraphLogging from @wfgraph/core/logging, passing the logger
+      option to createWfGraphApp, createWfGraphRunner or wfWorker, adding a LogTape
+      sink for the wfgraph category beside the host's own logging, registering an
+      OpenTelemetry tracer provider, initialising Sentry, or building dashboards
+      and alerts on Workflow Graph's span names and record fields. Also use for
+      requests such as "the workflow engine logs nothing", "our own logs stopped
+      after we added workflows", "show workflow runs in our tracing tool" or "the
+      start-up warning says no sink receives the wfgraph category". For mounting
+      the app and its other options use wfgraph-core.
+    purpose: >
       Configure Workflow Graph logging (configureWfGraphLogging, the logger option,
       the LogTape category wfgraph) and tracing (an OpenTelemetry provider, Sentry,
       and the stable span names).
     sources:
       - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:packages/core/src/logging.ts
+      - alandotcom/wfgraph:packages/core/src/backend/lib/log-config.ts
+      - alandotcom/wfgraph:packages/core/src/backend/lib/telemetry.ts
     requires:
       - wfgraph-core
   - name: cloudflare-worker

@@ -63,7 +63,7 @@ integrations). The published skills ship inside the `@wfgraph/core` and
 
 | Domain          | Description                                                                                                                            | Skills                                                        |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| embedding       | Mounting Workflow Graph in a host and operating it: the app call, editor bundle, access policy, persistence, worker loop, Worker, logs | wfgraph-core, auth; planned: observability, cloudflare-worker |
+| embedding       | Mounting Workflow Graph in a host and operating it: the app call, editor bundle, access policy, persistence, worker loop, Worker, logs | wfgraph-core, auth, observability; planned: cloudflare-worker |
 | host-extensions | What a host contributes from its own code: Events, Entities and their intake, and host actions                                         | events, host-actions                                          |
 | integrations    | Writing a vendor integration against `@wfgraph/core/plugin`, and turning on the six built-ins                                          | integrations, wfgraph-plugins                                 |
 
@@ -77,7 +77,7 @@ integrations). The published skills ship inside the `@wfgraph/core` and
 | integrations      | sub-skill | integrations    | implemented | `defineIntegration`, `callExternal`, webhooks, `IntegrationOAuth`, `runAction`, `checkIntegration`, evolving and retiring actions                      | 7             |
 | wfgraph-plugins   | core      | integrations    | implemented | `builtInIntegrations`, `slack(options?)`, the five value exports, OAuth host requirements, Resend webhook Events                                       | 4             |
 | auth              | sub-skill | embedding       | implemented | `defineWfGraphAuth`, `WfGraphRoles`, `WfGraphAccess`, `trustWfGraphUpstream`, the 401, 403 and 500 answers, the editor's grant snapshot                | 4             |
-| observability     | sub-skill | embedding       | planned     | `configureWfGraphLogging`, `logger`, LogTape, OpenTelemetry, Sentry, span names                                                                        | not authored  |
+| observability     | sub-skill | embedding       | implemented | `configureWfGraphLogging`, `logger`, LogTape, OpenTelemetry, Sentry, span names, record groups                                                         | 4             |
 | cloudflare-worker | sub-skill | embedding       | planned     | `wfWorker`, `wfHyperdrive`, Cron Trigger, wake Queue, Hyperdrive caching, platform limits                                                              | not authored  |
 
 ## Failure Mode Inventory
@@ -108,6 +108,15 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | 2   | Throwing for a missing session    | HIGH     | docs/embedding.md (Authentication and authorization) | none                          |
 | 3   | A grant-store query inside allows | HIGH     | docs/embedding.md (Authentication and authorization) | none                          |
 | 4   | Header-only authentication        | MEDIUM   | docs/embedding.md (Built-in integrations)            | wfgraph-plugins, wfgraph-core |
+
+### observability (4 failure modes)
+
+| #   | Mistake                                      | Priority | Source                      | Cross-skill? |
+| --- | -------------------------------------------- | -------- | --------------------------- | ------------ |
+| 1   | A LogTape configuration with no wfgraph sink | HIGH     | docs/embedding.md (Logging) | none         |
+| 2   | A second LogTape configuration               | HIGH     | docs/embedding.md (Logging) | none         |
+| 3   | A tracer provider that is never registered   | HIGH     | docs/embedding.md (Tracing) | none         |
+| 4   | One trace per run                            | MEDIUM   | docs/embedding.md (Tracing) | none         |
 
 ### events (6 failure modes)
 
@@ -159,15 +168,15 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 
 ## Cross-References
 
-| From            | To                          | Reason                                                                                            |
-| --------------- | --------------------------- | ------------------------------------------------------------------------------------------------- |
-| events          | wfgraph-core                | The worker loop delivers every Event, and `events.retentionMs` is also the deduplication window.  |
-| host-actions    | integrations                | The Promise and Effect comparison decides which path a step belongs on.                           |
-| integrations    | wfgraph-plugins             | The six built-ins are the worked examples, and a host turns them on the way it turns on its own.  |
-| wfgraph-plugins | wfgraph-core                | OAuth and webhook URLs depend on `publicUrl`, `basePath` and the `auth` callback.                 |
-| wfgraph-core    | auth                        | `auth` is a required option; the auth skill owns the policy guidance.                             |
-| wfgraph-core    | observability (planned)     | Start-up warns when no logging is configured, and the planned skill will own logging and tracing. |
-| wfgraph-core    | cloudflare-worker (planned) | The Worker bullets and failure modes in wfgraph-core move to the planned skill.                   |
+| From            | To                          | Reason                                                                                                              |
+| --------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| events          | wfgraph-core                | The worker loop delivers every Event, and `events.retentionMs` is also the deduplication window.                    |
+| host-actions    | integrations                | The Promise and Effect comparison decides which path a step belongs on.                                             |
+| integrations    | wfgraph-plugins             | The six built-ins are the worked examples, and a host turns them on the way it turns on its own.                    |
+| wfgraph-plugins | wfgraph-core                | OAuth and webhook URLs depend on `publicUrl`, `basePath` and the `auth` callback.                                   |
+| wfgraph-core    | auth                        | `auth` is a required option; the auth skill owns the policy guidance.                                               |
+| wfgraph-core    | observability               | Start-up warns when no logging is configured; wfgraph-core keeps the console setup and observability owns the rest. |
+| wfgraph-core    | cloudflare-worker (planned) | The Worker bullets and failure modes in wfgraph-core move to the planned skill.                                     |
 
 ## Subsystems & Reference Candidates
 
@@ -181,21 +190,21 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | Skill        | Question                                                                                                                                                                                                                      | Status |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | wfgraph-core | Does configuring the build agent (`agent.apiKey`, `agent.model`, `agent.reasoningEffort`, `agent.baseUrl`) need adopter guidance?                                                                                             | open   |
-| all          | Discovery checks have not run for any skill, and no fresh consumer session has attempted a task. Executable task checks exist for auth only (`packages/evals/src/skills/auth/`).                                              | open   |
+| all          | Discovery checks have not run for any skill, and no fresh consumer session has attempted a task. Executable task checks exist for auth and observability (`packages/evals/src/skills/`).                                      | open   |
 | auth         | `docs/embedding.md` ("createWfGraphApp options") says Workflow Graph refuses to start without `auth`. The code starts, and every operator request answers `500`; only the type requires the option. Should the manual say so? | open   |
 | auth         | The operation table in `docs/embedding.md` ("Authentication and authorization") omits `action.configOptions`, which `WfGraphOperations` grants under `workflow.write`. Should the manual list it?                             | open   |
 
 ## Recommended Skill File Structure
 
 - **Core skills:** wfgraph-core (`@wfgraph/core`) and wfgraph-plugins (`@wfgraph/plugins`).
-- **Sub-skills:** events, host-actions, integrations and auth under
-  `packages/core/skills/wfgraph-core/`, and the planned observability and
-  cloudflare-worker in the same directory.
+- **Sub-skills:** events, host-actions, integrations, auth and observability
+  under `packages/core/skills/wfgraph-core/`, and the planned cloudflare-worker
+  in the same directory.
 - **Framework skills:** none. The packages are framework-agnostic; `hono` is an
   internal peer dependency, and Node, Express, Fastify and Bun mounting is one
   wfgraph-core task.
 - **Lifecycle and composition skills:** none planned. The Inngest forwarders sit
-  in events and wfgraph-core, and Sentry and OpenTelemetry will sit in
+  in events and wfgraph-core, and Sentry and OpenTelemetry sit in
   observability.
 - **Reference files:** none (decision 6).
 
@@ -205,7 +214,7 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | ------------------------------ | ------------------------------------------------------------ | --------------------------------------------------- |
 | inngest                        | `createWfGraphInngestFunctions` on the host's Inngest client | No. events and wfgraph-core cover it.               |
 | hono                           | Peer dependency of `@wfgraph/core`                           | No. Adopters never call it directly.                |
-| LogTape, OpenTelemetry, Sentry | Log sinks and the tracer provider                            | No. The planned observability skill covers them.    |
+| LogTape, OpenTelemetry, Sentry | Log sinks and the tracer provider                            | No. The observability skill covers them.            |
 | Cloudflare Workers             | `wfWorker`, Cron Trigger, Queue, Hyperdrive                  | No. The planned cloudflare-worker skill covers it.  |
 | Zod, arktype, Effect Schema    | Standard Schema for Events and actions                       | No. events and host-actions cover the schema rules. |
 
@@ -223,13 +232,16 @@ Coverage of `docs/embedding.md` by section:
   Node", "The editor" (the `client` option), "Groups" (the removed config keys
   and the rules MCP writes keep), "MCP authoring", "Persistence", "Workflow
   runs" with all five subsections, "PostgreSQL migrations" and "createWfGraphApp
-  options". wfgraph-core also keeps the required `auth` option and summarizes
-  "Cloudflare Workers and Hyperdrive" and "Logging" in a few bullets each.
+  options". wfgraph-core also keeps the required `auth` option and the
+  one-line console logging setup, and summarizes "Cloudflare Workers and
+  Hyperdrive" in a few bullets.
 - Covered by host-actions: "Dynamic host action fields".
 - Covered by wfgraph-plugins: "Built-in integrations".
 - Covered by auth: "Authentication and authorization", and the OAuth callback
   requirement in "Built-in integrations".
-- Planned: "Logging" and "Tracing" (observability), "Cloudflare Workers and Hyperdrive" with its four
+- Covered by observability: "Logging", "Tracing", "Sentry" and "Any other
+  backend".
+- Planned: "Cloudflare Workers and Hyperdrive" with its four
   subsections and the Worker use of "PostgreSQL migrations" (cloudflare-worker).
 - Assessed and left without a skill: "Workspaces and Canvas Reveal" and "On a
   phone" describe the editor for the people who use it and hold no adopter code
@@ -310,11 +322,48 @@ sources, apart from the source checks each later batch records.
   executable check: the OAuth callback cookie rule, the `500` answers for a
   malformed policy or a non-boolean `allows`, and `trustWfGraphUpstream()`.
 
+### Batch 3: the observability skill (packages at 3.1.1, base 807145b5)
+
+- Wrote `packages/core/skills/wfgraph-core/observability/SKILL.md` from
+  `docs/embedding.md` ("Logging", "Tracing", "Sentry", "Any other backend"),
+  checked against `packages/core/src/logging.ts`,
+  `packages/core/src/backend/lib/log-config.ts` (both setups replace any other
+  LogTape configuration; the start-up warning),
+  `packages/core/src/backend/lib/telemetry.ts` (the `wfgraph-workflows`
+  scope), `packages/core/src/backend/api-app.ts` (the `http` record) and
+  `packages/core/src/backend/lib/db/migrations.ts` (migrations log under
+  `wfgraph`). The skill holds a decision table for the three logging setups,
+  keyed on what logging the host already has.
+- wfgraph-core keeps the one-line `configureWfGraphLogging()` setup as the
+  minimum a host needs, and routes the other setups and tracing to
+  observability. Its routing table gained the observability row.
+- Decision: `@opentelemetry/api` and `@opentelemetry/sdk-trace-base` moved into
+  the pnpm catalog, since core and the evals package now both declare them.
+  `@opentelemetry/api` stays on `^1.9.1`: npm's latest is 1.10.0, but
+  `@opentelemetry/sdk-trace-base` 2.12.0 (its latest) peers on
+  `>=1.3.0 <1.10.0`, and the workspace override already holds the API to the
+  1.9 line. The evals package also declares `@logtape/logtape` from the catalog.
+- Checks: `packages/evals/src/skills/observability/tracing.test.ts` registers
+  an in-memory provider on the global API, runs a published workflow, and
+  asserts the `wfgraph.workflow.execution` span with its four attributes and
+  the node span under `wfgraph-workflows`, for a provider registered before
+  and after `createWfGraphApp`. The incorrect solution, a provider never
+  registered, fails the grader at "no wfgraph.workflow.execution span for the
+  run". `logging.test.ts` configures LogTape the way a host with its own
+  logging does and asserts that the start-up record, the `wfgraph.http` record
+  with its `http` group, and the host's own record all arrive. Two incorrect
+  solutions fail it: no `wfgraph` logger entry (no start-up record), and the
+  `logger` option on top of the host's configuration (the host's record never
+  arrives).
+- Unverified: `configureWfGraphLogging` output and its environment variables,
+  the Sentry and `@logtape/sentry` setup (neither package is installed here),
+  the twelve service span names, and the one-trace-per-pass claim. Discovery
+  and a fresh consumer session are unverified.
+
 ### Remaining work
 
-1. Author observability and cloudflare-worker; move the Worker bullets and
-   failure modes from wfgraph-core into cloudflare-worker; add their rows to the
-   wfgraph-core sub-skill table.
+1. Author cloudflare-worker; move the Worker bullets and failure modes from
+   wfgraph-core into it; add its row to the wfgraph-core sub-skill table.
 2. Add executable task checks under `packages/evals/src/skills/` for each new
    skill, and discovery prompts for every skill.
 3. Resolve the open gaps.
