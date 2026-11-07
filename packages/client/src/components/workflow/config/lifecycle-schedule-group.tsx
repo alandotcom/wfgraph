@@ -20,17 +20,15 @@ import {
   SelectValue,
 } from "#src/components/ui/select";
 import { whenChosen } from "#src/lib/select-choice";
-import { sameSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
+import type { ScheduleIssue } from "@wfgraph/shared/lifecycle/cron-schedule";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { ConfigGroup } from "./config-section";
 import {
   browserTimeZone,
   cronForPreset,
-  isValidRow,
   matchesTimeZone,
   parseTimeInput,
   SCHEDULE_PRESETS,
-  type ScheduleRefusal,
   type ScheduleRow,
   scheduleReadout,
   type SchedulePreset,
@@ -49,8 +47,9 @@ const READOUT_FIRES = 3;
 /**
  * The Schedule group: the clocks that start a run. Each schedule is a preset
  * or a cron expression with its own time zone, and reads back as a sentence
- * with its next fire times. A refused edit stays in the rows unsaved; the
- * caller shows `schedules.refusal` where it shows the panel's other refusals.
+ * with its next fire times. A row the stored rules cannot hold stays in the
+ * rows unsaved; the caller shows `schedules.unsaved` where it shows the
+ * panel's other Lifecycle issues.
  */
 export function LifecycleScheduleGroup({
   schedules,
@@ -59,7 +58,7 @@ export function LifecycleScheduleGroup({
   schedules: ScheduleEditor;
   disabled: boolean;
 }) {
-  const { rows, refusal, setRows, stored } = schedules;
+  const { rows, unsaved, setRows, isSaved } = schedules;
   const zones = useMemo(
     () => timeZoneChoices(rows.map((row) => row.timeZone)),
     [rows]
@@ -92,23 +91,22 @@ export function LifecycleScheduleGroup({
         {rows.map((row, index) => (
           <ScheduleCard
             disabled={disabled}
-            invalidField={
-              refusal?.rowIndex === index ? refusal.field : undefined
-            }
+            invalidField={unsaved.find((issue) => issue.index === index)?.field}
             key={row.id}
             now={now}
             number={index + 1}
             onChange={(next) => replaceRow(index, next)}
             onRemove={() => {
-              setRows(rows.filter((_, at) => at !== index));
-              // Undo restores what was saved, so only a saved schedule says so.
-              if (stored.some((schedule) => sameSchedule(schedule, row))) {
+              // Undo restores what the stored rules held, so only a removal
+              // that wrote them says so.
+              if (setRows(rows.filter((_, at) => at !== index))) {
                 toast("Schedule removed", {
                   description: "Use Actions > Undo to restore it.",
                 });
               }
             }}
             row={row}
+            saved={isSaved(row)}
             zones={zones}
           />
         ))}
@@ -139,6 +137,7 @@ export function LifecycleScheduleGroup({
 
 function ScheduleCard({
   row,
+  saved,
   number,
   now,
   zones,
@@ -148,17 +147,21 @@ function ScheduleCard({
   onRemove,
 }: {
   row: ScheduleRow;
+  /**
+   * Whether the stored rules hold the row as shown, which is when its
+   * description and next runs are what Publish would activate.
+   */
+  saved: boolean;
   /** The row's place in the list, counted from 1, which names its controls. */
   number: number;
   now: Date;
   zones: readonly string[];
-  invalidField: ScheduleRefusal["field"];
+  invalidField: ScheduleIssue["field"];
   disabled: boolean;
   onChange: (next: ScheduleRow) => void;
   onRemove: () => void;
 }) {
-  const valid = isValidRow(row);
-  const readout = valid ? scheduleReadout(row, now, READOUT_FIRES) : undefined;
+  const readout = saved ? scheduleReadout(row, now, READOUT_FIRES) : undefined;
   const title = `Schedule ${number}`;
 
   return (

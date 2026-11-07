@@ -1,15 +1,16 @@
 import { useAtomValue } from "jotai";
 import { type ReactNode, useId } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { WarningCallout } from "#src/components/ui/callout";
 import { ConfigGroup } from "#src/components/workflow/config/config-section";
 import { LifecycleConcurrencyGroup } from "#src/components/workflow/config/lifecycle-concurrency-group";
 import { LifecycleEntityEligibilityGroup } from "#src/components/workflow/config/lifecycle-entity-eligibility-group";
 import { LifecycleScheduleGroup } from "#src/components/workflow/config/lifecycle-schedule-group";
 import {
   LifecycleEventConnections,
+  LifecycleIssuesCallout,
   LifecycleRoleEventGroup,
 } from "#src/components/workflow/config/lifecycle-panel";
+import { unsavedScheduleMessage } from "#src/components/workflow/config/lifecycle-schedule";
 import { useLifecycleRulesEditor } from "#src/components/workflow/config/use-lifecycle-rules-editor";
 import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
 import { can } from "#src/lib/authorization";
@@ -99,11 +100,9 @@ function LifecyclePolicyEditor({
           disabled={disabled}
           schedules={editor.schedules}
         />
-        {editor.schedules.refusal ? (
-          <WarningCallout title="Lifecycle settings need attention">
-            {editor.schedules.refusal.message}
-          </WarningCallout>
-        ) : null}
+        <LifecycleIssuesCallout
+          issues={editor.schedules.unsaved.map(unsavedScheduleMessage)}
+        />
       </div>
     ),
     "cancel-events": (

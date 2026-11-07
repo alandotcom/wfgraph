@@ -10,6 +10,7 @@ import { IntegrationEventConnectionEditor } from "./integration-event-connection
 import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
 import { LifecycleEntityEligibilityGroup } from "./lifecycle-entity-eligibility-group";
 import { LifecycleEventGroup } from "./lifecycle-event-group";
+import { unsavedScheduleMessage } from "./lifecycle-schedule";
 import { LifecycleScheduleGroup } from "./lifecycle-schedule-group";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import {
@@ -39,11 +40,12 @@ export function LifecyclePanel({
     rules: editor.rules,
     catalog: editor.catalog,
   });
-  // An unsaved schedule edit comes first: the rules it would replace are the
-  // ones `check` read, so their refusal is not what the builder is looking at.
-  const refusal =
-    editor.schedules.refusal?.message ??
-    (check.valid ? undefined : check.error);
+  // `check` reads the stored rules, which is what Publish reads, so its
+  // refusal stands beside the schedule rows the stored rules do not hold.
+  const issues = [
+    ...editor.schedules.unsaved.map(unsavedScheduleMessage),
+    ...(check.valid ? [] : [check.error]),
+  ];
 
   return (
     <div className="space-y-4">
@@ -51,13 +53,32 @@ export function LifecyclePanel({
         <LifecyclePolicySections rules={editor.rules} />
       </div>
       <LifecycleGroups disabled={disabled} editor={editor} />
-
-      {refusal === undefined ? null : (
-        <WarningCallout title="Lifecycle settings need attention">
-          {refusal}
-        </WarningCallout>
-      )}
+      <LifecycleIssuesCallout issues={issues} />
     </div>
+  );
+}
+
+/**
+ * The Lifecycle warning, one line per issue, or nothing when there is none.
+ * `WarningCallout` wraps its children in a paragraph, so each line is a block
+ * span.
+ */
+export function LifecycleIssuesCallout({
+  issues,
+}: {
+  issues: readonly string[];
+}) {
+  if (issues.length === 0) {
+    return null;
+  }
+  return (
+    <WarningCallout title="Lifecycle settings need attention">
+      {issues.map((issue) => (
+        <span className="block" key={issue}>
+          {issue}
+        </span>
+      ))}
+    </WarningCallout>
   );
 }
 

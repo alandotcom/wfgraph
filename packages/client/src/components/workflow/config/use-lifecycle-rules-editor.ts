@@ -2,7 +2,11 @@ import { isEmptyObject, isEqual } from "es-toolkit/predicate";
 import { useMemo, useState } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import type { CronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
+import {
+  type CronSchedule,
+  sameSchedule,
+  type ScheduleIssue,
+} from "@wfgraph/shared/lifecycle/cron-schedule";
 import {
   carryCancelFilterToAddedEvents,
   pruneCancelFilters,
@@ -27,11 +31,9 @@ import {
 } from "@wfgraph/shared/lifecycle/start-filters";
 import { reconcileEntityBindings } from "./lifecycle-entity-eligibility-group";
 import {
+  readScheduleRows,
   rowOfSchedule,
-  type ScheduleRefusal,
   type ScheduleRow,
-  scheduleRefusalOf,
-  schedulesOfRows,
 } from "./lifecycle-schedule";
 import type { UpdateNodeConfig } from "./node-config-patch";
 
@@ -55,28 +57,37 @@ export type LifecycleRulesEditor = {
 };
 
 /**
- * The Schedule group's rows and the refusal they earn. `setRows` writes the
- * rows to the stored rules when a save would accept them, and otherwise keeps
- * them here, unsaved, beside the refusal that explains why.
+ * The Schedule group's rows. `setRows` writes every row the stored rules can
+ * hold and keeps the rest here, unsaved, each with the issue that explains
+ * why. A row left unsaved keeps the schedule it last saved in the stored
+ * rules, so Publish activates that one.
+ *
+ * An unsaved row lives in this hook's React state, which Publish cannot read.
+ * It lasts only while the panel is mounted, and an edit to the stored
+ * schedules from elsewhere, such as Undo or the build agent, replaces it with
+ * rows read from the new schedules.
  */
 export type ScheduleEditor = {
-  /** The schedules the stored rules hold, which Undo restores. */
-  stored: readonly CronSchedule[];
   rows: ScheduleRow[];
-  refusal: ScheduleRefusal | undefined;
-  setRows: (rows: ScheduleRow[]) => void;
+  /** Why each unsaved row is unsaved, in row order. */
+  unsaved: ScheduleIssue[];
+  /** Whether the stored rules hold this row's schedule as the row shows it. */
+  isSaved: (row: ScheduleRow) => boolean;
+  /** Replaces the rows, and answers whether that wrote the stored rules. */
+  setRows: (rows: ScheduleRow[]) => boolean;
 };
 
 const NO_SCHEDULES: readonly CronSchedule[] = [];
+const NOTHING_SAVED: ReadonlyMap<string, CronSchedule> = new Map();
 
 /**
- * The rows the builder is editing, and the stored schedules they were edited
- * from. The rows stand while the stored schedules still match; an edit from
- * elsewhere, such as Undo or the build agent, replaces them with rows read from
- * the new schedules.
+ * The rows the builder is editing, the schedule each row holds in the stored
+ * rules, and the stored schedules the rows were edited from. The rows stand
+ * while the stored schedules still match.
  */
 type ScheduleDraft = {
   rows: ScheduleRow[];
+  saved: ReadonlyMap<string, CronSchedule>;
   stored: readonly CronSchedule[];
 };
 
@@ -88,26 +99,34 @@ function useScheduleEditor(input: {
   const stored = rules.schedules ?? NO_SCHEDULES;
   const [draft, setDraft] = useState<ScheduleDraft | null>(null);
   const editing = draft !== null && isEqual(draft.stored, stored);
+  const rows = editing ? draft.rows : stored.map(rowOfSchedule);
+  // Rows read from the stored rules decoded already, so each one saves as
+  // written and needs no earlier schedule to fall back on.
+  const reading = readScheduleRows(rows, editing ? draft.saved : NOTHING_SAVED);
 
   return {
-    stored,
-    rows: editing ? draft.rows : stored.map(rowOfSchedule),
-    // Rows read from the stored rules decoded already, so only an edit can be
-    // refused.
-    refusal: editing ? scheduleRefusalOf(draft.rows) : undefined,
-    setRows: (rows) => {
-      if (scheduleRefusalOf(rows)) {
-        setDraft({ rows, stored });
-        return;
+    rows,
+    unsaved: reading.unsaved,
+    isSaved: (row) => {
+      const saved = reading.savedByRow.get(row.id);
+      return saved !== undefined && sameSchedule(saved, row);
+    },
+    setRows: (next) => {
+      const nextReading = readScheduleRows(next, reading.savedByRow);
+      setDraft({
+        rows: next,
+        saved: nextReading.savedByRow,
+        stored: nextReading.schedules,
+      });
+      if (isEqual(nextReading.schedules, stored)) {
+        return false;
       }
-      const schedules = schedulesOfRows(rows);
-      setDraft({ rows, stored: schedules });
-      if (!isEqual(schedules, stored)) {
-        write({
-          ...rules,
-          schedules: schedules.length > 0 ? schedules : undefined,
-        });
-      }
+      write({
+        ...rules,
+        schedules:
+          nextReading.schedules.length > 0 ? nextReading.schedules : undefined,
+      });
+      return true;
     },
   };
 }

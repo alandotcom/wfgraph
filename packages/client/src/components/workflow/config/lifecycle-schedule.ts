@@ -1,6 +1,6 @@
 /**
  * The Schedule group's model: a row per schedule as the builder edits it, the
- * preset a cron expression reads as, and the refusal a list of rows earns.
+ * preset a cron expression reads as, and which rows the stored rules can hold.
  * Rows hold whatever the builder typed, so a row can be invalid; the stored
  * Lifecycle Rules only ever receive a list that `cronSchedulesSchema` accepts.
  */
@@ -13,6 +13,8 @@ import {
   describeCronSchedule,
   findScheduleIssue,
   nextFireTimes,
+  sameSchedule,
+  type ScheduleIssue,
   scheduleIdentity,
 } from "@wfgraph/shared/lifecycle/cron-schedule";
 
@@ -184,34 +186,68 @@ export function rowOfSchedule(schedule: CronSchedule): ScheduleRow {
   };
 }
 
-/** The schedules the rows stand for, in the shape the Lifecycle Rules store. */
-export function schedulesOfRows(rows: readonly ScheduleRow[]): CronSchedule[] {
-  return rows.map((row) => ({ cron: row.cron, timeZone: row.timeZone }));
+/** What the stored rules hold for a list of rows, from `readScheduleRows`. */
+type ScheduleRowsReading = {
+  /** The schedules the stored rules hold, in row order. */
+  schedules: CronSchedule[];
+  /** The schedule each row holds in the stored rules, by row id. */
+  savedByRow: ReadonlyMap<string, CronSchedule>;
+  /**
+   * Why each row the stored rules do not hold as written is left unsaved, in
+   * row order. `index` is the row's place in the list.
+   */
+  unsaved: ScheduleIssue[];
+};
+
+/**
+ * Which schedules the stored rules hold for `rows`. A row is saved as written
+ * when its schedule is valid and no earlier row holds the same one. A row
+ * that is not keeps the schedule it last saved, which `lastSaved` maps from
+ * its id, so an edit in progress never drops a stored schedule; a new row
+ * that is not saved holds nothing.
+ */
+export function readScheduleRows(
+  rows: readonly ScheduleRow[],
+  lastSaved: ReadonlyMap<string, CronSchedule>
+): ScheduleRowsReading {
+  const schedules: CronSchedule[] = [];
+  const savedByRow = new Map<string, CronSchedule>();
+  const unsaved: ScheduleIssue[] = [];
+  const hold = (rowId: string, schedule: CronSchedule) => {
+    if (!schedules.some((held) => sameSchedule(held, schedule))) {
+      schedules.push(schedule);
+      savedByRow.set(rowId, schedule);
+    }
+  };
+
+  // Traversal state: whether a row is a duplicate depends on what the rows
+  // before it hold.
+  for (const [index, row] of rows.entries()) {
+    const schedule = { cron: row.cron, timeZone: row.timeZone };
+    // `schedules` is valid and holds each schedule once, so any issue is
+    // about this row.
+    const issue = findScheduleIssue([...schedules, schedule]);
+    if (issue === undefined) {
+      hold(row.id, schedule);
+      continue;
+    }
+    unsaved.push({ ...issue, index });
+    const previous = lastSaved.get(row.id);
+    if (previous !== undefined) {
+      hold(row.id, previous);
+    }
+  }
+  return { schedules, savedByRow, unsaved };
 }
 
 /**
- * Why a save would refuse these rows: the sentence, and the row and field it
- * names when the refusal is about one row. A duplicate names no row.
+ * The sentence the Lifecycle warning shows for a row left unsaved, naming the
+ * row as its card is titled.
  */
-export type ScheduleRefusal = {
-  message: string;
-  rowIndex: number | undefined;
-  field: "cron" | "timeZone" | undefined;
-};
-
-/** The first refusal these rows earn, or undefined when a save accepts them. */
-export function scheduleRefusalOf(
-  rows: readonly ScheduleRow[]
-): ScheduleRefusal | undefined {
-  const issue = findScheduleIssue(schedulesOfRows(rows));
-  return issue === undefined
-    ? undefined
-    : { message: issue.message, rowIndex: issue.index, field: issue.field };
-}
-
-/** Whether one row on its own is a schedule a save accepts. */
-export function isValidRow(row: ScheduleRow): boolean {
-  return findScheduleIssue(schedulesOfRows([row])) === undefined;
+export function unsavedScheduleMessage(issue: ScheduleIssue): string {
+  return issue.index === undefined
+    ? issue.message
+    : `Schedule ${issue.index + 1} isn't saved. ${issue.message}`;
 }
 
 /**

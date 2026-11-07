@@ -37,6 +37,7 @@ import {
   readCancelFilter,
   readCancelFilterLayout,
 } from "@wfgraph/shared/lifecycle/cancel-filters";
+import { scheduleIdentity } from "@wfgraph/shared/lifecycle/cron-schedule";
 import {
   initialLifecycleRules,
   type LifecycleRules,
@@ -288,10 +289,7 @@ function ScheduleSummary({ rules }: { rules: LifecycleRules }) {
       {schedules.map((schedule) => {
         const readout = scheduleReadout(schedule, now, 1);
         return (
-          <li
-            className="space-y-0.5"
-            key={`${schedule.cron} ${schedule.timeZone}`}
-          >
+          <li className="space-y-0.5" key={scheduleIdentity(schedule)}>
             <p className="text-sm">{readout.description}</p>
             {readout.nextFires[0] ? (
               <p className="text-muted-foreground text-xs tabular-nums">

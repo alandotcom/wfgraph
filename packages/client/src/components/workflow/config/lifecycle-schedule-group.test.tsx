@@ -6,6 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import { useState } from "react";
+import { Toaster, toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { LifecyclePanel } from "#src/components/workflow/config/lifecycle-panel";
@@ -65,6 +66,7 @@ function renderPanel(rules: LifecycleRules = MANUAL_ONLY) {
   const view = render(
     <ExtensionCatalogProvider value={catalog}>
       <ControlledPanel />
+      <Toaster />
     </ExtensionCatalogProvider>
   );
   return { view, writes, latest: () => writes.at(-1) };
@@ -97,6 +99,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  // Sonner keeps its toasts in module state, which the next test's Toaster
+  // would show again.
+  toast.dismiss();
 });
 
 describe("LifecyclePanel Schedule", () => {
@@ -238,6 +243,81 @@ describe("LifecyclePanel Schedule", () => {
     expect(view.queryByRole("group", { name: "Schedule 1" })).toBeNull();
   });
 
+  it("removes a saved schedule while another row is invalid", async () => {
+    const { view, latest } = renderPanel({
+      ...MANUAL_ONLY,
+      schedules: [
+        { cron: "0 9 * * *", timeZone: "UTC" },
+        { cron: "0 18 * * *", timeZone: "UTC" },
+      ],
+    });
+
+    choose(schedule(view, 2), "Repeats", "Custom");
+    fireEvent.change(
+      within(schedule(view, 2)).getByLabelText("Cron expression"),
+      { target: { value: "0 18 * *" } }
+    );
+    expect(refusal(view)).toContain(
+      "Schedule 2 isn't saved. A schedule needs a cron expression of five fields"
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Remove schedule 1" }));
+
+    // The invalid row keeps the schedule it last saved.
+    await waitFor(() => {
+      expect(latest()?.schedules).toEqual([
+        { cron: "0 18 * * *", timeZone: "UTC" },
+      ]);
+    });
+    expect(await view.findByText("Schedule removed")).toBeTruthy();
+    expect(refusal(view)).toContain(
+      "Schedule 1 isn't saved. A schedule needs a cron expression of five fields"
+    );
+  });
+
+  it("removes an unsaved row with no write and no toast", async () => {
+    const { view, writes } = renderPanel({
+      ...MANUAL_ONLY,
+      schedules: [{ cron: "0 9 * * *", timeZone: browserTimeZone() }],
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Add schedule" }));
+    expect(refusal(view)).toContain("Schedule 2 isn't saved.");
+
+    fireEvent.click(view.getByRole("button", { name: "Remove schedule 1" }));
+
+    // Schedule 2 duplicated schedule 1, so it now saves in its place and the
+    // stored rules are what they were.
+    expect(writes).toHaveLength(0);
+    expect(refusal(view)).toBeNull();
+    // Give a toast the time it takes to appear before saying none did.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(view.queryByText("Schedule removed")).toBeNull();
+  });
+
+  it("saves a valid row while another row stays invalid", async () => {
+    // A zone no test machine runs in, so the added row is no duplicate.
+    const { view, latest } = renderPanel({
+      ...MANUAL_ONLY,
+      schedules: [{ cron: "0 9 * * *", timeZone: "Pacific/Chatham" }],
+    });
+
+    choose(schedule(view, 1), "Repeats", "Custom");
+    fireEvent.change(
+      within(schedule(view, 1)).getByLabelText("Cron expression"),
+      { target: { value: "0 9 * *" } }
+    );
+    fireEvent.click(view.getByRole("button", { name: "Add schedule" }));
+
+    await waitFor(() => {
+      expect(latest()?.schedules).toEqual([
+        { cron: "0 9 * * *", timeZone: "Pacific/Chatham" },
+        { cron: "0 9 * * *", timeZone: browserTimeZone() },
+      ]);
+    });
+    expect(refusal(view)).toContain("Schedule 1 isn't saved.");
+  });
+
   it("writes the time zone the builder picks", async () => {
     const { view, latest } = renderPanel({
       ...MANUAL_ONLY,
@@ -264,7 +344,7 @@ describe("LifecyclePanel Schedule", () => {
     });
   });
 
-  it("shows the save refusal for a schedule on a tracked workflow", () => {
+  it("shows the refusal Publish gives a schedule on a tracked workflow", () => {
     const { view } = renderPanel({
       startEvents: ["app/appointment.created"],
       cancelEvents: [],

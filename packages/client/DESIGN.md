@@ -373,8 +373,10 @@ Connections, and Validation. Entity tracking, its eligibility rule, and the
 rule's check timing stay together in the Entity section. A schedule is a preset
 (Every hour, Every day at, Every weekday at, Every week on) or a Custom cron
 expression, with its own time zone, starting from the browser's. Each one reads
-back as a sentence and its next three runs. A schedule edit a save would refuse
-stays in the section unsaved, beside the refusal. The list counts Start Events,
+back as a sentence and its next three runs. Each schedule saves as it is
+edited. One that cannot be saved, such as an invalid expression or a duplicate,
+stays in the section unsaved, keeps the version it last saved, and is named in
+the Lifecycle warning. The list counts Start Events,
 schedules, Cancel Events, and issues. While the workflow tracks an Entity, its
 Start and Cancel Events say that their Entity bindings supply run identity and
 show no Correlation Path controls. A control that shows another section moves

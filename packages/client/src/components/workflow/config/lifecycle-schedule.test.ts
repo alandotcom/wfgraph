@@ -6,10 +6,11 @@ import {
   presetOf,
   rowOfSchedule,
   type ScheduleRow,
+  readScheduleRows,
   scheduleReadout,
-  scheduleRefusalOf,
   timeInputValue,
   timeZoneChoices,
+  unsavedScheduleMessage,
   withPreset,
   withPresetFields,
 } from "./lifecycle-schedule";
@@ -85,43 +86,94 @@ describe("time input", () => {
   });
 });
 
-describe("scheduleRefusalOf", () => {
-  it("accepts schedules a save accepts", () => {
-    expect(
-      scheduleRefusalOf([row("0 9 * * 1-5"), row("0 9 * * 1-5", "UTC")])
-    ).toBeUndefined();
+describe("readScheduleRows", () => {
+  const NOTHING_SAVED = new Map();
+
+  it("saves every row a save accepts", () => {
+    const reading = readScheduleRows(
+      [row("0 9 * * 1-5"), row("0 9 * * 1-5", "UTC")],
+      NOTHING_SAVED
+    );
+    expect(reading.schedules).toEqual([
+      { cron: "0 9 * * 1-5", timeZone: "America/New_York" },
+      { cron: "0 9 * * 1-5", timeZone: "UTC" },
+    ]);
+    expect(reading.unsaved).toEqual([]);
   });
 
-  it("names the row and field of an invalid expression", () => {
-    expect(
-      scheduleRefusalOf([
-        row("0 9 * * *"),
-        { ...row("0 9 * * *"), cron: "9am" },
-      ])
-    ).toEqual({
-      message: expect.stringContaining("five fields"),
-      rowIndex: 1,
-      field: "cron",
-    });
+  it("saves the valid rows and names the row and field of an invalid expression", () => {
+    const reading = readScheduleRows(
+      [row("0 9 * * *"), { ...row("0 10 * * *"), cron: "9am" }],
+      NOTHING_SAVED
+    );
+    expect(reading.schedules).toEqual([
+      { cron: "0 9 * * *", timeZone: "America/New_York" },
+    ]);
+    expect(reading.unsaved).toEqual([
+      {
+        message: expect.stringContaining("five fields"),
+        index: 1,
+        field: "cron",
+      },
+    ]);
   });
 
   it("names the row and field of an unknown time zone", () => {
-    expect(scheduleRefusalOf([row("0 9 * * *", "Mars/Olympus")])).toEqual({
-      message: expect.stringContaining("IANA time zone"),
-      rowIndex: 0,
-      field: "timeZone",
-    });
+    expect(
+      readScheduleRows([row("0 9 * * *", "Mars/Olympus")], NOTHING_SAVED)
+        .unsaved
+    ).toEqual([
+      {
+        message: expect.stringContaining("IANA time zone"),
+        index: 0,
+        field: "timeZone",
+      },
+    ]);
   });
 
-  it("names no row for a duplicate", () => {
-    expect(
-      scheduleRefusalOf([row("0 9 * * *"), { ...row("0 9 * * *"), id: "b" }])
-    ).toEqual({
-      message:
-        "Two schedules have the same cron expression and time zone. Remove one of them.",
-      rowIndex: undefined,
-      field: undefined,
+  it("saves the first of two duplicates and names the second", () => {
+    const reading = readScheduleRows(
+      [row("0 9 * * *"), { ...row("0 9 * * *"), id: "b" }],
+      NOTHING_SAVED
+    );
+    expect(reading.schedules).toHaveLength(1);
+    expect(reading.unsaved).toEqual([
+      {
+        message:
+          "Two schedules have the same cron expression and time zone. Remove one of them.",
+        index: 1,
+        field: undefined,
+      },
+    ]);
+  });
+
+  it("keeps the schedule an unsaved row last saved", () => {
+    const saved = row("0 9 * * *");
+    const editing = { ...saved, preset: "custom" as const, cron: "0 9 * *" };
+    const reading = readScheduleRows(
+      [editing],
+      new Map([[saved.id, { cron: saved.cron, timeZone: saved.timeZone }]])
+    );
+    expect(reading.schedules).toEqual([
+      { cron: "0 9 * * *", timeZone: "America/New_York" },
+    ]);
+    expect(reading.savedByRow.get(saved.id)).toEqual({
+      cron: "0 9 * * *",
+      timeZone: "America/New_York",
     });
+    expect(reading.unsaved).toHaveLength(1);
+  });
+});
+
+describe("unsavedScheduleMessage", () => {
+  it("names the row as its card is titled", () => {
+    expect(
+      unsavedScheduleMessage({
+        message: "A schedule needs an IANA time zone.",
+        index: 1,
+        field: "timeZone",
+      })
+    ).toBe("Schedule 2 isn't saved. A schedule needs an IANA time zone.");
   });
 });
 
