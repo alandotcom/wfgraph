@@ -167,6 +167,69 @@ describePostgres("PostgreSQL migrations", () => {
     });
   });
 
+  it("gives a draft snapshot from before last_pinned_at its creation time as its last pin", async () => {
+    const schema = freshSchema();
+    const url = requirePostgresTestUrl();
+    const directory = await mkdtemp(join(tmpdir(), "wfgraph-pg-migrations-"));
+    directories.push(directory);
+    const source = wfgraphMigrationsDir();
+    const migrationNames = (await readdir(source, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .toSorted();
+    const firstLastPinnedIndex = migrationNames.indexOf(
+      "20261107010610_nervous_sister_grimm"
+    );
+    expect(firstLastPinnedIndex).toBeGreaterThan(0);
+    await Promise.all(
+      migrationNames.slice(0, firstLastPinnedIndex).map(async (name) => {
+        await cp(join(source, name), join(directory, name), {
+          recursive: true,
+        });
+      })
+    );
+
+    await migrateWfGraphDatabase({ url, schema, migrationsDir: directory });
+    await withAdminClient(async (client) => {
+      await client.unsafe(`
+        insert into "${schema}"."workflows" (id, name, graph)
+        values ('wf_draft', 'Draft upgrade', '{"nodes":[],"edges":[]}'::jsonb);
+        insert into "${schema}"."workflow_versions"
+          (id, workflow_id, version, kind, graph, catalog_fingerprint, graph_digest, published_at)
+        values
+          ('wv_published', 'wf_draft', 1, 'published', '{"nodes":[],"edges":[]}'::jsonb, 'catalog', 'graph', '2026-03-01 00:00:00'),
+          ('wv_snapshot', 'wf_draft', null, 'draft_snapshot', '{"nodes":[],"edges":[]}'::jsonb, 'catalog', 'graph', '2026-03-01 00:01:00');
+      `);
+    });
+
+    await migrateWfGraphDatabase({ url, schema });
+
+    const rows = await withAdminClient(
+      async (client) =>
+        client<
+          { id: string; published_at: Date; last_pinned_at: Date | null }[]
+        >`
+        select id, published_at, last_pinned_at
+        from ${client(schema)}.${client("workflow_versions")}
+        order by id
+      `
+    );
+    // postgres.js reads a `timestamp` column as UTC, the way the schema's
+    // `utcNow()` defaults write it, whatever the process's time zone.
+    expect(rows).toEqual([
+      {
+        id: "wv_published",
+        published_at: new Date(Date.UTC(2026, 2, 1, 0, 0)),
+        last_pinned_at: null,
+      },
+      {
+        id: "wv_snapshot",
+        published_at: new Date(Date.UTC(2026, 2, 1, 0, 1)),
+        last_pinned_at: new Date(Date.UTC(2026, 2, 1, 0, 1)),
+      },
+    ]);
+  });
+
   it("records the migrations this build ships, and reruns none of them", async () => {
     const schema = freshSchema();
     const url = requirePostgresTestUrl();

@@ -1,0 +1,43 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "147cbb82-8832-406d-92d1-caee2f13e25d",
+  "prevIds": [
+    "f386c16f-8706-42af-97e2-a2f91fdbb31b"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_versions"
+      ],
+      "writes": [
+        "s|ck|public.workflow_versions.workflow_versions_last_pinned_kind_check",
+        "n|ck|public.workflow_versions.workflow_versions_last_pinned_kind_check",
+        "e|ck|public.workflow_versions.workflow_versions_last_pinned_kind_check",
+        "n|con|public.workflow_versions.workflow_versions_last_pinned_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_versions",
+        "n|sch|public",
+        "n|col|public.workflow_versions.kind",
+        "n|col|public.workflow_versions.last_pinned_at"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_versions",
+        "name": "workflow_versions_last_pinned_kind_check",
+        "value": "(\"kind\" = 'draft_snapshot') = (\"last_pinned_at\" is not null)",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

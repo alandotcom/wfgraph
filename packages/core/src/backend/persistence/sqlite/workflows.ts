@@ -115,6 +115,7 @@ export function sqliteWorkflowVersion(
     catalogFingerprint: row.catalogFingerprint,
     graphDigest: row.graphDigest,
     publishedAt: new Date(row.publishedAt),
+    lastPinnedAt: row.lastPinnedAt === null ? null : new Date(row.lastPinnedAt),
   };
 }
 
@@ -753,38 +754,41 @@ export function makeSqliteWorkflowRepo(
           // Identical graphs encode to identical text. Reuse only a snapshot an
           // Execution already references: an unreferenced snapshot is private
           // to another start that may still delete it after a refused gate.
-          // The reuse moves `published_at` to now, as the contract on
+          // The reuse moves `last_pinned_at` to now in the same statement, as
           // `WorkflowRepo.sweepUnreferencedDraftSnapshots` describes.
           const graph = encodeGraph(input.graph);
+          const now = Date.now();
           const existing = yield* database
-            .select()
-            .from(workflowVersions)
+            .update(workflowVersions)
+            .set({ lastPinnedAt: now })
             .where(
-              and(
-                eq(workflowVersions.workflowId, input.workflowId),
-                eq(workflowVersions.kind, "draft_snapshot"),
-                eq(
-                  workflowVersions.catalogFingerprint,
-                  input.catalogFingerprint
-                ),
-                eq(workflowVersions.graph, graph),
-                sql`exists (
-                  select 1 from ${workflowExecutions}
-                  where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id}
-                )`
+              inArray(
+                workflowVersions.id,
+                database
+                  .select({ id: workflowVersions.id })
+                  .from(workflowVersions)
+                  .where(
+                    and(
+                      eq(workflowVersions.workflowId, input.workflowId),
+                      eq(workflowVersions.kind, "draft_snapshot"),
+                      eq(
+                        workflowVersions.catalogFingerprint,
+                        input.catalogFingerprint
+                      ),
+                      eq(workflowVersions.graph, graph),
+                      sql`exists (
+                        select 1 from ${workflowExecutions}
+                        where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id}
+                      )`
+                    )
+                  )
+                  .orderBy(desc(workflowVersions.lastPinnedAt))
+                  .limit(1)
               )
             )
-            .orderBy(desc(workflowVersions.publishedAt))
-            .limit(1)
+            .returning()
             .get();
-          if (existing) {
-            const publishedAt = Date.now();
-            yield* database
-              .update(workflowVersions)
-              .set({ publishedAt })
-              .where(eq(workflowVersions.id, existing.id));
-            return sqliteWorkflowVersion({ ...existing, publishedAt });
-          }
+          if (existing) return sqliteWorkflowVersion(existing);
           yield* database.insert(workflowVersions).values({
             id: input.versionId,
             workflowId: input.workflowId,
@@ -793,7 +797,8 @@ export function makeSqliteWorkflowRepo(
             graph,
             catalogFingerprint: input.catalogFingerprint,
             graphDigest: input.graphDigest,
-            publishedAt: Date.now(),
+            publishedAt: now,
+            lastPinnedAt: now,
           });
           const row = yield* database
             .select()
@@ -837,14 +842,17 @@ export function makeSqliteWorkflowRepo(
                     // A literal, so the planner can match the partial index
                     // on draft snapshots.
                     sql`${workflowVersions.kind} = 'draft_snapshot'`,
-                    lt(workflowVersions.publishedAt, input.olderThan.getTime()),
+                    lt(
+                      workflowVersions.lastPinnedAt,
+                      input.olderThan.getTime()
+                    ),
                     sql`not exists (
                       select 1 from ${workflowExecutions}
                       where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id}
                     )`
                   )
                 )
-                .orderBy(asc(workflowVersions.publishedAt))
+                .orderBy(asc(workflowVersions.lastPinnedAt))
                 .limit(input.limit)
             )
           )

@@ -57,6 +57,7 @@ function versionRow(input: { id: string; version: number }): WorkflowVersion {
     catalogFingerprint: "fp",
     graphDigest: "digest",
     publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+    lastPinnedAt: null,
   };
 }
 

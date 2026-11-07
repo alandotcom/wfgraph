@@ -366,9 +366,9 @@ export class WorkflowRepo extends Context.Service<
      * this catalog, and an Execution already references that snapshot, that row
      * comes back instead of a new one. So `versionId` is a proposal, and the
      * caller pins the returned `id`. Repeated runs of an unchanged canvas share
-     * one row from the second run onward. Reusing a row moves its `publishedAt`
-     * to now, which keeps `sweepUnreferencedDraftSnapshots` from deleting it
-     * before the caller's Execution is inserted.
+     * one row from the second run onward. Inserting or reusing a row sets its
+     * `lastPinnedAt` to now, which keeps `sweepUnreferencedDraftSnapshots`
+     * from deleting it before the caller's Execution is inserted.
      *
      * A snapshot no Execution references yet belongs to the request that
      * inserted it, which can still release it, so this never hands one to
@@ -398,14 +398,16 @@ export class WorkflowRepo extends Context.Service<
     /**
      * The run-history retention sweep's share of this aggregate: delete up to
      * `limit` draft snapshots that no Execution references and whose
-     * `publishedAt` is before `olderThan`, oldest first, answering how many
-     * went. A published version is never deleted. Run it after the Executions
-     * sweep, which is what leaves a snapshot unreferenced.
+     * `lastPinnedAt` is before `olderThan`, least recently pinned first,
+     * answering how many went. A published version is never deleted. Run it
+     * after the Executions sweep, which is what leaves a snapshot
+     * unreferenced.
      *
      * `freezeDraftSnapshot` hands out a referenced snapshot and the caller
      * inserts the Execution pinning it in a later transaction. The reuse moves
-     * `publishedAt` to now, so a snapshot whose last referencing run was swept
-     * in between stays until a sweep whose window has passed that reuse.
+     * `lastPinnedAt` to now, so a snapshot whose last referencing run was
+     * swept in between stays until a sweep whose window has passed that
+     * reuse.
      */
     readonly sweepUnreferencedDraftSnapshots: (input: {
       olderThan: Date;
@@ -901,13 +903,14 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
             // delete. A referenced row can never be deleted, because
             // `deleteUnreferencedDraftSnapshot` refuses it.
             //
-            // The reuse moves `published_at` to now in the same statement, as
-            // `sweepUnreferencedDraftSnapshots` describes. When the sweep holds
-            // the row and deletes it first, this update matches nothing and a
-            // new snapshot is inserted.
+            // The reuse moves `last_pinned_at` to now in the same statement,
+            // as `sweepUnreferencedDraftSnapshots` describes. When the sweep
+            // holds the row and deletes it first, this update matches nothing
+            // and a new snapshot is inserted.
+            const now = new Date();
             const [existing] = await db
               .update(workflowVersions)
-              .set({ publishedAt: new Date() })
+              .set({ lastPinnedAt: now })
               .where(
                 inArray(
                   workflowVersions.id,
@@ -926,7 +929,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                         sql`exists (select 1 from ${workflowExecutions} where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id})`
                       )
                     )
-                    .orderBy(desc(workflowVersions.publishedAt))
+                    .orderBy(desc(workflowVersions.lastPinnedAt))
                     .limit(1)
                 )
               )
@@ -945,6 +948,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                 graph: input.graph,
                 catalogFingerprint: input.catalogFingerprint,
                 graphDigest: input.graphDigest,
+                lastPinnedAt: now,
               })
               .returning();
 
@@ -975,7 +979,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
 
         sweepUnreferencedDraftSnapshots: (input) =>
           database.query(async (db) => {
-            // The `published_at` bound is the guard against a concurrent
+            // The `last_pinned_at` bound is the guard against a concurrent
             // reuse, as the method's contract describes. A reuse still in
             // progress holds the row's lock, so `SKIP LOCKED` passes the row
             // by. A reuse that committed after this statement's snapshot moved
@@ -994,11 +998,11 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                         // A literal, so the planner can match the partial
                         // index on draft snapshots.
                         sql`${workflowVersions.kind} = 'draft_snapshot'`,
-                        lt(workflowVersions.publishedAt, input.olderThan),
+                        lt(workflowVersions.lastPinnedAt, input.olderThan),
                         sql`not exists (select 1 from ${workflowExecutions} where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id})`
                       )
                     )
-                    .orderBy(asc(workflowVersions.publishedAt))
+                    .orderBy(asc(workflowVersions.lastPinnedAt))
                     .limit(input.limit)
                     .for("update", { skipLocked: true })
                 )

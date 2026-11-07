@@ -20,6 +20,7 @@ function version(overrides: Partial<WorkflowVersion> = {}): WorkflowVersion {
     catalogFingerprint: "fp_1",
     graphDigest: "digest_1",
     publishedAt: new Date("2026-03-01T10:00:00.000Z"),
+    lastPinnedAt: null,
     ...overrides,
   };
 }

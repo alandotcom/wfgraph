@@ -130,6 +130,7 @@ function version(
     catalogFingerprint: "catalog",
     graphDigest: "digest",
     publishedAt: new Date("2026-08-03T00:00:00.000Z"),
+    lastPinnedAt: null,
     ...overrides,
   };
 }
@@ -179,6 +180,7 @@ describe("workflow versions", () => {
                         ),
                         catalogFingerprint: currentFingerprint,
                         publishedAt: new Date("2026-08-03T00:00:00.000Z"),
+                        lastPinnedAt: null,
                         isCurrent: true,
                         activeRunCount: 0,
                         oldestActiveRunAt: null,
@@ -190,6 +192,7 @@ describe("workflow versions", () => {
                         graph: graphWithActions("example/send"),
                         catalogFingerprint: "previous-catalog",
                         publishedAt: new Date("2026-08-04T00:00:00.000Z"),
+                        lastPinnedAt: new Date("2026-08-04T00:00:00.000Z"),
                         isCurrent: false,
                         activeRunCount: 2,
                         oldestActiveRunAt: new Date("2026-08-04T01:00:00.000Z"),

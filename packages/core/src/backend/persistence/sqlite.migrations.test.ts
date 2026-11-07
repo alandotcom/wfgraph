@@ -176,6 +176,55 @@ describe("SQLite migration execution", () => {
     }
   });
 
+  it("gives a draft snapshot from before last_pinned_at its creation time as its last pin", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wfgraph-migrations-"));
+    directories.push(directory);
+    const filename = join(directory, "migration.db");
+    const firstLastPinnedMigration = sqliteMigrations.findIndex(
+      (migration) => migration.name === "20261107010612_strange_jigsaw"
+    );
+    expect(firstLastPinnedMigration).toBeGreaterThan(0);
+    await migrateMetadata(
+      filename,
+      sqliteMigrations.slice(0, firstLastPinnedMigration)
+    );
+
+    const inspection = new DatabaseSync(filename);
+    try {
+      inspection.exec(`
+        insert into workflows
+          (id, name, graph, created_at, updated_at)
+        values
+          ('wf_draft', 'Draft upgrade', '{"nodes":[],"edges":[]}', 1000, 1000);
+        insert into workflow_versions
+          (id, workflow_id, version, kind, graph, catalog_fingerprint, graph_digest, published_at)
+        values
+          ('wv_published', 'wf_draft', 1, 'published', '{"nodes":[],"edges":[]}', 'catalog', 'graph', 1000),
+          ('wv_snapshot', 'wf_draft', null, 'draft_snapshot', '{"nodes":[],"edges":[]}', 'catalog', 'graph', 2000);
+      `);
+    } finally {
+      inspection.close();
+    }
+
+    await migrateMetadata(filename, sqliteMigrations);
+
+    const migrated = new DatabaseSync(filename, { readOnly: true });
+    try {
+      expect(
+        migrated
+          .prepare(
+            "select id, published_at, last_pinned_at from workflow_versions order by id"
+          )
+          .all()
+      ).toEqual([
+        { id: "wv_published", published_at: 1000, last_pinned_at: null },
+        { id: "wv_snapshot", published_at: 2000, last_pinned_at: 2000 },
+      ]);
+    } finally {
+      migrated.close();
+    }
+  });
+
   it("preserves dependent rows across a generated table rebuild", async () => {
     const fixture = await migrationFixture();
     await migrate(fixture.filename, fixture.migrations);

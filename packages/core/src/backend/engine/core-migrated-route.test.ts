@@ -165,6 +165,7 @@ it.each([{ outlet: "false" }, { outlet: "true" }])(
           catalogFingerprint: "catalog",
           graphDigest: "digest",
           publishedAt: new Date(),
+          lastPinnedAt: null,
         },
       }).pipe(
         Effect.provide(

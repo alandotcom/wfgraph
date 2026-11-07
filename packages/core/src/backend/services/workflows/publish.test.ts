@@ -133,6 +133,7 @@ function mintedFrom(
     catalogFingerprint: input.catalogFingerprint,
     graphDigest: input.graphDigest,
     publishedAt: new Date("2026-08-03T00:00:00.000Z"),
+    lastPinnedAt: null,
   };
 
   return {
@@ -204,6 +205,7 @@ describe("publishWorkflow", () => {
             catalogFingerprint: catalogFingerprint(catalog),
             graphDigest: "current-graph",
             publishedAt: new Date("2026-08-03T00:00:00.000Z"),
+            lastPinnedAt: null,
           };
           const repo = stubWorkflowRepo({
             findById: () =>
@@ -292,6 +294,7 @@ describe("publishWorkflow", () => {
             graphDigest: "legacy-full-graph-digest",
             catalogFingerprint: "previous-catalog",
             publishedAt: new Date("2026-08-01T00:00:00.000Z"),
+            lastPinnedAt: null,
           };
           const repo = stubWorkflowRepo({
             findById: () =>
@@ -327,6 +330,7 @@ describe("publishWorkflow", () => {
             graphDigest: "legacy-full-graph-digest",
             catalogFingerprint: "previous-catalog",
             publishedAt: new Date("2026-08-01T00:00:00.000Z"),
+            lastPinnedAt: null,
           };
           const repo = stubWorkflowRepo({
             findById: () =>
@@ -374,6 +378,7 @@ describe("publishWorkflow", () => {
           graphDigest: "legacy-full-graph-digest",
           catalogFingerprint: catalogFingerprint(catalog),
           publishedAt: new Date("2026-08-01T00:00:00.000Z"),
+          lastPinnedAt: null,
         };
         const repo = stubWorkflowRepo({
           findById: () =>
@@ -412,6 +417,7 @@ describe("publishWorkflow", () => {
           graphDigest: "legacy-full-graph-digest",
           catalogFingerprint: catalogFingerprint(catalog),
           publishedAt: new Date("2026-08-01T00:00:00.000Z"),
+          lastPinnedAt: null,
         };
         const repo = stubWorkflowRepo({
           findById: () =>
@@ -452,6 +458,7 @@ describe("publishWorkflow", () => {
               catalogFingerprint: "",
               graphDigest: "",
               publishedAt: new Date(),
+              lastPinnedAt: null,
             }),
           insertPublishedVersion: () => Effect.succeed({ stale: true }),
         });

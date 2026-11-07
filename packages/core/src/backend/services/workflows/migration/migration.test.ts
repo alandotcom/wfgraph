@@ -342,6 +342,7 @@ function makeMigrationSeams(input: {
     catalogFingerprint: "catalog",
     graphDigest: "digest",
     publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+    lastPinnedAt: null,
   };
   const waitStates = input.waitStates ?? [];
   const calls = {

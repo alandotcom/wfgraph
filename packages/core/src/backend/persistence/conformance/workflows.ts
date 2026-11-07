@@ -62,17 +62,20 @@ function pinDraftRun(versionId: string) {
   });
 }
 
-/** Sets the `published_at` of the version `versionId` names to `when`. */
-function setPublishedAt(
+/** Sets one timestamp `column` of the version `versionId` names to `when`. */
+function setVersionTimestamp(
   database: CaseDatabase,
-  versionId: string,
-  when: Date
+  input: {
+    versionId: string;
+    column: "published_at" | "last_pinned_at";
+    when: Date;
+  }
 ): Promise<void> {
   return setTimestamp(database, {
     table: "workflow_versions",
-    column: "published_at",
-    where: `id = '${versionId}'`,
-    at: when,
+    column: input.column,
+    where: `id = '${input.versionId}'`,
+    at: input.when,
   });
 }
 
@@ -966,17 +969,23 @@ export function describeWorkflowConformance({
           yield* pinDraftRun("snap_pinned");
         })
       );
-      const publishedAt = [
-        ["ver_1", T0],
+      // Every row was created before the window, so only `last_pinned_at`
+      // separates the snapshot a run pinned recently from the ones it sweeps.
+      const pinnedAt: readonly (readonly [string, Date])[] = [
         ["snap_oldest", T0],
         ["snap_old", at(1_000)],
         ["snap_pinned", at(2_000)],
         ["snap_young", at(7_200_000)],
-      ] as const;
+      ];
+      const timestamps = [
+        { versionId: "ver_1", column: "published_at" as const, when: T0 },
+        ...pinnedAt.flatMap(([versionId, when]) => [
+          { versionId, column: "published_at" as const, when: T0 },
+          { versionId, column: "last_pinned_at" as const, when },
+        ]),
+      ];
       await Promise.all(
-        publishedAt.map(([versionId, when]) =>
-          setPublishedAt(database, versionId, when)
-        )
+        timestamps.map((timestamp) => setVersionTimestamp(database, timestamp))
       );
 
       const result = await connection.run(
@@ -1035,7 +1044,15 @@ export function describeWorkflowConformance({
           return yield* pinDraftRun("snap_shared");
         })
       );
-      await setPublishedAt(database, "snap_shared", T0);
+      await Promise.all(
+        (["published_at", "last_pinned_at"] as const).map((column) =>
+          setVersionTimestamp(database, {
+            versionId: "snap_shared",
+            column,
+            when: T0,
+          })
+        )
+      );
       await setTimestamp(database, {
         table: "workflow_executions",
         column: "completed_at",
@@ -1062,7 +1079,9 @@ export function describeWorkflowConformance({
       );
 
       expect(result.reused.id).toBe("snap_shared");
-      expect(result.reused.publishedAt.getTime()).toBeGreaterThan(
+      // The reuse records the pin and leaves the row's creation time alone.
+      expect(result.reused.publishedAt).toEqual(T0);
+      expect(result.reused.lastPinnedAt?.getTime()).toBeGreaterThan(
         RETENTION_CUTOFF.getTime()
       );
       expect(result.sweptRuns).toBe(1);

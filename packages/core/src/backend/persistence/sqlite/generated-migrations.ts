@@ -221,4 +221,40 @@ export const sqliteMigrations = [
     hash: "718ed205df6885d5bc239594440f7388c6aa0104b37f1864a6c126b5e37961b4",
     name: "20261107000057_daffy_magik",
   },
+  {
+    sql: [
+      "ALTER TABLE `workflow_versions` ADD `last_pinned_at` integer;",
+      "\nDROP INDEX IF EXISTS `versions_draft_snapshot_published_idx`;",
+      "\nCREATE INDEX `versions_draft_snapshot_last_pinned_idx` ON `workflow_versions` (`last_pinned_at`) WHERE \"workflow_versions\".\"kind\" = 'draft_snapshot';",
+    ],
+    bps: true,
+    folderMillis: 1794013572000,
+    hash: "6fe70c74f379c0a8c4edcec9a71ef7cd62e9e75ff8d67baca13705fc38943b2e",
+    name: "20261107010612_strange_jigsaw",
+  },
+  {
+    sql: [
+      "-- Give every existing draft snapshot a last pin, its creation time, before the rebuild that requires one.\nUPDATE `workflow_versions`\nSET `last_pinned_at` = `published_at`\nWHERE `kind` = 'draft_snapshot';\n",
+    ],
+    bps: true,
+    folderMillis: 1794013582000,
+    hash: "83b74a9dbf2d4ff842cdfeb5ec3843d60537b45d3b31493c351d470c6ea0a687",
+    name: "20261107010622_backfill-last-pinned-at",
+  },
+  {
+    sql: [
+      "PRAGMA foreign_keys=OFF;",
+      "\nCREATE TABLE `__new_workflow_versions` (\n\t`id` text PRIMARY KEY,\n\t`workflow_id` text NOT NULL,\n\t`version` integer,\n\t`kind` text DEFAULT 'published' NOT NULL,\n\t`graph` text NOT NULL,\n\t`catalog_fingerprint` text NOT NULL,\n\t`graph_digest` text NOT NULL,\n\t`published_at` integer NOT NULL,\n\t`last_pinned_at` integer,\n\tCONSTRAINT `fk_workflow_versions_workflow_id_workflows_id_fk` FOREIGN KEY (`workflow_id`) REFERENCES `workflows`(`id`) ON DELETE CASCADE,\n\tCONSTRAINT \"workflow_versions_kind_check\" CHECK(\"kind\" in ('published', 'draft_snapshot')),\n\tCONSTRAINT \"workflow_versions_last_pinned_kind_check\" CHECK((\"kind\" = 'draft_snapshot') = (\"last_pinned_at\" is not null))\n) STRICT;\n",
+      "\nINSERT INTO `__new_workflow_versions`(`id`, `workflow_id`, `version`, `kind`, `graph`, `catalog_fingerprint`, `graph_digest`, `published_at`, `last_pinned_at`) SELECT `id`, `workflow_id`, `version`, `kind`, `graph`, `catalog_fingerprint`, `graph_digest`, `published_at`, `last_pinned_at` FROM `workflow_versions`;",
+      "\nDROP TABLE `workflow_versions`;",
+      "\nALTER TABLE `__new_workflow_versions` RENAME TO `workflow_versions`;",
+      "\nPRAGMA foreign_keys=ON;",
+      "\nCREATE UNIQUE INDEX `workflow_versions_workflow_id_version_uidx` ON `workflow_versions` (`workflow_id`,`version`);",
+      "\nCREATE INDEX `versions_draft_snapshot_last_pinned_idx` ON `workflow_versions` (`last_pinned_at`) WHERE \"workflow_versions\".\"kind\" = 'draft_snapshot';",
+    ],
+    bps: true,
+    folderMillis: 1794013597000,
+    hash: "0f1c89c960b3e5dd18819bb39b1b3706d62cf2a9897c7455bd55c60f0407cf2e",
+    name: "20261107010637_known_rawhide_kid",
+  },
 ] satisfies readonly MigrationMeta[];

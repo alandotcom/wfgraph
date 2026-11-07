@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_versions" ADD CONSTRAINT "workflow_versions_last_pinned_kind_check" CHECK (("kind" = 'draft_snapshot') = ("last_pinned_at" is not null));

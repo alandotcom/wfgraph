@@ -60,6 +60,7 @@ export const workflowVersions = sqliteTable(
     catalogFingerprint: text("catalog_fingerprint").notNull(),
     graphDigest: text("graph_digest").notNull(),
     publishedAt: integer("published_at").notNull(),
+    lastPinnedAt: integer("last_pinned_at"),
   },
   (table) => [
     uniqueIndex("workflow_versions_workflow_id_version_uidx").on(
@@ -70,10 +71,14 @@ export const workflowVersions = sqliteTable(
       "workflow_versions_kind_check",
       sql`${table.kind} in ('published', 'draft_snapshot')`
     ),
-    // The retention sweep's scan of draft snapshots, oldest first. A published
-    // version is never swept, so the index leaves those rows out.
-    index("versions_draft_snapshot_published_idx")
-      .on(table.publishedAt)
+    check(
+      "workflow_versions_last_pinned_kind_check",
+      sql`(${table.kind} = 'draft_snapshot') = (${table.lastPinnedAt} is not null)`
+    ),
+    // The retention sweep's scan of draft snapshots, least recently pinned
+    // first. A published version is never swept, so the index leaves it out.
+    index("versions_draft_snapshot_last_pinned_idx")
+      .on(table.lastPinnedAt)
       .where(sql`${table.kind} = 'draft_snapshot'`),
   ]
 );

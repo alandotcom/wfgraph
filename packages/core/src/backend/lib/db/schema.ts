@@ -164,12 +164,15 @@ export const workflowVersions = pgTable(
     catalogFingerprint: text("catalog_fingerprint").notNull(),
     /** Content hash of the graph's semantic projection. */
     graphDigest: text("graph_digest").notNull(),
-    /**
-     * When a Publish created the row. On a draft snapshot, when a Draft run
-     * last pinned it: a run that reuses the snapshot moves this forward, so the
-     * retention sweep, which reads it, keeps a snapshot a run is about to pin.
-     */
+    /** When the row was created, by a Publish or by a Draft run. */
     publishedAt: timestamp("published_at").notNull().default(utcNow()),
+    /**
+     * When a Draft run last pinned this draft snapshot: `freezeDraftSnapshot`
+     * sets it when it inserts the row and again each time it hands the row to
+     * another run. Null on a published version. The retention sweep reads it,
+     * so a snapshot a run is about to pin is younger than any window.
+     */
+    lastPinnedAt: timestamp("last_pinned_at"),
   },
   (table) => [
     uniqueIndex("workflow_versions_workflow_id_version_uidx").on(
@@ -189,10 +192,15 @@ export const workflowVersions = pgTable(
       "workflow_versions_version_kind_check",
       sql`(${table.kind} = 'published') = (${table.version} is not null)`
     ),
-    // The retention sweep's scan of draft snapshots, oldest first. A published
-    // version is never swept, so the index leaves those rows out.
-    index("workflow_versions_draft_snapshot_published_at_idx")
-      .on(table.publishedAt)
+    // Only a draft snapshot is pinned by a Draft run, and every one has been.
+    check(
+      "workflow_versions_last_pinned_kind_check",
+      sql`(${table.kind} = 'draft_snapshot') = (${table.lastPinnedAt} is not null)`
+    ),
+    // The retention sweep's scan of draft snapshots, least recently pinned
+    // first. A published version is never swept, so the index leaves it out.
+    index("workflow_versions_draft_snapshot_last_pinned_at_idx")
+      .on(table.lastPinnedAt)
       .where(sql`${table.kind} = 'draft_snapshot'`),
   ]
 );

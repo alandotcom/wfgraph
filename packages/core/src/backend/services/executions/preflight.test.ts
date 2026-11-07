@@ -75,6 +75,7 @@ function draftRepoLayer(
           catalogFingerprint: input.catalogFingerprint,
           graphDigest: input.graphDigest,
           publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+          lastPinnedAt: new Date("2026-03-01T00:00:00.000Z"),
         };
       }),
   });

@@ -72,6 +72,7 @@ function pinnedVersionLayer(
         catalogFingerprint: "fp",
         graphDigest: "digest",
         publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+        lastPinnedAt: null,
       }),
   });
 }
@@ -239,6 +240,7 @@ describe("runStartedEntry", () => {
                     catalogFingerprint: "fp",
                     graphDigest: "digest",
                     publishedAt: new Date("2026-03-01T00:00:00.000Z"),
+                    lastPinnedAt: null,
                   };
                 }),
             })
