@@ -34,6 +34,17 @@ export async function createSqliteTestDatabase(): Promise<ConformanceDatabase> {
         database.close();
       }
     },
+    selectIds: async (statement) => {
+      const database = new DatabaseSync(filename, { timeout: 5_000 });
+      try {
+        const rows = database
+          .prepare(typeof statement === "string" ? statement : statement.sqlite)
+          .all();
+        return rows.map((row) => String(Object.values(row)[0]));
+      } finally {
+        database.close();
+      }
+    },
     drop: () => rm(directory, { recursive: true, force: true }),
   };
 }

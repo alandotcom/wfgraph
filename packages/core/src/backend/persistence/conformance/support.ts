@@ -101,11 +101,20 @@ export type ConformanceDatabase = {
    * after the database's first `open` has migrated it.
    */
   readonly execute: (statement: SqlStatement) => Promise<void>;
+  /**
+   * Runs one `select` on a connection of its own, as `execute` does, and
+   * answers the text of its first column in each row, such as the ids of rows
+   * no repository method lists.
+   */
+  readonly selectIds: (statement: SqlStatement) => Promise<string[]>;
   readonly drop: () => Promise<void>;
 };
 
 /** No `drop`: a case dropping its own database would outrun the sweep. */
-export type CaseDatabase = Pick<ConformanceDatabase, "open" | "execute">;
+export type CaseDatabase = Pick<
+  ConformanceDatabase,
+  "open" | "execute" | "selectIds"
+>;
 
 /**
  * Sets one timestamp column to `at` on the rows `where` selects, for a case
@@ -172,6 +181,7 @@ export function usePersistenceRegistry(
 
     return {
       execute: database.execute,
+      selectIds: database.selectIds,
       open: async (options) => {
         const connection = await database.open(options);
         // Idempotent, because the restart case closes its own connection

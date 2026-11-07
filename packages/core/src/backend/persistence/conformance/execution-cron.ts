@@ -31,7 +31,10 @@ import {
   notYetDue,
   type PersistenceTestRegistry,
 } from "#src/backend/persistence/conformance/support";
-import { at } from "#src/backend/persistence/conformance/schedule-support";
+import {
+  at,
+  cronTimers,
+} from "#src/backend/persistence/conformance/schedule-support";
 
 const WORKFLOW_ID = "wf_cron";
 
@@ -124,15 +127,14 @@ function publish(input: {
   });
 }
 
-/** The workflow's timers, by schedule, as `listCronTimers` answers them. */
-const timers = Effect.gen(function* () {
-  const executions = yield* ExecutionRepo;
-  return yield* executions.listCronTimers(WORKFLOW_ID);
-});
+/** The workflow's timers, earliest `wake_at` first. */
+function timers(database: CaseDatabase) {
+  return cronTimers(database, WORKFLOW_ID);
+}
 
 /** The id of the timer of `schedule`, which the case expects to exist. */
-function timerId(schedule: CronSchedule) {
-  return Effect.map(timers, (rows) => {
+function timerId(database: CaseDatabase, schedule: CronSchedule) {
+  return Effect.map(timers(database), (rows) => {
     const row = rows.find(
       (timer) =>
         timer.cron === schedule.cron && timer.timeZone === schedule.timeZone
@@ -275,16 +277,16 @@ export function describeExecutionCronConformance({
 }: PersistenceTestRegistry): void {
   describe("cron schedule timers", () => {
     it("writes no timer before the first Publish, then one per schedule due at its first slot after the Publish (TimersMatchThePublishedSchedules, NoFireBeforeTheTimerStarted)", async () => {
-      const { connection } = await withWorkflow(openDatabase);
+      const { database, connection } = await withWorkflow(openDatabase);
       const result = await connection.run(
         Effect.gen(function* () {
-          const unpublished = yield* timers;
+          const unpublished = yield* timers(database);
           yield* publish({
             version: 1,
             schedules: [EVERY_FIVE, HOURLY],
             now: at(minutes(5)),
           });
-          return { unpublished, published: yield* timers };
+          return { unpublished, published: yield* timers(database) };
         })
       );
 
@@ -320,8 +322,8 @@ export function describeExecutionCronConformance({
             now: at(minutes(1)),
           });
           return {
-            kept: yield* timerId(EVERY_FIVE),
-            edited: yield* timerId(HOURLY),
+            kept: yield* timerId(database, EVERY_FIVE),
+            edited: yield* timerId(database, HOURLY),
           };
         })
       );
@@ -336,7 +338,7 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE, HOURLY_IN_KOLKATA],
             now: at(minutes(2)),
           });
-          const after = yield* timers;
+          const after = yield* timers(database);
           const editedFire = yield* Effect.flip(
             fire({
               fence: editedFence,
@@ -427,7 +429,7 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE],
             now: at(minutes(1)),
           });
-          return yield* timerId(EVERY_FIVE);
+          return yield* timerId(database, EVERY_FIVE);
         })
       );
       const fence = await leaseTimer(database, scheduleId, "tok_1");
@@ -446,7 +448,7 @@ export function describeExecutionCronConformance({
           return {
             fired,
             again: again._tag,
-            timers: yield* timers,
+            timers: yield* timers(database),
             runs: yield* runs,
             summary:
               fired.kind === "fired" && fired.start.status === "started"
@@ -500,7 +502,7 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE],
             now: at(minutes(1)),
           });
-          return yield* timerId(EVERY_FIVE);
+          return yield* timerId(database, EVERY_FIVE);
         })
       );
       const fence = await leaseTimer(database, scheduleId, "tok_1");
@@ -539,7 +541,7 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE],
             now: at(minutes(1)),
           });
-          return yield* timerId(EVERY_FIVE);
+          return yield* timerId(database, EVERY_FIVE);
         })
       );
       const stale = await leaseTimer(database, scheduleId, "tok_stale");
@@ -561,7 +563,7 @@ export function describeExecutionCronConformance({
           return {
             fired: fired._tag,
             skipped: skipped._tag,
-            timers: yield* timers,
+            timers: yield* timers(database),
             runs: yield* runs,
             refusals: yield* refusals,
           };
@@ -591,7 +593,7 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE],
             now: at(minutes(1)),
           });
-          return yield* timerId(EVERY_FIVE);
+          return yield* timerId(database, EVERY_FIVE);
         })
       );
       const fence = await leaseTimer(database, scheduleId, "tok_1");
@@ -624,7 +626,7 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE, HOURLY],
             now: at(minutes(1)),
           });
-          return yield* timerId(EVERY_FIVE);
+          return yield* timerId(database, EVERY_FIVE);
         })
       );
       const fence = await leaseTimer(database, scheduleId, "tok_1");
@@ -637,7 +639,7 @@ export function describeExecutionCronConformance({
             isPaused: true,
             now: at(minutes(2)),
           });
-          const paused = yield* timers;
+          const paused = yield* timers(database);
           const firedWhilePaused = yield* Effect.flip(
             fire({ fence, schedule: EVERY_FIVE, now: at(minutes(5)) })
           );
@@ -647,7 +649,7 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE, HOURLY],
             now: at(minutes(3)),
           });
-          const publishedWhilePaused = yield* timers;
+          const publishedWhilePaused = yield* timers(database);
           yield* workflows.setPaused({
             workflowId: WORKFLOW_ID,
             isPaused: false,
@@ -657,7 +659,7 @@ export function describeExecutionCronConformance({
             paused,
             firedWhilePaused: firedWhilePaused._tag,
             publishedWhilePaused,
-            resumed: yield* timers,
+            resumed: yield* timers(database),
             runs: yield* runs,
           };
         })
@@ -694,7 +696,7 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE],
             now: at(minutes(1)),
           });
-          return yield* timerId(EVERY_FIVE);
+          return yield* timerId(database, EVERY_FIVE);
         })
       );
       const fence = await leaseTimer(database, scheduleId, "tok_1");
@@ -714,7 +716,7 @@ export function describeExecutionCronConformance({
             now: at(minutes(5)),
             versionId: "ver_1",
           });
-          const afterStale = { timers: yield* timers, runs: yield* runs };
+          const afterStale = { timers: yield* timers(database), runs: yield* runs };
           const fired = yield* fire({
             fence,
             schedule: EVERY_FIVE,
@@ -746,7 +748,7 @@ export function describeExecutionCronConformance({
             now: at(minutes(1)),
             concurrency: "first-wins",
           });
-          return yield* timerId(EVERY_FIVE);
+          return yield* timerId(database, EVERY_FIVE);
         })
       );
       const first = await leaseTimer(database, scheduleId, "tok_1");
@@ -771,7 +773,7 @@ export function describeExecutionCronConformance({
           return {
             refused,
             refusals: yield* refusals,
-            timers: yield* timers,
+            timers: yield* timers(database),
             runs: yield* runs,
           };
         })
@@ -814,7 +816,7 @@ export function describeExecutionCronConformance({
             now: at(minutes(1)),
             concurrency: "newest-wins",
           });
-          return yield* timerId(EVERY_FIVE);
+          return yield* timerId(database, EVERY_FIVE);
         })
       );
       const first = await leaseTimer(database, scheduleId, "tok_1");
@@ -873,7 +875,7 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE],
             now: at(minutes(1)),
           });
-          return yield* timerId(EVERY_FIVE);
+          return yield* timerId(database, EVERY_FIVE);
         })
       );
       const fence = await leaseTimer(database, scheduleId, "tok_1");
@@ -886,7 +888,7 @@ export function describeExecutionCronConformance({
             now: at(minutes(5)),
             schedules: [],
           });
-          return { dropped, timers: yield* timers, runs: yield* runs };
+          return { dropped, timers: yield* timers(database), runs: yield* runs };
         })
       );
 
@@ -907,7 +909,7 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE],
             now: at(minutes(1)),
           });
-          return yield* timerId(EVERY_FIVE);
+          return yield* timerId(database, EVERY_FIVE);
         })
       );
       const fence = await leaseTimer(database, scheduleId, "tok_1");
@@ -923,7 +925,7 @@ export function describeExecutionCronConformance({
           });
           return {
             skipped,
-            timers: yield* timers,
+            timers: yield* timers(database),
             runs: yield* runs,
             refusals: yield* refusals,
           };
@@ -961,7 +963,7 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE],
             now: at(minutes(1)),
           });
-          return yield* timerId(EVERY_FIVE);
+          return yield* timerId(database, EVERY_FIVE);
         })
       );
       const fence = await leaseTimer(database, scheduleId, "tok_1");
@@ -981,7 +983,7 @@ export function describeExecutionCronConformance({
             error: "The workflow's graph will not run",
             now: at(minutes(6)),
           });
-          return { skipped, timers: yield* timers, refusals: yield* refusals };
+          return { skipped, timers: yield* timers(database), refusals: yield* refusals };
         })
       );
 
@@ -998,7 +1000,7 @@ export function describeExecutionCronConformance({
     });
 
     it("deletes a workflow's timers with the workflow", async () => {
-      const { connection } = await withWorkflow(openDatabase);
+      const { database, connection } = await withWorkflow(openDatabase);
       const result = await connection.run(
         Effect.gen(function* () {
           const workflows = yield* WorkflowRepo;
@@ -1007,9 +1009,9 @@ export function describeExecutionCronConformance({
             schedules: [EVERY_FIVE, HOURLY],
             now: at(minutes(1)),
           });
-          const before = yield* timers;
+          const before = yield* timers(database);
           yield* workflows.deleteById(WORKFLOW_ID);
-          return { before, after: yield* timers };
+          return { before, after: yield* timers(database) };
         })
       );
 

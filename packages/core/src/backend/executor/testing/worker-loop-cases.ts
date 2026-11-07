@@ -59,6 +59,7 @@ import {
   setTimestamp,
   usePersistenceRegistry,
 } from "#src/backend/persistence/conformance/support";
+import { cronTimers } from "#src/backend/persistence/conformance/schedule-support";
 import type { PersistenceConformanceHarness } from "#src/backend/persistence/persistence-conformance-test-support";
 import {
   ExecutionRepo,
@@ -447,7 +448,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
             workflowId: "wf_cron_tick",
             includeSuperseded: true,
           }),
-          timers: yield* executions.listCronTimers("wf_cron_tick"),
+          timers: yield* cronTimers(harness.database, "wf_cron_tick"),
         };
       })
     );
@@ -536,7 +537,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
             workflowId: "wf_cron_spent",
             eventType: "run_refused",
           }),
-          timers: yield* executions.listCronTimers("wf_cron_spent"),
+          timers: yield* cronTimers(harness.database, "wf_cron_spent"),
         };
       })
     );

@@ -147,6 +147,14 @@ export function sharedPostgresTestDatabase(): {
               typeof statement === "string" ? statement : statement.postgresql
             );
           }),
+        selectIds: (statement) =>
+          withAdminClient(async (client) => {
+            await client.unsafe(`set search_path to "${schema}"`);
+            const rows = await client.unsafe<Record<string, unknown>[]>(
+              typeof statement === "string" ? statement : statement.postgresql
+            );
+            return rows.map((row) => String(Object.values(row)[0]));
+          }),
         // This is one statement, so the foreign keys between these tables never
         // decide an order. It uses `restart identity` because a case may read a
         // sequence back.

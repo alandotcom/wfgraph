@@ -55,10 +55,6 @@ class PublicationKeptMoving extends Schema.TaggedError<
   { readonly brand: unique symbol }
 >()("PublicationKeptMoving", { message: Schema.String }) {}
 
-/** The sentence a fire records when the slot cannot run the graph. */
-const EVENT_SPLIT_ERROR =
-  "This workflow splits on the Event a run is on, and a scheduled run names none";
-
 /** The slot a fire runs, and the wake its timer moves to. */
 type SlotTimes = { slot: Date; nextWakeAt: Date };
 
@@ -199,16 +195,14 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
       const loaded = yield* workflows.findByIdWithPublishedVersionForRun(
         input.workflowId
       );
-      // Publish writes a timer only for a published version, and a timer
-      // cascades with its workflow, so this answers a row that should not
-      // exist. A row the cascade already took refuses the drop as a lost lease.
+      // Publish writes a timer only for a published version, no write takes a
+      // workflow's publication away, and a timer cascades with its workflow.
+      // A workflow deleted since the claim took the timer with it, so the
+      // pass's release finds the row gone and writes nothing.
       if (!loaded?.publishedVersion) {
-        yield* writes.dropSchedule();
-        const dropped: ScheduleFireOutcome = {
-          kind: "dropped",
-          reason: "not_published",
-        };
-        return dropped;
+        return yield* Effect.die(
+          new Error("A leased cron timer's workflow is gone or unpublished")
+        );
       }
       const { workflow, publishedVersion: version } = loaded;
       const expected: CronPublication = {
@@ -234,12 +228,6 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
       if (!preflight.ok) {
         return yield* skip({ times, expected, error: preflight.error });
       }
-      // Publish refuses a schedule on a graph with an Event Split, so this
-      // answers a version published before that rule.
-      if (preflight.checked.hasEventSplit) {
-        return yield* skip({ times, expected, error: EVENT_SPLIT_ERROR });
-      }
-
       const rules = preflight.checked.lifecycleRules ?? emptyLifecycleRules;
       const entityValue = workflowEntityValue(workflow.id);
       const request = yield* startRequestFor({

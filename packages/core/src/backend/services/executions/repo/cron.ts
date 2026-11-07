@@ -40,7 +40,6 @@ import type {
   CronFence,
   CronFire,
   CronSkip,
-  ExecutionSchedule,
   FireCronTimerInput,
   SkipCronSlotInput,
 } from "#src/backend/services/executions/repo/contracts";
@@ -223,10 +222,6 @@ export type CronPassWrites = PassWrites & {
 export type CronRepoMethods = {
   /** The writes of one pass over a `cron` row, fenced on `fence`. */
   readonly fencedCron: (fence: CronFence) => CronPassWrites;
-  /** Every timer of a workflow, earliest `wake_at` first. */
-  readonly listCronTimers: (
-    workflowId: string
-  ) => Effect.Effect<ExecutionSchedule[], DatabaseError>;
 };
 
 /** Builds the writes of one pass over a `cron` row, fenced on `fence`. */
@@ -329,17 +324,5 @@ export function makeCronMethods(
 ): CronRepoMethods {
   return {
     fencedCron: (fence) => makeCronPassWrites(database, fence),
-
-    listCronTimers: (workflowId) =>
-      database.query((db) =>
-        db
-          .select()
-          .from(workflowExecutionSchedule)
-          .where(timersOf(workflowId))
-          .orderBy(
-            asc(workflowExecutionSchedule.wakeAt),
-            asc(workflowExecutionSchedule.id)
-          )
-      ),
   };
 }

@@ -4,6 +4,7 @@
  */
 
 import { Effect } from "effect";
+import { compact, sortBy } from "es-toolkit/array";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 import {
   type ClaimedRun,
@@ -50,6 +51,32 @@ export function scheduledRun(wakeAt: Date) {
     });
     if (started.status !== "started") throw new Error("Start was refused");
     return started.execution.id;
+  });
+}
+
+/**
+ * Every cron timer row of `workflowId`, earliest `wake_at` first, as
+ * `findSchedule` reads each one. No repository method lists them, so the ids
+ * come from a query outside the repositories.
+ */
+export function cronTimers(
+  database: Pick<CaseDatabase, "selectIds">,
+  workflowId: string
+) {
+  return Effect.gen(function* () {
+    const executions = yield* ExecutionRepo;
+    const ids = yield* Effect.promise(() =>
+      database.selectIds(
+        `select id from workflow_execution_schedule where kind = 'cron' and workflow_id = '${workflowId}'`
+      )
+    );
+    const rows = yield* Effect.forEach(ids, (scheduleId) =>
+      executions.findSchedule({ scheduleId })
+    );
+    return sortBy(compact(rows), [
+      (row) => row.wakeAt.getTime(),
+      (row) => row.id,
+    ]);
   });
 }
 

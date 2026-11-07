@@ -7,7 +7,7 @@
  */
 
 import { Effect } from "effect";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { CronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
 import type {
@@ -42,7 +42,6 @@ import {
   makeSqlitePassWrites,
   writeFenced,
 } from "#src/backend/persistence/sqlite/executions/schedule";
-import { sqliteExecutionSchedule } from "#src/backend/persistence/sqlite/executions/rows";
 import {
   workflowIsPaused,
   workflowMode,
@@ -260,18 +259,5 @@ function makeSqliteCronPassWrites(
 export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
   return {
     fencedCron: (fence) => makeSqliteCronPassWrites(store, fence),
-
-    listCronTimers: (workflowId) =>
-      store.read((database) =>
-        database
-          .select()
-          .from(workflowExecutionSchedule)
-          .where(timersOf(workflowId))
-          .orderBy(
-            asc(workflowExecutionSchedule.wakeAt),
-            asc(workflowExecutionSchedule.id)
-          )
-          .pipe(Effect.map((rows) => rows.map(sqliteExecutionSchedule)))
-      ),
   };
 }

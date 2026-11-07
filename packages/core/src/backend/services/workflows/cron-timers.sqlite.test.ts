@@ -21,7 +21,7 @@ import type {
   ConformanceDatabase,
 } from "#src/backend/persistence/conformance/support";
 import { createSqliteTestDatabase } from "#src/backend/persistence/sqlite-test-database";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { cronTimers } from "#src/backend/persistence/conformance/schedule-support";
 import { postWorkflowsBulkLifecycle } from "#src/backend/services/workflows/bulk-actions";
 import { publishWorkflow } from "#src/backend/services/workflows/publish";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -63,7 +63,10 @@ afterEach(async () => {
 });
 
 /** A connection on a fresh database holding one unpublished workflow. */
-async function withWorkflow(): Promise<ConformanceConnection> {
+async function withWorkflow(): Promise<{
+  database: ConformanceDatabase;
+  connection: ConformanceConnection;
+}> {
   const database = await createSqliteTestDatabase();
   databases.push(database);
   const connection = await database.open();
@@ -79,12 +82,13 @@ async function withWorkflow(): Promise<ConformanceConnection> {
       });
     })
   );
-  return connection;
+  return { database, connection };
 }
 
-const timers = Effect.flatMap(ExecutionRepo, (executions) =>
-  executions.listCronTimers("wf_yearly")
-);
+/** The workflow's timers, earliest `wake_at` first. */
+function timers(database: ConformanceDatabase) {
+  return cronTimers(database, "wf_yearly");
+}
 
 /** Publishes `scheduledGraph` through the Publish service. */
 const publish = publishWorkflow({
@@ -103,13 +107,13 @@ function bulk(action: "pause" | "resume") {
 
 describe("cron timers through the workflow services", () => {
   it("writes a timer at Publish for the schedule the published graph declares, due at its next slot", async () => {
-    const connection = await withWorkflow();
+    const { database, connection } = await withWorkflow();
     const before = new Date();
     const result = await connection.run(
       Effect.gen(function* () {
-        const unpublished = yield* timers;
+        const unpublished = yield* timers(database);
         yield* publish;
-        return { unpublished, published: yield* timers };
+        return { unpublished, published: yield* timers(database) };
       })
     );
 
@@ -127,14 +131,19 @@ describe("cron timers through the workflow services", () => {
   });
 
   it("deletes the timers when the bulk pause pauses the workflow, and writes them again on resume", async () => {
-    const connection = await withWorkflow();
+    const { database, connection } = await withWorkflow();
     const result = await connection.run(
       Effect.gen(function* () {
         yield* publish;
         const paused = yield* bulk("pause");
-        const whilePaused = yield* timers;
+        const whilePaused = yield* timers(database);
         const resumed = yield* bulk("resume");
-        return { paused, whilePaused, resumed, afterResume: yield* timers };
+        return {
+          paused,
+          whilePaused,
+          resumed,
+          afterResume: yield* timers(database),
+        };
       })
     );
 
