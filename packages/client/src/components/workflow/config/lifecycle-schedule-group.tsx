@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "#src/components/ui/select";
 import { whenChosen } from "#src/lib/select-choice";
+import { sameSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { ConfigGroup } from "./config-section";
 import {
@@ -101,13 +102,7 @@ export function LifecycleScheduleGroup({
             onRemove={() => {
               setRows(rows.filter((_, at) => at !== index));
               // Undo restores what was saved, so only a saved schedule says so.
-              if (
-                stored.some(
-                  (schedule) =>
-                    schedule.cron === row.cron &&
-                    schedule.timeZone === row.timeZone
-                )
-              ) {
+              if (stored.some((schedule) => sameSchedule(schedule, row))) {
                 toast("Schedule removed", {
                   description: "Use Actions > Undo to restore it.",
                 });

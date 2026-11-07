@@ -8,7 +8,7 @@
  * one call so they cannot disagree.
  */
 
-import { Effect, Result, Schema, SchemaIssue } from "effect";
+import { Effect, Schema } from "effect";
 import { Tool } from "effect/ai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
@@ -24,8 +24,9 @@ import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
   type CronSchedule,
-  cronSchedulesSchema,
   describeCronSchedule,
+  findScheduleIssue,
+  sameSchedule,
 } from "@wfgraph/shared/lifecycle/cron-schedule";
 import { checkEntityEligibility } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import {
@@ -76,9 +77,9 @@ const lifecycleWriteResultSchema = Schema.Struct({
 const UNPLACED = { x: 0, y: 0 };
 
 /**
- * A schedule as the model writes it. The strings are checked in the handler
- * against `cronSchedulesSchema`, so a refusal reaches the model as a reason
- * naming the schedule rather than as a parameter decode failure.
+ * A schedule as the model writes it. The handler checks the strings with
+ * `findScheduleIssue`, so a refusal reaches the model as a reason naming the
+ * schedule rather than as a parameter decode failure.
  */
 const scheduleInputSchema = Schema.Struct({
   cron: Schema.String.annotate({
@@ -93,9 +94,6 @@ const scheduleInputSchema = Schema.Struct({
 
 type ScheduleInput = typeof scheduleInputSchema.Type;
 
-const decodeSchedules = Schema.decodeUnknownResult(cronSchedulesSchema);
-const formatScheduleIssue = SchemaIssue.makeFormatterStandardSchemaV1();
-
 /**
  * The schedules held to the rules a save holds them to, or the reason they
  * fail, naming the schedule it is about where it is about one.
@@ -103,24 +101,17 @@ const formatScheduleIssue = SchemaIssue.makeFormatterStandardSchemaV1();
 function readSchedules(
   schedules: readonly ScheduleInput[]
 ): { ok: true; schedules: CronSchedule[] } | { ok: false; reason: string } {
-  const decoded = decodeSchedules(schedules);
-  if (Result.isSuccess(decoded)) {
-    return { ok: true, schedules: [...decoded.success] };
+  const issue = findScheduleIssue(schedules);
+  if (issue === undefined) {
+    return { ok: true, schedules: [...schedules] };
   }
-  const [issue] = formatScheduleIssue(decoded.failure.issue).issues;
-  const index = issue?.path?.[0];
-  const named = typeof index === "number" ? schedules[index] : undefined;
-  const message = issue?.message ?? "The schedules are invalid.";
+  const named = issue.index === undefined ? undefined : schedules[issue.index];
   return {
     ok: false,
     reason: named
-      ? `Schedule "${named.cron}" in ${named.timeZone}: ${message}`
-      : message,
+      ? `Schedule "${named.cron}" in ${named.timeZone}: ${issue.message}`
+      : issue.message,
   };
-}
-
-function sameSchedule(a: ScheduleInput, b: ScheduleInput): boolean {
-  return a.cron === b.cron && a.timeZone === b.timeZone;
 }
 
 export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {

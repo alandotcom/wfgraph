@@ -21,8 +21,9 @@ export { CONCURRENCY_OPTIONS } from "./lifecycle-policy-summary";
 
 /**
  * The Lifecycle Node's panel: what starts a run, on an Event, by hand or on a
- * schedule, and what happens to runs already in progress. Every control writes the complete Lifecycle Rules object. Reads
- * use the initial rules as a fallback; opening the panel never persists them.
+ * schedule, and what happens to runs already in progress. Every control writes
+ * the complete Lifecycle Rules object. Reads use the initial rules as a
+ * fallback; opening the panel never persists them.
  */
 export function LifecyclePanel({
   config,

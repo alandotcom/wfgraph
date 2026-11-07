@@ -10,6 +10,7 @@ import {
   type CronSchedule,
   latestSlotAtOrBefore,
   nextFireAfter,
+  sameSchedule,
 } from "@wfgraph/shared/lifecycle/cron-schedule";
 import type {
   SerializedWorkflowGraph,
@@ -22,11 +23,6 @@ import type {
   FireCronTimerInput,
 } from "#src/backend/services/executions/repo/contracts";
 import { UNDATED_PARK_WAKE_AT } from "#src/backend/services/executions/repo/release-policy";
-
-/** Whether two schedules are the same schedule: the same expression in the same zone. */
-export function sameSchedule(left: CronSchedule, right: CronSchedule): boolean {
-  return left.cron === right.cron && left.timeZone === right.timeZone;
-}
 
 /**
  * The schedules a version declares, read from its graph's entry node. Publish
@@ -86,7 +82,7 @@ export function cronSlotAt(
   return latestSlotAtOrBefore(schedule, now) ?? wakeAt;
 }
 
-/** The workflow row as a fire reads it, or null when the workflow is gone. */
+/** The workflow row as a fire reads it. */
 export type CronFireWorkflow = {
   isPaused: boolean;
   publishedVersionId: string | null;

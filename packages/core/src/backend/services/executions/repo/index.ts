@@ -176,11 +176,10 @@ type CrossTableRepoMethods = {
  * plus the cross-table methods above that only this file can implement. A
  * timer is a slice here because its fire admits a run in the transaction
  * fenced on the timer's lease, through the same `admission.ts` as
- * `startForEntity`. The
- * event inbox is a slice here because a delivery is a body on the same
- * executor: its schedule row and step memo are this aggregate's tables, and a
- * settling delivery writes its inbox row and deletes its schedule row in one
- * transaction.
+ * `startForEntity`. The event inbox is a slice here because a delivery is a
+ * body on the same executor: its schedule row and step memo are this
+ * aggregate's tables, and a settling delivery writes its inbox row and deletes
+ * its schedule row in one transaction.
  */
 export class ExecutionRepo extends Context.Service<
   ExecutionRepo,

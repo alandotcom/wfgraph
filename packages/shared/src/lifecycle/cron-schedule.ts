@@ -1,17 +1,13 @@
 /**
- * A cron schedule: a 5-field cron expression read in one IANA time zone, which
- * starts a run of the published version at each time it names.
- *
- * Croner matches the expression in the schedule's zone and applies its
- * documented daylight-saving rules (croner.56k.guru/usage/pattern). A fixed-time
- * schedule fires a skipped local time once at the next valid instant, and a
- * repeated local time once, on its first occurrence. An interval schedule runs
- * on elapsed time through the change. Every function is pure over the schedule
- * and the instants it is given.
+ * A cron schedule: a 5-field expression read in one IANA time zone. Croner
+ * applies its daylight-saving rules (croner.56k.guru/usage/pattern): a fixed-time
+ * schedule fires a skipped local time once at the next valid instant and a
+ * repeated one once, and an interval schedule runs on elapsed time. Every
+ * function is pure over the schedule and the instants it is given.
  */
 
 import { Cron } from "croner";
-import { Schema } from "effect";
+import { Result, Schema, SchemaIssue } from "effect";
 import { uniqBy } from "es-toolkit/array";
 
 const CRON_EXPRESSION_MESSAGE =
@@ -115,8 +111,14 @@ const cronScheduleSchema = Schema.Struct({
 
 export type CronSchedule = typeof cronScheduleSchema.Type;
 
-function scheduleIdentity(schedule: CronSchedule): string {
+/** A schedule's identity, its expression and zone, as one string key. */
+export function scheduleIdentity(schedule: CronSchedule): string {
   return JSON.stringify([schedule.cron, schedule.timeZone]);
+}
+
+/** Whether two schedules are the same schedule: the same expression in the same zone. */
+export function sameSchedule(left: CronSchedule, right: CronSchedule): boolean {
+  return left.cron === right.cron && left.timeZone === right.timeZone;
 }
 
 /** A workflow's schedules, each identity at most once. */
@@ -127,6 +129,36 @@ export const cronSchedulesSchema = Schema.Array(cronScheduleSchema).check(
       : DUPLICATE_SCHEDULE_MESSAGE
   )
 );
+
+/**
+ * The first reason a save refuses a list of schedules: its sentence, and the
+ * index and field of the schedule it is about. A duplicate names neither.
+ */
+export type ScheduleIssue = {
+  message: string;
+  index: number | undefined;
+  field: "cron" | "timeZone" | undefined;
+};
+
+const decodeSchedules = Schema.decodeUnknownResult(cronSchedulesSchema);
+const formatScheduleIssues = SchemaIssue.makeFormatterStandardSchemaV1();
+
+/** Why a save would refuse `schedules`, or undefined when it accepts them. */
+export function findScheduleIssue(
+  schedules: readonly CronSchedule[]
+): ScheduleIssue | undefined {
+  const decoded = decodeSchedules(schedules);
+  if (Result.isSuccess(decoded)) {
+    return undefined;
+  }
+  const [issue] = formatScheduleIssues(decoded.failure.issue).issues;
+  const [index, field] = issue.path ?? [];
+  return {
+    message: issue.message,
+    index: typeof index === "number" ? index : undefined,
+    field: field === "cron" || field === "timeZone" ? field : undefined,
+  };
+}
 
 /**
  * The first fire time strictly after `after`, or undefined when the expression
@@ -177,8 +209,11 @@ const WEEKDAY_NAMES = [
   "Saturday",
 ] as const;
 
-/** A field holding one plain number in range, or undefined for anything else. */
-function singleValue(
+/**
+ * A cron field holding one plain number from `min` to `max`, or undefined for
+ * anything else, such as a wildcard, a step, a range or a list.
+ */
+export function cronFieldNumber(
   field: string,
   min: number,
   max: number
@@ -216,14 +251,14 @@ function describeExpression(cron: string): string {
     if (step) {
       return step === "1" ? "Every minute" : `Every ${step} minutes`;
     }
-    const minuteOfHour = singleValue(minute, 0, 59);
+    const minuteOfHour = cronFieldNumber(minute, 0, 59);
     return minuteOfHour === undefined
       ? cron
       : `Every hour at :${String(minuteOfHour).padStart(2, "0")}`;
   }
 
-  const minuteOfHour = singleValue(minute, 0, 59);
-  const hourOfDay = singleValue(hour, 0, 23);
+  const minuteOfHour = cronFieldNumber(minute, 0, 59);
+  const hourOfDay = cronFieldNumber(hour, 0, 23);
   if (minuteOfHour === undefined || hourOfDay === undefined) {
     return cron;
   }
@@ -236,12 +271,12 @@ function describeExpression(cron: string): string {
     if (dayOfWeek === "1-5") {
       return `Every weekday at ${time}`;
     }
-    const weekday = singleValue(dayOfWeek, 0, 7);
+    const weekday = cronFieldNumber(dayOfWeek, 0, 7);
     return weekday === undefined
       ? cron
       : `Every ${WEEKDAY_NAMES[weekday % 7]} at ${time}`;
   }
-  const day = singleValue(dayOfMonth, 1, 31);
+  const day = cronFieldNumber(dayOfMonth, 1, 31);
   return day !== undefined && dayOfWeek === "*"
     ? `On day ${day} of every month at ${time}`
     : cron;

@@ -1,11 +1,9 @@
 /**
  * Cron schedule timers: the rows Publish, pause and resume write, and the fire
  * that opens a scheduled run and moves its timer on in one transaction fenced
- * on the timer's lease. Each case is one rule of the `Cron` model in
- * `.claude/skills/verify-durable-executor`, named in the case's title.
- *
- * Every write passes its own clock, so the slots each case expects are fixed
- * instants after `T0` (09:00 UTC).
+ * on the timer's lease. Each case checks a rule of the `Cron` model in
+ * `.claude/skills/verify-durable-executor`, named in its title. Every write
+ * passes its own clock, so each expected slot is fixed after `T0` (09:00 UTC).
  */
 
 import { describe, expect, it } from "vitest";

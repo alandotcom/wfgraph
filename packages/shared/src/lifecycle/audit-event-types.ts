@@ -36,7 +36,8 @@ export const RUN_SCOPED_AUDIT_EVENT_TYPES = [
  * `run_refused` is first-wins Concurrency finding a run for the entity already
  * going, a payload carrying nothing at the Correlation Path Concurrency needs,
  * a manual start a workflow's own rules do not allow, an arrival the Start
- * Event's Start Filter declined, or a schedule's slot that did not run. The Refused Starts reader displays these rows.
+ * Event's Start Filter declined, or a schedule's slot that did not run. The
+ * Refused Starts reader displays these rows.
  * `cancel_not_delivered` records a Cancel Event with a missing Entity Value or
  * a declined or unevaluable Cancel Filter. The Cancellation Failures reader
  * displays those rows. Each reader gets its own latest rows. A decision with no

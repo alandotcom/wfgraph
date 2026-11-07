@@ -359,9 +359,9 @@ their panel at the shared width, under a header holding the panel's title and
 Selecting the Lifecycle node opens Browse with the workflow's lifecycle policy:
 an editable label, the Start Events with each payload Start Filter, the
 overlapping-run behavior and whether manual runs are allowed, each schedule in
-words with its next run, the Cancel Events,
-the tracked Entity with its binding in each Event, the eligibility rule and when
-it is checked, and the validation issues. Start Filters and eligibility sit in
+words with its next run, the Cancel Events, the tracked Entity with its binding
+in each Event, the eligibility rule and when it is checked, and the validation
+issues. Start Filters and eligibility sit in
 separate sections, and each says what it reads: the arriving Event's payload,
 or the Entity's current state from the host. Each section's edit button opens
 Focus on the matching section, and each issue opens the section that edits what
@@ -375,10 +375,10 @@ rule's check timing stay together in the Entity section. A schedule is a preset
 expression, with its own time zone, starting from the browser's. Each one reads
 back as a sentence and its next three runs. A schedule edit a save would refuse
 stays in the section unsaved, beside the refusal. The list counts Start Events,
-schedules, Cancel Events, and issues. While the workflow tracks an Entity, its Start and Cancel
-Events say that their Entity bindings supply run identity and show no
-Correlation Path controls. A control that shows another section moves focus to
-that section's entry in the list. The Lifecycle node shows no Delete.
+schedules, Cancel Events, and issues. While the workflow tracks an Entity, its
+Start and Cancel Events say that their Entity bindings supply run identity and
+show no Correlation Path controls. A control that shows another section moves
+focus to that section's entry in the list. The Lifecycle node shows no Delete.
 
 A selected Condition opens the same header. Its Browse reads the decision: an
 editable label, one sentence stating when the Condition takes True and which

@@ -5,13 +5,14 @@
  * Lifecycle Rules only ever receive a list that `cronSchedulesSchema` accepts.
  */
 
-import { Result, Schema, SchemaIssue } from "effect";
 import { uniq } from "es-toolkit/array";
 import {
   type CronSchedule,
-  cronSchedulesSchema,
+  cronFieldNumber,
   describeCronSchedule,
+  findScheduleIssue,
   nextFireTimes,
+  scheduleIdentity,
 } from "@wfgraph/shared/lifecycle/cron-schedule";
 
 export type SchedulePreset =
@@ -61,24 +62,11 @@ type ClockTime = { hour: number; minute: number };
 const DEFAULT_TIME: ClockTime = { hour: 9, minute: 0 };
 const DEFAULT_WEEKDAY = "1";
 
-/** A cron field holding one plain number in range, or undefined. */
-function fieldNumber(
-  field: string | undefined,
-  min: number,
-  max: number
-): number | undefined {
-  if (field === undefined || !/^\d{1,2}$/.test(field)) {
-    return undefined;
-  }
-  const value = Number(field);
-  return value >= min && value <= max ? value : undefined;
-}
-
 /** The fixed minute and hour of an expression, or undefined when either varies. */
 export function readClockTime(cron: string): ClockTime | undefined {
   const [minute, hour] = cron.split(" ");
-  const minuteOfHour = fieldNumber(minute, 0, 59);
-  const hourOfDay = fieldNumber(hour, 0, 23);
+  const minuteOfHour = cronFieldNumber(minute, 0, 59);
+  const hourOfDay = cronFieldNumber(hour, 0, 23);
   return minuteOfHour === undefined || hourOfDay === undefined
     ? undefined
     : { hour: hourOfDay, minute: minuteOfHour };
@@ -86,7 +74,7 @@ export function readClockTime(cron: string): ClockTime | undefined {
 
 /** The single day of week an expression names, as a `WEEKDAYS` value. */
 export function readWeekday(cron: string): string | undefined {
-  const day = fieldNumber(cron.split(" ")[4], 0, 7);
+  const day = cronFieldNumber(cron.split(" ")[4], 0, 7);
   return day === undefined ? undefined : String(day % 7);
 }
 
@@ -101,7 +89,7 @@ export function presetOf(cron: string): SchedulePreset {
     return "custom";
   }
   if (hour === "*" && dayOfWeek === "*") {
-    return fieldNumber(minute, 0, 59) === undefined ? "custom" : "hourly";
+    return cronFieldNumber(minute, 0, 59) === undefined ? "custom" : "hourly";
   }
   if (readClockTime(cron) === undefined) {
     return "custom";
@@ -192,7 +180,7 @@ export function parseTimeInput(value: string): ClockTime | undefined {
 /** A stored schedule as a row, keyed by its identity, which a list holds once. */
 export function rowOfSchedule(schedule: CronSchedule): ScheduleRow {
   return {
-    id: JSON.stringify([schedule.cron, schedule.timeZone]),
+    id: scheduleIdentity(schedule),
     preset: presetOf(schedule.cron),
     cron: schedule.cron,
     timeZone: schedule.timeZone,
@@ -214,34 +202,19 @@ export type ScheduleRefusal = {
   field: "cron" | "timeZone" | undefined;
 };
 
-const decodeSchedules = Schema.decodeUnknownResult(cronSchedulesSchema);
-const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1();
-
 /** The first refusal these rows earn, or undefined when a save accepts them. */
 export function scheduleRefusalOf(
   rows: readonly ScheduleRow[]
 ): ScheduleRefusal | undefined {
-  const decoded = decodeSchedules(schedulesOfRows(rows));
-  if (Result.isSuccess(decoded)) {
-    return undefined;
-  }
-  const [issue] = formatIssue(decoded.failure.issue).issues;
-  if (!issue) {
-    return undefined;
-  }
-  const [rowIndex, field] = issue.path ?? [];
-  return {
-    message: issue.message,
-    rowIndex: typeof rowIndex === "number" ? rowIndex : undefined,
-    field: field === "cron" || field === "timeZone" ? field : undefined,
-  };
+  const issue = findScheduleIssue(schedulesOfRows(rows));
+  return issue === undefined
+    ? undefined
+    : { message: issue.message, rowIndex: issue.index, field: issue.field };
 }
 
 /** Whether one row on its own is a schedule a save accepts. */
 export function isValidRow(row: ScheduleRow): boolean {
-  return Result.isSuccess(
-    decodeSchedules([{ cron: row.cron, timeZone: row.timeZone }])
-  );
+  return findScheduleIssue(schedulesOfRows([row])) === undefined;
 }
 
 /**

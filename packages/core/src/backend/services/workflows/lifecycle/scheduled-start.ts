@@ -1,10 +1,9 @@
 /**
- * A scheduled run: a manual run of the published version that names no Event,
- * started when a cron timer falls due. `fireSchedule` runs the preflight a
- * manual start runs, then fires the timer through `ExecutionDriver`, whose one
- * fenced transaction opens the run, or records a Refused Start, and moves the
- * timer to its next slot. A slot the graph cannot run is skipped with a
- * Refused Start too. A pass that lost its timer's lease fails `LeaseLost`.
+ * `fireSchedule` starts a scheduled run, a run of the published version that
+ * names no Event, when a cron timer falls due. It runs a manual start's
+ * preflight, then `ExecutionDriver.fireCronTimer` opens the run or records a
+ * Refused Start and moves the timer on, in one transaction fenced on the lease.
+ * An unrunnable slot gets a Refused Start; a lost lease fails `LeaseLost`.
  */
 
 import { Effect, Schema } from "effect";
