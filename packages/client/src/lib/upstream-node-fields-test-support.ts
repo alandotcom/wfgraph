@@ -113,15 +113,20 @@ export function startedEdge(target: string): WorkflowEdge {
   });
 }
 
-/** An entry node whose rules start on these Events and cancel on those. */
+/**
+ * An entry node whose rules start on these Events and cancel on those, and
+ * start on these schedules as well when given.
+ */
 export function anEntryNode(input: {
   startEvents?: string[];
   cancelEvents?: string[];
+  schedules?: LifecycleRules["schedules"];
 }): WorkflowNode {
   const lifecycleRules: LifecycleRules = {
     startEvents: input.startEvents ?? [],
     cancelEvents: input.cancelEvents ?? [],
     concurrency: "unlimited",
+    schedules: input.schedules,
   };
 
   return createNode({

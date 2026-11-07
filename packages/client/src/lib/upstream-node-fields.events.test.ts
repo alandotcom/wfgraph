@@ -713,6 +713,57 @@ describe("upstream-node-fields events", () => {
     });
   });
 
+  it("offers every Start Event field as nullable when a schedule also starts runs", () => {
+    // A scheduled run carries no payload, so behind Started a field every Start
+    // Event declares can still be absent.
+    surface.events = [
+      anEvent({
+        name: "app/appointment.created",
+        schema: Schema.Struct({
+          appointmentId: Schema.String.annotate({ description: "Appointment" }),
+          bookedBy: Schema.String.annotate({ description: "Booked by" }),
+        }),
+      }),
+      anEvent({
+        name: "app/appointment.rescheduled",
+        schema: Schema.Struct({
+          appointmentId: Schema.String.annotate({ description: "Appointment" }),
+        }),
+      }),
+    ];
+
+    const fields = getUpstreamFields({
+      catalog: surface,
+      currentNodeId: "notify",
+      nodes: [
+        anEntryNode({
+          startEvents: [
+            "app/appointment.created",
+            "app/appointment.rescheduled",
+          ],
+          schedules: [{ cron: "0 9 * * *", timeZone: "America/New_York" }],
+        }),
+        createNode({
+          id: "notify",
+          type: "action",
+          label: "Notify",
+          config: { actionType: "custom/notify" },
+        }),
+      ],
+      edges: [startedEdge("notify")],
+    });
+
+    const lifecycleFields = fields.filter(
+      (field) => field.sourceNodeId === "lifecycle-1"
+    );
+    expect(lifecycleFields.map((field) => field.path)).toEqual(
+      expect.arrayContaining(["appointmentId", "bookedBy"])
+    );
+    expect(lifecycleFields.every((field) => field.nullable === true)).toBe(
+      true
+    );
+  });
+
   it("keeps an Event field required when the Wait stops on timeout", () => {
     surface.events = [
       anEvent({

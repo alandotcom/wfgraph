@@ -1166,9 +1166,12 @@ keeps compatibility machinery alive for the next one.
    run of the published version that names no Event, started by the clock.
    - A schedule is a Lifecycle Rule: `schedules` beside `allowManualStart`, a
      list of 5-field cron expressions, each with an IANA time zone that defaults
-     to the editor's browser zone. A local time that does not exist fires once
-     at the next valid instant, and a repeated local time fires once, on its
-     first occurrence.
+     to the editor's browser zone. A fixed-time schedule, one naming a single
+     minute and hour, fires a local time that does not exist once at the next
+     valid instant, and a repeated local time once, on its first occurrence. An
+     interval schedule, one with a wildcard, step, range or list in the minute
+     or hour, runs on elapsed time through a daylight-saving change. These are
+     croner's documented rules.
    - It takes effect at Publish, like the Start Events, and a draft never fires.
      Republishing keeps the timer of an unchanged schedule.
    - A fire missed while no worker ran runs once, for the most recent slot at

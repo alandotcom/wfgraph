@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import {
   entityStateConditionPath,
   serializeConditionModel,
@@ -635,6 +636,44 @@ describe("collectWorkflowIssues Lifecycle Rules", () => {
         },
       ],
     });
+  });
+
+  it("reports a schedule on a graph with an Event Split as a Publish blocker", () => {
+    const issues = collectWorkflowIssues({
+      nodes: [
+        lifecycle({
+          startEvents: ["app/appointment.created"],
+          cancelEvents: [],
+          concurrency: "unlimited",
+          schedules: [{ cron: "0 9 * * *", timeZone: "America/New_York" }],
+        }),
+        {
+          id: "split",
+          type: "action",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Split",
+            type: "action",
+            config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
+          },
+        },
+      ],
+      edges: [],
+      catalog: lifecycleCatalog,
+      integrations: [],
+    });
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        kind: "invalid_lifecycle_rules",
+        severity: "blocking",
+        nodeId: "lifecycle",
+        check: "schedule",
+        message: expect.stringContaining("A scheduled run carries no Event"),
+      }),
+    ]);
+    // A draft run is a manual run, which a schedule never starts.
+    expect(hasDraftRunBlockingIssues(issues)).toBe(false);
   });
 
   it("reports rules preflight refuses as blocking the draft run too", () => {

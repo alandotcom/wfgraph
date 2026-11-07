@@ -2,9 +2,11 @@ import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import type { ExtensionCatalog } from "#src/extensions/catalog";
 import { serializeConditionModel } from "#src/conditions/conditions";
+import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import { rejectUnknownKeys } from "#src/types/schema";
 import {
   checkLifecycleRules,
+  checkSchedulesAgainstEventSplits,
   configDeclaresCancelEvent,
   connectionIdForIntegration,
   eventsNeedingCorrelationPath,
@@ -92,6 +94,8 @@ const catalog: ExtensionCatalog = {
   ],
 };
 
+const weekdayMornings = { cron: "0 9 * * 1-5", timeZone: "America/New_York" };
+
 function rules(overrides: Partial<LifecycleRules> = {}): LifecycleRules {
   return {
     startEvents: ["app/appointment.created"],
@@ -116,6 +120,7 @@ describe("lifecycleRulesSchema", () => {
       cancelEvents: [],
       concurrency: "first-wins",
       allowManualStart: true,
+      schedules: [weekdayMornings],
       correlationPaths: { "ops/nightly.swept": "sweep.id" },
       cancelFilters: { "app/appointment.canceled": "{}" },
       trackedEntity: {
@@ -130,6 +135,7 @@ describe("lifecycleRulesSchema", () => {
 
     expect(decoded.concurrency).toBe("first-wins");
     expect(decoded.allowManualStart).toBe(true);
+    expect(decoded.schedules).toEqual([weekdayMornings]);
     expect(decoded.correlationPaths).toEqual({
       "ops/nightly.swept": "sweep.id",
     });
@@ -151,6 +157,17 @@ describe("lifecycleRulesSchema", () => {
       decode({
         cancelEvents: [],
         concurrency: "replace",
+      })._tag
+    ).toBe("Failure");
+  });
+
+  it("refuses a schedule that repeats another", () => {
+    expect(
+      decode({
+        startEvents: [],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        schedules: [weekdayMornings, { ...weekdayMornings }],
       })._tag
     ).toBe("Failure");
   });
@@ -590,8 +607,6 @@ describe("checkLifecycleRules", () => {
     ).toEqual({ valid: true });
   });
 
-  // A clock is not in the shape at all: nothing can write one, so there is no
-  // schedule to refuse, and the panel says where one will come from instead.
   it("refuses a workflow with no start source at all", () => {
     expect(
       refusalOf(
@@ -600,7 +615,37 @@ describe("checkLifecycleRules", () => {
           catalog,
         })
       )
-    ).toContain("Nothing can start this workflow");
+    ).toBe(
+      "Nothing can start this workflow. Add a Start Event or a schedule, or allow manual starts."
+    );
+  });
+
+  it("accepts a schedule as the only start source", () => {
+    expect(
+      checkLifecycleRules({
+        rules: rules({ startEvents: [], schedules: [weekdayMornings] }),
+        catalog,
+      })
+    ).toEqual({ valid: true });
+  });
+
+  it("refuses a schedule on a workflow that tracks an Entity", () => {
+    expect(
+      refusalOf(
+        checkLifecycleRules({
+          rules: rules({
+            schedules: [weekdayMornings],
+            trackedEntity: {
+              type: "appointment",
+              bindings: { "app/appointment.created": "appointment" },
+            },
+          }),
+          catalog,
+        })
+      )
+    ).toBe(
+      "A scheduled run carries no Entity, so a workflow that tracks an Entity cannot have a schedule. Remove the schedules, or stop tracking the Entity."
+    );
   });
 
   // A Wait Subscription carries its own match expression, so what a parked run
@@ -774,6 +819,58 @@ describe("hasStartSource", () => {
       hasStartSource(rules({ startEvents: [], allowManualStart: false }))
     ).toBe(false);
     expect(hasStartSource(rules({ startEvents: [] }))).toBe(false);
+  });
+
+  it("counts a schedule, and an empty list as none", () => {
+    expect(
+      hasStartSource(rules({ startEvents: [], schedules: [weekdayMornings] }))
+    ).toBe(true);
+    expect(hasStartSource(rules({ startEvents: [], schedules: [] }))).toBe(
+      false
+    );
+  });
+});
+
+describe("checkSchedulesAgainstEventSplits", () => {
+  const eventSplit = {
+    data: {
+      type: "action",
+      config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
+    },
+  };
+  const sendEmail = {
+    data: { type: "action", config: { actionType: "resend/send-email" } },
+  };
+
+  it("refuses a schedule on a graph holding an Event Split", () => {
+    expect(
+      refusalOf(
+        checkSchedulesAgainstEventSplits({
+          rules: rules({ schedules: [weekdayMornings] }),
+          nodes: [sendEmail, eventSplit],
+        })
+      )
+    ).toBe(
+      "A scheduled run carries no Event, and this workflow has an Event Split that needs one. Remove the schedules, or remove the Event Split."
+    );
+  });
+
+  it("accepts a schedule on a graph with no Event Split", () => {
+    expect(
+      checkSchedulesAgainstEventSplits({
+        rules: rules({ schedules: [weekdayMornings] }),
+        nodes: [sendEmail],
+      })
+    ).toEqual({ valid: true });
+  });
+
+  it("accepts an Event Split on a workflow with no schedule", () => {
+    expect(
+      checkSchedulesAgainstEventSplits({
+        rules: rules({ schedules: [] }),
+        nodes: [eventSplit],
+      })
+    ).toEqual({ valid: true });
   });
 });
 

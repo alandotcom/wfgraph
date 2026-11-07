@@ -29,7 +29,11 @@ import {
   toWorkflowGraphData,
 } from "@wfgraph/shared/graph/graph";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
-import { LIFECYCLE_CANCELED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import {
+  LIFECYCLE_CANCELED_HANDLE,
+  LIFECYCLE_STARTED_HANDLE,
+} from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 
 function lifecycleNode(cancelEvents: string[] = []) {
   return {
@@ -213,6 +217,41 @@ describe("publish-checks", () => {
         }),
       }).map((failure) => failure.kind)
     ).toEqual(["invalid_entity_eligibility"]);
+  });
+
+  it("refuses a schedule on a graph whose Event Split needs an Event", () => {
+    const scheduled: WorkflowNode = lifecycleNode();
+    scheduled.data.config = {
+      lifecycleRules: {
+        startEvents: ["app/appointment.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        schedules: [{ cron: "0 9 * * *", timeZone: "America/New_York" }],
+      },
+    };
+    const split = actionNode("split", "Split");
+    split.data.config = { actionType: BUILT_IN_ACTION_IDS.eventSplit };
+
+    const failures = collectSynchronousPublicationFailures({
+      nodes: [scheduled, split],
+      edges: [
+        {
+          id: "started-split",
+          source: "lifecycle-1",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          target: "split",
+        },
+      ],
+      catalog: catalogOf({ events: [anEvent("app/appointment.created")] }),
+    });
+
+    expect(failures).toEqual([
+      {
+        kind: "invalid_schedule",
+        error:
+          "A scheduled run carries no Event, and this workflow has an Event Split that needs one. Remove the schedules, or remove the Event Split.",
+      },
+    ]);
   });
 
   it("flags nodes the Lifecycle Node cannot reach", () => {

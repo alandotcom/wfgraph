@@ -62,6 +62,7 @@ const catalog: ExtensionCatalog = {
 function entryNode(input: {
   startEvents?: string[];
   cancelEvents?: string[];
+  schedules?: { cron: string; timeZone: string }[];
 }): WorkflowNode {
   return {
     id: "lifecycle-1",
@@ -75,6 +76,7 @@ function entryNode(input: {
           startEvents: input.startEvents ?? [],
           cancelEvents: input.cancelEvents ?? [],
           concurrency: "unlimited",
+          schedules: input.schedules,
         },
       },
     },
@@ -771,6 +773,30 @@ describe("arrivingEventCanBeAbsent", () => {
     ];
 
     expect(eventCanBeAbsent("notify", nodes, edges)).toBe(false);
+  });
+
+  // A scheduled run leaves Started with no Arriving Event, which is what makes
+  // every Start Event field nullable behind it.
+  it("answers true behind Started when the rules carry a schedule", () => {
+    const nodes = [
+      entryNode({
+        startEvents: [CREATED],
+        cancelEvents: [CANCELED],
+        schedules: [{ cron: "0 9 * * *", timeZone: "America/New_York" }],
+      }),
+      actionNode("notify"),
+      actionNode("cleanup"),
+    ];
+    const edges = [
+      edge("e1", "lifecycle-1", "notify", LIFECYCLE_STARTED_HANDLE),
+      edge("e2", "lifecycle-1", "cleanup", LIFECYCLE_CANCELED_HANDLE),
+    ];
+
+    expect(reachabilityAt("notify", nodes, edges)).toEqual({
+      events: [catalog.events[0]],
+      eventCanBeAbsent: true,
+    });
+    expect(eventCanBeAbsent("cleanup", nodes, edges)).toBe(false);
   });
 
   it("answers true below a Wait that continues past its timeout", () => {

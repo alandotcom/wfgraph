@@ -26,6 +26,7 @@ import { checkEntityEligibility } from "@wfgraph/shared/lifecycle/entity-eligibi
 import {
   checkLifecycleRules,
   emptyLifecycleRules,
+  hasSchedule,
   inheritConnectionIds,
   type LifecycleRules,
   pruneConnectionIds,
@@ -373,7 +374,13 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           });
         }
 
-        if (startEvents.length === 0 && allowManualStart !== true) {
+        // This tool writes no schedule, so a stored one is kept and counts as
+        // the start source it is.
+        if (
+          startEvents.length === 0 &&
+          allowManualStart !== true &&
+          !hasSchedule(stored)
+        ) {
           return Effect.fail({
             reason:
               "A workflow needs a way to start. Name at least one Start Event, or set allowManualStart to true.",
@@ -581,6 +588,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
             cancelFilters,
             connectionIds,
             allowManualStart,
+            schedules: stored?.schedules,
             correlationPaths: trackedEntity ? undefined : correlationPaths,
             trackedEntity,
             entityEligibility,

@@ -45,7 +45,10 @@ import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
 } from "#src/lifecycle/lifecycle-outlets";
-import { readLifecycleRules } from "#src/lifecycle/lifecycle-rules";
+import {
+  hasSchedule,
+  readLifecycleRules,
+} from "#src/lifecycle/lifecycle-rules";
 import { readWaitSubscriptions } from "#src/lifecycle/wait-subscription";
 
 /**
@@ -520,7 +523,11 @@ function reachingFromParent(input: {
         handle: input.handle,
         catalog,
       }),
-      eventCanBeAbsent: false,
+      // A scheduled run leaves Started with no Arriving Event and an empty
+      // payload, so every Start Event field is absent on it.
+      eventCanBeAbsent:
+        side === "started" &&
+        hasSchedule(readLifecycleRules(parent.data.config)),
       sources: side ? [{ kind: "lifecycle", nodeId: parent.id, side }] : [],
     };
   }
@@ -605,7 +612,9 @@ function intersectEventsByName(
  * an Event, and the engine writes an empty payload onto the Lifecycle Node for
  * everything below it. Every path the Wait's Events declare is therefore absent
  * on that run, which is exactly what `nullable` on a Reachable Field says. A
- * Wait set to skip on timeout releases no such run, so it answers false.
+ * Wait set to skip on timeout releases no such run, so it answers false. A
+ * scheduled run is the other run with no Arriving Event: it leaves the Started
+ * outlet of a Lifecycle Node whose rules carry a schedule with an empty payload.
  *
  * The question is asked per node rather than per field, because the timeout is
  * a fact about the walk down to the node and not about any one payload path.

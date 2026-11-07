@@ -39,12 +39,13 @@ const LIFECYCLE_CHECK_SECTIONS: Readonly<
   start_filter: "start-events",
   cancel_filter: "cancel-events",
   entity_eligibility: "entity-eligibility",
+  schedule: "start-events",
 };
 
 /**
  * The Focus section that edits what `issue` names: the Start Events for a
- * Lifecycle Rules or Start Filter problem, since those rules name the Events,
- * the Cancel Events for a Cancel Filter problem, Entity eligibility for an
+ * Lifecycle Rules, Start Filter or schedule problem, since that section holds
+ * the start sources, the Cancel Events for a Cancel Filter problem, Entity eligibility for an
  * eligibility problem, and Validation for any other issue.
  */
 export function lifecycleIssueSection(

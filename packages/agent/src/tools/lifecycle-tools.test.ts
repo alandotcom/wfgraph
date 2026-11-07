@@ -654,6 +654,42 @@ describe("set_lifecycle_rules", () => {
     })
   );
 
+  // The tool writes no schedule, so one already stored is kept through an edit
+  // and stands as the workflow's start source.
+  it.effect("keeps a stored schedule as the start source", () =>
+    Effect.gen(function* () {
+      const schedules = [{ cron: "0 9 * * 1-5", timeZone: "America/New_York" }];
+      const scheduled: WorkflowNode = {
+        ...entry,
+        data: {
+          ...entry.data,
+          config: {
+            lifecycleRules: {
+              startEvents: [],
+              cancelEvents: [],
+              concurrency: "unlimited",
+              schedules,
+            },
+          },
+        },
+      };
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [scheduled],
+        catalog,
+      });
+
+      yield* tools.set_lifecycle_rules({ concurrency: "first-wins" });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+      ).toMatchObject({
+        startEvents: [],
+        concurrency: "first-wins",
+        schedules,
+      });
+    })
+  );
+
   it.effect("refuses one Event holding both lifecycle roles", () =>
     Effect.gen(function* () {
       const { tools, draft } = yield* agentToolsFor({ catalog });

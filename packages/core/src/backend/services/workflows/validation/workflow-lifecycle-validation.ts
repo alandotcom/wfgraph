@@ -17,6 +17,7 @@ import {
 } from "@wfgraph/shared/lifecycle/event-split";
 import {
   checkLifecycleRules,
+  checkSchedulesAgainstEventSplits,
   type LifecycleRules,
   hostEventConnectionMessage,
   missingConnectionMessage,
@@ -161,6 +162,18 @@ export function validateEntityEligibility(
 ): WorkflowLifecycleValidationResult {
   return checkEveryLifecycleNode(nodes, (rules) =>
     checkEntityEligibility({ rules, catalog })
+  );
+}
+
+/**
+ * Every schedule, held to a graph a run naming no Event can travel. Publish
+ * only, since a draft never fires a schedule.
+ */
+export function validateSchedules(
+  nodes: readonly WorkflowNode[]
+): WorkflowLifecycleValidationResult {
+  return checkEveryLifecycleNode(nodes, (rules) =>
+    checkSchedulesAgainstEventSplits({ rules, nodes })
   );
 }
 

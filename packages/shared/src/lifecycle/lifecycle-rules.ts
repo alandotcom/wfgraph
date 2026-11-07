@@ -21,10 +21,13 @@ import {
   inheritConnections,
   stampConnection,
 } from "#src/lifecycle/event-connections";
+import { cronSchedulesSchema } from "#src/lifecycle/cron-schedule";
 import {
   entityEligibilitySchema,
   trackedEntitySchema,
 } from "#src/lifecycle/entity-eligibility";
+import { graphSplitsOnEvent } from "#src/lifecycle/event-split";
+import type { NodeConfigSource } from "#src/graph/node-config";
 import { NonEmptyTrimmedString, readAs } from "#src/types/schema";
 
 /**
@@ -57,13 +60,20 @@ export const lifecycleRulesSchema = Schema.Struct({
   concurrency: concurrencySchema,
 
   /**
-   * The start source that is not an Event: the Run button and the execute route.
-   *
-   * A clock is the other one the design names, and it is absent rather than
-   * carried-and-refused, because nothing in Workflow Graph can write one. It arrives with
-   * whatever ticks it, and the panel says so where a builder looks for it.
+   * Whether the Run button and the execute route may start a run. A manual run
+   * is one of the two start sources that are not an Event; `schedules` is the
+   * other.
    */
   allowManualStart: Schema.optional(Schema.Boolean),
+
+  /**
+   * The clocks that start a run, each a 5-field cron expression read in an IANA
+   * time zone. At each time a schedule names, a run of the published version
+   * starts with no payload and no Arriving Event. A schedule takes effect at
+   * Publish, like a Start Event, so a draft never fires one. The pair of
+   * expression and zone identifies a schedule, and a list names each pair once.
+   */
+  schedules: Schema.optional(cronSchedulesSchema),
 
   /**
    * The Correlation Path this workflow reads an Event at, keyed by Event name.
@@ -191,7 +201,16 @@ export function resolveCorrelationPath(input: {
 
 /** Whether anything at all can start a run of this workflow. */
 export function hasStartSource(rules: LifecycleRules): boolean {
-  return rules.startEvents.length > 0 || rules.allowManualStart === true;
+  return (
+    rules.startEvents.length > 0 ||
+    rules.allowManualStart === true ||
+    hasSchedule(rules)
+  );
+}
+
+/** Whether a clock starts runs of this workflow. */
+export function hasSchedule(rules: LifecycleRules | undefined): boolean {
+  return (rules?.schedules?.length ?? 0) > 0;
 }
 
 /**
@@ -560,13 +579,40 @@ export function checkLifecycleRules(input: {
     return refuseLifecycleRules(strayCancelFilterMessage(strayCancelFilter));
   }
 
+  // A scheduled run carries no payload, so it has no Entity to select, and a
+  // tracked workflow refuses every start that names none.
+  if (rules.trackedEntity && hasSchedule(rules)) {
+    return refuseLifecycleRules(
+      "A scheduled run carries no Entity, so a workflow that tracks an Entity cannot have a schedule. Remove the schedules, or stop tracking the Entity."
+    );
+  }
+
   if (!hasStartSource(rules)) {
     return refuseLifecycleRules(
-      "Nothing can start this workflow. Add a Start Event, or allow manual starts."
+      "Nothing can start this workflow. Add a Start Event or a schedule, or allow manual starts."
     );
   }
 
   return lifecycleRulesValid;
+}
+
+/**
+ * Publish's check that a scheduled run can travel the graph.
+ *
+ * A scheduled run names no Event, so it leaves an Event Split by no outlet and
+ * everything behind the split goes unrun. The rule is the one the manual
+ * entrypoint refuses a run naming no Event by, `graphSplitsOnEvent`.
+ */
+export function checkSchedulesAgainstEventSplits(input: {
+  rules: LifecycleRules;
+  nodes: readonly NodeConfigSource[];
+}): LifecycleRulesCheck {
+  if (!hasSchedule(input.rules) || !graphSplitsOnEvent(input.nodes)) {
+    return lifecycleRulesValid;
+  }
+  return refuseLifecycleRules(
+    "A scheduled run carries no Event, and this workflow has an Event Split that needs one. Remove the schedules, or remove the Event Split."
+  );
 }
 
 /** The sentence a save is refused with when a filter names no Start Event. */

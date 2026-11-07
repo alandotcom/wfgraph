@@ -1390,7 +1390,7 @@ describe("LifecyclePanel refusals", () => {
     expect(view.getByText("Lifecycle settings need attention")).toBeTruthy();
     expect(
       view.getByText(
-        "Nothing can start this workflow. Add a Start Event, or allow manual starts."
+        "Nothing can start this workflow. Add a Start Event or a schedule, or allow manual starts."
       )
     ).toBeTruthy();
   });

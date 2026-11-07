@@ -92,7 +92,8 @@ failure.
 **Lifecycle Rules**:
 The Workflow Builder's per-workflow declaration of a run's lifetime: Start
 Events and their Start Filters, Cancel Events and their Cancel Filters, Entity
-Eligibility when configured, and Concurrency. Lives on the Lifecycle Node. One
+Eligibility when configured, Concurrency, whether manual starts are allowed,
+and the cron schedules that start a run. Lives on the Lifecycle Node. One
 Event never holds the start role and the cancel role in the same workflow; the
 editor rejects that configuration.
 _Avoid_: Routing Policy (the retired per-event verb table), Replace, Ignore

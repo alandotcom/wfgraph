@@ -33,6 +33,7 @@ import {
 } from "#src/lifecycle/entity-eligibility";
 import {
   checkLifecycleRules,
+  checkSchedulesAgainstEventSplits,
   type LifecycleRules,
   type LifecycleRulesCheck,
   readLifecycleRules,
@@ -123,14 +124,15 @@ export type InvalidGroupIssue = {
 
 /**
  * The Lifecycle Rules checks Publish runs on a Lifecycle Node. Preflight also
- * runs `rules`, so a `rules` problem stops a draft run; the other three checks
- * stop Publish alone.
+ * runs `rules`, so a `rules` problem stops a draft run; the other checks stop
+ * Publish alone.
  */
 export type LifecycleRulesCheckId =
   | "rules"
   | "entity_eligibility"
   | "start_filter"
-  | "cancel_filter";
+  | "cancel_filter"
+  | "schedule";
 
 /**
  * A Lifecycle Node whose rules one Publish check refuses, with that check's
@@ -551,6 +553,7 @@ const LIFECYCLE_RULES_CHECKS: ReadonlyArray<
     (input: {
       rules: LifecycleRules;
       catalog: ExtensionCatalog;
+      nodes: readonly WorkflowNode[];
     }) => LifecycleRulesCheck,
   ]
 > = [
@@ -558,6 +561,7 @@ const LIFECYCLE_RULES_CHECKS: ReadonlyArray<
   ["entity_eligibility", checkEntityEligibility],
   ["start_filter", checkStartFilters],
   ["cancel_filter", checkCancelFilters],
+  ["schedule", checkSchedulesAgainstEventSplits],
 ];
 
 /**
@@ -578,7 +582,7 @@ function collectInvalidLifecycleRulesIssues(input: {
     }
     const nodeLabel = workflowNodeLabel({ node });
     return LIFECYCLE_RULES_CHECKS.flatMap(([check, run]) => {
-      const result = run({ rules, catalog: input.catalog });
+      const result = run({ rules, catalog: input.catalog, nodes: input.nodes });
       return result.valid
         ? []
         : [

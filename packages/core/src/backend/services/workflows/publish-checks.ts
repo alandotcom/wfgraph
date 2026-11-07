@@ -25,6 +25,7 @@ import {
   validateCancelFilters,
   validateEntityEligibility,
   validateEventSplitOutlets,
+  validateSchedules,
   validateStartFilters,
   validateWorkflowEvents,
 } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
@@ -50,6 +51,7 @@ export type SynchronousPublicationFailure = {
     | "invalid_entity_eligibility"
     | "invalid_start_filter"
     | "invalid_cancel_filter"
+    | "invalid_schedule"
     | "invalid_event_split"
     | "invalid_group"
     | "invalid_template"
@@ -88,6 +90,7 @@ function synchronousPublicationChecks(input: {
     // Start Filter must not stop the whole workflow.
     ["invalid_start_filter", () => validateStartFilters(nodes, catalog)],
     ["invalid_cancel_filter", () => validateCancelFilters(nodes, catalog)],
+    ["invalid_schedule", () => validateSchedules(nodes)],
     [
       "invalid_event_split",
       () => validateEventSplitOutlets(nodes, edges, catalog),

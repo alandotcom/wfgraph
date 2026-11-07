@@ -39,6 +39,10 @@ catalog:
   "@testing-library/react": ^16.3.3
   "@types/react": ^19.3.0
   "@xyflow/react": ^12.12.1
+  # The cron matcher behind a Lifecycle Rule's schedules, in
+  # packages/shared/src/lifecycle/cron-schedule.ts. Shared declares it for its
+  # source and core for the bundle that source is inlined into.
+  croner: ^11.0.0
   # The second foreign Standard Schema library the schema tests are written
   # against, beside zod below.
   arktype: ^2.2.9
