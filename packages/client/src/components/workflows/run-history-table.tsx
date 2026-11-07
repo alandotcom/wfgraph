@@ -23,6 +23,7 @@ import {
 import type { WorkflowExecutionsGlobalResult } from "#src/lib/rpc-client";
 import type { ListActivity } from "#src/lib/run-executor-activity";
 import { useListActivityLabel } from "#src/components/workflow/use-list-activity-label";
+import { getRunIdentity } from "#src/components/workflow/workflow-run-summary-row";
 import {
   runGraphLabel,
   runRecipientsLabel,
@@ -163,6 +164,9 @@ function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
       sortFn: "alphanumeric",
       cell: (info) => {
         const run = info.row.original;
+        // The table lists no run numbers, and a run number only titles a run
+        // nothing else names, so 0 stands in for one.
+        const identity = getRunIdentity(run, 0);
         return (
           <div className="min-w-0">
             <button
@@ -175,11 +179,11 @@ function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
               {run.workflowName}
             </button>
             {/* A scheduled run's Entity Value is the workflow's own id, which
-                says nothing a reader can use, so it is named by the schedule
-                that started it. */}
-            {run.startSource === "schedule" && run.startEventName === null ? (
+                says nothing a reader can use, so it is named as the Runs view
+                names it, by the schedule that started it. */}
+            {run.startSource === "schedule" ? (
               <div className="truncate text-muted-foreground text-xs">
-                {run.scheduleDescription ?? "Scheduled run"}
+                {identity.context ?? identity.title}
               </div>
             ) : (
               <div className="truncate font-mono text-muted-foreground text-xs">

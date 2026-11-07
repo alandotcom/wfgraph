@@ -42,22 +42,49 @@ type WorkflowRunSummaryRowProps = {
 };
 
 /**
+ * A run's title, and the line beneath it with the label the overview gives
+ * that line. A run with no line beneath its title has no label either.
+ */
+type RunIdentity =
+  | { title: string; context: null }
+  | { title: string; context: string; contextLabel: "Entity" | "Schedule" };
+
+/** The fields of a run its identity is read from. */
+type RunIdentitySource = Pick<
+  WorkflowExecution,
+  | "startEventName"
+  | "entityValue"
+  | "startSource"
+  | "scheduleDescription"
+  | "workflowId"
+>;
+
+/**
  * The run's title and the line beneath it. A scheduled run carries no payload
  * and its Entity Value is the workflow's own (`workflow:<id>`), so it is
  * titled by its source, with the schedule that started it beneath.
+ * `runNumber` titles a run nothing else names.
  */
 export function getRunIdentity(
-  execution: WorkflowExecution,
+  execution: RunIdentitySource,
   runNumber: number
-): { title: string; context: string | null } {
+): RunIdentity {
   const eventName = execution.startEventName?.trim();
   const entity = execution.entityValue?.trim();
 
   if (eventName) {
-    return { title: eventName, context: entity || null };
+    return entity
+      ? { title: eventName, context: entity, contextLabel: "Entity" }
+      : { title: eventName, context: null };
   }
   if (execution.startSource === "schedule") {
-    return { title: "Scheduled run", context: execution.scheduleDescription };
+    return execution.scheduleDescription === null
+      ? { title: "Scheduled run", context: null }
+      : {
+          title: "Scheduled run",
+          context: execution.scheduleDescription,
+          contextLabel: "Schedule",
+        };
   }
   if (
     execution.startSource === "manual" &&
@@ -315,12 +342,9 @@ function HeaderSummary({
       </div>
 
       <dl className="mt-3 space-y-1.5 pl-6">
-        {identity.context ? (
-          <MetadataRow
-            label={execution.startSource === "schedule" ? "Schedule" : "Entity"}
-            value={identity.context}
-          />
-        ) : null}
+        {identity.context === null ? null : (
+          <MetadataRow label={identity.contextLabel} value={identity.context} />
+        )}
         {lateSlot ? (
           <MetadataRow label="Scheduled" value={formatOverviewTime(lateSlot)} />
         ) : null}

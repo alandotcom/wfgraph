@@ -213,6 +213,32 @@ describe("WorkflowRunSummaryRow", () => {
     expect(header.queryByText("Entity")).toBeNull();
   });
 
+  it("labels the line beneath a run's title by what it names", () => {
+    expect(
+      getRunIdentity({ ...BASE_EXECUTION, entityValue: "appt_42" }, 1)
+    ).toEqual({
+      title: "appointment.updated",
+      context: "appt_42",
+      contextLabel: "Entity",
+    });
+    expect(
+      getRunIdentity(
+        {
+          ...BASE_EXECUTION,
+          entityValue: "workflow:wf_1",
+          startEventName: null,
+          startSource: "schedule",
+          scheduleDescription: "Every day at 9:00 AM (UTC)",
+        },
+        1
+      )
+    ).toEqual({
+      title: "Scheduled run",
+      context: "Every day at 9:00 AM (UTC)",
+      contextLabel: "Schedule",
+    });
+  });
+
   it("titles a scheduled run by its source, not the workflow's own Entity Value", () => {
     expect(
       getRunIdentity(
@@ -221,7 +247,6 @@ describe("WorkflowRunSummaryRow", () => {
           entityValue: "workflow:wf_1",
           startEventName: null,
           startSource: "schedule",
-          scheduledFor: new Date("2026-02-22T10:00:00Z"),
           scheduleDescription: null,
         },
         8
