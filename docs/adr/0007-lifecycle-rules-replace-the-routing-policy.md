@@ -130,3 +130,30 @@ named by the rules, not per Event. Two Resend Start Events share the Resend
 Connection and paste the same Connection-addressed URL. The stored
 `connectionIds` map still keys by Event name so matching stays on the arrival;
 choosing a Connection stamps every named Event of that integration.
+
+## Amendment, 2026-11-06: a schedule is a start source on the Lifecycle Node
+
+The Consequences above named schedule runs as a start source on the Lifecycle
+Node, and nothing could write one until the database executor owned a clock.
+The Lifecycle Rules gained `schedules`, a list of 5-field cron expressions, each
+with an IANA time zone. A schedule was made a Lifecycle Rule rather than a
+trigger node or a workflow setting because the rules already hold every other
+start source, and a builder reads one place to learn what starts a run.
+
+A scheduled run is a manual run of the published version that names no Event,
+started by the clock. It carries no payload, so its Entity Value is the
+workflow itself, as the Consequences above already said: first-wins skips a
+fire while a run is going, and newest-wins supersedes it. A workflow that
+tracks an Entity cannot hold a schedule, since a scheduled run has no Entity
+to carry (ADR-0020), and Publish refuses a schedule on a graph whose Event
+Split needs an Event. A schedule takes effect at Publish, like a Start Event.
+
+Each schedule is a timer row the executor claims under a lease. A fire opens
+the run and advances the timer in one fenced transaction, so a slot fires at
+most once. A fire missed while no worker ran fires once, for the latest slot,
+because catching up every missed slot would flood a workflow that was down for
+a day. A paused workflow keeps no timers, and resuming computes the next fire
+from the resume time, because a pause is the builder asking for no runs. A
+slot that cannot run, because the published version no longer passes the
+checks a run starts with, is recorded as a Refused Start so the builder sees
+it. The TLA+ `Cron` model checked these rules before the code was written.

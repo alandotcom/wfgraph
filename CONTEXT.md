@@ -114,6 +114,16 @@ them, and an Event Split is what tells them apart. A tracked workflow selects
 its Entity ID before Concurrency. When it also declares Entity Eligibility, the
 resolver and eligibility check run between Entity ID selection and Concurrency.
 
+**Schedule**:
+A cron expression and an IANA time zone on the Lifecycle Rules that starts a
+run at each time it names. A scheduled run is a run of the published version
+that names no Event and carries no payload, so it uses the workflow itself as
+its Entity Value and an Event Split stops it. A schedule takes effect at
+Publish, a paused workflow does not fire, and a time missed while no worker
+ran fires once, for the latest one. A workflow that tracks an Entity cannot
+hold one.
+_Avoid_: cron job, trigger (a schedule is a start source on the Lifecycle Node)
+
 **Start Filter**:
 The condition an arrival must satisfy before a run opens, written per Start
 Event. An arrival that does not satisfy it opens no Execution and is recorded
