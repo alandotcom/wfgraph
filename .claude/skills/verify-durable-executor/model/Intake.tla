@@ -63,7 +63,8 @@ VARIABLES
   exec,         \* each Execution: "none" | "running" | "claimed" | "completed"
                 \*   | "canceled" | "superseded" | "swept" (the run sweep deleted it)
   esched,       \* each Execution's schedule row: "none" | "present" | "gone"
-  refused,      \* each inbox row of a Start arrival: its Refused Start's audit row exists
+  refused,      \* each inbox row of a Start arrival: the Refused Start audit row it has,
+                \*   "none" | "eligibility" (findAdmissionRefusal reads it) | "concurrency"
   eligRefused,  \* each inbox row: refused by admission Entity Eligibility
   refusedChanged, \* an arrival Eligibility refused changed a run anyway
   faults,
@@ -79,7 +80,7 @@ FailRecordsTheRow == TRUE                \* failDelivery marks the inbox row fai
 ResendRedeliversFailed == TRUE           \* a send whose key holds a failed row resets it to pending and schedules it
 CancelDecisionIsRecorded == TRUE         \* a Cancel's claim records its decision, and a retried claim answers from it
 DeliveryIdIsUnique == TRUE               \* unique (workflow_id, delivery_id) on executions
-RefusalIsConsulted == TRUE               \* answerFromCommittedDecision reads a prior refusal first
+RefusalIsConsulted == TRUE               \* answerFromCommittedDecision reads a prior Eligibility refusal first
 EligibilityBeforeConcurrency == TRUE     \* Precedence: admission Eligibility, then Concurrency
 ExecutionAndScheduleTogether == TRUE     \* one transaction inserts both rows
 SupersedeDropsSchedule == TRUE           \* a supersede deletes the run's schedule row
@@ -98,7 +99,7 @@ Init ==
   /\ written = [r \in Rows |-> FALSE] /\ memo = [r \in Rows |-> FALSE]
   /\ pc = [w \in Workers |-> "idle"] /\ cur = [w \in Workers |-> <<"c", 1>>]
   /\ exec = [x \in Execs |-> "none"] /\ esched = [x \in Execs |-> "none"]
-  /\ refused = [r \in Rows |-> FALSE] /\ faults = 0
+  /\ refused = [r \in Rows |-> "none"] /\ faults = 0
   /\ eligRefused = [r \in Rows |-> FALSE] /\ refusedChanged = FALSE
 
 execVars == <<exec, esched, refused, eligRefused, refusedChanged>>
@@ -169,10 +170,13 @@ Supersede(exclude) ==
   /\ esched' = [y \in Execs |-> IF y \in Live /\ y # exclude /\ SupersedeDropsSchedule THEN "gone" ELSE esched[y]]
 
 \* startForEntity for a Start arrival. A retried delivery is answered from what
-\* its first attempt committed (answerFromCommittedDecision). Otherwise the
-\* host's Entity resolver is read again, which can answer differently on each
-\* attempt, and admission Eligibility decides before Concurrency does
-\* (CONTEXT.md "Precedence").
+\* its first attempt committed (answerFromCommittedDecision): the run it opened,
+\* or an Entity Eligibility refusal, the one refusal findAdmissionRefusal reads.
+\* Otherwise the host's Entity resolver is read again, which can answer
+\* differently on each attempt, and admission Eligibility decides before
+\* Concurrency does (CONTEXT.md "Precedence"). A first-wins refusal is not read
+\* back, so a retry asks Concurrency again and opens a run once the run that
+\* refused it has ended.
 StartWrite(r) ==
   LET k == r[1]
       first == <<k, r[2], 1>>
@@ -181,18 +185,19 @@ StartWrite(r) ==
   \* findByDelivery finds the run unless the run sweep deleted it.
   IF exec[first] \notin {"none", "swept"} /\ DeliveryIdIsUnique
     THEN UNCHANGED execVars
-  ELSE IF refused[r] /\ RefusalIsConsulted
+  ELSE IF refused[r] = "eligibility" /\ RefusalIsConsulted
     THEN UNCHANGED execVars
   ELSE \E eligible \in BOOLEAN :
     IF ~eligible
       THEN \* recordAdmissionRefusal: a Refused Start, and no Execution.
-           /\ refused' = [refused EXCEPT ![r] = TRUE]
+           /\ refused' = [refused EXCEPT ![r] = "eligibility"]
            /\ eligRefused' = [eligRefused EXCEPT ![r] = TRUE]
            /\ IF ~EligibilityBeforeConcurrency /\ mode = "newest" /\ Live # {}
                 THEN Supersede(<<"none">>) /\ refusedChanged' = TRUE
                 ELSE UNCHANGED <<exec, esched, refusedChanged, failed, cancelSet, lostResend>>
     ELSE IF mode = "first" /\ Live # {}
-      THEN /\ refused' = [refused EXCEPT ![r] = TRUE]
+      THEN \* recordAuditEvent: a run_refused row no retry reads.
+           /\ refused' = [refused EXCEPT ![r] = "concurrency"]
            /\ UNCHANGED <<exec, esched, eligRefused, refusedChanged, failed, cancelSet, lostResend>>
     ELSE
       /\ exec' = [y \in Execs |->
@@ -324,9 +329,9 @@ SweepRun(x) ==
 \* (sweepableWorkflowAudit). The Entity admission refusal findAdmissionRefusal
 \* reads is one of these rows.
 SweepRefusal(r) ==
-  /\ refused[r]
+  /\ refused[r] # "none"
   /\ AuditSweepKeepsInboxRefusals => inbox[r] # "present"
-  /\ refused' = [refused EXCEPT ![r] = FALSE]
+  /\ refused' = [refused EXCEPT ![r] = "none"]
   /\ UNCHANGED <<mode, sends, inbox, failed, dsched, dholder, written, memo, pc, cur, exec, esched,
                  eligRefused, refusedChanged, faults, cancelSet, lostResend>>
 
@@ -415,7 +420,7 @@ EveryRunEnds == \A x \in Execs : (exec[x] \in {"running", "claimed"}) ~> (exec[x
 ReachSupersede     == \E x \in Execs : exec[x] = "superseded"
 ReachEligibilityRefusal == \E r \in Rows : eligRefused[r]
 ReachRefusalAnsweredOnRetry == \E r \in Rows : eligRefused[r] /\ written[r] /\ ~memo[r] /\ dsched[r] = "queued"
-ReachRefusedStart  == \E r \in Rows : refused[r]
+ReachRefusedStart  == \E r \in Rows : refused[r] # "none"
 ReachCanceledRun   == \E x \in Execs : exec[x] = "canceled"
 ReachRedelivery    == \E r \in Rows : written[r] /\ ~memo[r] /\ dsched[r] = "queued"
 ReachResentAfterFailure == \E r \in Rows : r[1] = "s1" /\ ~failed[r] /\ dsched[r] = "gone" /\ sends["s1"] = 2 /\ written[r]
@@ -429,4 +434,9 @@ EndedRunOf(r) ==
 ReachRunKeptForARetry        == \E r \in Rows : EndedRunOf(r) /\ dsched[r] = "queued" /\ written[r] /\ ~memo[r]
 ReachRunKeptForAResend       == EndedRunOf(<<"s1", 1>>) /\ failed[<<"s1", 1>>] /\ sends["s1"] = 1
 ReachRunSwept                == \E x \in Execs : exec[x] = "swept"
-ReachRefusalSwept            == \E r \in Rows : eligRefused[r] /\ ~refused[r]=============================================================================
+ReachRefusalSwept            == \E r \in Rows : eligRefused[r] /\ refused[r] = "none"
+\* A retry of an arrival first wins refused, asked again after the run that
+\* refused it ended, opens a run.
+ReachFirstWinsRefusalOpensOnRetry ==
+  \E r \in Rows : r[1] \in Starts /\ refused[r] = "concurrency" /\ exec[<<r[1], r[2], 1>>] # "none"
+=============================================================================
