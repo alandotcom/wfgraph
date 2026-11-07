@@ -1,11 +1,22 @@
 ---
 name: host-actions
 description: >
-  defineAction for host-owned steps: Promise handlers, Standard Schema input and
-  output, authored config forms, dependent option callbacks, step.run,
-  readCredentials, sideEffect. Load when adding application actions beside
-  integrations. Not for defineIntegration (Effect plugin path).
+  Use when a host application adds its own step to the Workflow Graph editor
+  with defineAction: a Promise handler that calls application code, Standard
+  Schema input and output that draw the config form and template autocomplete,
+  configFields presentation, options callbacks for application-owned pickers,
+  durable step.run work, readCredentials, or marking a write with sideEffect.
+  Also use for requests such as "let workflows call our cancel-appointment API"
+  or "show a dropdown of our message templates in a workflow step". For
+  packaging a vendor API as an integration with Effect handlers, credential
+  forms or OAuth use wfgraph-core/integrations; for turning on the built-in
+  vendors use wfgraph-plugins.
 metadata:
+  purpose: >
+    defineAction for host-owned steps: Promise handlers, Standard Schema input and
+    output, authored config forms, dependent option callbacks, step.run,
+    readCredentials, sideEffect. Load when adding application actions beside
+    integrations. Not for defineIntegration (Effect plugin path).
   type: sub-skill
   library: wfgraph
   library_version: "3.1.1"

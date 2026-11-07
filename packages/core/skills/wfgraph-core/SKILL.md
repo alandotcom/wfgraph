@@ -1,15 +1,28 @@
 ---
 name: wfgraph-core
 description: >
-  Embed Workflow Graph with createWfGraphApp: fetch handler, createRequestListener,
-  auth, INTEGRATION_ENCRYPTION_KEY, clientBundle, publicUrl, basePath,
-  MCP authoring, configureWfGraphLogging, wfPostgres, wfSqlite, wfWorker with
-  its Cron Trigger and wake Queue,
-  migrateWfGraphDatabase, and createWfGraphRunner for a process that only runs
-  workflows, plus @wfgraph/core/inngest for a host that keeps inngest.send.
-  Load when mounting the host app or choosing persistence. Not for defineEvent,
-  defineEntity, defineAction, or defineIntegration (those are sub-skills).
+  Use when adding Workflow Graph (@wfgraph/core) to a host application: mounting
+  createWfGraphApp on Node, Express, Fastify or Bun, serving the editor with
+  clientBundle, setting auth, the encryption key, publicUrl or basePath,
+  choosing PostgreSQL, SQLite or Cloudflare Worker persistence, running
+  PostgreSQL migrations, tuning or moving the worker loop that runs workflows,
+  enabling MCP authoring, or keeping inngest.send. Also use for requests such as
+  "add a workflow engine to our app", "set up the workflow database", "workflows
+  start but never advance" or "the editor loads its assets from the wrong path".
+  For declaring Events or Entities use wfgraph-core/events; for a host's own
+  workflow step use wfgraph-core/host-actions; for writing a vendor integration
+  use wfgraph-core/integrations; for turning on the six built-in integrations
+  use wfgraph-plugins.
 metadata:
+  purpose: >
+    Embed Workflow Graph with createWfGraphApp: fetch handler, createRequestListener,
+    auth, INTEGRATION_ENCRYPTION_KEY, clientBundle, publicUrl, basePath,
+    MCP authoring, configureWfGraphLogging, wfPostgres, wfSqlite, wfWorker with
+    its Cron Trigger and wake Queue,
+    migrateWfGraphDatabase, and createWfGraphRunner for a process that only runs
+    workflows, plus @wfgraph/core/inngest for a host that keeps inngest.send.
+    Load when mounting the host app or choosing persistence. Not for defineEvent,
+    defineEntity, defineAction, or defineIntegration (those are sub-skills).
   type: core
   library: wfgraph
   library_version: "3.1.1"

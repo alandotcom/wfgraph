@@ -1,97 +1,210 @@
 library:
   name: wfgraph
-  version: 0.0.0
+  version: 3.1.1
 generated_from:
   domain_map: _artifacts/domain_map.yaml
   skill_spec: _artifacts/skill_spec.md
 skills:
-  [
-    {
-      name: wfgraph-core,
-      slug: wfgraph-core,
-      domain: uncategorized,
-      package: packages/core,
-      path: skills/wfgraph-core/SKILL.md,
-      description: "Embed Workflow Graph with createWfGraphApp: fetch handler,
-        createRequestListener, auth, INTEGRATION_ENCRYPTION_KEY, clientBundle,
-        publicUrl, basePath, MCP authoring, configureWfGraphLogging,
-        wfPostgres, wfSqlite, wfWorker with its Cron Trigger and wake Queue,
-        migrateWfGraphDatabase, and createWfGraphRunner for a process that
-        only runs workflows, plus @wfgraph/core/inngest for a host that keeps
-        inngest.send. Load when mounting the host app or choosing persistence.
-        Not for defineEvent, defineEntity, defineAction, or defineIntegration
-        (those are sub-skills).\n",
-      sources:
-        [alandotcom/wfgraph:README.md, alandotcom/wfgraph:docs/embedding.md],
-      requires: [],
-    },
-    {
-      name: events,
-      slug: events,
-      domain: wfgraph-core,
-      package: packages/core,
-      path: skills/wfgraph-core/events/SKILL.md,
-      description: "defineEvent and defineEntity: Event schemas, typed Entity
-        bindings, current-state resolvers, Lifecycle Entity Eligibility,
-        correlationPath, umbrella source filters, and intake through
-        app.events.send, POST /api/events, or inngest.send with the forwarders
-        from @wfgraph/core/inngest. Load when declaring host Events or
-        Entities, sending Events, choosing Lifecycle start/cancel behavior, or
-        deciding between payload and current-state rules.\n",
-      sources: [alandotcom/wfgraph:docs/events.md],
-      requires: [],
-    },
-    {
-      name: host-actions,
-      slug: host-actions,
-      domain: wfgraph-core,
-      package: packages/core,
-      path: skills/wfgraph-core/host-actions/SKILL.md,
-      description:
-        "defineAction for host-owned steps: Promise handlers, Standard
-        Schema input and output, authored config forms, dependent option
-        callbacks, step.run, readCredentials, sideEffect. Load when adding
-        application actions beside integrations. Not for defineIntegration
-        (Effect plugin path).\n",
-      sources:
-        [
-          alandotcom/wfgraph:docs/embedding.md,
-          alandotcom/wfgraph:docs/integrations.md,
-        ],
-      requires: [],
-    },
-    {
-      name: integrations,
-      slug: integrations,
-      domain: wfgraph-core,
-      package: packages/core,
-      path: skills/wfgraph-core/integrations/SKILL.md,
-      description: "Write a Workflow Graph integration with defineIntegration,
-        callExternal, IntegrationOAuth, runAction, and checkIntegration
-        against @wfgraph/core/plugin. Load when building a vendor plugin,
-        credential forms, OAuth adapters, or integration tests. Not for host
-        defineAction.\n",
-      sources: [alandotcom/wfgraph:docs/integrations.md],
-      requires: [],
-    },
-    {
-      name: wfgraph-plugins,
-      slug: wfgraph-plugins,
-      domain: uncategorized,
-      package: packages/plugins,
-      path: skills/wfgraph-plugins/SKILL.md,
-      description:
-        "builtInIntegrations, slack(options?) OAuth factory, clerk linear
-        posthog resend twilio value exports, publicUrl OAuth routes,
-        @wfgraph/plugins/ui. Load when turning on the six built-in
-        integrations or wiring Slack, Resend, or PostHog OAuth in the host.\n",
-      sources:
-        [
-          alandotcom/wfgraph:docs/embedding.md,
-          alandotcom/wfgraph:packages/plugins/README.md,
-        ],
-      requires: [],
-    },
-  ]
+  - name: wfgraph-core
+    slug: wfgraph-core
+    domain: embedding
+    package: packages/core
+    path: skills/wfgraph-core/SKILL.md
+    description:
+      'Use when adding Workflow Graph (@wfgraph/core) to a host application:
+      mounting createWfGraphApp on Node, Express, Fastify or Bun, serving the editor
+      with clientBundle, setting auth, the encryption key, publicUrl or basePath, choosing
+      PostgreSQL, SQLite or Cloudflare Worker persistence, running PostgreSQL migrations,
+      tuning or moving the worker loop that runs workflows, enabling MCP authoring,
+      or keeping inngest.send. Also use for requests such as "add a workflow engine
+      to our app", "set up the workflow database", "workflows start but never advance"
+      or "the editor loads its assets from the wrong path". For declaring Events or
+      Entities use wfgraph-core/events; for a host''s own workflow step use wfgraph-core/host-actions;
+      for writing a vendor integration use wfgraph-core/integrations; for turning on
+      the six built-in integrations use wfgraph-plugins.
+
+      '
+    purpose:
+      "Embed Workflow Graph with createWfGraphApp: fetch handler, createRequestListener,
+      auth, INTEGRATION_ENCRYPTION_KEY, clientBundle, publicUrl, basePath, MCP authoring,
+      configureWfGraphLogging, wfPostgres, wfSqlite, wfWorker with its Cron Trigger
+      and wake Queue, migrateWfGraphDatabase, and createWfGraphRunner for a process
+      that only runs workflows, plus @wfgraph/core/inngest for a host that keeps inngest.send.
+      Load when mounting the host app or choosing persistence. Not for defineEvent,
+      defineEntity, defineAction, or defineIntegration (those are sub-skills).
+
+      "
+    sources:
+      - alandotcom/wfgraph:README.md
+      - alandotcom/wfgraph:docs/embedding.md
+    requires: []
+  - name: events
+    slug: events
+    domain: host-extensions
+    package: packages/core
+    path: skills/wfgraph-core/events/SKILL.md
+    description:
+      'Use when a host application tells Workflow Graph that something happened:
+      declaring an Event with defineEvent, declaring host-owned current state with defineEntity
+      and binding it to Events, sending Events with app.events.send, POST /api/events,
+      an insert into the event inbox or inngest.send through @wfgraph/core/inngest,
+      splitting one bus name into several Events with an umbrella source, or choosing
+      between a payload rule and a current-state Eligibility rule. Also use for requests
+      such as "start a workflow when an appointment is created", "stop reminders once
+      the patient is inactive" or "our message bus sends every event under one name".
+      For mounting the app or the worker loop use wfgraph-core; for Events that an integration''s
+      webhook produces use wfgraph-core/integrations.
+
+      '
+    purpose:
+      "defineEvent and defineEntity: Event schemas, typed Entity bindings, current-state
+      resolvers, Lifecycle Entity Eligibility, correlationPath, umbrella source filters,
+      and intake through app.events.send, POST /api/events, or inngest.send with the
+      forwarders from @wfgraph/core/inngest. Load when declaring host Events or Entities,
+      sending Events, choosing Lifecycle start/cancel behavior, or deciding between
+      payload and current-state rules.
+
+      "
+    sources:
+      - alandotcom/wfgraph:docs/events.md
+    requires: []
+  - name: host-actions
+    slug: host-actions
+    domain: host-extensions
+    package: packages/core
+    path: skills/wfgraph-core/host-actions/SKILL.md
+    description:
+      'Use when a host application adds its own step to the Workflow Graph
+      editor with defineAction: a Promise handler that calls application code, Standard
+      Schema input and output that draw the config form and template autocomplete, configFields
+      presentation, options callbacks for application-owned pickers, durable step.run
+      work, readCredentials, or marking a write with sideEffect. Also use for requests
+      such as "let workflows call our cancel-appointment API" or "show a dropdown of
+      our message templates in a workflow step". For packaging a vendor API as an integration
+      with Effect handlers, credential forms or OAuth use wfgraph-core/integrations;
+      for turning on the built-in vendors use wfgraph-plugins.
+
+      '
+    purpose:
+      "defineAction for host-owned steps: Promise handlers, Standard Schema input
+      and output, authored config forms, dependent option callbacks, step.run, readCredentials,
+      sideEffect. Load when adding application actions beside integrations. Not for
+      defineIntegration (Effect plugin path).
+
+      "
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:docs/integrations.md
+    requires: []
+  - name: integrations
+    slug: integrations
+    domain: integrations
+    package: packages/core
+    path: skills/wfgraph-core/integrations/SKILL.md
+    description:
+      'Use when writing a Workflow Graph integration for a vendor or external
+      service against @wfgraph/core/plugin: defineIntegration with a credential form
+      and Effect action handlers, callExternal requests inside step.run, provider-backed
+      config fields, webhook Events, an IntegrationOAuth adapter, tests with runAction
+      and checkIntegration, or changing or retiring an action that published workflows
+      already use. Also use for requests such as "connect workflows to our CRM''s API",
+      "add OAuth for this provider" or "rename a field on an existing action". For a
+      host''s own Promise step use wfgraph-core/host-actions; for enabling Clerk, Linear,
+      PostHog, Resend, Slack or Twilio use wfgraph-plugins.
+
+      '
+    purpose:
+      "Write a Workflow Graph integration with defineIntegration, callExternal,
+      IntegrationOAuth, runAction, and checkIntegration against @wfgraph/core/plugin.
+      Load when building a vendor plugin, credential forms, OAuth adapters, or integration
+      tests. Not for host defineAction.
+
+      "
+    sources:
+      - alandotcom/wfgraph:docs/integrations.md
+    requires: []
+  - name: wfgraph-plugins
+    slug: wfgraph-plugins
+    domain: integrations
+    package: packages/plugins
+    path: skills/wfgraph-plugins/SKILL.md
+    description:
+      'Use when turning on the built-in Workflow Graph integrations from
+      @wfgraph/plugins (Clerk, Linear, PostHog, Resend, Slack and Twilio) in a host
+      application: passing builtInIntegrations() or individual exports in extensions.integrations,
+      configuring Slack OAuth with slack({ oauthClient }), meeting the publicUrl and
+      session cookie requirements of Slack, Resend and PostHog OAuth, or receiving Resend
+      webhook Events. Also use for requests such as "let workflows send Slack messages"
+      or "the Slack OAuth connection fails". For writing a new vendor integration use
+      wfgraph-core/integrations; for mounting the app itself use wfgraph-core.
+
+      '
+    purpose:
+      "builtInIntegrations, slack(options?) OAuth factory, clerk linear posthog
+      resend twilio value exports, publicUrl OAuth routes, @wfgraph/plugins/ui. Load
+      when turning on the six built-in integrations or wiring Slack, Resend, or PostHog
+      OAuth in the host.
+
+      "
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:packages/plugins/README.md
+    requires: []
+  - name: auth
+    slug: auth
+    domain: embedding
+    package: packages/core
+    path: skills/wfgraph-core/auth/SKILL.md
+    status: planned
+    description:
+      "Use when writing the access policy for an embedded Workflow Graph
+      app: mapping host sessions to roles with defineWfGraphAuth and WfGraphRoles, building
+      custom policies with WfGraphAccess from permissions or operation IDs, or trusting
+      an upstream authorizer with trustWfGraphUpstream. For mounting the app use wfgraph-core."
+    purpose:
+      Write the host access policy for Workflow Graph with defineWfGraphAuth,
+      WfGraphRoles, WfGraphAccess and trustWfGraphUpstream.
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+    requires:
+      - wfgraph-core
+  - name: observability
+    slug: observability
+    domain: embedding
+    package: packages/core
+    path: skills/wfgraph-core/observability/SKILL.md
+    status: planned
+    description:
+      "Use when routing an embedded Workflow Graph app's logs and traces:
+      configureWfGraphLogging, the logger option, a LogTape sink for the wfgraph category,
+      an OpenTelemetry tracer provider, Sentry, or the stable span names. For mounting
+      the app use wfgraph-core."
+    purpose:
+      Configure Workflow Graph logging (configureWfGraphLogging, the logger option,
+      the LogTape category wfgraph) and tracing (an OpenTelemetry provider, Sentry,
+      and the stable span names).
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+    requires:
+      - wfgraph-core
+  - name: cloudflare-worker
+    slug: cloudflare-worker
+    domain: embedding
+    package: packages/core
+    path: skills/wfgraph-core/cloudflare-worker/SKILL.md
+    status: planned
+    description:
+      "Use when deploying Workflow Graph on a Cloudflare Worker: wfWorker
+      with its fetch, scheduled and queue handlers, the Cron Trigger, the optional wake
+      Queue, Hyperdrive with query caching disabled, out-of-band PostgreSQL migrations,
+      and the platform limits a tick works within. For a Node host use wfgraph-core."
+    purpose:
+      Deploy Workflow Graph on a Cloudflare Worker with wfWorker, a Cron Trigger,
+      an optional wake Queue, Hyperdrive with query caching off, out-of-band migrations
+      and the platform limits.
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+    requires:
+      - wfgraph-core
 distribution:
   mode: none

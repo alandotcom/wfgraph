@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
+  "items": {
+    "skill:packages/core/skills/wfgraph-core/SKILL.md": {
+      "fingerprint": "283a223ee435dd1942e7a70ae50b5fc0bedd877685d12fd675bcd9a48792fa8e",
+      "snapshot": {
+        "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
+        "docs/embedding.md": "69f52bc8060678d8cdf93539ab4419df046df0ce7f4fc599ba6621e4bd216a34",
+        "packages/core/skills/wfgraph-core/SKILL.md": "ff396a466b8b99f0177b94ad67a46a3387f9a99b9a8194e06fa8f242217e2dcc",
+        "packages/core/skills/wfgraph-core/events/SKILL.md": "6e6fd837d58cce2410d032bcb57099dfc399f5c5fe7025c1245d1c028895f825",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720",
+        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27"
+      },
+      "head": "3ba1808741203578fc60bc3727e761b953a5577e",
+      "outcome": "updated",
+      "reason": "Frontmatter only: the old description moved unchanged to metadata.purpose and a new activation description names the embedding tasks and routes Events, host actions, integrations and built-ins to their skills. Body verified against README.md (Embed in your app) and docs/embedding.md at 3ba18087: the app return shape, auth requirement, listener order and originalUrl, basePath, wfPostgres forms, search_path rules, runOnStartup default, migrateWfGraphDatabase, SQLite runner refusals, heartbeat/lease rule, delivery and cron slots, both retention windows and their ranges, the ten-second dispose drain, the Worker Cron Trigger and Queue, Hyperdrive caching, Group config keys and the MCP stale-write rule all match. The claim that createWfGraphRunner refuses Hyperdrive is not in the docs; packages/core/src/backend/setup.ts refuses runner settings for a backend with no long-lived loop, recorded as an open gap.",
+      "evidence": [
+        "README.md",
+        "docs/embedding.md",
+        "packages/core/src/backend/setup.ts",
+        "base and head 3ba18087, packages at 3.1.1",
+        "pnpm exec intent validate: 5 skill files passed",
+        "metadata.purpose compared with the HEAD description by YAML parse: identical for all five skills; skill bodies byte-identical to HEAD",
+        "No executable task check or discovery check exists yet (packages/evals/src/skills/ is planned); activation of the new description is unverified"
+      ]
+    },
+    "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
+      "fingerprint": "968e95f49750daade1d2abf23be055eaa09afa174934ec1e1646844e603480a3",
+      "snapshot": {
+        "docs/events.md": "b7690fd2be3ee688359e17f2438416ac4e2aab290c837ce13bdb5bab73bd3d09",
+        "packages/core/skills/wfgraph-core/events/SKILL.md": "6e6fd837d58cce2410d032bcb57099dfc399f5c5fe7025c1245d1c028895f825"
+      },
+      "head": "3ba1808741203578fc60bc3727e761b953a5577e",
+      "outcome": "updated",
+      "reason": "Frontmatter only: purpose migration plus an activation description for declaring and sending Events and Entities. Body verified against docs/events.md at 3ba18087: the two Standard Schema halves, derived labels and enum titles, the 10-second resolver default and entityResolverTimeoutMs, Entity State projection and retention, binding rules, Eligibility checkpoints and their order around the Start Filter and Concurrency, correlationPath precedence, date-time annotations, umbrella source rules, the four intake paths, the idempotency window equal to events.retentionMs, Inngest forwarders with NonRetriableError, and the open intake gate all match.",
+      "evidence": [
+        "docs/events.md",
+        "base and head 3ba18087, packages at 3.1.1",
+        "pnpm exec intent validate: 5 skill files passed",
+        "metadata.purpose compared with the HEAD description by YAML parse: identical for all five skills; skill bodies byte-identical to HEAD",
+        "No executable task check or discovery check exists yet (packages/evals/src/skills/ is planned); activation of the new description is unverified"
+      ]
+    },
+    "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
+      "fingerprint": "f8159840832fffe1bbce3d50a0b44d489d19f761651bb12639006c4c3773c56b",
+      "snapshot": {
+        "docs/embedding.md": "69f52bc8060678d8cdf93539ab4419df046df0ce7f4fc599ba6621e4bd216a34",
+        "docs/integrations.md": "3286a74c669550439377f611e8cd6ecf38751cf0986002d2f6448f73c2dcdf50",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720"
+      },
+      "head": "3ba1808741203578fc60bc3727e761b953a5577e",
+      "outcome": "updated",
+      "reason": "Frontmatter only: purpose migration plus an activation description for a host's own defineAction step, with the boundary to integrations. Body verified at 3ba18087 against docs/embedding.md (Dynamic host action fields: options callbacks, raw optional string selections, unavailable results, showWhen.in) and docs/integrations.md (the Promise and Effect table, readCredentials failure, sideEffect, the config form label and title rules); all claims match.",
+      "evidence": [
+        "docs/embedding.md",
+        "docs/integrations.md",
+        "base and head 3ba18087, packages at 3.1.1",
+        "pnpm exec intent validate: 5 skill files passed",
+        "metadata.purpose compared with the HEAD description by YAML parse: identical for all five skills; skill bodies byte-identical to HEAD",
+        "No executable task check or discovery check exists yet (packages/evals/src/skills/ is planned); activation of the new description is unverified"
+      ]
+    },
+    "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
+      "fingerprint": "7a56373aac14b5878f2ea44b5141a03614eb38150fb54bd499526d552bf3feed",
+      "snapshot": {
+        "docs/integrations.md": "3286a74c669550439377f611e8cd6ecf38751cf0986002d2f6448f73c2dcdf50",
+        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27"
+      },
+      "head": "3ba1808741203578fc60bc3727e761b953a5577e",
+      "outcome": "updated",
+      "reason": "Frontmatter only: purpose migration plus an activation description for writing a vendor integration, with boundaries to host-actions and wfgraph-plugins. Body verified against docs/integrations.md at 3ba18087: inline action literals, the test loader, configFields and configOptions, connectionDefaultKey rules, the canonical JSON codec spellings, webhook verify and receive, replay and step.run rules, StepFailure, OAuth adapter rules (PKCE, redirect_uris, grantedAccessLabel, no safeToRepeat on token POSTs), runAction encoded input, checkIntegration, and evolving or hiding actions all match. The four-retry figure matches docs/embedding.md (How runs behave).",
+      "evidence": [
+        "docs/integrations.md",
+        "docs/embedding.md",
+        "base and head 3ba18087, packages at 3.1.1",
+        "pnpm exec intent validate: 5 skill files passed",
+        "metadata.purpose compared with the HEAD description by YAML parse: identical for all five skills; skill bodies byte-identical to HEAD",
+        "No executable task check or discovery check exists yet (packages/evals/src/skills/ is planned); activation of the new description is unverified"
+      ]
+    },
+    "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
+      "fingerprint": "8daabd46b34a9d3fa71224d3c7394748057164329d69206c2c2b6cafce9a17b3",
+      "snapshot": {
+        "docs/embedding.md": "69f52bc8060678d8cdf93539ab4419df046df0ce7f4fc599ba6621e4bd216a34",
+        "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
+        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "14a493074ecf5765ddc54b1520bfd4ed106fcd72d2d08437fb0beef59147ac8a"
+      },
+      "head": "3ba1808741203578fc60bc3727e761b953a5577e",
+      "outcome": "updated",
+      "reason": "Frontmatter only: purpose migration plus an activation description for turning on the six built-ins and their OAuth and webhook requirements, with boundaries to integrations and wfgraph-core. Body verified at 3ba18087 against packages/plugins/README.md (value exports, the slack factory, RESEND_WEBHOOK_SECRET, the core peer, @wfgraph/plugins/ui) and docs/embedding.md (Built-in integrations: publicUrl, HTTPS outside loopback, SameSite=Lax callback auth, one core copy); all claims match.",
+      "evidence": [
+        "packages/plugins/README.md",
+        "docs/embedding.md",
+        "base and head 3ba18087, packages at 3.1.1",
+        "pnpm exec intent validate: 5 skill files passed",
+        "metadata.purpose compared with the HEAD description by YAML parse: identical for all five skills; skill bodies byte-identical to HEAD",
+        "No executable task check or discovery check exists yet (packages/evals/src/skills/ is planned); activation of the new description is unverified"
+      ]
+    },
+    "planning:_artifacts": {
+      "fingerprint": "611885ee72c66506b6d990aaf9e9d1b25879860e21afbe6d6813a7701807bad3",
+      "snapshot": {
+        "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
+        "_artifacts/domain_map.yaml": "5dd4cbfd1b28f4fa04eb149980f47353de9b9ba8aa86e5754591f9ea2a011d03",
+        "_artifacts/skill_spec.md": "0b9ae1af25477fa46d940dfbd9e5b1317e4d283059e22afe91cfecacb9909013",
+        "_artifacts/skill_tree.yaml": "f848187b58f916de60cf1c90612def5a3283c38ba4e5d94d7fa1dcaa628e27e5",
+        "docs/embedding.md": "69f52bc8060678d8cdf93539ab4419df046df0ce7f4fc599ba6621e4bd216a34",
+        "docs/events.md": "b7690fd2be3ee688359e17f2438416ac4e2aab290c837ce13bdb5bab73bd3d09",
+        "docs/integrations.md": "3286a74c669550439377f611e8cd6ecf38751cf0986002d2f6448f73c2dcdf50",
+        "packages/core/skills/wfgraph-core/SKILL.md": "ff396a466b8b99f0177b94ad67a46a3387f9a99b9a8194e06fa8f242217e2dcc",
+        "packages/core/skills/wfgraph-core/events/SKILL.md": "6e6fd837d58cce2410d032bcb57099dfc399f5c5fe7025c1245d1c028895f825",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720",
+        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27",
+        "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
+        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "14a493074ecf5765ddc54b1520bfd4ed106fcd72d2d08437fb0beef59147ac8a"
+      },
+      "head": "3ba1808741203578fc60bc3727e761b953a5577e",
+      "outcome": "updated",
+      "reason": "Added the batch 1 note that intent stale 0.5.6 reports the three planned tree entries as unresolved paths because it ignores status: planned; the rest of domain_map.yaml, skill_spec.md and skill_tree.yaml is unchanged from the outcome recorded for this batch.",
+      "evidence": [
+        "Changed: _artifacts/skill_spec.md at 3ba1808741203578fc60bc3727e761b953a5577e"
+      ]
+    },
+    "source:.changeset/skill-activation-descriptions.md": {
+      "fingerprint": "29663a0b9cb91e8ef3bc2e8a3d1c1ce4408390528deec93cf2bebfc1f0dee648",
+      "snapshot": {
+        ".changeset/skill-activation-descriptions.md": "2c0eb0df5ed6de24ffae940d538df015dfc2bb585b7a0e1c4b83902200ea7d03"
+      },
+      "head": "3ba1808741203578fc60bc3727e761b953a5577e",
+      "outcome": "out-of-scope",
+      "reason": "A changeset is a release note for this commit's frontmatter change. It is no source of any skill's guidance, and it states no behavior the skills describe.",
+      "evidence": [
+        ".changeset/skill-activation-descriptions.md",
+        "base and head 3ba18087"
+      ]
+    }
+  }
+}

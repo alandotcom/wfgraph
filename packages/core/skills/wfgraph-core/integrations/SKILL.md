@@ -1,11 +1,22 @@
 ---
 name: integrations
 description: >
-  Write a Workflow Graph integration with defineIntegration, callExternal,
-  IntegrationOAuth, runAction, and checkIntegration against @wfgraph/core/plugin.
-  Load when building a vendor plugin, credential forms, OAuth adapters, or
-  integration tests. Not for host defineAction.
+  Use when writing a Workflow Graph integration for a vendor or external service
+  against @wfgraph/core/plugin: defineIntegration with a credential form and
+  Effect action handlers, callExternal requests inside step.run, provider-backed
+  config fields, webhook Events, an IntegrationOAuth adapter, tests with
+  runAction and checkIntegration, or changing or retiring an action that
+  published workflows already use. Also use for requests such as "connect
+  workflows to our CRM's API", "add OAuth for this provider" or "rename a field
+  on an existing action". For a host's own Promise step use
+  wfgraph-core/host-actions; for enabling Clerk, Linear, PostHog, Resend, Slack
+  or Twilio use wfgraph-plugins.
 metadata:
+  purpose: >
+    Write a Workflow Graph integration with defineIntegration, callExternal,
+    IntegrationOAuth, runAction, and checkIntegration against @wfgraph/core/plugin.
+    Load when building a vendor plugin, credential forms, OAuth adapters, or
+    integration tests. Not for host defineAction.
   type: sub-skill
   library: wfgraph
   library_version: "3.1.1"

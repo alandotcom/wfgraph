@@ -1,13 +1,25 @@
 ---
 name: events
 description: >
-  defineEvent and defineEntity: Event schemas, typed Entity bindings, current-state
-  resolvers, Lifecycle Entity Eligibility, correlationPath, umbrella source filters,
-  and intake through app.events.send, POST /api/events, or inngest.send with the
-  forwarders from @wfgraph/core/inngest. Load when
-  declaring host Events or Entities, sending Events, choosing
-  Lifecycle start/cancel behavior, or deciding between payload and current-state rules.
+  Use when a host application tells Workflow Graph that something happened:
+  declaring an Event with defineEvent, declaring host-owned current state with
+  defineEntity and binding it to Events, sending Events with app.events.send,
+  POST /api/events, an insert into the event inbox or inngest.send through
+  @wfgraph/core/inngest, splitting one bus name into several Events with an
+  umbrella source, or choosing between a payload rule and a current-state
+  Eligibility rule. Also use for requests such as "start a workflow when an
+  appointment is created", "stop reminders once the patient is inactive" or "our
+  message bus sends every event under one name". For mounting the app or the
+  worker loop use wfgraph-core; for Events that an integration's webhook
+  produces use wfgraph-core/integrations.
 metadata:
+  purpose: >
+    defineEvent and defineEntity: Event schemas, typed Entity bindings, current-state
+    resolvers, Lifecycle Entity Eligibility, correlationPath, umbrella source filters,
+    and intake through app.events.send, POST /api/events, or inngest.send with the
+    forwarders from @wfgraph/core/inngest. Load when
+    declaring host Events or Entities, sending Events, choosing
+    Lifecycle start/cancel behavior, or deciding between payload and current-state rules.
   type: sub-skill
   library: wfgraph
   library_version: "3.1.1"

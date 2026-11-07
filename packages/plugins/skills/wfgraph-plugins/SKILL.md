@@ -1,11 +1,21 @@
 ---
 name: wfgraph-plugins
 description: >
-  builtInIntegrations, slack(options?) OAuth factory, clerk linear posthog
-  resend twilio value exports, publicUrl OAuth routes, @wfgraph/plugins/ui.
-  Load when turning on the six built-in integrations or wiring Slack, Resend,
-  or PostHog OAuth in the host.
+  Use when turning on the built-in Workflow Graph integrations from
+  @wfgraph/plugins (Clerk, Linear, PostHog, Resend, Slack and Twilio) in a host
+  application: passing builtInIntegrations() or individual exports in
+  extensions.integrations, configuring Slack OAuth with slack({ oauthClient }),
+  meeting the publicUrl and session cookie requirements of Slack, Resend and
+  PostHog OAuth, or receiving Resend webhook Events. Also use for requests such
+  as "let workflows send Slack messages" or "the Slack OAuth connection fails".
+  For writing a new vendor integration use wfgraph-core/integrations; for
+  mounting the app itself use wfgraph-core.
 metadata:
+  purpose: >
+    builtInIntegrations, slack(options?) OAuth factory, clerk linear posthog
+    resend twilio value exports, publicUrl OAuth routes, @wfgraph/plugins/ui.
+    Load when turning on the six built-in integrations or wiring Slack, Resend,
+    or PostHog OAuth in the host.
   type: core
   library: wfgraph
   library_version: "3.1.1"

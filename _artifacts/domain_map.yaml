@@ -1,80 +1,647 @@
+# domain_map.yaml
+# Library: wfgraph (the published packages @wfgraph/core, @wfgraph/client and @wfgraph/plugins)
+# Version: 3.1.1
+# Date: 2026-11-07
+# Status: reviewed
+
 library:
   name: wfgraph
-  version: 0.0.0
-domains: []
+  version: "3.1.1"
+  repository: https://github.com/alandotcom/wfgraph
+  description: >-
+    Workflow Graph, a self-hosted workflow engine and visual editor that a host
+    application embeds, published as @wfgraph/core, @wfgraph/client and
+    @wfgraph/plugins at one shared version.
+  primary_framework: framework-agnostic
+
+# @wfgraph/client ships no skill by maintainer decision. An adopter's only task
+# with it is passing its clientBundle export to createWfGraphApp as `client`,
+# and the wfgraph-core skill covers that task.
+coverage:
+  ignored_packages:
+    - name: "@wfgraph/client"
+      reason: >-
+        The adopter task for this package is passing clientBundle to
+        createWfGraphApp, which the wfgraph-core skill in @wfgraph/core covers.
+
+domains:
+  - name: Embedding
+    slug: embedding
+    description: >-
+      Mounting Workflow Graph in a host application and operating it: the
+      createWfGraphApp call, the editor bundle, the access policy, persistence
+      and migrations, the worker loop that runs workflows, a Cloudflare Worker
+      deployment, and logging and tracing.
+  - name: Host extensions
+    slug: host-extensions
+    description: >-
+      What a host application contributes to the extension catalog from its own
+      code: Events and Entities with their intake, and host actions that run
+      application code as workflow steps.
+  - name: Integrations
+    slug: integrations
+    description: >-
+      Vendor integrations: writing one against @wfgraph/core/plugin, and turning
+      on the six built-in integrations that @wfgraph/plugins ships.
+
 skills:
-  [
-    {
-      name: wfgraph-core,
-      slug: wfgraph-core,
-      domain: uncategorized,
-      description: "Embed Workflow Graph with createWfGraphApp: fetch handler,
-        createRequestListener, auth, INTEGRATION_ENCRYPTION_KEY, clientBundle,
-        publicUrl, basePath, MCP authoring, configureWfGraphLogging,
-        wfPostgres, wfSqlite, wfWorker with its Cron Trigger and wake Queue,
-        migrateWfGraphDatabase, and createWfGraphRunner for a process that
-        only runs workflows, plus @wfgraph/core/inngest for a host that keeps
-        inngest.send. Load when mounting the host app or choosing persistence.
-        Not for defineEvent, defineEntity, defineAction, or defineIntegration
-        (those are sub-skills).\n",
-      packages: ["@wfgraph/core"],
-      tasks: [],
-      covers: [],
-    },
-    {
-      name: events,
-      slug: events,
-      domain: wfgraph-core,
-      description: "defineEvent and defineEntity: Event schemas, typed Entity
-        bindings, current-state resolvers, Lifecycle Entity Eligibility,
-        correlationPath, umbrella source filters, and intake through
-        app.events.send, POST /api/events, or inngest.send with the forwarders
-        from @wfgraph/core/inngest. Load when declaring host Events or
-        Entities, sending Events, choosing Lifecycle start/cancel behavior, or
-        deciding between payload and current-state rules.\n",
-      packages: ["@wfgraph/core"],
-      tasks: [],
-      covers: [],
-    },
-    {
-      name: host-actions,
-      slug: host-actions,
-      domain: wfgraph-core,
-      description:
-        "defineAction for host-owned steps: Promise handlers, Standard
-        Schema input and output, authored config forms, dependent option
-        callbacks, step.run, readCredentials, sideEffect. Load when adding
-        application actions beside integrations. Not for defineIntegration
-        (Effect plugin path).\n",
-      packages: ["@wfgraph/core"],
-      tasks: [],
-      covers: [],
-    },
-    {
-      name: integrations,
-      slug: integrations,
-      domain: wfgraph-core,
-      description: "Write a Workflow Graph integration with defineIntegration,
-        callExternal, IntegrationOAuth, runAction, and checkIntegration
-        against @wfgraph/core/plugin. Load when building a vendor plugin,
-        credential forms, OAuth adapters, or integration tests. Not for host
-        defineAction.\n",
-      packages: ["@wfgraph/core"],
-      tasks: [],
-      covers: [],
-    },
-    {
-      name: wfgraph-plugins,
-      slug: wfgraph-plugins,
-      domain: uncategorized,
-      description:
-        "builtInIntegrations, slack(options?) OAuth factory, clerk linear
-        posthog resend twilio value exports, publicUrl OAuth routes,
-        @wfgraph/plugins/ui. Load when turning on the six built-in
-        integrations or wiring Slack, Resend, or PostHog OAuth in the host.\n",
-      packages: ["@wfgraph/plugins"],
-      tasks: [],
-      covers: [],
-    },
-  ]
-gaps: []
+  - name: wfgraph-core
+    slug: wfgraph-core
+    domain: embedding
+    description: >-
+      A developer adds Workflow Graph to a host application, chooses its
+      database, and keeps its workflow runs advancing.
+    type: core
+    packages:
+      - "@wfgraph/core"
+    covers:
+      - createWfGraphApp
+      - createRequestListener
+      - clientBundle from @wfgraph/client
+      - basePath
+      - publicUrl
+      - auth (defineWfGraphAuth, WfGraphRoles, WfGraphAccess, trustWfGraphUpstream)
+      - encryption.key (INTEGRATION_ENCRYPTION_KEY)
+      - wfPostgres
+      - wfSqlite
+      - migrateWfGraphDatabase
+      - runner
+      - createWfGraphRunner
+      - events.retentionMs
+      - runs.retentionMs
+      - dispose and Symbol.asyncDispose
+      - mcp
+      - configureWfGraphLogging
+      - wfWorker and wfHyperdrive
+      - createWfGraphInngestFunctions
+    tasks:
+      - Mount createWfGraphApp in a Node HTTP, Express or Fastify server with createRequestListener, or hand wfgraph.fetch to a fetch-native runtime.
+      - Serve the editor by passing clientBundle from @wfgraph/client, including under a sub-path set with basePath.
+      - Supply the required auth callback and the 64-character hex encryption key.
+      - Choose PostgreSQL with wfPostgres or SQLite with wfSqlite, and the Postgres schema that holds the tables.
+      - Apply PostgreSQL migrations at start-up or from a release step with migrateWfGraphDatabase.
+      - Tune the worker loop with the runner option, or move it to a createWfGraphRunner process and give the app runner false.
+      - Set events.retentionMs and runs.retentionMs to the same values in every process that runs a worker loop.
+      - Shut the app down with dispose() or an await using declaration.
+      - Enable MCP authoring with mcp set to true locally, or to allowed hostnames on a deployed host.
+      - Keep publishing Events with inngest.send by registering createWfGraphInngestFunctions on the host's own Inngest client.
+      - Set publicUrl so OAuth callback and webhook URLs resolve.
+      - Deploy on a Cloudflare Worker with wfWorker, a Cron Trigger and an optional wake Queue (moves to cloudflare-worker).
+    subsystems:
+      - name: PostgreSQL
+        package: "@wfgraph/core/postgres"
+        config_surface: wfPostgres with a url or discrete fields, schema, maxConnections, ssl and migrations.runOnStartup
+      - name: SQLite
+        package: "@wfgraph/core/sqlite"
+        config_surface: wfSqlite with an optional filename; in memory without one
+      - name: Hyperdrive
+        package: "@wfgraph/core/worker"
+        config_surface: wfHyperdrive(env.HYPERDRIVE) inside wfWorker's request callback
+    failure_modes:
+      - mistake: Missing authorization boundary
+        mechanism: Workflow Graph refuses to start without auth; the failure the rule prevents is an editor the internet can open that decrypts integration secrets.
+        wrong_pattern: |
+          createWfGraphApp({ persistence, encryption, extensions })
+        correct_pattern: |
+          createWfGraphApp({ persistence, encryption, extensions, auth: defineWfGraphAuth((request) => accessForSession(request)) })
+        source: alandotcom/wfgraph:docs/embedding.md (createWfGraphApp options)
+        priority: CRITICAL
+        status: active
+        skills: [wfgraph-core, auth]
+      - mistake: Pass an inngest option to createWfGraphApp
+        mechanism: createWfGraphApp takes no inngest option and mounts no Inngest route, so the option no longer type-checks.
+        wrong_pattern: |
+          createWfGraphApp({ ..., inngest: { id: "my-app", connect: true } })
+        correct_pattern: |
+          serve({ client: inngest, functions: createWfGraphInngestFunctions({ client: inngest, app }) })
+        source: alandotcom/wfgraph:docs/events.md (Sending through Inngest)
+        priority: HIGH
+        status: active
+        skills: [wfgraph-core, events]
+      - mistake: Body parser in front of the listener
+        mechanism: A body parser drains the request, and a connection webhook cannot verify its signature over the original bytes.
+        wrong_pattern: |
+          app.use(express.json()); app.use("/workflows", createRequestListener(wfgraph));
+        correct_pattern: |
+          app.use("/workflows", createRequestListener(wfgraph)); app.use(express.json());
+        source: alandotcom/wfgraph:docs/embedding.md (Mounting on Node)
+        priority: HIGH
+        status: active
+      - mistake: Mount path disagrees with basePath
+        mechanism: Workflow Graph builds its API prefix, asset URLs and OAuth callback URLs from basePath, so a different mount path breaks them.
+        wrong_pattern: |
+          basePath: "/" with app.use("/workflows", createRequestListener(wfgraph))
+        correct_pattern: |
+          basePath: "/workflows" with app.use("/workflows", createRequestListener(wfgraph))
+        source: alandotcom/wfgraph:docs/embedding.md (Mounting on Node)
+        priority: HIGH
+        status: active
+      - mistake: Mix url and discrete postgres fields
+        mechanism: wfPostgres takes one connection form; a mixed value fails to compile and is refused at runtime.
+        wrong_pattern: |
+          wfPostgres({ url: process.env.DATABASE_URL!, host: "db.internal" })
+        correct_pattern: |
+          wfPostgres({ url: process.env.DATABASE_URL! })
+        source: alandotcom/wfgraph:docs/embedding.md (Persistence)
+        priority: HIGH
+        status: active
+      - mistake: Apply the shipped migration SQL with psql
+        mechanism: The shipped SQL is schema-agnostic and relies on the search_path Workflow Graph sets, so another tool puts the tables in public.
+        wrong_pattern: |
+          psql $DATABASE_URL -f node_modules/@wfgraph/core/drizzle/...
+        correct_pattern: |
+          await migrateWfGraphDatabase({ url: process.env.DATABASE_URL! })
+        source: alandotcom/wfgraph:docs/embedding.md (PostgreSQL migrations)
+        priority: HIGH
+        status: active
+      - mistake: No process runs the worker loop
+        mechanism: With runner false in every process, nothing claims the schedule rows, so runs open and never advance.
+        wrong_pattern: |
+          createWfGraphApp({ ..., runner: false }) in every process
+        correct_pattern: |
+          Leave runner out in one process, or run createWfGraphRunner beside the apps.
+        source: alandotcom/wfgraph:docs/embedding.md (Workflow runs)
+        priority: CRITICAL
+        status: active
+      - mistake: A Worker with no Cron Trigger
+        mechanism: The Cron Trigger's tick finds Wait deadlines, runs whose invocation was cut short and host-inserted Events; without it those runs never advance.
+        wrong_pattern: |
+          wfWorker deployed with only a Queue consumer, or with neither
+        correct_pattern: |
+          [triggers] crons = ["* * * * *"] in the Wrangler configuration
+        source: alandotcom/wfgraph:docs/embedding.md (Cloudflare Workers and Hyperdrive)
+        priority: CRITICAL
+        status: active
+        skills: [wfgraph-core, cloudflare-worker]
+      - mistake: Hyperdrive with query caching
+        mechanism: Hyperdrive does not invalidate cached reads after Workflow Graph writes, so later reads miss those writes.
+        wrong_pattern: |
+          A Hyperdrive configuration with default query caching
+        correct_pattern: |
+          wrangler hyperdrive create ... --caching-disabled
+        source: alandotcom/wfgraph:docs/embedding.md (Cloudflare Workers and Hyperdrive)
+        priority: HIGH
+        status: active
+        skills: [wfgraph-core, cloudflare-worker]
+      - mistake: Upgrade with legacy Group config keys
+        mechanism: Graph decoding refuses every Group config key and no migration ships for the removed keys, so a stored graph holding one fails to load.
+        wrong_pattern: |
+          A stored Group config with direction, entryNodeIds, exitNodeIds or outletHandle
+        correct_pattern: |
+          Empty each stored Group config before upgrading.
+        source: alandotcom/wfgraph:docs/embedding.md (Groups)
+        priority: HIGH
+        status: active
+      - mistake: Repeat a stale MCP write
+        mechanism: A write refused with workflow_draft_stale can refer to graph state another editor changed, and Workflow Graph does not replay it.
+        wrong_pattern: |
+          Send the same MCP write again after workflow_draft_stale.
+        correct_pattern: |
+          Call read_workflow, re-evaluate the edit, and write with the returned draftRevision.
+        source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
+        priority: HIGH
+        status: active
+    compositions:
+      - library: hono
+        skill: wfgraph-core
+      - library: inngest
+        skill: events
+    sources:
+      - alandotcom/wfgraph:README.md
+      - alandotcom/wfgraph:docs/embedding.md
+
+  - name: events
+    slug: events
+    domain: host-extensions
+    description: >-
+      A developer declares the Events and Entities a host application raises and
+      sends those Events into Workflow Graph.
+    type: sub-skill
+    packages:
+      - "@wfgraph/core"
+    covers:
+      - defineEvent
+      - defineEntity
+      - selectEntityId bindings
+      - correlationPath
+      - umbrella source and when
+      - app.events.send
+      - POST /api/events
+      - workflow_event_inbox insert
+      - createWfGraphInngestFunctions
+      - WfGraphEventRefused
+      - Entity Eligibility checkpoints
+    tasks:
+      - Declare an Event with defineEvent, a schema that publishes both Standard Schema halves, and an optional correlationPath.
+      - Declare host-owned current state with defineEntity and bind it to Events with selectEntityId.
+      - Mark datetime payload fields with format date-time so the editor offers before and after operators.
+      - Label a closed string set's choices with title on singleton const or enum branches.
+      - Send an Event with app.events.send, POST /api/events with the events key, or an insert into workflow_event_inbox inside the host's transaction.
+      - Keep inngest.send by registering the forwarders from @wfgraph/core/inngest.
+      - Split one bus name into several Events with an umbrella source and when.
+      - Choose between a payload Start Filter and a current-state Eligibility rule.
+    failure_modes:
+      - mistake: Persist or expose full resolved Entity State
+        mechanism: Full Entity State belongs to the host; Workflow Graph keeps only the projected fields a node reads, and copying the rest leaks it into node outputs, audit metadata or tables.
+        wrong_pattern: |
+          Return the full Entity State as a node output or audit field.
+        correct_pattern: |
+          Let the Entity template source project only the authored field references.
+        source: alandotcom/wfgraph:docs/events.md (Current Entity State)
+        priority: CRITICAL
+        status: active
+      - mistake: Register Entity definitions separately
+        mechanism: Assembly discovers Entity definitions through Event bindings, and nothing registers on import.
+        wrong_pattern: |
+          extensions: { entities: [patient] }
+        correct_pattern: |
+          defineEvent({ ..., entities: { patient: { entity: patient, selectEntityId } } }) in extensions.events
+        source: alandotcom/wfgraph:docs/events.md (Current Entity State)
+        priority: HIGH
+        status: active
+      - mistake: One Event with a subtype field for two lifecycle roles
+        mechanism: Lifecycle Rules are stated over Event names, so one name cannot both start and cancel.
+        wrong_pattern: |
+          appointment.changed with type: "created" | "canceled"
+        correct_pattern: |
+          appointment.created and appointment.canceled as two Events
+        source: alandotcom/wfgraph:docs/events.md
+        priority: HIGH
+        status: active
+      - mistake: Transform the payload at intake
+        mechanism: Workflow Graph carries the raw JSON, and a decoded Date breaks Wait matches captured at park time.
+        wrong_pattern: |
+          Decode to Date objects and persist that as the Event payload.
+        correct_pattern: |
+          Keep ISO strings and annotate format date-time.
+        source: alandotcom/wfgraph:docs/events.md (The intake gate)
+        priority: HIGH
+        status: active
+      - mistake: A when filter standing in for one workflow's rule
+        mechanism: when decides which Event a payload is for every workflow in the app, so a workflow-specific split belongs in a Start Filter or Cancel Filter.
+        wrong_pattern: |
+          appointment.created.video with when: { path: "channel", equals: "video" }
+        correct_pattern: |
+          One appointment.created Event and a Start Filter on the workflow's Lifecycle Node
+        source: alandotcom/wfgraph:docs/events.md (The umbrella source)
+        priority: HIGH
+        status: active
+      - mistake: Schema library without JSON Schema
+        mechanism: The editor draws fields from the JSON Schema half of Standard Schema, so a validator-only schema has no field list.
+        wrong_pattern: |
+          A custom validator implementing only ~standard.validate
+        correct_pattern: |
+          A Zod, arktype or Effect Schema value
+        source: alandotcom/wfgraph:docs/events.md
+        priority: MEDIUM
+        status: active
+    sources:
+      - alandotcom/wfgraph:docs/events.md
+
+  - name: host-actions
+    slug: host-actions
+    domain: host-extensions
+    description: >-
+      A developer adds a workflow step that runs the host application's own
+      code, with a config form the editor draws.
+    type: sub-skill
+    packages:
+      - "@wfgraph/core"
+    covers:
+      - defineAction
+      - Standard Schema input and output
+      - configFields and showWhen
+      - options callbacks
+      - step.run with a Promise factory
+      - readCredentials
+      - sideEffect
+    tasks:
+      - Write a defineAction with a Promise handler that fails by throwing and passes it in extensions.actions.
+      - Describe the config form with the input schema, letting the editor derive labels, and add configFields for presentation the schema cannot express.
+      - Show a field for several template variants with showWhen.in.
+      - Offer application-owned choices with options callbacks, including choices that depend on another field and an unavailable result.
+      - Wrap side-effecting work in step.run so a replay answers it from the step memo.
+      - Mark an action that writes outside the workflow with sideEffect true.
+    failure_modes:
+      - mistake: Effect handler on defineAction
+        mechanism: defineAction is the Promise host path; Effect handlers belong to defineIntegration.
+        wrong_pattern: |
+          handler: Effect.fn(function* (bag) { return yield* doWork(bag.input) })
+        correct_pattern: |
+          handler: async ({ input }) => doWork(input)
+        source: alandotcom/wfgraph:docs/integrations.md (Effect for integrations, Promise for host actions)
+        priority: HIGH
+        status: active
+        skills: [host-actions, integrations]
+      - mistake: Catch around readCredentials
+        mechanism: readCredentials rejects with the credential store's failure, and catching it turns that failure into whatever the handler answers next.
+        wrong_pattern: |
+          try { return await readCredentials() } catch { return { ok: false } }
+        correct_pattern: |
+          const credentials = await readCredentials();
+        source: alandotcom/wfgraph:docs/integrations.md
+        priority: HIGH
+        status: active
+      - mistake: Redundant or missing field title
+        mechanism: The editor derives a label from the property key, so a title that repeats it is noise and a key that needs a different label gets the wrong one.
+        wrong_pattern: |
+          appointmentId: z.string().meta({ title: "Appointment ID" })
+        correct_pattern: |
+          id: z.string().meta({ title: "Item ID" })
+        source: alandotcom/wfgraph:docs/embedding.md
+        priority: MEDIUM
+        status: active
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:docs/integrations.md
+
+  - name: integrations
+    slug: integrations
+    domain: integrations
+    description: >-
+      A developer writes a vendor integration against @wfgraph/core/plugin,
+      tests it, and evolves its actions without breaking published workflows.
+    type: sub-skill
+    packages:
+      - "@wfgraph/core"
+    covers:
+      - defineIntegration
+      - CredentialFields and CredentialsOf
+      - callExternal and callExternalAsync
+      - StepFailure
+      - configFields, configOptions and connectionDefaultKey
+      - webhook verify and receive
+      - IntegrationOAuth
+      - runAction, actionData and actionError
+      - checkIntegration
+      - hidden actions
+    tasks:
+      - Define an integration with a credential form and Effect action handlers written inline in the actions record.
+      - Call a vendor API with callExternal inside step.run so a replay does not repeat the side effect.
+      - Fail a refused request once with StepFailure.
+      - Load config choices from the Connection with configOptions and a provider-select field.
+      - Declare integration-owned Events and a webhook that verifies the raw body.
+      - Write an IntegrationOAuth adapter for a registered client or a public metadata client with S256 PKCE.
+      - Test actions with runAction from @wfgraph/core/testing and call checkIntegration in the package's suite.
+      - Add config keys or output paths to a live action, or ship a new action id and hide the old one.
+    failure_modes:
+      - mistake: Register on import
+        mechanism: Nothing registers on import; the host turns an integration on by passing it in extensions.integrations.
+        wrong_pattern: |
+          import "./my-service";
+        correct_pattern: |
+          extensions: { integrations: [myService] }
+        source: alandotcom/wfgraph:docs/integrations.md
+        priority: CRITICAL
+        status: active
+        skills: [integrations, wfgraph-plugins]
+      - mistake: HTTP call outside step.run
+        mechanism: The executor replays the run from the top on every pass, so an unwrapped call runs again after a Wait or a retry.
+        wrong_pattern: |
+          yield* sendMessage(apiKey, bag.input.text)
+        correct_pattern: |
+          yield* bag.step.run("post", sendMessage(apiKey, bag.input.text))
+        source: alandotcom/wfgraph:docs/integrations.md (What is remembered across a replay)
+        priority: CRITICAL
+        status: active
+      - mistake: Retry refresh or set safeToRepeat on a token POST
+        mechanism: Token exchange, refresh and revocation requests are writes, and Core serializes refreshes for one connection, so an adapter must not retry them on its own.
+        wrong_pattern: |
+          callExternal({ method: "POST", url: tokenUrl, safeToRepeat: true })
+        correct_pattern: |
+          callExternal({ method: "POST", url: tokenUrl })
+        source: alandotcom/wfgraph:docs/integrations.md (Core owns the browser flow)
+        priority: CRITICAL
+        status: active
+      - mistake: Lift the handler out of the actions record
+        mechanism: The inline object literal is what types the handler's bag, and a lifted const loses that contextual type.
+        wrong_pattern: |
+          const handler = Effect.fn(...) above defineIntegration
+        correct_pattern: |
+          Write the handler object literal inside actions.
+        source: alandotcom/wfgraph:docs/integrations.md (The definition)
+        priority: HIGH
+        status: active
+      - mistake: Promise handler inside defineIntegration
+        mechanism: Integration handlers are Effect and read credentials with yield* bag.credentials; the Promise forms are the host bridge.
+        wrong_pattern: |
+          handler: async ({ input, readCredentials }) => { ... }
+        correct_pattern: |
+          handler: Effect.fn(function* (bag) { const credentials = yield* bag.credentials; ... })
+        source: alandotcom/wfgraph:docs/integrations.md (Effect for integrations, Promise for host actions)
+        priority: HIGH
+        status: active
+        skills: [integrations, host-actions]
+      - mistake: Remove a config key on a live action id
+        mechanism: Published workflows pin action ids and config keys, so removing a key fails waking nodes on pinned versions.
+        wrong_pattern: |
+          Drop channel from input on the same action id.
+        correct_pattern: |
+          Add keys with Schema.optionalKey; for a breaking contract ship a new id and set hidden true on the old one.
+        source: alandotcom/wfgraph:docs/integrations.md (Evolving an action)
+        priority: HIGH
+        status: active
+      - mistake: Pass decoded handler input to runAction
+        mechanism: runAction input is the encoded side that a builder typed, and a transforming schema decodes it on the way in.
+        wrong_pattern: |
+          runAction(twilio, "send-sms", { input: { mediaUrls: ["https://a"] } })
+        correct_pattern: |
+          runAction(twilio, "send-sms", { input: { mediaUrls: "https://a" } })
+        source: alandotcom/wfgraph:docs/integrations.md (Testing an integration)
+        priority: HIGH
+        status: active
+    sources:
+      - alandotcom/wfgraph:docs/integrations.md
+
+  - name: wfgraph-plugins
+    slug: wfgraph-plugins
+    domain: integrations
+    description: >-
+      A developer turns on some or all of the six built-in integrations and
+      meets their OAuth and webhook requirements.
+    type: core
+    packages:
+      - "@wfgraph/plugins"
+    covers:
+      - builtInIntegrations
+      - slack(options?)
+      - clerk, linear, posthog, resend and twilio exports
+      - publicUrl OAuth routes
+      - Resend webhook Events
+      - "@wfgraph/plugins/ui"
+    tasks:
+      - Turn on all six built-in integrations with builtInIntegrations() in extensions.integrations.
+      - Turn on a subset by passing individual exports.
+      - Enable Slack OAuth with slack({ oauthClient }) or keep Slack manual-only.
+      - Meet the publicUrl, HTTPS and SameSite=Lax session cookie requirements of Slack, Resend and PostHog OAuth.
+      - Receive Resend webhook Events by pasting the Connection URL and adding RESEND_WEBHOOK_SECRET on that Connection.
+      - Keep one resolved copy of @wfgraph/core beside @wfgraph/plugins.
+    failure_modes:
+      - mistake: Expect import to enable integrations
+        mechanism: Nothing registers on import, so an empty extensions object turns nothing on.
+        wrong_pattern: |
+          import "@wfgraph/plugins"; createWfGraphApp({ extensions: {} })
+        correct_pattern: |
+          extensions: { integrations: builtInIntegrations() }
+        source: alandotcom/wfgraph:packages/plugins/README.md
+        priority: CRITICAL
+        status: active
+        skills: [wfgraph-plugins, integrations]
+      - mistake: Slack OAuth without publicUrl
+        mechanism: Core derives the OAuth callback and metadata URLs from publicUrl plus basePath.
+        wrong_pattern: |
+          builtInIntegrations({ slack: { oauthClient } }) with no publicUrl
+        correct_pattern: |
+          publicUrl: "https://workflows.example.com"
+        source: alandotcom/wfgraph:docs/embedding.md (Built-in integrations)
+        priority: HIGH
+        status: active
+      - mistake: Two copies of @wfgraph/core
+        mechanism: A nested core from a mismatched install splits the plugin contract from the app's runtime.
+        wrong_pattern: |
+          A nested @wfgraph/core under @wfgraph/plugins
+        correct_pattern: |
+          One resolved @wfgraph/core at the version @wfgraph/plugins was released with
+        source: alandotcom/wfgraph:docs/embedding.md
+        priority: HIGH
+        status: active
+      - mistake: Header-based auth on the OAuth callback
+        mechanism: The OAuth callback stays behind auth and arrives as a top-level provider redirect, which carries cookies and no custom headers.
+        wrong_pattern: |
+          An auth callback that requires a custom request header
+        correct_pattern: |
+          An auth callback that reads a SameSite=Lax session cookie
+        source: alandotcom/wfgraph:docs/embedding.md
+        priority: MEDIUM
+        status: active
+        skills: [wfgraph-plugins, wfgraph-core, auth]
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:packages/plugins/README.md
+
+  # Planned sub-skills of wfgraph-core, approved by the maintainer for the
+  # commit after this record. They have no SKILL.md yet.
+  - name: auth
+    slug: auth
+    domain: embedding
+    status: planned
+    description: >-
+      A developer writes the access policy that decides who can use the editor,
+      the API and OAuth connections.
+    type: sub-skill
+    packages:
+      - "@wfgraph/core"
+    covers:
+      - defineWfGraphAuth
+      - WfGraphRoles
+      - WfGraphAccess
+      - trustWfGraphUpstream
+      - WfGraphOperations and WfGraphPermissions
+    tasks:
+      - Map host sessions to the viewer, editor and admin role policies.
+      - Build a custom policy from permissions or operation IDs, loading remote grants once in the authentication callback.
+      - Choose trustWfGraphUpstream only behind an upstream component that authorizes every request.
+      - Keep the OAuth callback authenticated by a cookie the provider redirect carries.
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+
+  - name: observability
+    slug: observability
+    domain: embedding
+    status: planned
+    description: >-
+      A developer routes Workflow Graph's log records and trace spans to the
+      host's logging and tracing backends.
+    type: sub-skill
+    packages:
+      - "@wfgraph/core"
+    covers:
+      - configureWfGraphLogging
+      - logger option
+      - LogTape category wfgraph
+      - OpenTelemetry tracer provider
+      - Sentry
+      - stable span names
+    tasks:
+      - Receive log records with configureWfGraphLogging, a logger option, or a LogTape configuration that sinks the wfgraph category.
+      - Register an OpenTelemetry provider or initialize Sentry so Workflow Graph's spans export.
+      - Build dashboards and alerts on the stable span names and attributes.
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+
+  - name: cloudflare-worker
+    slug: cloudflare-worker
+    domain: embedding
+    status: planned
+    description: >-
+      A developer deploys Workflow Graph as a Cloudflare Worker over PostgreSQL
+      through Hyperdrive.
+    type: sub-skill
+    packages:
+      - "@wfgraph/core"
+    covers:
+      - wfWorker
+      - wfHyperdrive
+      - WfGraphWakeQueue
+      - Cron Trigger
+      - Wrangler configuration
+      - migrateWfGraphDatabase
+    tasks:
+      - Export wfWorker with its fetch, scheduled and queue handlers, and resolve bindings in the request callback.
+      - Configure a Cron Trigger that fires every minute and an optional wake Queue with max_batch_timeout 0.
+      - Configure Hyperdrive with query caching disabled and the origin role's search_path on the Workflow Graph schema.
+      - Run PostgreSQL migrations out of band with @wfgraph/core/migrate.
+      - Size limits.cpu_ms and read tick records against the platform limits.
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+
+tensions:
+  - name: Promise host step versus Effect integration
+    skills: [host-actions, integrations]
+    description: The two authoring paths share step.run, schemas and sideEffect, and differ in handler style, credential reads and failure signalling.
+    implication: An agent that loads one skill writes the other path's handler, credential read or failure form.
+  - name: In-process loop versus a separate runner or a Worker
+    skills: [wfgraph-core, cloudflare-worker]
+    description: createWfGraphApp runs the worker loop by default, while a Worker runs ticks and createWfGraphRunner refuses SQLite and Hyperdrive.
+    implication: An agent applies runner options to a Worker, or turns the loop off in every process.
+  - name: OAuth callback behind host auth
+    skills: [wfgraph-plugins, wfgraph-core, auth]
+    description: The built-in OAuth flows need publicUrl and an auth callback that accepts a top-level provider redirect.
+    implication: An agent writes header-only authentication and every OAuth connection fails at the callback.
+
+cross_references:
+  - from: events
+    to: wfgraph-core
+    reason: The worker loop delivers every Event, and events.retentionMs is both the inbox retention window and the deduplication window.
+  - from: host-actions
+    to: integrations
+    reason: The Promise and Effect comparison decides which path a step belongs on.
+  - from: integrations
+    to: wfgraph-plugins
+    reason: The six built-ins are the worked examples, and a host turns them on the same way it turns on its own integration.
+  - from: wfgraph-plugins
+    to: wfgraph-core
+    reason: OAuth and webhook URLs depend on publicUrl, basePath and the auth callback.
+  - from: wfgraph-core
+    to: auth
+    reason: auth is a required createWfGraphApp option; the planned auth skill will own the policy guidance.
+  - from: wfgraph-core
+    to: observability
+    reason: Start-up warns when no logging is configured; the planned observability skill will own logging and tracing.
+  - from: wfgraph-core
+    to: cloudflare-worker
+    reason: The Worker bullets and failure modes in wfgraph-core move to the planned cloudflare-worker skill.
+
+gaps:
+  - skill: wfgraph-core
+    question: The claim that createWfGraphRunner refuses Hyperdrive rests on source (packages/core/src/backend/setup.ts refuses runner settings for a backend with no long-lived loop). Should docs/embedding.md state it?
+    context: The skill's cited docs state only that the runner refuses SQLite, so the review cannot trace this claim to a cited source.
+    status: open
+  - skill: wfgraph-core
+    question: Does configuring the build agent (agent.apiKey, agent.model, agent.reasoningEffort, agent.baseUrl) need adopter guidance?
+    context: No skill covers the agent options in docs/embedding.md; the gap was found during this assessment and has no maintainer decision.
+    status: open
+  - skill: wfgraph-core
+    question: Discovery and executable task checks for the five skills.
+    context: Checks will live in packages/evals/src/skills/. Until they exist, activation and task success are unverified.
+    status: open
