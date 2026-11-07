@@ -1,0 +1,112 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "6959aaa5-1e80-4339-a587-b5a5ccf4d95b",
+  "prevIds": [
+    "8fa2bf71-159c-444f-a1a7-d579f2f01b21"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_executions",
+        "schedule_cron"
+      ],
+      "writes": [
+        "s|col|public.workflow_executions.schedule_cron",
+        "n|col|public.workflow_executions.schedule_cron",
+        "e|col|public.workflow_executions.schedule_cron"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_executions",
+        "schedule_time_zone"
+      ],
+      "writes": [
+        "s|col|public.workflow_executions.schedule_time_zone",
+        "n|col|public.workflow_executions.schedule_time_zone",
+        "e|col|public.workflow_executions.schedule_time_zone"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_executions"
+      ],
+      "writes": [
+        "s|ck|public.workflow_executions.workflow_executions_schedule_check",
+        "n|ck|public.workflow_executions.workflow_executions_schedule_check",
+        "e|ck|public.workflow_executions.workflow_executions_schedule_check",
+        "n|con|public.workflow_executions.workflow_executions_schedule_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.schedule_cron",
+        "n|col|public.workflow_executions.schedule_time_zone",
+        "n|col|public.workflow_executions.start_source"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_executions",
+        "name": "schedule_cron",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_executions",
+        "name": "schedule_time_zone",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_executions",
+        "name": "workflow_executions_schedule_check",
+        "value": "(\"schedule_cron\" is null and \"schedule_time_zone\" is null) or (\"schedule_cron\" is not null and \"schedule_time_zone\" is not null and \"start_source\" = 'schedule')",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

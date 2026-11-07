@@ -32,6 +32,8 @@ function createRow(
     versionNumber: 1,
     error: null,
     scheduledFor: null,
+    scheduleCron: null,
+    scheduleTimeZone: null,
     waitingAt: null,
     cancelledAt: null,
     completedAt: null,

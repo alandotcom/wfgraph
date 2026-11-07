@@ -73,6 +73,11 @@ export type WorkflowExecution = {
    * when the run started late. Null for a run no schedule started.
    */
   scheduledFor: Date | null;
+  /**
+   * The schedule that started a scheduled run, in words, which the Runs view
+   * shows under the run's title. Null for a run no schedule started.
+   */
+  scheduleDescription: string | null;
   waitingAt: Date | null;
   cancelledAt: Date | null;
   completedAt: Date | null;
@@ -268,6 +273,7 @@ export function toWorkflowExecutionFromSummary(
     entityValue: summary.entityValue,
     startedAt: new Date(summary.startedAt),
     scheduledFor: toScheduledFor(summary.scheduledFor),
+    scheduleDescription: summary.scheduleDescription,
     waitingAt: null,
     cancelledAt: null,
     completedAt: summary.completedAt ? new Date(summary.completedAt) : null,

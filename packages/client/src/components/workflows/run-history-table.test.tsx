@@ -20,6 +20,7 @@ function run(
     error: null,
     startedAt: "2026-08-22T10:00:00.000Z",
     scheduledFor: null,
+    scheduleDescription: null,
     waitingAt: null,
     cancelledAt: null,
     completedAt: "2026-08-22T10:00:01.000Z",
@@ -116,6 +117,32 @@ describe("RunHistoryTable", () => {
     expect(view.getAllByText("v4")).toHaveLength(2);
   });
 
+  it("names a scheduled run by the schedule that started it", () => {
+    const view = render(
+      <RunHistoryTable
+        hasNextPage={false}
+        isLoading={false}
+        isLoadingMore={false}
+        onLoadMore={() => undefined}
+        onOpenRun={() => undefined}
+        runs={[
+          run({
+            id: "exec_scheduled",
+            startSource: "schedule",
+            entityValue: "workflow:wf_1",
+            scheduledFor: "2026-08-22T09:00:00.000Z",
+            scheduleDescription: "Every weekday at 9:00 AM (America/New_York)",
+          }),
+        ]}
+      />
+    );
+
+    expect(
+      view.getByText("Every weekday at 9:00 AM (America/New_York)")
+    ).toBeTruthy();
+    expect(view.queryByText("workflow:wf_1")).toBeNull();
+  });
+
   it("names a scheduled run by its source in place of the workflow's own Entity Value", () => {
     const view = render(
       <RunHistoryTable
@@ -130,6 +157,7 @@ describe("RunHistoryTable", () => {
             startSource: "schedule",
             entityValue: "workflow:wf_1",
             scheduledFor: "2026-08-22T09:00:00.000Z",
+            scheduleDescription: null,
           }),
         ]}
       />

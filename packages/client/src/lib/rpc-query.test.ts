@@ -109,6 +109,7 @@ beforeEach(() => {
       error: null,
       startedAt: "2026-03-01T10:00:00.000Z",
       scheduledFor: null,
+      scheduleDescription: null,
       completedAt: null,
       duration: null,
     },

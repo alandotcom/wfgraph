@@ -181,7 +181,10 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
           const nextWakeAt = cronWakeAfter(input.schedule, input.now);
           const start = yield* admitStart(database, {
             ...input.start,
-            execution: { ...input.start.execution, scheduledFor: slot },
+            execution: {
+              ...input.start.execution,
+              scheduled: { slot, schedule: input.schedule },
+            },
             now: input.now,
           });
           if (start.status === "admission_refused") {

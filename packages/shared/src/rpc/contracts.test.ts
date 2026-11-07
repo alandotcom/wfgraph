@@ -196,6 +196,7 @@ describe("workflow executions RPC output contract", () => {
     error: null,
     startedAt: "2026-03-01T09:00:00.000Z",
     scheduledFor: null,
+    scheduleDescription: null,
     waitingAt: null,
     cancelledAt: null,
     completedAt: null,
@@ -288,6 +289,47 @@ describe("workflow executions RPC output contract", () => {
     expect(await list("9:00 AM")).toHaveProperty("issues");
   });
 
+  it("carries a scheduled run's schedule in words on both lists, and refuses a row without the key", async () => {
+    const decodeList = getOutputDecoder(rpcContract.workflow.getExecutions);
+    const decodeGlobal = getOutputDecoder(
+      rpcContract.workflow.getExecutionsGlobal
+    );
+    const scheduled = {
+      ...listItem,
+      startSource: "schedule",
+      scheduledFor: "2026-03-01T09:00:00.000Z",
+      scheduleDescription: "Every weekday at 9:00 AM (America/New_York)",
+      activity: null,
+    };
+    const { scheduleDescription: _omitted, ...withoutDescription } = scheduled;
+    const list = (item: object) =>
+      decodeList({
+        items: [item],
+        ...reading,
+        runRetentionMs: null,
+        supersededCount: 0,
+        refusedStarts: [],
+        cancelNotDelivered: [],
+      });
+
+    expect(await list(scheduled)).toHaveProperty("value");
+    expect(await list(withoutDescription)).toHaveProperty("issues");
+    expect(
+      await decodeGlobal({
+        items: [
+          {
+            ...scheduled,
+            workflowName: "Nightly report",
+            workflowIsPaused: false,
+          },
+        ],
+        ...reading,
+        runRetentionMs: null,
+        nextCursor: null,
+      })
+    ).toHaveProperty("value");
+  });
+
   // The window is a host option, so a positive number of milliseconds or null
   // for a host that keeps every run.
   it("carries the host's run retention window on both lists, and refuses a window that is not positive", async () => {
@@ -337,6 +379,7 @@ describe("workflow execution logs RPC output contract", () => {
       error: null,
       startedAt: "2026-03-01T09:00:00.000Z",
       scheduledFor: null,
+      scheduleDescription: null,
       completedAt: null,
       duration: null,
     },
@@ -361,6 +404,23 @@ describe("workflow execution logs RPC output contract", () => {
     waits: [],
     exit: null,
   };
+
+  it("carries a scheduled run's schedule in words on the run it reads", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutionLogs);
+
+    expect(
+      await decode({
+        ...payload,
+        schedule: null,
+        execution: {
+          ...payload.execution,
+          startSource: "schedule",
+          scheduledFor: "2026-03-01T09:00:00.000Z",
+          scheduleDescription: "Every weekday at 9:00 AM (America/New_York)",
+        },
+      })
+    ).toHaveProperty("value");
+  });
 
   it("carries the executor's hold on an in-progress run, and null once it ended", async () => {
     const decode = getOutputDecoder(rpcContract.workflow.getExecutionLogs);

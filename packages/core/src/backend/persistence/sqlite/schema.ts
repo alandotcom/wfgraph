@@ -127,6 +127,8 @@ export const workflowExecutions = sqliteTable(
     error: text("error"),
     startedAt: integer("started_at").notNull(),
     scheduledFor: integer("scheduled_for"),
+    scheduleCron: text("schedule_cron"),
+    scheduleTimeZone: text("schedule_time_zone"),
     waitingAt: integer("waiting_at"),
     cancelledAt: integer("cancelled_at"),
     completedAt: integer("completed_at"),
@@ -184,6 +186,10 @@ export const workflowExecutions = sqliteTable(
     check(
       "workflow_executions_entity_identity_pair_check",
       sql`(${table.entityType} is null and ${table.entityId} is null) or (${table.entityType} is not null and ${table.entityId} is not null)`
+    ),
+    check(
+      "workflow_executions_schedule_check",
+      sql`(${table.scheduleCron} is null and ${table.scheduleTimeZone} is null) or (${table.scheduleCron} is not null and ${table.scheduleTimeZone} is not null and ${table.startSource} = 'schedule')`
     ),
     check(
       "workflow_executions_termination_check",

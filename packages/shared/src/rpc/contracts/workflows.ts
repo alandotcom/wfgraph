@@ -303,6 +303,12 @@ const workflowExecutionFields = {
    * when no worker ran at the slot. Null for a run no schedule started.
    */
   scheduledFor: Schema.NullOr(isoTimestampString()),
+  /**
+   * The schedule that started a scheduled run, in words, such as "Every
+   * weekday at 9:00 AM (America/New_York)". Null for a run no schedule
+   * started.
+   */
+  scheduleDescription: Schema.NullOr(Schema.String),
   waitingAt: Schema.NullOr(Schema.String),
   cancelledAt: Schema.NullOr(Schema.String),
   completedAt: Schema.NullOr(Schema.String),
@@ -356,6 +362,7 @@ const executionSummarySchema = Schema.Struct({
   error: Schema.NullOr(Schema.String),
   startedAt: Schema.String,
   scheduledFor: workflowExecutionFields.scheduledFor,
+  scheduleDescription: workflowExecutionFields.scheduleDescription,
   completedAt: Schema.NullOr(Schema.String),
   duration: Schema.NullOr(Schema.String),
 });

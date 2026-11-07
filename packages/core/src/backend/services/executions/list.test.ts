@@ -30,6 +30,8 @@ function execution(
     error: null,
     startedAt: new Date("2026-03-01T10:00:00.000Z"),
     scheduledFor: null,
+    scheduleCron: null,
+    scheduleTimeZone: null,
     waitingAt: null,
     cancelledAt: null,
     completedAt: null,
@@ -205,6 +207,8 @@ describe("getWorkflowExecutions", () => {
               ...execution("exec_scheduled", "completed"),
               startSource: "schedule",
               scheduledFor: new Date("2026-03-01T09:00:00.000Z"),
+              scheduleCron: "0 9 * * 1-5",
+              scheduleTimeZone: "America/New_York",
             },
             execution("exec_event", "completed"),
           ]);
@@ -217,6 +221,11 @@ describe("getWorkflowExecutions", () => {
           assert.deepStrictEqual(
             result.items.map((item) => item.scheduledFor),
             ["2026-03-01T09:00:00.000Z", null]
+          );
+          // The schedule crosses in words, so the client describes nothing.
+          assert.deepStrictEqual(
+            result.items.map((item) => item.scheduleDescription),
+            ["Every weekday at 9:00 AM (America/New_York)", null]
           );
         })
     );

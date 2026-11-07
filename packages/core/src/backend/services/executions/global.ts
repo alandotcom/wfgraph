@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
+import { describeRunSchedule } from "#src/backend/services/executions/run-rows";
 import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
@@ -53,6 +54,7 @@ type GlobalExecutionItem = {
   error: string | null;
   startedAt: string;
   scheduledFor: string | null;
+  scheduleDescription: string | null;
   waitingAt: string | null;
   cancelledAt: string | null;
   completedAt: string | null;
@@ -101,6 +103,7 @@ function toGlobalExecutionItem(
     startedAt: row.startedAt.toISOString(),
     scheduledFor:
       row.scheduledFor === null ? null : encodeIsoTimestamp(row.scheduledFor),
+    scheduleDescription: describeRunSchedule(row),
     waitingAt: toIso(row.waitingAt),
     cancelledAt: toIso(row.cancelledAt),
     completedAt: toIso(row.completedAt),

@@ -19,6 +19,7 @@ import type {
   WorkflowMode,
 } from "@wfgraph/shared/graph/types";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { describeCronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 
 /**
@@ -227,6 +228,24 @@ const SCHEDULED_REFUSAL_CLAUSES: Partial<
 > = {
   concurrency_first_wins: "a run is still going and Concurrency is first-wins",
 };
+
+/**
+ * The schedule that started a run, in words, such as "Every weekday at 9:00 AM
+ * (America/New_York)", or null for a run no schedule started. The run lists
+ * and the logs answer this in place of the pair, so the client needs no
+ * describer of its own.
+ */
+export function describeRunSchedule(row: {
+  scheduleCron: string | null;
+  scheduleTimeZone: string | null;
+}): string | null {
+  return row.scheduleCron === null || row.scheduleTimeZone === null
+    ? null
+    : describeCronSchedule({
+        cron: row.scheduleCron,
+        timeZone: row.scheduleTimeZone,
+      });
+}
 
 /** The slot a scheduled start was for, and the zone its schedule reads time in. */
 export type ScheduledSlot = { at: Date; timeZone: string };

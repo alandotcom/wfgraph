@@ -132,6 +132,8 @@ function executionRow(overrides: Partial<WorkflowExecution> = {}) {
     error: null,
     startedAt: new Date("2026-03-01T00:00:00.000Z"),
     scheduledFor: null,
+    scheduleCron: null,
+    scheduleTimeZone: null,
     waitingAt: null,
     cancelledAt: null,
     completedAt: null,

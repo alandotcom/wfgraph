@@ -33,6 +33,7 @@ const BASE_EXECUTION: WorkflowExecution = {
   versionNumber: 4,
   startedAt: new Date("2026-02-22T10:00:00Z"),
   scheduledFor: null,
+  scheduleDescription: null,
   status: "running",
   startEventName: "appointment.updated",
   startSource: "event",

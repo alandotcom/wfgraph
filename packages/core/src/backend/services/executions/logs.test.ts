@@ -35,6 +35,8 @@ function summary(overrides: Partial<ExecutionSummary> = {}): ExecutionSummary {
     error: null,
     startedAt: new Date("2026-03-01T10:00:00.000Z"),
     scheduledFor: null,
+    scheduleCron: null,
+    scheduleTimeZone: null,
     completedAt: new Date("2026-03-01T10:00:01.000Z"),
     duration: "1000",
     ...overrides,
@@ -78,24 +80,32 @@ describe("getExecutionLogs", () => {
       })
     );
 
-    it.effect("carries a scheduled run's slot as a string", () =>
-      Effect.gen(function* () {
-        const result = yield* getExecutionLogs("exec_1").pipe(
-          Effect.provide(
-            makeRepos(
-              summary({
-                startSource: "schedule",
-                scheduledFor: new Date("2026-03-01T09:00:00.000Z"),
-              })
+    it.effect(
+      "carries a scheduled run's slot as a string and its schedule in words",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* getExecutionLogs("exec_1").pipe(
+            Effect.provide(
+              makeRepos(
+                summary({
+                  startSource: "schedule",
+                  scheduledFor: new Date("2026-03-01T09:00:00.000Z"),
+                  scheduleCron: "0 9 * * 1-5",
+                  scheduleTimeZone: "America/New_York",
+                })
+              )
             )
-          )
-        );
+          );
 
-        assert.strictEqual(
-          result.execution.scheduledFor,
-          "2026-03-01T09:00:00.000Z"
-        );
-      })
+          assert.strictEqual(
+            result.execution.scheduledFor,
+            "2026-03-01T09:00:00.000Z"
+          );
+          assert.strictEqual(
+            result.execution.scheduleDescription,
+            "Every weekday at 9:00 AM (America/New_York)"
+          );
+        })
     );
 
     // Start identity rides in the same thinner summary so a past-cap deep link

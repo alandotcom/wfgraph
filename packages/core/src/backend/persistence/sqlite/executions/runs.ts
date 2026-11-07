@@ -60,6 +60,8 @@ const executionListSelection = {
   error: workflowExecutions.error,
   startedAt: workflowExecutions.startedAt,
   scheduledFor: workflowExecutions.scheduledFor,
+  scheduleCron: workflowExecutions.scheduleCron,
+  scheduleTimeZone: workflowExecutions.scheduleTimeZone,
   waitingAt: workflowExecutions.waitingAt,
   cancelledAt: workflowExecutions.cancelledAt,
   completedAt: workflowExecutions.completedAt,
@@ -168,7 +170,9 @@ export function insertExecution(
         output: encodeJson(terminal?.output),
         error: terminal?.error ?? null,
         startedAt: now,
-        scheduledFor: input.scheduledFor?.getTime() ?? null,
+        scheduledFor: input.scheduled?.slot.getTime() ?? null,
+        scheduleCron: input.scheduled?.schedule.cron ?? null,
+        scheduleTimeZone: input.scheduled?.schedule.timeZone ?? null,
         cancelledAt: status === "canceled" ? now : null,
         completedAt: isTerminal ? now : null,
       })
@@ -204,6 +208,8 @@ function executionSummary(
     error: execution.error,
     startedAt: execution.startedAt,
     scheduledFor: execution.scheduledFor,
+    scheduleCron: execution.scheduleCron,
+    scheduleTimeZone: execution.scheduleTimeZone,
     completedAt: execution.completedAt,
     duration: execution.duration,
   };

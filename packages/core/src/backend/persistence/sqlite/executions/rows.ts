@@ -41,6 +41,8 @@ export type SqliteExecutionListRow = Pick<
   | "error"
   | "startedAt"
   | "scheduledFor"
+  | "scheduleCron"
+  | "scheduleTimeZone"
   | "waitingAt"
   | "cancelledAt"
   | "completedAt"
@@ -147,6 +149,8 @@ function executionListColumns(
     error: row.error,
     startedAt: new Date(row.startedAt),
     scheduledFor: row.scheduledFor === null ? null : new Date(row.scheduledFor),
+    scheduleCron: row.scheduleCron,
+    scheduleTimeZone: row.scheduleTimeZone,
     waitingAt: row.waitingAt === null ? null : new Date(row.waitingAt),
     cancelledAt: row.cancelledAt === null ? null : new Date(row.cancelledAt),
     completedAt: row.completedAt === null ? null : new Date(row.completedAt),

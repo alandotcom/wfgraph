@@ -120,7 +120,9 @@ export async function openRun(
       entityType: execution.entityType,
       entityId: execution.entityId,
       deliveryId: execution.deliveryId,
-      scheduledFor: execution.scheduledFor,
+      scheduledFor: execution.scheduled?.slot,
+      scheduleCron: execution.scheduled?.schedule.cron,
+      scheduleTimeZone: execution.scheduled?.schedule.timeZone,
       input: execution.input,
     })
     .onConflictDoNothing({

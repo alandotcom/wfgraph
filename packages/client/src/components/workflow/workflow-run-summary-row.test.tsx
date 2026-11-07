@@ -19,6 +19,7 @@ const BASE_EXECUTION: WorkflowExecution = {
   versionNumber: 7,
   startedAt: new Date("2026-02-22T10:00:00Z"),
   scheduledFor: null,
+  scheduleDescription: null,
   status: "completed",
   startEventName: "appointment.updated",
   startSource: "event",
@@ -178,6 +179,40 @@ describe("WorkflowRunSummaryRow", () => {
     ).toBe("customer_7");
   });
 
+  it("shows the schedule that started a scheduled run under its title in the list and the overview", () => {
+    const scheduled: WorkflowExecution = {
+      ...BASE_EXECUTION,
+      entityValue: "workflow:wf_1",
+      startEventName: null,
+      startSource: "schedule",
+      scheduledFor: BASE_EXECUTION.startedAt,
+      scheduleDescription: "Every weekday at 9:00 AM (America/New_York)",
+    };
+
+    const row = render(
+      <WorkflowRunSummaryRow execution={scheduled} runNumber={4} />
+    );
+    expect(row.getByText("Scheduled run")).toBeTruthy();
+    expect(
+      row.getByText("Every weekday at 9:00 AM (America/New_York)")
+    ).toBeTruthy();
+    row.unmount();
+
+    const header = render(
+      <WorkflowRunSummaryRow
+        execution={scheduled}
+        runNumber={4}
+        variant="header"
+      />
+    );
+    // One is the row's label and the other is the Source row's value.
+    expect(header.getAllByText("Schedule")).toHaveLength(2);
+    expect(
+      header.getByText("Every weekday at 9:00 AM (America/New_York)")
+    ).toBeTruthy();
+    expect(header.queryByText("Entity")).toBeNull();
+  });
+
   it("titles a scheduled run by its source, not the workflow's own Entity Value", () => {
     expect(
       getRunIdentity(
@@ -187,6 +222,7 @@ describe("WorkflowRunSummaryRow", () => {
           startEventName: null,
           startSource: "schedule",
           scheduledFor: new Date("2026-02-22T10:00:00Z"),
+          scheduleDescription: null,
         },
         8
       )
@@ -226,6 +262,7 @@ describe("WorkflowRunSummaryRow", () => {
         execution={{
           ...scheduled,
           scheduledFor: new Date("2026-02-22T09:59:30Z"),
+          scheduleDescription: null,
         }}
         runNumber={3}
         variant="header"

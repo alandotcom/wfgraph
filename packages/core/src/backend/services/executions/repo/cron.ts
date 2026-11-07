@@ -163,7 +163,8 @@ export type CronRepoMethods = {
    *
    * It reads the workflow row and decides with `cronFireVerdict`. A fire that
    * may commit admits the run as `startForEntity` does, for the latest slot
-   * at or before `input.now`, which it writes as the run's `scheduledFor`. A
+   * at or before `input.now`, which it writes as the run's `scheduledFor`, with
+   * the schedule as `scheduleCron` and `scheduleTimeZone`. A
    * first-wins refusal writes the Refused Start instead. Either way the timer
    * moves to its first slot after `input.now` and its lease is released, in
    * the same transaction, so each slot fires once.
@@ -233,7 +234,10 @@ export function makeCronMethods(
           const nextWakeAt = cronWakeAfter(input.schedule, input.now);
           const start = await admitStart(tx, {
             ...input.start,
-            execution: { ...input.start.execution, scheduledFor: slot },
+            execution: {
+              ...input.start.execution,
+              scheduled: { slot, schedule: input.schedule },
+            },
             now: input.now,
           });
           if (start.status === "admission_refused") {

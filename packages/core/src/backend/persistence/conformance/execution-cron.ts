@@ -444,11 +444,53 @@ export function describeExecutionCronConformance({
           attempt: 0,
         }),
       ]);
-      // Both readers the Runs view polls carry the slot.
-      expect(result.runs).toEqual([
-        expect.objectContaining({ scheduledFor: at(minutes(5)) }),
-      ]);
-      expect(result.summary).toMatchObject({ scheduledFor: at(minutes(5)) });
+      // Both readers the Runs view polls carry the slot and the schedule.
+      const scheduled = {
+        scheduledFor: at(minutes(5)),
+        scheduleCron: EVERY_FIVE.cron,
+        scheduleTimeZone: EVERY_FIVE.timeZone,
+      };
+      expect(result.runs).toEqual([expect.objectContaining(scheduled)]);
+      expect(result.summary).toMatchObject(scheduled);
+    });
+
+    it("holds a run's schedule columns to both or neither, and to a scheduled run alone", async () => {
+      const { database, connection } = await withWorkflow(openDatabase);
+      const scheduleId = await connection.run(
+        Effect.gen(function* () {
+          yield* publish({
+            version: 1,
+            schedules: [EVERY_FIVE],
+            now: at(minutes(1)),
+          });
+          return yield* timerId(EVERY_FIVE);
+        })
+      );
+      const fence = await leaseTimer(database, scheduleId, "tok_1");
+      const fired = await connection.run(
+        fire({ fence, schedule: EVERY_FIVE, now: at(minutes(5)) })
+      );
+      if (fired.kind !== "fired" || fired.start.status !== "started") {
+        throw new Error("The fire opened no run");
+      }
+      const run = `id = '${fired.start.execution.id}'`;
+
+      await expect(
+        database.execute(
+          `update workflow_executions set schedule_time_zone = null where ${run}`
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `update workflow_executions set start_source = 'manual' where ${run}`
+        )
+      ).rejects.toThrow();
+      // Clearing both is allowed, which is the shape of every other run.
+      await expect(
+        database.execute(
+          `update workflow_executions set schedule_cron = null, schedule_time_zone = null where ${run}`
+        )
+      ).resolves.toBeUndefined();
     });
 
     it("writes nothing from a pass whose lease another claim took over (NoFireWithoutTheLease)", async () => {

@@ -43,7 +43,7 @@ type WorkflowRunSummaryRowProps = {
 /**
  * The run's title and the line beneath it. A scheduled run carries no payload
  * and its Entity Value is the workflow's own (`workflow:<id>`), so it is
- * titled by its source alone.
+ * titled by its source, with the schedule that started it beneath.
  */
 export function getRunIdentity(
   execution: WorkflowExecution,
@@ -56,7 +56,7 @@ export function getRunIdentity(
     return { title: eventName, context: entity || null };
   }
   if (execution.startSource === "schedule") {
-    return { title: "Scheduled run", context: null };
+    return { title: "Scheduled run", context: execution.scheduleDescription };
   }
   if (
     execution.startSource === "manual" &&
@@ -315,7 +315,10 @@ function HeaderSummary({
 
       <dl className="mt-3 space-y-1.5 pl-6">
         {identity.context ? (
-          <MetadataRow label="Entity" value={identity.context} />
+          <MetadataRow
+            label={execution.startSource === "schedule" ? "Schedule" : "Entity"}
+            value={identity.context}
+          />
         ) : null}
         {lateSlot ? (
           <MetadataRow label="Scheduled" value={formatOverviewTime(lateSlot)} />

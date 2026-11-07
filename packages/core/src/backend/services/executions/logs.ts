@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
+import { describeRunSchedule } from "#src/backend/services/executions/run-rows";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
@@ -83,6 +84,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
           execution.scheduledFor === null
             ? null
             : encodeIsoTimestamp(execution.scheduledFor),
+        scheduleDescription: describeRunSchedule(execution),
         completedAt: toIso(execution.completedAt),
         duration: execution.duration,
       },

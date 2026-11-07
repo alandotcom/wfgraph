@@ -103,6 +103,8 @@ function execution(id: string): WorkflowExecution {
     error: null,
     startedAt: NOW,
     scheduledFor: SLOT,
+    scheduleCron: EVERY_FIVE.cron,
+    scheduleTimeZone: EVERY_FIVE.timeZone,
     waitingAt: null,
     cancelledAt: null,
     completedAt: null,

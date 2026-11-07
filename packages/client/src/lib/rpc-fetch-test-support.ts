@@ -96,6 +96,8 @@ type RawExecution = {
   startSource: string;
   /** A scheduled run's slot. Absent reads as a run no schedule started. */
   scheduledFor?: string | null;
+  /** A scheduled run's schedule, in words. Absent reads as none. */
+  scheduleDescription?: string | null;
   /** The graph the run pinned. Absent reads as a published run of v7. */
   versionKind?: "published" | "draft_snapshot";
   versionNumber?: number | null;
@@ -147,6 +149,7 @@ export async function answerWorkflowRunRpc(
           // it has nothing to say, and these fixtures name neither by default.
           activity: null,
           scheduledFor: null,
+          scheduleDescription: null,
           ...item,
         })),
         observedAt: "2026-03-01T10:00:00.000Z",
@@ -180,6 +183,7 @@ export async function answerWorkflowRunRpc(
           error: null,
           startedAt: "2026-03-01T10:00:00.000Z",
           scheduledFor: listed?.scheduledFor ?? null,
+          scheduleDescription: listed?.scheduleDescription ?? null,
           completedAt: "2026-03-01T10:00:30.000Z",
           duration: "30s",
           input: {},

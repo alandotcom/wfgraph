@@ -334,6 +334,14 @@ export const workflowExecutions = pgTable(
      * before `started_at`.
      */
     scheduledFor: timestamp("scheduled_for"),
+    /**
+     * The cron schedule that started a scheduled run: its expression and the
+     * IANA zone it reads time in, which together identify the schedule. The
+     * Runs view describes the run by them. Both are null on every run a
+     * schedule did not start.
+     */
+    scheduleCron: text("schedule_cron"),
+    scheduleTimeZone: text("schedule_time_zone"),
     waitingAt: timestamp("waiting_at"),
     cancelledAt: timestamp("cancelled_at"),
     completedAt: timestamp("completed_at"),
@@ -361,6 +369,10 @@ export const workflowExecutions = pgTable(
     check(
       "workflow_executions_termination_check",
       sql`(${table.terminationKind} is null and ${table.terminationRequestedAt} is null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'cancel' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'exit' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} in ('entity_condition_not_met', 'entity_not_found') and ${table.terminationNodeId} is not null)`
+    ),
+    check(
+      "workflow_executions_schedule_check",
+      sql`(${table.scheduleCron} is null and ${table.scheduleTimeZone} is null) or (${table.scheduleCron} is not null and ${table.scheduleTimeZone} is not null and ${table.startSource} = 'schedule')`
     ),
     // One run per arrival per workflow. Postgres treats nulls as distinct in a
     // unique index, so the manual and scheduled starts that carry no delivery id

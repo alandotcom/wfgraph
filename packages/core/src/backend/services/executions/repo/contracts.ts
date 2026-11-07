@@ -533,8 +533,11 @@ export type NewExecution = {
    * time it is asked for.
    */
   deliveryId?: string | undefined;
-  /** The slot a scheduled run fired for. Absent on every other start. */
-  scheduledFor?: Date | undefined;
+  /**
+   * For a scheduled run, the schedule that fired it and the slot it fired
+   * for. Absent on every other start.
+   */
+  scheduled?: { slot: Date; schedule: CronSchedule } | undefined;
 } & (
   | {
       /** Stable typed identity for a workflow guarded by Entity Eligibility. */
@@ -610,6 +613,8 @@ export type ExecutionSummary = Pick<
   | "error"
   | "startedAt"
   | "scheduledFor"
+  | "scheduleCron"
+  | "scheduleTimeZone"
   | "completedAt"
   | "duration"
 > & {
@@ -674,6 +679,8 @@ export type WorkflowExecutionListRow = Pick<
   | "error"
   | "startedAt"
   | "scheduledFor"
+  | "scheduleCron"
+  | "scheduleTimeZone"
   | "waitingAt"
   | "cancelledAt"
   | "completedAt"
@@ -888,7 +895,7 @@ export type FireCronTimerInput = {
   };
   /**
    * The run to open, as `startForEntity` takes it. The fire writes the slot it
-   * computed onto the row as `scheduledFor`.
+   * computed and `schedule` onto the row as `scheduled`.
    */
   start: Omit<StartForEntityInput, "now" | "admissionDecisionId">;
   /**

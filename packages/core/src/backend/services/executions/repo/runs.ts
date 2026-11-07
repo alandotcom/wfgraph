@@ -76,6 +76,8 @@ const EXECUTION_LIST_COLUMNS = {
   error: workflowExecutions.error,
   startedAt: workflowExecutions.startedAt,
   scheduledFor: workflowExecutions.scheduledFor,
+  scheduleCron: workflowExecutions.scheduleCron,
+  scheduleTimeZone: workflowExecutions.scheduleTimeZone,
   waitingAt: workflowExecutions.waitingAt,
   cancelledAt: workflowExecutions.cancelledAt,
   completedAt: workflowExecutions.completedAt,
@@ -506,6 +508,8 @@ export function makeRunsMethods(
             error: workflowExecutions.error,
             startedAt: workflowExecutions.startedAt,
             scheduledFor: workflowExecutions.scheduledFor,
+            scheduleCron: workflowExecutions.scheduleCron,
+            scheduleTimeZone: workflowExecutions.scheduleTimeZone,
             completedAt: workflowExecutions.completedAt,
             duration: workflowExecutions.duration,
           })

@@ -26,6 +26,7 @@ const EXECUTION: WorkflowExecution = {
   entityValue: null,
   startedAt: new Date("2026-03-01T10:00:00Z"),
   scheduledFor: null,
+  scheduleDescription: null,
   waitingAt: null,
   cancelledAt: null,
   completedAt: null,

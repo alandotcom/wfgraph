@@ -1,0 +1,3 @@
+ALTER TABLE "workflow_executions" ADD COLUMN "schedule_cron" text;--> statement-breakpoint
+ALTER TABLE "workflow_executions" ADD COLUMN "schedule_time_zone" text;--> statement-breakpoint
+ALTER TABLE "workflow_executions" ADD CONSTRAINT "workflow_executions_schedule_check" CHECK (("schedule_cron" is null and "schedule_time_zone" is null) or ("schedule_cron" is not null and "schedule_time_zone" is not null and "start_source" = 'schedule'));

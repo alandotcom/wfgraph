@@ -343,6 +343,8 @@ export function createExecution(): WorkflowExecution {
     cancelPayload: null,
     workflowVersionId: "ver_1",
     scheduledFor: null,
+    scheduleCron: null,
+    scheduleTimeZone: null,
   };
 }
 
