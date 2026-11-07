@@ -62,6 +62,7 @@ import {
 import { makeFencedWrites } from "#src/backend/services/executions/repo/fenced-writes";
 import type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fencing";
 import type {
+  CronFence,
   DeliveryFence,
   EntityStartOutcome,
   RunFence,
@@ -150,11 +151,12 @@ type CrossTableRepoMethods = {
   readonly fenced: (fence: RunFence) => FencedExecutionWrites;
   /**
    * The writes only a pass makes, fenced on the owner token of a pass over a
-   * `delivery` row and on the row still naming the fence's inbox row. A
-   * delivery makes no store writes of its own; the services its steps call
-   * write unfenced, and its step memo row is what makes a step run once.
+   * `delivery` or `cron` row and on the row still naming the fence's inbox row
+   * or workflow. Neither body makes store writes of its own: the services a
+   * delivery's steps call write unfenced, and its step memo row is what makes
+   * a step run once, and a fire's one write is `fireCronTimer`.
    */
-  readonly fencedDelivery: (fence: DeliveryFence) => PassWrites;
+  readonly fencedPass: (fence: DeliveryFence | CronFence) => PassWrites;
 };
 
 /**
@@ -213,7 +215,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
         ...makeRetentionMethods(database),
         ...makeCronMethods(database),
         fenced: makeFencedWrites(database),
-        fencedDelivery: (fence) => makePassWrites(database, fence),
+        fencedPass: (fence) => makePassWrites(database, fence),
 
         startForEntity: (input) =>
           admissionReads(input)

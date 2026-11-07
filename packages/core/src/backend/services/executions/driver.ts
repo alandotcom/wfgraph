@@ -8,10 +8,15 @@
  */
 
 import { Clock, Context, Effect, Layer, Schema } from "effect";
-import type { DatabaseError } from "#src/backend/lib/effect/database";
+import type {
+  DatabaseError,
+  LeaseLost,
+} from "#src/backend/lib/effect/database";
 import type { RunWakeSink } from "#src/backend/services/executions/wakes";
 import {
   type CanceledOutletClaim,
+  type CronFire,
+  type FireCronTimerInput,
   type EntityStartOutcome,
   type ExecutionEntitySelector,
   ExecutionRepo,
@@ -125,6 +130,16 @@ export class ExecutionDriver extends Context.Service<
     readonly receiveEvent: (
       input: NewInboxEvent
     ) => Effect.Effect<InboxInsert, DriverError>;
+    /**
+     * Fire a leased cron timer, as `ExecutionRepo.fireCronTimer` describes,
+     * and wake the worker loops once a fire that opened a run has committed.
+     * `LeaseLost` answers a pass whose timer no longer names its lease. The
+     * fire reads the pass's clock from `input.now`, the clock its claim read,
+     * rather than this service's.
+     */
+    readonly fireCronTimer: (
+      input: FireCronTimerInput
+    ) => Effect.Effect<CronFire, DriverError | LeaseLost>;
   }
 >()("@wfgraph/core/ExecutionDriver") {}
 
@@ -260,6 +275,38 @@ export function makeExecutionDriverLayer(
             });
             yield* runDue(!inserted.duplicate);
             return inserted;
+          }
+        ),
+
+        fireCronTimer: Effect.fn("wfgraph.driver.fire_cron_timer")(
+          function* (input) {
+            yield* Effect.annotateCurrentSpan(
+              "wfgraph.workflow.id",
+              input.fence.workflowId
+            );
+            const fired = yield* executions
+              .fireCronTimer(input)
+              .pipe(
+                Effect.catchTag("DatabaseError", (error) =>
+                  Effect.fail(driverError(error))
+                )
+              );
+            yield* Effect.annotateCurrentSpan(
+              "wfgraph.outcome",
+              fired.kind === "fired" ? fired.start.status : fired.kind
+            );
+            const opened =
+              fired.kind === "fired" && fired.start.status === "started"
+                ? fired.start.execution
+                : null;
+            if (opened !== null) {
+              yield* Effect.annotateCurrentSpan(
+                "wfgraph.execution.id",
+                opened.id
+              );
+            }
+            yield* runDue(opened !== null);
+            return fired;
           }
         ),
       });

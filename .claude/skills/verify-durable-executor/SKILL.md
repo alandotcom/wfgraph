@@ -482,10 +482,10 @@ the directories of those names under `services/workflows/`.
 | `Timing`: `NodeLease`, `NodeHeartbeat`, `NodePoll`, `Expire`, `SweepLateness` | "Wake latency" | `DEFAULT_LEASE_MS`, `DEFAULT_HEARTBEAT_MS` and the `pollMs` option of `runWorkerLoop` in `executor/worker-loop.ts`; `renewLeaseWhileRunning` in `executor/pass.ts`; the expired-lease sweep in `claimDue`. The loop also claims at a released run's own `wake_at` and on a same-process wake (`createWorkerWake`), both sooner than the poll the model bounds, and on a run another process's producer announced through the PostgreSQL backend's `NOTIFY` broadcast (`makeExecutionDriverLayer` in `executions/driver.ts`). |
 | `Timing`: `WorkerLease`, `WorkerCron`, `WorkerBudget`, `QueueMaxDelay`, `Kill`, `WorkerUsesCron` | Section 8, "Cloudflare Worker over Hyperdrive" | `WORKER_LEASE_MS` (5 minutes), `WORKER_HEARTBEAT_MS` (1 minute), `WORKER_TICK_BUDGET_MS` (14 minutes) and `WORKER_TICK_CLAIM_WINDOW_MS` (10 minutes) in `worker.ts`, whose `scheduled` handler is the host's one-minute Cron Trigger (`WorkerCron`, `WorkerUsesCron`) and whose `queue` handler is the Queue consumer; `tick` in `executor/worker-loop.ts`, which cuts a pass still running at the budget, releasing its row due at once with one failure counted against its running step, as the model's `Kill` followed by the lease sweep counts it. `Kill` is the platform ending the invocation at its 15-minute wall time, which the lease recovers; the model's `WorkerBudget` is that wall time, so the code's 5-minute lease over 15 minutes is the model's 2:6 ratio unscaled, and the tick's own 14-minute budget cuts its passes before the kill. The tick's pass limit (`WORKER_TICK_PASS_LIMIT`), which bounds its CPU time, ends a tick early, which the model's next cron or queue invocation covers. A wake message names no row and carries no delay (`createQueueWake` in `executor/queue-wake.ts`), so every deadline is the cron's, which is the model's `QueueMaxDelay` arm with the sleep longer than the cap. |
 | `Timing`: `ClaimWaitsForTheDeadline` | | the `wake_at <= now` condition on `queued` and `waiting` rows in `claimDue` |
-| `Cron`: `Claim`, `ClaimWhenDue` | Section 12, decision 9; section 11, phase 6 | Planned: a `cron` member of the claimed-schedule union, with an entry in `PASS_KINDS` (`executor/pass.ts`) and in the worker loop's lanes (`executor/worker-loop.ts`), claimed by `claimDue` under the same `wake_at <= now` condition (`dueSchedule` in `repo/release-policy.ts`). The cron row names the `workflow_schedules` row it fires in a subject column of its own. |
-| `Cron`: `Fire`, `FiredSlot`, `NextWake`, `FireAndAdvanceTogether`, `RefusalStillAdvances`, `FireReadsThePublishedVersion`, `RefusedStart` | Section 12, decision 9 | Planned: `fireCronTimer` in `repo/schedule.ts` and `sqlite/schedule.ts`, one transaction fenced on the owner token through `writeFenced` that reads the published version, opens the run through the manual-start admission (`startWithConcurrency` in `lifecycle/concurrency.ts`, then `startForEntity`) for the Entity Value `workflow:<id>`, and sets `wake_at` to `nextCronFire` of the row's expression after the transaction's own now, whether the start opened a run or wrote a Refused Start. `nextCronFire` is a planned pure function, strictly after its argument. |
-| `Cron`: `Publish`, `Republished`, `RemovedTimerIsDeleted`, `EditClearsTheLease`, `StartWake` | Section 12, decision 9 | Planned: `replaceCronTimers`, called by `insertPublishedVersion` in `services/workflows/repo.ts` and `persistence/sqlite/workflows.ts` in the transaction that writes the event subscription index, which keeps the row of an unchanged schedule, deletes the row of a removed one, and replaces the row of an edited one with a new row whose owner token is empty. |
-| `Cron`: `Pause`, `Resume`, `PauseDeletesTimers` | Section 12, decision 9 | Planned: `setPaused` in `services/workflows/repo.ts` and `persistence/sqlite/workflows.ts`, reached through `setPausedState` in `services/workflows/bulk-actions.ts`, deletes the workflow's cron rows when it pauses and writes one per published schedule, due at `nextCronFire` after now, when it resumes, in the transaction that sets `is_paused`. |
+| `Cron`: `Claim`, `ClaimWhenDue` | Section 12, decision 9; section 11, phase 6 | The `cron` member of the claimed-schedule union (`ClaimedCron` in `repo/contracts.ts`, read by `claimedSchedule` in `repo/release-policy.ts`), with an entry in `PASS_KINDS` (`executor/pass.ts`) and a lane of its own in the worker loop (`LANE_ORDER` in `executor/worker-loop.ts`, one slot from `CRON_CONCURRENCY` in `executor/in-process-runner.ts`), claimed by `claimDue` under the same `wake_at <= now` condition (`dueSchedule` in `repo/release-policy.ts`). The row names its workflow, expression and zone in `workflow_id`, `cron` and `time_zone`, unique together, and `leasedUnderFence` holds a fenced write to the row's workflow. A Worker's Cron Trigger tick claims it through the same lanes (`tick` in `executor/worker-loop.ts`). |
+| `Cron`: `Fire`, `FiredSlot`, `NextWake`, `FireAndAdvanceTogether`, `RefusalStillAdvances`, `FireReadsThePublishedVersion`, `RefusedStart` | Section 12, decision 9 | `fireCronTimer` in `repo/cron.ts` and `sqlite/cron.ts`, one transaction fenced on the owner token (`writeFencedSerializable` on PostgreSQL, `writeFenced` on SQLite), reached from the pass body `cronBody` (`executor/cron-body.ts`) through `fireSchedule` (`lifecycle/scheduled-start.ts`) and `ExecutionDriver.fireCronTimer`. It reads the workflow row without locking it and fires only while the workflow publishes the version and the Published mode the preflight checked (`cronFireVerdict` in `repo/cron-policy.ts`). It admits the run through `admitStart` (`repo/admission.ts`, `sqlite/admission.ts`), the body `startForEntity` runs, for the Entity Value `workflow:<id>`, with `scheduled_for` set to `cronSlotAt` (`FiredSlot`), writes the Refused Start in the same transaction under first wins, and sets `wake_at` to `cronWakeAfter` (`NextWake`, `StartWake`), croner's first fire strictly after now (`nextFireAfter` in `@wfgraph/shared/lifecycle/cron-schedule`), releasing the lease, whether the start opened a run or was refused. |
+| `Cron`: `Publish`, `Republished`, `RemovedTimerIsDeleted`, `EditClearsTheLease`, `StartWake` | Section 12, decision 9 | `replaceCronTimers` in `repo/cron.ts` and `sqlite/cron.ts`, called by `activatePublishedVersion` in `services/workflows/repo.ts` and by `insertPublishedVersion` in `persistence/sqlite/workflows.ts`, in the transaction that writes the event subscription index. `cronTimerChanges` (`repo/cron-policy.ts`) keeps the row of an unchanged schedule, lease and all, deletes the row of a removed or edited one, and inserts a row with no owner token for an edited or added one. A paused workflow is passed no schedules. |
+| `Cron`: `Pause`, `Resume`, `PauseDeletesTimers` | Section 12, decision 9 | `setPaused` in `services/workflows/repo.ts` and `persistence/sqlite/workflows.ts`, reached through `setPausedState` in `services/workflows/bulk-actions.ts`, deletes the workflow's cron rows (`deleteCronTimers`) when it pauses, and when it resumes calls `replaceCronTimers` with the published version's schedules (`versionCronSchedules` in `repo/cron-policy.ts`), each due at `cronWakeAfter` the resume, in the transaction that sets `is_paused`. |
 
 Last confirmed against: the design doc and the code at `b014dc55`
 (`feat/durable-executor`), the migration as it merges: runs and deliveries on
@@ -503,9 +503,27 @@ The retention sweeps in `Intake` (`SweepInbox`, `SweepRun`, `SweepRefusal`)
 were confirmed against decisions 7 and 8 and the retention code at `065ccf33`.
 
 `Cron` was written against decision 9 of the design doc at `065ccf33`, before
-any cron code existed, so its rows above name planned functions. When the cron
-code lands, replace each planned name with the function that was written and
-confirm the model still describes it.
+any cron code existed, and its rows above now name the code that landed. The
+code adds five steps the model leaves out, none of which a rule depends on:
+
+- A fire also deletes a timer whose workflow is paused or unpublished, or
+  whose published version no longer declares the schedule (`dropped` in
+  `cronFireVerdict`). The model's lease fence already refuses such a pass,
+  because pause and Publish delete or replace the row, so the branch is
+  defensive.
+- The preflight runs before the fire's transaction, which confirms the
+  version and the Published mode it checked are still current. A fire that
+  finds them moved writes nothing (`stale`), and `fireSchedule` checks the
+  version now published and fires again, so the run still pins the version
+  published when the fire commits.
+- A slot whose published graph the preflight refuses, or a pass whose
+  retries are spent, moves the timer on without firing (`skipCronSlot`),
+  as a Refused Start advances it, and records the reason in `last_error`. The
+  model has no graph that cannot run.
+- A cron pass renews no lease, so no heartbeat races the fire's own release
+  of it.
+- PostgreSQL's `deleteById` locks a workflow's timers before deleting the
+  workflow, in the order a fire takes them.
 
 ## Telling a real bug from a modelling error
 
@@ -596,11 +614,14 @@ back to show the rule still catches it:
 - Lock order and deadlock. Every model treats a guarded write as one atomic
   step, so a deadlock PostgreSQL aborts with 40P01 is outside them. For cron,
   a fire takes the cron row's lock first, as its fence, while Publish and
-  pause lock the workflow row before the cron rows; a fire that then locks the
-  workflow row takes the two in the opposite order.
+  pause lock the workflow row before the cron rows. The fire reads the
+  workflow row without locking it, and the key-share lock its run's insert
+  takes on that row does not wait for Publish's or pause's update, which
+  changes no key. `deleteById` locks the timers before the workflow row.
 - A cron expression's time zone, and the local times daylight saving skips or
-  repeats. Each is a property of `nextCronFire`, a pure function, which `Cron`
-  replaces with two expressions on an integer clock.
+  repeats. Each is a property of `nextFireAfter` and `latestSlotAtOrBefore`
+  (`@wfgraph/shared/lifecycle/cron-schedule`), pure functions over croner,
+  which `Cron` replaces with two expressions on an integer clock.
 - Deleting a workflow, which deletes its cron rows by cascade and fences a pass
   holding one as a pause does, and manual starts sharing the Entity Value
   `workflow:<id>` with scheduled runs.

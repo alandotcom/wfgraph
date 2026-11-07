@@ -712,12 +712,13 @@ The `runner` option controls the loop:
 Each field must be a positive integer, and `heartbeatMs` must be shorter than `leaseMs`.
 `createWfGraphApp` refuses any other value at startup.
 
-The loop claims runs and Event deliveries in two lanes, each limited by its own field. A
-delivery is the work that starts, cancels and wakes runs for one Event, so a Cancel is
-applied while every run slot is busy with a long step. On PostgreSQL, the passes of both
-lanes share the pool, so a loop at its defaults can hold 11 connections; give the pool a
-`maxConnections` above `concurrency` plus `deliveryConcurrency` when the app also serves
-requests from it.
+The loop claims runs, Event deliveries and cron schedule fires in three lanes. Runs and
+deliveries are each limited by their own field, and fires take one slot. A delivery is the
+work that starts, cancels and wakes runs for one Event, so a Cancel is applied while every
+run slot is busy with a long step, and a schedule fires on time beside them. On PostgreSQL,
+the passes of every lane share the pool, so a loop at its defaults can hold 12 connections;
+give the pool a `maxConnections` above `concurrency` plus `deliveryConcurrency` plus one
+when the app also serves requests from it.
 
 ```ts
 const wfgraph = await createWfGraphApp({

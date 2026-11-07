@@ -344,7 +344,7 @@ export type ScheduleRepoMethods = {
 /**
  * The writes every pass makes, whatever its row runs, each fenced on the
  * pass. `ExecutionRepo.fenced` offers them beside the fenced store writes and
- * `ParkWrites`, and `ExecutionRepo.fencedDelivery` offers them alone.
+ * `ParkWrites`, and `ExecutionRepo.fencedPass` offers them alone.
  */
 export type PassWrites = {
   /**

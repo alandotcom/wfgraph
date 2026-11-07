@@ -313,6 +313,54 @@ export function describeExecutionCronConformance({
       expect(result.editedFire).toBe("LeaseLost");
     });
 
+    it("claims a timer in the cron lane alone, once it is due, and fires it under the claim's fence (ClaimWhenDue)", async () => {
+      const { connection } = await withWorkflow(openDatabase);
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          yield* publish({
+            version: 1,
+            schedules: [EVERY_FIVE],
+            now: at(minutes(1)),
+          });
+          const claim = (kind: "run" | "cron", now: Date) =>
+            executions.claimDue({
+              lanes: [{ kind, limit: 10 }],
+              workerId: "worker_1",
+              leaseMs: 60_000,
+              now,
+            });
+          const early = yield* claim("cron", at(minutes(4)));
+          const runLane = yield* claim("run", at(minutes(5)));
+          const [claimed] = yield* claim("cron", at(minutes(5)));
+          if (claimed?.kind !== "cron") throw new Error("No timer claimed");
+          const fired = yield* fire({
+            fence: {
+              scheduleId: claimed.scheduleId,
+              workflowId: claimed.workflowId,
+              ownerToken: claimed.ownerToken,
+            },
+            schedule: claimed.schedule,
+            now: at(minutes(5)),
+          });
+          return { early, runLane, claimed, fired };
+        })
+      );
+
+      expect(result.early).toEqual([]);
+      expect(result.runLane).toEqual([]);
+      expect(result.claimed).toMatchObject({
+        kind: "cron",
+        workflowId: WORKFLOW_ID,
+        schedule: EVERY_FIVE,
+        attempt: 0,
+      });
+      expect(result.fired).toMatchObject({
+        kind: "fired",
+        slot: at(minutes(5)),
+      });
+    });
+
     it("fires each slot once: opens one run for the slot, records it as scheduled_for, and moves the timer past now with its lease released (OneFirePerSlot, FireAndAdvanceTogether)", async () => {
       const { database, connection } = await withWorkflow(openDatabase);
       const scheduleId = await connection.run(

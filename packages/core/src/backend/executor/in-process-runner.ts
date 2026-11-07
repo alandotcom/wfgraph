@@ -69,6 +69,13 @@ export type WfGraphRunnerOptions = {
 /** How many deliveries a loop or a tick runs at once when the host sets none. */
 const DEFAULT_DELIVERY_CONCURRENCY = 1;
 
+/**
+ * How many cron fires a loop or a tick runs at once. One slot is enough: a
+ * fire is one preflight and one short transaction, and a timer that falls due
+ * while the slot is busy fires on the next claim, for its latest slot.
+ */
+const CRON_CONCURRENCY = 1;
+
 /** How long `stop` waits for passes in flight before it interrupts them. */
 const RUNNER_DRAIN_MS = 10_000;
 
@@ -123,7 +130,8 @@ export function assertValidRunnerOptions(
 
 /**
  * Each lane's slots, the host's options over the backend's defaults: the
- * runs' from `concurrency`, and the deliveries' from `deliveryConcurrency`.
+ * runs' from `concurrency`, the deliveries' from `deliveryConcurrency`, and
+ * the cron fires' fixed at `CRON_CONCURRENCY`.
  */
 function resolveLaneConcurrency(
   capabilities: WfGraphRunCapabilities,
@@ -135,6 +143,7 @@ function resolveLaneConcurrency(
       options.concurrency ??
       Math.min(loopDefaults.concurrency, connectionLimit),
     delivery: options.deliveryConcurrency ?? DEFAULT_DELIVERY_CONCURRENCY,
+    cron: CRON_CONCURRENCY,
   };
 }
 

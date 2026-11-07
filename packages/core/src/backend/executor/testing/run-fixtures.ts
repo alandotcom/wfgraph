@@ -42,7 +42,7 @@ export const noDeliveryServices = Layer.mergeAll(
  * for a case that runs a loop or a tick and has no reason to choose.
  */
 export const LOOP_SETTINGS = {
-  concurrency: { run: 10, delivery: 1 },
+  concurrency: { run: 10, delivery: 1, cron: 1 },
   retention: { inboxMs: 7 * 24 * 60 * 60 * 1000, runMs: undefined },
 } as const;
 

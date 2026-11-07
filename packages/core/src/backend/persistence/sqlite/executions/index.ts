@@ -41,7 +41,7 @@ export function makeSqliteExecutionRepo(
     ...makeSqliteRetentionMethods(store),
     ...makeSqliteCronMethods(store),
     fenced: makeSqliteFencedWrites(store),
-    fencedDelivery: (fence) => makeSqlitePassWrites(store, fence),
+    fencedPass: (fence) => makeSqlitePassWrites(store, fence),
     startForEntity: (input) =>
       store.write((database) => admitStart(database, input)),
     findAdmissionRefusal: (input) =>

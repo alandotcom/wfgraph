@@ -42,9 +42,9 @@ CONSTANTS Workers, MaxTime, MaxFaults, MaxPublishes, MaxToggles
 Schedules == {"a", "b"}
 Exprs     == {1, 2}           \* a schedule's cron expression; 0 stands for none
 
-\* nextCronFire: the first slot of expression e strictly after time t.
+\* cronWakeAfter: the first slot of expression e strictly after time t.
 NextAfter(e, t) == IF e = 1 THEN t + 1 ELSE t + 2 - (t % 2)
-\* The most recent slot of expression e at or before time t.
+\* cronSlotAt: the most recent slot of expression e at or before time t.
 LatestSlot(e, t) == IF e = 1 THEN t ELSE t - (t % 2)
 
 VARIABLES

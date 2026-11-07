@@ -152,11 +152,21 @@ export type ClaimedDelivery = ScheduleLease & {
 };
 
 /**
+ * A `cron` row a claim leased: one schedule's timer, which names its workflow
+ * and the schedule it fires.
+ */
+export type ClaimedCron = ScheduleLease & {
+  kind: "cron";
+  workflowId: string;
+  schedule: CronSchedule;
+};
+
+/**
  * A schedule row a claim leased to one worker's pass, by what the row runs.
  * `kind` picks the pass's body, and each schedule kind is one member of this
  * union, claimed by a claim lane for that kind.
  */
-export type ClaimedSchedule = ClaimedRun | ClaimedDelivery;
+export type ClaimedSchedule = ClaimedRun | ClaimedDelivery | ClaimedCron;
 
 /**
  * One lane of a claim: up to `limit` due rows of `kind`. A worker claims each

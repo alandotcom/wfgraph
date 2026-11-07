@@ -718,13 +718,14 @@ export function canceledOutletClaims(produced: {
 
 /**
  * A row the claim just leased, as its pass sees it. The claim wrote the token
- * and the lease expiry, a `run` row always names its Execution, and a
- * `delivery` row its inbox row, so a row missing any of them is a defect.
+ * and the lease expiry, a `run` row always names its Execution, a `delivery`
+ * row its inbox row, and a `cron` row its workflow and schedule, so a row
+ * missing any of them is a defect.
  */
 function claimedSchedule(
   row: ExecutionSchedule
 ): Effect.Effect<ClaimedSchedule> {
-  const { ownerToken, leaseExpiresAt, executionId, inboxId } = row;
+  const { ownerToken, leaseExpiresAt, executionId, inboxId, workflowId } = row;
   if (ownerToken !== null && leaseExpiresAt !== null) {
     const lease = {
       scheduleId: row.id,
@@ -737,6 +738,19 @@ function claimedSchedule(
     }
     if (row.kind === "delivery" && inboxId !== null) {
       return Effect.succeed({ kind: "delivery", inboxId, ...lease });
+    }
+    if (
+      row.kind === "cron" &&
+      workflowId !== null &&
+      row.cron !== null &&
+      row.timeZone !== null
+    ) {
+      return Effect.succeed({
+        kind: "cron",
+        workflowId,
+        schedule: { cron: row.cron, timeZone: row.timeZone },
+        ...lease,
+      });
     }
   }
   return Effect.die(

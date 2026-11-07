@@ -14,6 +14,7 @@ import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { leasedPass } from "#src/backend/executor/pass";
 import { runBody } from "#src/backend/executor/run-body";
 import { deliveryBody } from "#src/backend/executor/delivery-body";
+import { cronBody } from "#src/backend/executor/cron-body";
 import {
   actionNode,
   edge,
@@ -86,6 +87,7 @@ describe("runBody", () => {
       const bodies = {
         run: runBody({ actions: () => actions }),
         delivery: deliveryBody(),
+        cron: cronBody(),
       };
       // Counts the version reads that reach the database.
       let versionReads = 0;

@@ -43,6 +43,7 @@ import {
   deliveryBody,
   type DeliveryServices,
 } from "#src/backend/executor/delivery-body";
+import { cronBody, type CronServices } from "#src/backend/executor/cron-body";
 import {
   type ClaimedSchedule,
   type ClaimLane,
@@ -64,7 +65,11 @@ export const DEFAULT_LEASE_MS = 60_000;
 export const DEFAULT_HEARTBEAT_MS = 20_000;
 
 /** Every service a worker's passes read. */
-export type ExecutorServices = ExecutionRepo | WorkflowRepo | DeliveryServices;
+export type ExecutorServices =
+  | ExecutionRepo
+  | WorkflowRepo
+  | DeliveryServices
+  | CronServices;
 
 /** What every drain step of one worker shares. */
 export type DrainOptions<R> = {
@@ -261,14 +266,15 @@ export type LaneConcurrency = { readonly [K in ScheduleKind]: number };
 
 /**
  * The order a drain step starts its lanes' passes in, lowest first.
- * Deliveries go first, so an arrival's pass starts ahead of the runs it may
- * wake. A schedule kind added to `ClaimedSchedule` fails to compile here,
- * in `LaneConcurrency`'s resolver and in `PassBodies` until it has an entry
- * in each.
+ * Deliveries and cron fires go first, so the pass of an arrival or of a timer
+ * starts ahead of the runs it may open or wake. A schedule kind added to
+ * `ClaimedSchedule` fails to compile here, in `LaneConcurrency`'s resolver and
+ * in `PassBodies` until it has an entry in each.
  */
 const LANE_ORDER: { readonly [K in ScheduleKind]: number } = {
   delivery: 0,
-  run: 1,
+  cron: 1,
+  run: 2,
 };
 
 /** One lane of claims: the schedule kind it claims, and its slots. */
@@ -352,6 +358,7 @@ function drainOptionsFor(
     bodies: {
       run: runBody({ actions: settings.actions, entities: settings.entities }),
       delivery: deliveryBody(),
+      cron: cronBody(),
     },
     workerId: settings.workerId ?? `worker_${generateId()}`,
     leaseMs: settings.leaseMs ?? DEFAULT_LEASE_MS,

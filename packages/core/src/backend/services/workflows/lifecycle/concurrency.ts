@@ -9,15 +9,20 @@
  * The decision itself is one locked transaction in `ExecutionRepo.startForEntity`,
  * because a candidate read followed by an insert is not a decision two arrivals
  * can share. The same transaction schedules the new run on the executor and
- * writes its "run started" entry. What is left here follows that transaction:
- * write the timelines of the runs it displaced.
+ * writes its "run started" entry. What is left here builds what that
+ * transaction is asked (`startRequestFor`) and follows it: write the timelines
+ * of the runs it displaced (`announceDisplacedRuns`). A cron fire admits its
+ * run through the same two, around `ExecutionDriver.fireCronTimer`.
  */
 
 import { Effect } from "effect";
 import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
 import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { announceSupersededRuns } from "#src/backend/services/executions/end-runs";
-import type { NewExecution } from "#src/backend/services/executions/repo";
+import type {
+  NewExecution,
+  StartForEntityInput,
+} from "#src/backend/services/executions/repo";
 import {
   recordStartRefusal,
   runStartedEntry,
@@ -95,29 +100,19 @@ export const startWithConcurrency = Effect.fn(
     });
   }
 
-  const executionIdentity =
-    start.entityType === undefined
-      ? { entityValue: start.entityValue }
-      : { entityType: start.entityType, entityId: start.entityId };
-  const execution: NewExecution = {
-    workflowId: workflow.id,
-    workflowVersionId: workflow.versionId,
-    startSource: start.source,
-    runMode,
-    startEventName: start.eventName,
-    input: payload,
-    deliveryId: start.deliveryId,
-    ...executionIdentity,
-  };
-  const opened = yield* driver.startRun({
-    execution,
+  const request = yield* startRequestFor({
+    workflow,
     concurrency: input.concurrency,
-    supersededReason: supersededReason(start.eventName),
+    start,
+    runMode,
+    payload,
+  });
+  const opened = yield* driver.startRun({
+    ...request,
     admissionDecisionId:
       start.source === "event" && start.entityType && start.deliveryId
         ? startAdmissionDecisionId(workflow.id, start.deliveryId)
         : undefined,
-    startedEntry: yield* runStartedEntry(execution),
   });
 
   if (opened.status === "admission_refused") {
@@ -139,19 +134,11 @@ export const startWithConcurrency = Effect.fn(
     });
   }
 
-  // The displaced rows already say `superseded` and lost their schedule rows
-  // in the same transaction, so what is left is putting the reason on their
-  // timelines. The ids whose entry the database refused travel back to the
-  // caller.
-  const announced =
-    opened.supersededExecutionIds.length > 0
-      ? yield* announceSupersededRuns({
-          workflowId: workflow.id,
-          executionIds: opened.supersededExecutionIds,
-          reason: supersededReason(start.eventName),
-          eventName: start.eventName,
-        })
-      : { failedExecutionIds: [] as string[] };
+  const announced = yield* announceDisplacedRuns({
+    workflowId: workflow.id,
+    supersededExecutionIds: opened.supersededExecutionIds,
+    eventName: start.eventName,
+  });
 
   const outcome: StartOutcome = {
     status: "started",
@@ -167,6 +154,61 @@ function supersededReason(eventName: string | undefined): string {
     ? `Superseded by a newer start from ${eventName}`
     : "Superseded by a newer start";
 }
+
+/**
+ * What a start asks `ExecutionRepo.startForEntity` to admit: the row to open,
+ * its "run started" entry, and the reason a displaced run is ended with. An
+ * Event's admission decision is the caller's to add.
+ */
+export const startRequestFor = Effect.fn("startRequestFor")(function* (
+  input: Omit<StartWithConcurrencyInput, "logger">
+) {
+  const { workflow, start } = input;
+  const executionIdentity =
+    start.entityType === undefined
+      ? { entityValue: start.entityValue }
+      : { entityType: start.entityType, entityId: start.entityId };
+  const execution: NewExecution = {
+    workflowId: workflow.id,
+    workflowVersionId: workflow.versionId,
+    startSource: start.source,
+    runMode: input.runMode,
+    startEventName: start.eventName,
+    input: input.payload,
+    deliveryId: start.deliveryId,
+    ...executionIdentity,
+  };
+  const request: Omit<StartForEntityInput, "now" | "admissionDecisionId"> = {
+    execution,
+    concurrency: input.concurrency,
+    supersededReason: supersededReason(start.eventName),
+    startedEntry: yield* runStartedEntry(execution),
+  };
+  return request;
+});
+
+/**
+ * Puts the reason on the timelines of the runs a start displaced. Their rows
+ * already say `superseded` and lost their schedule rows in the start's own
+ * transaction. Answers the ids whose entry the database refused.
+ */
+export const announceDisplacedRuns = Effect.fn("announceDisplacedRuns")(
+  function* (input: {
+    workflowId: string;
+    supersededExecutionIds: string[];
+    eventName?: string | undefined;
+  }) {
+    if (input.supersededExecutionIds.length === 0) {
+      return { failedExecutionIds: [] as string[] };
+    }
+    return yield* announceSupersededRuns({
+      workflowId: input.workflowId,
+      executionIds: input.supersededExecutionIds,
+      reason: supersededReason(input.eventName),
+      eventName: input.eventName,
+    });
+  }
+);
 
 /**
  * A refusal, recorded.

@@ -415,10 +415,10 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
     ),
     recordParkStep: refuse("fenced.recordParkStep"),
   }),
-  fencedDelivery: () =>
+  fencedPass: () =>
     mapValues(
       keyBy(PASS_WRITE_NAMES, (name) => name),
-      (name) => refuse(`fencedDelivery.${name}`)
+      (name) => refuse(`fencedPass.${name}`)
     ),
 };
 
@@ -486,6 +486,7 @@ const executionDriverStubs: ExecutionDriver["Service"] = {
   requestCanceledOutlet: refuse("requestCanceledOutlet"),
   migrateRun: refuse("migrateRun"),
   receiveEvent: refuse("receiveEvent"),
+  fireCronTimer: refuse("fireCronTimer"),
 };
 
 export function stubExecutionDriver(

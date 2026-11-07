@@ -37,9 +37,11 @@ import {
   watchStoreWrites,
 } from "#src/backend/executor/runtime";
 import {
+  type ClaimedCron,
   type ClaimedDelivery,
   type ClaimedRun,
   type ClaimedSchedule,
+  type CronFence,
   type DeliveryFence,
   ExecutionRepo,
   type PassOutcome,
@@ -80,8 +82,9 @@ export type UnavailableSeverity = "info" | "warn";
  * What one pass did with its row.
  *
  * - `ended`: the body ended its row's subject: a run's terminal record, or a
- *   delivery's `delivered` inbox row. Either write deleted the schedule row
- *   and the memo.
+ *   delivery's `delivered` inbox row, either of which deleted the schedule row
+ *   and the memo, or a cron fire, which moved its timer to the next slot and
+ *   released the lease in the same write.
  * - `parked`: the body ended with Waits parked. The release re-queued the run
  *   when a park holds a wake the pass did not read, and otherwise put it to
  *   sleep until its earliest park deadline.
@@ -95,7 +98,8 @@ export type UnavailableSeverity = "info" | "warn";
  * - `subject_failed`: the row's subject has no retries left: the row's own
  *   failure count passed the limit, or a step outside any node failed past
  *   its retries. The pass ended the subject failed, a run's terminal record or
- *   a delivery's `failed` inbox row, which deleted the schedule row.
+ *   a delivery's `failed` inbox row, which deleted the schedule row. A cron
+ *   timer has no subject to fail, so it skips the slot it was firing instead.
  * - `fence_refused` on `version`: the engine reported a version fence refused
  *   a write, because a Migration moved the run off the version this pass
  *   loaded. The release re-queued it and counted nothing.
@@ -212,6 +216,12 @@ export type RunPass = PassCore<ClaimedRun, WorkflowExecutionRuntime> & {
 export type DeliveryPass = PassCore<ClaimedDelivery, PassSteps> & {
   fence: DeliveryFence;
 };
+
+/**
+ * A pass over a claimed `cron` row. A fire runs no steps, so its port is
+ * null, and `fence` is what the fire's one transaction carries.
+ */
+export type CronPass = PassCore<ClaimedCron, null> & { fence: CronFence };
 
 type PassOpening = {
   executions: ExecutionRepo["Service"];
@@ -332,7 +342,7 @@ export function openDeliveryPass(
   };
   const core = openPassCore({
     ...input,
-    fenced: executions.fencedDelivery(fence),
+    fenced: executions.fencedPass(fence),
     port: ({ memo, state, passWrites, leaseExpiresAt }) =>
       createPassSteps({
         memo,
@@ -340,6 +350,24 @@ export function openDeliveryPass(
         state,
         leaseExpiresAt,
       }),
+  });
+  return { ...core, fence };
+}
+
+/** Opens a pass over a `cron` row the caller just claimed. */
+export function openCronPass(
+  input: PassOpening & { claimed: ClaimedCron }
+): CronPass {
+  const { claimed, executions } = input;
+  const fence: CronFence = {
+    scheduleId: claimed.scheduleId,
+    workflowId: claimed.workflowId,
+    ownerToken: claimed.ownerToken,
+  };
+  const core = openPassCore({
+    ...input,
+    fenced: executions.fencedPass(fence),
+    port: () => null,
   });
   return { ...core, fence };
 }
@@ -378,7 +406,8 @@ type BodyOver<P, Port, R> = {
   open: (pass: P) => Effect.Effect<OpenedBody<Port, R>, DatabaseError, R>;
   /**
    * Ends the row's subject failed with `error`, for a row whose retries are
-   * spent. The write deletes the schedule row.
+   * spent. The write deletes a run's or a delivery's schedule row, and moves
+   * a cron timer on to its next slot.
    */
   fail: (
     pass: P,
@@ -404,7 +433,9 @@ type PassOf<K extends ScheduleKind> = K extends "run"
   ? RunPass
   : K extends "delivery"
     ? DeliveryPass
-    : never;
+    : K extends "cron"
+      ? CronPass
+      : never;
 
 /** The body for each kind of schedule row a claim can lease. */
 export type PassBodies<R> = {
@@ -448,6 +479,26 @@ const PASS_KINDS: { readonly [K in ScheduleKind]: PassKind<K> } = {
     spanAttributes: (claimed) => ({ "wfgraph.inbox.id": claimed.inboxId }),
     logSubject: (claimed) => ({ delivery: { inbox: claimed.inboxId } }),
   },
+  cron: {
+    // A fire is one preflight and one short transaction, well inside a lease,
+    // so its pass renews no lease. A renewal would race the fire's own
+    // release of the lease and read that release as a lease lost.
+    run: (opening, bodies, options) =>
+      runOpenedPass(openCronPass(opening), bodies.cron, {
+        ...options,
+        heartbeatMs: undefined,
+      }),
+    spanAttributes: (claimed) => ({
+      "wfgraph.workflow.id": claimed.workflowId,
+    }),
+    logSubject: (claimed) => ({
+      cron: {
+        workflow: claimed.workflowId,
+        expression: claimed.schedule.cron,
+        timeZone: claimed.schedule.timeZone,
+      },
+    }),
+  },
 };
 
 /** Calls `apply` with the descriptor of `claimed`'s kind and the row itself. */
@@ -460,6 +511,8 @@ function withPassKind<A>(
       return apply(PASS_KINDS.run, claimed);
     case "delivery":
       return apply(PASS_KINDS.delivery, claimed);
+    case "cron":
+      return apply(PASS_KINDS.cron, claimed);
     default:
       return unknownKind(claimed);
   }

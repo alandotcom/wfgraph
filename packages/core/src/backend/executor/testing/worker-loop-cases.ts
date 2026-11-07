@@ -18,7 +18,12 @@ import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/executio
 import { defineAction } from "#src/backend/extensions/define-action";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
-import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
+import {
+  SilentAppLoggerLayer,
+  stubWfGraphRuntime,
+} from "#src/backend/lib/effect/test-layers";
+import { makeExtensionsLayer } from "#src/backend/lib/effect/extensions";
+import { makeExecutionDriverLayer } from "#src/backend/services/executions/driver";
 import {
   actionNode,
   CANCELABLE,
@@ -66,49 +71,52 @@ let heldStep = createGate();
 /** When each `test/mark` node ran, by node id. */
 let marks = new Map<string, number>();
 
-const actions = createWorkflowActions(
-  assembleExtensions({
-    actions: [
-      defineAction({
-        id: "test/send",
-        label: "Send",
-        description: "Runs one durable step",
-        input: Schema.Struct({}),
-        handler: async ({ step }) => {
-          await step.run("dispatch", () => Promise.resolve(null));
-          return { sent: true };
-        },
-      }),
-      defineAction({
-        id: "test/held",
-        label: "Held",
-        description: "Runs one durable step the case holds open once",
-        input: Schema.Struct({}),
-        handler: async ({ step }) => {
-          await step.run("dispatch", async () => {
-            await heldStep.pass();
-            return null;
-          });
-          return { held: true };
-        },
-      }),
-      defineAction({
-        id: "test/mark",
-        label: "Mark",
-        description: "Records when it ran",
-        input: Schema.Struct({}),
-        handler: async ({ step, nodeId }) => {
-          await step.run("mark", () => {
-            if (!marks.has(nodeId)) marks.set(nodeId, Date.now());
-            return Promise.resolve(null);
-          });
-          return {};
-        },
-      }),
-    ],
-  }),
-  stubWfGraphRuntime()
-);
+/**
+ * The test actions, as the Extensions service a preflight checks a graph
+ * against serves them.
+ */
+const extensionSet = assembleExtensions({
+  actions: [
+    defineAction({
+      id: "test/send",
+      label: "Send",
+      description: "Runs one durable step",
+      input: Schema.Struct({}),
+      handler: async ({ step }) => {
+        await step.run("dispatch", () => Promise.resolve(null));
+        return { sent: true };
+      },
+    }),
+    defineAction({
+      id: "test/held",
+      label: "Held",
+      description: "Runs one durable step the case holds open once",
+      input: Schema.Struct({}),
+      handler: async ({ step }) => {
+        await step.run("dispatch", async () => {
+          await heldStep.pass();
+          return null;
+        });
+        return { held: true };
+      },
+    }),
+    defineAction({
+      id: "test/mark",
+      label: "Mark",
+      description: "Records when it ran",
+      input: Schema.Struct({}),
+      handler: async ({ step, nodeId }) => {
+        await step.run("mark", () => {
+          if (!marks.has(nodeId)) marks.set(nodeId, Date.now());
+          return Promise.resolve(null);
+        });
+        return {};
+      },
+    }),
+  ],
+});
+
+const actions = createWorkflowActions(extensionSet, stubWfGraphRuntime());
 
 /** Entry, then `actionType`, then a node that records when the run got there. */
 function oneActionThenMark(actionType: string): SerializedWorkflowGraph {
@@ -370,12 +378,96 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     );
 
     expect(outcome).toEqual({
-      passes: { run: 2, delivery: 0 },
+      passes: { run: 2, delivery: 0, cron: 0 },
       results: { passed: 2, failed: 0, cut: 0, interrupted: 0 },
       stopped: "idle",
     });
     expect(await harness.ended(first, 0)).toBe("completed");
     expect(await harness.ended(second, 0)).toBe("completed");
+  });
+
+  // A Worker's Cron Trigger tick claims due timer rows in their own lane, so a
+  // host on Workers needs nothing beyond the tick to fire its schedules.
+  it("fires a due cron timer in a tick, and runs the run it opened to its end in the same tick", async () => {
+    const harness = await open();
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        lifecycleNode({
+          lifecycleRules: {
+            startEvents: [],
+            cancelEvents: [],
+            concurrency: "unlimited",
+            schedules: [{ cron: "* * * * *", timeZone: "UTC" }],
+          },
+        }),
+        actionNode("work", "test/send"),
+        actionNode("after", "test/mark"),
+      ],
+      edges: [edge("entry", "work", "started"), edge("work", "after")],
+    });
+    await harness.connection.run(
+      publishWorkflow({
+        workflowId: "wf_cron_tick",
+        versionId: "ver_cron_tick",
+        graph,
+        catalogFingerprint: actions.catalogFingerprint(),
+      })
+    );
+    // Publish wrote the timer due at the next minute; this makes it due now.
+    await setTimestamp(harness.database, {
+      table: "workflow_execution_schedule",
+      column: "wake_at",
+      where: "kind = 'cron'",
+      at: new Date(Date.now() - 60_000),
+    });
+    const before = new Date();
+
+    const outcome = await harness.connection.run(
+      tick({
+        actions: () => actions,
+        ...LOOP_SETTINGS,
+        budgetMs: 10_000,
+        sweep: false,
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            makeExtensionsLayer(extensionSet),
+            makeExecutionDriverLayer([])
+          )
+        )
+      )
+    );
+    const after = await harness.connection.run(
+      Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        return {
+          runs: yield* executions.listByWorkflow({
+            workflowId: "wf_cron_tick",
+            includeSuperseded: true,
+          }),
+          timers: yield* executions.listCronTimers("wf_cron_tick"),
+        };
+      })
+    );
+
+    expect(outcome).toEqual({
+      passes: { run: 1, delivery: 0, cron: 1 },
+      results: { passed: 2, failed: 0, cut: 0, interrupted: 0 },
+      stopped: "idle",
+    });
+    expect(after.runs).toEqual([
+      expect.objectContaining({
+        startSource: "schedule",
+        status: "completed",
+      }),
+    ]);
+    expect(marks.has("after")).toBe(true);
+    // The fire moved the timer to the first minute after it, lease released.
+    expect(after.timers).toEqual([
+      expect.objectContaining({ state: "waiting", ownerToken: null }),
+    ]);
+    expect(after.timers[0]?.wakeAt.getTime()).toBeGreaterThan(before.getTime());
   });
 
   // The Worker's tick runs one run at a time on Hyperdrive's one connection,
@@ -394,7 +486,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       tick({
         actions: () => actions,
         ...LOOP_SETTINGS,
-        concurrency: { run: 1, delivery: 1 },
+        concurrency: { run: 1, delivery: 1, cron: 1 },
         budgetMs,
         sweep: false,
       }).pipe(Effect.provide(noDeliveryServices))
@@ -421,7 +513,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       tick({
         actions: () => actions,
         ...LOOP_SETTINGS,
-        concurrency: { run: 1, delivery: 1 },
+        concurrency: { run: 1, delivery: 1, cron: 1 },
         budgetMs: 10_000,
         // The first drain step always starts, and the window has passed by
         // the time its pass ends.
@@ -458,7 +550,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       tick({
         actions: () => actions,
         ...LOOP_SETTINGS,
-        concurrency: { run: 1, delivery: 1 },
+        concurrency: { run: 1, delivery: 1, cron: 1 },
         budgetMs: 10_000,
         passLimit: 2,
         sweep: false,
@@ -793,7 +885,9 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
   it("delivers an Event in its own lane while a long pass holds the loop's only run slot", async () => {
     const harness = await open();
     const executionId = await harness.start(oneActionThenMark("test/held"));
-    const loop = harness.loop({ concurrency: { run: 1, delivery: 1 } });
+    const loop = harness.loop({
+      concurrency: { run: 1, delivery: 1, cron: 1 },
+    });
     await heldStep.entered;
 
     // The loop's deliveries know no Event, so this one settles `failed` as

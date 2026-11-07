@@ -24,6 +24,7 @@ import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { leasedPass, type PassResult } from "#src/backend/executor/pass";
 import { runBody } from "#src/backend/executor/run-body";
 import { deliveryBody } from "#src/backend/executor/delivery-body";
+import { cronBody } from "#src/backend/executor/cron-body";
 import {
   actionNode,
   CANCEL_EVENT,
@@ -292,6 +293,7 @@ function describeCases(
               {
                 run: runBody({ actions: () => actions }),
                 delivery: deliveryBody(),
+                cron: cronBody(),
               },
               {
                 workerId: options.workerId ?? "worker_1",

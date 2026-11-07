@@ -25,6 +25,7 @@ import {
   type WfGraphRuntime,
 } from "#src/backend/runtime";
 import { deliveryBody } from "#src/backend/executor/delivery-body";
+import { cronBody } from "#src/backend/executor/cron-body";
 import { leasedPass, type PassResult } from "#src/backend/executor/pass";
 import { runBody } from "#src/backend/executor/run-body";
 import {
@@ -230,8 +231,8 @@ export function crashBeforeLifecycleMemo(): (
   let crashed = false;
   return (repo) => ({
     ...repo,
-    fencedDelivery: (fence) => {
-      const writes = repo.fencedDelivery(fence);
+    fencedPass: (fence) => {
+      const writes = repo.fencedPass(fence);
       return {
         ...writes,
         writeStepMemo: (input) => {
@@ -352,6 +353,7 @@ export function useDeliveryHarness(
     const bodies = {
       run: runBody({ actions: () => actions }),
       delivery: deliveryBody(),
+      cron: cronBody(),
     };
 
     const passOnce: DeliveryHarness["passOnce"] = async (options = {}) =>
