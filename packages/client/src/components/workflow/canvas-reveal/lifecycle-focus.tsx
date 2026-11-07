@@ -1,9 +1,11 @@
 import { useAtomValue } from "jotai";
 import { type ReactNode, useId } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { WarningCallout } from "#src/components/ui/callout";
 import { ConfigGroup } from "#src/components/workflow/config/config-section";
 import { LifecycleConcurrencyGroup } from "#src/components/workflow/config/lifecycle-concurrency-group";
 import { LifecycleEntityEligibilityGroup } from "#src/components/workflow/config/lifecycle-entity-eligibility-group";
+import { LifecycleScheduleGroup } from "#src/components/workflow/config/lifecycle-schedule-group";
 import {
   LifecycleEventConnections,
   LifecycleRoleEventGroup,
@@ -69,6 +71,7 @@ function LifecyclePolicyEditor({
   };
   const counts: Partial<Record<LifecycleSectionId, number>> = {
     "start-events": rules.startEvents.length,
+    schedule: rules.schedules?.length ?? 0,
     "cancel-events": rules.cancelEvents.length,
     validation: nodeIssues.length,
   };
@@ -89,6 +92,19 @@ function LifecyclePolicyEditor({
         onManualStartChange={editor.setManualStart}
         rules={rules}
       />
+    ),
+    schedule: (
+      <div className="space-y-4">
+        <LifecycleScheduleGroup
+          disabled={disabled}
+          schedules={editor.schedules}
+        />
+        {editor.schedules.refusal ? (
+          <WarningCallout title="Lifecycle settings need attention">
+            {editor.schedules.refusal.message}
+          </WarningCallout>
+        ) : null}
+      </div>
     ),
     "cancel-events": (
       <LifecycleRoleEventGroup

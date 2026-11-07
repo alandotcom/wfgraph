@@ -15,6 +15,9 @@ export function getStartSummary(
   catalog: ExtensionCatalog
 ): string {
   const rules = readLifecycleRules(config);
+  const scheduleCount = rules?.schedules?.length ?? 0;
+  const schedules =
+    scheduleCount === 1 ? "a schedule" : `${scheduleCount} schedules`;
 
   if (rules?.startEvents.length) {
     const labels = rules.startEvents.map(
@@ -26,9 +29,14 @@ export function getStartSummary(
     const filtered = rules.startEvents.some((name) =>
       readStartFilter(rules, name)
     );
-    return filtered
+    const events = filtered
       ? `On ${labels.join(", ")}, filtered`
       : `On ${labels.join(", ")}`;
+    return scheduleCount > 0 ? `${events}, and on ${schedules}` : events;
+  }
+
+  if (scheduleCount > 0) {
+    return `On ${schedules}`;
   }
 
   return manualStartAllowed(rules)

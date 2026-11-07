@@ -20,10 +20,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
+import { lifecycleIssueSection } from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
+import { browserTimeZone } from "#src/components/workflow/config/lifecycle-schedule";
 import { historyAtom } from "#src/lib/workflow-graph-cells";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import {
@@ -413,6 +415,31 @@ describe("Lifecycle Browse", () => {
     ).toBe("true");
   });
 
+  it("summarizes each schedule with its next run", async () => {
+    // Friday Nov 6, 2026, 7:00 AM in New York.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));
+    try {
+      const { region } = await renderLifecycle({
+        startEvents: ["app/appointment.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+        schedules: [{ cron: "0 9 * * 1-5", timeZone: "America/New_York" }],
+      });
+
+      expect(region("Schedule").textContent).toContain(
+        "Every weekday at 9:00 AM (America/New_York)Next run: Fri Nov 6, 9:00 AM"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says a workflow has no schedules", async () => {
+    const { region } = await renderLifecycle(CONFIGURED);
+    expect(region("Schedule").textContent).toContain("No schedules.");
+  });
+
   it("marks Events and an Entity the catalog no longer declares", async () => {
     const { region } = await renderLifecycle({
       startEvents: ["app/retired.event"],
@@ -452,6 +479,7 @@ describe("Lifecycle Focus", () => {
     ).toEqual([
       "Start Events1",
       "Overlapping runs",
+      "Schedule",
       "Cancel Events1",
       "Entity",
       "Event Connections",
@@ -722,6 +750,50 @@ describe("Lifecycle Focus", () => {
     ).toBeTruthy();
   });
 
+  it("adds a schedule from the Schedule section as one undoable edit", async () => {
+    const { view, store, rulesNow } = await renderLifecycle({
+      ...CONFIGURED,
+      trackedEntity: undefined,
+      entityEligibility: undefined,
+    });
+    fireEvent.click(view.getByRole("button", { name: "Edit Schedule" }));
+
+    const section = view.getByRole("region", { name: "Schedule" });
+    fireEvent.click(
+      within(section).getByRole("button", { name: "Add schedule" })
+    );
+
+    expect(rulesNow()?.schedules).toEqual([
+      { cron: "0 9 * * *", timeZone: browserTimeZone() },
+    ]);
+    expect(store.get(historyAtom)).toHaveLength(1);
+    expect(
+      within(
+        view.getByRole("navigation", { name: "Lifecycle policy" })
+      ).getByRole("button", { name: /^Schedule/ }).textContent
+    ).toBe("Schedule1");
+  });
+
+  it("shows an unsaved schedule's refusal inside the Schedule section", async () => {
+    const { view, rulesNow } = await renderLifecycle({
+      ...CONFIGURED,
+      trackedEntity: undefined,
+      entityEligibility: undefined,
+      schedules: [{ cron: "0 9 * * *", timeZone: browserTimeZone() }],
+    });
+    fireEvent.click(view.getByRole("button", { name: "Edit Schedule" }));
+
+    const section = view.getByRole("region", { name: "Schedule" });
+    fireEvent.click(
+      within(section).getByRole("button", { name: "Add schedule" })
+    );
+
+    expect(section.textContent).toContain(
+      "Two schedules have the same cron expression and time zone."
+    );
+    expect(rulesNow()?.schedules).toHaveLength(1);
+  });
+
   it("shows the unavailable Entity warning from the reused editor", async () => {
     const { view } = await renderLifecycle({
       startEvents: ["app/appointment.created"],
@@ -738,5 +810,20 @@ describe("Lifecycle Focus", () => {
       within(view.getByRole("region", { name: "Entity" })).getByRole("alert")
         .textContent
     ).toContain("retired-entity is no longer available");
+  });
+});
+
+describe("lifecycleIssueSection", () => {
+  it("opens the Schedule section for a schedule Publish refuses", () => {
+    expect(
+      lifecycleIssueSection({
+        kind: "invalid_lifecycle_rules",
+        severity: "blocking",
+        nodeId: "lifecycle",
+        nodeLabel: "Appointment lifecycle",
+        check: "schedule",
+        message: "A scheduled run carries no Event.",
+      })
+    ).toBe("schedule");
   });
 });

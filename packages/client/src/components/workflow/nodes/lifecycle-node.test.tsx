@@ -95,6 +95,37 @@ describe("getStartSummary", () => {
       )
     ).toBe("Nothing starts this yet");
   });
+
+  // A schedule is a start source the card names ahead of manual runs, which
+  // the Run button already shows.
+  it("counts the schedules that start a workflow", () => {
+    const daily = { cron: "0 9 * * *", timeZone: "UTC" };
+    const hourly = { cron: "0 * * * *", timeZone: "UTC" };
+    const rules = {
+      startEvents: [],
+      cancelEvents: [],
+      concurrency: "unlimited",
+      allowManualStart: true,
+    };
+    expect(
+      getStartSummary(
+        { lifecycleRules: { ...rules, schedules: [daily] } },
+        emptyExtensionCatalog
+      )
+    ).toBe("On a schedule");
+    expect(
+      getStartSummary(
+        {
+          lifecycleRules: {
+            ...rules,
+            startEvents: ["resend/email.sent"],
+            schedules: [daily, hourly],
+          },
+        },
+        labeledCatalog
+      )
+    ).toBe("On Email sent, and on 2 schedules");
+  });
 });
 
 describe("LifecycleNode handles", () => {

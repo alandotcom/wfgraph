@@ -10,6 +10,7 @@ import { IntegrationEventConnectionEditor } from "./integration-event-connection
 import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
 import { LifecycleEntityEligibilityGroup } from "./lifecycle-entity-eligibility-group";
 import { LifecycleEventGroup } from "./lifecycle-event-group";
+import { LifecycleScheduleGroup } from "./lifecycle-schedule-group";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import {
   type LifecycleRulesEditor,
@@ -19,8 +20,8 @@ import {
 export { CONCURRENCY_OPTIONS } from "./lifecycle-policy-summary";
 
 /**
- * The Lifecycle Node's panel: what starts a run and what happens to runs already
- * in progress. Every control writes the complete Lifecycle Rules object. Reads
+ * The Lifecycle Node's panel: what starts a run, on an Event, by hand or on a
+ * schedule, and what happens to runs already in progress. Every control writes the complete Lifecycle Rules object. Reads
  * use the initial rules as a fallback; opening the panel never persists them.
  */
 export function LifecyclePanel({
@@ -37,6 +38,11 @@ export function LifecyclePanel({
     rules: editor.rules,
     catalog: editor.catalog,
   });
+  // An unsaved schedule edit comes first: the rules it would replace are the
+  // ones `check` read, so their refusal is not what the builder is looking at.
+  const refusal =
+    editor.schedules.refusal?.message ??
+    (check.valid ? undefined : check.error);
 
   return (
     <div className="space-y-4">
@@ -45,9 +51,9 @@ export function LifecyclePanel({
       </div>
       <LifecycleGroups disabled={disabled} editor={editor} />
 
-      {check.valid ? null : (
+      {refusal === undefined ? null : (
         <WarningCallout title="Lifecycle settings need attention">
-          {check.error}
+          {refusal}
         </WarningCallout>
       )}
     </div>
@@ -75,6 +81,10 @@ function LifecycleGroups({
         onConcurrencyChange={editor.setConcurrency}
         onManualStartChange={editor.setManualStart}
         rules={editor.rules}
+      />
+      <LifecycleScheduleGroup
+        disabled={disabled}
+        schedules={editor.schedules}
       />
       <LifecycleRoleEventGroup
         disabled={disabled}

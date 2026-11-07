@@ -14,6 +14,7 @@ import {
   eventLabel,
   trackedEntityLabel,
 } from "#src/components/workflow/config/lifecycle-policy-summary";
+import { scheduleReadout } from "#src/components/workflow/config/lifecycle-schedule";
 import { can } from "#src/lib/authorization";
 import {
   type ConditionSelectableField,
@@ -275,6 +276,35 @@ function EntityEligibilitySummary({
   );
 }
 
+/** Each schedule in words with the next time it starts a run. */
+function ScheduleSummary({ rules }: { rules: LifecycleRules }) {
+  const schedules = rules.schedules ?? [];
+  if (schedules.length === 0) {
+    return <p className="text-muted-foreground text-xs">No schedules.</p>;
+  }
+  const now = new Date();
+  return (
+    <ul className="space-y-2">
+      {schedules.map((schedule) => {
+        const readout = scheduleReadout(schedule, now, 1);
+        return (
+          <li
+            className="space-y-0.5"
+            key={`${schedule.cron} ${schedule.timeZone}`}
+          >
+            <p className="text-sm">{readout.description}</p>
+            {readout.nextFires[0] ? (
+              <p className="text-muted-foreground text-xs tabular-nums">
+                Next run: {readout.nextFires[0]}
+              </p>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /**
  * The workflow's lifecycle policy as a summary, one section per concept. Start
  * and Cancel Events show the payload filters that admit an arrival, kept apart
@@ -336,6 +366,10 @@ export function LifecyclePolicySections({
             {rules.allowManualStart ? "Allowed" : "Not allowed"}
           </Row>
         </dl>
+      </Section>
+
+      <Section action={editAction("Schedule", "schedule")} title="Schedule">
+        <ScheduleSummary rules={rules} />
       </Section>
 
       <Section

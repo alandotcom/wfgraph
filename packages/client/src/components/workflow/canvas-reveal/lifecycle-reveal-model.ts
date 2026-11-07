@@ -17,6 +17,7 @@ import { useRevealNavigation } from "./use-reveal-navigation";
 export const LIFECYCLE_SECTIONS = [
   { id: "start-events", label: "Start Events" },
   { id: "overlapping-runs", label: "Overlapping runs" },
+  { id: "schedule", label: "Schedule" },
   { id: "cancel-events", label: "Cancel Events" },
   { id: "entity-eligibility", label: "Entity" },
   { id: "connections", label: "Event Connections" },
@@ -39,13 +40,13 @@ const LIFECYCLE_CHECK_SECTIONS: Readonly<
   start_filter: "start-events",
   cancel_filter: "cancel-events",
   entity_eligibility: "entity-eligibility",
-  schedule: "start-events",
+  schedule: "schedule",
 };
 
 /**
  * The Focus section that edits what `issue` names: the Start Events for a
- * Lifecycle Rules, Start Filter or schedule problem, since that section holds
- * the start sources, the Cancel Events for a Cancel Filter problem, Entity eligibility for an
+ * Lifecycle Rules or Start Filter problem, the Schedule for a schedule problem,
+ * the Cancel Events for a Cancel Filter problem, Entity eligibility for an
  * eligibility problem, and Validation for any other issue.
  */
 export function lifecycleIssueSection(

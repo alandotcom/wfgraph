@@ -358,7 +358,8 @@ their panel at the shared width, under a header holding the panel's title and
 
 Selecting the Lifecycle node opens Browse with the workflow's lifecycle policy:
 an editable label, the Start Events with each payload Start Filter, the
-overlapping-run behavior and whether manual runs are allowed, the Cancel Events,
+overlapping-run behavior and whether manual runs are allowed, each schedule in
+words with its next run, the Cancel Events,
 the tracked Entity with its binding in each Event, the eligibility rule and when
 it is checked, and the validation issues. Start Filters and eligibility sit in
 separate sections, and each says what it reads: the arriving Event's payload,
@@ -367,10 +368,14 @@ Focus on the matching section, and each issue opens the section that edits what
 it names. Every Lifecycle Rules problem Publish refuses, including a Start or
 Cancel Filter reading a path its Event does not declare, is a blocking issue.
 Lifecycle Focus shows a section list beside one section at a time, for
-Start Events, Overlapping runs, Cancel Events, Entity, Event Connections, and
-Validation. Entity tracking, its eligibility rule, and the rule's check timing
-stay together in the Entity section. The list counts Start Events, Cancel
-Events, and issues. While the workflow tracks an Entity, its Start and Cancel
+Start Events, Overlapping runs, Schedule, Cancel Events, Entity, Event
+Connections, and Validation. Entity tracking, its eligibility rule, and the
+rule's check timing stay together in the Entity section. A schedule is a preset
+(Every hour, Every day at, Every weekday at, Every week on) or a Custom cron
+expression, with its own time zone, starting from the browser's. Each one reads
+back as a sentence and its next three runs. A schedule edit a save would refuse
+stays in the section unsaved, beside the refusal. The list counts Start Events,
+schedules, Cancel Events, and issues. While the workflow tracks an Entity, its Start and Cancel
 Events say that their Entity bindings supply run identity and show no
 Correlation Path controls. A control that shows another section moves focus to
 that section's entry in the list. The Lifecycle node shows no Delete.
