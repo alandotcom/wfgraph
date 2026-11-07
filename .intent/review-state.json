@@ -3,24 +3,24 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "2b51aa6cee5ddaa2bd0a3ea9f549f35406edf1f99c9aef4201497dbe66b5dcd8",
+      "fingerprint": "b439dd948b98fc263e157a6ad22897e9370fd080ef24dda74d69494178a3bb92",
       "snapshot": {
         "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
         "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
-        "packages/core/skills/wfgraph-core/SKILL.md": "fb6446d533d7a00674df65254b7a44c8489bb2b4507bbe5e83d7a92acb9013f0",
+        "packages/core/skills/wfgraph-core/SKILL.md": "d545a863c189141ef3f83e6df1ee5e005934c9ab3b18f730df72d0080a958187",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "7a60527feff8cf53533809334068f6a50e74fa8d4d1b15a731ba0cc951cab457",
+        "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "d4655f1edbf676e458f7e754812ac20e2635b0c0a30504bc3f577294d401d3a2",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "6e6fd837d58cce2410d032bcb57099dfc399f5c5fe7025c1245d1c028895f825",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e727932fcb7efc71a3fc085624a3c19e18ae79841fd904ef77da0b0905209fd"
       },
-      "head": "807145b543fe5563175a5e6d0975b3ec8c862c81",
+      "head": "48c5c11cacd00ba8c5cab433542777a5e80ccdfe",
       "outcome": "updated",
-      "reason": "Added the observability routing row and replaced the logging bullet with the one-line configureWfGraphLogging setup a host needs to start, routing the logger option, the host's own LogTape configuration and tracing to observability. The payload sentence moved to observability's record description.",
+      "reason": "Moved the three Cloudflare Workers bullets and the two Worker mistakes to cloudflare-worker, leaving one routing line and a routing table row, and rewrote the activation description to route the access policy, logs and traces, and Worker deployments to their sub-skills (986 characters). The purpose text is unchanged.",
       "evidence": [
-        "packages/core/skills/wfgraph-core/observability/SKILL.md",
-        "packages/core/src/backend/lib/log-config.ts (warnWhenLoggingUnconfigured)",
-        "pnpm exec intent validate: 7 skill files passed"
+        "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md",
+        "pnpm exec intent validate: 8 skill files passed; pnpm run type-check passed with worker-entry.ts and the @ts-expect-error runner check"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -95,17 +95,18 @@
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "8c9ada67e75a907a6b7c0a2eba74826fe1acf01c02306159081c9a5b3e4b1d03",
+      "fingerprint": "ab9b9a33c57c0147b75129f05d9d457295896c4f424cb3690f0b53841f45e305",
       "snapshot": {
         "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
-        "_artifacts/domain_map.yaml": "f967b94ad029929cbe64b5d56b9024cafd73dccd46a0d2786659034d3393796b",
-        "_artifacts/skill_spec.md": "a82d6d93b8496199c62ad95066611e3f65e0db1eae1afb048db1ec04b187fb93",
-        "_artifacts/skill_tree.yaml": "026530e15f372bb01cd2b6255739a57f445f42304697f57ca44d3affb12da1ca",
+        "_artifacts/domain_map.yaml": "aa42c964fa6c7d3062d8f915766951c00436f75671914e1782f9dbbf576bbbea",
+        "_artifacts/skill_spec.md": "710aece5ad4bd8b33038c257dd15057f7238479730683154f8ee749e0b78faae",
+        "_artifacts/skill_tree.yaml": "df9d0088906be9bb3eacd14d3b8ce1ca1c5f0886161b0e589ce58813b0dc32c4",
         "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
         "docs/events.md": "b7690fd2be3ee688359e17f2438416ac4e2aab290c837ce13bdb5bab73bd3d09",
         "docs/integrations.md": "3286a74c669550439377f611e8cd6ecf38751cf0986002d2f6448f73c2dcdf50",
-        "packages/core/skills/wfgraph-core/SKILL.md": "fb6446d533d7a00674df65254b7a44c8489bb2b4507bbe5e83d7a92acb9013f0",
+        "packages/core/skills/wfgraph-core/SKILL.md": "d545a863c189141ef3f83e6df1ee5e005934c9ab3b18f730df72d0080a958187",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "7a60527feff8cf53533809334068f6a50e74fa8d4d1b15a731ba0cc951cab457",
+        "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "d4655f1edbf676e458f7e754812ac20e2635b0c0a30504bc3f577294d401d3a2",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "6e6fd837d58cce2410d032bcb57099dfc399f5c5fe7025c1245d1c028895f825",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27",
@@ -113,14 +114,16 @@
         "packages/core/src/backend/lib/http/authorize.ts": "cd6c5ff58b4d7a6bd9a96c9dd4c5d3f54f2b65604a59902c0031fccb00847f9b",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
+        "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
+        "packages/core/src/backend/worker.ts": "2c5b3e5c1858bffaa557631a1d61a97a255053cd46383d25c06dbf81f6bbce9b",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "14a493074ecf5765ddc54b1520bfd4ed106fcd72d2d08437fb0beef59147ac8a",
         "packages/shared/src/authorization/operations.ts": "15958bfe40b707b615f98b19e8d4d30a515dbcd9626e4ed393b91158e0379b5c"
       },
-      "head": "807145b543fe5563175a5e6d0975b3ec8c862c81",
+      "head": "48c5c11cacd00ba8c5cab433542777a5e80ccdfe",
       "outcome": "updated",
-      "reason": "observability is implemented in all three records: the tree entry drops status planned and carries the skill's description and sources; domain_map.yaml records covers, tasks and four failure modes; skill_spec.md records the inventory, failure modes, coverage, the batch 3 history with the catalog decision, checks and unverified claims, and the remaining work.",
+      "reason": "cloudflare-worker is implemented in all three records: the tree entry drops status planned and carries its description and sources, and the wfgraph-core entry carries its new description; domain_map.yaml moves the two Worker failure modes from wfgraph-core into cloudflare-worker with three more, removes the moved task, and records the unverified Worker claims as a gap; skill_spec.md records the inventory, failure-mode tables, tension, cross-reference, coverage, batch 4 history with its checks and the remaining work.",
       "evidence": [
         "_artifacts/domain_map.yaml",
         "_artifacts/skill_spec.md",
@@ -252,6 +255,71 @@
       "evidence": [
         "pnpm-workspace.yaml",
         "npm view @opentelemetry/api version: 1.10.0; npm view @opentelemetry/sdk-trace-base version: 2.12.0 with peer @opentelemetry/api >=1.3.0 <1.10.0"
+      ]
+    },
+    "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
+      "fingerprint": "daebe89ed01db0f22f45c3816cd461a2e037bdaee1b4cb9005e2320713309466",
+      "snapshot": {
+        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
+        "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "d4655f1edbf676e458f7e754812ac20e2635b0c0a30504bc3f577294d401d3a2",
+        "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
+        "packages/core/src/backend/worker.ts": "2c5b3e5c1858bffaa557631a1d61a97a255053cd46383d25c06dbf81f6bbce9b"
+      },
+      "head": "48c5c11cacd00ba8c5cab433542777a5e80ccdfe",
+      "outcome": "updated",
+      "reason": "New skill from docs/embedding.md (Cloudflare Workers and Hyperdrive with its four subsections, PostgreSQL migrations, the runner refusal), checked against worker.ts (request called per invocation, options on wfWorker, fetch closes through waitUntil, queue ticks for any batch, 14-minute budget, 10-minute claim window, five-minute lease, one-minute heartbeat, 100-pass limit, sweeps on the Cron tick only, tick records and the wfgraph.worker.tick span, rethrow after a failed tick) and hyperdrive-postgres.ts (current_schema() refusal and its message). It carries the two Worker mistakes moved from wfgraph-core and three more the manual implies.",
+      "evidence": [
+        "docs/embedding.md",
+        "packages/core/src/backend/worker.ts",
+        "packages/core/src/backend/persistence/hyperdrive-postgres.ts",
+        "packages/core/src/backend/executor/in-process-runner.ts (resolveRunnerSettings)",
+        "packages/core/src/backend/lib/http/public-url.ts",
+        "pnpm exec intent validate: 8 skill files passed; pnpm run type-check passed with worker-entry.ts and the @ts-expect-error runner check",
+        "pnpm exec vitest run --project node packages/evals/src/skills: 8 cloudflare-worker cases passed; the Queue-only deployment fails the grader with the run still waiting and the deployment with neither fails with no run",
+        "WFGRAPH_TEST_DATABASE_URL=postgresql://workflow:workflow@127.0.0.1:55437/workflow_builder vitest --project postgres: 3 Hyperdrive cases passed against the docker compose server",
+        "Unverified without workerd and Hyperdrive: query caching, the Wrangler configuration, Node.js compatibility, the platform limits and Queue delivery; discovery and a fresh consumer session unverified"
+      ]
+    },
+    "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
+      "fingerprint": "cc7599f1637d2993b948d3e4600eaf434e6b2298e4821136ed54c0d1b63ea320",
+      "snapshot": {
+        "packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": "020a7051b94908df45d696aaa53f3b77c45a0b5174a19f287a7ad73538c1e071"
+      },
+      "head": "48c5c11cacd00ba8c5cab433542777a5e80ccdfe",
+      "outcome": "out-of-scope",
+      "reason": "An executable task check or its fixture for the cloudflare-worker skill (decision 5). It grades the guidance and is no source of it, so no skill reads it.",
+      "evidence": [
+        "packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts",
+        "pnpm exec vitest run --project node packages/evals/src/skills: 8 cloudflare-worker cases passed; the Queue-only deployment fails the grader with the run still waiting and the deployment with neither fails with no run",
+        "WFGRAPH_TEST_DATABASE_URL=postgresql://workflow:workflow@127.0.0.1:55437/workflow_builder vitest --project postgres: 3 Hyperdrive cases passed against the docker compose server"
+      ]
+    },
+    "source:packages/evals/src/skills/cloudflare-worker/worker-entry.ts": {
+      "fingerprint": "5f3273fda9dc3b2286136b25f7b0b9d7a163614e7239b01f984e10f9b653bc6c",
+      "snapshot": {
+        "packages/evals/src/skills/cloudflare-worker/worker-entry.ts": "097cd82af49bdab1737633551ae0290266c5c639d68af8761e0a449bfcd717ef"
+      },
+      "head": "48c5c11cacd00ba8c5cab433542777a5e80ccdfe",
+      "outcome": "out-of-scope",
+      "reason": "An executable task check or its fixture for the cloudflare-worker skill (decision 5). It grades the guidance and is no source of it, so no skill reads it.",
+      "evidence": [
+        "packages/evals/src/skills/cloudflare-worker/worker-entry.ts",
+        "pnpm exec vitest run --project node packages/evals/src/skills: 8 cloudflare-worker cases passed; the Queue-only deployment fails the grader with the run still waiting and the deployment with neither fails with no run",
+        "WFGRAPH_TEST_DATABASE_URL=postgresql://workflow:workflow@127.0.0.1:55437/workflow_builder vitest --project postgres: 3 Hyperdrive cases passed against the docker compose server"
+      ]
+    },
+    "source:packages/evals/src/skills/cloudflare-worker/worker.test.ts": {
+      "fingerprint": "8287296d9da26a24978fac10c4a3305cb5f5bc6358cbf83256cfa6bf3865a6eb",
+      "snapshot": {
+        "packages/evals/src/skills/cloudflare-worker/worker.test.ts": "71efeb05ed54cd994122d861a7cf10f5891f513a1aa9954e6eb9a470335ad919"
+      },
+      "head": "48c5c11cacd00ba8c5cab433542777a5e80ccdfe",
+      "outcome": "out-of-scope",
+      "reason": "An executable task check or its fixture for the cloudflare-worker skill (decision 5). It grades the guidance and is no source of it, so no skill reads it.",
+      "evidence": [
+        "packages/evals/src/skills/cloudflare-worker/worker.test.ts",
+        "pnpm exec vitest run --project node packages/evals/src/skills: 8 cloudflare-worker cases passed; the Queue-only deployment fails the grader with the run still waiting and the deployment with neither fails with no run",
+        "WFGRAPH_TEST_DATABASE_URL=postgresql://workflow:workflow@127.0.0.1:55437/workflow_builder vitest --project postgres: 3 Hyperdrive cases passed against the docker compose server"
       ]
     }
   }

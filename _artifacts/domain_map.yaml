@@ -72,7 +72,7 @@ skills:
       - dispose and Symbol.asyncDispose
       - mcp
       - configureWfGraphLogging (the one-line console setup; the rest lives in observability)
-      - wfWorker and wfHyperdrive
+      - wfWorker and wfHyperdrive (one routing line; the deployment lives in cloudflare-worker)
       - createWfGraphInngestFunctions
     tasks:
       - Mount createWfGraphApp in a Node HTTP, Express or Fastify server with createRequestListener, or hand wfgraph.fetch to a fetch-native runtime.
@@ -86,7 +86,6 @@ skills:
       - Enable MCP authoring with mcp set to true locally, or to allowed hostnames on a deployed host.
       - Keep publishing Events with inngest.send by registering createWfGraphInngestFunctions on the host's own Inngest client.
       - Set publicUrl so OAuth callback and webhook URLs resolve.
-      - Deploy on a Cloudflare Worker with wfWorker, a Cron Trigger and an optional wake Queue (moves to cloudflare-worker).
     subsystems:
       - name: PostgreSQL
         package: "@wfgraph/core/postgres"
@@ -163,26 +162,6 @@ skills:
         source: alandotcom/wfgraph:docs/embedding.md (Workflow runs)
         priority: CRITICAL
         status: active
-      - mistake: A Worker with no Cron Trigger
-        mechanism: The Cron Trigger's tick finds Wait deadlines, runs whose invocation was cut short and host-inserted Events; without it those runs never advance.
-        wrong_pattern: |
-          wfWorker deployed with only a Queue consumer, or with neither
-        correct_pattern: |
-          [triggers] crons = ["* * * * *"] in the Wrangler configuration
-        source: alandotcom/wfgraph:docs/embedding.md (Cloudflare Workers and Hyperdrive)
-        priority: CRITICAL
-        status: active
-        skills: [wfgraph-core, cloudflare-worker]
-      - mistake: Hyperdrive with query caching
-        mechanism: Hyperdrive does not invalidate cached reads after Workflow Graph writes, so later reads miss those writes.
-        wrong_pattern: |
-          A Hyperdrive configuration with default query caching
-        correct_pattern: |
-          wrangler hyperdrive create ... --caching-disabled
-        source: alandotcom/wfgraph:docs/embedding.md (Cloudflare Workers and Hyperdrive)
-        priority: HIGH
-        status: active
-        skills: [wfgraph-core, cloudflare-worker]
       - mistake: Upgrade with legacy Group config keys
         mechanism: Graph decoding refuses every Group config key and no migration ships for the removed keys, so a stored graph holding one fails to load.
         wrong_pattern: |
@@ -519,8 +498,8 @@ skills:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/plugins/README.md
 
-  # Sub-skills of wfgraph-core approved by the maintainer in batch 1. auth and
-  # observability are implemented; cloudflare-worker has no SKILL.md yet.
+  # Sub-skills of wfgraph-core approved by the maintainer in batch 1, all
+  # three implemented in batches 2 to 4.
   - name: auth
     slug: auth
     domain: embedding
@@ -657,7 +636,6 @@ skills:
   - name: cloudflare-worker
     slug: cloudflare-worker
     domain: embedding
-    status: planned
     description: >-
       A developer deploys Workflow Graph as a Cloudflare Worker over PostgreSQL
       through Hyperdrive.
@@ -671,14 +649,65 @@ skills:
       - Cron Trigger
       - Wrangler configuration
       - migrateWfGraphDatabase
+      - tick limits and tick records
     tasks:
       - Export wfWorker with its fetch, scheduled and queue handlers, and resolve bindings in the request callback.
       - Configure a Cron Trigger that fires every minute and an optional wake Queue with max_batch_timeout 0.
       - Configure Hyperdrive with query caching disabled and the origin role's search_path on the Workflow Graph schema.
       - Run PostgreSQL migrations out of band with @wfgraph/core/migrate.
       - Size limits.cpu_ms and read tick records against the platform limits.
+      - Share the Worker with other routes, crons and queues by calling its handlers from the host's own.
+    failure_modes:
+      - mistake: A Worker with no Cron Trigger
+        mechanism: The Cron Trigger's tick finds Wait deadlines, runs whose invocation was cut short and host-inserted Events; with a Queue alone a run parks at its first Wait and never resumes, and with neither no Event is delivered.
+        wrong_pattern: |
+          wfWorker deployed with only a Queue consumer, or with neither
+        correct_pattern: |
+          [triggers] crons = ["* * * * *"] in the Wrangler configuration
+        source: alandotcom/wfgraph:docs/embedding.md (Wake runs through a Queue)
+        priority: CRITICAL
+        status: active
+      - mistake: Hyperdrive with query caching
+        mechanism: Hyperdrive does not invalidate cached reads after Workflow Graph writes, so later reads miss those writes.
+        wrong_pattern: |
+          A Hyperdrive configuration with default query caching
+        correct_pattern: |
+          wrangler hyperdrive create ... --caching-disabled
+        source: alandotcom/wfgraph:docs/embedding.md (Hyperdrive)
+        priority: HIGH
+        status: active
+      - mistake: An origin role without the search_path
+        mechanism: Every invocation checks current_schema() against the configured schema and refuses a mismatch, so the Worker answers no request.
+        wrong_pattern: |
+          The origin role's default search_path left at "$user", public
+        correct_pattern: |
+          ALTER ROLE <role> SET search_path = _workflows
+        source: alandotcom/wfgraph:docs/embedding.md (Hyperdrive)
+        priority: HIGH
+        status: active
+      - mistake: A runner beside the Worker
+        mechanism: createWfGraphRunner refuses wfHyperdrive at startup, and wfWorker takes no runner option, because a Worker advances its runs in ticks.
+        wrong_pattern: |
+          createWfGraphRunner({ persistence: wfHyperdrive(binding) })
+        correct_pattern: |
+          The Cron Trigger and the optional wake Queue
+        source: alandotcom/wfgraph:docs/embedding.md (Run the loop in its own process)
+        priority: HIGH
+        status: active
+        skills: [cloudflare-worker, wfgraph-core]
+      - mistake: The Queue's default batch timeout
+        mechanism: Cloudflare waits up to five seconds by default to fill a batch, so each wake is delayed for nothing.
+        wrong_pattern: |
+          A wake Queue consumer without max_batch_timeout
+        correct_pattern: |
+          max_batch_timeout = 0
+        source: alandotcom/wfgraph:docs/embedding.md (Wake runs through a Queue)
+        priority: MEDIUM
+        status: active
     sources:
       - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:packages/core/src/backend/worker.ts
+      - alandotcom/wfgraph:packages/core/src/backend/persistence/hyperdrive-postgres.ts
 
 tensions:
   - name: Promise host step versus Effect integration
@@ -715,16 +744,20 @@ cross_references:
     reason: Start-up warns when no logging is configured; wfgraph-core keeps the one-line console setup and observability owns the rest of logging and tracing.
   - from: wfgraph-core
     to: cloudflare-worker
-    reason: The Worker bullets and failure modes in wfgraph-core move to the planned cloudflare-worker skill.
+    reason: wfgraph-core keeps one routing line for wfWorker; the deployment, its two Worker failure modes and the runner refusal live in cloudflare-worker.
 
 gaps:
+  - skill: cloudflare-worker
+    question: Which Worker claims can be checked without running workerd and Hyperdrive?
+    context: The task checks cover the entry's types, wfWorker's start-up and per-invocation refusals, tick behavior with SQLite standing in for Hyperdrive, and wfHyperdrive's current_schema() refusal and the createWfGraphRunner refusal against a live PostgreSQL. Query caching, the Wrangler configuration, Node.js compatibility, the wall-time, CPU and statement limits, and Queue delivery itself are unverified.
+    status: open
   - skill: wfgraph-core
     question: Does configuring the build agent (agent.apiKey, agent.model, agent.reasoningEffort, agent.baseUrl) need adopter guidance?
     context: No skill covers the agent options in docs/embedding.md; the gap was found during this assessment and has no maintainer decision.
     status: open
   - skill: wfgraph-core
     question: Discovery checks for every skill, executable task checks for the five batch 1 skills, and a fresh consumer session for any skill.
-    context: Task checks live in packages/evals/src/skills/ and exist for auth and observability. No isolated agent session was available, so activation and consumer behavior are unverified for every skill.
+    context: Task checks live in packages/evals/src/skills/ and exist for auth, observability and cloudflare-worker. No isolated agent session was available, so activation and consumer behavior are unverified for every skill.
     status: open
   - skill: auth
     question: docs/embedding.md (createWfGraphApp options) says Workflow Graph refuses to start without auth, but the app starts and answers 500 to every operator request; only the type requires the option. Should the manual say so?

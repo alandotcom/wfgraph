@@ -13,20 +13,22 @@ skills:
     domain: embedding
     package: packages/core
     path: skills/wfgraph-core/SKILL.md
-    description:
-      'Use when adding Workflow Graph (@wfgraph/core) to a host application:
-      mounting createWfGraphApp on Node, Express, Fastify or Bun, serving the editor
-      with clientBundle, setting auth, the encryption key, publicUrl or basePath, choosing
-      PostgreSQL, SQLite or Cloudflare Worker persistence, running PostgreSQL migrations,
+    description: >
+      Use when adding Workflow Graph (@wfgraph/core) to a host application: mounting
+      createWfGraphApp on Node, Express, Fastify or Bun, serving the editor with
+      clientBundle, setting auth, the encryption key, publicUrl or basePath,
+      choosing PostgreSQL or SQLite persistence, running PostgreSQL migrations,
       tuning or moving the worker loop that runs workflows, enabling MCP authoring,
       or keeping inngest.send. Also use for requests such as "add a workflow engine
-      to our app", "set up the workflow database", "workflows start but never advance"
-      or "the editor loads its assets from the wrong path". For declaring Events or
-      Entities use wfgraph-core/events; for a host''s own workflow step use wfgraph-core/host-actions;
-      for writing a vendor integration use wfgraph-core/integrations; for turning on
-      the six built-in integrations use wfgraph-plugins.
-
-      '
+      to our app", "set up the workflow database", "workflows start but never
+      advance" or "the editor loads its assets from the wrong path". For the access
+      policy use wfgraph-core/auth; for logs and traces use
+      wfgraph-core/observability; for a Cloudflare Worker use
+      wfgraph-core/cloudflare-worker; for declaring Events or Entities use
+      wfgraph-core/events; for a host's own workflow step use
+      wfgraph-core/host-actions; for writing a vendor integration use
+      wfgraph-core/integrations; for the six built-in integrations use
+      wfgraph-plugins.
     purpose:
       "Embed Workflow Graph with createWfGraphApp: fetch handler, createRequestListener,
       auth, INTEGRATION_ENCRYPTION_KEY, clientBundle, publicUrl, basePath, MCP authoring,
@@ -211,18 +213,27 @@ skills:
     domain: embedding
     package: packages/core
     path: skills/wfgraph-core/cloudflare-worker/SKILL.md
-    status: planned
-    description:
-      "Use when deploying Workflow Graph on a Cloudflare Worker: wfWorker
-      with its fetch, scheduled and queue handlers, the Cron Trigger, the optional wake
-      Queue, Hyperdrive with query caching disabled, out-of-band PostgreSQL migrations,
-      and the platform limits a tick works within. For a Node host use wfgraph-core."
-    purpose:
+    description: >
+      Use when deploying Workflow Graph on a Cloudflare Worker with
+      @wfgraph/core/worker: exporting wfWorker with its fetch, scheduled and queue
+      handlers, resolving bindings and secrets in its request callback, writing the
+      Wrangler configuration for the Cron Trigger and the optional wake Queue,
+      connecting PostgreSQL through Hyperdrive with wfHyperdrive and query caching
+      disabled, setting the origin role's search_path, running migrations outside
+      the Worker, raising limits.cpu_ms, or reading tick records. Also use for
+      requests such as "run our workflows on Cloudflare", "runs on the Worker never
+      resume after a wait", "Events reach the Worker a minute late" or "the Worker
+      says current_schema() resolved to public". For a Node host, its worker loop
+      or createWfGraphRunner use wfgraph-core; for the auth callback use
+      wfgraph-core/auth; for log sinks and tracing use wfgraph-core/observability.
+    purpose: >
       Deploy Workflow Graph on a Cloudflare Worker with wfWorker, a Cron Trigger,
-      an optional wake Queue, Hyperdrive with query caching off, out-of-band migrations
-      and the platform limits.
+      an optional wake Queue, Hyperdrive with query caching off, out-of-band
+      migrations and the platform limits.
     sources:
       - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:packages/core/src/backend/worker.ts
+      - alandotcom/wfgraph:packages/core/src/backend/persistence/hyperdrive-postgres.ts
     requires:
       - wfgraph-core
 distribution:

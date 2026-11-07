@@ -61,44 +61,42 @@ integrations). The published skills ship inside the `@wfgraph/core` and
 
 ## Domains
 
-| Domain          | Description                                                                                                                            | Skills                                                        |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| embedding       | Mounting Workflow Graph in a host and operating it: the app call, editor bundle, access policy, persistence, worker loop, Worker, logs | wfgraph-core, auth, observability; planned: cloudflare-worker |
-| host-extensions | What a host contributes from its own code: Events, Entities and their intake, and host actions                                         | events, host-actions                                          |
-| integrations    | Writing a vendor integration against `@wfgraph/core/plugin`, and turning on the six built-ins                                          | integrations, wfgraph-plugins                                 |
+| Domain          | Description                                                                                                                            | Skills                                               |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| embedding       | Mounting Workflow Graph in a host and operating it: the app call, editor bundle, access policy, persistence, worker loop, Worker, logs | wfgraph-core, auth, observability, cloudflare-worker |
+| host-extensions | What a host contributes from its own code: Events, Entities and their intake, and host actions                                         | events, host-actions                                 |
+| integrations    | Writing a vendor integration against `@wfgraph/core/plugin`, and turning on the six built-ins                                          | integrations, wfgraph-plugins                        |
 
 ## Skill Inventory
 
 | Skill             | Type      | Domain          | Status      | What it covers                                                                                                                                         | Failure modes |
 | ----------------- | --------- | --------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
-| wfgraph-core      | core      | embedding       | implemented | `createWfGraphApp`, `createRequestListener`, `clientBundle`, `basePath`, `publicUrl`, the `auth` option, persistence, migrations, the worker loop, MCP | 11            |
+| wfgraph-core      | core      | embedding       | implemented | `createWfGraphApp`, `createRequestListener`, `clientBundle`, `basePath`, `publicUrl`, the `auth` option, persistence, migrations, the worker loop, MCP | 9             |
 | events            | sub-skill | host-extensions | implemented | `defineEvent`, `defineEntity`, `correlationPath`, umbrella sources, intake through `events.send`, HTTP, the inbox table and Inngest                    | 6             |
 | host-actions      | sub-skill | host-extensions | implemented | `defineAction`, config forms, `options` callbacks, `step.run`, `readCredentials`, `sideEffect`                                                         | 3             |
 | integrations      | sub-skill | integrations    | implemented | `defineIntegration`, `callExternal`, webhooks, `IntegrationOAuth`, `runAction`, `checkIntegration`, evolving and retiring actions                      | 7             |
 | wfgraph-plugins   | core      | integrations    | implemented | `builtInIntegrations`, `slack(options?)`, the five value exports, OAuth host requirements, Resend webhook Events                                       | 4             |
 | auth              | sub-skill | embedding       | implemented | `defineWfGraphAuth`, `WfGraphRoles`, `WfGraphAccess`, `trustWfGraphUpstream`, the 401, 403 and 500 answers, the editor's grant snapshot                | 4             |
 | observability     | sub-skill | embedding       | implemented | `configureWfGraphLogging`, `logger`, LogTape, OpenTelemetry, Sentry, span names, record groups                                                         | 4             |
-| cloudflare-worker | sub-skill | embedding       | planned     | `wfWorker`, `wfHyperdrive`, Cron Trigger, wake Queue, Hyperdrive caching, platform limits                                                              | not authored  |
+| cloudflare-worker | sub-skill | embedding       | implemented | `wfWorker`, `wfHyperdrive`, Cron Trigger, wake Queue, Hyperdrive caching and `search_path`, platform limits, tick records                              | 5             |
 
 ## Failure Mode Inventory
 
 Each failure mode comes from the Common Mistakes section of the skill that owns it.
 
-### wfgraph-core (11 failure modes)
+### wfgraph-core (9 failure modes)
 
-| #   | Mistake                                    | Priority | Source                                                | Cross-skill?                |
-| --- | ------------------------------------------ | -------- | ----------------------------------------------------- | --------------------------- |
-| 1   | Missing authorization boundary             | CRITICAL | docs/embedding.md (createWfGraphApp options)          | auth                        |
-| 2   | Pass an inngest option to createWfGraphApp | HIGH     | docs/events.md (Sending through Inngest)              | events                      |
-| 3   | Body parser in front of the listener       | HIGH     | docs/embedding.md (Mounting on Node)                  | none                        |
-| 4   | Mount path disagrees with basePath         | HIGH     | docs/embedding.md (Mounting on Node)                  | none                        |
-| 5   | Mix url and discrete postgres fields       | HIGH     | docs/embedding.md (Persistence)                       | none                        |
-| 6   | Apply the shipped migration SQL with psql  | HIGH     | docs/embedding.md (PostgreSQL migrations)             | none                        |
-| 7   | No process runs the worker loop            | CRITICAL | docs/embedding.md (Workflow runs)                     | none                        |
-| 8   | A Worker with no Cron Trigger              | CRITICAL | docs/embedding.md (Cloudflare Workers and Hyperdrive) | cloudflare-worker (planned) |
-| 9   | Hyperdrive with query caching              | HIGH     | docs/embedding.md (Cloudflare Workers and Hyperdrive) | cloudflare-worker (planned) |
-| 10  | Upgrade with legacy Group config keys      | HIGH     | docs/embedding.md (Groups)                            | none                        |
-| 11  | Repeat a stale MCP write                   | HIGH     | docs/embedding.md (MCP authoring)                     | none                        |
+| #   | Mistake                                    | Priority | Source                                       | Cross-skill? |
+| --- | ------------------------------------------ | -------- | -------------------------------------------- | ------------ |
+| 1   | Missing authorization boundary             | CRITICAL | docs/embedding.md (createWfGraphApp options) | auth         |
+| 2   | Pass an inngest option to createWfGraphApp | HIGH     | docs/events.md (Sending through Inngest)     | events       |
+| 3   | Body parser in front of the listener       | HIGH     | docs/embedding.md (Mounting on Node)         | none         |
+| 4   | Mount path disagrees with basePath         | HIGH     | docs/embedding.md (Mounting on Node)         | none         |
+| 5   | Mix url and discrete postgres fields       | HIGH     | docs/embedding.md (Persistence)              | none         |
+| 6   | Apply the shipped migration SQL with psql  | HIGH     | docs/embedding.md (PostgreSQL migrations)    | none         |
+| 7   | No process runs the worker loop            | CRITICAL | docs/embedding.md (Workflow runs)            | none         |
+| 8   | Upgrade with legacy Group config keys      | HIGH     | docs/embedding.md (Groups)                   | none         |
+| 9   | Repeat a stale MCP write                   | HIGH     | docs/embedding.md (MCP authoring)            | none         |
 
 ### auth (4 failure modes)
 
@@ -108,6 +106,16 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | 2   | Throwing for a missing session    | HIGH     | docs/embedding.md (Authentication and authorization) | none                          |
 | 3   | A grant-store query inside allows | HIGH     | docs/embedding.md (Authentication and authorization) | none                          |
 | 4   | Header-only authentication        | MEDIUM   | docs/embedding.md (Built-in integrations)            | wfgraph-plugins, wfgraph-core |
+
+### cloudflare-worker (5 failure modes)
+
+| #   | Mistake                                | Priority | Source                                              | Cross-skill? |
+| --- | -------------------------------------- | -------- | --------------------------------------------------- | ------------ |
+| 1   | A Worker with no Cron Trigger          | CRITICAL | docs/embedding.md (Wake runs through a Queue)       | none         |
+| 2   | Hyperdrive with query caching          | HIGH     | docs/embedding.md (Hyperdrive)                      | none         |
+| 3   | An origin role without the search_path | HIGH     | docs/embedding.md (Hyperdrive)                      | none         |
+| 4   | A runner beside the Worker             | HIGH     | docs/embedding.md (Run the loop in its own process) | wfgraph-core |
+| 5   | The Queue's default batch timeout      | MEDIUM   | docs/embedding.md (Wake runs through a Queue)       | none         |
 
 ### observability (4 failure modes)
 
@@ -160,23 +168,23 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 
 ## Tensions
 
-| Tension                                              | Skills                                     | Agent implication                                                                               |
-| ---------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| Promise host step versus Effect integration          | host-actions ↔ integrations                | An agent that loads one skill writes the other path's handler, credential read or failure form. |
-| In-process loop versus a separate runner or a Worker | wfgraph-core ↔ cloudflare-worker (planned) | An agent applies runner options to a Worker, or turns the loop off in every process.            |
-| OAuth callback behind host auth                      | wfgraph-plugins ↔ wfgraph-core ↔ auth      | An agent writes header-only authentication, and every OAuth connection fails at the callback.   |
+| Tension                                              | Skills                                | Agent implication                                                                               |
+| ---------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Promise host step versus Effect integration          | host-actions ↔ integrations           | An agent that loads one skill writes the other path's handler, credential read or failure form. |
+| In-process loop versus a separate runner or a Worker | wfgraph-core ↔ cloudflare-worker      | An agent applies runner options to a Worker, or turns the loop off in every process.            |
+| OAuth callback behind host auth                      | wfgraph-plugins ↔ wfgraph-core ↔ auth | An agent writes header-only authentication, and every OAuth connection fails at the callback.   |
 
 ## Cross-References
 
-| From            | To                          | Reason                                                                                                              |
-| --------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| events          | wfgraph-core                | The worker loop delivers every Event, and `events.retentionMs` is also the deduplication window.                    |
-| host-actions    | integrations                | The Promise and Effect comparison decides which path a step belongs on.                                             |
-| integrations    | wfgraph-plugins             | The six built-ins are the worked examples, and a host turns them on the way it turns on its own.                    |
-| wfgraph-plugins | wfgraph-core                | OAuth and webhook URLs depend on `publicUrl`, `basePath` and the `auth` callback.                                   |
-| wfgraph-core    | auth                        | `auth` is a required option; the auth skill owns the policy guidance.                                               |
-| wfgraph-core    | observability               | Start-up warns when no logging is configured; wfgraph-core keeps the console setup and observability owns the rest. |
-| wfgraph-core    | cloudflare-worker (planned) | The Worker bullets and failure modes in wfgraph-core move to the planned skill.                                     |
+| From            | To                | Reason                                                                                                              |
+| --------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------- |
+| events          | wfgraph-core      | The worker loop delivers every Event, and `events.retentionMs` is also the deduplication window.                    |
+| host-actions    | integrations      | The Promise and Effect comparison decides which path a step belongs on.                                             |
+| integrations    | wfgraph-plugins   | The six built-ins are the worked examples, and a host turns them on the way it turns on its own.                    |
+| wfgraph-plugins | wfgraph-core      | OAuth and webhook URLs depend on `publicUrl`, `basePath` and the `auth` callback.                                   |
+| wfgraph-core    | auth              | `auth` is a required option; the auth skill owns the policy guidance.                                               |
+| wfgraph-core    | observability     | Start-up warns when no logging is configured; wfgraph-core keeps the console setup and observability owns the rest. |
+| wfgraph-core    | cloudflare-worker | wfgraph-core keeps one routing line for `wfWorker`; the deployment and its failure modes live in cloudflare-worker. |
 
 ## Subsystems & Reference Candidates
 
@@ -187,19 +195,19 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 
 ## Remaining Gaps
 
-| Skill        | Question                                                                                                                                                                                                                      | Status |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| wfgraph-core | Does configuring the build agent (`agent.apiKey`, `agent.model`, `agent.reasoningEffort`, `agent.baseUrl`) need adopter guidance?                                                                                             | open   |
-| all          | Discovery checks have not run for any skill, and no fresh consumer session has attempted a task. Executable task checks exist for auth and observability (`packages/evals/src/skills/`).                                      | open   |
-| auth         | `docs/embedding.md` ("createWfGraphApp options") says Workflow Graph refuses to start without `auth`. The code starts, and every operator request answers `500`; only the type requires the option. Should the manual say so? | open   |
-| auth         | The operation table in `docs/embedding.md` ("Authentication and authorization") omits `action.configOptions`, which `WfGraphOperations` grants under `workflow.write`. Should the manual list it?                             | open   |
+| Skill             | Question                                                                                                                                                                                                                                           | Status |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| wfgraph-core      | Does configuring the build agent (`agent.apiKey`, `agent.model`, `agent.reasoningEffort`, `agent.baseUrl`) need adopter guidance?                                                                                                                  | open   |
+| all               | Discovery checks have not run for any skill, and no fresh consumer session has attempted a task. Executable task checks exist for auth, observability and cloudflare-worker (`packages/evals/src/skills/`).                                        | open   |
+| auth              | `docs/embedding.md` ("createWfGraphApp options") says Workflow Graph refuses to start without `auth`. The code starts, and every operator request answers `500`; only the type requires the option. Should the manual say so?                      | open   |
+| cloudflare-worker | Without workerd and Hyperdrive, these claims are unverified: query caching, the Wrangler configuration, Node.js compatibility, the wall-time, CPU and statement limits, the tick constants as Cloudflare enforces them, and Queue delivery itself. | open   |
+| auth              | The operation table in `docs/embedding.md` ("Authentication and authorization") omits `action.configOptions`, which `WfGraphOperations` grants under `workflow.write`. Should the manual list it?                                                  | open   |
 
 ## Recommended Skill File Structure
 
 - **Core skills:** wfgraph-core (`@wfgraph/core`) and wfgraph-plugins (`@wfgraph/plugins`).
-- **Sub-skills:** events, host-actions, integrations, auth and observability
-  under `packages/core/skills/wfgraph-core/`, and the planned cloudflare-worker
-  in the same directory.
+- **Sub-skills:** events, host-actions, integrations, auth, observability and
+  cloudflare-worker under `packages/core/skills/wfgraph-core/`.
 - **Framework skills:** none. The packages are framework-agnostic; `hono` is an
   internal peer dependency, and Node, Express, Fastify and Bun mounting is one
   wfgraph-core task.
@@ -215,7 +223,7 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | inngest                        | `createWfGraphInngestFunctions` on the host's Inngest client | No. events and wfgraph-core cover it.               |
 | hono                           | Peer dependency of `@wfgraph/core`                           | No. Adopters never call it directly.                |
 | LogTape, OpenTelemetry, Sentry | Log sinks and the tracer provider                            | No. The observability skill covers them.            |
-| Cloudflare Workers             | `wfWorker`, Cron Trigger, Queue, Hyperdrive                  | No. The planned cloudflare-worker skill covers it.  |
+| Cloudflare Workers             | `wfWorker`, Cron Trigger, Queue, Hyperdrive                  | No. The cloudflare-worker skill covers it.          |
 | Zod, arktype, Effect Schema    | Standard Schema for Events and actions                       | No. events and host-actions cover the schema rules. |
 
 ## Coverage and batch history
@@ -232,17 +240,16 @@ Coverage of `docs/embedding.md` by section:
   Node", "The editor" (the `client` option), "Groups" (the removed config keys
   and the rules MCP writes keep), "MCP authoring", "Persistence", "Workflow
   runs" with all five subsections, "PostgreSQL migrations" and "createWfGraphApp
-  options". wfgraph-core also keeps the required `auth` option and the
-  one-line console logging setup, and summarizes "Cloudflare Workers and
-  Hyperdrive" in a few bullets.
+  options". wfgraph-core also keeps the required `auth` option, the one-line
+  console logging setup, and one routing line for `wfWorker`.
 - Covered by host-actions: "Dynamic host action fields".
 - Covered by wfgraph-plugins: "Built-in integrations".
 - Covered by auth: "Authentication and authorization", and the OAuth callback
   requirement in "Built-in integrations".
 - Covered by observability: "Logging", "Tracing", "Sentry" and "Any other
   backend".
-- Planned: "Cloudflare Workers and Hyperdrive" with its four
-  subsections and the Worker use of "PostgreSQL migrations" (cloudflare-worker).
+- Covered by cloudflare-worker: "Cloudflare Workers and Hyperdrive" with its
+  four subsections, and the Worker use of "PostgreSQL migrations".
 - Assessed and left without a skill: "Workspaces and Canvas Reveal" and "On a
   phone" describe the editor for the people who use it and hold no adopter code
   task. "Package exports" is a reference table that each skill's entry points
@@ -360,10 +367,48 @@ sources, apart from the source checks each later batch records.
   the twelve service span names, and the one-trace-per-pass claim. Discovery
   and a fresh consumer session are unverified.
 
+### Batch 4: the cloudflare-worker skill (packages at 3.1.1, base 48c5c11c)
+
+- Wrote `packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md` from
+  `docs/embedding.md` ("Cloudflare Workers and Hyperdrive" with its four
+  subsections, "PostgreSQL migrations", and the runner refusal in "Run the loop
+  in its own process"), checked against `packages/core/src/backend/worker.ts`
+  (the tick budget, claim window, lease, heartbeat and pass limit constants,
+  the Cron-only sweeps, the tick records and span, the rethrow) and
+  `packages/core/src/backend/persistence/hyperdrive-postgres.ts` (the
+  `current_schema()` refusal). It adds three mistakes the manual implies: an
+  origin role without the `search_path`, a runner beside the Worker, and the
+  Queue's default batch timeout.
+- Moved out of wfgraph-core: the three Cloudflare Workers bullets under
+  Persistence and the "A Worker with no Cron Trigger" and "Hyperdrive with
+  query caching" mistakes. wfgraph-core keeps one routing line and a routing
+  table row, and its description routes auth, observability and Worker
+  deployments to their skills.
+- Decision: the Node checks stand a SQLite file in for Hyperdrive, as
+  `packages/core/src/backend/worker.test.ts` does, because a tick's claims and
+  parks are the same repository contract on both backends. A small platform
+  stand-in delivers pending Queue messages and fires the Cron Trigger only
+  when the deployment configures each.
+- Checks: `worker-entry.ts` is the documented entry against
+  `@wfgraph/core/worker` and type-checks under `pnpm run type-check`.
+  `worker.test.ts` loads it, checks that `wfWorker` has no `runner` option (a
+  `@ts-expect-error` that type-check enforces), that a `publicUrl` with a path
+  throws when the Worker starts, and that a bad encryption key or a blank
+  events key fail an invocation before persistence opens. Its grader posts an
+  Event that starts a run with a one-second Wait and asserts the run completes
+  after two platform minutes: a Cron Trigger with or without a Queue passes,
+  a Queue alone fails with the run still `waiting`, and neither fails with no
+  run. `hyperdrive.pg.test.ts` runs in the `postgres` project against a live
+  server: the Worker opens Hyperdrive when the factory's `schema` is the origin
+  role's first schema, the documented entry is refused against a role whose
+  `search_path` was never set, and `createWfGraphRunner` refuses
+  `wfHyperdrive`. It passed against the `docker compose` server and skips
+  without `WFGRAPH_TEST_DATABASE_URL`.
+- Unverified: see Remaining Gaps. Discovery and a fresh consumer session are
+  unverified.
+
 ### Remaining work
 
-1. Author cloudflare-worker; move the Worker bullets and failure modes from
-   wfgraph-core into it; add its row to the wfgraph-core sub-skill table.
-2. Add executable task checks under `packages/evals/src/skills/` for each new
-   skill, and discovery prompts for every skill.
-3. Resolve the open gaps.
+1. Add discovery prompts for every skill, and executable task checks for the
+   five batch 1 skills.
+2. Resolve the open gaps.

@@ -4,15 +4,18 @@ description: >
   Use when adding Workflow Graph (@wfgraph/core) to a host application: mounting
   createWfGraphApp on Node, Express, Fastify or Bun, serving the editor with
   clientBundle, setting auth, the encryption key, publicUrl or basePath,
-  choosing PostgreSQL, SQLite or Cloudflare Worker persistence, running
-  PostgreSQL migrations, tuning or moving the worker loop that runs workflows,
-  enabling MCP authoring, or keeping inngest.send. Also use for requests such as
-  "add a workflow engine to our app", "set up the workflow database", "workflows
-  start but never advance" or "the editor loads its assets from the wrong path".
-  For declaring Events or Entities use wfgraph-core/events; for a host's own
-  workflow step use wfgraph-core/host-actions; for writing a vendor integration
-  use wfgraph-core/integrations; for turning on the six built-in integrations
-  use wfgraph-plugins.
+  choosing PostgreSQL or SQLite persistence, running PostgreSQL migrations,
+  tuning or moving the worker loop that runs workflows, enabling MCP authoring,
+  or keeping inngest.send. Also use for requests such as "add a workflow engine
+  to our app", "set up the workflow database", "workflows start but never
+  advance" or "the editor loads its assets from the wrong path". For the access
+  policy use wfgraph-core/auth; for logs and traces use
+  wfgraph-core/observability; for a Cloudflare Worker use
+  wfgraph-core/cloudflare-worker; for declaring Events or Entities use
+  wfgraph-core/events; for a host's own workflow step use
+  wfgraph-core/host-actions; for writing a vendor integration use
+  wfgraph-core/integrations; for the six built-in integrations use
+  wfgraph-plugins.
 metadata:
   purpose: >
     Embed Workflow Graph with createWfGraphApp: fetch handler, createRequestListener,
@@ -53,14 +56,15 @@ its own `serve` or `connect`: see wfgraph-core/events.
 
 ## Sub-skills
 
-| Need to...                               | Load                       |
-| ---------------------------------------- | -------------------------- |
-| Write the `auth` access policy           | wfgraph-core/auth          |
-| Route logs and traces                    | wfgraph-core/observability |
-| `defineEvent`, `defineEntity`, Lifecycle | wfgraph-core/events        |
-| `defineAction` (Promise host actions)    | wfgraph-core/host-actions  |
-| Write a vendor integration               | wfgraph-core/integrations  |
-| Turn on Clerk/Linear/Resend/Slack/Twilio | wfgraph-plugins            |
+| Need to...                               | Load                           |
+| ---------------------------------------- | ------------------------------ |
+| Write the `auth` access policy           | wfgraph-core/auth              |
+| Route logs and traces                    | wfgraph-core/observability     |
+| Deploy on a Cloudflare Worker            | wfgraph-core/cloudflare-worker |
+| `defineEvent`, `defineEntity`, Lifecycle | wfgraph-core/events            |
+| `defineAction` (Promise host actions)    | wfgraph-core/host-actions      |
+| Write a vendor integration               | wfgraph-core/integrations      |
+| Turn on Clerk/Linear/Resend/Slack/Twilio | wfgraph-plugins                |
 
 ## Embedding pitfalls
 
@@ -113,18 +117,8 @@ its own `serve` or `connect`: see wfgraph-core/events.
 - SQLite: `wfSqlite({ filename })` or `wfSqlite()` (in-memory, dies with the
   process).
 - Cloudflare Workers: `wfWorker` from `@wfgraph/core/worker` with
-  `wfHyperdrive(env.HYPERDRIVE)`, the module's default export. Its `fetch`
-  serves the API, and its `scheduled` and `queue` handlers each run a tick
-  that advances the due runs and deliveries. A Worker runs no `runner` loop and
-  `createWfGraphRunner` refuses Hyperdrive.
-- The Worker needs a Cron Trigger that fires every minute; without it nothing
-  advances. A Queue is optional: pass its producer binding as
-  `request(env).wakeQueue` and make the same Worker its consumer, and a write
-  that makes a run due starts a tick at once. Without the Queue, Events are
-  delivered up to a minute late. A Wait's deadline resumes on the Cron
-  Trigger, within a minute, with or without the Queue.
-- A tick's wall-time, lease and CPU bounds, and when to raise `limits.cpu_ms`:
-  `docs/embedding.md` ("Ticks and the platform limits").
+  `wfHyperdrive(env.HYPERDRIVE)`. A Worker runs no worker loop, takes no
+  `runner` option, and needs a Cron Trigger: wfgraph-core/cloudflare-worker.
 
 ## Workflow runs
 
@@ -233,28 +227,6 @@ connected to the same database, or run `createWfGraphRunner` beside the apps.
 Runs open and never advance: nothing claims their schedule rows.
 
 Source: alandotcom/wfgraph:docs/embedding.md (Workflow runs)
-
-### CRITICAL A Worker with no Cron Trigger
-
-Wrong: deploying `wfWorker` with only a Queue consumer, or with neither.
-
-Correct: `[triggers] crons = ["* * * * *"]` in the Wrangler configuration,
-and the Queue beside it when Events must be delivered at once.
-
-The Cron Trigger's tick is what finds a Wait's deadline, a run whose
-invocation was cut short, and Events a host inserted itself. Without it those
-runs never advance.
-
-Source: alandotcom/wfgraph:docs/embedding.md (Cloudflare Workers and Hyperdrive)
-
-### HIGH Hyperdrive with query caching
-
-Wrong: default Hyperdrive caching on.
-
-Correct: disable query caching; Workflow Graph's writes would otherwise be
-invisible to later reads.
-
-Source: alandotcom/wfgraph:docs/embedding.md (Cloudflare Workers and Hyperdrive)
 
 ### HIGH Upgrade with legacy Group config keys
 
