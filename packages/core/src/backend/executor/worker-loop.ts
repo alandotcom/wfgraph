@@ -6,15 +6,13 @@
  * back an Event's delivery; one claim answers every lane. It starts one leased
  * pass per claimed row. The loop runs a drain step every `pollMs`, sooner when
  * a row one of its own passes released falls due or its `wake` is called. The
- * loop and `tick` both keep their tables through `executorUpkeep`: a poll that
- * schedules the inbox rows a host inserted itself, and a sweep that deletes
- * settled inbox rows and, when asked, ended runs past their windows. The
- * loop's Effect succeeds once `signal` has aborted and every pass in flight
- * has ended, or once `drainMs` has passed and the passes still running are
- * interrupted. A pass that fails leaves its
- * row leased, so a later claim sweeps it once the lease expires. A pass the
- * loop's drain interrupts releases its row due at once and counts no failure;
- * a pass a tick's budget cuts counts one against the step it was running.
+ * loop and `tick` both run `executorUpkeep` (`upkeep.ts`) beside their claims.
+ * The loop's Effect succeeds once `signal` has aborted and every pass in
+ * flight has ended, or once `drainMs` has passed and the passes still running
+ * are interrupted. A pass that fails leaves its row leased, so a later claim
+ * sweeps it once the lease expires. A pass the loop's drain interrupts
+ * releases its row due at once and counts no failure; a pass a tick's budget
+ * cuts counts one against the step it was running.
  */
 
 import {
@@ -50,10 +48,10 @@ import {
   type ClaimLane,
   ExecutionRepo,
 } from "#src/backend/services/executions/repo";
-import type { DatabaseError } from "#src/backend/lib/effect/database";
 import type { RetentionWindows } from "#src/backend/host-retention";
 import { UNDATED_PARK_WAKE_AT } from "#src/backend/services/executions/repo/release-policy";
-import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { executorUpkeep } from "#src/backend/executor/upkeep";
 import type { WorkerWake } from "#src/backend/executor/worker-wake";
 
 /**
@@ -64,26 +62,6 @@ export const DEFAULT_LEASE_MS = 60_000;
 
 /** How often a pass renews its lease while its body runs: three per lease. */
 export const DEFAULT_HEARTBEAT_MS = 20_000;
-
-/** How many host-inserted inbox rows one poll schedules at most. */
-const INBOX_POLL_LIMIT = 100;
-
-/** How often a loop runs the retention sweeps. */
-const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
-
-/**
- * How many inbox rows one sweep deletes at most, in one statement. A sweep
- * that reaches it leaves more rows past the window, and the next one runs a
- * poll interval later.
- */
-const INBOX_SWEEP_LIMIT = 1_000;
-
-/**
- * How many rows each step of the run-history sweep deletes at most, in one
- * statement. A step that reaches it leaves more rows past the window, and the
- * next sweep runs a poll interval later.
- */
-const RUN_HISTORY_SWEEP_LIMIT = 1_000;
 
 /** Every service a worker's passes read. */
 export type ExecutorServices = ExecutionRepo | WorkflowRepo | DeliveryServices;
@@ -271,225 +249,6 @@ const drainPass = Effect.fnUntraced(function* <R>(
     )
   );
 });
-
-/**
- * The poll for inbox rows a host inserted inside its own transaction: gives up
- * to `INBOX_POLL_LIMIT` of them their delivery schedule rows, due at `now`, so
- * the claim that follows finds them. A poll the database fails is logged, and
- * the next one finds the same rows.
- */
-const scheduleHostInsertedInbox = Effect.fn("wfgraph.executor.poll_inbox")(
-  function* (now: Date) {
-    yield* Effect.annotateCurrentSpan(
-      "wfgraph.executor.limit",
-      INBOX_POLL_LIMIT
-    );
-    const executions = yield* ExecutionRepo;
-    const scheduled = yield* executions
-      .scheduleUnscheduledInbox({ now, limit: INBOX_POLL_LIMIT })
-      .pipe(
-        Effect.catchTag("DatabaseError", (error) =>
-          Effect.logError(
-            "Could not schedule the inbox rows a host inserted"
-          ).pipe(Effect.annotateLogs({ error }), Effect.as([]))
-        )
-      );
-    yield* Effect.annotateCurrentSpan(
-      "wfgraph.executor.scheduled",
-      scheduled.length
-    );
-  }
-);
-
-/**
- * The retention sweep: deletes up to `INBOX_SWEEP_LIMIT` delivered or failed
- * inbox rows that arrived more than `retentionMs` before `now`, and answers
- * how many went. A `pending` row is never deleted. A sweep the database fails
- * is logged and answers 0.
- */
-const sweepSettledInbox = Effect.fn("wfgraph.executor.sweep_inbox")(
-  function* (input: { now: Date; retentionMs: number }) {
-    const olderThan = new Date(input.now.getTime() - input.retentionMs);
-    yield* Effect.annotateCurrentSpan({
-      "wfgraph.executor.limit": INBOX_SWEEP_LIMIT,
-      "wfgraph.executor.retention_ms": input.retentionMs,
-      "wfgraph.executor.cutoff": olderThan.toISOString(),
-    });
-    const executions = yield* ExecutionRepo;
-    const swept = yield* executions
-      .sweepSettledInbox({ olderThan, limit: INBOX_SWEEP_LIMIT })
-      .pipe(
-        Effect.catchTag("DatabaseError", (error) =>
-          Effect.logError(
-            "Could not delete the settled inbox rows past the retention window"
-          ).pipe(Effect.annotateLogs({ error }), Effect.as(0))
-        )
-      );
-    yield* Effect.annotateCurrentSpan("wfgraph.executor.swept", swept);
-    if (swept > 0) {
-      yield* Effect.logInfo(
-        "Deleted settled inbox rows past the retention window"
-      ).pipe(
-        Effect.annotateLogs({
-          inbox: { swept, retentionMs: input.retentionMs },
-        })
-      );
-    }
-    return swept;
-  }
-);
-
-/** How many rows one run-history sweep deleted, by table. */
-type RunHistorySwept = {
-  executions: number;
-  auditEvents: number;
-  draftSnapshots: number;
-};
-
-/**
- * One step of the run-history sweep, answering how many rows went. A step the
- * database fails is logged with `failure` and answers 0, as the inbox sweep's
- * does.
- */
-function sweepStep(
-  sweep: Effect.Effect<number, DatabaseError>,
-  failure: string
-): Effect.Effect<number> {
-  return sweep.pipe(
-    Effect.catchTag("DatabaseError", (error) =>
-      Effect.logError(failure).pipe(
-        Effect.annotateLogs({ error }),
-        Effect.as(0)
-      )
-    )
-  );
-}
-
-/**
- * The run-history retention sweep: deletes up to `RUN_HISTORY_SWEEP_LIMIT`
- * ended Executions that completed more than `retentionMs` before `now`, each
- * with its logs, wait rows and timeline, then as many workflow audit rows
- * written before then, then as many draft snapshots no Execution references.
- * The snapshots go last because removing runs is what leaves one unreferenced.
- */
-const sweepRunHistory = Effect.fn("wfgraph.executor.sweep_runs")(
-  function* (input: { now: Date; retentionMs: number }) {
-    const olderThan = new Date(input.now.getTime() - input.retentionMs);
-    yield* Effect.annotateCurrentSpan({
-      "wfgraph.executor.limit": RUN_HISTORY_SWEEP_LIMIT,
-      "wfgraph.executor.retention_ms": input.retentionMs,
-      "wfgraph.executor.cutoff": olderThan.toISOString(),
-    });
-    const executions = yield* ExecutionRepo;
-    const workflows = yield* WorkflowRepo;
-    const batch = { olderThan, limit: RUN_HISTORY_SWEEP_LIMIT };
-    const swept: RunHistorySwept = {
-      executions: yield* sweepStep(
-        executions.sweepEndedExecutions(batch),
-        "Could not delete the ended runs past the run retention window"
-      ),
-      auditEvents: yield* sweepStep(
-        executions.sweepWorkflowAuditEvents(batch),
-        "Could not delete the workflow audit rows past the run retention window"
-      ),
-      draftSnapshots: yield* sweepStep(
-        workflows.sweepUnreferencedDraftSnapshots(batch),
-        "Could not delete the unused draft snapshots past the run retention window"
-      ),
-    };
-    yield* Effect.annotateCurrentSpan(
-      mapKeys(swept, (_count, table) => `wfgraph.executor.swept.${table}`)
-    );
-    if (Object.values(swept).some((count) => count > 0)) {
-      yield* Effect.logInfo(
-        "Deleted run history past the retention window"
-      ).pipe(
-        Effect.annotateLogs({
-          runs: { ...swept, retentionMs: input.retentionMs },
-        })
-      );
-    }
-    return swept;
-  }
-);
-
-/**
- * The upkeep of the executor's tables for one worker loop or one tick: the
- * event inbox's poll, and the retention sweeps of the inbox and of run
- * history. It keeps its own timing so its caller can ask for both on every
- * iteration.
- */
-export type ExecutorUpkeep = {
-  /**
-   * Schedules the inbox rows a host inserted itself, when `pollMs` has passed
-   * since the last poll, and otherwise does nothing.
-   */
-  readonly poll: (now: Date) => Effect.Effect<void, never, ExecutionRepo>;
-  /**
-   * The retention sweeps due at `now`, for the caller to run or fork, or
-   * undefined while they are running or none is due: the inbox's, then the
-   * run history's when the upkeep has a run window. They run once an hour,
-   * and a poll interval after a run in which any batch reached its limit or
-   * the sweep did not finish.
-   */
-  readonly sweepDue: (
-    now: Date
-  ) => Effect.Effect<void, never, ExecutionRepo | WorkflowRepo> | undefined;
-};
-
-/**
- * The upkeep of one loop or tick. A new upkeep polls and sweeps at its first
- * call, so a tick, which builds one per invocation, polls and sweeps every
- * time it runs. Without `retention.runMs`, run history is never swept.
- */
-export function executorUpkeep(input: {
-  pollMs: number;
-  retention: RetentionWindows;
-}): ExecutorUpkeep {
-  const { pollMs } = input;
-  const { inboxMs: inboxRetentionMs, runMs: runRetentionMs } = input.retention;
-  let polledAt = Number.NEGATIVE_INFINITY;
-  let sweepAt = Number.NEGATIVE_INFINITY;
-  return {
-    poll: (now) =>
-      Effect.suspend(() => {
-        if (now.getTime() - polledAt < pollMs) return Effect.void;
-        polledAt = now.getTime();
-        return scheduleHostInsertedInbox(now);
-      }),
-    sweepDue: (now) => {
-      const at = now.getTime();
-      if (at < sweepAt) return undefined;
-      // No second sweep starts while this one runs.
-      sweepAt = Number.POSITIVE_INFINITY;
-      const sweeps = Effect.gen(function* () {
-        const inbox = yield* sweepSettledInbox({
-          now,
-          retentionMs: inboxRetentionMs,
-        });
-        const inboxFinished = inbox < INBOX_SWEEP_LIMIT;
-        if (runRetentionMs === undefined) return inboxFinished;
-        const runs = yield* sweepRunHistory({
-          now,
-          retentionMs: runRetentionMs,
-        });
-        return (
-          inboxFinished &&
-          Object.values(runs).every((count) => count < RUN_HISTORY_SWEEP_LIMIT)
-        );
-      });
-      return sweeps.pipe(
-        Effect.onExit((exit) =>
-          Effect.sync(() => {
-            const finished = Exit.isSuccess(exit) && exit.value;
-            sweepAt = finished ? at + SWEEP_INTERVAL_MS : at + pollMs;
-          })
-        ),
-        Effect.asVoid
-      );
-    },
-  };
-}
 
 /** A kind of schedule row, which is also the kind of lane that claims it. */
 export type ScheduleKind = ClaimedSchedule["kind"];
