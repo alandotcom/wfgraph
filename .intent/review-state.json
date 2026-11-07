@@ -3,26 +3,24 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "283a223ee435dd1942e7a70ae50b5fc0bedd877685d12fd675bcd9a48792fa8e",
+      "fingerprint": "2066cccd7f06a5c475e6a61cef978224ffff156cd2500d2ddb0e95320b09e954",
       "snapshot": {
         "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
-        "docs/embedding.md": "69f52bc8060678d8cdf93539ab4419df046df0ce7f4fc599ba6621e4bd216a34",
+        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
         "packages/core/skills/wfgraph-core/SKILL.md": "ff396a466b8b99f0177b94ad67a46a3387f9a99b9a8194e06fa8f242217e2dcc",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "6e6fd837d58cce2410d032bcb57099dfc399f5c5fe7025c1245d1c028895f825",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27"
       },
-      "head": "3ba1808741203578fc60bc3727e761b953a5577e",
-      "outcome": "updated",
-      "reason": "Frontmatter only: the old description moved unchanged to metadata.purpose and a new activation description names the embedding tasks and routes Events, host actions, integrations and built-ins to their skills. Body verified against README.md (Embed in your app) and docs/embedding.md at 3ba18087: the app return shape, auth requirement, listener order and originalUrl, basePath, wfPostgres forms, search_path rules, runOnStartup default, migrateWfGraphDatabase, SQLite runner refusals, heartbeat/lease rule, delivery and cron slots, both retention windows and their ranges, the ten-second dispose drain, the Worker Cron Trigger and Queue, Hyperdrive caching, Group config keys and the MCP stale-write rule all match. The claim that createWfGraphRunner refuses Hyperdrive is not in the docs; packages/core/src/backend/setup.ts refuses runner settings for a backend with no long-lived loop, recorded as an open gap.",
+      "head": "521fdea62b272338fd0c4a2b441714dc49e25794",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md gained two sentences stating that createWfGraphRunner refuses wfHyperdrive at startup. wfgraph-core already states that refusal (Persistence bullets), and the code throws it from resolveRunnerSettings when openWfGraphSetup finds no loop poll interval on the Hyperdrive backend. The skill's claim now traces to its cited manual; no guidance changes.",
       "evidence": [
-        "README.md",
-        "docs/embedding.md",
-        "packages/core/src/backend/setup.ts",
-        "base and head 3ba18087, packages at 3.1.1",
-        "pnpm exec intent validate: 5 skill files passed",
-        "metadata.purpose compared with the HEAD description by YAML parse: identical for all five skills; skill bodies byte-identical to HEAD",
-        "No executable task check or discovery check exists yet (packages/evals/src/skills/ is planned); activation of the new description is unverified"
+        "docs/embedding.md (Run the loop in its own process; Cloudflare Workers and Hyperdrive)",
+        "packages/core/src/backend/executor/in-process-runner.ts (resolveRunnerSettings)",
+        "packages/core/src/backend/setup.ts (openWfGraphSetup)",
+        "packages/core/src/runner.ts",
+        "base 3ba18087, head 521fdea6 plus this docs change"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -43,22 +41,21 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "f8159840832fffe1bbce3d50a0b44d489d19f761651bb12639006c4c3773c56b",
+      "fingerprint": "6afb0e31ff59b6b456084e929e25977cc05db6bfee94bc2cc5f7ea6568c1e9e7",
       "snapshot": {
-        "docs/embedding.md": "69f52bc8060678d8cdf93539ab4419df046df0ce7f4fc599ba6621e4bd216a34",
+        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
         "docs/integrations.md": "3286a74c669550439377f611e8cd6ecf38751cf0986002d2f6448f73c2dcdf50",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720"
       },
-      "head": "3ba1808741203578fc60bc3727e761b953a5577e",
-      "outcome": "updated",
-      "reason": "Frontmatter only: purpose migration plus an activation description for a host's own defineAction step, with the boundary to integrations. Body verified at 3ba18087 against docs/embedding.md (Dynamic host action fields: options callbacks, raw optional string selections, unavailable results, showWhen.in) and docs/integrations.md (the Promise and Effect table, readCredentials failure, sideEffect, the config form label and title rules); all claims match.",
+      "head": "521fdea62b272338fd0c4a2b441714dc49e25794",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md gained two sentences about createWfGraphRunner refusing wfHyperdrive, in the runner and Worker sections. This skill teaches neither section, so its guidance is unaffected.",
       "evidence": [
-        "docs/embedding.md",
-        "docs/integrations.md",
-        "base and head 3ba18087, packages at 3.1.1",
-        "pnpm exec intent validate: 5 skill files passed",
-        "metadata.purpose compared with the HEAD description by YAML parse: identical for all five skills; skill bodies byte-identical to HEAD",
-        "No executable task check or discovery check exists yet (packages/evals/src/skills/ is planned); activation of the new description is unverified"
+        "docs/embedding.md (Run the loop in its own process; Cloudflare Workers and Hyperdrive)",
+        "packages/core/src/backend/executor/in-process-runner.ts (resolveRunnerSettings)",
+        "packages/core/src/backend/setup.ts (openWfGraphSetup)",
+        "packages/core/src/runner.ts",
+        "base 3ba18087, head 521fdea6 plus this docs change"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
@@ -80,32 +77,31 @@
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "8daabd46b34a9d3fa71224d3c7394748057164329d69206c2c2b6cafce9a17b3",
+      "fingerprint": "3a74d6a8dadcf6901bf095e2ea19ae014063387db04685ce3c8dca503b4b97d7",
       "snapshot": {
-        "docs/embedding.md": "69f52bc8060678d8cdf93539ab4419df046df0ce7f4fc599ba6621e4bd216a34",
+        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "14a493074ecf5765ddc54b1520bfd4ed106fcd72d2d08437fb0beef59147ac8a"
       },
-      "head": "3ba1808741203578fc60bc3727e761b953a5577e",
-      "outcome": "updated",
-      "reason": "Frontmatter only: purpose migration plus an activation description for turning on the six built-ins and their OAuth and webhook requirements, with boundaries to integrations and wfgraph-core. Body verified at 3ba18087 against packages/plugins/README.md (value exports, the slack factory, RESEND_WEBHOOK_SECRET, the core peer, @wfgraph/plugins/ui) and docs/embedding.md (Built-in integrations: publicUrl, HTTPS outside loopback, SameSite=Lax callback auth, one core copy); all claims match.",
+      "head": "521fdea62b272338fd0c4a2b441714dc49e25794",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md gained two sentences about createWfGraphRunner refusing wfHyperdrive, in the runner and Worker sections. This skill teaches neither section, so its guidance is unaffected.",
       "evidence": [
-        "packages/plugins/README.md",
-        "docs/embedding.md",
-        "base and head 3ba18087, packages at 3.1.1",
-        "pnpm exec intent validate: 5 skill files passed",
-        "metadata.purpose compared with the HEAD description by YAML parse: identical for all five skills; skill bodies byte-identical to HEAD",
-        "No executable task check or discovery check exists yet (packages/evals/src/skills/ is planned); activation of the new description is unverified"
+        "docs/embedding.md (Run the loop in its own process; Cloudflare Workers and Hyperdrive)",
+        "packages/core/src/backend/executor/in-process-runner.ts (resolveRunnerSettings)",
+        "packages/core/src/backend/setup.ts (openWfGraphSetup)",
+        "packages/core/src/runner.ts",
+        "base 3ba18087, head 521fdea6 plus this docs change"
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "d4805ac617f19b028734d239c8a286e2d40521f2d7f6d14f0f9355b2b2a81569",
+      "fingerprint": "02ce19d5d50cd25e0235f7348e1980f3b88380b988f7f47e11e18d5513042896",
       "snapshot": {
         "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
-        "_artifacts/domain_map.yaml": "5dd4cbfd1b28f4fa04eb149980f47353de9b9ba8aa86e5754591f9ea2a011d03",
-        "_artifacts/skill_spec.md": "c155c737161e08bbc8e725d13482fa69484ac8ed34522cab1dee0ff3c2b9d2b2",
+        "_artifacts/domain_map.yaml": "352d7be5f5434388024e269339e3bb802852435ae65b96beb6605cd1087c924d",
+        "_artifacts/skill_spec.md": "eb2f639bcf5f7a8a3c65e9082581514bef8e17c79bb475f707735a5eaaceda54",
         "_artifacts/skill_tree.yaml": "597e37516c5fe2b6dc9b9e20ab9f3722fc67e79438aac459dc1de1a6b077548a",
-        "docs/embedding.md": "69f52bc8060678d8cdf93539ab4419df046df0ce7f4fc599ba6621e4bd216a34",
+        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
         "docs/events.md": "b7690fd2be3ee688359e17f2438416ac4e2aab290c837ce13bdb5bab73bd3d09",
         "docs/integrations.md": "3286a74c669550439377f611e8cd6ecf38751cf0986002d2f6448f73c2dcdf50",
         "packages/core/skills/wfgraph-core/SKILL.md": "ff396a466b8b99f0177b94ad67a46a3387f9a99b9a8194e06fa8f242217e2dcc",
@@ -115,11 +111,18 @@
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "14a493074ecf5765ddc54b1520bfd4ed106fcd72d2d08437fb0beef59147ac8a"
       },
-      "head": "b31a9ce30b8f4df6c558dc2101a9b869b037482e",
+      "head": "521fdea62b272338fd0c4a2b441714dc49e25794",
       "outcome": "updated",
-      "reason": "Added review.ignore with .changeset/** to skill_tree.yaml and recorded it as maintainer decision 7 in skill_spec.md, so a changeset is never reported as an unmapped change. domain_map.yaml is unchanged and still accurate; no skill or source changed.",
+      "reason": "Removed the open gap about the undocumented Hyperdrive runner refusal from domain_map.yaml and skill_spec.md, now that docs/embedding.md states it, and added a batch history entry naming the source of the refusal. skill_tree.yaml is unchanged and accurate.",
       "evidence": [
-        "Changed: _artifacts/skill_spec.md, _artifacts/skill_tree.yaml at b31a9ce30b8f4df6c558dc2101a9b869b037482e"
+        "docs/embedding.md (Run the loop in its own process; Cloudflare Workers and Hyperdrive)",
+        "packages/core/src/backend/executor/in-process-runner.ts (resolveRunnerSettings)",
+        "packages/core/src/backend/setup.ts (openWfGraphSetup)",
+        "packages/core/src/runner.ts",
+        "base 3ba18087, head 521fdea6 plus this docs change",
+        "_artifacts/domain_map.yaml",
+        "_artifacts/skill_spec.md",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {

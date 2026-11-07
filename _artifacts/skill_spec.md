@@ -169,11 +169,10 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 
 ## Remaining Gaps
 
-| Skill        | Question                                                                                                                                                                              | Status |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| wfgraph-core | The claim that `createWfGraphRunner` refuses Hyperdrive rests on `packages/core/src/backend/setup.ts`. `docs/embedding.md` names only the SQLite refusal. Should the manual state it? | open   |
-| wfgraph-core | Does configuring the build agent (`agent.apiKey`, `agent.model`, `agent.reasoningEffort`, `agent.baseUrl`) need adopter guidance?                                                     | open   |
-| all          | Discovery checks and executable task checks have not run for any skill (decision 5 places them in `packages/evals/src/skills/`).                                                      | open   |
+| Skill        | Question                                                                                                                          | Status |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| wfgraph-core | Does configuring the build agent (`agent.apiKey`, `agent.model`, `agent.reasoningEffort`, `agent.baseUrl`) need adopter guidance? | open   |
+| all          | Discovery checks and executable task checks have not run for any skill (decision 5 places them in `packages/evals/src/skills/`).  | open   |
 
 ## Recommended Skill File Structure
 
@@ -228,8 +227,7 @@ Coverage of `docs/embedding.md` by section:
   endpoints" (the served OpenAPI document). Neither has a maintainer decision.
 
 Not assessed: `CONTEXT.md`, `docs/adr/`, `examples/app.ts`, and the package
-sources, apart from one check of `packages/core/src/backend/setup.ts` recorded
-under Remaining Gaps.
+sources, apart from the source checks each later batch records.
 
 ### Batch 1: record the existing skills (packages at 3.1.1, base 3ba18087)
 
@@ -258,6 +256,18 @@ under Remaining Gaps.
   skill path does not resolve", because it reads `path` without honoring
   `status: planned`. `intent maintainer check` passes. The warnings clear when
   the next commit adds the three files.
+
+### The manual states the Hyperdrive runner refusal
+
+- `docs/embedding.md` ("Run the loop in its own process" and "Cloudflare
+  Workers and Hyperdrive") now says that `createWfGraphRunner` refuses
+  `wfHyperdrive` at startup. The refusal comes from `resolveRunnerSettings` in
+  `packages/core/src/backend/executor/in-process-runner.ts`, which
+  `openWfGraphSetup` calls after it opens the backend: Hyperdrive declares no
+  loop poll interval, so the call throws "This persistence backend runs no
+  long-lived worker loop; its runs advance through the ticks that wfWorker's
+  scheduled and queue handlers run". wfgraph-core's claim now traces to its
+  cited manual, which closes the gap batch 1 recorded. No skill text changed.
 
 ### Remaining work
 

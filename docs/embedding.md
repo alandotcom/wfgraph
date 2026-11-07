@@ -834,6 +834,9 @@ process.once("SIGTERM", () => void runner.dispose());
 | `events.retentionMs`      | No       | How long this loop keeps a settled inbox row. See Keep settled Events for a window            |
 | `runs.retentionMs`        | No       | How long this loop keeps an ended run. See Delete run history after a window                  |
 
+`createWfGraphRunner` refuses `wfHyperdrive` at startup, because a Worker runs no
+long-lived loop and advances its runs in the ticks of its `scheduled` and `queue` handlers.
+
 It answers `{ events, dispose, [Symbol.asyncDispose] }`. `events.send` raises an Event the
 way the app's does. `dispose()` drains the loop the way the app's does, then closes the
 database. Run one Workflow Graph per process: an app and a
@@ -872,7 +875,8 @@ runner in the same process are not supported.
 
 `@wfgraph/core/worker` runs Workflow Graph on a Cloudflare Worker with PostgreSQL through
 Hyperdrive. A Worker invocation has no long-lived process for the worker loop, so the Worker
-advances runs in ticks instead. A tick claims the due runs and Event deliveries, runs each
+advances runs in ticks instead, and `createWfGraphRunner` refuses `wfHyperdrive`, so a Worker
+deployment has no runner process. A tick claims the due runs and Event deliveries, runs each
 one until it finishes or parks at a Wait, and returns. Three handlers share one default
 export:
 

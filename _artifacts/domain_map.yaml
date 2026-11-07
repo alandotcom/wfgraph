@@ -634,10 +634,6 @@ cross_references:
 
 gaps:
   - skill: wfgraph-core
-    question: The claim that createWfGraphRunner refuses Hyperdrive rests on source (packages/core/src/backend/setup.ts refuses runner settings for a backend with no long-lived loop). Should docs/embedding.md state it?
-    context: The skill's cited docs state only that the runner refuses SQLite, so the review cannot trace this claim to a cited source.
-    status: open
-  - skill: wfgraph-core
     question: Does configuring the build agent (agent.apiKey, agent.model, agent.reasoningEffort, agent.baseUrl) need adopter guidance?
     context: No skill covers the agent options in docs/embedding.md; the gap was found during this assessment and has no maintainer decision.
     status: open
