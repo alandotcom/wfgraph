@@ -19,7 +19,8 @@ import type {
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import { graphCronSchedules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type {
-  CronFire,
+  CronPublication,
+  CronRefusal,
   FireCronTimerInput,
 } from "#src/backend/services/executions/repo/contracts";
 import { UNDATED_PARK_WAKE_AT } from "#src/backend/services/executions/repo/release-policy";
@@ -85,7 +86,7 @@ export function cronSlotAt(
   return latestSlotAtOrBefore(schedule, now) ?? wakeAt;
 }
 
-/** The workflow row as a fire reads it. */
+/** The workflow row as a fire or a skip reads it. */
 export type CronFireWorkflow = {
   isPaused: boolean;
   publishedVersionId: string | null;
@@ -93,15 +94,15 @@ export type CronFireWorkflow = {
 };
 
 /**
- * Whether a fire may commit, from the workflow row its transaction read.
- * Pause and Publish delete the timer of a schedule that can no longer fire,
- * and the fence refuses a pass whose row they deleted, so `dropped` answers a
- * row that should not exist.
+ * Whether a fire or a skip may write its slot, from the workflow row its
+ * transaction read and the publication its preflight checked. Pause deletes
+ * a paused workflow's timers, and the fence refuses a pass whose row it
+ * deleted, so `dropped` answers a row that should not exist.
  */
-export function cronFireVerdict(
+export function cronPublicationVerdict(
   workflow: CronFireWorkflow,
-  input: Pick<FireCronTimerInput, "schedule" | "expected">
-): "fire" | Exclude<CronFire, { kind: "fired" }> {
+  expected: CronPublication
+): "current" | CronRefusal {
   if (workflow.isPaused) {
     return { kind: "dropped", reason: "workflow_paused" };
   }
@@ -109,11 +110,26 @@ export function cronFireVerdict(
     return { kind: "dropped", reason: "not_published" };
   }
   if (
-    workflow.publishedVersionId !== input.expected.versionId ||
-    workflow.mode !== input.expected.mode
+    workflow.publishedVersionId !== expected.versionId ||
+    workflow.mode !== expected.mode
   ) {
     return { kind: "stale" };
   }
+  return "current";
+}
+
+/**
+ * Whether a fire may open its run: `cronPublicationVerdict`, and then whether
+ * the version it checked still declares the schedule. Publish deletes the
+ * timer of a schedule it removes, so that `dropped` also answers a row that
+ * should not exist.
+ */
+export function cronFireVerdict(
+  workflow: CronFireWorkflow,
+  input: Pick<FireCronTimerInput, "schedule" | "expected">
+): "fire" | CronRefusal {
+  const publication = cronPublicationVerdict(workflow, input.expected);
+  if (publication !== "current") return publication;
   if (
     !input.expected.schedules.some((schedule) =>
       sameSchedule(schedule, input.schedule)

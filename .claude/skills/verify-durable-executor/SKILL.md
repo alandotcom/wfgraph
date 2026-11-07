@@ -522,8 +522,12 @@ code adds five steps the model leaves out, none of which a rule depends on:
 - A slot whose published graph the preflight refuses, or a pass whose
   retries are spent, moves the timer on without firing (`skipCronSlot`),
   as a Refused Start advances it, writes a Refused Start for the slot in the
-  same fenced transaction, and records the reason in `last_error`. The model
-  has no graph that cannot run.
+  same fenced transaction, and records the reason in `last_error`. A skip
+  for a refused graph first checks, in that transaction, that the workflow
+  still publishes the version and mode the preflight checked
+  (`cronPublicationVerdict` in `repo/cron-policy.ts`), and answers `stale` or
+  `dropped` as a fire does, so a Publish that repaired the graph gets the
+  slot fired. The model has no graph that cannot run.
 - A cron pass renews no lease, so no heartbeat races the fire's own release
   of it.
 - PostgreSQL's `deleteById` locks the workflow row and then its timers

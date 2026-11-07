@@ -23,6 +23,8 @@ import { admitStart } from "#src/backend/services/executions/repo/admission";
 import { recordAuditEventWrite } from "#src/backend/services/executions/repo/audit";
 import {
   cronFireVerdict,
+  type CronFireWorkflow,
+  cronPublicationVerdict,
   cronSlotAt,
   cronTimerChanges,
   type CronTimerRow,
@@ -35,15 +37,25 @@ import {
 import type {
   CronFence,
   CronFire,
+  CronPublication,
   CronRefusedEntry,
+  CronSkip,
   ExecutionSchedule,
   FireCronTimerInput,
 } from "#src/backend/services/executions/repo/contracts";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
 
-/** What `skipCronSlot` did: the slot it skipped, and the timer's next wake. */
-export type SkippedCronSlot = { slot: Date; nextWakeAt: Date };
+/** What `skipCronSlot` is asked to do. */
+export type SkipCronSlotInput = {
+  fence: CronFence;
+  schedule: CronSchedule;
+  /** The publication the preflight checked, or none after spent retries. */
+  expected?: CronPublication | undefined;
+  error: string;
+  refusedEntry: CronRefusedEntry;
+  now: Date;
+};
 
 /** A workflow's timer rows. */
 function timersOf(workflowId: string) {
@@ -167,6 +179,24 @@ export async function lockCronTimers(
     .for("update");
 }
 
+/**
+ * The workflow row a fenced timer write decides from. The timer row cascades
+ * with its workflow, and the fence found the timer, so the workflow exists.
+ */
+async function timerWorkflow(
+  tx: Executor,
+  workflowId: string
+): Promise<CronFireWorkflow> {
+  const workflow = await tx.query.workflows.findFirst({
+    where: { id: workflowId },
+    columns: { isPaused: true, publishedVersionId: true, mode: true },
+  });
+  if (!workflow) {
+    throw new Error("A leased timer's workflow is missing");
+  }
+  return workflow;
+}
+
 /** The cron timer slice of `ExecutionRepo`. */
 export type CronRepoMethods = {
   /**
@@ -190,16 +220,16 @@ export type CronRepoMethods = {
    * graph no longer passes the preflight, or its retries are spent. In one
    * transaction fenced on the lease, it writes `refusedEntry` for that slot as
    * a Refused Start, and moves the timer on to its first slot after `now`,
-   * releasing its lease and recording `error`. Answers the slot it skipped
-   * and the timer's next wake.
+   * releasing its lease and recording `error`.
+   *
+   * With `expected`, the publication the preflight checked, it first reads
+   * the workflow row and decides with `cronPublicationVerdict`, writing
+   * nothing for a stale publication and deleting the timer for a dropped one,
+   * as `fireCronTimer` does. A skip after spent retries passes none.
    */
-  readonly skipCronSlot: (input: {
-    fence: CronFence;
-    schedule: CronSchedule;
-    error: string;
-    refusedEntry: CronRefusedEntry;
-    now: Date;
-  }) => Effect.Effect<SkippedCronSlot, DatabaseError | LeaseLost>;
+  readonly skipCronSlot: (
+    input: SkipCronSlotInput
+  ) => Effect.Effect<CronSkip, DatabaseError | LeaseLost>;
   /** Every timer of a workflow, earliest `wake_at` first. */
   readonly listCronTimers: (
     workflowId: string
@@ -219,15 +249,10 @@ export function makeCronMethods(
             workflowExecutionSchedule.id,
             input.fence.scheduleId
           );
-          const workflow = await tx.query.workflows.findFirst({
-            where: { id: input.fence.workflowId },
-            columns: { isPaused: true, publishedVersionId: true, mode: true },
-          });
-          // The timer row cascades with its workflow, and the fence found it.
-          if (!workflow) {
-            throw new Error("A leased timer's workflow is missing");
-          }
-          const verdict = cronFireVerdict(workflow, input);
+          const verdict = cronFireVerdict(
+            await timerWorkflow(tx, input.fence.workflowId),
+            input
+          );
           if (verdict !== "fire") {
             if (verdict.kind === "dropped") {
               await tx.delete(workflowExecutionSchedule).where(thisTimer);
@@ -283,11 +308,23 @@ export function makeCronMethods(
       writeFenced(
         database,
         input.fence,
-        async (tx): Promise<SkippedCronSlot> => {
+        async (tx): Promise<CronSkip> => {
           const thisTimer = eq(
             workflowExecutionSchedule.id,
             input.fence.scheduleId
           );
+          if (input.expected !== undefined) {
+            const verdict = cronPublicationVerdict(
+              await timerWorkflow(tx, input.fence.workflowId),
+              input.expected
+            );
+            if (verdict !== "current") {
+              if (verdict.kind === "dropped") {
+                await tx.delete(workflowExecutionSchedule).where(thisTimer);
+              }
+              return verdict;
+            }
+          }
           const [timer] = await tx
             .select({ wakeAt: workflowExecutionSchedule.wakeAt })
             .from(workflowExecutionSchedule)
@@ -313,7 +350,7 @@ export function makeCronMethods(
               lastError: input.error,
             })
             .where(thisTimer);
-          return { slot, nextWakeAt };
+          return { kind: "skipped", slot, nextWakeAt };
         },
         "update"
       ),

@@ -18,7 +18,9 @@ import {
 import type {
   CronFence,
   CronFire,
+  CronPublication,
   CronRefusedEntry,
+  CronSkip,
   FireCronTimerInput,
   WorkflowExecution,
 } from "#src/backend/services/executions/repo";
@@ -120,16 +122,19 @@ function execution(id: string): WorkflowExecution {
 
 /**
  * The services a fire reads, over `versions`, the version the workflow
- * publishes at each read, and `fires`, what each fire answers in turn.
+ * publishes at each read, `fires`, what each fire answers in turn, and
+ * `skips`, what each skip answers in turn, `skipped` by default.
  */
 function makeServices(input: {
   versions: PublishedWorkflowVersion[];
   fires: CronFire[];
+  skips?: CronSkip[] | undefined;
 }) {
   const reads = { versions: 0 };
   const fired: FireCronTimerInput[] = [];
   const skipped: {
     error: string;
+    expected: CronPublication | undefined;
     now: Date;
     refusal: ReturnType<CronRefusedEntry>;
   }[] = [];
@@ -160,16 +165,21 @@ function makeServices(input: {
     }),
     stubExecutionRepo({
       skipCronSlot: (skip) =>
-        Effect.sync(() => {
+        Effect.sync((): CronSkip => {
+          const answer = input.skips?.[skipped.length];
           skipped.push({
             error: skip.error,
+            expected: skip.expected,
             now: skip.now,
             refusal: skip.refusedEntry(SLOT),
           });
-          return {
-            slot: SLOT,
-            nextWakeAt: new Date("2026-03-01T09:10:00.000Z"),
-          };
+          return (
+            answer ?? {
+              kind: "skipped",
+              slot: SLOT,
+              nextWakeAt: new Date("2026-03-01T09:10:00.000Z"),
+            }
+          );
         }),
     }),
     stubExecutionDriver({
@@ -300,6 +310,12 @@ describe("fireSchedule", () => {
           assert.strictEqual(services.skipped.length, 1);
           const [skip] = services.skipped;
           assert.deepStrictEqual(skip?.now, NOW);
+          // The skip writes only while the workflow still publishes what the
+          // preflight checked.
+          assert.deepStrictEqual(skip?.expected, {
+            versionId: "ver_3",
+            mode: "live",
+          });
           // The skip writes a Refused Start a builder reads in the Runs view,
           // and keeps the preflight's own error on its metadata.
           assert.strictEqual(
@@ -316,6 +332,56 @@ describe("fireSchedule", () => {
             scheduledFor: "2026-03-01T09:05:00.000Z",
           });
         })
+    );
+
+    it.effect(
+      "fires the slot when a Publish repaired the graph between the preflight and the skip",
+      () =>
+        Effect.gen(function* () {
+          const services = makeServices({
+            versions: [
+              version("ver_3", graph({ unknownEvent: true })),
+              version("ver_4", graph()),
+            ],
+            fires: [firedRun],
+            skips: [{ kind: "stale" }],
+          });
+
+          const outcome = yield* fireSchedule({
+            fence: FENCE,
+            schedule: EVERY_FIVE,
+            now: () => NOW,
+          }).pipe(Effect.provide(services.provided));
+
+          assert.strictEqual(outcome.kind, "started");
+          assert.strictEqual(services.skipped.length, 1);
+          assert.deepStrictEqual(
+            services.fired.map((fire) => fire.expected.versionId),
+            ["ver_4"]
+          );
+        })
+    );
+
+    it.effect("answers the skip's drop when the timer should not exist", () =>
+      Effect.gen(function* () {
+        const services = makeServices({
+          versions: [version("ver_3", graph({ unknownEvent: true }))],
+          fires: [],
+          skips: [{ kind: "dropped", reason: "workflow_paused" }],
+        });
+
+        const outcome = yield* fireSchedule({
+          fence: FENCE,
+          schedule: EVERY_FIVE,
+          now: () => NOW,
+        }).pipe(Effect.provide(services.provided));
+
+        assert.deepStrictEqual(outcome, {
+          kind: "dropped",
+          reason: "workflow_paused",
+        });
+        assert.strictEqual(services.fired.length, 0);
+      })
     );
   });
 });

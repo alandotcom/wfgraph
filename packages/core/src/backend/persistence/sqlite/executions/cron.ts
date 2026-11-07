@@ -10,13 +10,15 @@ import { Effect } from "effect";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { CronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
+import type { CronRepoMethods } from "#src/backend/services/executions/repo/cron";
 import type {
-  CronRepoMethods,
-  SkippedCronSlot,
-} from "#src/backend/services/executions/repo/cron";
-import type { CronFire } from "#src/backend/services/executions/repo/contracts";
+  CronFire,
+  CronSkip,
+} from "#src/backend/services/executions/repo/contracts";
 import {
   cronFireVerdict,
+  type CronFireWorkflow,
+  cronPublicationVerdict,
   cronSlotAt,
   cronTimerChanges,
   type CronTimerRow,
@@ -129,6 +131,34 @@ export function deleteCronTimers(database: SqliteExecutor, workflowId: string) {
   return database.delete(workflowExecutionSchedule).where(timersOf(workflowId));
 }
 
+/**
+ * The workflow row a fenced timer write decides from. The timer row cascades
+ * with its workflow, and the fence found the timer, so the workflow exists.
+ */
+function timerWorkflow(database: SqliteExecutor, workflowId: string) {
+  return database
+    .select({
+      isPaused: workflows.isPaused,
+      publishedVersionId: workflows.publishedVersionId,
+      mode: workflows.mode,
+    })
+    .from(workflows)
+    .where(eq(workflows.id, workflowId))
+    .get()
+    .pipe(
+      Effect.map((workflow): CronFireWorkflow => {
+        if (!workflow) {
+          throw new Error("A leased timer's workflow is missing");
+        }
+        return {
+          isPaused: workflowIsPaused(workflow.isPaused),
+          publishedVersionId: workflow.publishedVersionId,
+          mode: workflowMode(workflow.mode),
+        };
+      })
+    );
+}
+
 export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
   return {
     fireCronTimer: (input) =>
@@ -138,25 +168,8 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
             workflowExecutionSchedule.id,
             input.fence.scheduleId
           );
-          const workflow = yield* database
-            .select({
-              isPaused: workflows.isPaused,
-              publishedVersionId: workflows.publishedVersionId,
-              mode: workflows.mode,
-            })
-            .from(workflows)
-            .where(eq(workflows.id, input.fence.workflowId))
-            .get();
-          // The timer row cascades with its workflow, and the fence found it.
-          if (!workflow) {
-            throw new Error("A leased timer's workflow is missing");
-          }
           const verdict = cronFireVerdict(
-            {
-              isPaused: workflowIsPaused(workflow.isPaused),
-              publishedVersionId: workflow.publishedVersionId,
-              mode: workflowMode(workflow.mode),
-            },
+            yield* timerWorkflow(database, input.fence.workflowId),
             input
           );
           if (verdict !== "fire") {
@@ -224,6 +237,20 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
             workflowExecutionSchedule.id,
             input.fence.scheduleId
           );
+          if (input.expected !== undefined) {
+            const verdict = cronPublicationVerdict(
+              yield* timerWorkflow(database, input.fence.workflowId),
+              input.expected
+            );
+            if (verdict !== "current") {
+              if (verdict.kind === "dropped") {
+                yield* database
+                  .delete(workflowExecutionSchedule)
+                  .where(thisTimer);
+              }
+              return verdict;
+            }
+          }
           const timer = yield* database
             .select({ wakeAt: workflowExecutionSchedule.wakeAt })
             .from(workflowExecutionSchedule)
@@ -250,7 +277,7 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
               lastError: input.error,
             })
             .where(thisTimer);
-          const skipped: SkippedCronSlot = { slot, nextWakeAt };
+          const skipped: CronSkip = { kind: "skipped", slot, nextWakeAt };
           return skipped;
         })
       ),

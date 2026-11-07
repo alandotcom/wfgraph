@@ -885,6 +885,7 @@ export function describeExecutionCronConformance({
           const skipped = yield* executions.skipCronSlot({
             fence,
             schedule: EVERY_FIVE,
+            expected: { versionId: "ver_1", mode: "live" },
             error: "The workflow's graph will not run",
             refusedEntry: refusedEntry("published_version_not_runnable"),
             now: at(minutes(6)),
@@ -900,6 +901,7 @@ export function describeExecutionCronConformance({
 
       // 09:05 is the latest slot at or before the skip at 09:06.
       expect(result.skipped).toEqual({
+        kind: "skipped",
         slot: at(minutes(5)),
         nextWakeAt: at(minutes(10)),
       });
@@ -921,6 +923,53 @@ export function describeExecutionCronConformance({
         }),
       ]);
       expect(result.runs).toEqual([]);
+    });
+
+    it("skips nothing against a version a Publish replaced since the preflight, so the slot can still fire", async () => {
+      const { database, connection } = await withWorkflow(openDatabase);
+      const scheduleId = await connection.run(
+        Effect.gen(function* () {
+          yield* publish({
+            version: 1,
+            schedules: [EVERY_FIVE],
+            now: at(minutes(1)),
+          });
+          return yield* timerId(EVERY_FIVE);
+        })
+      );
+      const fence = await leaseTimer(database, scheduleId, "tok_1");
+
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          // The Publish keeps the unchanged schedule's timer, lease and all.
+          yield* publish({
+            version: 2,
+            schedules: [EVERY_FIVE],
+            now: at(minutes(2)),
+          });
+          const skipped = yield* executions.skipCronSlot({
+            fence,
+            schedule: EVERY_FIVE,
+            expected: { versionId: "ver_1", mode: "live" },
+            error: "The workflow's graph will not run",
+            refusedEntry: refusedEntry("published_version_not_runnable"),
+            now: at(minutes(6)),
+          });
+          return { skipped, timers: yield* timers, refusals: yield* refusals };
+        })
+      );
+
+      expect(result.skipped).toEqual({ kind: "stale" });
+      expect(result.refusals).toEqual([]);
+      expect(result.timers).toEqual([
+        expect.objectContaining({
+          id: scheduleId,
+          state: "leased",
+          ownerToken: "tok_1",
+          lastError: null,
+        }),
+      ]);
     });
 
     it("deletes a workflow's timers with the workflow", async () => {

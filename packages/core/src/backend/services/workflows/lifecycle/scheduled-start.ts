@@ -16,6 +16,8 @@ import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { runWorkflowExecutionPreflight } from "#src/backend/services/executions/preflight";
 import {
   type CronFence,
+  type CronPublication,
+  type CronRefusal,
   type CronRefusedEntry,
   ExecutionRepo,
 } from "#src/backend/services/executions/repo";
@@ -30,9 +32,10 @@ import {
 } from "#src/backend/services/workflows/lifecycle/concurrency";
 
 /**
- * How many times one fire checks the published version again after finding
- * that a Publish or a mode change moved it since its preflight. A fire that
- * still finds it moved fails, and the pass retries it after a backoff.
+ * How many times one fire checks the published version, when its fire or its
+ * skip finds that a Publish or a mode change moved it since the preflight. A
+ * fire that still finds it moved fails, and the pass retries it after a
+ * backoff.
  */
 const STALE_FIRE_ATTEMPTS = 3;
 
@@ -127,29 +130,34 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
     const executions = yield* ExecutionRepo;
     const driver = yield* ExecutionDriver;
     // The slot is not run: a Refused Start says so, and the timer moves on and
-    // records why.
-    const skip = (error: string, extra: JsonObject) =>
+    // records why. The skip writes it only while the workflow still publishes
+    // `expected`, so a Publish that repaired the graph since the preflight
+    // gets its slot fired instead.
+    const skip = (error: string, expected: CronPublication) =>
       Effect.map(
         executions.skipCronSlot({
           fence,
           schedule,
+          expected,
           error,
           refusedEntry: scheduledRefusal({
             schedule,
             reason: "published_version_not_runnable",
-            extra: { ...extra, error },
+            extra: {
+              versionId: expected.versionId,
+              runMode: expected.mode,
+              error,
+            },
           }),
           now: input.now(),
         }),
-        ({ slot, nextWakeAt }): ScheduleFireOutcome => ({
-          kind: "skipped",
-          slot,
-          nextWakeAt,
-          error,
-        })
+        (skipped): ScheduleFireOutcome | CronRefusal =>
+          skipped.kind === "skipped" ? { ...skipped, error } : skipped
       );
 
-    for (let attempt = 1; ; attempt += 1) {
+    // One check of the published version, ending in one fire or one skip.
+    // `stale` means the version or the mode moved since the preflight.
+    const attempt = Effect.gen(function* () {
       const loaded = yield* workflows.findByIdWithPublishedVersionForRun(
         fence.workflowId
       );
@@ -165,6 +173,10 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
         return dropped;
       }
       const { workflow, publishedVersion: version } = loaded;
+      const expected: CronPublication = {
+        versionId: version.id,
+        mode: workflow.mode,
+      };
 
       const preflight = yield* runWorkflowExecutionPreflight({
         workflow: { graph: version.graph },
@@ -179,14 +191,13 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
             Effect.succeed({ ok: false as const, error: failure.error }),
         })
       );
-      const versionFields = { versionId: version.id, runMode: workflow.mode };
       if (!preflight.ok) {
-        return yield* skip(preflight.error, versionFields);
+        return yield* skip(preflight.error, expected);
       }
       // Publish refuses a schedule on a graph with an Event Split, so this
       // answers a version published before that rule.
       if (preflight.checked.hasEventSplit) {
-        return yield* skip(EVENT_SPLIT_ERROR, versionFields);
+        return yield* skip(EVENT_SPLIT_ERROR, expected);
       }
 
       const rules = preflight.checked.lifecycleRules ?? emptyLifecycleRules;
@@ -206,11 +217,7 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
       const fired = yield* driver.fireCronTimer({
         fence,
         schedule,
-        expected: {
-          versionId: version.id,
-          mode: workflow.mode,
-          schedules: rules.schedules ?? [],
-        },
+        expected: { ...expected, schedules: rules.schedules ?? [] },
         start: request,
         refusedEntry: scheduledRefusal({
           schedule,
@@ -220,17 +227,7 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
         now: input.now(),
       });
 
-      if (fired.kind === "stale") {
-        if (attempt < STALE_FIRE_ATTEMPTS) continue;
-        return yield* new PublicationKeptMoving({
-          message:
-            "The published version or the Published mode changed during every fire attempt",
-        });
-      }
-      if (fired.kind === "dropped") {
-        const dropped: ScheduleFireOutcome = fired;
-        return dropped;
-      }
+      if (fired.kind !== "fired") return fired;
       if (fired.start.status === "refused") {
         const refused: ScheduleFireOutcome = {
           kind: "refused",
@@ -257,6 +254,15 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
         failedToSupersede: announced.failedExecutionIds,
       };
       return started;
+    });
+
+    for (let tries = 0; tries < STALE_FIRE_ATTEMPTS; tries += 1) {
+      const outcome = yield* attempt;
+      if (outcome.kind !== "stale") return outcome;
     }
+    return yield* new PublicationKeptMoving({
+      message:
+        "The published version or the Published mode changed during every fire attempt",
+    });
   }
 );

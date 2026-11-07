@@ -874,6 +874,13 @@ export type CronRefusedEntry = (slot: Date) => {
 };
 
 /**
+ * The publication a cron pass's preflight checked: the published version and
+ * the workflow's Published mode. A fire or a skip writes its slot only while
+ * the workflow still publishes this version in this mode.
+ */
+export type CronPublication = { versionId: string; mode: WorkflowMode };
+
+/**
  * What `ExecutionRepo.fireCronTimer` is asked to do: fire the leased timer
  * `fence` names, admitting the run the way a manual start of the published
  * version that names no Event is admitted.
@@ -883,16 +890,10 @@ export type FireCronTimerInput = {
   /** The schedule the claimed row times. */
   schedule: CronSchedule;
   /**
-   * What the caller's preflight checked: the published version, the
-   * workflow's Published mode, and the schedules that version declares. The
-   * fire commits only while the workflow still publishes this version in this
-   * mode.
+   * The publication the caller's preflight checked, with the schedules that
+   * version declares.
    */
-  expected: {
-    versionId: string;
-    mode: WorkflowMode;
-    schedules: readonly CronSchedule[];
-  };
+  expected: CronPublication & { schedules: readonly CronSchedule[] };
   /**
    * The run to open, as `startForEntity` takes it. The fire writes the slot it
    * computed and `schedule` onto the row as `scheduled`.
@@ -908,15 +909,25 @@ export type FireCronTimerInput = {
 };
 
 /**
- * What a fire did.
+ * Why a fire or a skip wrote nothing for its slot.
  *
- * - `fired`: the transaction opened the run, or wrote a Refused Start, for
- *   `slot`, and moved the timer to `nextWakeAt` with its lease released.
  * - `stale`: the workflow publishes another version, or runs in another
  *   Published mode, than the caller's preflight checked. Nothing was written,
- *   and the caller checks the version it now publishes and fires again.
+ *   and the caller checks the version it now publishes and tries again.
  * - `dropped`: the timer should not exist, because its workflow is paused,
  *   unpublished, or publishes no such schedule. The transaction deleted it.
+ */
+export type CronRefusal =
+  | { kind: "stale" }
+  | {
+      kind: "dropped";
+      reason: "workflow_paused" | "not_published" | "schedule_unpublished";
+    };
+
+/**
+ * What a fire did: `fired` when the transaction opened the run, or wrote a
+ * Refused Start, for `slot`, and moved the timer to `nextWakeAt` with its
+ * lease released, and otherwise the `CronRefusal` that stopped it.
  */
 export type CronFire =
   | {
@@ -925,8 +936,13 @@ export type CronFire =
       nextWakeAt: Date;
       start: ConcurrencyStartOutcome;
     }
-  | { kind: "stale" }
-  | {
-      kind: "dropped";
-      reason: "workflow_paused" | "not_published" | "schedule_unpublished";
-    };
+  | CronRefusal;
+
+/**
+ * What a skip did: `skipped` when the transaction wrote a Refused Start for
+ * `slot` and moved the timer to `nextWakeAt` with its lease released, and
+ * otherwise the `CronRefusal` that stopped it.
+ */
+export type CronSkip =
+  | { kind: "skipped"; slot: Date; nextWakeAt: Date }
+  | CronRefusal;
