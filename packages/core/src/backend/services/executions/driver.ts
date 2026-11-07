@@ -16,6 +16,7 @@ import type { RunWakeSink } from "#src/backend/services/executions/wakes";
 import {
   type CanceledOutletClaim,
   type CronFire,
+  type CronPassWrites,
   type FireCronTimerInput,
   type EntityStartOutcome,
   type ExecutionEntitySelector,
@@ -131,14 +132,15 @@ export class ExecutionDriver extends Context.Service<
       input: NewInboxEvent
     ) => Effect.Effect<InboxInsert, DriverError>;
     /**
-     * Fire a leased cron timer, as `ExecutionRepo.fireCronTimer` describes,
-     * and wake the worker loops once a fire that opened a run has committed.
+     * Fire a cron pass's leased timer through the pass's own `writes`, as
+     * `CronPassWrites.fireCronTimer` describes, and wake the worker loops
+     * once a fire that opened a run has committed. The write is the pass's,
+     * so its fence and its watch on the lease are the pass's too, and
      * `LeaseLost` answers a pass whose timer no longer names its lease. The
-     * fire reads the pass's clock from `input.now`, the clock its claim read,
-     * rather than this service's.
+     * fire reads the pass's clock from `input.now` rather than this service's.
      */
     readonly fireCronTimer: (
-      input: FireCronTimerInput
+      input: FireCronTimerInput & { writes: CronPassWrites }
     ) => Effect.Effect<CronFire, DriverError | LeaseLost>;
   }
 >()("@wfgraph/core/ExecutionDriver") {}
@@ -278,37 +280,38 @@ export function makeExecutionDriverLayer(
           }
         ),
 
-        fireCronTimer: Effect.fn("wfgraph.driver.fire_cron_timer")(
-          function* (input) {
-            yield* Effect.annotateCurrentSpan(
-              "wfgraph.workflow.id",
-              input.fence.workflowId
+        fireCronTimer: Effect.fn("wfgraph.driver.fire_cron_timer")(function* ({
+          writes,
+          ...input
+        }) {
+          yield* Effect.annotateCurrentSpan(
+            "wfgraph.workflow.id",
+            input.start.execution.workflowId
+          );
+          const fired = yield* writes
+            .fireCronTimer(input)
+            .pipe(
+              Effect.catchTag("DatabaseError", (error) =>
+                Effect.fail(driverError(error))
+              )
             );
-            const fired = yield* executions
-              .fireCronTimer(input)
-              .pipe(
-                Effect.catchTag("DatabaseError", (error) =>
-                  Effect.fail(driverError(error))
-                )
-              );
+          yield* Effect.annotateCurrentSpan(
+            "wfgraph.outcome",
+            fired.kind === "fired" ? fired.start.status : fired.kind
+          );
+          const opened =
+            fired.kind === "fired" && fired.start.status === "started"
+              ? fired.start.execution
+              : null;
+          if (opened !== null) {
             yield* Effect.annotateCurrentSpan(
-              "wfgraph.outcome",
-              fired.kind === "fired" ? fired.start.status : fired.kind
+              "wfgraph.execution.id",
+              opened.id
             );
-            const opened =
-              fired.kind === "fired" && fired.start.status === "started"
-                ? fired.start.execution
-                : null;
-            if (opened !== null) {
-              yield* Effect.annotateCurrentSpan(
-                "wfgraph.execution.id",
-                opened.id
-              );
-            }
-            yield* runDue(opened !== null);
-            return fired;
           }
-        ),
+          yield* runDue(opened !== null);
+          return fired;
+        }),
       });
     })
   );

@@ -153,7 +153,7 @@ async function leaseTimer(
   await database.execute(
     `update workflow_execution_schedule set state = 'leased', owner_token = '${ownerToken}' where id = '${scheduleId}'`
   );
-  return { scheduleId, workflowId: WORKFLOW_ID, ownerToken };
+  return { kind: "cron", scheduleId, workflowId: WORKFLOW_ID, ownerToken };
 }
 
 /**
@@ -190,8 +190,7 @@ function skip(input: {
 }) {
   const { slot, nextWakeAt } = slotTimes(input.schedule, input.now);
   return Effect.flatMap(ExecutionRepo, (executions) =>
-    executions.skipCronSlot({
-      fence: input.fence,
+    executions.fencedCron(input.fence).skipCronSlot({
       expected: input.expected,
       nextWakeAt,
       error: input.error,
@@ -223,7 +222,6 @@ function fire(input: {
     const versionId = input.versionId ?? "ver_1";
     const { slot, nextWakeAt } = slotTimes(input.schedule, input.now);
     const request: FireCronTimerInput = {
-      fence: input.fence,
       schedule: input.schedule,
       expected: {
         versionId,
@@ -248,7 +246,7 @@ function fire(input: {
       refusedEntry: refusedEntry("concurrency_first_wins", slot),
       now: input.now,
     };
-    return yield* executions.fireCronTimer(request);
+    return yield* executions.fencedCron(input.fence).fireCronTimer(request);
   });
 }
 
@@ -393,6 +391,7 @@ export function describeExecutionCronConformance({
           if (claimed?.kind !== "cron") throw new Error("No timer claimed");
           const fired = yield* fire({
             fence: {
+              kind: "cron",
               scheduleId: claimed.scheduleId,
               workflowId: claimed.workflowId,
               ownerToken: claimed.ownerToken,

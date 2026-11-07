@@ -32,6 +32,7 @@ import {
   type PassStep,
   type PassSteps,
   type RunPassWrites,
+  watchCronWrites,
   watchParkWrites,
   watchPassOnlyWrites,
   watchStoreWrites,
@@ -41,7 +42,7 @@ import {
   type ClaimedDelivery,
   type ClaimedRun,
   type ClaimedSchedule,
-  type CronFence,
+  type CronPassWrites,
   type DeliveryFence,
   ExecutionRepo,
   type PassOutcome,
@@ -219,9 +220,15 @@ export type DeliveryPass = PassCore<ClaimedDelivery, PassSteps> & {
 
 /**
  * A pass over a claimed `cron` row. A fire runs no steps, so its port is
- * null, and `fence` is what the fire's one transaction carries.
+ * null and it reads no memo.
  */
-export type CronPass = PassCore<ClaimedCron, null> & { fence: CronFence };
+export type CronPass = PassCore<ClaimedCron, null> & {
+  /**
+   * The fire and the skip beside the pass's own writes, each fenced on the
+   * owner token and watched by `state`; see `watchCronWrites`.
+   */
+  writes: CronPassWrites;
+};
 
 type PassOpening = {
   executions: ExecutionRepo["Service"];
@@ -299,6 +306,7 @@ export function openRunPass(
 ): RunPass {
   const { claimed, executions } = input;
   const fenced = executions.fenced({
+    kind: "run",
     scheduleId: claimed.scheduleId,
     executionId: claimed.executionId,
     ownerToken: claimed.ownerToken,
@@ -336,6 +344,7 @@ export function openDeliveryPass(
 ): DeliveryPass {
   const { claimed, executions } = input;
   const fence: DeliveryFence = {
+    kind: "delivery",
     scheduleId: claimed.scheduleId,
     inboxId: claimed.inboxId,
     ownerToken: claimed.ownerToken,
@@ -359,17 +368,22 @@ export function openCronPass(
   input: PassOpening & { claimed: ClaimedCron }
 ): CronPass {
   const { claimed, executions } = input;
-  const fence: CronFence = {
+  const fenced = executions.fencedCron({
+    kind: "cron",
     scheduleId: claimed.scheduleId,
     workflowId: claimed.workflowId,
     ownerToken: claimed.ownerToken,
-  };
-  const core = openPassCore({
-    ...input,
-    fenced: executions.fencedPass(fence),
-    port: () => null,
   });
-  return { ...core, fence };
+  const core = openPassCore({ ...input, fenced, port: () => null });
+  return {
+    ...core,
+    loadMemo: Effect.succeed(new Map()),
+    writes: watchCronWrites({
+      fenced,
+      passWrites: core.passWrites,
+      state: core.state,
+    }),
+  };
 }
 
 /** How a body that raised nothing ended. */

@@ -30,10 +30,13 @@ import {
   cronWakeAfter,
 } from "#src/backend/services/executions/repo/cron-policy";
 import {
+  makePassWrites,
+  type PassWrites,
   writeFenced,
   writeFencedSerializable,
 } from "#src/backend/services/executions/repo/schedule";
 import type {
+  CronFence,
   CronFire,
   CronSkip,
   ExecutionSchedule,
@@ -183,12 +186,15 @@ async function timerWorkflow(
   return workflow;
 }
 
-/** The cron timer slice of `ExecutionRepo`. */
-export type CronRepoMethods = {
+/**
+ * The writes a pass over a `cron` row makes: the writes every pass makes,
+ * beside the fire and the skip, each fenced on the pass's `CronFence`.
+ */
+export type CronPassWrites = PassWrites & {
   /**
-   * Fire the leased timer `input.fence` names, in one serializable
-   * transaction that first takes the timer row for update under the fence,
-   * so a pass that lost its lease writes nothing.
+   * Fire the pass's leased timer, in one serializable transaction that first
+   * takes the timer row for update under the fence, so a pass that lost its
+   * lease writes nothing.
    *
    * It reads the workflow row and decides with `cronFireVerdict`. A fire that
    * may proceed admits the run as `startForEntity` does, writing `input.slot`
@@ -214,27 +220,34 @@ export type CronRepoMethods = {
   readonly skipCronSlot: (
     input: SkipCronSlotInput
   ) => Effect.Effect<CronSkip, DatabaseError | LeaseLost>;
+};
+
+/** The cron timer slice of `ExecutionRepo`. */
+export type CronRepoMethods = {
+  /** The writes of one pass over a `cron` row, fenced on `fence`. */
+  readonly fencedCron: (fence: CronFence) => CronPassWrites;
   /** Every timer of a workflow, earliest `wake_at` first. */
   readonly listCronTimers: (
     workflowId: string
   ) => Effect.Effect<ExecutionSchedule[], DatabaseError>;
 };
 
-export function makeCronMethods(
-  database: Database["Service"]
-): CronRepoMethods {
+/** Builds the writes of one pass over a `cron` row, fenced on `fence`. */
+function makeCronPassWrites(
+  database: Database["Service"],
+  fence: CronFence
+): CronPassWrites {
+  const thisTimer = eq(workflowExecutionSchedule.id, fence.scheduleId);
   return {
+    ...makePassWrites(database, fence),
+
     fireCronTimer: (input) =>
       writeFencedSerializable(
         database,
-        input.fence,
+        fence,
         async (tx): Promise<CronFire> => {
-          const thisTimer = eq(
-            workflowExecutionSchedule.id,
-            input.fence.scheduleId
-          );
           const verdict = cronFireVerdict(
-            await timerWorkflow(tx, input.fence.workflowId),
+            await timerWorkflow(tx, fence.workflowId),
             input
           );
           if (verdict !== "fire") {
@@ -254,7 +267,7 @@ export function makeCronMethods(
           });
           if (start.status === "refused") {
             await recordAuditEventWrite({
-              workflowId: input.fence.workflowId,
+              workflowId: fence.workflowId,
               eventType: "run_refused",
               message: input.refusedEntry.message,
               metadata: {
@@ -279,15 +292,11 @@ export function makeCronMethods(
     skipCronSlot: (input) =>
       writeFenced(
         database,
-        input.fence,
+        fence,
         async (tx): Promise<CronSkip> => {
-          const thisTimer = eq(
-            workflowExecutionSchedule.id,
-            input.fence.scheduleId
-          );
           if (input.expected !== undefined) {
             const verdict = cronPublicationVerdict(
-              await timerWorkflow(tx, input.fence.workflowId),
+              await timerWorkflow(tx, fence.workflowId),
               input.expected
             );
             if (verdict !== "current") {
@@ -298,7 +307,7 @@ export function makeCronMethods(
             }
           }
           await recordAuditEventWrite({
-            workflowId: input.fence.workflowId,
+            workflowId: fence.workflowId,
             eventType: "run_refused",
             message: input.refusedEntry.message,
             metadata: input.refusedEntry.metadata,
@@ -315,6 +324,14 @@ export function makeCronMethods(
         },
         "update"
       ),
+  };
+}
+
+export function makeCronMethods(
+  database: Database["Service"]
+): CronRepoMethods {
+  return {
+    fencedCron: (fence) => makeCronPassWrites(database, fence),
 
     listCronTimers: (workflowId) =>
       database.query((db) =>

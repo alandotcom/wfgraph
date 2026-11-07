@@ -31,6 +31,7 @@ import {
   LeaseLost,
 } from "#src/backend/lib/effect/database";
 import type {
+  CronPassWrites,
   ParkState,
   ParkWake,
   ParkWrites,
@@ -216,6 +217,33 @@ export function watchPassOnlyWrites(input: {
     writeStepMemo: watchedPassWrite(fenced.writeStepMemo, state),
     releasePass: fenced.releasePass,
     dropSchedule: fenced.dropSchedule,
+  };
+}
+
+/**
+ * A cron pass's writes: the fire and the skip, each fenced and watched by
+ * `state` as a store write is, beside `passWrites`, the pass's own writes
+ * already watched by the same state. A timer has no terminal record, so the
+ * pass never ends its subject and every write stays fenced.
+ */
+export function watchCronWrites(input: {
+  fenced: CronPassWrites;
+  passWrites: PassWrites;
+  state: PassState;
+}): CronPassWrites {
+  const { fenced, passWrites, state } = input;
+  return {
+    ...passWrites,
+    fireCronTimer: watchedStoreWrite(
+      fenced.fireCronTimer,
+      fenced.fireCronTimer,
+      state
+    ),
+    skipCronSlot: watchedStoreWrite(
+      fenced.skipCronSlot,
+      fenced.skipCronSlot,
+      state
+    ),
   };
 }
 

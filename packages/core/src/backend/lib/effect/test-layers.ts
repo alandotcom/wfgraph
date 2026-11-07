@@ -402,8 +402,6 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   findInboxEvent: refuse("findInboxEvent"),
   sweepEndedExecutions: refuse("sweepEndedExecutions"),
   sweepWorkflowAuditEvents: refuse("sweepWorkflowAuditEvents"),
-  fireCronTimer: refuse("fireCronTimer"),
-  skipCronSlot: refuse("skipCronSlot"),
   listCronTimers: refuse("listCronTimers"),
   // `fenced` answers a set of writes, each of which dies when called, the way
   // every other method here does.
@@ -420,6 +418,14 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
       keyBy(PASS_WRITE_NAMES, (name) => name),
       (name) => refuse(`fencedPass.${name}`)
     ),
+  fencedCron: () => ({
+    ...mapValues(
+      keyBy(PASS_WRITE_NAMES, (name) => name),
+      (name) => refuse(`fencedCron.${name}`)
+    ),
+    fireCronTimer: refuse("fencedCron.fireCronTimer"),
+    skipCronSlot: refuse("fencedCron.skipCronSlot"),
+  }),
 };
 
 export function stubExecutionRepo(

@@ -252,9 +252,20 @@ type LeaseColumns = {
 
 /** The subject column a fence holds its schedule row to, with its value. */
 function fencedSubject(columns: LeaseColumns, fence: PassFence): SQL {
-  if ("executionId" in fence) return eq(columns.executionId, fence.executionId);
-  if ("inboxId" in fence) return eq(columns.inboxId, fence.inboxId);
-  return eq(columns.workflowId, fence.workflowId);
+  switch (fence.kind) {
+    case "run":
+      return eq(columns.executionId, fence.executionId);
+    case "delivery":
+      return eq(columns.inboxId, fence.inboxId);
+    case "cron":
+      return eq(columns.workflowId, fence.workflowId);
+    default:
+      return unknownFence(fence);
+  }
+}
+
+function unknownFence(fence: never): never {
+  throw new Error(`No schedule row kind matches the fence ${String(fence)}`);
 }
 
 /**

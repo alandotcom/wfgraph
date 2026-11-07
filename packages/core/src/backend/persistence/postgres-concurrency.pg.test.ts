@@ -778,6 +778,7 @@ describePostgres("PostgreSQL concurrency", () => {
         return {
           executionId,
           fence: {
+            kind: "run" as const,
             scheduleId: own.scheduleId,
             executionId,
             ownerToken: own.ownerToken,
@@ -1173,36 +1174,38 @@ describePostgres("PostgreSQL concurrency", () => {
           await waitUntilBlockedBy(backend.pid);
           fired = firer.run(
             Effect.flatMap(ExecutionRepo, (executions) =>
-              executions.fireCronTimer({
-                fence: {
+              executions
+                .fencedCron({
+                  kind: "cron",
                   scheduleId: timer.id,
                   workflowId: "wf_1",
                   ownerToken: "tok_1",
-                },
-                schedule,
-                expected: {
-                  versionId: "ver_1",
-                  mode: "live",
-                  schedules: [schedule],
-                },
-                start: {
-                  execution: {
-                    workflowId: "wf_1",
-                    workflowVersionId: "ver_1",
-                    startSource: "schedule",
-                    runMode: "live",
-                    entityValue: "workflow:wf_1",
-                    input: {},
+                })
+                .fireCronTimer({
+                  schedule,
+                  expected: {
+                    versionId: "ver_1",
+                    mode: "live",
+                    schedules: [schedule],
                   },
-                  concurrency: "unlimited",
-                  supersededReason: "newer start",
-                  startedEntry: notYetDue.startedEntry,
-                },
-                slot: new Date("2026-03-01T09:05:00.000Z"),
-                nextWakeAt: new Date("2026-03-01T09:10:00.000Z"),
-                refusedEntry: { message: "Refused", metadata: {} },
-                now: new Date("2026-03-01T09:06:00.000Z"),
-              })
+                  start: {
+                    execution: {
+                      workflowId: "wf_1",
+                      workflowVersionId: "ver_1",
+                      startSource: "schedule",
+                      runMode: "live",
+                      entityValue: "workflow:wf_1",
+                      input: {},
+                    },
+                    concurrency: "unlimited",
+                    supersededReason: "newer start",
+                    startedEntry: notYetDue.startedEntry,
+                  },
+                  slot: new Date("2026-03-01T09:05:00.000Z"),
+                  nextWakeAt: new Date("2026-03-01T09:10:00.000Z"),
+                  refusedEntry: { message: "Refused", metadata: {} },
+                  now: new Date("2026-03-01T09:06:00.000Z"),
+                })
             )
           );
           await vi.waitFor(async () => {

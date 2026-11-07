@@ -10,8 +10,12 @@ import { Effect } from "effect";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { CronSchedule } from "@wfgraph/shared/lifecycle/cron-schedule";
-import type { CronRepoMethods } from "#src/backend/services/executions/repo/cron";
 import type {
+  CronPassWrites,
+  CronRepoMethods,
+} from "#src/backend/services/executions/repo/cron";
+import type {
+  CronFence,
   CronFire,
   CronSkip,
 } from "#src/backend/services/executions/repo/contracts";
@@ -33,7 +37,10 @@ import {
 } from "#src/backend/persistence/sqlite/schema";
 import { admitWithConcurrency } from "#src/backend/persistence/sqlite/executions/admission";
 import { recordAuditEventWrite } from "#src/backend/persistence/sqlite/executions/audit";
-import { writeFenced } from "#src/backend/persistence/sqlite/executions/schedule";
+import {
+  makeSqlitePassWrites,
+  writeFenced,
+} from "#src/backend/persistence/sqlite/executions/schedule";
 import { sqliteExecutionSchedule } from "#src/backend/persistence/sqlite/executions/rows";
 import {
   workflowIsPaused,
@@ -158,17 +165,20 @@ function timerWorkflow(database: SqliteExecutor, workflowId: string) {
     );
 }
 
-export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
+/** Builds the writes of one pass over a `cron` row, fenced on `fence`. */
+function makeSqliteCronPassWrites(
+  store: SqliteDatabase,
+  fence: CronFence
+): CronPassWrites {
+  const thisTimer = eq(workflowExecutionSchedule.id, fence.scheduleId);
   return {
+    ...makeSqlitePassWrites(store, fence),
+
     fireCronTimer: (input) =>
-      writeFenced(store, input.fence, (database) =>
+      writeFenced(store, fence, (database) =>
         Effect.gen(function* () {
-          const thisTimer = eq(
-            workflowExecutionSchedule.id,
-            input.fence.scheduleId
-          );
           const verdict = cronFireVerdict(
-            yield* timerWorkflow(database, input.fence.workflowId),
+            yield* timerWorkflow(database, fence.workflowId),
             input
           );
           if (verdict !== "fire") {
@@ -190,7 +200,7 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
           });
           if (start.status === "refused") {
             yield* recordAuditEventWrite({
-              workflowId: input.fence.workflowId,
+              workflowId: fence.workflowId,
               eventType: "run_refused",
               message: input.refusedEntry.message,
               metadata: {
@@ -213,15 +223,11 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
       ),
 
     skipCronSlot: (input) =>
-      writeFenced(store, input.fence, (database) =>
+      writeFenced(store, fence, (database) =>
         Effect.gen(function* () {
-          const thisTimer = eq(
-            workflowExecutionSchedule.id,
-            input.fence.scheduleId
-          );
           if (input.expected !== undefined) {
             const verdict = cronPublicationVerdict(
-              yield* timerWorkflow(database, input.fence.workflowId),
+              yield* timerWorkflow(database, fence.workflowId),
               input.expected
             );
             if (verdict !== "current") {
@@ -234,7 +240,7 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
             }
           }
           yield* recordAuditEventWrite({
-            workflowId: input.fence.workflowId,
+            workflowId: fence.workflowId,
             eventType: "run_refused",
             message: input.refusedEntry.message,
             metadata: input.refusedEntry.metadata,
@@ -251,6 +257,12 @@ export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
           return skipped;
         })
       ),
+  };
+}
+
+export function makeSqliteCronMethods(store: SqliteDatabase): CronRepoMethods {
+  return {
+    fencedCron: (fence) => makeSqliteCronPassWrites(store, fence),
 
     listCronTimers: (workflowId) =>
       store.read((database) =>

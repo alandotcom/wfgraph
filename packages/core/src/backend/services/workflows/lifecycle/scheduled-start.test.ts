@@ -16,8 +16,8 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import type {
-  CronFence,
   CronFire,
+  CronPassWrites,
   CronSkip,
   FireCronTimerInput,
   SkipCronSlotInput,
@@ -26,11 +26,6 @@ import type {
 import { fireSchedule } from "#src/backend/services/workflows/lifecycle/scheduled-start";
 
 const EVERY_FIVE: CronSchedule = { cron: "*/5 * * * *", timeZone: "UTC" };
-const FENCE: CronFence = {
-  scheduleId: "sched_1",
-  workflowId: "wf_1",
-  ownerToken: "tok_1",
-};
 const NOW = new Date("2026-03-01T09:05:30.000Z");
 /** The latest slot of `EVERY_FIVE` at or before `NOW`. */
 const SLOT = new Date("2026-03-01T09:05:00.000Z");
@@ -159,14 +154,7 @@ function makeServices(input: {
           input.versions.find((each) => each.id === versionId) ?? null
         ),
     }),
-    stubExecutionRepo({
-      skipCronSlot: (skip) =>
-        Effect.sync((): CronSkip => {
-          const answer = input.skips?.[skipped.length];
-          skipped.push(skip);
-          return answer ?? { kind: "skipped" };
-        }),
-    }),
+    stubExecutionRepo(),
     stubExecutionDriver({
       fireCronTimer: (fire) =>
         Effect.sync(() => {
@@ -177,7 +165,24 @@ function makeServices(input: {
         }),
     })
   );
-  return { provided, reads, fired, skipped };
+  const unexpected = (name: string) => () =>
+    Effect.die(new Error(`The pass's ${name} was not expected`));
+  // The pass's writes. The fire goes through the driver, which the stub
+  // answers, so only the skip is answered here.
+  const writes: CronPassWrites = {
+    renewLease: unexpected("renewLease"),
+    writeStepMemo: unexpected("writeStepMemo"),
+    releasePass: unexpected("releasePass"),
+    dropSchedule: unexpected("dropSchedule"),
+    fireCronTimer: unexpected("fireCronTimer"),
+    skipCronSlot: (skip) =>
+      Effect.sync((): CronSkip => {
+        const answer = input.skips?.[skipped.length];
+        skipped.push(skip);
+        return answer ?? { kind: "skipped" };
+      }),
+  };
+  return { provided, writes, reads, fired, skipped };
 }
 
 const firedRun: CronFire = {
@@ -201,7 +206,8 @@ describe("fireSchedule", () => {
           });
 
           const outcome = yield* fireSchedule({
-            fence: FENCE,
+            writes: services.writes,
+            workflowId: "wf_1",
             schedule: EVERY_FIVE,
             now: () => NOW,
           }).pipe(Effect.provide(services.provided));
@@ -263,7 +269,8 @@ describe("fireSchedule", () => {
           });
 
           const outcome = yield* fireSchedule({
-            fence: FENCE,
+            writes: services.writes,
+            workflowId: "wf_1",
             schedule: EVERY_FIVE,
             now: () => NOW,
           }).pipe(Effect.provide(services.provided));
@@ -287,7 +294,8 @@ describe("fireSchedule", () => {
           });
 
           const outcome = yield* fireSchedule({
-            fence: FENCE,
+            writes: services.writes,
+            workflowId: "wf_1",
             schedule: EVERY_FIVE,
             now: () => NOW,
           }).pipe(Effect.provide(services.provided));
@@ -340,7 +348,8 @@ describe("fireSchedule", () => {
           });
 
           const outcome = yield* fireSchedule({
-            fence: FENCE,
+            writes: services.writes,
+            workflowId: "wf_1",
             schedule: EVERY_FIVE,
             now: () => NOW,
           }).pipe(Effect.provide(services.provided));
@@ -363,7 +372,8 @@ describe("fireSchedule", () => {
         });
 
         const outcome = yield* fireSchedule({
-          fence: FENCE,
+          writes: services.writes,
+          workflowId: "wf_1",
           schedule: EVERY_FIVE,
           now: () => NOW,
         }).pipe(Effect.provide(services.provided));

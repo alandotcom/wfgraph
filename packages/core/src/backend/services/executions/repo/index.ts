@@ -62,7 +62,6 @@ import {
 import { makeFencedWrites } from "#src/backend/services/executions/repo/fenced-writes";
 import type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fencing";
 import type {
-  CronFence,
   DeliveryFence,
   EntityStartOutcome,
   RunFence,
@@ -80,6 +79,7 @@ export type {
   ParkWrites,
   PassWrites,
 } from "#src/backend/services/executions/repo/schedule";
+export type { CronPassWrites } from "#src/backend/services/executions/repo/cron";
 
 /**
  * The methods that touch more than one table in one transaction, which is the
@@ -151,12 +151,12 @@ type CrossTableRepoMethods = {
   readonly fenced: (fence: RunFence) => FencedExecutionWrites;
   /**
    * The writes only a pass makes, fenced on the owner token of a pass over a
-   * `delivery` or `cron` row and on the row still naming the fence's inbox row
-   * or workflow. Neither body makes store writes of its own: the services a
-   * delivery's steps call write unfenced, and its step memo row is what makes
-   * a step run once, and a fire's one write is `fireCronTimer`.
+   * `delivery` row and on the row still naming the fence's inbox row. A
+   * delivery makes no store writes of its own: the services its steps call
+   * write unfenced, and its step memo row is what makes a step run once. A
+   * pass over a `cron` row takes its writes from `fencedCron`.
    */
-  readonly fencedPass: (fence: DeliveryFence | CronFence) => PassWrites;
+  readonly fencedPass: (fence: DeliveryFence) => PassWrites;
 };
 
 /**

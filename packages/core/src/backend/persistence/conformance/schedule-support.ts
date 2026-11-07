@@ -65,7 +65,7 @@ export async function leaseDelivery(
   await database.execute(
     `update workflow_execution_schedule set state = 'leased', owner_token = '${ownerToken}' where id = '${delivery.scheduleId}'`
   );
-  return { ...delivery, ownerToken };
+  return { kind: "delivery", ...delivery, ownerToken };
 }
 
 /** Opens one run that no claim in these cases leases, and answers its id. */
@@ -87,6 +87,7 @@ export function claimRun(executionId: string, now: Date) {
     );
     if (!own) throw new Error("The run was not claimed");
     const fence: RunFence = {
+      kind: "run",
       scheduleId: own.scheduleId,
       executionId,
       ownerToken: own.ownerToken,

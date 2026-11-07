@@ -537,6 +537,7 @@ function describeCases(
         if (claimed === undefined) throw new Error("The run was not claimed");
         yield* executions
           .fenced({
+            kind: "run",
             scheduleId: claimed.scheduleId,
             executionId: run.executionId,
             ownerToken: claimed.ownerToken,

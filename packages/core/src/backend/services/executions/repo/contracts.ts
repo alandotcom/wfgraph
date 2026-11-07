@@ -51,27 +51,28 @@ export type OwnerFence = {
  * names that Execution, and a write that addresses another Execution is
  * refused.
  */
-export type RunFence = OwnerFence & { executionId: string };
+export type RunFence = OwnerFence & { kind: "run"; executionId: string };
 
 /**
  * The fence of a pass over a `delivery` row, with the inbox row the row
  * delivers. A write carrying it also checks that its schedule row still names
  * that inbox row.
  */
-export type DeliveryFence = OwnerFence & { inboxId: string };
+export type DeliveryFence = OwnerFence & { kind: "delivery"; inboxId: string };
 
 /**
  * The fence of a pass over a `cron` row, with the workflow whose schedule the
  * row times. A write carrying it also checks that its schedule row still names
  * that workflow.
  */
-export type CronFence = OwnerFence & { workflowId: string };
+export type CronFence = OwnerFence & { kind: "cron"; workflowId: string };
 
 /**
- * The fence of a pass over a schedule row of any kind. A `RunFence` names the
- * Execution the row runs, a `DeliveryFence` the inbox row it delivers and a
- * `CronFence` the workflow it times, and a fenced write also checks that its
- * schedule row still names it (`leasedUnderFence` in `release-policy.ts`).
+ * The fence of a pass over a schedule row of any kind, whose `kind` is the
+ * claimed row's. A `RunFence` names the Execution the row runs, a
+ * `DeliveryFence` the inbox row it delivers and a `CronFence` the workflow it
+ * times, and a fenced write also checks that its schedule row still names it
+ * (`leasedUnderFence` in `release-policy.ts`).
  */
 export type PassFence = RunFence | DeliveryFence | CronFence;
 
@@ -877,13 +878,12 @@ export type CronRefusedEntry = { message: string; metadata: JsonObject };
 export type CronPublication = { versionId: string; mode: WorkflowMode };
 
 /**
- * What `ExecutionRepo.fireCronTimer` is asked to do: fire the leased timer
- * `fence` names for `slot`, admitting the run the way a manual start of the
+ * What a cron pass's `fireCronTimer` is asked to do: fire the pass's leased
+ * timer for `slot`, admitting the run the way a manual start of the
  * published version that names no Event is admitted, and move the timer to
  * `nextWakeAt`.
  */
 export type FireCronTimerInput = {
-  fence: CronFence;
   /** The schedule the claimed row times. */
   schedule: CronSchedule;
   /**
@@ -910,12 +910,11 @@ export type FireCronTimerInput = {
 };
 
 /**
- * What `ExecutionRepo.skipCronSlot` is asked to do: write `refusedEntry` for
- * the slot a fire cannot run, and move the leased timer `fence` names to
+ * What a cron pass's `skipCronSlot` is asked to do: write `refusedEntry` for
+ * the slot a fire cannot run, and move the pass's leased timer to
  * `nextWakeAt`, recording `error`.
  */
 export type SkipCronSlotInput = {
-  fence: CronFence;
   /** The publication the preflight checked, or none after spent retries. */
   expected?: CronPublication | undefined;
   /** The timer's next wake: the schedule's first slot strictly after now. */

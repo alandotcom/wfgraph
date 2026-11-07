@@ -1,9 +1,8 @@
 /**
  * `fireSchedule` starts a scheduled run, a run of the published version that
  * names no Event, when a cron timer falls due. It runs a manual start's
- * preflight, then `ExecutionDriver.fireCronTimer` opens the run or records a
- * Refused Start and moves the timer on, in one transaction fenced on the lease.
- * An unrunnable slot gets a Refused Start; a lost lease fails `LeaseLost`.
+ * preflight, then fires or skips the slot through the cron pass's own writes,
+ * each one transaction fenced on the lease. A lost lease fails `LeaseLost`.
  */
 
 import { Effect, Schema } from "effect";
@@ -17,12 +16,11 @@ import type { JsonObject } from "@wfgraph/shared/types/json";
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { runWorkflowExecutionPreflight } from "#src/backend/services/executions/preflight";
-import {
-  type CronFence,
-  type CronPublication,
-  type CronRefusal,
-  type CronRefusedEntry,
-  ExecutionRepo,
+import type {
+  CronPassWrites,
+  CronPublication,
+  CronRefusal,
+  CronRefusedEntry,
 } from "#src/backend/services/executions/repo";
 import { cronWakeAfter } from "#src/backend/services/executions/repo/cron-policy";
 import {
@@ -146,16 +144,19 @@ export type ScheduleFireOutcome =
       reason: "workflow_paused" | "not_published" | "schedule_unpublished";
     };
 
-/** Fires the leased timer `fence` names for `schedule`, at the pass's clock `now`. */
+/**
+ * Fires the timer of `schedule`, which a cron pass over `workflowId` holds
+ * the lease on, through the pass's `writes`, at the pass's clock `now`.
+ */
 export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
   function* (input: {
-    fence: CronFence;
+    writes: CronPassWrites;
+    workflowId: string;
     schedule: CronSchedule;
     now: () => Date;
   }) {
-    const { fence, schedule } = input;
+    const { writes, schedule } = input;
     const workflows = yield* WorkflowRepo;
-    const executions = yield* ExecutionRepo;
     const driver = yield* ExecutionDriver;
     // The slot is not run: a Refused Start says so, and the timer moves on and
     // records why. The skip writes it only while the workflow still publishes
@@ -168,8 +169,7 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
     }) => {
       const { times, expected, error } = refusal;
       return Effect.map(
-        executions.skipCronSlot({
-          fence,
+        writes.skipCronSlot({
           expected,
           nextWakeAt: times.nextWakeAt,
           error,
@@ -196,13 +196,13 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
     // clock is read once, before the transaction, and decides the slot.
     const attempt = Effect.gen(function* () {
       const loaded = yield* workflows.findByIdWithPublishedVersionForRun(
-        fence.workflowId
+        input.workflowId
       );
       // Publish writes a timer only for a published version, and a timer
       // cascades with its workflow, so this answers a row that should not
       // exist. A row the cascade already took refuses the drop as a lost lease.
       if (!loaded?.publishedVersion) {
-        yield* executions.fencedPass(fence).dropSchedule();
+        yield* writes.dropSchedule();
         const dropped: ScheduleFireOutcome = {
           kind: "dropped",
           reason: "not_published",
@@ -254,7 +254,7 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
         payload: {},
       });
       const fired = yield* driver.fireCronTimer({
-        fence,
+        writes,
         schedule,
         expected: { ...expected, schedules: rules.schedules ?? [] },
         start: request,
@@ -307,22 +307,21 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
 );
 
 /**
- * Skips the slot of the leased timer `fence` names, at the pass's clock
- * `now`, for a fire whose retries are spent: a Refused Start says starting it
- * failed on every retry, and the timer moves on, recording `error`.
+ * Skips the slot of `schedule`'s timer through a cron pass's `writes`, at the
+ * pass's clock `now`, for a fire whose retries are spent: a Refused Start says
+ * starting it failed on every retry, and the timer moves on, recording
+ * `error`.
  */
 export const skipSpentSchedule = Effect.fn("wfgraph.schedule.skip_spent")(
   function* (input: {
-    fence: CronFence;
+    writes: CronPassWrites;
     schedule: CronSchedule;
     error: string;
     now: Date;
   }) {
-    const { fence, schedule, error } = input;
-    const executions = yield* ExecutionRepo;
+    const { schedule, error } = input;
     const times = yield* slotTimesAt(schedule, input.now);
-    yield* executions.skipCronSlot({
-      fence,
+    yield* input.writes.skipCronSlot({
       nextWakeAt: times.nextWakeAt,
       error,
       refusedEntry: scheduledRefusal({

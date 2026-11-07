@@ -5,7 +5,7 @@
  * whose retries are spent skips the slot it was firing, with a Refused Start.
  */
 
-import { Effect, Predicate } from "effect";
+import { Effect } from "effect";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   type CronPass,
@@ -20,27 +20,7 @@ import {
 } from "#src/backend/services/workflows/lifecycle/scheduled-start";
 
 /** Every service a cron row's pass reads. */
-export type CronServices =
-  | Effect.Services<ReturnType<typeof fireSchedule>>
-  | Effect.Services<ReturnType<typeof skipSpentSchedule>>;
-
-/**
- * Stops the pass as a lost lease when `effect` finds its timer no longer
- * names the lease, so the pass answers the fence's refusal and writes nothing
- * more.
- */
-function watched<A, E, R>(
-  pass: CronPass,
-  effect: Effect.Effect<A, E, R>
-): Effect.Effect<A, E, R> {
-  return effect.pipe(
-    Effect.tapError((failure) =>
-      Effect.sync(() => {
-        if (Predicate.isTagged(failure, "LeaseLost")) pass.state.leaseLost();
-      })
-    )
-  );
-}
+export type CronServices = Effect.Services<ReturnType<typeof fireSchedule>>;
 
 /** The record's message and level for each way a fire ends. */
 const RECORDS = {
@@ -120,27 +100,22 @@ export function cronBody(): PassBody<CronPass, CronServices> {
       Effect.succeed({
         kind: "ready",
         run: () =>
-          watched(
-            pass,
-            fireSchedule({
-              fence: pass.fence,
-              schedule: pass.claimed.schedule,
-              now: pass.now,
-            })
-          ).pipe(
+          fireSchedule({
+            writes: pass.writes,
+            workflowId: pass.claimed.workflowId,
+            schedule: pass.claimed.schedule,
+            now: pass.now,
+          }).pipe(
             Effect.tap((outcome) => logFire(pass, outcome)),
             Effect.as({ kind: "ended" as const })
           ),
       } satisfies OpenedBody<null, CronServices>),
     fail: (pass, error) =>
-      watched(
-        pass,
-        skipSpentSchedule({
-          fence: pass.fence,
-          schedule: pass.claimed.schedule,
-          error,
-          now: pass.now(),
-        })
-      ).pipe(Effect.asVoid),
+      skipSpentSchedule({
+        writes: pass.writes,
+        schedule: pass.claimed.schedule,
+        error,
+        now: pass.now(),
+      }).pipe(Effect.asVoid),
   };
 }
