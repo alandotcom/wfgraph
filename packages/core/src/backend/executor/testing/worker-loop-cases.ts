@@ -60,6 +60,7 @@ import {
   type InboxEvent,
 } from "#src/backend/services/executions/repo";
 import { BUDGET_CUT_ERROR } from "#src/backend/services/executions/repo/release-policy";
+import { DatabaseError } from "#src/backend/lib/effect/database";
 
 let heldStep = createGate();
 /** When each `test/mark` node ran, by node id. */
@@ -978,6 +979,30 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
 
     await sweepTick(harness, { sweep: true, runMs: RUN_RETENTION_MS });
     expect(await runExists(harness, old)).toBe(false);
+  });
+
+  it("keeps claiming work while the run-history sweep fails, and logs the failure", async () => {
+    const harness = await open();
+    const captured = recordingLogger();
+    const loop = harness.loop({
+      retention: { ...LOOP_SETTINGS.retention, runMs: RUN_RETENTION_MS },
+      logger: captured.layer,
+      wrap: (repo) => ({
+        ...repo,
+        sweepEndedExecutions: () =>
+          Effect.fail(
+            new DatabaseError({ cause: new Error("connection lost") })
+          ),
+      }),
+    });
+
+    const executionId = await harness.start(oneActionThenMark("test/send"));
+    expect(await harness.ended(executionId)).toBe("completed");
+    await loop.stop();
+
+    expect(captured.lines.map((line) => line.message)).toContain(
+      "Could not delete the ended runs past the run retention window"
+    );
   });
 
   it("claims once more right after a claim that a wake arrived during", async () => {
