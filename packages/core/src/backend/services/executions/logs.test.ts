@@ -34,6 +34,7 @@ function summary(overrides: Partial<ExecutionSummary> = {}): ExecutionSummary {
     output: null,
     error: null,
     startedAt: new Date("2026-03-01T10:00:00.000Z"),
+    scheduledFor: null,
     completedAt: new Date("2026-03-01T10:00:01.000Z"),
     duration: "1000",
     ...overrides,
@@ -74,6 +75,26 @@ describe("getExecutionLogs", () => {
         );
 
         assert.strictEqual(result.execution.workflowVersionId, "ver_9");
+      })
+    );
+
+    it.effect("carries a scheduled run's slot as a string", () =>
+      Effect.gen(function* () {
+        const result = yield* getExecutionLogs("exec_1").pipe(
+          Effect.provide(
+            makeRepos(
+              summary({
+                startSource: "schedule",
+                scheduledFor: new Date("2026-03-01T09:00:00.000Z"),
+              })
+            )
+          )
+        );
+
+        assert.strictEqual(
+          result.execution.scheduledFor,
+          "2026-03-01T09:00:00.000Z"
+        );
       })
     );
 

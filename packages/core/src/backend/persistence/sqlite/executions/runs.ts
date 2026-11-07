@@ -59,6 +59,7 @@ const executionListSelection = {
   entityValue: workflowExecutions.entityValue,
   error: workflowExecutions.error,
   startedAt: workflowExecutions.startedAt,
+  scheduledFor: workflowExecutions.scheduledFor,
   waitingAt: workflowExecutions.waitingAt,
   cancelledAt: workflowExecutions.cancelledAt,
   completedAt: workflowExecutions.completedAt,
@@ -202,6 +203,7 @@ function executionSummary(
     output: execution.output,
     error: execution.error,
     startedAt: execution.startedAt,
+    scheduledFor: execution.scheduledFor,
     completedAt: execution.completedAt,
     duration: execution.duration,
   };

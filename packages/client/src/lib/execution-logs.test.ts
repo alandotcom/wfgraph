@@ -22,6 +22,7 @@ const rawExecution = {
   entityValue: "appt_1",
   error: null,
   startedAt: "2026-03-01T10:00:00.000Z",
+  scheduledFor: null,
   waitingAt: null,
   cancelledAt: null,
   completedAt: "2026-03-01T10:00:05.000Z",
@@ -68,6 +69,33 @@ describe("toWorkflowExecutions", () => {
     expect(result.cancelNotDelivered[0]?.createdAt).toEqual(
       new Date("2026-03-01T09:58:00.000Z")
     );
+  });
+
+  it("reads a scheduled run's slot as a Date, and null for a run no schedule started", () => {
+    const result = toWorkflowExecutions({
+      items: [
+        {
+          ...rawExecution,
+          id: "exec_scheduled",
+          startSource: "schedule",
+          startEventName: null,
+          entityValue: "workflow:wf_1",
+          scheduledFor: "2026-03-01T09:00:00.000Z",
+        },
+        rawExecution,
+      ],
+      observedAt: "2026-03-01T10:00:10.000Z",
+      overdueAfterMs: 60_000,
+      runRetentionMs: null,
+      supersededCount: 0,
+      refusedStarts: [],
+      cancelNotDelivered: [],
+    });
+
+    expect(result.executions.map((run) => run.scheduledFor)).toEqual([
+      new Date("2026-03-01T09:00:00.000Z"),
+      null,
+    ]);
   });
 
   // The answer carries the server's clock and threshold once, and each row's
@@ -149,6 +177,7 @@ describe("toWorkflowExecutionFromSummary", () => {
       output: {},
       error: null,
       startedAt: "2026-03-01T10:00:00.000Z",
+      scheduledFor: null,
       completedAt: "2026-03-01T10:00:30.000Z",
       duration: "30s",
       runMode: "test",
@@ -165,6 +194,33 @@ describe("toWorkflowExecutionFromSummary", () => {
     expect(mapped.startSource).toBe("event");
     expect(mapped.startEventName).toBe("app/appointment.created");
     expect(mapped.entityValue).toBe("appt_99");
+    expect(mapped.scheduledFor).toBeNull();
+  });
+
+  it("keeps a scheduled run's slot from the summary", () => {
+    const summary: ExecutionLogsResult["execution"] = {
+      id: "exec_scheduled",
+      workflowId: "wf_1",
+      workflowVersionId: "ver_1",
+      versionKind: "published",
+      versionNumber: 2,
+      status: "completed",
+      input: {},
+      output: {},
+      error: null,
+      startedAt: "2026-03-01T11:30:00.000Z",
+      scheduledFor: "2026-03-01T09:00:00.000Z",
+      completedAt: "2026-03-01T11:30:01.000Z",
+      duration: "1000",
+      runMode: "live",
+      startSource: "schedule",
+      startEventName: null,
+      entityValue: "workflow:wf_1",
+    };
+
+    expect(toWorkflowExecutionFromSummary(summary).scheduledFor).toEqual(
+      new Date("2026-03-01T09:00:00.000Z")
+    );
   });
 
   // A draft-snapshot run pins to a version with no number. The deep-link path
@@ -182,6 +238,7 @@ describe("toWorkflowExecutionFromSummary", () => {
       output: {},
       error: null,
       startedAt: "2026-03-01T10:00:00.000Z",
+      scheduledFor: null,
       completedAt: "2026-03-01T10:00:30.000Z",
       duration: "30s",
       runMode: "test",
@@ -209,6 +266,7 @@ describe("toPinnedRunSummary", () => {
       output: {},
       error: null,
       startedAt: "2026-03-01T10:00:00.000Z",
+      scheduledFor: null,
       completedAt: "2026-03-01T10:00:30.000Z",
       duration: "30s",
       runMode: "live",
@@ -263,6 +321,7 @@ describe("toExecutionDetail", () => {
         output: {},
         error: null,
         startedAt: "2026-03-01T10:00:00.000Z",
+        scheduledFor: null,
         completedAt: "2026-03-01T10:00:05.000Z",
         duration: "5000",
         runMode: "live",

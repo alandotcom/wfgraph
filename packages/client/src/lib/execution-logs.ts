@@ -6,6 +6,7 @@ import {
   type WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { ExecutionLogEntry } from "@wfgraph/shared/graph/types";
+import { decodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 import type {
   ExecutionLogsResult,
@@ -67,6 +68,11 @@ export type WorkflowExecution = {
   startEventName: string | null;
   entityValue: string | null;
   startedAt: Date;
+  /**
+   * The slot a scheduled run fired for, which is earlier than `startedAt`
+   * when the run started late. Null for a run no schedule started.
+   */
+  scheduledFor: Date | null;
   waitingAt: Date | null;
   cancelledAt: Date | null;
   completedAt: Date | null;
@@ -143,6 +149,15 @@ export function shouldPollExecutionDetail(
 }
 
 /**
+ * A scheduled run's slot, read through the shared timestamp codec. The
+ * contract already refused a string that is not an ISO timestamp, so null
+ * here means no schedule started the run.
+ */
+function toScheduledFor(value: string | null): Date | null {
+  return value === null ? null : decodeIsoTimestamp(value);
+}
+
+/**
  * Timestamps arrive as ISO strings and are compared and formatted as Dates.
  *
  * These conversions are module-level so they can be passed to a query as
@@ -180,6 +195,7 @@ export function toWorkflowExecutions(payload: {
       ...execution,
       activity: withExecutorReading(execution.activity, payload),
       startedAt: new Date(execution.startedAt),
+      scheduledFor: toScheduledFor(execution.scheduledFor),
       waitingAt: execution.waitingAt ? new Date(execution.waitingAt) : null,
       cancelledAt: execution.cancelledAt
         ? new Date(execution.cancelledAt)
@@ -251,6 +267,7 @@ export function toWorkflowExecutionFromSummary(
     startEventName: summary.startEventName,
     entityValue: summary.entityValue,
     startedAt: new Date(summary.startedAt),
+    scheduledFor: toScheduledFor(summary.scheduledFor),
     waitingAt: null,
     cancelledAt: null,
     completedAt: summary.completedAt ? new Date(summary.completedAt) : null,
@@ -335,9 +352,15 @@ export function toExecutionEvents(
 
 type RawExecution = Omit<
   WorkflowExecution,
-  "startedAt" | "waitingAt" | "cancelledAt" | "completedAt" | "activity"
+  | "startedAt"
+  | "scheduledFor"
+  | "waitingAt"
+  | "cancelledAt"
+  | "completedAt"
+  | "activity"
 > & {
   startedAt: string;
+  scheduledFor: string | null;
   waitingAt: string | null;
   cancelledAt: string | null;
   completedAt: string | null;

@@ -377,6 +377,7 @@ export function describeExecutionCronConformance({
 
       const result = await connection.run(
         Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
           const fired = yield* fire({
             fence,
             schedule: EVERY_FIVE,
@@ -390,6 +391,10 @@ export function describeExecutionCronConformance({
             again: again._tag,
             timers: yield* timers,
             runs: yield* runs,
+            summary:
+              fired.kind === "fired" && fired.start.status === "started"
+                ? yield* executions.findSummaryById(fired.start.execution.id)
+                : null,
           };
         })
       );
@@ -421,7 +426,11 @@ export function describeExecutionCronConformance({
           attempt: 0,
         }),
       ]);
-      expect(result.runs).toHaveLength(1);
+      // Both readers the Runs view polls carry the slot.
+      expect(result.runs).toEqual([
+        expect.objectContaining({ scheduledFor: at(minutes(5)) }),
+      ]);
+      expect(result.summary).toMatchObject({ scheduledFor: at(minutes(5)) });
     });
 
     it("writes nothing from a pass whose lease another claim took over (NoFireWithoutTheLease)", async () => {

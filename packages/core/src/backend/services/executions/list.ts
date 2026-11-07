@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
@@ -32,6 +33,7 @@ type WorkflowExecutionItem = {
   versionNumber: number | null;
   error: string | null;
   startedAt: string;
+  scheduledFor: string | null;
   waitingAt: string | null;
   cancelledAt: string | null;
   completedAt: string | null;
@@ -59,6 +61,8 @@ function toWorkflowExecutionItem(
     versionNumber: row.versionNumber,
     error: redactSensitiveText(row.error),
     startedAt: row.startedAt.toISOString(),
+    scheduledFor:
+      row.scheduledFor === null ? null : encodeIsoTimestamp(row.scheduledFor),
     waitingAt: toIso(row.waitingAt),
     cancelledAt: toIso(row.cancelledAt),
     completedAt: toIso(row.completedAt),

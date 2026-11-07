@@ -29,6 +29,7 @@ function execution(
     versionNumber: 1,
     error: null,
     startedAt: new Date("2026-03-01T10:00:00.000Z"),
+    scheduledFor: null,
     waitingAt: null,
     cancelledAt: null,
     completedAt: null,
@@ -193,6 +194,31 @@ describe("getWorkflowExecutions", () => {
           "2026-03-01T10:00:00.000Z"
         );
       })
+    );
+
+    it.effect(
+      "hands a scheduled run's slot over as a string, and null for any other run",
+      () =>
+        Effect.gen(function* () {
+          const repos = makeRepos([
+            {
+              ...execution("exec_scheduled", "completed"),
+              startSource: "schedule",
+              scheduledFor: new Date("2026-03-01T09:00:00.000Z"),
+            },
+            execution("exec_event", "completed"),
+          ]);
+
+          const result = yield* getWorkflowExecutions({
+            workflowId: "wf_1",
+            includeSuperseded: false,
+          }).pipe(Effect.provide(repos.layer));
+
+          assert.deepStrictEqual(
+            result.items.map((item) => item.scheduledFor),
+            ["2026-03-01T09:00:00.000Z", null]
+          );
+        })
     );
 
     it.effect("leaves start and result payloads off the list", () =>

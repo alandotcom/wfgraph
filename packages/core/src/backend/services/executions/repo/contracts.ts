@@ -609,6 +609,7 @@ export type ExecutionSummary = Pick<
   | "output"
   | "error"
   | "startedAt"
+  | "scheduledFor"
   | "completedAt"
   | "duration"
 > & {
@@ -672,6 +673,7 @@ export type WorkflowExecutionListRow = Pick<
   | "entityValue"
   | "error"
   | "startedAt"
+  | "scheduledFor"
   | "waitingAt"
   | "cancelledAt"
   | "completedAt"

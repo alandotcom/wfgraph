@@ -19,6 +19,7 @@ function run(
     versionNumber: 4,
     error: null,
     startedAt: "2026-08-22T10:00:00.000Z",
+    scheduledFor: null,
     waitingAt: null,
     cancelledAt: null,
     completedAt: "2026-08-22T10:00:01.000Z",

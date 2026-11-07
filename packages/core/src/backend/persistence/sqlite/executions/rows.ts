@@ -40,6 +40,7 @@ export type SqliteExecutionListRow = Pick<
   | "entityValue"
   | "error"
   | "startedAt"
+  | "scheduledFor"
   | "waitingAt"
   | "cancelledAt"
   | "completedAt"
@@ -145,6 +146,7 @@ function executionListColumns(
     entityValue: row.entityValue,
     error: row.error,
     startedAt: new Date(row.startedAt),
+    scheduledFor: row.scheduledFor === null ? null : new Date(row.scheduledFor),
     waitingAt: row.waitingAt === null ? null : new Date(row.waitingAt),
     cancelledAt: row.cancelledAt === null ? null : new Date(row.cancelledAt),
     completedAt: row.completedAt === null ? null : new Date(row.completedAt),
@@ -168,7 +170,6 @@ export function sqliteExecution(row: SqliteExecutionRow): WorkflowExecution {
     ...executionListColumns(row),
     workflowVersionId: row.workflowVersionId,
     deliveryId: row.deliveryId,
-    scheduledFor: row.scheduledFor === null ? null : new Date(row.scheduledFor),
     input: optionalJsonObject(row.input, "input"),
     output: optionalJsonValue(row.output, "output"),
     entityType: row.entityType,

@@ -195,6 +195,7 @@ describe("workflow executions RPC output contract", () => {
     versionNumber: 1,
     error: null,
     startedAt: "2026-03-01T09:00:00.000Z",
+    scheduledFor: null,
     waitingAt: null,
     cancelledAt: null,
     completedAt: null,
@@ -264,6 +265,29 @@ describe("workflow executions RPC output contract", () => {
     expect(result).toHaveProperty("issues");
   });
 
+  it("carries a scheduled run's slot as an ISO timestamp, and refuses one that is not", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutions);
+    const list = (scheduledFor: string) =>
+      decode({
+        items: [
+          {
+            ...listItem,
+            startSource: "schedule",
+            scheduledFor,
+            activity: null,
+          },
+        ],
+        ...reading,
+        runRetentionMs: null,
+        supersededCount: 0,
+        refusedStarts: [],
+        cancelNotDelivered: [],
+      });
+
+    expect(await list("2026-03-01T09:00:00.000Z")).toHaveProperty("value");
+    expect(await list("9:00 AM")).toHaveProperty("issues");
+  });
+
   // The window is a host option, so a positive number of milliseconds or null
   // for a host that keeps every run.
   it("carries the host's run retention window on both lists, and refuses a window that is not positive", async () => {
@@ -312,6 +336,7 @@ describe("workflow execution logs RPC output contract", () => {
       output: null,
       error: null,
       startedAt: "2026-03-01T09:00:00.000Z",
+      scheduledFor: null,
       completedAt: null,
       duration: null,
     },

@@ -94,6 +94,8 @@ type RawExecution = {
   startEventName: string | null;
   runMode: string;
   startSource: string;
+  /** A scheduled run's slot. Absent reads as a run no schedule started. */
+  scheduledFor?: string | null;
   /** The graph the run pinned. Absent reads as a published run of v7. */
   versionKind?: "published" | "draft_snapshot";
   versionNumber?: number | null;
@@ -141,9 +143,10 @@ export async function answerWorkflowRunRpc(
           ? served.items
           : served.items.filter((item) => item.status !== "superseded")
         ).map((item) => ({
-          // The server answers an activity on every row, null when it has
-          // nothing to say, and these fixtures name none.
+          // The server answers an activity and a slot on every row, null when
+          // it has nothing to say, and these fixtures name neither by default.
           activity: null,
+          scheduledFor: null,
           ...item,
         })),
         observedAt: "2026-03-01T10:00:00.000Z",
@@ -176,6 +179,7 @@ export async function answerWorkflowRunRpc(
           entityValue: listed?.entityValue ?? null,
           error: null,
           startedAt: "2026-03-01T10:00:00.000Z",
+          scheduledFor: listed?.scheduledFor ?? null,
           completedAt: "2026-03-01T10:00:30.000Z",
           duration: "30s",
           input: {},

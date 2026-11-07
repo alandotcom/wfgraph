@@ -75,6 +75,7 @@ const EXECUTION_LIST_COLUMNS = {
   versionNumber: workflowVersions.version,
   error: workflowExecutions.error,
   startedAt: workflowExecutions.startedAt,
+  scheduledFor: workflowExecutions.scheduledFor,
   waitingAt: workflowExecutions.waitingAt,
   cancelledAt: workflowExecutions.cancelledAt,
   completedAt: workflowExecutions.completedAt,
@@ -504,6 +505,7 @@ export function makeRunsMethods(
             output: workflowExecutions.output,
             error: workflowExecutions.error,
             startedAt: workflowExecutions.startedAt,
+            scheduledFor: workflowExecutions.scheduledFor,
             completedAt: workflowExecutions.completedAt,
             duration: workflowExecutions.duration,
           })

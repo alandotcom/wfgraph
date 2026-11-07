@@ -298,6 +298,11 @@ const workflowExecutionFields = {
   ),
   error: Schema.NullOr(Schema.String),
   startedAt: Schema.String,
+  /**
+   * The slot a scheduled run fired for, which can be earlier than `startedAt`
+   * when no worker ran at the slot. Null for a run no schedule started.
+   */
+  scheduledFor: Schema.NullOr(isoTimestampString()),
   waitingAt: Schema.NullOr(Schema.String),
   cancelledAt: Schema.NullOr(Schema.String),
   completedAt: Schema.NullOr(Schema.String),
@@ -350,6 +355,7 @@ const executionSummarySchema = Schema.Struct({
   output: Schema.Unknown,
   error: Schema.NullOr(Schema.String),
   startedAt: Schema.String,
+  scheduledFor: workflowExecutionFields.scheduledFor,
   completedAt: Schema.NullOr(Schema.String),
   duration: Schema.NullOr(Schema.String),
 });

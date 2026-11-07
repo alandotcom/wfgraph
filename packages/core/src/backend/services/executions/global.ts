@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
@@ -51,6 +52,7 @@ type GlobalExecutionItem = {
   versionNumber: number | null;
   error: string | null;
   startedAt: string;
+  scheduledFor: string | null;
   waitingAt: string | null;
   cancelledAt: string | null;
   completedAt: string | null;
@@ -97,6 +99,8 @@ function toGlobalExecutionItem(
     versionNumber: row.versionNumber,
     error: redactSensitiveText(row.error),
     startedAt: row.startedAt.toISOString(),
+    scheduledFor:
+      row.scheduledFor === null ? null : encodeIsoTimestamp(row.scheduledFor),
     waitingAt: toIso(row.waitingAt),
     cancelledAt: toIso(row.cancelledAt),
     completedAt: toIso(row.completedAt),

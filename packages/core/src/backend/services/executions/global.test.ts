@@ -31,6 +31,7 @@ function createRow(
     versionKind: "published",
     versionNumber: 1,
     error: null,
+    scheduledFor: null,
     waitingAt: null,
     cancelledAt: null,
     completedAt: null,
