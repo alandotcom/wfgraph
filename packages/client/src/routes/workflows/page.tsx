@@ -34,8 +34,8 @@ import {
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
+import { RunRetentionNote } from "#src/components/run-retention-note";
 import { RunHistorySearch } from "#src/components/workflows/run-history-search";
-import { RunRetentionNote } from "#src/components/workflow/workflow-runs";
 import {
   RunHistoryTable,
   type RunHistoryTableRow,

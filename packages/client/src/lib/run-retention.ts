@@ -4,8 +4,7 @@
  * run, and then the lists say nothing.
  */
 
-const MINUTE_MS = 60_000;
-const HOUR_MS = 60 * MINUTE_MS;
+const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
 
 function count(value: number, unit: string): string {
@@ -13,13 +12,13 @@ function count(value: number, unit: string): string {
 }
 
 /**
- * A retention window in the largest unit that divides it exactly: whole days,
- * then whole hours, then minutes rounded to the nearest one and never below 1.
+ * A retention window rounded to the largest unit that fits: whole days from one
+ * day up, otherwise whole hours. The host's window is at least one hour, and
+ * the count never reads below 1.
  */
 export function retentionWindowLabel(ms: number): string {
-  if (ms >= DAY_MS && ms % DAY_MS === 0) return count(ms / DAY_MS, "day");
-  if (ms >= HOUR_MS && ms % HOUR_MS === 0) return count(ms / HOUR_MS, "hour");
-  return count(Math.max(1, Math.round(ms / MINUTE_MS)), "minute");
+  if (ms >= DAY_MS) return count(Math.round(ms / DAY_MS), "day");
+  return count(Math.max(1, Math.round(ms / HOUR_MS)), "hour");
 }
 
 /** The sentence a run list shows for `runRetentionMs`, or null for none. */
