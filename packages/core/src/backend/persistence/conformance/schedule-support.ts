@@ -7,10 +7,12 @@ import { Effect } from "effect";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 import {
   type ClaimedRun,
+  type DeliveryFence,
   ExecutionRepo,
   type RunFence,
 } from "#src/backend/services/executions/repo";
 import {
+  type CaseDatabase,
   type ConformanceConnection,
   notYetDue,
   seedPublishedWorkflow,
@@ -46,6 +48,21 @@ export function scheduledRun(wakeAt: Date) {
     if (started.status !== "started") throw new Error("Start was refused");
     return started.execution.id;
   });
+}
+
+/**
+ * Leases a delivery's schedule row under `ownerToken`, standing in for the
+ * claim, and answers the fence a pass holding that lease carries.
+ */
+export async function leaseDelivery(
+  database: CaseDatabase,
+  delivery: { inboxId: string; scheduleId: string },
+  ownerToken: string
+): Promise<DeliveryFence> {
+  await database.execute(
+    `update workflow_execution_schedule set state = 'leased', owner_token = '${ownerToken}' where id = '${delivery.scheduleId}'`
+  );
+  return { ...delivery, ownerToken };
 }
 
 /** Opens one run that no claim in these cases leases, and answers its id. */

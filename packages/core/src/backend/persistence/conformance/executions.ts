@@ -21,7 +21,11 @@ import {
   seedPublishedWorkflow,
   setTimestamp,
 } from "#src/backend/persistence/conformance/support";
-import { T0, at } from "#src/backend/persistence/conformance/schedule-support";
+import {
+  T0,
+  at,
+  leaseDelivery,
+} from "#src/backend/persistence/conformance/schedule-support";
 
 /**
  * The wake a claim records on the row it takes, which every claim case here
@@ -1466,6 +1470,181 @@ export function describeExecutionConformance({
       ]);
       expect(result.cancellations).toEqual([]);
       expect(result.timeline).toMatchObject([{ eventType: "run_started" }]);
+    });
+
+    it("keeps an ended run while the inbox row that opened it is pending or reopened, and sweeps it once the row is gone", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      await seedPublishedWorkflow(connection);
+
+      // One arrival still pending, and one whose delivery failed and a resend
+      // of its key reopened. Each keeps its first `received_at`, so neither
+      // ages out of the inbox while it waits.
+      const inbox = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const arrive = (idempotencyKey: string) =>
+            executions.insertInboxEvent({
+              name: "appointment/booked",
+              data: {},
+              connectionId: null,
+              idempotencyKey,
+              now: T0,
+            });
+          const pending = yield* arrive("vendor_pending");
+          const reopened = yield* arrive("vendor_reopened");
+          if (reopened.duplicate)
+            throw new Error("The arrival was a duplicate");
+          return { pending: pending.inboxId, reopened };
+        })
+      );
+      const fence = await leaseDelivery(database, inbox.reopened, "owner_1");
+      await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          yield* executions.failDelivery({
+            fence,
+            error: "The subscriber step failed",
+            now: at(1_000),
+          });
+          yield* executions.insertInboxEvent({
+            name: "appointment/booked",
+            data: {},
+            connectionId: null,
+            idempotencyKey: "vendor_reopened",
+            now: at(2_000),
+          });
+        })
+      );
+
+      const runs = {
+        pending: await startedRunId(connection, inbox.pending),
+        reopened: await startedRunId(connection, inbox.reopened.inboxId),
+        settled: await startedRunId(connection, "delivery_swept"),
+      };
+      await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          for (const executionId of Object.values(runs)) {
+            yield* executions.finishRun({ executionId, status: "completed" });
+          }
+        })
+      );
+      await Promise.all(
+        Object.values(runs).map((executionId) =>
+          setCompletedAt(database, executionId, T0)
+        )
+      );
+
+      const sweep = Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        return yield* executions.sweepEndedExecutions({
+          olderThan: RETENTION_CUTOFF,
+          limit: 10,
+        });
+      });
+      const exists = Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        return {
+          pending: yield* executions.existsById(runs.pending),
+          reopened: yield* executions.existsById(runs.reopened),
+          settled: yield* executions.existsById(runs.settled),
+        };
+      });
+      const firstSweep = await connection.run(sweep);
+      const afterFirstSweep = await connection.run(exists);
+      await database.execute(
+        `delete from workflow_event_inbox where id = '${inbox.pending}'`
+      );
+      const secondSweep = await connection.run(sweep);
+      const afterSecondSweep = await connection.run(exists);
+
+      expect(firstSweep).toBe(1);
+      expect(afterFirstSweep).toEqual({
+        pending: true,
+        reopened: true,
+        settled: false,
+      });
+      expect(secondSweep).toBe(1);
+      expect(afterSecondSweep).toEqual({
+        pending: false,
+        reopened: true,
+        settled: false,
+      });
+    });
+
+    it("keeps an Entity admission refusal while the inbox row it answers exists, and sweeps it once the row is gone", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      await seedPublishedWorkflow(connection);
+
+      const deliveryId = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const arrival = yield* executions.insertInboxEvent({
+            name: "appointment/booked",
+            data: {},
+            connectionId: null,
+            idempotencyKey: null,
+            now: T0,
+          });
+          const refuse = (input: { deliveryId: string; decisionId: string }) =>
+            executions.recordAdmissionRefusal({
+              workflowId: "wf_1",
+              ...input,
+              reason: "entity_condition_not_met",
+              message: "Entity Eligibility refused the start",
+              metadata: { reason: "entity_condition_not_met" },
+            });
+          yield* refuse({
+            deliveryId: arrival.inboxId,
+            decisionId: "admission_kept",
+          });
+          yield* refuse({
+            deliveryId: "delivery_swept",
+            decisionId: "admission_swept",
+          });
+          return arrival.inboxId;
+        })
+      );
+      await setTimestamp(database, {
+        table: "workflow_execution_events",
+        column: "created_at",
+        where: `event_type = 'run_refused'`,
+        at: T0,
+      });
+
+      const sweep = Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        return yield* executions.sweepWorkflowAuditEvents({
+          olderThan: RETENTION_CUTOFF,
+          limit: 10,
+        });
+      });
+      const refusals = Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        const find = (decisionId: string) =>
+          executions.findAdmissionRefusal({ workflowId: "wf_1", decisionId });
+        return {
+          kept: yield* find("admission_kept"),
+          swept: yield* find("admission_swept"),
+        };
+      });
+      const firstSweep = await connection.run(sweep);
+      const afterFirstSweep = await connection.run(refusals);
+      await database.execute(
+        `delete from workflow_event_inbox where id = '${deliveryId}'`
+      );
+      const secondSweep = await connection.run(sweep);
+      const afterSecondSweep = await connection.run(refusals);
+
+      expect(firstSweep).toBe(1);
+      expect(afterFirstSweep).toEqual({
+        kept: "entity_condition_not_met",
+        swept: null,
+      });
+      expect(secondSweep).toBe(1);
+      expect(afterSecondSweep).toEqual({ kept: null, swept: null });
     });
   });
 }

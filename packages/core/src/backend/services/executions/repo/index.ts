@@ -152,7 +152,11 @@ type CrossTableRepoMethods = {
     workflowId: string;
     decisionId: string;
   }) => Effect.Effect<EntityEligibilityReason | null, DatabaseError>;
-  /** Atomically records a refusal or returns the start that won the delivery. */
+  /**
+   * Atomically records a refusal or returns the start that won the delivery.
+   * The refusal's metadata carries `deliveryId`, which keeps the row through
+   * `sweepWorkflowAuditEvents` while that inbox row exists.
+   */
   readonly recordAdmissionRefusal: (input: {
     workflowId: string;
     deliveryId: string;
@@ -454,7 +458,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
                 workflowId: input.workflowId,
                 eventType: "run_refused",
                 message: input.message,
-                metadata: input.metadata,
+                metadata: { ...input.metadata, deliveryId: input.deliveryId },
               });
               return { kind: "refused" as const, reason: input.reason };
             }

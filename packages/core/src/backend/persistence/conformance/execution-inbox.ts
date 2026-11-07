@@ -10,7 +10,6 @@
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import {
-  type DeliveryFence,
   ExecutionRepo,
   type NewInboxEvent,
 } from "#src/backend/services/executions/repo";
@@ -21,6 +20,7 @@ import type {
 import {
   T0,
   at,
+  leaseDelivery,
   refusalOf,
 } from "#src/backend/persistence/conformance/schedule-support";
 
@@ -54,21 +54,6 @@ function sendNew(input: NewInboxEvent, now: Date = T0) {
       return { inboxId: inserted.inboxId, scheduleId: inserted.scheduleId };
     })
   );
-}
-
-/**
- * Leases a delivery's schedule row under `ownerToken`, standing in for the
- * claim, and answers the fence a pass holding that lease carries.
- */
-async function leaseDelivery(
-  database: CaseDatabase,
-  delivery: { inboxId: string; scheduleId: string },
-  ownerToken: string
-): Promise<DeliveryFence> {
-  await database.execute(
-    `update workflow_execution_schedule set state = 'leased', owner_token = '${ownerToken}' where id = '${delivery.scheduleId}'`
-  );
-  return { ...delivery, ownerToken };
 }
 
 /** Records one succeeded step in a delivery's memo, as a pass would. */

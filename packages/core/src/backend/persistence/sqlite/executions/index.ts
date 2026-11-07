@@ -288,7 +288,10 @@ export function makeSqliteExecutionRepo(
             executionId: null,
             eventType: "run_refused",
             message: input.message,
-            metadata: encodeJson(input.metadata),
+            metadata: encodeJson({
+              ...input.metadata,
+              deliveryId: input.deliveryId,
+            }),
             createdAt: Date.now(),
           });
           return { kind: "refused" as const, reason: input.reason };

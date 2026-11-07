@@ -14,6 +14,7 @@ import {
 } from "#src/backend/services/executions/repo/retention-policy";
 import type { SqliteDatabase } from "#src/backend/persistence/sqlite/database";
 import {
+  workflowEventInbox,
   workflowExecutionEvents,
   workflowExecutions,
 } from "#src/backend/persistence/sqlite/schema";
@@ -21,6 +22,7 @@ import {
 export function makeSqliteRetentionMethods(
   store: SqliteDatabase
 ): RetentionRepoMethods {
+  const inbox = { table: workflowEventInbox, id: workflowEventInbox.id };
   return {
     sweepEndedExecutions: (input) =>
       store.write((database) =>
@@ -35,6 +37,7 @@ export function makeSqliteRetentionMethods(
                 .where(
                   sweepableExecution(
                     workflowExecutions,
+                    inbox,
                     input.olderThan.getTime()
                   )
                 )
@@ -59,6 +62,7 @@ export function makeSqliteRetentionMethods(
                 .where(
                   sweepableWorkflowAudit(
                     workflowExecutionEvents,
+                    inbox,
                     input.olderThan.getTime()
                   )
                 )

@@ -8,6 +8,7 @@
 import { asc, inArray } from "drizzle-orm";
 import type { Effect } from "effect";
 import {
+  workflowEventInbox,
   workflowExecutionEvents,
   workflowExecutions,
 } from "#src/backend/lib/db/schema";
@@ -21,10 +22,11 @@ import {
 export type RetentionRepoMethods = {
   /**
    * Delete up to `limit` Executions that hold a terminal status and completed
-   * before `olderThan`, oldest completion first, answering how many went. Each
-   * run's node logs, wait rows and run-scoped audit rows go with it by
-   * cascade. A terminal run holds no schedule row or step memo, since the
-   * write that ended it deleted them.
+   * before `olderThan`, oldest completion first, answering how many went. A
+   * run stays while the inbox row of the arrival that opened it exists, since
+   * a redelivery of that row answers from the run. Each run's node logs, wait
+   * rows and run-scoped audit rows go with it by cascade. A terminal run holds
+   * no schedule row or step memo, since the write that ended it deleted them.
    */
   readonly sweepEndedExecutions: (input: {
     olderThan: Date;
@@ -33,7 +35,8 @@ export type RetentionRepoMethods = {
   /**
    * Delete up to `limit` workflow-scoped audit rows, the ones naming no
    * Execution, written before `olderThan`, oldest first, answering how many
-   * went.
+   * went. A row stays while the inbox row its metadata names as `deliveryId`
+   * exists, since a redelivery of that row answers from an admission refusal.
    */
   readonly sweepWorkflowAuditEvents: (input: {
     olderThan: Date;
@@ -45,6 +48,7 @@ export type RetentionRepoMethods = {
 export function makeRetentionMethods(
   database: Database["Service"]
 ): RetentionRepoMethods {
+  const inbox = { table: workflowEventInbox, id: workflowEventInbox.id };
   return {
     sweepEndedExecutions: (input) =>
       database.query(async (db) => {
@@ -56,7 +60,9 @@ export function makeRetentionMethods(
               db
                 .select({ id: workflowExecutions.id })
                 .from(workflowExecutions)
-                .where(sweepableExecution(workflowExecutions, input.olderThan))
+                .where(
+                  sweepableExecution(workflowExecutions, inbox, input.olderThan)
+                )
                 .orderBy(asc(workflowExecutions.completedAt))
                 .limit(input.limit)
                 // Two sweeps that overlap, such as two Workers' Cron Trigger
@@ -83,6 +89,7 @@ export function makeRetentionMethods(
                 .where(
                   sweepableWorkflowAudit(
                     workflowExecutionEvents,
+                    inbox,
                     input.olderThan
                   )
                 )
