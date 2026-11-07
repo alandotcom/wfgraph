@@ -3,10 +3,10 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "b439dd948b98fc263e157a6ad22897e9370fd080ef24dda74d69494178a3bb92",
+      "fingerprint": "f7d46a0733cb01a3fe3f44aa89698786710dddf48ea3eaefccd70c82bd09ad07",
       "snapshot": {
         "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
-        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
+        "docs/embedding.md": "299c35e2eed181c4920bd884d5db4445866eacf94896e7f7c4322f10398ec22c",
         "packages/core/skills/wfgraph-core/SKILL.md": "d545a863c189141ef3f83e6df1ee5e005934c9ab3b18f730df72d0080a958187",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "7a60527feff8cf53533809334068f6a50e74fa8d4d1b15a731ba0cc951cab457",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "d4655f1edbf676e458f7e754812ac20e2635b0c0a30504bc3f577294d401d3a2",
@@ -15,12 +15,11 @@
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e727932fcb7efc71a3fc085624a3c19e18ae79841fd904ef77da0b0905209fd"
       },
-      "head": "48c5c11cacd00ba8c5cab433542777a5e80ccdfe",
-      "outcome": "updated",
-      "reason": "Moved the three Cloudflare Workers bullets and the two Worker mistakes to cloudflare-worker, leaving one routing line and a routing table row, and rewrote the activation description to route the access policy, logs and traces, and Worker deployments to their sub-skills (986 characters). The purpose text is unchanged.",
+      "head": "84c2f6df5de1cd78886fbddf2cbeaeee0ed83321",
+      "outcome": "no-change",
+      "reason": "The manual change corrects two statements this skill does not repeat or already states as the code behaves.",
       "evidence": [
-        "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md",
-        "pnpm exec intent validate: 8 skill files passed; pnpm run type-check passed with worker-entry.ts and the @ts-expect-error runner check"
+        "docs/embedding.md diff: the createWfGraphApp options note now says a missing auth fails type-check and answers 500 to operator requests (matching packages/core/src/app.ts), and the workflow.write row of the operation table now lists action.configOptions (matching packages/shared/src/authorization/operations.ts)."
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -41,21 +40,17 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "6afb0e31ff59b6b456084e929e25977cc05db6bfee94bc2cc5f7ea6568c1e9e7",
+      "fingerprint": "68a0245f45429358d93dc5f7e8dc3afd0211542ef39a240fea4cc04d4afbf6d6",
       "snapshot": {
-        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
+        "docs/embedding.md": "299c35e2eed181c4920bd884d5db4445866eacf94896e7f7c4322f10398ec22c",
         "docs/integrations.md": "3286a74c669550439377f611e8cd6ecf38751cf0986002d2f6448f73c2dcdf50",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720"
       },
-      "head": "521fdea62b272338fd0c4a2b441714dc49e25794",
+      "head": "84c2f6df5de1cd78886fbddf2cbeaeee0ed83321",
       "outcome": "no-change",
-      "reason": "docs/embedding.md gained two sentences about createWfGraphRunner refusing wfHyperdrive, in the runner and Worker sections. This skill teaches neither section, so its guidance is unaffected.",
+      "reason": "The manual change corrects two statements this skill does not repeat or already states as the code behaves.",
       "evidence": [
-        "docs/embedding.md (Run the loop in its own process; Cloudflare Workers and Hyperdrive)",
-        "packages/core/src/backend/executor/in-process-runner.ts (resolveRunnerSettings)",
-        "packages/core/src/backend/setup.ts (openWfGraphSetup)",
-        "packages/core/src/runner.ts",
-        "base 3ba18087, head 521fdea6 plus this docs change"
+        "docs/embedding.md diff: the createWfGraphApp options note now says a missing auth fails type-check and answers 500 to operator requests (matching packages/core/src/app.ts), and the workflow.write row of the operation table now lists action.configOptions (matching packages/shared/src/authorization/operations.ts)."
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
@@ -77,31 +72,27 @@
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "3a74d6a8dadcf6901bf095e2ea19ae014063387db04685ce3c8dca503b4b97d7",
+      "fingerprint": "6ac3d3b7b155dc42b5a06d430bd59ca3eb67a6252a522748834c3e5caf552ae5",
       "snapshot": {
-        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
+        "docs/embedding.md": "299c35e2eed181c4920bd884d5db4445866eacf94896e7f7c4322f10398ec22c",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "14a493074ecf5765ddc54b1520bfd4ed106fcd72d2d08437fb0beef59147ac8a"
       },
-      "head": "521fdea62b272338fd0c4a2b441714dc49e25794",
+      "head": "84c2f6df5de1cd78886fbddf2cbeaeee0ed83321",
       "outcome": "no-change",
-      "reason": "docs/embedding.md gained two sentences about createWfGraphRunner refusing wfHyperdrive, in the runner and Worker sections. This skill teaches neither section, so its guidance is unaffected.",
+      "reason": "The manual change corrects two statements this skill does not repeat or already states as the code behaves.",
       "evidence": [
-        "docs/embedding.md (Run the loop in its own process; Cloudflare Workers and Hyperdrive)",
-        "packages/core/src/backend/executor/in-process-runner.ts (resolveRunnerSettings)",
-        "packages/core/src/backend/setup.ts (openWfGraphSetup)",
-        "packages/core/src/runner.ts",
-        "base 3ba18087, head 521fdea6 plus this docs change"
+        "docs/embedding.md diff: the createWfGraphApp options note now says a missing auth fails type-check and answers 500 to operator requests (matching packages/core/src/app.ts), and the workflow.write row of the operation table now lists action.configOptions (matching packages/shared/src/authorization/operations.ts)."
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "ab9b9a33c57c0147b75129f05d9d457295896c4f424cb3690f0b53841f45e305",
+      "fingerprint": "854e4ca1cdfcb2fe8628592c3902bdee6341f1a28aabe62cdce90e9753253011",
       "snapshot": {
         "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
-        "_artifacts/domain_map.yaml": "aa42c964fa6c7d3062d8f915766951c00436f75671914e1782f9dbbf576bbbea",
-        "_artifacts/skill_spec.md": "710aece5ad4bd8b33038c257dd15057f7238479730683154f8ee749e0b78faae",
+        "_artifacts/domain_map.yaml": "f84a83015df511ddb4683f64e4656dab068389a8fca6a337befb3e4d7b2e257e",
+        "_artifacts/skill_spec.md": "3ca39084cfc105003f6e2888aaff6ec3dbff502469d479527afa63f80e47ff5c",
         "_artifacts/skill_tree.yaml": "df9d0088906be9bb3eacd14d3b8ce1ca1c5f0886161b0e589ce58813b0dc32c4",
-        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
+        "docs/embedding.md": "299c35e2eed181c4920bd884d5db4445866eacf94896e7f7c4322f10398ec22c",
         "docs/events.md": "b7690fd2be3ee688359e17f2438416ac4e2aab290c837ce13bdb5bab73bd3d09",
         "docs/integrations.md": "3286a74c669550439377f611e8cd6ecf38751cf0986002d2f6448f73c2dcdf50",
         "packages/core/skills/wfgraph-core/SKILL.md": "d545a863c189141ef3f83e6df1ee5e005934c9ab3b18f730df72d0080a958187",
@@ -121,15 +112,11 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "14a493074ecf5765ddc54b1520bfd4ed106fcd72d2d08437fb0beef59147ac8a",
         "packages/shared/src/authorization/operations.ts": "15958bfe40b707b615f98b19e8d4d30a515dbcd9626e4ed393b91158e0379b5c"
       },
-      "head": "48c5c11cacd00ba8c5cab433542777a5e80ccdfe",
+      "head": "84c2f6df5de1cd78886fbddf2cbeaeee0ed83321",
       "outcome": "updated",
-      "reason": "cloudflare-worker is implemented in all three records: the tree entry drops status planned and carries its description and sources, and the wfgraph-core entry carries its new description; domain_map.yaml moves the two Worker failure modes from wfgraph-core into cloudflare-worker with three more, removes the moved task, and records the unverified Worker claims as a gap; skill_spec.md records the inventory, failure-mode tables, tension, cross-reference, coverage, batch 4 history with its checks and the remaining work.",
+      "reason": "The two open gaps about the auth start-up claim and the action.configOptions row are marked resolved.",
       "evidence": [
-        "_artifacts/domain_map.yaml",
-        "_artifacts/skill_spec.md",
-        "_artifacts/skill_tree.yaml",
-        "python yaml.safe_load parsed both YAML files",
-        "pnpm exec intent maintainer check: 0 files to sync"
+        "docs/embedding.md diff: the createWfGraphApp options note now says a missing auth fails type-check and answers 500 to operator requests (matching packages/core/src/app.ts), and the workflow.write row of the operation table now lists action.configOptions (matching packages/shared/src/authorization/operations.ts)."
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -146,26 +133,18 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "31b3cb3dc0f1405882c195c367006f078131589aad60ecd17577f951809c2099",
+      "fingerprint": "4f451a9285f0d1768de5d754e778418aec56ca71da4a80aa8cacce7251b80e08",
       "snapshot": {
-        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
+        "docs/embedding.md": "299c35e2eed181c4920bd884d5db4445866eacf94896e7f7c4322f10398ec22c",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "7a60527feff8cf53533809334068f6a50e74fa8d4d1b15a731ba0cc951cab457",
         "packages/core/src/backend/lib/http/authorize.ts": "cd6c5ff58b4d7a6bd9a96c9dd4c5d3f54f2b65604a59902c0031fccb00847f9b",
         "packages/shared/src/authorization/operations.ts": "15958bfe40b707b615f98b19e8d4d30a515dbcd9626e4ed393b91158e0379b5c"
       },
-      "head": "c774d9c7714e7ab8935f8b365d0f23690a8e3d28",
-      "outcome": "updated",
-      "reason": "New skill. Every claim was checked against docs/embedding.md (Authentication and authorization; Built-in integrations) and the code: authorize.ts (null to 401, allows false to 403, thrown callback, missing allows or non-boolean allows to 500, request.clone, role permission sets, WfGraphAccess.all as admin), operations.ts (the seven permissions, 41 operations), api-app.ts (machine and public routes, the sanitized 500 body, the request record carrying the failure) and app.ts (wfgraph.http.auth for the editor page). The operation table stays in the manual.",
+      "head": "84c2f6df5de1cd78886fbddf2cbeaeee0ed83321",
+      "outcome": "no-change",
+      "reason": "The manual change corrects two statements this skill does not repeat or already states as the code behaves.",
       "evidence": [
-        "docs/embedding.md",
-        "packages/core/src/backend/lib/http/authorize.ts",
-        "packages/shared/src/authorization/operations.ts",
-        "packages/core/src/backend/api-app.ts",
-        "packages/core/src/app.ts",
-        "packages/core/src/worker.ts (auth exports)",
-        "pnpm exec intent validate: 6 skill files passed",
-        "pnpm exec vitest run --project node packages/evals/src/skills: 4 auth cases passed, including the grants-everything policy (rejected at 'expected 200 to be 401') and the store read inside allows (rejected at the one-read assertion)",
-        "Discovery and a fresh consumer session: unverified, no isolated agent session available"
+        "docs/embedding.md diff: the createWfGraphApp options note now says a missing auth fails type-check and answers 500 to operator requests (matching packages/core/src/app.ts), and the workflow.write row of the operation table now lists action.configOptions (matching packages/shared/src/authorization/operations.ts)."
       ]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
@@ -195,27 +174,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "d0770172f3c371820e47fd43847afcf52b8d61b07c47aaea7f8efac913cfdd74",
+      "fingerprint": "8b640eb6ef6ed77c004cb8d574963a1d61f2d8c1a181a352a241256c7861dde8",
       "snapshot": {
-        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
+        "docs/embedding.md": "299c35e2eed181c4920bd884d5db4445866eacf94896e7f7c4322f10398ec22c",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e727932fcb7efc71a3fc085624a3c19e18ae79841fd904ef77da0b0905209fd",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "807145b543fe5563175a5e6d0975b3ec8c862c81",
-      "outcome": "updated",
-      "reason": "New skill from docs/embedding.md (Logging, Tracing, Sentry, Any other backend), checked against logging.ts (reset: true, LOG_LEVEL and LOG_FORMAT, TTY default), log-config.ts (the bridge resets any configuration; the start-up warning names the wfgraph category), setup.ts and worker.ts (runner and Worker take logger and warn), db/migrations.ts (wfgraph.migrations), telemetry.ts (wfgraph-workflows scope), engine/core.ts (wfgraph.workflow.execution) and api-app.ts (one wfgraph.http record with an http group). Sentry, @logtape/sentry, the service span table and one root span per pass rest on the manual.",
+      "head": "84c2f6df5de1cd78886fbddf2cbeaeee0ed83321",
+      "outcome": "no-change",
+      "reason": "The manual change corrects two statements this skill does not repeat or already states as the code behaves.",
       "evidence": [
-        "docs/embedding.md",
-        "packages/core/src/logging.ts",
-        "packages/core/src/backend/lib/log-config.ts",
-        "packages/core/src/backend/lib/telemetry.ts",
-        "packages/core/src/backend/api-app.ts",
-        "packages/core/src/backend/lib/db/migrations.ts",
-        "pnpm exec intent validate: 7 skill files passed",
-        "pnpm exec vitest run --project node packages/evals/src/skills: tracing (3 cases) and logging (3 cases) passed; the unregistered provider fails at 'no wfgraph.workflow.execution span for the run', the configuration with no wfgraph entry fails at 'no wfgraph start-up record', and the logger option on top of the host configuration leaves the host sink empty",
-        "Discovery and a fresh consumer session: unverified, no isolated agent session available"
+        "docs/embedding.md diff: the createWfGraphApp options note now says a missing auth fails type-check and answers 500 to operator requests (matching packages/core/src/app.ts), and the workflow.write row of the operation table now lists action.configOptions (matching packages/shared/src/authorization/operations.ts)."
       ]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
@@ -258,26 +229,18 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "daebe89ed01db0f22f45c3816cd461a2e037bdaee1b4cb9005e2320713309466",
+      "fingerprint": "b99e3828ae57556880957824688eb2fd5a326742e9942fe8ec625ee219403618",
       "snapshot": {
-        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
+        "docs/embedding.md": "299c35e2eed181c4920bd884d5db4445866eacf94896e7f7c4322f10398ec22c",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "d4655f1edbf676e458f7e754812ac20e2635b0c0a30504bc3f577294d401d3a2",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "2c5b3e5c1858bffaa557631a1d61a97a255053cd46383d25c06dbf81f6bbce9b"
       },
-      "head": "48c5c11cacd00ba8c5cab433542777a5e80ccdfe",
-      "outcome": "updated",
-      "reason": "New skill from docs/embedding.md (Cloudflare Workers and Hyperdrive with its four subsections, PostgreSQL migrations, the runner refusal), checked against worker.ts (request called per invocation, options on wfWorker, fetch closes through waitUntil, queue ticks for any batch, 14-minute budget, 10-minute claim window, five-minute lease, one-minute heartbeat, 100-pass limit, sweeps on the Cron tick only, tick records and the wfgraph.worker.tick span, rethrow after a failed tick) and hyperdrive-postgres.ts (current_schema() refusal and its message). It carries the two Worker mistakes moved from wfgraph-core and three more the manual implies.",
+      "head": "84c2f6df5de1cd78886fbddf2cbeaeee0ed83321",
+      "outcome": "no-change",
+      "reason": "The manual change corrects two statements this skill does not repeat or already states as the code behaves.",
       "evidence": [
-        "docs/embedding.md",
-        "packages/core/src/backend/worker.ts",
-        "packages/core/src/backend/persistence/hyperdrive-postgres.ts",
-        "packages/core/src/backend/executor/in-process-runner.ts (resolveRunnerSettings)",
-        "packages/core/src/backend/lib/http/public-url.ts",
-        "pnpm exec intent validate: 8 skill files passed; pnpm run type-check passed with worker-entry.ts and the @ts-expect-error runner check",
-        "pnpm exec vitest run --project node packages/evals/src/skills: 8 cloudflare-worker cases passed; the Queue-only deployment fails the grader with the run still waiting and the deployment with neither fails with no run",
-        "WFGRAPH_TEST_DATABASE_URL=postgresql://workflow:workflow@127.0.0.1:55437/workflow_builder vitest --project postgres: 3 Hyperdrive cases passed against the docker compose server",
-        "Unverified without workerd and Hyperdrive: query caching, the Wrangler configuration, Node.js compatibility, the platform limits and Queue delivery; discovery and a fresh consumer session unverified"
+        "docs/embedding.md diff: the createWfGraphApp options note now says a missing auth fails type-check and answers 500 to operator requests (matching packages/core/src/app.ts), and the workflow.write row of the operation table now lists action.configOptions (matching packages/shared/src/authorization/operations.ts)."
       ]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {

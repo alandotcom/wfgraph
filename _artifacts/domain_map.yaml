@@ -761,9 +761,9 @@ gaps:
     status: open
   - skill: auth
     question: docs/embedding.md (createWfGraphApp options) says Workflow Graph refuses to start without auth, but the app starts and answers 500 to every operator request; only the type requires the option. Should the manual say so?
-    context: Found while verifying the auth skill against packages/core/src/app.ts. The skills state the observed behavior.
-    status: open
+    context: Found while verifying the auth skill against packages/core/src/app.ts. The skills state the observed behavior, and the manual now states it too.
+    status: resolved
   - skill: auth
     question: The operation table in docs/embedding.md (Authentication and authorization) omits action.configOptions, which WfGraphOperations grants under workflow.write. Should the manual list it?
-    context: The auth skill names WfGraphOperationIds and the OpenAPI document as the full list instead of repeating the table.
-    status: open
+    context: The auth skill names WfGraphOperationIds and the OpenAPI document as the full list instead of repeating the table. The manual's table now lists action.configOptions under workflow.write.
+    status: resolved

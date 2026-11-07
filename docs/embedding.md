@@ -380,7 +380,7 @@ The following table maps every operation ID to its permission:
 | Permission         | Operation IDs                                                                                                                                                                                                                      |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.subscribeList`, `workflow.subscribeDraft`, `workflow.getVersionHistory`, `workflow.getVersionUsage`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph` |
-| `workflow.write`   | `workflow.create`, `workflow.update`, `workflow.delete`, `workflow.duplicate`, `workflow.publish`, `workflow.restoreVersion`, `workflow.saveCurrent`, `workflow.bulkLifecycle`                                                     |
+| `workflow.write`   | `workflow.create`, `workflow.update`, `workflow.delete`, `workflow.duplicate`, `workflow.publish`, `workflow.restoreVersion`, `workflow.saveCurrent`, `workflow.bulkLifecycle`, `action.configOptions`                             |
 | `run.read`         | `workflow.getExecutions`, `workflow.getExecutionsGlobal`, `workflow.getExecutionLogs`, `workflow.getExecutionEvents`, `workflow.getExecutionStatus`, `workflow.previewMigration`                                                   |
 | `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`, `workflow.migrateExecutions`                                                                                                   |
 | `connection.read`  | `integration.getAll`, `integration.get`, `integration.configOptions`                                                                                                                                                               |
@@ -1148,7 +1148,9 @@ Cloudflare Workers and Hyperdrive.
 
 Read these once:
 
-- **`auth` protects operator routes**, and Workflow Graph refuses to start without it. Pass
+- **`auth` protects operator routes.** It is a required option, so a call without it fails
+  to type-check, and a JavaScript host that omits it answers `500` to every operator
+  request. Pass
   an authentication callback that resolves the session your application already uses and
   returns an access policy. Return `WfGraphAccess.all` for explicit unrestricted access, or
   pass `trustWfGraphUpstream()` when an upstream component enforces both checks. For the full
