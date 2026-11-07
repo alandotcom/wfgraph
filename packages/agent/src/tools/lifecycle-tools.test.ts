@@ -123,6 +123,28 @@ const entry: WorkflowNode = {
   data: { label: "Lifecycle", type: "lifecycle", config: {} },
 };
 
+/** The entry node holding these schedules as its only other start source. */
+function scheduledEntry(
+  schedules: readonly { cron: string; timeZone: string }[],
+  options: { allowManualStart?: boolean } = {}
+): WorkflowNode {
+  return {
+    ...entry,
+    data: {
+      ...entry.data,
+      config: {
+        lifecycleRules: {
+          startEvents: [],
+          cancelEvents: [],
+          concurrency: "unlimited",
+          schedules,
+          ...options,
+        },
+      },
+    },
+  };
+}
+
 const conditionLifecycle: WorkflowNode = {
   ...entry,
   data: {
@@ -654,8 +676,8 @@ describe("set_lifecycle_rules", () => {
     })
   );
 
-  // The tool writes no schedule, so one already stored is kept through an edit
-  // and stands as the workflow's start source.
+  // An edit that names no schedule keeps the stored ones, and they stand as the
+  // workflow's start source.
   it.effect("keeps a stored schedule as the start source", () =>
     Effect.gen(function* () {
       const schedules = [{ cron: "0 9 * * 1-5", timeZone: "America/New_York" }];
@@ -687,6 +709,175 @@ describe("set_lifecycle_rules", () => {
         concurrency: "first-wins",
         schedules,
       });
+    })
+  );
+
+  it.effect("sets a schedule as the only start source", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({ catalog });
+      const result = yield* tools.set_lifecycle_rules({
+        startEvents: [],
+        allowManualStart: false,
+        schedules: [{ cron: "0 9 * * 1-5", timeZone: "America/New_York" }],
+      });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+      ).toMatchObject({
+        startEvents: [],
+        allowManualStart: false,
+        schedules: [{ cron: "0 9 * * 1-5", timeZone: "America/New_York" }],
+      });
+      expect(result.summary).toContain(
+        "starts on its schedules; scheduled Every weekday at 9:00 AM (America/New_York)"
+      );
+    })
+  );
+
+  it.effect("adds and removes schedules beside the stored ones", () =>
+    Effect.gen(function* () {
+      const weekdays = { cron: "0 9 * * 1-5", timeZone: "America/New_York" };
+      const hourly = { cron: "0 * * * *", timeZone: "UTC" };
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [scheduledEntry([weekdays])],
+        catalog,
+      });
+
+      yield* tools.set_lifecycle_rules({ addSchedules: [hourly] });
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.schedules
+      ).toEqual([weekdays, hourly]);
+
+      yield* tools.set_lifecycle_rules({
+        allowManualStart: true,
+        removeSchedules: [weekdays, hourly],
+      });
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.schedules
+      ).toBeUndefined();
+    })
+  );
+
+  it.effect("clears every schedule with an empty list", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [
+          scheduledEntry([{ cron: "0 9 * * *", timeZone: "UTC" }], {
+            allowManualStart: true,
+          }),
+        ],
+        catalog,
+      });
+
+      yield* tools.set_lifecycle_rules({ schedules: [] });
+
+      expect(
+        readLifecycleRules((yield* draft.current).nodes[0]?.data.config)
+          ?.schedules
+      ).toBeUndefined();
+    })
+  );
+
+  it.effect("refuses removing a schedule the rules do not hold", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [scheduledEntry([{ cron: "0 9 * * *", timeZone: "UTC" }])],
+        catalog,
+      });
+
+      const failure = yield* Effect.flip(
+        tools.set_lifecycle_rules({
+          removeSchedules: [{ cron: "0 9 * * *", timeZone: "Europe/London" }],
+        })
+      );
+
+      expect(failure.reason).toBe(
+        'No stored schedule is "0 9 * * *" in Europe/London, so there is nothing to remove. Remove a schedule by its exact cron and timeZone.'
+      );
+    })
+  );
+
+  it.effect("refuses setting and patching schedules in one edit", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({ catalog });
+      const schedule = { cron: "0 9 * * *", timeZone: "UTC" };
+
+      const failure = yield* Effect.flip(
+        tools.set_lifecycle_rules({
+          allowManualStart: true,
+          schedules: [schedule],
+          addSchedules: [schedule],
+        })
+      );
+
+      expect(failure.reason).toBe(
+        "Choose schedules, or addSchedules and removeSchedules, not both in one edit."
+      );
+    })
+  );
+
+  it.effect.each([
+    {
+      name: "an expression without five fields",
+      schedules: [{ cron: "0 9 * *", timeZone: "UTC" }],
+      reason:
+        'Schedule "0 9 * *" in UTC: A schedule needs a cron expression of five fields',
+    },
+    {
+      name: "a zone IANA does not name",
+      schedules: [{ cron: "0 9 * * *", timeZone: "Eastern" }],
+      reason:
+        'Schedule "0 9 * * *" in Eastern: A schedule needs an IANA time zone',
+    },
+    {
+      name: "a date that never occurs",
+      schedules: [{ cron: "0 9 30 2 *", timeZone: "UTC" }],
+      reason:
+        'Schedule "0 9 30 2 *" in UTC: This cron expression names no date that exists',
+    },
+    {
+      name: "the same schedule twice",
+      schedules: [
+        { cron: "0 9 * * *", timeZone: "UTC" },
+        { cron: "0 9 * * *", timeZone: "UTC" },
+      ],
+      reason:
+        "Two schedules have the same cron expression and time zone. Remove one of them.",
+    },
+  ])("refuses $name", ({ schedules, reason }) =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({ catalog });
+
+      const failure = yield* Effect.flip(
+        tools.set_lifecycle_rules({ allowManualStart: true, schedules })
+      );
+
+      expect(failure.reason).toContain(reason);
+      expect((yield* draft.current).nodes).toEqual([]);
+    })
+  );
+
+  it.effect("refuses a schedule on a workflow that tracks an Entity", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({ catalog });
+
+      const failure = yield* Effect.flip(
+        tools.set_lifecycle_rules({
+          startEvents: ["applicant.created"],
+          trackedEntity: {
+            type: "applicant",
+            bindings: [{ event: "applicant.created", binding: "applicant" }],
+          },
+          schedules: [{ cron: "0 9 * * *", timeZone: "UTC" }],
+        })
+      );
+
+      expect(failure.reason).toContain(
+        "A scheduled run carries no Entity, so a workflow that tracks an Entity cannot have a schedule."
+      );
+      expect((yield* draft.current).nodes).toEqual([]);
     })
   );
 

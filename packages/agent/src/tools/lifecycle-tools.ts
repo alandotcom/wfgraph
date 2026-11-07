@@ -8,7 +8,7 @@
  * one call so they cannot disagree.
  */
 
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema, SchemaIssue } from "effect";
 import { Tool } from "effect/ai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
@@ -22,6 +22,11 @@ import { EVENT_NAME_FIELD_PATH } from "@wfgraph/shared/conditions/condition-mode
 import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import {
+  type CronSchedule,
+  cronSchedulesSchema,
+  describeCronSchedule,
+} from "@wfgraph/shared/lifecycle/cron-schedule";
 import { checkEntityEligibility } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import {
   checkLifecycleRules,
@@ -70,9 +75,57 @@ const lifecycleWriteResultSchema = Schema.Struct({
 
 const UNPLACED = { x: 0, y: 0 };
 
+/**
+ * A schedule as the model writes it. The strings are checked in the handler
+ * against `cronSchedulesSchema`, so a refusal reaches the model as a reason
+ * naming the schedule rather than as a parameter decode failure.
+ */
+const scheduleInputSchema = Schema.Struct({
+  cron: Schema.String.annotate({
+    description:
+      "A 5-field cron expression: minute, hour, day of month, month, day of week. For example, 0 9 * * 1-5 is 9:00 AM on weekdays.",
+  }),
+  timeZone: Schema.String.annotate({
+    description:
+      "The IANA time zone the expression is read in, such as America/New_York. Ask the user when they have not named one.",
+  }),
+});
+
+type ScheduleInput = typeof scheduleInputSchema.Type;
+
+const decodeSchedules = Schema.decodeUnknownResult(cronSchedulesSchema);
+const formatScheduleIssue = SchemaIssue.makeFormatterStandardSchemaV1();
+
+/**
+ * The schedules held to the rules a save holds them to, or the reason they
+ * fail, naming the schedule it is about where it is about one.
+ */
+function readSchedules(
+  schedules: readonly ScheduleInput[]
+): { ok: true; schedules: CronSchedule[] } | { ok: false; reason: string } {
+  const decoded = decodeSchedules(schedules);
+  if (Result.isSuccess(decoded)) {
+    return { ok: true, schedules: [...decoded.success] };
+  }
+  const [issue] = formatScheduleIssue(decoded.failure.issue).issues;
+  const index = issue?.path?.[0];
+  const named = typeof index === "number" ? schedules[index] : undefined;
+  const message = issue?.message ?? "The schedules are invalid.";
+  return {
+    ok: false,
+    reason: named
+      ? `Schedule "${named.cron}" in ${named.timeZone}: ${message}`
+      : message,
+  };
+}
+
+function sameSchedule(a: ScheduleInput, b: ScheduleInput): boolean {
+  return a.cron === b.cron && a.timeZone === b.timeZone;
+}
+
 export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
   description:
-    "Declare when a run starts and is cancelled, which Entity it tracks, and optional Entity Eligibility. A Start Filter checks an Event before a run opens. A Cancel Filter checks an Event before it cancels a run. Creates the Lifecycle Node if the workflow has none. Find exact Event names with list_events, then use describe_event for filter fields, Entity bindings, and field types.",
+    "Declare when a run starts and is cancelled, the cron schedules that start runs, which Entity it tracks, and optional Entity Eligibility. A Start Filter checks an Event before a run opens. A Cancel Filter checks an Event before it cancels a run. Creates the Lifecycle Node if the workflow has none. Find exact Event names with list_events, then use describe_event for filter fields, Entity bindings, and field types.",
   parameters: Schema.Struct({
     startEvents: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
       description:
@@ -91,6 +144,22 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
     allowManualStart: Schema.optionalKey(Schema.Boolean).annotate({
       description:
         "Whether the Run button and the execute route may start it. Omit to preserve it.",
+    }),
+    schedules: Schema.optionalKey(Schema.Array(scheduleInputSchema)).annotate({
+      description:
+        "The complete set of cron schedules that start a run with no Event data. A schedule takes effect when the workflow is published. Omit to preserve them. An empty list clears them. A workflow that tracks an Entity cannot have a schedule.",
+    }),
+    addSchedules: Schema.optionalKey(
+      Schema.Array(scheduleInputSchema)
+    ).annotate({
+      description:
+        "Schedules to add beside the stored ones. Other schedules are preserved.",
+    }),
+    removeSchedules: Schema.optionalKey(
+      Schema.Array(scheduleInputSchema)
+    ).annotate({
+      description:
+        "Stored schedules to remove, each matched by its exact cron and timeZone. Other schedules are preserved.",
     }),
     // A list rather than a record, for the reason `configBagSchema` in
     // graph-write-tools.ts states: a record cannot survive the round trip
@@ -334,6 +403,9 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
         | "unlimited"
         | undefined;
       readonly allowManualStart?: boolean | undefined;
+      readonly schedules?: readonly ScheduleInput[] | undefined;
+      readonly addSchedules?: readonly ScheduleInput[] | undefined;
+      readonly removeSchedules?: readonly ScheduleInput[] | undefined;
       readonly correlationPaths?:
         | readonly { readonly event: string; readonly path: string }[]
         | undefined;
@@ -374,16 +446,51 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           });
         }
 
-        // This tool writes no schedule, so a stored one is kept and counts as
-        // the start source it is.
         if (
-          startEvents.length === 0 &&
-          allowManualStart !== true &&
-          !hasSchedule(stored)
+          input.schedules !== undefined &&
+          (input.addSchedules !== undefined ||
+            input.removeSchedules !== undefined)
         ) {
           return Effect.fail({
             reason:
-              "A workflow needs a way to start. Name at least one Start Event, or set allowManualStart to true.",
+              "Choose schedules, or addSchedules and removeSchedules, not both in one edit.",
+          });
+        }
+        const baseSchedules = input.schedules ?? stored?.schedules ?? [];
+        const missing = (input.removeSchedules ?? []).find(
+          (removal) =>
+            !baseSchedules.some((schedule) => sameSchedule(schedule, removal))
+        );
+        if (missing) {
+          return Effect.fail({
+            reason: `No stored schedule is "${missing.cron}" in ${missing.timeZone}, so there is nothing to remove. Remove a schedule by its exact cron and timeZone.`,
+          });
+        }
+        const scheduleReading = readSchedules([
+          ...baseSchedules.filter(
+            (schedule) =>
+              !(input.removeSchedules ?? []).some((removal) =>
+                sameSchedule(schedule, removal)
+              )
+          ),
+          ...(input.addSchedules ?? []),
+        ]);
+        if (!scheduleReading.ok) {
+          return Effect.fail({ reason: scheduleReading.reason });
+        }
+        const schedules =
+          scheduleReading.schedules.length > 0
+            ? scheduleReading.schedules
+            : undefined;
+
+        if (
+          startEvents.length === 0 &&
+          allowManualStart !== true &&
+          schedules === undefined
+        ) {
+          return Effect.fail({
+            reason:
+              "A workflow needs a way to start. Name at least one Start Event, add a schedule, or set allowManualStart to true.",
           });
         }
 
@@ -588,7 +695,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
             cancelFilters,
             connectionIds,
             allowManualStart,
-            schedules: stored?.schedules,
+            schedules,
             correlationPaths: trackedEntity ? undefined : correlationPaths,
             trackedEntity,
             entityEligibility,
@@ -712,7 +819,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
           draft.update(applyEdit),
           omitUndefined({
             nodeId: entry.id,
-            summary: `${created ? "Created the Lifecycle Node and set" : "Set"} the rules: starts on ${rules.startEvents.join(", ") || "manual start only"}${rules.trackedEntity ? `; tracks ${rules.trackedEntity.type}` : ""}.`,
+            summary: `${created ? "Created the Lifecycle Node and set" : "Set"} the rules: starts on ${rules.startEvents.join(", ") || (hasSchedule(rules) ? "its schedules" : "manual start only")}${hasSchedule(rules) ? `; scheduled ${(rules.schedules ?? []).map(describeCronSchedule).join("; ")}` : ""}${rules.trackedEntity ? `; tracks ${rules.trackedEntity.type}` : ""}.`,
             warning,
           })
         );

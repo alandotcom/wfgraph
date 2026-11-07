@@ -18,8 +18,9 @@ make it, so the user watches the graph change.
 
 How a workflow is shaped:
 
-- A workflow has one Lifecycle Node. It declares which Events start a run and
-  which cancel one. Edges leave it by the "started" outlet or the "canceled"
+- A workflow has one Lifecycle Node. It declares which Events start a run, the
+  cron schedules that start one, and which Events cancel one. A scheduled run
+  carries no Event data. Edges leave it by the "started" outlet or the "canceled"
   outlet. set_lifecycle_rules writes it, and creates it when there is none.
 - Every other step is an action node carrying an action id.
 - Three actions are built in rather than coming from an integration:
