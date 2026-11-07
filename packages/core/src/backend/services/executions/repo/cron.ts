@@ -6,7 +6,7 @@
  * `deleteAllForWorkflow` and the retention sweeps start at run schedule rows.
  */
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { workflowExecutionSchedule } from "#src/backend/lib/db/schema";
 import type {
@@ -94,6 +94,13 @@ export async function insertCronTimers(
  * activates the version declaring them, as `cronTimerChanges` decides. The
  * caller has locked the workflow row and passes no schedules for a paused
  * workflow, which keeps no timers.
+ *
+ * A kept row is rewritten with its own `wake_at`, which changes nothing in it
+ * but makes it a row this transaction updated. A fire is serializable and
+ * locks its timer first, so a fire whose snapshot predates this Publish and
+ * that waited for the lock fails with 40001 when this commits, and retries on
+ * a snapshot that reads the version this Publish activated. A row that was
+ * only locked would let the fire read the version this Publish replaced.
  */
 export async function replaceCronTimers(
   tx: Executor,
@@ -118,10 +125,16 @@ export async function replaceCronTimers(
       ? []
       : [{ id: row.id, cron: row.cron, timeZone: row.timeZone }]
   );
-  const { deleteIds, insert } = cronTimerChanges({
+  const { keepIds, deleteIds, insert } = cronTimerChanges({
     rows,
     schedules: input.schedules,
   });
+  if (keepIds.length > 0) {
+    await tx
+      .update(workflowExecutionSchedule)
+      .set({ wakeAt: sql`${workflowExecutionSchedule.wakeAt}` })
+      .where(inArray(workflowExecutionSchedule.id, keepIds));
+  }
   if (deleteIds.length > 0) {
     await tx
       .delete(workflowExecutionSchedule)

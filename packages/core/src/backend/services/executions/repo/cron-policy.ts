@@ -5,7 +5,7 @@
  * commit against the workflow as its transaction reads it.
  */
 
-import { differenceWith } from "es-toolkit/array";
+import { differenceWith, partition } from "es-toolkit/array";
 import {
   type CronSchedule,
   latestSlotAtOrBefore,
@@ -44,16 +44,19 @@ export type CronTimerRow = { id: string } & CronSchedule;
  * version keeps unchanged stays, lease and all. The row of a schedule the
  * version edits or removes is deleted, and a schedule it edits or adds gets a
  * new row. An edit changes the expression or the zone, which is the
- * schedule's identity, so an edit is a removal and an addition.
+ * schedule's identity, so an edit is a removal and an addition. `keepIds`
+ * names the rows that stay.
  */
 export function cronTimerChanges(input: {
   rows: readonly CronTimerRow[];
   schedules: readonly CronSchedule[];
-}): { deleteIds: string[]; insert: CronSchedule[] } {
+}): { keepIds: string[]; deleteIds: string[]; insert: CronSchedule[] } {
+  const [kept, removed] = partition(input.rows, (row) =>
+    input.schedules.some((schedule) => sameSchedule(row, schedule))
+  );
   return {
-    deleteIds: differenceWith(input.rows, input.schedules, sameSchedule).map(
-      (row) => row.id
-    ),
+    keepIds: kept.map((row) => row.id),
+    deleteIds: removed.map((row) => row.id),
     insert: differenceWith(input.schedules, input.rows, sameSchedule),
   };
 }

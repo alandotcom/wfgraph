@@ -1075,4 +1075,166 @@ describePostgres("PostgreSQL concurrency", () => {
       ],
     });
   });
+
+  // A fire is serializable and takes its timer row first. Publish keeps an
+  // unchanged schedule's row, and a row it only locked let a fire whose
+  // snapshot predated the Publish read the version it replaced, then open a
+  // run on it. Publish rewrites each row it keeps, so that fire fails with
+  // 40001, retries on a fresh snapshot, and finds the version moved.
+  it("refuses a fire whose snapshot predates a Publish that kept its timer", async () => {
+    const schema = mintTestSchemaName();
+    const url = requirePostgresTestUrl();
+    await migrateWfGraphDatabase({ url, schema });
+    const publisher = connect(
+      await wfPostgres({ url, schema }).open(conformanceCipher)
+    );
+    const firer = connect(
+      await wfPostgres({ url, schema }).open(conformanceCipher)
+    );
+    const schedule = { cron: "*/5 * * * *", timeZone: "UTC" };
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        {
+          id: "entry",
+          type: "lifecycle",
+          position: { x: 0, y: 0 },
+          data: {
+            type: "lifecycle",
+            label: "Lifecycle",
+            config: {
+              lifecycleRules: {
+                startEvents: [],
+                cancelEvents: [],
+                concurrency: "unlimited",
+                schedules: [schedule],
+              },
+            },
+          },
+        },
+      ],
+      edges: [],
+    });
+    const publish = (version: number) =>
+      Effect.gen(function* () {
+        const workflows = yield* WorkflowRepo;
+        const draft = yield* workflows.findDraftRevisionById("wf_1");
+        yield* workflows.insertPublishedVersion({
+          workflowId: "wf_1",
+          versionId: `ver_${version}`,
+          version,
+          expectedPublishedVersionId:
+            version === 1 ? null : `ver_${version - 1}`,
+          expectedDraftRevision: draft?.draftRevision ?? 1,
+          graph,
+          draftGraph: graph,
+          catalogFingerprint: "catalog",
+          graphDigest: `digest-${version}`,
+          eventSubscriptions: [],
+          now: new Date(),
+        });
+      });
+    try {
+      await publisher.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          yield* workflows.insert({
+            id: "wf_1",
+            name: "Nightly report",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          yield* publish(1);
+        })
+      );
+      const [timer] = await withAdminClient((client) =>
+        client.unsafe<{ id: string }[]>(
+          `update "${schema}".workflow_execution_schedule set state = 'leased', owner_token = 'tok_1' where kind = 'cron' returning id`
+        )
+      );
+      if (!timer) throw new Error("Publish wrote no timer");
+
+      await withAdminClient(async (holder) => {
+        await holder.unsafe(`set search_path to "${schema}"`);
+        let republished: Promise<void> | undefined;
+        let fired: Promise<unknown> | undefined;
+        try {
+          const [backend] = await holder.unsafe<{ pid: number }[]>(
+            "select pg_backend_pid() as pid"
+          );
+          if (!backend) throw new Error("Backend not found");
+          // Holds the timer row, so the Publish queues for it first and the
+          // fire, its snapshot taken, queues behind the Publish.
+          await holder.unsafe("begin");
+          await holder.unsafe(
+            "select id from workflow_execution_schedule where id = $1 for update",
+            [timer.id]
+          );
+          republished = publisher.run(publish(2));
+          await waitUntilBlockedBy(backend.pid);
+          fired = firer.run(
+            Effect.flatMap(ExecutionRepo, (executions) =>
+              executions.fireCronTimer({
+                fence: {
+                  scheduleId: timer.id,
+                  workflowId: "wf_1",
+                  ownerToken: "tok_1",
+                },
+                schedule,
+                expected: {
+                  versionId: "ver_1",
+                  mode: "live",
+                  schedules: [schedule],
+                },
+                start: {
+                  execution: {
+                    workflowId: "wf_1",
+                    workflowVersionId: "ver_1",
+                    startSource: "schedule",
+                    runMode: "live",
+                    entityValue: "workflow:wf_1",
+                    input: {},
+                  },
+                  concurrency: "unlimited",
+                  supersededReason: "newer start",
+                  startedEntry: notYetDue.startedEntry,
+                },
+                refusedEntry: () => ({ message: "Refused", metadata: {} }),
+                now: new Date(),
+              })
+            )
+          );
+          await vi.waitFor(async () => {
+            const waiting = await withAdminClient((observer) =>
+              observer.unsafe(
+                "select pid from pg_stat_activity where cardinality(pg_blocking_pids(pid)) > 0 and query like '%workflow_execution_schedule%'"
+              )
+            );
+            expect(waiting.length).toBeGreaterThanOrEqual(2);
+          });
+          await holder.unsafe("commit");
+          await republished;
+          expect(await fired).toEqual({ kind: "stale" });
+        } finally {
+          await holder.unsafe("rollback");
+          await republished?.catch(() => undefined);
+          await fired?.catch(() => undefined);
+        }
+      });
+      const runs = await firer.run(
+        Effect.flatMap(ExecutionRepo, (executions) =>
+          executions.listByWorkflow({
+            workflowId: "wf_1",
+            includeSuperseded: true,
+          })
+        )
+      );
+      expect(runs).toEqual([]);
+    } finally {
+      await publisher.close();
+      await firer.close();
+      await withAdminClient((client) =>
+        client.unsafe(`drop schema "${schema}" cascade`)
+      );
+    }
+  });
 });
