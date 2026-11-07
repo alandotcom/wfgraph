@@ -55,6 +55,7 @@ its own `serve` or `connect`: see wfgraph-core/events.
 
 | Need to...                               | Load                      |
 | ---------------------------------------- | ------------------------- |
+| Write the `auth` access policy           | wfgraph-core/auth         |
 | `defineEvent`, `defineEntity`, Lifecycle | wfgraph-core/events       |
 | `defineAction` (Promise host actions)    | wfgraph-core/host-actions |
 | Write a vendor integration               | wfgraph-core/integrations |
@@ -65,13 +66,9 @@ its own `serve` or `connect`: see wfgraph-core/events.
 - `createWfGraphApp` returns `{ fetch, basePath, events, dispose, [Symbol.asyncDispose] }`. `fetch`
   is `(request: Request) => Promise<Response>`. Use `await using` for a lexical lifetime;
   call `dispose()` from a long-running host's shutdown handler.
-- `auth` is required and returns an access policy or `null`. Use
-  `WfGraphRoles`, `WfGraphAccess`, and `defineWfGraphAuth`; use
-  `trustWfGraphUpstream()` only behind a trusted upstream boundary. The full
-  contract and canonical example live in `docs/embedding.md`.
-- Load remote grants during authentication. A custom policy's `allows` method
-  is called concurrently for the editor snapshot and again for each real
-  operation, so a database lookup there creates avoidable fanout.
+- `auth` is required: a callback that returns an access policy for the
+  request's session, or `null` for a request with none. Roles, custom grants,
+  `trustWfGraphUpstream()` and the 401, 403 and 500 answers: wfgraph-core/auth.
 - `INTEGRATION_ENCRYPTION_KEY` is 64-character hex (`openssl rand -hex 32`).
 - Mount `createRequestListener(wfgraph)` **before** any body parser, at the
   same path as `basePath`. Express strips the matched path; the adapter reads
@@ -80,8 +77,8 @@ its own `serve` or `connect`: see wfgraph-core/events.
   or sink LogTape category `wfgraph`. With none of those, start-up warns once.
   Never log a request body, Event payload, or step output.
 - OAuth needs `publicUrl` (HTTPS except loopback). The callback stays behind
-  `auth`; a `SameSite=Lax` session cookie works, a custom request header on the
-  provider redirect does not. Slack/Resend on/off: wfgraph-plugins.
+  `auth`, so the session must ride on a cookie: wfgraph-core/auth. Slack/Resend
+  on/off: wfgraph-plugins.
 - `mcp: true` enables the authenticated stateless MCP endpoint for localhost.
   For a deployed host, set `mcp.allowedHostnames` and
   `mcp.allowedOriginHostnames`. `create_workflow` creates a draft containing the
@@ -167,13 +164,13 @@ Loop defaults and the `runner` fields: `docs/embedding.md` ("Workflow runs").
 
 Wrong: `createWfGraphApp({ persistence, encryption, extensions })` with no `auth`.
 
-Correct: `auth: defineWfGraphAuth((request) => accessForSession(request))`
-(or `trustWfGraphUpstream()` when an upstream component enforces authorization
-too). Return `WfGraphAccess.all` when unrestricted authenticated access is
-intentional.
+Correct: `auth: defineWfGraphAuth((request) => accessForSession(request))`,
+with the policy written as wfgraph-core/auth describes.
 
-Workflow Graph refuses to start without it. The failure to avoid is an editor
-the internet can open that decrypts integration secrets.
+`auth` is a required option, so the call fails to type-check without it. A
+JavaScript host that omits it still starts, and every operator request answers
+`500`. The failure to avoid is an editor the internet can open that decrypts
+integration secrets.
 
 Source: alandotcom/wfgraph:docs/embedding.md (createWfGraphApp options)
 

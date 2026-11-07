@@ -63,22 +63,22 @@ integrations). The published skills ship inside the `@wfgraph/core` and
 
 | Domain          | Description                                                                                                                            | Skills                                                        |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| embedding       | Mounting Workflow Graph in a host and operating it: the app call, editor bundle, access policy, persistence, worker loop, Worker, logs | wfgraph-core; planned: auth, observability, cloudflare-worker |
+| embedding       | Mounting Workflow Graph in a host and operating it: the app call, editor bundle, access policy, persistence, worker loop, Worker, logs | wfgraph-core, auth; planned: observability, cloudflare-worker |
 | host-extensions | What a host contributes from its own code: Events, Entities and their intake, and host actions                                         | events, host-actions                                          |
 | integrations    | Writing a vendor integration against `@wfgraph/core/plugin`, and turning on the six built-ins                                          | integrations, wfgraph-plugins                                 |
 
 ## Skill Inventory
 
-| Skill             | Type      | Domain          | Status      | What it covers                                                                                                                              | Failure modes |
-| ----------------- | --------- | --------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| wfgraph-core      | core      | embedding       | implemented | `createWfGraphApp`, `createRequestListener`, `clientBundle`, `basePath`, `publicUrl`, `auth`, persistence, migrations, the worker loop, MCP | 11            |
-| events            | sub-skill | host-extensions | implemented | `defineEvent`, `defineEntity`, `correlationPath`, umbrella sources, intake through `events.send`, HTTP, the inbox table and Inngest         | 6             |
-| host-actions      | sub-skill | host-extensions | implemented | `defineAction`, config forms, `options` callbacks, `step.run`, `readCredentials`, `sideEffect`                                              | 3             |
-| integrations      | sub-skill | integrations    | implemented | `defineIntegration`, `callExternal`, webhooks, `IntegrationOAuth`, `runAction`, `checkIntegration`, evolving and retiring actions           | 7             |
-| wfgraph-plugins   | core      | integrations    | implemented | `builtInIntegrations`, `slack(options?)`, the five value exports, OAuth host requirements, Resend webhook Events                            | 4             |
-| auth              | sub-skill | embedding       | planned     | `defineWfGraphAuth`, `WfGraphRoles`, `WfGraphAccess`, `trustWfGraphUpstream`                                                                | not authored  |
-| observability     | sub-skill | embedding       | planned     | `configureWfGraphLogging`, `logger`, LogTape, OpenTelemetry, Sentry, span names                                                             | not authored  |
-| cloudflare-worker | sub-skill | embedding       | planned     | `wfWorker`, `wfHyperdrive`, Cron Trigger, wake Queue, Hyperdrive caching, platform limits                                                   | not authored  |
+| Skill             | Type      | Domain          | Status      | What it covers                                                                                                                                         | Failure modes |
+| ----------------- | --------- | --------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
+| wfgraph-core      | core      | embedding       | implemented | `createWfGraphApp`, `createRequestListener`, `clientBundle`, `basePath`, `publicUrl`, the `auth` option, persistence, migrations, the worker loop, MCP | 11            |
+| events            | sub-skill | host-extensions | implemented | `defineEvent`, `defineEntity`, `correlationPath`, umbrella sources, intake through `events.send`, HTTP, the inbox table and Inngest                    | 6             |
+| host-actions      | sub-skill | host-extensions | implemented | `defineAction`, config forms, `options` callbacks, `step.run`, `readCredentials`, `sideEffect`                                                         | 3             |
+| integrations      | sub-skill | integrations    | implemented | `defineIntegration`, `callExternal`, webhooks, `IntegrationOAuth`, `runAction`, `checkIntegration`, evolving and retiring actions                      | 7             |
+| wfgraph-plugins   | core      | integrations    | implemented | `builtInIntegrations`, `slack(options?)`, the five value exports, OAuth host requirements, Resend webhook Events                                       | 4             |
+| auth              | sub-skill | embedding       | implemented | `defineWfGraphAuth`, `WfGraphRoles`, `WfGraphAccess`, `trustWfGraphUpstream`, the 401, 403 and 500 answers, the editor's grant snapshot                | 4             |
+| observability     | sub-skill | embedding       | planned     | `configureWfGraphLogging`, `logger`, LogTape, OpenTelemetry, Sentry, span names                                                                        | not authored  |
+| cloudflare-worker | sub-skill | embedding       | planned     | `wfWorker`, `wfHyperdrive`, Cron Trigger, wake Queue, Hyperdrive caching, platform limits                                                              | not authored  |
 
 ## Failure Mode Inventory
 
@@ -88,7 +88,7 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 
 | #   | Mistake                                    | Priority | Source                                                | Cross-skill?                |
 | --- | ------------------------------------------ | -------- | ----------------------------------------------------- | --------------------------- |
-| 1   | Missing authorization boundary             | CRITICAL | docs/embedding.md (createWfGraphApp options)          | auth (planned)              |
+| 1   | Missing authorization boundary             | CRITICAL | docs/embedding.md (createWfGraphApp options)          | auth                        |
 | 2   | Pass an inngest option to createWfGraphApp | HIGH     | docs/events.md (Sending through Inngest)              | events                      |
 | 3   | Body parser in front of the listener       | HIGH     | docs/embedding.md (Mounting on Node)                  | none                        |
 | 4   | Mount path disagrees with basePath         | HIGH     | docs/embedding.md (Mounting on Node)                  | none                        |
@@ -99,6 +99,15 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | 9   | Hyperdrive with query caching              | HIGH     | docs/embedding.md (Cloudflare Workers and Hyperdrive) | cloudflare-worker (planned) |
 | 10  | Upgrade with legacy Group config keys      | HIGH     | docs/embedding.md (Groups)                            | none                        |
 | 11  | Repeat a stale MCP write                   | HIGH     | docs/embedding.md (MCP authoring)                     | none                        |
+
+### auth (4 failure modes)
+
+| #   | Mistake                           | Priority | Source                                               | Cross-skill?                  |
+| --- | --------------------------------- | -------- | ---------------------------------------------------- | ----------------------------- |
+| 1   | A policy that grants everything   | CRITICAL | docs/embedding.md (Authentication and authorization) | wfgraph-core                  |
+| 2   | Throwing for a missing session    | HIGH     | docs/embedding.md (Authentication and authorization) | none                          |
+| 3   | A grant-store query inside allows | HIGH     | docs/embedding.md (Authentication and authorization) | none                          |
+| 4   | Header-only authentication        | MEDIUM   | docs/embedding.md (Built-in integrations)            | wfgraph-plugins, wfgraph-core |
 
 ### events (6 failure modes)
 
@@ -133,12 +142,12 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 
 ### wfgraph-plugins (4 failure modes)
 
-| #   | Mistake                                 | Priority | Source                                    | Cross-skill?                 |
-| --- | --------------------------------------- | -------- | ----------------------------------------- | ---------------------------- |
-| 1   | Expect import to enable integrations    | CRITICAL | packages/plugins/README.md                | integrations                 |
-| 2   | Slack OAuth without publicUrl           | HIGH     | docs/embedding.md (Built-in integrations) | none                         |
-| 3   | Two copies of @wfgraph/core             | HIGH     | docs/embedding.md                         | none                         |
-| 4   | Header-based auth on the OAuth callback | MEDIUM   | docs/embedding.md                         | wfgraph-core, auth (planned) |
+| #   | Mistake                                 | Priority | Source                                    | Cross-skill?       |
+| --- | --------------------------------------- | -------- | ----------------------------------------- | ------------------ |
+| 1   | Expect import to enable integrations    | CRITICAL | packages/plugins/README.md                | integrations       |
+| 2   | Slack OAuth without publicUrl           | HIGH     | docs/embedding.md (Built-in integrations) | none               |
+| 3   | Two copies of @wfgraph/core             | HIGH     | docs/embedding.md                         | none               |
+| 4   | Header-based auth on the OAuth callback | MEDIUM   | docs/embedding.md                         | wfgraph-core, auth |
 
 ## Tensions
 
@@ -156,7 +165,7 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | host-actions    | integrations                | The Promise and Effect comparison decides which path a step belongs on.                           |
 | integrations    | wfgraph-plugins             | The six built-ins are the worked examples, and a host turns them on the way it turns on its own.  |
 | wfgraph-plugins | wfgraph-core                | OAuth and webhook URLs depend on `publicUrl`, `basePath` and the `auth` callback.                 |
-| wfgraph-core    | auth (planned)              | `auth` is a required option, and the planned skill will own the policy guidance.                  |
+| wfgraph-core    | auth                        | `auth` is a required option; the auth skill owns the policy guidance.                             |
 | wfgraph-core    | observability (planned)     | Start-up warns when no logging is configured, and the planned skill will own logging and tracing. |
 | wfgraph-core    | cloudflare-worker (planned) | The Worker bullets and failure modes in wfgraph-core move to the planned skill.                   |
 
@@ -169,16 +178,18 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 
 ## Remaining Gaps
 
-| Skill        | Question                                                                                                                          | Status |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| wfgraph-core | Does configuring the build agent (`agent.apiKey`, `agent.model`, `agent.reasoningEffort`, `agent.baseUrl`) need adopter guidance? | open   |
-| all          | Discovery checks and executable task checks have not run for any skill (decision 5 places them in `packages/evals/src/skills/`).  | open   |
+| Skill        | Question                                                                                                                                                                                                                      | Status |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| wfgraph-core | Does configuring the build agent (`agent.apiKey`, `agent.model`, `agent.reasoningEffort`, `agent.baseUrl`) need adopter guidance?                                                                                             | open   |
+| all          | Discovery checks have not run for any skill, and no fresh consumer session has attempted a task. Executable task checks exist for auth only (`packages/evals/src/skills/auth/`).                                              | open   |
+| auth         | `docs/embedding.md` ("createWfGraphApp options") says Workflow Graph refuses to start without `auth`. The code starts, and every operator request answers `500`; only the type requires the option. Should the manual say so? | open   |
+| auth         | The operation table in `docs/embedding.md` ("Authentication and authorization") omits `action.configOptions`, which `WfGraphOperations` grants under `workflow.write`. Should the manual list it?                             | open   |
 
 ## Recommended Skill File Structure
 
 - **Core skills:** wfgraph-core (`@wfgraph/core`) and wfgraph-plugins (`@wfgraph/plugins`).
-- **Sub-skills:** events, host-actions and integrations under
-  `packages/core/skills/wfgraph-core/`, and the planned auth, observability and
+- **Sub-skills:** events, host-actions, integrations and auth under
+  `packages/core/skills/wfgraph-core/`, and the planned observability and
   cloudflare-worker in the same directory.
 - **Framework skills:** none. The packages are framework-agnostic; `hono` is an
   internal peer dependency, and Node, Express, Fastify and Bun mounting is one
@@ -212,12 +223,13 @@ Coverage of `docs/embedding.md` by section:
   Node", "The editor" (the `client` option), "Groups" (the removed config keys
   and the rules MCP writes keep), "MCP authoring", "Persistence", "Workflow
   runs" with all five subsections, "PostgreSQL migrations" and "createWfGraphApp
-  options". wfgraph-core also summarizes "Authentication and authorization",
+  options". wfgraph-core also keeps the required `auth` option and summarizes
   "Cloudflare Workers and Hyperdrive" and "Logging" in a few bullets each.
 - Covered by host-actions: "Dynamic host action fields".
 - Covered by wfgraph-plugins: "Built-in integrations".
-- Planned: "Authentication and authorization" (auth), "Logging" and "Tracing"
-  (observability), "Cloudflare Workers and Hyperdrive" with its four
+- Covered by auth: "Authentication and authorization", and the OAuth callback
+  requirement in "Built-in integrations".
+- Planned: "Logging" and "Tracing" (observability), "Cloudflare Workers and Hyperdrive" with its four
   subsections and the Worker use of "PostgreSQL migrations" (cloudflare-worker).
 - Assessed and left without a skill: "Workspaces and Canvas Reveal" and "On a
   phone" describe the editor for the people who use it and hold no adopter code
@@ -269,11 +281,40 @@ sources, apart from the source checks each later batch records.
   scheduled and queue handlers run". wfgraph-core's claim now traces to its
   cited manual, which closes the gap batch 1 recorded. No skill text changed.
 
+### Batch 2: the auth skill (packages at 3.1.1, base c774d9c7)
+
+- Wrote `packages/core/skills/wfgraph-core/auth/SKILL.md` from
+  `docs/embedding.md` ("Authentication and authorization", and the OAuth
+  callback rule in "Built-in integrations"), with each claim checked against
+  `packages/core/src/backend/lib/http/authorize.ts`,
+  `packages/shared/src/authorization/operations.ts`, `packages/core/src/app.ts`
+  and `packages/core/src/backend/api-app.ts`. The skill holds the procedure, the
+  role table, the meaning of each status code, the routes that skip the
+  callback, the grant snapshot and four mistakes. The full operation table
+  stays in the manual (decision 6).
+- wfgraph-core keeps the required `auth` option as one bullet and its CRITICAL
+  mistake, and routes the policy, the grant-loading rule and the OAuth cookie
+  rule to auth. Its routing table gained the auth row. Its "Missing
+  authorization boundary" mistake no longer says Workflow Graph refuses to start
+  without `auth`: a probe showed the app starts and answers `500` to every
+  operator request, and only the type requires the option.
+- Decision: the auth check grades over HTTP against `createWfGraphApp` on
+  in-memory SQLite, with a session cookie as the host's session. It covers the
+  role policies, a `fromPermissions` policy built from a host grant store, and
+  two incorrect solutions: a policy that grants everything (the grader fails at
+  its first assertion, `expected 200 to be 401`) and a store read inside
+  `allows` (the boundary holds and the one-read-per-request assertion fails).
+- Checks: `intent validate` passed for six skills; `pnpm run test` ran the four
+  auth cases in the node project. Discovery and a fresh consumer session are
+  unverified (no isolated agent session was available). Not covered by an
+  executable check: the OAuth callback cookie rule, the `500` answers for a
+  malformed policy or a non-boolean `allows`, and `trustWfGraphUpstream()`.
+
 ### Remaining work
 
-1. Author auth, observability and cloudflare-worker; move the Worker bullets
-   and failure modes from wfgraph-core into cloudflare-worker; add the three
-   rows to the wfgraph-core sub-skill table.
-2. Create `packages/evals/src/skills/` with discovery prompts and executable task
-   checks, starting with the skills whose guidance changes next.
+1. Author observability and cloudflare-worker; move the Worker bullets and
+   failure modes from wfgraph-core into cloudflare-worker; add their rows to the
+   wfgraph-core sub-skill table.
+2. Add executable task checks under `packages/evals/src/skills/` for each new
+   skill, and discovery prompts for every skill.
 3. Resolve the open gaps.

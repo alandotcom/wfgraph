@@ -158,17 +158,25 @@ skills:
     domain: embedding
     package: packages/core
     path: skills/wfgraph-core/auth/SKILL.md
-    status: planned
-    description:
-      "Use when writing the access policy for an embedded Workflow Graph
-      app: mapping host sessions to roles with defineWfGraphAuth and WfGraphRoles, building
-      custom policies with WfGraphAccess from permissions or operation IDs, or trusting
-      an upstream authorizer with trustWfGraphUpstream. For mounting the app use wfgraph-core."
-    purpose:
+    description: >
+      Use when deciding who can open and change an embedded Workflow Graph app:
+      writing the auth callback for createWfGraphApp or wfWorker with
+      defineWfGraphAuth, mapping host sessions to the viewer, editor and admin
+      policies in WfGraphRoles, building a custom policy from the host's own grants
+      with WfGraphAccess.fromPermissions or fromOperationIds, choosing
+      trustWfGraphUpstream behind a gateway that authorizes every request, or
+      explaining a 401, 403 or 500 from the Workflow Graph API. Also use for
+      requests such as "let support staff see runs but not edit workflows", "only
+      admins may manage connections" or "the workflow editor fails to load after we
+      changed our login". For the other createWfGraphApp options use wfgraph-core;
+      for turning on the built-in OAuth integrations use wfgraph-plugins.
+    purpose: >
       Write the host access policy for Workflow Graph with defineWfGraphAuth,
       WfGraphRoles, WfGraphAccess and trustWfGraphUpstream.
     sources:
       - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:packages/core/src/backend/lib/http/authorize.ts
+      - alandotcom/wfgraph:packages/shared/src/authorization/operations.ts
     requires:
       - wfgraph-core
   - name: observability

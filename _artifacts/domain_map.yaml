@@ -60,7 +60,7 @@ skills:
       - clientBundle from @wfgraph/client
       - basePath
       - publicUrl
-      - auth (defineWfGraphAuth, WfGraphRoles, WfGraphAccess, trustWfGraphUpstream)
+      - the required auth option (policy guidance lives in auth)
       - encryption.key (INTEGRATION_ENCRYPTION_KEY)
       - wfPostgres
       - wfSqlite
@@ -99,7 +99,7 @@ skills:
         config_surface: wfHyperdrive(env.HYPERDRIVE) inside wfWorker's request callback
     failure_modes:
       - mistake: Missing authorization boundary
-        mechanism: Workflow Graph refuses to start without auth; the failure the rule prevents is an editor the internet can open that decrypts integration secrets.
+        mechanism: auth is a required option, so the call fails to type-check without it; a JavaScript host that omits it starts and answers 500 to every operator request. The failure the rule prevents is an editor the internet can open that decrypts integration secrets.
         wrong_pattern: |
           createWfGraphApp({ persistence, encryption, extensions })
         correct_pattern: |
@@ -519,12 +519,11 @@ skills:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/plugins/README.md
 
-  # Planned sub-skills of wfgraph-core, approved by the maintainer for the
-  # commit after this record. They have no SKILL.md yet.
+  # Planned sub-skills of wfgraph-core, approved by the maintainer in batch 1.
+  # auth is implemented; observability and cloudflare-worker have no SKILL.md yet.
   - name: auth
     slug: auth
     domain: embedding
-    status: planned
     description: >-
       A developer writes the access policy that decides who can use the editor,
       the API and OAuth connections.
@@ -534,16 +533,61 @@ skills:
     covers:
       - defineWfGraphAuth
       - WfGraphRoles
-      - WfGraphAccess
+      - WfGraphAccess (all, fromPermissions, fromOperationIds)
       - trustWfGraphUpstream
-      - WfGraphOperations and WfGraphPermissions
+      - WfGraphOperations, WfGraphOperationIds and WfGraphPermissions
+      - the 401, 403 and 500 answers
+      - machine and public routes outside the callback
+      - the editor's grant snapshot on GET /api/extensions
     tasks:
-      - Map host sessions to the viewer, editor and admin role policies.
+      - Map host sessions to the viewer, editor and admin role policies, returning null for a request with no session.
       - Build a custom policy from permissions or operation IDs, loading remote grants once in the authentication callback.
       - Choose trustWfGraphUpstream only behind an upstream component that authorizes every request.
       - Keep the OAuth callback authenticated by a cookie the provider redirect carries.
+      - Explain a 401, 403 or 500 answer from the API.
+    failure_modes:
+      - mistake: A policy that grants everything
+        mechanism: WfGraphAccess.all for every request, or trustWfGraphUpstream with no upstream authorizer, lets anonymous requests read and publish workflows and manage connections that hold decrypted credentials.
+        wrong_pattern: |
+          defineWfGraphAuth(() => WfGraphAccess.all)
+        correct_pattern: |
+          defineWfGraphAuth((request) => { const role = readRole(request); return role === null ? null : WfGraphRoles[role] })
+        source: alandotcom/wfgraph:docs/embedding.md (Authentication and authorization)
+        priority: CRITICAL
+        status: active
+        skills: [auth, wfgraph-core]
+      - mistake: Throwing for a missing session
+        mechanism: A thrown or rejected callback is a host-system failure, so the request answers 500 instead of 401.
+        wrong_pattern: |
+          if (!session) throw new Error("not signed in")
+        correct_pattern: |
+          if (!session) return null
+        source: alandotcom/wfgraph:docs/embedding.md (Authentication and authorization)
+        priority: HIGH
+        status: active
+      - mistake: A grant-store query inside allows
+        mechanism: The editor's boot snapshot calls allows for every operation concurrently, so a query inside it runs about forty times for one page load.
+        wrong_pattern: |
+          { allows: async (operation) => (await loadGrants(userId)).includes(operation.permission) }
+        correct_pattern: |
+          WfGraphAccess.fromPermissions(await loadGrants(userId)) inside the authentication callback
+        source: alandotcom/wfgraph:docs/embedding.md (Authentication and authorization)
+        priority: HIGH
+        status: active
+      - mistake: Header-only authentication
+        mechanism: The OAuth callback stays behind auth and arrives as a top-level provider redirect, which carries cookies and no custom headers.
+        wrong_pattern: |
+          A callback that accepts only an Authorization header
+        correct_pattern: |
+          A callback that reads a SameSite=Lax session cookie
+        source: alandotcom/wfgraph:docs/embedding.md (Built-in integrations)
+        priority: MEDIUM
+        status: active
+        skills: [auth, wfgraph-plugins, wfgraph-core]
     sources:
       - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:packages/core/src/backend/lib/http/authorize.ts
+      - alandotcom/wfgraph:packages/shared/src/authorization/operations.ts
 
   - name: observability
     slug: observability
@@ -624,7 +668,7 @@ cross_references:
     reason: OAuth and webhook URLs depend on publicUrl, basePath and the auth callback.
   - from: wfgraph-core
     to: auth
-    reason: auth is a required createWfGraphApp option; the planned auth skill will own the policy guidance.
+    reason: auth is a required createWfGraphApp option; the auth skill owns the policy guidance.
   - from: wfgraph-core
     to: observability
     reason: Start-up warns when no logging is configured; the planned observability skill will own logging and tracing.
@@ -638,6 +682,14 @@ gaps:
     context: No skill covers the agent options in docs/embedding.md; the gap was found during this assessment and has no maintainer decision.
     status: open
   - skill: wfgraph-core
-    question: Discovery and executable task checks for the five skills.
-    context: Checks will live in packages/evals/src/skills/. Until they exist, activation and task success are unverified.
+    question: Discovery checks for every skill, executable task checks for the five batch 1 skills, and a fresh consumer session for any skill.
+    context: Task checks live in packages/evals/src/skills/ and exist for auth. No isolated agent session was available, so activation and consumer behavior are unverified for every skill.
+    status: open
+  - skill: auth
+    question: docs/embedding.md (createWfGraphApp options) says Workflow Graph refuses to start without auth, but the app starts and answers 500 to every operator request; only the type requires the option. Should the manual say so?
+    context: Found while verifying the auth skill against packages/core/src/app.ts. The skills state the observed behavior.
+    status: open
+  - skill: auth
+    question: The operation table in docs/embedding.md (Authentication and authorization) omits action.configOptions, which WfGraphOperations grants under workflow.write. Should the manual list it?
+    context: The auth skill names WfGraphOperationIds and the OpenAPI document as the full list instead of repeating the table.
     status: open

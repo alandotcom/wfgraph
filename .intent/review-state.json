@@ -3,24 +3,24 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "2066cccd7f06a5c475e6a61cef978224ffff156cd2500d2ddb0e95320b09e954",
+      "fingerprint": "43f32817e24b58abd2cf42e954bad47501ab8290ff681b1ebe0c57eb1caa9665",
       "snapshot": {
         "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
         "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
-        "packages/core/skills/wfgraph-core/SKILL.md": "ff396a466b8b99f0177b94ad67a46a3387f9a99b9a8194e06fa8f242217e2dcc",
+        "packages/core/skills/wfgraph-core/SKILL.md": "1c4b79fd5916a49d2fcf55c6440a5cacd9d4ecc1881e41e587a9282d9d2181f5",
+        "packages/core/skills/wfgraph-core/auth/SKILL.md": "7a60527feff8cf53533809334068f6a50e74fa8d4d1b15a731ba0cc951cab457",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "6e6fd837d58cce2410d032bcb57099dfc399f5c5fe7025c1245d1c028895f825",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27"
       },
-      "head": "521fdea62b272338fd0c4a2b441714dc49e25794",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md gained two sentences stating that createWfGraphRunner refuses wfHyperdrive at startup. wfgraph-core already states that refusal (Persistence bullets), and the code throws it from resolveRunnerSettings when openWfGraphSetup finds no loop poll interval on the Hyperdrive backend. The skill's claim now traces to its cited manual; no guidance changes.",
+      "head": "c774d9c7714e7ab8935f8b365d0f23690a8e3d28",
+      "outcome": "updated",
+      "reason": "Added the auth routing row, replaced the two policy bullets with one bullet that keeps the required option and routes to auth, routed the OAuth cookie rule to auth, and corrected the Missing authorization boundary mistake: a probe of createWfGraphApp without auth showed the app starts and answers 500 to every operator request, so the skill no longer says Workflow Graph refuses to start.",
       "evidence": [
-        "docs/embedding.md (Run the loop in its own process; Cloudflare Workers and Hyperdrive)",
-        "packages/core/src/backend/executor/in-process-runner.ts (resolveRunnerSettings)",
-        "packages/core/src/backend/setup.ts (openWfGraphSetup)",
-        "packages/core/src/runner.ts",
-        "base 3ba18087, head 521fdea6 plus this docs change"
+        "packages/core/src/app.ts (resolveAuth runs without a check)",
+        "probe: createWfGraphApp({ persistence: wfSqlite(), encryption }) resolved and GET /api/rest/workflows answered 500",
+        "packages/core/skills/wfgraph-core/auth/SKILL.md",
+        "pnpm exec intent validate: 6 skill files passed"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -95,34 +95,34 @@
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "02ce19d5d50cd25e0235f7348e1980f3b88380b988f7f47e11e18d5513042896",
+      "fingerprint": "dda24d4e2ff7563d6904ff4c1454bebc32e590aa26128e73a67c59acff0d48ce",
       "snapshot": {
         "README.md": "c81a1adc2b4bf2038aea5c0017c62478fd566f913387ec31230aca1111448389",
-        "_artifacts/domain_map.yaml": "352d7be5f5434388024e269339e3bb802852435ae65b96beb6605cd1087c924d",
-        "_artifacts/skill_spec.md": "eb2f639bcf5f7a8a3c65e9082581514bef8e17c79bb475f707735a5eaaceda54",
-        "_artifacts/skill_tree.yaml": "597e37516c5fe2b6dc9b9e20ab9f3722fc67e79438aac459dc1de1a6b077548a",
+        "_artifacts/domain_map.yaml": "be8d2fad92a81660917f919ad490e36c0c4907072e6e94830ef773f88a416008",
+        "_artifacts/skill_spec.md": "3e97204636f2f0e7c4057f6c12e86895d906e3e9bd829801fd834319d8ef8253",
+        "_artifacts/skill_tree.yaml": "63886a813ad039b67da3259a612ce60c16056f3541dcb791f3a6f8aaa8140001",
         "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
         "docs/events.md": "b7690fd2be3ee688359e17f2438416ac4e2aab290c837ce13bdb5bab73bd3d09",
         "docs/integrations.md": "3286a74c669550439377f611e8cd6ecf38751cf0986002d2f6448f73c2dcdf50",
-        "packages/core/skills/wfgraph-core/SKILL.md": "ff396a466b8b99f0177b94ad67a46a3387f9a99b9a8194e06fa8f242217e2dcc",
+        "packages/core/skills/wfgraph-core/SKILL.md": "1c4b79fd5916a49d2fcf55c6440a5cacd9d4ecc1881e41e587a9282d9d2181f5",
+        "packages/core/skills/wfgraph-core/auth/SKILL.md": "7a60527feff8cf53533809334068f6a50e74fa8d4d1b15a731ba0cc951cab457",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "6e6fd837d58cce2410d032bcb57099dfc399f5c5fe7025c1245d1c028895f825",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "7a7e1bbf0bb6e9eb6c6142836071142e1b287f5424fedd4a5b8acdb0551dd720",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "6c36de1232f4b678f75ded12c3bfaef04f2408a4e19f6c9816ecaafd720a6d27",
+        "packages/core/src/backend/lib/http/authorize.ts": "cd6c5ff58b4d7a6bd9a96c9dd4c5d3f54f2b65604a59902c0031fccb00847f9b",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
-        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "14a493074ecf5765ddc54b1520bfd4ed106fcd72d2d08437fb0beef59147ac8a"
+        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "14a493074ecf5765ddc54b1520bfd4ed106fcd72d2d08437fb0beef59147ac8a",
+        "packages/shared/src/authorization/operations.ts": "15958bfe40b707b615f98b19e8d4d30a515dbcd9626e4ed393b91158e0379b5c"
       },
-      "head": "521fdea62b272338fd0c4a2b441714dc49e25794",
+      "head": "c774d9c7714e7ab8935f8b365d0f23690a8e3d28",
       "outcome": "updated",
-      "reason": "Removed the open gap about the undocumented Hyperdrive runner refusal from domain_map.yaml and skill_spec.md, now that docs/embedding.md states it, and added a batch history entry naming the source of the refusal. skill_tree.yaml is unchanged and accurate.",
+      "reason": "auth is implemented in all three records: the tree entry drops status planned and carries the skill's description and sources; domain_map.yaml records its covers, tasks, four failure modes, the corrected wfgraph-core mechanism and two documentation gaps; skill_spec.md records the inventory, failure modes, cross-references, coverage, batch 2 history with its checks and unverified items, and the remaining work.",
       "evidence": [
-        "docs/embedding.md (Run the loop in its own process; Cloudflare Workers and Hyperdrive)",
-        "packages/core/src/backend/executor/in-process-runner.ts (resolveRunnerSettings)",
-        "packages/core/src/backend/setup.ts (openWfGraphSetup)",
-        "packages/core/src/runner.ts",
-        "base 3ba18087, head 521fdea6 plus this docs change",
         "_artifacts/domain_map.yaml",
         "_artifacts/skill_spec.md",
-        "_artifacts/skill_tree.yaml"
+        "_artifacts/skill_tree.yaml",
+        "python yaml.safe_load parsed both YAML files",
+        "pnpm exec intent maintainer check: 0 files to sync"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -136,6 +136,55 @@
       "evidence": [
         ".changeset/skill-activation-descriptions.md",
         "base and head 3ba18087"
+      ]
+    },
+    "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
+      "fingerprint": "31b3cb3dc0f1405882c195c367006f078131589aad60ecd17577f951809c2099",
+      "snapshot": {
+        "docs/embedding.md": "27ba453a21e01ccc19d1c429e022bd745c3ea8292c2a88b4dbf80b2600119eb8",
+        "packages/core/skills/wfgraph-core/auth/SKILL.md": "7a60527feff8cf53533809334068f6a50e74fa8d4d1b15a731ba0cc951cab457",
+        "packages/core/src/backend/lib/http/authorize.ts": "cd6c5ff58b4d7a6bd9a96c9dd4c5d3f54f2b65604a59902c0031fccb00847f9b",
+        "packages/shared/src/authorization/operations.ts": "15958bfe40b707b615f98b19e8d4d30a515dbcd9626e4ed393b91158e0379b5c"
+      },
+      "head": "c774d9c7714e7ab8935f8b365d0f23690a8e3d28",
+      "outcome": "updated",
+      "reason": "New skill. Every claim was checked against docs/embedding.md (Authentication and authorization; Built-in integrations) and the code: authorize.ts (null to 401, allows false to 403, thrown callback, missing allows or non-boolean allows to 500, request.clone, role permission sets, WfGraphAccess.all as admin), operations.ts (the seven permissions, 41 operations), api-app.ts (machine and public routes, the sanitized 500 body, the request record carrying the failure) and app.ts (wfgraph.http.auth for the editor page). The operation table stays in the manual.",
+      "evidence": [
+        "docs/embedding.md",
+        "packages/core/src/backend/lib/http/authorize.ts",
+        "packages/shared/src/authorization/operations.ts",
+        "packages/core/src/backend/api-app.ts",
+        "packages/core/src/app.ts",
+        "packages/core/src/worker.ts (auth exports)",
+        "pnpm exec intent validate: 6 skill files passed",
+        "pnpm exec vitest run --project node packages/evals/src/skills: 4 auth cases passed, including the grants-everything policy (rejected at 'expected 200 to be 401') and the store read inside allows (rejected at the one-read assertion)",
+        "Discovery and a fresh consumer session: unverified, no isolated agent session available"
+      ]
+    },
+    "source:packages/evals/src/skills/auth/access-policy.test.ts": {
+      "fingerprint": "3ee0533adfeac10df9fefff86d8615bebf429b7b1a61076fcf0440caab43de0d",
+      "snapshot": {
+        "packages/evals/src/skills/auth/access-policy.test.ts": "68492b1f35ab1b0a2a7696ca66331980f10fe7ee0af66ef6938727e4b8905b2c"
+      },
+      "head": "c774d9c7714e7ab8935f8b365d0f23690a8e3d28",
+      "outcome": "out-of-scope",
+      "reason": "An executable task check for the auth skill (decision 5). It grades the guidance and is no source of it, so no skill reads it.",
+      "evidence": [
+        "packages/evals/src/skills/auth/access-policy.test.ts",
+        "pnpm exec vitest run --project node packages/evals/src/skills: 4 auth cases passed, including the grants-everything policy (rejected at 'expected 200 to be 401') and the store read inside allows (rejected at the one-read assertion)"
+      ]
+    },
+    "source:packages/evals/src/skills/host.ts": {
+      "fingerprint": "a416e349275da88816d59642350dc68077a6d06d818c9e77752dc45aeb62bc11",
+      "snapshot": {
+        "packages/evals/src/skills/host.ts": "abfab462d7eea3f5ab71840cafe50cb5890ec51486e8214f26b023c83ec8f9af"
+      },
+      "head": "c774d9c7714e7ab8935f8b365d0f23690a8e3d28",
+      "outcome": "out-of-scope",
+      "reason": "An executable task check for the auth skill (decision 5). It grades the guidance and is no source of it, so no skill reads it.",
+      "evidence": [
+        "packages/evals/src/skills/host.ts",
+        "pnpm exec vitest run --project node packages/evals/src/skills: 4 auth cases passed, including the grants-everything policy (rejected at 'expected 200 to be 401') and the store read inside allows (rejected at the one-read assertion)"
       ]
     }
   }
