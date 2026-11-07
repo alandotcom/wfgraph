@@ -25,6 +25,9 @@ export function at(offsetMs: number): Date {
   return new Date(T0.getTime() + offsetMs);
 }
 
+/** The `olderThan` cutoff the retention sweep cases pass: an hour after `T0`. */
+export const RETENTION_CUTOFF = at(3_600_000);
+
 /**
  * Opens one run against the seeded workflow, with its schedule row due at
  * `wakeAt`, and answers its id.

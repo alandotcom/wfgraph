@@ -1,17 +1,5 @@
-import {
-  and,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  lt,
-  ne,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { Effect } from "effect";
-import type { Workflow, WorkflowVersion } from "#src/backend/lib/db/schema";
 import { CURRENT_WORKFLOW_NAME } from "#src/backend/lib/workflow-constants";
 import {
   asPublishedVersion,
@@ -22,14 +10,20 @@ import {
   type WorkflowVersionUsageRow,
 } from "#src/backend/services/workflows/repo";
 import { workflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
-import { sweepableDraftSnapshot } from "#src/backend/services/workflows/repo/retention-policy";
 import type {
   SqliteDatabase,
   SqliteExecutor,
   SqliteReadExecutor,
 } from "#src/backend/persistence/sqlite/database";
 import { encodeGraph } from "#src/backend/persistence/sqlite/database";
-import { deleteOldestBatch } from "#src/backend/persistence/sqlite/batched-delete";
+import { makeSqliteDraftSnapshotMethods } from "#src/backend/persistence/sqlite/workflows/draft-snapshots";
+import {
+  sqliteWorkflow,
+  sqliteWorkflowVersion,
+  workflowIsPaused,
+  workflowMode,
+  workflowVisibility,
+} from "#src/backend/persistence/sqlite/workflows/rows";
 import {
   workflowEventSubscriptions,
   workflowExecutions,
@@ -37,88 +31,12 @@ import {
   workflowWaitStates,
   workflows,
 } from "#src/backend/persistence/sqlite/schema";
-import { isSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
-import {
-  WORKFLOW_VERSION_KINDS,
-  type WorkflowVersionKind,
-} from "@wfgraph/shared/graph/version-kinds";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 const SQLITE_IN_FLIGHT_EXECUTION_STATUSES = IN_FLIGHT_EXECUTION_STATUSES.map(
   (status) => `'${status}'`
 ).join(", ");
-
-function workflowMode(value: string): Workflow["mode"] {
-  if (value !== "live" && value !== "test") {
-    throw new Error("Invalid SQLite workflow mode");
-  }
-  return value;
-}
-
-function workflowVisibility(value: string): Workflow["visibility"] {
-  if (value !== "private" && value !== "public") {
-    throw new Error("Invalid SQLite workflow visibility");
-  }
-  return value;
-}
-
-function workflowGraph(
-  value: string,
-  field = "graph"
-): SerializedWorkflowGraph {
-  const graph = JSON.parse(value);
-  if (!isSerializedWorkflowGraph(graph)) {
-    throw new Error(`Invalid SQLite ${field}`);
-  }
-  return graph;
-}
-
-function workflowIsPaused(value: number): boolean {
-  if (value !== 0 && value !== 1) {
-    throw new Error("Invalid SQLite is_paused");
-  }
-  return value === 1;
-}
-
-function workflowVersionKind(value: string): WorkflowVersionKind {
-  const kind = WORKFLOW_VERSION_KINDS.find((candidate) => candidate === value);
-  if (kind === undefined) throw new Error("Invalid SQLite kind");
-  return kind;
-}
-
-export function sqliteWorkflow(row: typeof workflows.$inferSelect): Workflow {
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    graph: workflowGraph(row.graph),
-    draftRevision: row.draftRevision,
-    isPaused: workflowIsPaused(row.isPaused),
-    mode: workflowMode(row.mode),
-    visibility: workflowVisibility(row.visibility),
-    publishedVersionId: row.publishedVersionId,
-    createdAt: new Date(row.createdAt),
-    updatedAt: new Date(row.updatedAt),
-  };
-}
-
-export function sqliteWorkflowVersion(
-  row: typeof workflowVersions.$inferSelect
-): WorkflowVersion {
-  return {
-    id: row.id,
-    workflowId: row.workflowId,
-    version: row.version,
-    kind: workflowVersionKind(row.kind),
-    graph: workflowGraph(row.graph),
-    catalogFingerprint: row.catalogFingerprint,
-    graphDigest: row.graphDigest,
-    publishedAt: new Date(row.publishedAt),
-    lastPinnedAt: row.lastPinnedAt === null ? null : new Date(row.lastPinnedAt),
-  };
-}
 
 function replaceSubscriptions(
   database: SqliteExecutor,
@@ -749,101 +667,6 @@ export function makeSqliteWorkflowRepo(
           return { workflow, version };
         })
       ),
-    freezeDraftSnapshot: (input) =>
-      store.write((database) =>
-        Effect.gen(function* () {
-          // Identical graphs encode to identical text. Reuse only a snapshot an
-          // Execution already references: an unreferenced snapshot is private
-          // to another start that may still delete it after a refused gate.
-          // The reuse moves `last_pinned_at` to now in the same statement, as
-          // `WorkflowRepo.sweepUnreferencedDraftSnapshots` describes.
-          const graph = encodeGraph(input.graph);
-          const now = Date.now();
-          const existing = yield* database
-            .update(workflowVersions)
-            .set({ lastPinnedAt: now })
-            .where(
-              inArray(
-                workflowVersions.id,
-                database
-                  .select({ id: workflowVersions.id })
-                  .from(workflowVersions)
-                  .where(
-                    and(
-                      eq(workflowVersions.workflowId, input.workflowId),
-                      eq(workflowVersions.kind, "draft_snapshot"),
-                      eq(
-                        workflowVersions.catalogFingerprint,
-                        input.catalogFingerprint
-                      ),
-                      eq(workflowVersions.graph, graph),
-                      sql`exists (
-                        select 1 from ${workflowExecutions}
-                        where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id}
-                      )`
-                    )
-                  )
-                  .orderBy(desc(workflowVersions.lastPinnedAt))
-                  .limit(1)
-              )
-            )
-            .returning()
-            .get();
-          if (existing) return sqliteWorkflowVersion(existing);
-          yield* database.insert(workflowVersions).values({
-            id: input.versionId,
-            workflowId: input.workflowId,
-            version: null,
-            kind: "draft_snapshot",
-            graph,
-            catalogFingerprint: input.catalogFingerprint,
-            graphDigest: input.graphDigest,
-            publishedAt: now,
-            lastPinnedAt: now,
-          });
-          const row = yield* database
-            .select()
-            .from(workflowVersions)
-            .where(eq(workflowVersions.id, input.versionId))
-            .get();
-          if (!row) throw new Error("The draft snapshot was not written");
-          return sqliteWorkflowVersion(row);
-        })
-      ),
-    deleteUnreferencedDraftSnapshot: (versionId) =>
-      store.write((database) =>
-        database
-          .delete(workflowVersions)
-          .where(
-            and(
-              eq(workflowVersions.id, versionId),
-              eq(workflowVersions.kind, "draft_snapshot"),
-              sql`not exists (
-                select 1 from ${workflowExecutions}
-                where ${workflowExecutions.workflowVersionId} = ${workflowVersions.id}
-              )`
-            )
-          )
-          .returning({ id: workflowVersions.id })
-          .get()
-          .pipe(Effect.map(Boolean))
-      ),
-    sweepUnreferencedDraftSnapshots: (input) =>
-      store.write((database) =>
-        deleteOldestBatch(database, {
-          table: workflowVersions,
-          id: workflowVersions.id,
-          where: sweepableDraftSnapshot(
-            workflowVersions,
-            {
-              table: workflowExecutions,
-              workflowVersionId: workflowExecutions.workflowVersionId,
-            },
-            input.olderThan.getTime()
-          ),
-          oldestFirst: workflowVersions.lastPinnedAt,
-          limit: input.limit,
-        })
-      ),
+    ...makeSqliteDraftSnapshotMethods(store),
   };
 }
