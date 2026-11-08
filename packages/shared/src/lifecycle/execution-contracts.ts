@@ -105,6 +105,23 @@ export const TERMINAL_EXECUTION_STATUSES = difference(
 );
 
 /**
+ * How a node's run-log row reads within its run. Nothing writes to a run's rows
+ * once the run has ended, so a row still `pending` or `running` then was cut
+ * off and reads as `cancelled`, whatever the run ended in. The server's status
+ * read and the editor's run detail both read a row through this.
+ */
+export function nodeStatusInRun<Status extends string>(
+  nodeStatus: Status,
+  runStatus: string
+): Status | "cancelled" {
+  const open = nodeStatus === "pending" || nodeStatus === "running";
+  return open &&
+    TERMINAL_EXECUTION_STATUSES.some((ended) => ended === runStatus)
+    ? "cancelled"
+    : nodeStatus;
+}
+
+/**
  * What opened a run. A schedule tick and a manual start carry no payload, so
  * both use the workflow itself as their Entity Value.
  */
