@@ -48,6 +48,22 @@ const waitForSchema = Schema.mutable(
 ).check(Schema.isMinLength(1));
 
 /**
+ * The options of the Wait node's select fields. The graph schema closes the
+ * same keys over these, so a save and a run read one vocabulary.
+ */
+export const waitModeSchema = Schema.Literals(["delay", "event"]);
+export const waitDelayTimingSchema = Schema.Literals(["duration", "until"]);
+export const waitGateModeSchema = Schema.Literals([
+  "off",
+  "require_actual_wait",
+  "max_lateness",
+]);
+export const waitTimeoutBehaviorSchema = Schema.Literals(["continue", "skip"]);
+
+type WaitDelayTiming = typeof waitDelayTimingSchema.Type;
+const isWaitDelayTiming = Schema.is(waitDelayTimingSchema);
+
+/**
  * The Wait node's config, both modes in one schema.
  *
  * Every key a mode reads is `optional` because the engine resolves templates
@@ -62,7 +78,7 @@ const waitForSchema = Schema.mutable(
  * it.
  */
 export const waitConfigSchema = Schema.Struct({
-  waitMode: Schema.optional(Schema.Literals(["delay", "event"])),
+  waitMode: Schema.optional(waitModeSchema),
 
   // Event mode.
   waitFor: Schema.optional(waitForSchema),
@@ -73,15 +89,14 @@ export const waitConfigSchema = Schema.Struct({
    * writes 7d when the mode is chosen, which a builder can raise.
    */
   waitTimeout: Schema.optional(Schema.String),
-  waitTimeoutBehavior: Schema.optional(Schema.Literals(["continue", "skip"])),
+  waitTimeoutBehavior: Schema.optional(waitTimeoutBehaviorSchema),
 
   // Delay mode.
+  waitDelayTimingMode: Schema.optional(waitDelayTimingSchema),
   waitDuration: Schema.optional(Schema.String),
   waitUntil: Schema.optional(Schema.String),
   waitOffset: Schema.optional(Schema.String),
-  waitGateMode: Schema.optional(
-    Schema.Literals(["off", "require_actual_wait", "max_lateness"])
-  ),
+  waitGateMode: Schema.optional(waitGateModeSchema),
   waitMaxLateness: Schema.optional(Schema.String),
   waitAllowedHoursMode: Schema.optional(Schema.String),
   waitAllowedStartTime: Schema.optional(Schema.String),
@@ -96,7 +111,7 @@ type WaitValueOwner =
   | { mode: "event" }
   | {
       mode: "delay";
-      timing?: "duration" | "until";
+      timing?: WaitDelayTiming;
       gate?: "max_lateness";
     };
 
@@ -164,9 +179,9 @@ const WAIT_VALUE_TARGET_KEYS: readonly WaitValueTargetKey[] = [
  */
 export function readWaitDelayTiming(
   config: Record<string, unknown>
-): "duration" | "until" {
+): WaitDelayTiming {
   const declared = config.waitDelayTimingMode;
-  if (declared === "until" || declared === "duration") {
+  if (isWaitDelayTiming(declared)) {
     return declared;
   }
 
@@ -226,7 +241,7 @@ export function waitValueKeysNotIn(
 }
 
 /** The mode a Wait node is in, with absence reading as the selector's default. */
-export type WaitMode = "delay" | "event";
+export type WaitMode = typeof waitModeSchema.Type;
 
 /**
  * What the editor writes the moment a builder picks "Wait for an event".

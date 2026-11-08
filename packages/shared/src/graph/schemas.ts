@@ -31,6 +31,12 @@ import { Schema } from "effect";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import { listOf, NonEmptyTrimmedString, unknownRest } from "#src/types/schema";
 import { lifecycleRulesSchema } from "#src/lifecycle/lifecycle-rules";
+import {
+  waitDelayTimingSchema,
+  waitGateModeSchema,
+  waitModeSchema,
+  waitTimeoutBehaviorSchema,
+} from "#src/lifecycle/wait-subscription";
 import { testPayloadsSchema } from "#src/lifecycle/test-payloads";
 /**
  * What the entry node carries.
@@ -94,15 +100,15 @@ const waitActionConfigSchema = Schema.StructWithRest(
   Schema.Struct({
     actionType: Schema.Literal(BUILT_IN_ACTION_IDS.wait),
     integrationId: Schema.optional(Schema.String),
-    waitDelayTimingMode: Schema.optional(Schema.String),
-    waitMode: Schema.optional(Schema.Literals(["delay", "event"])),
+    waitDelayTimingMode: Schema.optional(waitDelayTimingSchema),
+    waitMode: Schema.optional(waitModeSchema),
     waitFor: Schema.optional(Schema.Unknown),
     waitTimeout: Schema.optional(Schema.String),
-    waitTimeoutBehavior: Schema.optional(Schema.String),
+    waitTimeoutBehavior: Schema.optional(waitTimeoutBehaviorSchema),
     waitDuration: Schema.optional(Schema.String),
     waitUntil: Schema.optional(Schema.String),
     waitOffset: Schema.optional(Schema.String),
-    waitGateMode: Schema.optional(Schema.String),
+    waitGateMode: Schema.optional(waitGateModeSchema),
     waitMaxLateness: Schema.optional(Schema.String),
     waitAllowedHoursMode: Schema.optional(Schema.String),
     waitAllowedStartTime: Schema.optional(Schema.String),
