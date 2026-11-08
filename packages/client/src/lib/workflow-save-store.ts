@@ -1,5 +1,4 @@
 import { atom } from "jotai";
-import { isEmptyObject } from "es-toolkit/predicate";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { DRAFT_CONFLICT_CODE } from "@wfgraph/shared/rpc/error-codes";
 import { getClientLogger } from "#src/lib/logger";
@@ -131,6 +130,9 @@ export type WorkflowPatch = {
   | { nodes?: undefined; edges?: undefined }
 );
 
+/** The graph half of a patch, which travels whole. */
+type WorkflowGraphPatch = { nodes: WorkflowNode[]; edges: WorkflowEdge[] };
+
 /**
  * Merge an earlier patch with a later one, field by field, the later patch
  * winning. `nodes` and `edges` belong together, so the graph is taken whole
@@ -179,12 +181,15 @@ type SaveQueue = {
    */
   pending: PendingSave[];
   /**
-   * Fields a failed request did not persist, kept per workflow until another
-   * save for that workflow can carry them. Without this, a later partial save
-   * (for example a rename after a graph write) can succeed and make the editor
-   * look clean while the failed graph fields are still absent on the server.
+   * The graph a failed request did not persist, kept per workflow until
+   * another save for that workflow can carry it. Without this, a later partial
+   * save (for example a rename after a graph write) can succeed and make the
+   * editor look clean while the failed graph is still absent on the server.
+   * A failed name or mode is not kept: the caller that asked for it reports the
+   * failure and shows the old value again, so sending it later would write a
+   * value the editor no longer displays.
    */
-  failedPatches: Map<string, WorkflowPatch>;
+  failedGraphs: Map<string, WorkflowGraphPatch>;
   /**
    * The newest graph `saveWorkflowAtom` refused before queueing it, per
    * workflow, held until an accepted graph for that workflow is queued or the
@@ -228,7 +233,7 @@ type SaveQueue = {
 const saveQueueAtom = atom((): SaveQueue => ({
   timeoutId: null,
   pending: [],
-  failedPatches: new Map(),
+  failedGraphs: new Map(),
   refusedGraphs: new Map(),
   blockedConflicts: new Map(),
   renames: new Map(),
@@ -249,7 +254,7 @@ export const recordLoadedDraftRevisionAtom = atom(
     );
     const queue = get(saveQueueAtom);
     queue.blockedConflicts.delete(input.workflowId);
-    queue.failedPatches.delete(input.workflowId);
+    queue.failedGraphs.delete(input.workflowId);
     queue.refusedGraphs.delete(input.workflowId);
   }
 );
@@ -424,7 +429,7 @@ export const saveWorkflowAtom = atom(
               !queue.pending.some(
                 (pending) => pending.workflowId === next.workflowId
               ) &&
-              !queue.failedPatches.has(next.workflowId) &&
+              !queue.failedGraphs.has(next.workflowId) &&
               !queue.refusedGraphs.has(next.workflowId) &&
               get(currentWorkflowIdAtom) === next.workflowId
             ) {
@@ -441,23 +446,23 @@ export const saveWorkflowAtom = atom(
             outcome = { ok: false, error: saveError };
             set(lastSaveErrorAtom, saveError);
 
-            // A later partial patch must not make this failed one disappear.
-            // Fold it into the next queued write for the same workflow when
-            // there is one; otherwise remember it until that workflow is
-            // edited again. The later patch wins field by field.
-            const later = queue.pending.find(
-              (pending) => pending.workflowId === next.workflowId
-            );
-            if (later) {
-              later.patch = mergePatches(next.patch, later.patch);
-            } else {
-              queue.failedPatches.set(
-                next.workflowId,
-                mergePatches(
-                  queue.failedPatches.get(next.workflowId) ?? {},
-                  next.patch
-                )
+            // A later partial patch must not make this failed graph
+            // disappear. Fold it into the next queued write for the same
+            // workflow when there is one; otherwise remember it until that
+            // workflow is edited again. A later graph replaces it whole.
+            if (next.patch.nodes) {
+              const failedGraph = {
+                nodes: next.patch.nodes,
+                edges: next.patch.edges,
+              };
+              const later = queue.pending.find(
+                (pending) => pending.workflowId === next.workflowId
               );
+              if (later) {
+                later.patch = mergePatches(failedGraph, later.patch);
+              } else {
+                queue.failedGraphs.set(next.workflowId, failedGraph);
+              }
             }
             logger.error("Save failed", {
               workflowId: next.workflowId,
@@ -479,11 +484,11 @@ export const saveWorkflowAtom = atom(
       // Merge only into the newest entry, and only when it targets the same
       // workflow, so a rename typed during a node drag becomes one request
       // carrying both. An entry for a different workflow stays queued behind it.
-      const failedPatch = queue.failedPatches.get(workflowId);
-      const patchWithRetry = failedPatch
-        ? mergePatches(failedPatch, patch)
+      const failedGraph = queue.failedGraphs.get(workflowId);
+      const patchWithRetry = failedGraph
+        ? mergePatches(failedGraph, patch)
         : patch;
-      queue.failedPatches.delete(workflowId);
+      queue.failedGraphs.delete(workflowId);
 
       const newest = queue.pending.at(-1);
       if (newest?.workflowId === workflowId) {
@@ -521,39 +526,6 @@ export const saveWorkflowAtom = atom(
     return await outcome;
   }
 );
-
-/**
- * Take a name the server refused back out of the queue.
- *
- * The queue retries a failed patch by folding it into the next write for the
- * same workflow, which is right for a dropped connection and wrong for a name
- * the server will never accept: the refused name rides along with every later
- * graph write and fails that too, so one rejected rename stops the editor
- * saving anything for the rest of the session. Only the exact name that was
- * refused is dropped, so a rename typed again while this one was in flight
- * survives.
- */
-function forgetRefusedName(
-  queue: SaveQueue,
-  workflowId: string,
-  refusedName: string
-) {
-  const parked = queue.failedPatches.get(workflowId);
-  // Only the exact name that was refused is dropped, so a rename typed again
-  // while this one was in flight survives. The parked patch is the only place
-  // to look: an immediate save resolves once the whole queue has drained, so
-  // there is nothing still pending by the time this runs.
-  if (parked?.name !== refusedName) {
-    return;
-  }
-
-  const { name: _refused, ...remaining } = parked;
-  if (isEmptyObject(remaining)) {
-    queue.failedPatches.delete(workflowId);
-  } else {
-    queue.failedPatches.set(workflowId, remaining);
-  }
-}
 
 /**
  * Persist a rename, and put the old name back if the server refuses the new one.
@@ -599,9 +571,6 @@ export const renameWorkflowAtom = atom(
         rename?.latestRequestId === requestId
       ) {
         set(currentWorkflowNameAtom, rename.confirmedName);
-      }
-      if (workflowId) {
-        forgetRefusedName(queue, workflowId, name);
       }
       if (workflowId && rename && --rename.activeCount === 0) {
         queue.renames.delete(workflowId);
