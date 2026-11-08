@@ -607,4 +607,36 @@ describe("comparison session store", () => {
     ).toEqual(["draft"]);
     expect(store.get(canvasEditingLockedAtom)).toBe(true);
   });
+
+  it("keeps the Draft canvas locked while a comparison request left behind on Changes is pending", () => {
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [
+        {
+          id: "draft",
+          type: "action",
+          position: { x: 10, y: 0 },
+          data: { label: "Draft", type: "action" },
+        },
+      ],
+      edges: [],
+    });
+    showWorkspaceRoute(store, { view: "changes" });
+    store.set(beginWorkflowComparisonRequestAtom, "workflow_1");
+    showWorkspaceRoute(store, {});
+
+    store.set(onNodesChangeAtom, [
+      {
+        type: "position",
+        id: "draft",
+        dragging: false,
+        position: { x: 400, y: 0 },
+      },
+    ]);
+
+    // The drag is refused, so the canvas must not offer it.
+    expect(store.get(nodesAtom)[0]?.position).toEqual({ x: 10, y: 0 });
+    expect(store.get(canvasEditingLockedAtom)).toBe(true);
+  });
 });
