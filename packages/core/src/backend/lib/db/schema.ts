@@ -22,6 +22,7 @@ import { generateId } from "@wfgraph/shared/utils/id";
 import {
   type EntityEligibilityReason,
   IN_FLIGHT_EXECUTION_STATUSES,
+  type NodeLogStatus,
   type TerminationKind,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
@@ -39,6 +40,7 @@ import {
   type ParkWake,
   STEP_MEMO_STATUSES,
   type StepMemoStatus,
+  type WaitStateStatus,
 } from "@wfgraph/shared/lifecycle/execution-schedule";
 import {
   EVENT_INBOX_STATUSES,
@@ -487,9 +489,7 @@ export const workflowExecutionLogs = pgTable(
     // open on a stopped run, mapping an open row of a terminal run onto that
     // word. The column is text with no check
     // constraint, so the vocabulary widens without a migration.
-    status: text("status")
-      .notNull()
-      .$type<"pending" | "running" | "success" | "error" | "cancelled">(),
+    status: text("status").notNull().$type<NodeLogStatus>(),
     // Both are whatever the node handled, scrubbed by `redactSensitiveData` on
     // the way here. A step's payload is JSON but need not be an object: an
     // output schema encoding to a list or a string is stored as it stands.
@@ -544,9 +544,7 @@ export const workflowWaitStates = pgTable(
     nodeId: text("node_id").notNull(),
     nodeName: text("node_name").notNull(),
     waitType: text("wait_type").notNull().$type<"delay" | "event">(),
-    status: text("status")
-      .notNull()
-      .$type<"waiting" | "resuming" | "resumed" | "timed_out" | "cancelled">(),
+    status: text("status").notNull().$type<WaitStateStatus>(),
     /**
      * What the authenticated Runs view uses to address this parked run.
      * Generated per park so concurrent runs at the same node cannot collide.

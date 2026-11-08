@@ -28,6 +28,17 @@ export function isWorkflowExecutionStatus(
   return WORKFLOW_EXECUTION_STATUSES.some((status) => status === value);
 }
 
+/** Every status a node's run-log row reports. */
+export const NODE_LOG_STATUSES = [
+  "pending",
+  "running",
+  "success",
+  "error",
+  "cancelled",
+] as const;
+
+export type NodeLogStatus = (typeof NODE_LOG_STATUSES)[number];
+
 /**
  * Which side of the Lifecycle Node a piece of work sits on: the Started outlet's
  * branch, or the Canceled outlet's.

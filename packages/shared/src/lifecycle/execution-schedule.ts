@@ -73,3 +73,17 @@ export type ExecutionScheduleState = (typeof EXECUTION_SCHEDULE_STATES)[number];
  */
 export const STEP_MEMO_STATUSES = ["succeeded", "failing", "failed"] as const;
 export type StepMemoStatus = (typeof STEP_MEMO_STATUSES)[number];
+
+/**
+ * Where one park's wait row stands. `waiting` is parked and holds no wake.
+ * `resuming` holds the wake that resolved it, which no pass has consumed yet.
+ * `resumed`, `timed_out` and `cancelled` are settled.
+ */
+export const WAIT_STATE_STATUSES = [
+  "waiting",
+  "resuming",
+  "resumed",
+  "timed_out",
+  "cancelled",
+] as const;
+export type WaitStateStatus = (typeof WAIT_STATE_STATUSES)[number];

@@ -12,9 +12,20 @@ import {
 } from "drizzle-orm/sqlite-core";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
+  NODE_LOG_STATUSES,
   type TerminationKind,
+  WORKFLOW_EXECUTION_START_SOURCES,
   WORKFLOW_EXECUTION_STATUSES,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  EXECUTION_SCHEDULE_KINDS,
+  EXECUTION_SCHEDULE_STATES,
+  STEP_MEMO_STATUSES,
+  WAIT_STATE_STATUSES,
+} from "@wfgraph/shared/lifecycle/execution-schedule";
+import { EVENT_INBOX_STATUSES } from "@wfgraph/shared/lifecycle/event-inbox";
+import { INTEGRATION_REFRESH_STATES } from "@wfgraph/shared/types/integration";
+import { WORKFLOW_VERSION_KINDS } from "@wfgraph/shared/graph/version-kinds";
 
 const caseInsensitiveText = customType<{ data: string }>({
   dataType: () => "text COLLATE NOCASE",
@@ -82,7 +93,7 @@ export const workflowVersions = sqliteTable(
     ),
     check(
       "workflow_versions_kind_check",
-      sql`${table.kind} in ('published', 'draft_snapshot')`
+      sql`${table.kind} in (${literals(WORKFLOW_VERSION_KINDS)})`
     ),
     check(
       "workflow_versions_last_pinned_kind_check",
@@ -212,7 +223,7 @@ export const workflowExecutions = sqliteTable(
     ),
     check(
       "workflow_executions_start_source_check",
-      sql`${table.startSource} in ('event', 'manual', 'schedule')`
+      sql`${table.startSource} in (${literals(WORKFLOW_EXECUTION_START_SOURCES)})`
     ),
     check(
       "workflow_executions_run_mode_check",
@@ -262,7 +273,7 @@ export const workflowExecutionLogs = sqliteTable(
     uniqueIndex("logs_execution_node_uidx").on(table.executionId, table.nodeId),
     check(
       "workflow_execution_logs_status_check",
-      sql`${table.status} in ('pending', 'running', 'success', 'error', 'cancelled')`
+      sql`${table.status} in (${literals(NODE_LOG_STATUSES)})`
     ),
     check(
       "workflow_execution_logs_input_json_check",
@@ -311,7 +322,7 @@ export const workflowWaitStates = sqliteTable(
     ),
     check(
       "workflow_wait_states_status_check",
-      sql`${table.status} in ('waiting', 'resuming', 'resumed', 'timed_out', 'cancelled')`
+      sql`${table.status} in (${literals(WAIT_STATE_STATUSES)})`
     ),
     check(
       "workflow_wait_states_subscribed_events_json_check",
@@ -365,7 +376,7 @@ export const workflowEventInbox = sqliteTable(
       .where(sql`${table.status} <> 'pending'`),
     check(
       "workflow_event_inbox_status_check",
-      sql`${table.status} in ('pending', 'delivered', 'failed')`
+      sql`${table.status} in (${literals(EVENT_INBOX_STATUSES)})`
     ),
     check(
       "workflow_event_inbox_settled_check",
@@ -442,11 +453,11 @@ export const workflowExecutionSchedule = sqliteTable(
       .where(sql`${table.state} = 'leased'`),
     check(
       "workflow_execution_schedule_kind_check",
-      sql`${table.kind} in ('run', 'delivery', 'cron')`
+      sql`${table.kind} in (${literals(EXECUTION_SCHEDULE_KINDS)})`
     ),
     check(
       "workflow_execution_schedule_state_check",
-      sql`${table.state} in ('queued', 'leased', 'waiting')`
+      sql`${table.state} in (${literals(EXECUTION_SCHEDULE_STATES)})`
     ),
     check(
       "workflow_execution_schedule_subject_check",
@@ -478,7 +489,7 @@ export const workflowExecutionSteps = sqliteTable(
     primaryKey({ columns: [table.scheduleId, table.stepId] }),
     check(
       "workflow_execution_steps_status_check",
-      sql`${table.status} in ('succeeded', 'failing', 'failed')`
+      sql`${table.status} in (${literals(STEP_MEMO_STATUSES)})`
     ),
     check(
       "workflow_execution_steps_error_check",
@@ -546,7 +557,7 @@ export const integrations = sqliteTable(
     ),
     check(
       "integrations_refresh_state_check",
-      sql`${table.refreshState} in ('idle', 'refreshing', 'reauthorization_required')`
+      sql`${table.refreshState} in (${literals(INTEGRATION_REFRESH_STATES)})`
     ),
   ]
 );
