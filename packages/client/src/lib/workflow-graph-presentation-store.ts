@@ -36,7 +36,10 @@ import {
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
+import {
+  comparisonDisplayGraphAtom,
+  isComparisonPendingAtom,
+} from "#src/lib/workflow-comparison-store";
 import { isPublicationReviewActiveAtom } from "#src/lib/workflow-publication-review-store";
 import {
   isGeneratingAtom,
@@ -95,11 +98,15 @@ export const isExecutionOverlayActiveAtom = atom(
   (get) => get(executionOverlayGraphAtom) !== null
 );
 
-/** Whether anything other than the editable draft owns the canvas. */
+/**
+ * Whether anything other than the editable draft owns the canvas: every state
+ * `draftEditable` refuses a write in, plus a running agent turn.
+ */
 export const canvasEditingLockedAtom = atom(
   (get) =>
     get(isGeneratingAtom) ||
     get(workflowWorkspaceViewAtom) !== "draft" ||
+    get(isComparisonPendingAtom) ||
     get(isPublicationReviewActiveAtom)
 );
 
