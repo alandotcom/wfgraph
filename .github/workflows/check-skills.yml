@@ -41,6 +41,10 @@ jobs:
       artifacts: "_artifacts"
       repair: true
       node-version: "24"
+      # The reusable workflow installs this repository with `pnpm install
+      # --ignore-scripts`, and pnpm 11 then links no `.bin/intent`. Keep this at
+      # the @tanstack/intent version pnpm-lock.yaml pins.
+      intent-version: "0.5.6"
 
   review:
     if: github.event_name != 'pull_request'
@@ -50,6 +54,7 @@ jobs:
     with:
       package-label: "wfgraph"
       node-version: "24"
+      intent-version: "0.5.6"
 
   publish-review:
     needs: review
