@@ -2031,6 +2031,11 @@ export function describeExecutionWaitConformance({
           `update workflow_wait_states set status = 'sleeping' where ${row}`
         )
       ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `update workflow_wait_states set wait_type = 'cron' where ${row}`
+        )
+      ).rejects.toThrow();
       // A parked row holds no wake, and a resolved one always holds one.
       await expect(
         database.execute(
