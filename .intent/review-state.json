@@ -737,9 +737,7 @@
       "head": "54d07c30f0d8c7eec5e1e626f93383475b944a28",
       "outcome": "out-of-scope",
       "reason": "Test code that no published skill teaches.",
-      "evidence": [
-        "_artifacts/skill_tree.yaml lists no client sources."
-      ]
+      "evidence": ["_artifacts/skill_tree.yaml lists no client sources."]
     },
     "source:packages/client/src/lib/workflow-run-actions.ts": {
       "fingerprint": "6ea7969da97889f8e8f1eb983a24c99cc261b0e987aae98b7522978e8692bd20",
