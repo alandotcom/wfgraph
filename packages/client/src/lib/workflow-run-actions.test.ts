@@ -1,11 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
+import { createStore } from "jotai";
 import {
   executeWorkflowRun,
+  rememberTestPayload,
   updateNodesStatus,
 } from "#src/lib/workflow-run-actions";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorkflowExecuteResult } from "#src/lib/rpc-client";
+import {
+  canUndoAtom,
+  loadWorkflowGraphAtom,
+  nodesAtom,
+  updateNodeDataAtom,
+} from "#src/lib/workflow-graph-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { nextTestPayloads, readEntryTestPayloads } from "#src/lib/test-payload";
 
 beforeEach(() => {
   vi.spyOn(toast, "message").mockImplementation(() => "id" as never);
@@ -34,6 +44,28 @@ function actionNode(id: string): WorkflowNode {
     data: { label: id, type: "action" },
   };
 }
+
+describe("rememberTestPayload", () => {
+  it("keeps the run's payload on the entry node without adding an undo step", () => {
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [lifecycleNode("t"), actionNode("a")],
+      edges: [],
+    });
+
+    rememberTestPayload({
+      nodes: store.get(nodesAtom),
+      updateNodeData: (update) => store.set(updateNodeDataAtom, update),
+      request: { input: { email: "ada@example.com" } },
+    });
+
+    expect(readEntryTestPayloads(store.get(nodesAtom))).toEqual(
+      nextTestPayloads({}, { input: { email: "ada@example.com" } })
+    );
+    expect(store.get(canUndoAtom)).toBe(false);
+  });
+});
 
 /**
  * Status animation writes into `statusByNodeIdAtom` through the batch
