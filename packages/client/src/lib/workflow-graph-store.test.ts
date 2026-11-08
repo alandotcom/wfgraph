@@ -58,6 +58,7 @@ import {
 } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
+  isGeneratingAtom,
   workflowGraphUpdateAtom,
   workflowWorkspaceViewAtom,
   selectedExecutionIdAtom,
@@ -1073,6 +1074,79 @@ describe("installRemoteWorkflowAtom", () => {
     expect(
       store.get(nodesAtom).find((node) => node.id === "a")?.position
     ).toEqual({ x: 120, y: 80 });
+  });
+
+  it("puts a drag the Runs view interrupted back, and lets remote drafts install again", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: "workflow_1",
+      draftRevision: 1,
+    });
+    store.set(onNodesChangeAtom, [
+      {
+        type: "position",
+        id: "a",
+        position: { x: 120, y: 80 },
+        dragging: true,
+      },
+    ]);
+
+    showWorkspaceRoute(store, { view: "runs" });
+    store.set(onNodesChangeAtom, [
+      {
+        type: "position",
+        id: "a",
+        position: { x: 160, y: 90 },
+        dragging: false,
+      },
+    ]);
+    showWorkspaceRoute(store, {});
+
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "a")?.position
+    ).toEqual({ x: 0, y: 0 });
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    expect(store.get(canUndoAtom)).toBe(false);
+    expect(
+      store.set(installRemoteWorkflowAtom, {
+        ...savedWorkflow("workflow_1", {
+          nodes: [actionNode("remote")],
+          edges: [],
+        }),
+        draftRevision: 2,
+      })
+    ).toBe(true);
+  });
+
+  it("puts a drag an agent turn interrupted back instead of saving it", async () => {
+    const update = vi.fn(() => Promise.resolve(savedWorkflow("workflow_1")));
+    const store = createGraphStore(...standardGraph());
+    store.set(workflowApiAtom, { update: update as never });
+    store.set(onNodesChangeAtom, [
+      {
+        type: "position",
+        id: "a",
+        position: { x: 120, y: 80 },
+        dragging: true,
+      },
+    ]);
+
+    store.set(isGeneratingAtom, true);
+    store.set(onNodesChangeAtom, [
+      {
+        type: "position",
+        id: "a",
+        position: { x: 160, y: 90 },
+        dragging: false,
+      },
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "a")?.position
+    ).toEqual({ x: 0, y: 0 });
+    expect(update).not.toHaveBeenCalled();
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
   });
 
   it("does not hydrate over a drag in the open workflow", () => {
