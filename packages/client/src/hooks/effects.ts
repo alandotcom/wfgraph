@@ -60,8 +60,27 @@ function useLatestEvent<Args extends unknown[], Result>(
   return useCallback((...args: Args) => latest.current(...args), []);
 }
 
+/** How long a subscription the server closed waits before opening again. */
+const SUBSCRIPTION_REOPEN_MS = 1_000;
+
+/** Resolve after `ms`, or as soon as `signal` aborts. */
+function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+
+    function done() {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    }
+  });
+}
+
 /**
  * Own an async subscription and close it when its key changes or it unmounts.
+ * A stream that ends on its own is opened again after a pause, so a mounted
+ * subscription whose key has not changed is never left closed.
  * The input's type is written inline: TypeScript 7.1 infers `T` from
  * `subscribe` for an inline object type, and leaves `onValue`'s value
  * `unknown` when the same type is a named alias or interface.
@@ -93,21 +112,32 @@ export function useAbortableSubscription<T>(input: {
 
     void (async () => {
       try {
-        const iterable = await subscribe(controller.signal);
-        iterator = iterable[Symbol.asyncIterator]();
-        if (controller.signal.aborted) {
-          await iterator.return?.();
-          return;
-        }
-
         while (!controller.signal.aborted) {
-          // Async iterator reads are ordered and cannot run in parallel.
+          // Each stream is opened only after the previous one ended.
           // eslint-disable-next-line no-await-in-loop
-          const result = await iterator.next();
-          if (controller.signal.aborted || result.done) {
+          const iterable = await subscribe(controller.signal);
+          iterator = iterable[Symbol.asyncIterator]();
+          if (controller.signal.aborted) {
+            // eslint-disable-next-line no-await-in-loop
+            await iterator.return?.();
             return;
           }
-          onValue(result.value);
+
+          while (!controller.signal.aborted) {
+            // Async iterator reads are ordered and cannot run in parallel.
+            // eslint-disable-next-line no-await-in-loop
+            const result = await iterator.next();
+            if (controller.signal.aborted) {
+              return;
+            }
+            if (result.done) {
+              break;
+            }
+            onValue(result.value);
+          }
+
+          // eslint-disable-next-line no-await-in-loop
+          await abortableDelay(SUBSCRIPTION_REOPEN_MS, controller.signal);
         }
       } catch (error) {
         if (!controller.signal.aborted) {
