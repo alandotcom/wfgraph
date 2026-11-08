@@ -652,6 +652,8 @@ export function describeExecutionConformance({
         await store.execute(acceptEntry("run_cancelled"));
       }
       const retried = await database.run(cancel);
+      // The run already reads canceled, so this cancel writes no second entry.
+      const repeated = await database.run(cancel);
 
       const ended = await database.run(
         Effect.gen(function* () {
@@ -670,6 +672,7 @@ export function describeExecutionConformance({
         cancelled: [{ message: "Canceled from the Runs view", metadata: {} }],
       });
       expect(retried.endedExecutionIds).toEqual([executionId]);
+      expect(repeated.endedExecutionIds).toEqual([]);
     });
 
     it("writes a terminal write's announcement only from the write that ends the run", async () => {

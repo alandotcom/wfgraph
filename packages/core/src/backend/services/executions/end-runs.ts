@@ -9,8 +9,9 @@
  *
  * The terminal write cancels the run's open wait rows and deletes its schedule
  * row in its own transaction, so a pass holding the run has its next fenced
- * write refused with `LeaseLost`. A write or timeline entry the database
- * refuses is reported in the ids each half below returns.
+ * write refused with `LeaseLost`. A cancel's write carries the run's
+ * `run_cancelled` entry, so the database commits or refuses both, and a
+ * refused one is reported in the ids the cancel returns.
  */
 
 import { Effect } from "effect";
@@ -36,10 +37,7 @@ export type CancelInFlightRunsInput = {
 export type EndedRunsSummary = {
   /** The runs this call ended, which are the runs an event no longer reaches. */
   endedExecutionIds: string[];
-  /**
-   * The runs this call could not end, or ended without recording why on their
-   * timelines, which an operator reads in the log.
-   */
+  /** The runs this call could not end, which an operator reads in the log. */
   failedExecutionIds: string[];
   /**
    * The runs an earlier Cancel or Exit claim already owns. Each is still in
@@ -106,7 +104,7 @@ const recordEndingFailure = Effect.fn("recordEndingFailure")(function* (input: {
 const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
   workflowId: string;
   executionId: string;
-  eventType: "run_cancelled" | "run_superseded";
+  eventType: "run_superseded";
   reason: string;
   eventName?: string | undefined;
 }) {
@@ -137,12 +135,12 @@ const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
 
 /**
  * Cancels every in-flight execution named, each behind a compare-and-set on
- * its row, and records the ending on each run this call ended.
+ * its row that writes the run's `run_cancelled` entry with it.
  *
  * An execution that completed between the caller's candidate query and this
  * write loses nothing: the CAS fails, the row keeps its terminal status, no
- * audit event is written, and the run is not counted as ended. An in-flight
- * Cancel or Exit claim remains owned by its run, which ends itself.
+ * entry is written, and the run is not counted as ended. An in-flight Cancel
+ * or Exit claim remains owned by its run, which ends itself.
  *
  * Every failure is contained per execution, so one of them never discards the
  * summary for the executions that did end.
@@ -189,6 +187,12 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
       executionId,
       status: "canceled",
       error: input.reason,
+      announcement: {
+        workflowId,
+        eventType: "run_cancelled",
+        message: input.reason,
+        metadata: { eventName: input.eventName },
+      },
     })
     .pipe(
       Effect.catchTag("DatabaseError", (failure) =>
@@ -232,14 +236,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
     return runEndOutcome("lost-race", executionId);
   }
 
-  const recorded = yield* recordRunEnded({
-    workflowId,
-    executionId,
-    eventType: "run_cancelled",
-    reason: input.reason,
-    eventName: input.eventName,
-  });
-  return runEndOutcome(recorded ? "ended" : "unreachable", executionId);
+  return runEndOutcome("ended", executionId);
 });
 
 /**
