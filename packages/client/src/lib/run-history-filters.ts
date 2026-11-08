@@ -29,7 +29,6 @@ export const DEFAULT_STATUS_OPTIONS: WorkflowExecutionStatus[] = [
   "completed",
   "canceled",
   "exited",
-  "pending",
 ];
 
 export const RUN_FILTER_FIELDS = [

@@ -155,8 +155,6 @@ export function getRunOutcome(
         ? `Waiting at ${waiting.nodeName || waiting.nodeType}`
         : "Waiting to resume";
     }
-    case "pending":
-      return "Preparing to run";
     case "canceled": {
       const completedSteps = logs.filter(
         (log) => log.status === "success"

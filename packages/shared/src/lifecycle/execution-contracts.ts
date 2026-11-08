@@ -10,7 +10,6 @@ import { difference } from "es-toolkit/array";
  * no outlet fires and the status is the whole of the record.
  */
 export const WORKFLOW_EXECUTION_STATUSES = [
-  "pending",
   "running",
   "waiting",
   "completed",
@@ -22,6 +21,12 @@ export const WORKFLOW_EXECUTION_STATUSES = [
 
 export type WorkflowExecutionStatus =
   (typeof WORKFLOW_EXECUTION_STATUSES)[number];
+
+export function isWorkflowExecutionStatus(
+  value: unknown
+): value is WorkflowExecutionStatus {
+  return WORKFLOW_EXECUTION_STATUSES.some((status) => status === value);
+}
 
 /**
  * Which side of the Lifecycle Node a piece of work sits on: the Started outlet's
@@ -86,10 +91,9 @@ export function isEntityEligibilityReason(
  * it: a cancel arriving after a completion changes nothing. The partial index over
  * in-flight rows is built from it too, so the query the guard makes and the index
  * that serves it cannot drift, and the client's "still worth polling" check reads
- * the same three words.
+ * the same two words.
  */
 export const IN_FLIGHT_EXECUTION_STATUSES = [
-  "pending",
   "running",
   "waiting",
 ] as const satisfies readonly WorkflowExecutionStatus[];

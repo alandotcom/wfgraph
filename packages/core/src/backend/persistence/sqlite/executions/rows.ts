@@ -1,5 +1,8 @@
 import { Schema } from "effect";
-import { isEntityEligibilityReason } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  isEntityEligibilityReason,
+  isWorkflowExecutionStatus,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   jsonObjectSchema,
   readJsonValue,
@@ -74,16 +77,7 @@ export function optionalJsonObject(value: string | null, key: string) {
 export function sqliteExecutionStatus(
   value: string
 ): WorkflowExecution["status"] {
-  if (
-    value !== "pending" &&
-    value !== "running" &&
-    value !== "waiting" &&
-    value !== "completed" &&
-    value !== "failed" &&
-    value !== "canceled" &&
-    value !== "exited" &&
-    value !== "superseded"
-  ) {
+  if (!isWorkflowExecutionStatus(value)) {
     throw new Error("Invalid SQLite execution status");
   }
   return value;

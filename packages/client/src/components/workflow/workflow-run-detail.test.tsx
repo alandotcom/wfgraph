@@ -113,12 +113,6 @@ describe("WorkflowRunDetail", () => {
     expect(view.getByRole("button", { name: "Cancel" })).toBeTruthy();
   });
 
-  it("shows the cancel button for a pending execution", () => {
-    const view = renderDetail({ ...BASE_EXECUTION, status: "pending" });
-
-    expect(view.getByRole("button", { name: "Cancel" })).toBeTruthy();
-  });
-
   it("still shows the cancel button for a waiting execution", () => {
     const view = renderDetail({ ...BASE_EXECUTION, status: "waiting" });
 
@@ -495,7 +489,7 @@ describe("WorkflowRunDetail", () => {
     expect(view.queryByRole("button", { name: "Resume now" })).toBeNull();
   });
 
-  it.each(["pending", "running", "waiting"] as const)(
+  it.each(["running", "waiting"] as const)(
     "shows parked waits while the run is %s",
     (status) => {
       const view = renderDetail(

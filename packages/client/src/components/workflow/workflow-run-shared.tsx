@@ -30,7 +30,6 @@ import { readAs } from "@wfgraph/shared/types/schema";
 const logger = getClientLogger("workflow", "run");
 
 const RUN_STATUS_TONES = {
-  pending: "muted",
   running: "info",
   waiting: "warning",
   completed: "success",
@@ -93,7 +92,6 @@ const DOT_CLASSES: Record<StatusTone, string> = {
  * makes a new one a compile error here instead of a silent "Unknown".
  */
 const RUN_STATUS_LABELS = {
-  pending: "Pending",
   running: "Running",
   waiting: "Waiting",
   completed: "Completed",
