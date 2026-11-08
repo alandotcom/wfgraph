@@ -886,6 +886,16 @@ export const workflowExecutionSteps = pgTable(
       "workflow_execution_steps_error_check",
       sql`(${table.status} = 'succeeded') = (${table.error} is null)`
     ),
+    check(
+      "workflow_execution_steps_value_check",
+      sql`${table.status} = 'succeeded' or ${table.value} is null`
+    ),
+    // A failing or failed row counts the failure that made it. The count is
+    // not held to STEP_RETRY_LIMIT, which is policy a deploy may change.
+    check(
+      "workflow_execution_steps_failures_check",
+      sql`${table.failures} >= 0 and (${table.status} = 'succeeded' or ${table.failures} > 0)`
+    ),
   ]
 );
 
