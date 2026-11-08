@@ -71,9 +71,9 @@ const soundGraph: WorkflowNode[] = [
   },
 ];
 
-function renderHarness() {
+function renderHarness(nodes: WorkflowNode[] = soundGraph) {
   const store = createStore();
-  store.set(loadWorkflowGraphAtom, { nodes: soundGraph, edges: [] });
+  store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
 
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -138,6 +138,32 @@ describe("useCollectWorkflowIssues", () => {
 
     expect(harness.store.get(workflowIssuesAtom)).toEqual([]);
     expect(harness.seen.every((count) => count === 0)).toBe(true);
+  });
+
+  // Whether a connection exists is unknown until the list arrives, and for an
+  // operator who may not read connections it never does. Everything else the
+  // graph can be wrong about does not depend on that list.
+  it("still reports what needs no connection list while the list is unknown", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowGetById.id]);
+    const harness = renderHarness([
+      ...soundGraph,
+      {
+        id: "b",
+        type: "action",
+        position: { x: 0, y: 400 },
+        data: { label: "Unchosen", type: "action", config: {} },
+      },
+    ]);
+
+    await waitFor(
+      () =>
+        expect(
+          harness.store
+            .get(workflowIssuesAtom)
+            .map((issue) => [issue.kind, issue.nodeId])
+        ).toEqual([["missing_required_field", "b"]]),
+      { timeout: 2_000 }
+    );
   });
 
   it("settles instead of re-rendering without bound", async () => {
