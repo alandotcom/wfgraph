@@ -550,7 +550,7 @@ export function describeExecutionConformance({
     // The Intake model's `ExecutionAndScheduleTogether`: an open run always has
     // a schedule row, because one write inserts both, and a start Concurrency
     // refuses or displaces leaves no schedule row behind.
-    it("opens a run with its schedule row and its opening entry, and leaves no schedule row on a run it refuses or displaces", async () => {
+    it("opens a run with its schedule row and its opening entry, and leaves no schedule row or open park on a run it refuses or displaces", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
       const dueAt = new Date("2026-03-01T09:00:00.000Z");
@@ -585,6 +585,21 @@ export function describeExecutionConformance({
             deliveryId: "delivery_1",
             concurrency: "first-wins",
           });
+          if (first.status !== "started") throw new Error("Start was refused");
+          const firstId = first.execution.id;
+          const firstPark = yield* executions.startWait({
+            side: "started",
+            executionId: firstId,
+            workflowId: "wf_1",
+            nodeId: "wait_1",
+            nodeName: "Wait for approval",
+            workflowVersionId: "ver_1",
+            waitType: "event",
+            resumeToken: "resume_first",
+            subscribedEvents: ["appointment/approved"],
+            metadata: { expression: "true" },
+          });
+          if (!firstPark) throw new Error("Wait was refused");
           const refused = yield* start({
             deliveryId: "delivery_2",
             concurrency: "first-wins",
@@ -593,14 +608,12 @@ export function describeExecutionConformance({
             deliveryId: "delivery_3",
             concurrency: "newest-wins",
           });
-          if (first.status !== "started" || newer.status !== "started") {
-            throw new Error("Start was refused");
-          }
-          const firstId = first.execution.id;
+          if (newer.status !== "started") throw new Error("Start was refused");
           const newerId = newer.execution.id;
           return {
             refused,
             superseded: newer.supersededExecutionIds,
+            firstPark: yield* executions.findPark(firstPark.waitStateId),
             firstSchedule: yield* executions.findSchedule({
               executionId: firstId,
             }),
@@ -614,6 +627,7 @@ export function describeExecutionConformance({
 
       expect(result.refused.status).toBe("refused");
       expect(result.superseded).toHaveLength(1);
+      expect(result.firstPark).toMatchObject({ status: "cancelled" });
       expect(result.firstSchedule).toBeNull();
       expect(result.newerSchedule).toMatchObject({
         kind: "run",
