@@ -20,6 +20,7 @@ import {
   currentWorkflowVisibilityAtom,
   hasUnsavedChangesAtom,
   isSavingAtom,
+  lastSaveErrorAtom,
   lastSavedAtAtom,
   recordLoadedDraftRevisionAtom,
   successfulSaveGenerationAtom,
@@ -212,6 +213,7 @@ export const hydrateWorkflowAtom = atom(
         draftRevision: workflow.draftRevision,
       });
       set(observedRemoteDraftRevisionStateAtom, null);
+      set(lastSaveErrorAtom, null);
     }
 
     set(activeAgentTurnIdAtom, null);

@@ -414,20 +414,20 @@ export const saveWorkflowAtom = atom(
             if (rename) {
               rename.confirmedName = workflow.name;
             }
-            set(
-              lastSaveErrorAtom,
-              queue.refusedGraphs.get(next.workflowId) ?? null
-            );
             markWorkflowListStale();
             cacheWorkflowPublication(queryClient, workflow);
 
             // The queue drains workflows the editor may already have left, so
-            // the clock reading is only true of the workflow on screen. Written
-            // under the same guard as the dirty flag below: without it, saving
-            // A at 12:04 and then opening B had B's strip claiming a write that
-            // never happened to it.
+            // the clock reading and the failure are only true of the workflow
+            // on screen. Written under the same guard as the dirty flag below:
+            // without it, saving A at 12:04 and then opening B had B's strip
+            // claiming a write that never happened to it.
             if (get(currentWorkflowIdAtom) === next.workflowId) {
               set(lastSavedAtAtom, new Date());
+              set(
+                lastSaveErrorAtom,
+                queue.refusedGraphs.get(next.workflowId) ?? null
+              );
             }
 
             // Clear the dirty flag only when nothing newer is queued and the
@@ -456,7 +456,9 @@ export const saveWorkflowAtom = atom(
               queue.blockedConflicts.set(next.workflowId, saveError);
             }
             outcome = { ok: false, error: saveError };
-            set(lastSaveErrorAtom, saveError);
+            if (get(currentWorkflowIdAtom) === next.workflowId) {
+              set(lastSaveErrorAtom, saveError);
+            }
 
             // A later partial patch must not make this failed graph
             // disappear. Fold it into the next queued write for the same
