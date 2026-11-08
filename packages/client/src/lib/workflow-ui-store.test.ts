@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createStore } from "jotai";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
+  isAgentPanelExpandedAtom,
+  isAgentPanelOpenAtom,
   selectedExecutionIdAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
@@ -43,5 +45,22 @@ describe("workflowWorkspaceViewAtom", () => {
     showWorkspaceRoute(store, { view: "changes" });
 
     expect(store.get(workflowWorkspaceViewAtom)).toBe("changes");
+  });
+});
+
+describe("isAgentPanelExpandedAtom", () => {
+  it("is never true for a closed panel, and a reopened panel starts docked", () => {
+    const store = createStore();
+    store.set(isAgentPanelOpenAtom, false);
+    store.set(isAgentPanelExpandedAtom, true);
+    expect(store.get(isAgentPanelExpandedAtom)).toBe(false);
+
+    store.set(isAgentPanelOpenAtom, true);
+    store.set(isAgentPanelExpandedAtom, true);
+    expect(store.get(isAgentPanelExpandedAtom)).toBe(true);
+
+    store.set(isAgentPanelOpenAtom, false);
+    store.set(isAgentPanelOpenAtom, true);
+    expect(store.get(isAgentPanelExpandedAtom)).toBe(false);
   });
 });

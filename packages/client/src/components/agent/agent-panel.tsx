@@ -297,7 +297,7 @@ function AgentCard({ onClose }: { onClose: () => void }) {
 
 function WorkflowAgentPanel({ workflowId }: { workflowId: string }) {
   const [isOpen, setIsOpen] = useAtom(isAgentPanelOpenAtom);
-  const [isExpanded, setIsExpanded] = useAtom(isAgentPanelExpandedAtom);
+  const isExpanded = useAtomValue(isAgentPanelExpandedAtom);
   const runtime = useAgentRuntime(workflowId);
   const trigger = useRef<HTMLButtonElement>(null);
 
@@ -305,10 +305,9 @@ function WorkflowAgentPanel({ workflowId }: { workflowId: string }) {
   // the graph beside it rather than a card covering the editor. Focus follows
   // to the button that brings it back, rather than falling to the document.
   const onClose = useCallback(() => {
-    setIsExpanded(false);
     setIsOpen(false);
     requestAnimationFrame(() => trigger.current?.focus());
-  }, [setIsExpanded, setIsOpen]);
+  }, [setIsOpen]);
 
   return (
     // Cleared to the right of the canvas controls. On a narrow viewport the
