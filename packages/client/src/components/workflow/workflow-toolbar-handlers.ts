@@ -6,7 +6,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
@@ -49,6 +49,7 @@ import {
   isPublicationReviewActiveAtom,
   isPublicationReviewPendingAtom,
   publicationReviewAtom,
+  publicationReviewSessionAtom,
   type ReadyPublicationReview,
   settlePublicationReviewAtom,
 } from "#src/lib/workflow-publication-review-store";
@@ -105,6 +106,7 @@ export function useWorkflowActions(
   const { open: openOverlay } = useOverlay();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const store = useStore();
   const deleteWorkflow = useDeleteWorkflow();
   const saveWorkflow = useSetAtom(saveWorkflowAtom);
   const recordLoadedDraftRevision = useSetAtom(recordLoadedDraftRevisionAtom);
@@ -300,10 +302,21 @@ export function useWorkflowActions(
       toast.info(PREFLIGHT_BUSY_MESSAGE, { id: PREFLIGHT_TOAST_ID });
       return;
     }
+    // A route load or a cancel can end this review while the save or the
+    // preflight runs, and an ended review must neither compare nor open the
+    // issues list.
+    const workflowId = currentWorkflowId;
+    const reviewIsOpen = () => {
+      const session = store.get(publicationReviewSessionAtom);
+      return session?.workflowId === workflowId && session.epoch === epoch;
+    };
     const graph = toSerializedGraph({ nodes, edges });
     const saved = await saveWorkflow({ nodes, edges }, { immediate: true });
     if (!saved?.ok) {
       clearPublicationReview({ workflowId: currentWorkflowId, epoch });
+      return;
+    }
+    if (!reviewIsOpen()) {
       return;
     }
 
@@ -319,6 +332,9 @@ export function useWorkflowActions(
       nodes,
       edges,
     });
+    if (!reviewIsOpen()) {
+      return;
+    }
     if (preflight.status !== "ready") {
       clearPublicationReview({ workflowId: currentWorkflowId, epoch });
       if (preflight.status === "busy") {
@@ -412,21 +428,21 @@ export function useWorkflowActions(
       },
       {
         onSuccess: (payload) => {
-          if (
-            clearPublicationReview({
-              workflowId: payload.id,
-              epoch: publishReview.epoch,
-            })
-          ) {
-            toast.success(`Published version ${payload.publishedVersion}`);
-            recordLoadedDraftRevision({
-              workflowId: payload.id,
-              draftRevision: payload.draftRevision,
-            });
-            cacheWorkflowPublication(queryClient, payload);
-            void loadWorkflows();
-            void refreshWorkflowVersionHistory(queryClient);
-          }
+          // The version exists whether or not the review that asked for it is
+          // still open, and any route load ends every review. Only closing
+          // the review is held to its epoch.
+          toast.success(`Published version ${payload.publishedVersion}`);
+          recordLoadedDraftRevision({
+            workflowId: payload.id,
+            draftRevision: payload.draftRevision,
+          });
+          cacheWorkflowPublication(queryClient, payload);
+          void loadWorkflows();
+          void refreshWorkflowVersionHistory(queryClient);
+          clearPublicationReview({
+            workflowId: payload.id,
+            epoch: publishReview.epoch,
+          });
         },
         onError: (error) => {
           const conflict = publicationConflictCode(error);
