@@ -252,7 +252,6 @@ export function useWorkflowHandlers({
     if (target.graph === "draft" && hasUnsavedChanges) {
       const saved = await saveWorkflow({ nodes, edges }, { immediate: true });
       if (saved && !saved.ok) {
-        toast.error(saved.error.message || "Failed to save workflow");
         return;
       }
     }

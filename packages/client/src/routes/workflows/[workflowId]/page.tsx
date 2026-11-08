@@ -1,6 +1,5 @@
 import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { toast } from "sonner";
 import { AgentPanel } from "#src/components/agent/agent-panel";
 import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
 import {
@@ -15,14 +14,13 @@ import { WorkflowDraftSync } from "#src/components/workflow/workflow-draft-sync"
 import { WorkflowStatusStrip } from "#src/components/workflow/workflow-status-strip";
 import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
-import { useAfterCommit, useUnmountCleanup } from "#src/hooks/effects";
+import { useUnmountCleanup } from "#src/hooks/effects";
 import { isAgentEnabled } from "#src/lib/extensions";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { endWorkflowEditorLifetimeAtom } from "#src/lib/workflow-graph-store";
 import {
   currentWorkflowIdAtom,
-  lastSaveErrorAtom,
   workflowNotFoundAtom,
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
@@ -30,24 +28,10 @@ import {
 const WorkflowEditor = () => {
   const endWorkflowEditorLifetime = useSetAtom(endWorkflowEditorLifetimeAtom);
   useUnmountCleanup(() => endWorkflowEditorLifetime());
-  const lastSaveError = useAtomValue(lastSaveErrorAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
   const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
   const canUpdate = can(WfGraphOperations.workflowUpdate.id);
-
-  // A debounced autosave has no caller waiting on it, so a failure would
-  // otherwise reach only the console while the editor looked saved.
-  //
-  // Every failure is toasted, including the 400s this used to swallow. Those
-  // were half-built nodes the save battery refused, which made the common case
-  // of an editor session a silent dropped write; the battery no longer asks, so
-  // a 400 here is now something the builder has to be told about.
-  useAfterCommit(lastSaveError, () => {
-    if (lastSaveError) {
-      toast.error(lastSaveError.message || "Failed to save workflow");
-    }
-  });
 
   return (
     // The page the shell is inset on. It owns the viewport height, because
