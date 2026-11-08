@@ -747,12 +747,12 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
     );
 
     expect(run.value.status).toBe("completed");
-    // The recording store numbers rows in the order they open.
-    expect(store.callsOf("createWaitState").map((call) => call.nodeId)).toEqual(
-      ["upper", "lower"]
-    );
-    const upperRow = "wait_state_1";
-    const lowerRow = "wait_state_2";
+    // The two Waits open in sibling branches, which run concurrently, and the
+    // recording store numbers rows in the order they open.
+    const opened = store.callsOf("createWaitState").map((call) => call.nodeId);
+    expect(opened.toSorted()).toEqual(["lower", "upper"]);
+    const upperRow = `wait_state_${opened.indexOf("upper") + 1}`;
+    const lowerRow = `wait_state_${opened.indexOf("lower") + 1}`;
 
     // The pass at the Migration re-parks `upper` alone. `lower` reads its wake
     // and re-parks only after `upper` has resumed, an hour later.
