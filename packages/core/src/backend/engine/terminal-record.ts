@@ -121,6 +121,38 @@ const TERMINAL_AUDIT_EVENT = {
   exited: "run_exited",
 } as const satisfies Record<TraversalTerminalStatus, TerminalAuditEventType>;
 
+/**
+ * The entry for a run the executor ends without walking its graph: a step
+ * outside any node spent its retries, or the version it pins is gone. It is
+ * worded as a run a fatal error ended, except that a canceled run says its
+ * Canceled outlet never ran, since nothing walked the graph to run it.
+ */
+export function outsideGraphAnnouncement(input: {
+  workflowId: string;
+  runMode: "live" | "test";
+  status: Exclude<TraversalTerminalStatus, "completed">;
+  error: string;
+}): TerminalAnnouncement {
+  return {
+    workflowId: input.workflowId,
+    eventType: TERMINAL_AUDIT_EVENT[input.status],
+    message:
+      input.status === "canceled"
+        ? withRecipients(
+            "Run canceled after a fatal error; the Canceled outlet did not run",
+            input.runMode
+          )
+        : buildRunFailedMessage(input.runMode, input.status, {
+            kind: "failed",
+          }),
+    metadata: {
+      error: input.error,
+      failureKind: "failure",
+      runMode: input.runMode,
+    },
+  };
+}
+
 function isInFlight(status: ExecutionTerminationState["status"]): boolean {
   return IN_FLIGHT_EXECUTION_STATUSES.some((candidate) => candidate === status);
 }
