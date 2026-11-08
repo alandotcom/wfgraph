@@ -167,9 +167,8 @@ describePostgres("PostgreSQL migrations", () => {
     });
   });
 
-  // SQLite leaves this pairing out: its legacy adoption restores a Cancel
-  // claim only after every pending migration, so a rebuild holding it would
-  // refuse the claim's own row mid-upgrade.
+  // Only PostgreSQL holds this pairing. The SQLite schema's termination check
+  // says why.
   it("keeps a Cancel arrival's columns off a run no Cancel claimed", async () => {
     const schema = freshSchema();
     await migrateWfGraphDatabase({ url: requirePostgresTestUrl(), schema });
