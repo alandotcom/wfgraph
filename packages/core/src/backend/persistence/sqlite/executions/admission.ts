@@ -25,7 +25,6 @@ import type {
 import {
   workflowExecutionEvents,
   workflowExecutions,
-  workflowWaitStates,
 } from "#src/backend/persistence/sqlite/schema";
 import {
   endedRunColumns,
@@ -231,17 +230,6 @@ export function admitWithConcurrency(
       inFlight.map((row) => row.id),
       input.supersededReason
     );
-    if (supersededExecutionIds.length > 0) {
-      yield* database
-        .update(workflowWaitStates)
-        .set({ status: "cancelled", cancelledAt: Date.now() })
-        .where(
-          and(
-            inArray(workflowWaitStates.executionId, supersededExecutionIds),
-            eq(workflowWaitStates.status, "waiting")
-          )
-        );
-    }
 
     return {
       status: "started" as const,
