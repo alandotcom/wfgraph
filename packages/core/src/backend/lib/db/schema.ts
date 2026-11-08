@@ -111,11 +111,13 @@ export const workflows = pgTable(
     /**
      * The version event and manual starts use. Null until the first publish, and
      * a start against a never-published workflow is refused. Lazy FK: the
-     * versions table references this one the other way.
+     * versions table references this one the other way. No delete takes a
+     * publication away, so the version a workflow publishes goes only with the
+     * workflow's own delete.
      */
     publishedVersionId: text("published_version_id").references(
       (): AnyPgColumn => workflowVersions.id,
-      { onDelete: "set null" }
+      { onDelete: "restrict" }
     ),
     createdAt: timestamp("created_at").notNull().default(utcNow()),
     updatedAt: timestamp("updated_at").notNull().default(utcNow()),
@@ -127,10 +129,9 @@ export const workflows = pgTable(
       "workflows_visibility_check",
       sql`${table.visibility} in ('private', 'public')`
     ),
-    // The version sweep at publish deletes workflow_versions rows, and this FK
-    // is `on delete set null`, so Postgres runs that action on every one of
-    // them. Unindexed, each delete scans the whole workflows table; the sweep's
-    // own "is this version published" predicate reads the same index.
+    // Every workflow_versions delete, the draft snapshot sweep's among them,
+    // checks this FK for a workflow still naming the version. Unindexed, each
+    // check scans the whole workflows table.
     index("workflows_published_version_id_idx").on(table.publishedVersionId),
   ]
 );

@@ -100,11 +100,10 @@ describe("OAuth persistence", () => {
 });
 
 describe("workflows indexes", () => {
-  // published_version_id is `on delete set null`, and the version sweep at
-  // publish is what makes a workflow_versions delete happen at all. Without an
-  // index on this column, every version deleted scans the whole workflows table
-  // for a row to null out, and the sweep's own predicate scans it a second time.
-  it("indexes published_version_id, which a workflow_versions delete sets null through", () => {
+  // Every workflow_versions delete checks published_version_id's foreign key
+  // for a workflow still naming the version. Without an index on this column,
+  // every version deleted scans the whole workflows table.
+  it("indexes published_version_id, which every workflow_versions delete checks", () => {
     const names = getTableConfig(schema.workflows).indexes.map(
       (index) => index.config.name
     );
