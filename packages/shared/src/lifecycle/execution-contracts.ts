@@ -40,6 +40,16 @@ export const NODE_LOG_STATUSES = [
 export type NodeLogStatus = (typeof NODE_LOG_STATUSES)[number];
 
 /**
+ * The node log statuses a write stores: a row opens `running` and closes
+ * `success` or `error`. No write stores the other two.
+ */
+export const STORED_NODE_LOG_STATUSES = [
+  "running",
+  "success",
+  "error",
+] as const satisfies readonly NodeLogStatus[];
+
+/**
  * Which side of the Lifecycle Node a piece of work sits on: the Started outlet's
  * branch, or the Canceled outlet's.
  *
