@@ -161,25 +161,11 @@ export async function executeWorkflowRun({
       typeof result.supersededExecutions === "number" &&
       result.supersededExecutions > 0
     ) {
-      const failed = Array.isArray(result.failedToSupersede)
-        ? result.failedToSupersede.length
-        : 0;
       const replaced =
         result.supersededExecutions === 1
           ? "1 earlier run for this entity was replaced"
           : `${result.supersededExecutions} earlier runs for this entity were replaced`;
-      const superseded = `${runLabel} started. ${replaced}.`;
-
-      if (failed > 0) {
-        // A run the engine could not signal keeps going against the entity the
-        // new one is now working on, which is the duplicate work newest-wins
-        // exists to prevent. It reads as routine in the same tone as the success.
-        toast.error(
-          `${superseded} ${failed} couldn't be stopped and might still be running. Cancel them in Runs.`
-        );
-      } else {
-        toast.success(superseded);
-      }
+      toast.success(`${runLabel} started. ${replaced}.`);
     } else {
       // One toast per start, naming the command. The canvas paints the same
       // statuses for either run, so this toast says which graph is running.
