@@ -3,7 +3,7 @@ import { useAtomValueRawSync, useSetAtom } from "jotai";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { useAfterCommit } from "#src/hooks/effects";
 import { can } from "#src/lib/authorization";
-import { isRunInProgress, toExecutionStatus } from "#src/lib/execution-logs";
+import { isRunInProgress } from "#src/lib/execution-logs";
 import { runNodeEvidenceStatuses } from "#src/lib/run-node-evidence";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
@@ -90,7 +90,7 @@ function useRunStatusProjection(): void {
       }
 
       projectRunProgress({
-        executionStatus: toExecutionStatus(executionStatus.status),
+        executionStatus: executionStatus.status,
         statuses,
       });
       setIsExecuting(isRunInProgress(executionStatus.status));

@@ -1,6 +1,5 @@
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
-  WORKFLOW_EXECUTION_STATUSES,
   type EntityEligibilityReason,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
@@ -264,7 +263,7 @@ export function toWorkflowExecutionFromSummary(
   return {
     id: summary.id,
     workflowId: summary.workflowId,
-    status: toExecutionStatus(summary.status),
+    status: summary.status,
     startSource: summary.startSource,
     runMode: summary.runMode,
     versionKind: summary.versionKind,
@@ -282,16 +281,6 @@ export function toWorkflowExecutionFromSummary(
     // The logs read carries the run's executor state as `schedule` instead.
     activity: null,
   };
-}
-
-/** A run status read off the wire, with an unknown status read as failed. */
-export function toExecutionStatus(status: string): WorkflowExecutionStatus {
-  for (const known of WORKFLOW_EXECUTION_STATUSES) {
-    if (known === status) {
-      return known;
-    }
-  }
-  return "failed";
 }
 
 export function toExecutionLogsByNodeId(
