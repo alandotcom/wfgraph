@@ -23,6 +23,7 @@ import {
   workflowGraphUpdateAtom,
 } from "#src/lib/workflow-ui-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 
 const catalog = emptyExtensionCatalog;
 const turnId = Symbol("agent-turn");
@@ -144,9 +145,10 @@ describe("applyAgentGraphAtom", () => {
     // are set. Opening Runs mid-turn must not lose the turn's work.
     showWorkspaceRoute(store, { view: "runs" });
     store.set(executionOverlayGraphAtom, {
-      nodes: [actionNode("a")],
+      nodes: [actionNode("a"), actionNode("run_only")],
       edges: [],
     });
+    store.set(activeSelectionAtom, { nodeIds: ["run_only"], edgeIds: [] });
 
     const applied = store.set(applyAgentGraphAtom, {
       workflowId: "workflow_1",
@@ -158,10 +160,11 @@ describe("applyAgentGraphAtom", () => {
     });
 
     expect(applied).toBe(true);
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["run_only"]);
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["a", "b"]);
     expect(
       store.get(executionOverlayGraphAtom)?.nodes.map((node) => node.id)
-    ).toEqual(["a"]);
+    ).toEqual(["a", "run_only"]);
   });
 
   it("writes the Draft while Changes is open", () => {
