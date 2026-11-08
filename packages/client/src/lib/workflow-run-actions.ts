@@ -109,7 +109,6 @@ type ExecuteWorkflowRunParams = {
   runWorkflow: () => Promise<WorkflowExecuteResult>;
   nodes: WorkflowNode[];
   setNodeStatuses: SetNodeStatuses;
-  setIsExecuting: (value: boolean) => void;
   /**
    * The command label, from `runCommandLabel`. Both run commands open the same
    * Runs view, so the start toast is what tells "Run draft" and "Run v7 · Live"
@@ -129,7 +128,6 @@ export async function executeWorkflowRun({
   runWorkflow,
   nodes,
   setNodeStatuses,
-  setIsExecuting,
   runLabel,
   navigateToExecution,
 }: ExecuteWorkflowRunParams) {
@@ -154,7 +152,6 @@ export async function executeWorkflowRun({
 
       // No execution was created, so there is no id for the URL to own.
       // Whatever run was already open (or not) is left as it stands.
-      setIsExecuting(false);
       updateNodesStatus(nodes, setNodeStatuses, "none");
       return;
     }
@@ -196,6 +193,5 @@ export async function executeWorkflowRun({
     // canvas, which still shows the Lifecycle Node running.
     logger.error("Failed to execute the workflow", { error });
     updateNodesStatus(nodes, setNodeStatuses, "error");
-    setIsExecuting(false);
   }
 }

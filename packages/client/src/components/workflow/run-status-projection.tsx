@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useAtomValueRawSync, useSetAtom } from "jotai";
+import { useAtomValue, useAtomValueRawSync, useSetAtom } from "jotai";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { useAfterCommit } from "#src/hooks/effects";
 import { can } from "#src/lib/authorization";
@@ -11,7 +11,7 @@ import {
   projectRunProgressAtom,
 } from "#src/lib/workflow-graph-store";
 import {
-  isExecutingAtom,
+  runStartInFlightAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
 
@@ -25,7 +25,8 @@ const RUN_STATUS_POLL_MS = 500;
  * wait and the nodes with a step that will run again, so each read projects a
  * whole snapshot of the run. The projection is the one writer of run statuses
  * when the route opens, switches or closes a run: a run whose status has not
- * been read yet projects no statuses.
+ * been read yet projects no statuses, unless a run start is in flight, whose
+ * own paint stands until the started run is read.
  *
  * Private to `RunStatusProjection`, the headless component the editor mounts.
  */
@@ -35,7 +36,7 @@ function useRunStatusProjection(): void {
   const isExecutionOverlayActive = useAtomValueRawSync(
     isExecutionOverlayActiveAtom
   );
-  const setIsExecuting = useSetAtom(isExecutingAtom);
+  const runStartInFlight = useAtomValue(runStartInFlightAtom);
   const projectRunProgress = useSetAtom(projectRunProgressAtom);
 
   // While a run is on screen its progress is read back every half second. The
@@ -84,8 +85,11 @@ function useRunStatusProjection(): void {
     }`,
     () => {
       if (selectedExecutionId === null || executionStatus === undefined) {
-        projectRunProgress(null);
-        setIsExecuting(false);
+        // A start in flight painted the run it asked for, and the started
+        // run's first status read is what replaces that paint.
+        if (!runStartInFlight) {
+          projectRunProgress(null);
+        }
         return;
       }
 
@@ -93,7 +97,6 @@ function useRunStatusProjection(): void {
         executionStatus: executionStatus.status,
         statuses,
       });
-      setIsExecuting(isRunInProgress(executionStatus.status));
     }
   );
 }

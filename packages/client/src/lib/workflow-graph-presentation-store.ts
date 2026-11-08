@@ -40,8 +40,10 @@ import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
 import { isPublicationReviewActiveAtom } from "#src/lib/workflow-publication-review-store";
 import {
   isGeneratingAtom,
+  runStartInFlightAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
+import { isRunInProgress } from "#src/lib/execution-logs";
 import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
@@ -71,6 +73,13 @@ export const runNodeEvidenceStatusesAtom = atom((get) =>
 /** The status of the run whose progress is projected, or null before one is. */
 export const projectedRunStatusAtom = atom((get) =>
   get(runExecutionStatusAtom)
+);
+
+/** Whether Run is busy: a start is in flight, or the open run is still going. */
+export const isExecutingAtom = atom(
+  (get) =>
+    get(runStartInFlightAtom) ||
+    isRunInProgress(get(runExecutionStatusAtom) ?? undefined)
 );
 
 /**

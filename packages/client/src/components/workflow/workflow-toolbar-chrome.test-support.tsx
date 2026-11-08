@@ -92,7 +92,7 @@ function baseState(): WorkflowToolbarState {
     nodes: REAL_NODES,
     edges: [],
     isExecuting: false,
-    setIsExecuting: vi.fn(),
+    setRunStartInFlight: vi.fn(),
     isGenerating: false,
     clearWorkflow: vi.fn(),
     updateNodeData: vi.fn(),

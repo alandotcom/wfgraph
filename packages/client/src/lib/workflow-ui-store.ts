@@ -31,7 +31,12 @@ export const workflowWorkspaceViewAtom = atom(
 
 export const showMinimapAtom = atom(false);
 
-export const isExecutingAtom = atom(false);
+/**
+ * Whether a run start this editor requested is still being created: from the
+ * confirm until the started run's first status read, or until the server
+ * starts nothing. Whether the open run is in progress is the projection's.
+ */
+export const runStartInFlightAtom = atom(false);
 export const isGeneratingAtom = atom(false);
 /** Identifies the only agent turn allowed to change the open workflow. */
 export const activeAgentTurnIdAtom = atom<symbol | null>(null);
