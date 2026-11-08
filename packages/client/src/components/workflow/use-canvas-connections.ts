@@ -37,6 +37,13 @@ import {
   type StoredCanvasConnection,
 } from "#src/lib/group-scope-canvas";
 
+/** The handle a connection drag started from. */
+type ConnectGesture = {
+  nodeId: string;
+  handleType: "source" | "target";
+  handleId: string | null;
+};
+
 interface UseCanvasConnectionsResult {
   isValidConnection: (connection: XYFlowConnection | XYFlowEdge) => boolean;
   onConnect: OnConnect;
@@ -80,9 +87,8 @@ export function useCanvasConnections(input: {
   const connectNodes = useSetAtom(connectNodesAtom);
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
 
-  const connectingNodeId = useRef<string | null>(null);
-  const connectingHandleType = useRef<"source" | "target" | null>(null);
-  const connectingHandleId = useRef<string | null>(null);
+  // The drag in progress, from its start until its end, which always clears it.
+  const connecting = useRef<ConnectGesture | null>(null);
   const justCreatedNodeFromConnection = useRef(false);
   const wasNodeJustCreatedFromConnection = useCallback(
     () => justCreatedNodeFromConnection.current,
@@ -159,9 +165,14 @@ export function useCanvasConnections(input: {
       if (connectionsLocked) {
         return;
       }
-      connectingNodeId.current = connectionStart.nodeId;
-      connectingHandleType.current = connectionStart.handleType;
-      connectingHandleId.current = connectionStart.handleId ?? null;
+      connecting.current =
+        connectionStart.nodeId && connectionStart.handleType
+          ? {
+              nodeId: connectionStart.nodeId,
+              handleType: connectionStart.handleType,
+              handleId: connectionStart.handleId ?? null,
+            }
+          : null;
     },
     [connectionsLocked]
   );
@@ -179,19 +190,19 @@ export function useCanvasConnections(input: {
   }, []);
 
   const handleConnectionToExistingNode = useCallback(
-    (nodeElement: Element) => {
+    (gesture: ConnectGesture, nodeElement: Element) => {
       const targetNodeId = nodeElement.getAttribute("data-id");
-      const fromSource = connectingHandleType.current === "source";
-      const connectingId = connectingNodeId.current;
+      const fromSource = gesture.handleType === "source";
+      const connectingId = gesture.nodeId;
 
-      if (targetNodeId && connectingId) {
+      if (targetNodeId) {
         const sourceId = fromSource ? connectingId : targetNodeId;
         const targetId = fromSource ? targetNodeId : connectingId;
         const sourceHandle = normalizeSourceHandleForConnection(
           sourceId,
-          fromSource ? connectingHandleId.current : null
+          fromSource ? gesture.handleId : null
         );
-        const targetHandle = fromSource ? null : connectingHandleId.current;
+        const targetHandle = fromSource ? null : gesture.handleId;
         onConnect({
           source: sourceId,
           target: targetId,
@@ -204,16 +215,12 @@ export function useCanvasConnections(input: {
   );
 
   const handleConnectionToNewNode = useCallback(
-    (clientX: number, clientY: number) => {
+    (gesture: ConnectGesture, clientX: number, clientY: number) => {
       if (!insertsNodes) {
         return;
       }
-      const sourceNodeId = connectingNodeId.current;
-      if (!sourceNodeId) {
-        return;
-      }
-
-      const fromSource = connectingHandleType.current === "source";
+      const sourceNodeId = gesture.nodeId;
+      const fromSource = gesture.handleType === "source";
       if (
         !(
           fromSource ||
@@ -264,9 +271,9 @@ export function useCanvasConnections(input: {
       const targetId = fromSource ? newNode.id : sourceNodeId;
       const sourceHandle = normalizeSourceHandleForConnection(
         sourceId,
-        fromSource ? connectingHandleId.current : null
+        fromSource ? gesture.handleId : null
       );
-      const targetHandle = fromSource ? null : connectingHandleId.current;
+      const targetHandle = fromSource ? null : gesture.handleId;
       // A drag from an "Incoming from" stub names the outside outlet it stands
       // for. The store plans the connection with the new step in the graph, so
       // on a focused Group the step joins the Group first.
@@ -317,10 +324,9 @@ export function useCanvasConnections(input: {
 
   const onConnectEnd: OnConnectEnd = useCallback(
     (event, connectionState) => {
-      if (connectionsLocked) {
-        return;
-      }
-      if (!connectingNodeId.current) {
+      const gesture = connecting.current;
+      connecting.current = null;
+      if (connectionsLocked || !gesture) {
         return;
       }
 
@@ -338,9 +344,6 @@ export function useCanvasConnections(input: {
       }
 
       if (!target) {
-        connectingNodeId.current = null;
-        connectingHandleType.current = null;
-        connectingHandleId.current = null;
         return;
       }
 
@@ -353,41 +356,23 @@ export function useCanvasConnections(input: {
           : null;
 
       if (
-        connectingHandleType.current &&
         droppedHandleType &&
-        !connectionHandleTypesMatch(
-          connectingHandleType.current,
-          droppedHandleType
-        )
+        !connectionHandleTypesMatch(gesture.handleType, droppedHandleType)
       ) {
         showGraphEditRefusal({
           refusal: "Connect an output handle to an input handle.",
         });
-        connectingNodeId.current = null;
-        connectingHandleType.current = null;
-        connectingHandleId.current = null;
         return;
       }
 
-      if (
-        nodeElement &&
-        connectingHandleType.current &&
-        (!isHandle || !connectionState.isValid)
-      ) {
-        handleConnectionToExistingNode(nodeElement);
-        connectingNodeId.current = null;
-        connectingHandleType.current = null;
-        connectingHandleId.current = null;
+      if (nodeElement && (!isHandle || !connectionState.isValid)) {
+        handleConnectionToExistingNode(gesture, nodeElement);
         return;
       }
 
       if (!(nodeElement || isHandle)) {
-        handleConnectionToNewNode(clientX, clientY);
+        handleConnectionToNewNode(gesture, clientX, clientY);
       }
-
-      connectingNodeId.current = null;
-      connectingHandleType.current = null;
-      connectingHandleId.current = null;
     },
     [
       getClientPosition,
