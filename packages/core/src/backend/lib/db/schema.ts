@@ -26,6 +26,7 @@ import {
   type NodeLogStatus,
   STORED_NODE_LOG_STATUSES,
   type TerminationKind,
+  WORKFLOW_EXECUTION_START_SOURCES,
   WORKFLOW_EXECUTION_STATUSES,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
@@ -383,6 +384,14 @@ export const workflowExecutions = pgTable(
       sql`${table.status} in (${literals(WORKFLOW_EXECUTION_STATUSES)})`
     ),
     check(
+      "workflow_executions_start_source_check",
+      sql`${table.startSource} in (${literals(WORKFLOW_EXECUTION_START_SOURCES)})`
+    ),
+    check(
+      "workflow_executions_run_mode_check",
+      sql`${table.runMode} in ('live', 'test')`
+    ),
+    check(
       "workflow_executions_entity_identity_pair_check",
       sql`(${table.entityType} is null and ${table.entityId} is null) or (${table.entityType} is not null and ${table.entityId} is not null)`
     ),
@@ -491,6 +500,10 @@ export const workflowEventSubscriptions = pgTable(
       columns: [table.workflowId, table.eventName, table.role],
     }),
     index("workflow_event_subscriptions_event_name_idx").on(table.eventName),
+    check(
+      "workflow_event_subscriptions_role_check",
+      sql`${table.role} in ('start', 'cancel', 'wait')`
+    ),
   ]
 );
 
@@ -605,6 +618,10 @@ export const workflowWaitStates = pgTable(
     check(
       "workflow_wait_states_status_check",
       sql`${table.status} in (${literals(WAIT_STATE_STATUSES)})`
+    ),
+    check(
+      "workflow_wait_states_wait_type_check",
+      sql`${table.waitType} in ('delay', 'event')`
     ),
     check(
       "workflow_wait_states_wake_check",
