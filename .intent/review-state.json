@@ -740,16 +740,14 @@
       "evidence": ["_artifacts/skill_tree.yaml lists no client sources."]
     },
     "source:packages/client/src/lib/workflow-run-actions.ts": {
-      "fingerprint": "6ea7969da97889f8e8f1eb983a24c99cc261b0e987aae98b7522978e8692bd20",
+      "fingerprint": "8ed9e1148f93bdcce0a726f9b8b5a048fa097cb84e7fdb3b0f0672bfedb29d68",
       "snapshot": {
-        "packages/client/src/lib/workflow-run-actions.ts": "016d15e57ff30542df9f47789cd3f91d56bedf9946e675940aac902f2e7fb70d"
+        "packages/client/src/lib/workflow-run-actions.ts": "61a80cc22e358d73463df1566df5ff5020045dffdf58cbafb789dffcabb08bd1"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
-      "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
-      ]
+      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml"]
     },
     "source:packages/client/src/lib/workflow-save-store.test.ts": {
       "fingerprint": "e651a1b2d49dc971da13456dc7099136712f628272b38abf4cc213a4b44b5816",
@@ -932,16 +930,14 @@
       ]
     },
     "source:packages/core/src/backend/executor/testing/pass-cases.ts": {
-      "fingerprint": "27400ea936147dbbe1948c14647f0c7b46ebef9a5c48eb054c471ad7dfe99f16",
+      "fingerprint": "ae8a1f83c5bd6b3f8c0f17191cf6c2d55231cff811d7cb570572db63e52d9dd3",
       "snapshot": {
-        "packages/core/src/backend/executor/testing/pass-cases.ts": "dcab6fa38e05107a53324adaa86b4f7d37739b756522aa27b7d165495a5a76cd"
+        "packages/core/src/backend/executor/testing/pass-cases.ts": "6a686aa601c58579d2902fa67be22328ae4d5dbf9b7e864a11b05e866e936b63"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
-      "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
-      ]
+      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml"]
     },
     "source:packages/core/src/backend/executor/testing/run-fixtures.ts": {
       "fingerprint": "095c031f31b067b70319ed4e1f167f3b9748edeba185109a0406eecf804d9cbc",
@@ -1004,16 +1000,14 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/executions.ts": {
-      "fingerprint": "a4dd4a5dafc164184769395f42890496d29e0fccd2697f37817d40ca3d69f633",
+      "fingerprint": "f78112006c5b93536d0f127217b1abf3bad70e22167145dd6deee3fa3cfa8b34",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/executions.ts": "557a2f81f17a999cc38e16e1c8bf63b36e56f66128fcfef20491457ad229fc46"
+        "packages/core/src/backend/persistence/conformance/executions.ts": "ca82893de9b1cbb630c4d3a44f53061599d02e2774a2cd47612d33978b81554f"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
-      "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
-      ]
+      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml"]
     },
     "source:packages/core/src/backend/persistence/conformance/integrations.ts": {
       "fingerprint": "27ff43bffad966982ab522147873069e29fb5e1ae6f7d6db8912b22624748f37",
@@ -1040,27 +1034,27 @@
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/admission.ts": {
-      "fingerprint": "0a2e8bb4f24a1fc6808b0968aee1413bd04a2420daa48a1f35b46c61981487c4",
+      "fingerprint": "aecf1bff9df23fa536412a82ac9d381612b3ef35746a6b24e09e14489b2bfdca",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/admission.ts": "5def80ea7ee83f72c35a08377b2a5c938eedce733a5c91fb592aa161fe3bd7b1"
+        "packages/core/src/backend/persistence/sqlite/executions/admission.ts": "4c87dfdd85dd632d57aa34d1647a95b94c9f841437bdb5ffc7ad32e5371d6800"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/runs.ts": {
-      "fingerprint": "0c6f95db276361bb50ae74dfad0f5a268b43040beb833f6c0977577aff68ec58",
+      "fingerprint": "ab23ad3417d67dfbc70b47655ec8d6bc40c178e06883bdc9814df8ba82c39c99",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/runs.ts": "a3541b4e856dd3a6dd2e5d6ceb0b029394f692a2f87ed9367b29bbc81e1f6d04"
+        "packages/core/src/backend/persistence/sqlite/executions/runs.ts": "38b8e411aa97039b489783f8d836a1549e80db638dc58114aa6db3df4c0e6a2b"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "no-change",
-      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
       "evidence": [
-        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/integrations.ts": {
@@ -1088,15 +1082,15 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/admission.ts": {
-      "fingerprint": "ea95014371243b37be50c47ed697a6392f34804e9745c82579cc5d08f9bf4f90",
+      "fingerprint": "96922eaee3324520287045067bc52d60244c95a42283f7a835173d42d8430ec0",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/admission.ts": "0da8b84a7666b126ee185f4e94523c9023cc0581a7512119b9d8d2cfc0a111ea"
+        "packages/core/src/backend/services/executions/repo/admission.ts": "d52492c0b487df7dd2ce1206f80ec463d344721dc764580fbefa98247de868ab"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/release-policy.ts": {
@@ -1112,15 +1106,15 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/runs.ts": {
-      "fingerprint": "c9286cfc799965faac512abf9d419a3121d28c8c6fcdc793d39fe99e8629b9cb",
+      "fingerprint": "73067154cfa86b11ad93dd7911b81d06a62e4a0a6bda2f5ec56febe56fb34ca7",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/runs.ts": "db15ae0f171a312fa8822595905083caefa2b7ad8a8775b0d4a6216a3ca65af1"
+        "packages/core/src/backend/services/executions/repo/runs.ts": "79d4ed87b75c550de3acf0bda46b38dde279ca97ace1d92e150206903e1c4838"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "no-change",
-      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
       "evidence": [
-        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
       ]
     },
     "source:packages/core/src/backend/services/executions/status.test.ts": {
@@ -1268,27 +1262,25 @@
       ]
     },
     "source:packages/core/src/backend/services/workflows/lifecycle/deliver-event.test.ts": {
-      "fingerprint": "546ae247159e5c56ee9961b29c0da27eda5ff0ea6d4020772d6a4852e79f48d7",
+      "fingerprint": "320ebc90597d0fb04c8aad75ce50a6251a95fab013122330eef41e2cbed37b2c",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/lifecycle/deliver-event.test.ts": "d07e8305ed41957f30f9b9162437990c24f737de3843403890b600718e4e5fc7"
+        "packages/core/src/backend/services/workflows/lifecycle/deliver-event.test.ts": "86b0847931db30405d8deea733505e7bcd3c84dc37ff13d525dcdb3f167ae4db"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
-      "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
-      ]
+      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml"]
     },
     "source:packages/core/src/backend/services/workflows/lifecycle/deliver-event.ts": {
-      "fingerprint": "62be465e71d7a3d082f99fa3e77d830fdc029724f25e9a27e4ba7db26d69d377",
+      "fingerprint": "86d9694062f98dfff1f743d8bfcc59ceb420b0807b2e4df8fbefe26afa8095eb",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/lifecycle/deliver-event.ts": "10b68fedc786970588f06d8a80708763b11675046a155f72df32239df00b442c"
+        "packages/core/src/backend/services/workflows/lifecycle/deliver-event.ts": "fd6bd61bd7638d858c169c9009ed933c20d630d99bde94bc181d4fa495cb8ea5"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
       ]
     },
     "source:packages/evals/src/agent/result.test.ts": {
@@ -1424,15 +1416,15 @@
       ]
     },
     "source:packages/shared/src/lifecycle/execution-contracts.ts": {
-      "fingerprint": "0984c4c8e0ca3d4720b4322dbda5430dd14ec97a60a078a1b234ee6671eec769",
+      "fingerprint": "e127357f36d75abcf3a19bd5d212b9dceca028f30221f519da7fdc3ab2bac41e",
       "snapshot": {
-        "packages/shared/src/lifecycle/execution-contracts.ts": "c8bdcf90fb5624ffad2fe958b19f84d2353a0fa2bbd15e5751b2859c687a9bee"
+        "packages/shared/src/lifecycle/execution-contracts.ts": "3de60919c025b66e4d148914638e6e1ec930184dd759b7825758e17eec7c1c98"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "no-change",
-      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
       "evidence": [
-        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
       ]
     },
     "source:packages/shared/src/lifecycle/wait-subscription.test.ts": {
@@ -1472,15 +1464,15 @@
       ]
     },
     "source:packages/shared/src/rpc/contracts/workflows.ts": {
-      "fingerprint": "05d0e9fc5fd9b5e2200232131a96b53eaf4270edc25c5f69598a8e4fa52deb30",
+      "fingerprint": "ed4f79af4b49e9fdaf89847b1883690da3f18bc249c7d278a34a017eed12f300",
       "snapshot": {
-        "packages/shared/src/rpc/contracts/workflows.ts": "b34488ca7e796a249d79d2fdb44b89fdd599e92282373b628f4f148823b315b4"
+        "packages/shared/src/rpc/contracts/workflows.ts": "09c9117c1af5ecf63dcda43e63c024dc183ed5aa2826c9145548f01840652230"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "no-change",
-      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
       "evidence": [
-        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
       ]
     },
     "source:packages/client/src/components/workflow/workflow-run-detail.test.tsx": {
@@ -1616,16 +1608,14 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-cron.ts": {
-      "fingerprint": "1c6ba904651b00741b0102609a1395f1728c7f14c74c1c2883874214664f63f1",
+      "fingerprint": "6fd6f074e0f452cd79154ee4f84a97d9fe478e37df68e1677c4b079237d5efd1",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-cron.ts": "94cb0a479029c87ed67d2c144941cfd7692a321c2f68aba32aa147ac2b9cbcb1"
+        "packages/core/src/backend/persistence/conformance/execution-cron.ts": "9d4e945f61b7f144368aa2e9f00d05367a709b4fdc1eda6253e08cd88b816bdd"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "out-of-scope",
-      "reason": "Test, editor or conformance code that no published skill teaches.",
-      "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
-      ]
+      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml"]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-schedule.ts": {
       "fingerprint": "878c568bd1eb5770e07495f8bcbb908cdc4a4d3f7efe3f331b539402ffe060f7",
@@ -1904,15 +1894,15 @@
       ]
     },
     "source:packages/core/src/backend/engine/terminal-record.ts": {
-      "fingerprint": "afe428c93c78d75ad587cf40dd1306dc186f68b07dcfae50d2455993cb37eadf",
+      "fingerprint": "1dd37abf6ff21a8c43be6fb497226976d46464afa94d4911911666b9411b5043",
       "snapshot": {
-        "packages/core/src/backend/engine/terminal-record.ts": "7c85d7cfb65d6a1616c45aaaad9bf9d07765df5c994f7558898953674a639761"
+        "packages/core/src/backend/engine/terminal-record.ts": "38f679f20f0993a034e1bd6108da1cc538c56c395fb6dba63ed5d936fbc0e327"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "no-change",
-      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
       "evidence": [
-        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
       ]
     },
     "source:packages/core/src/backend/engine/testing/wait-fixtures.ts": {
@@ -1925,6 +1915,150 @@
       "reason": "Test or conformance code that no published skill teaches.",
       "evidence": [
         "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/executor/cron-body.ts": {
+      "fingerprint": "7476863a104bac538746b8d4d1a7f01ea9511a6b2d28f1632df1221640e47b32",
+      "snapshot": {
+        "packages/core/src/backend/executor/cron-body.ts": "18d271cda61c1011b90c6ae2de0b2d5429419bd37b5a74d9d65f7579ddbb2889"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "no-change",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+      ]
+    },
+    "source:packages/core/src/backend/executor/delivery-fanout.test.ts": {
+      "fingerprint": "fd969f9a6d074d30c204d73576881660ce8e6658366dc453c493dc8dbd7fa7d4",
+      "snapshot": {
+        "packages/core/src/backend/executor/delivery-fanout.test.ts": "7e0d1e0a519896f9b4498680d73f32de9edff7e1363274ea1efe807875c44ebd"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml"]
+    },
+    "source:packages/core/src/backend/executor/run-body.ts": {
+      "fingerprint": "e0b93eda3e3dd6b8881730a20397ded9c92eee5ffc443e2bd00b7f39204321b1",
+      "snapshot": {
+        "packages/core/src/backend/executor/run-body.ts": "165900df33a05c33c6ad4ae9029ddf03cb2cdabcbdd9524d629a3fdf7e6430fe"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "no-change",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/end-runs.test.ts": {
+      "fingerprint": "10853556128af2e059d878a3607aa61c40b29cfa39c50b8d0c1be54b0dec1917",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/end-runs.test.ts": "76c5cb2f2f90e6fa8a787ba9dfae6c1c2480678290eafcbf3f22756f6e5d0c5a"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml"]
+    },
+    "source:packages/core/src/backend/services/executions/end-runs.ts": {
+      "fingerprint": "c8092a0b72c5448ef355f37d18ad3a29523232bda4e98a439b263f440ddd3028",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/end-runs.ts": "c2fe320a471e23cae1e56ed16d1d2eb2e786fceb857e12123360bcdcd344de2a"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "no-change",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/contracts.ts": {
+      "fingerprint": "fc06b446b41a1748955b7d6e5ed495635b7370336aa41a6ba8ebc155cf5fc02e",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/contracts.ts": "1cad48075282733063d70f7ca2d5cb1f817095e61ac0c2e3e94aef9c39bf03db"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "no-change",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/concurrency.test.ts": {
+      "fingerprint": "0fd5dbf43c5a3fe8613284e202d122bb7ef3d84984e9a4963a14d12d76780fe9",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/concurrency.test.ts": "82fe69a037dcceaa26b34ab31cf5ce6b1b329d867d6ee51f292c1c427c6520fa"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml"]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/concurrency.ts": {
+      "fingerprint": "3d4cd095d527bfec3efafde70c5d99f1b305becb47e128f5bb929206a0bc9d96",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/concurrency.ts": "9f7544e88febe4c219e8170b98bf685f4a3122a23333ea86d337d7ebe0fec002"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "no-change",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/deliver-event.admission.test.ts": {
+      "fingerprint": "ada600e0e79866f9afb69a95d5ba07459171a858f3caf8230be6aff8e5b13c4f",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/deliver-event.admission.test.ts": "821f64a8165a649ad7ecf98edaf9ebdf577ecda8655056653a9155639887c869"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml"]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/deliver-event.recovery.test.ts": {
+      "fingerprint": "138e14208012336a959ddc9607eaddd6f5fefcfa9ba85811aff6a984607adc04",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/deliver-event.recovery.test.ts": "7e56cd696c45a6782120fb40a3debb83181dbf9190d98ea42a56cf909f80b1b5"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml"]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/manual-start.ts": {
+      "fingerprint": "e729b9397506c0f46b4edd8b0505ecf40645655757053f5fe9ffbe08225b97df",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/manual-start.ts": "b78f7e8d842ddd00accff848d09f48b39c4ffed08c1ae5dfd297e0896c562858"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "no-change",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/scheduled-start.test.ts": {
+      "fingerprint": "2d134791b72488a93ed16b9250ddab9995f1fa027bcbb997446d22e6f41b1291",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/scheduled-start.test.ts": "d9c672f4d41386ecb64926bdf4bff079d12b81c06e25d586e9b65d546f07f2c4"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml"]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/scheduled-start.ts": {
+      "fingerprint": "231d8f87ffd4c24cb3f62bddb6fc81bff39f4b5cb3b989e73621318ba9092443",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/scheduled-start.ts": "5c75f1b8dadf7f610fe4ac3b895bde6f6a2b4eb5479269c6e84aaa67db198b39"
+      },
+      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "outcome": "no-change",
+      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
       ]
     }
   }
