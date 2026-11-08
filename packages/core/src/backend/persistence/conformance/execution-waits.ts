@@ -2010,5 +2010,52 @@ export function describeExecutionWaitConformance({
       expect(result.excludingNone).toHaveLength(3);
       expect(result.otherEvent).toEqual([]);
     });
+
+    it("holds a wait row's wake to its status, and a run to one row per Wait node", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      await seedPublishedWorkflow(connection);
+      const waitStateId = await startEventWait(connection, "pairing-token");
+      const wait = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.findWaitStateById(waitStateId);
+        })
+      );
+      if (!wait) throw new Error("Wait was not found");
+      const row = `id = '${waitStateId}'`;
+      const timeout = `'{"kind":"timeout"}'`;
+
+      await expect(
+        database.execute(
+          `update workflow_wait_states set status = 'sleeping' where ${row}`
+        )
+      ).rejects.toThrow();
+      // A parked row holds no wake, and a resolved one always holds one.
+      await expect(
+        database.execute(
+          `update workflow_wait_states set wake = ${timeout} where ${row}`
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `update workflow_wait_states set status = 'resuming' where ${row}`
+        )
+      ).rejects.toThrow();
+      const columns =
+        "id, execution_id, workflow_id, node_id, node_name, wait_type, status";
+      const values = `'wait_second', '${wait.executionId}', 'wf_1', '${wait.nodeId}', 'Approval', 'event', 'waiting'`;
+      await expect(
+        database.execute({
+          postgresql: `insert into workflow_wait_states (${columns}) values (${values})`,
+          sqlite: `insert into workflow_wait_states (${columns}, created_at) values (${values}, 0)`,
+        })
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `update workflow_wait_states set status = 'resuming', wake = ${timeout} where ${row}`
+        )
+      ).resolves.toBeUndefined();
+    });
   });
 }

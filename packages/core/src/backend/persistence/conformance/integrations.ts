@@ -853,5 +853,122 @@ export function describeIntegrationConformance({
       expect(result.claim).toEqual({ status: "not_found" });
       expect(result.deletion).toEqual({ status: "not_found" });
     });
+
+    it("holds an integration's refresh claim to its refreshing state", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      const integrationId = await connection.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          const inserted = yield* integrations.insert({
+            name: "Primary",
+            type: "linear",
+            config: { apiKey: "secret" },
+          });
+          return inserted.id;
+        })
+      );
+      const row = `id = '${integrationId}'`;
+      const update = "update integrations set";
+      const claimedAt = new Date("2026-01-01T00:00:00.000Z");
+      const claim = {
+        postgresql: `refresh_claim_id = 'claim_1', refresh_claimed_at = '${claimedAt.toISOString()}'`,
+        sqlite: `refresh_claim_id = 'claim_1', refresh_claimed_at = ${claimedAt.getTime()}`,
+      };
+
+      await expect(
+        database.execute(`${update} refresh_state = 'refreshing' where ${row}`)
+      ).rejects.toThrow();
+      await expect(
+        database.execute({
+          postgresql: `${update} ${claim.postgresql} where ${row}`,
+          sqlite: `${update} ${claim.sqlite} where ${row}`,
+        })
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `${update} refresh_state = 'refreshing', refresh_claim_id = 'claim_1' where ${row}`
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute({
+          postgresql: `${update} refresh_state = 'refreshing', ${claim.postgresql} where ${row}`,
+          sqlite: `${update} refresh_state = 'refreshing', ${claim.sqlite} where ${row}`,
+        })
+      ).resolves.toBeUndefined();
+    });
+
+    it("holds an OAuth attempt's integration to its mode, and its result to its success", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      const integrationId = await connection.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          const integration = yield* integrations.insert({
+            name: "Primary",
+            type: "linear",
+            config: { apiKey: "secret" },
+          });
+          const attempt = {
+            expiresAt: new Date("2099-01-01T00:00:00Z"),
+            browserBindingHash: "browser_hash",
+          };
+          yield* integrations.createOAuthAuthorizationAttempt({
+            ...attempt,
+            stateHash: "create_state",
+            integrationId: null,
+            payload: {
+              kind: "create",
+              integrationId: "int_new",
+              name: "New OAuth connection",
+              type: "linear",
+              config: {},
+              configRevision: 0,
+              redirectUri: "https://example.test/oauth/callback",
+            },
+          });
+          yield* integrations.createOAuthAuthorizationAttempt({
+            ...attempt,
+            stateHash: "reconnect_state",
+            integrationId: integration.id,
+            payload: {
+              kind: "reconnect",
+              redirectUri: "https://example.test/oauth/callback",
+              configRevision: 0,
+            },
+          });
+          return integration.id;
+        })
+      );
+      const update = "update oauth_authorization_attempts set";
+      const create = "state_hash = 'create_state'";
+      const reconnect = "state_hash = 'reconnect_state'";
+
+      // A create attempt has no row to point at until its callback succeeds.
+      await expect(
+        database.execute(
+          `${update} integration_id = '${integrationId}' where ${create}`
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(`${update} mode = 'reconnect' where ${create}`)
+      ).rejects.toThrow();
+      await expect(
+        database.execute(`${update} mode = 'create' where ${reconnect}`)
+      ).rejects.toThrow();
+      await expect(
+        database.execute(`${update} status = 'succeeded' where ${create}`)
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `${update} result_integration_id = 'int_new' where ${create}`
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `${update} status = 'succeeded', result_integration_id = 'int_new' where ${create}`
+        )
+      ).resolves.toBeUndefined();
+    });
   });
 }

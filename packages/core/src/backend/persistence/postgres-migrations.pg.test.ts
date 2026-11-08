@@ -167,6 +167,47 @@ describePostgres("PostgreSQL migrations", () => {
     });
   });
 
+  // SQLite leaves this pairing out: its legacy adoption restores a Cancel
+  // claim only after every pending migration, so a rebuild holding it would
+  // refuse the claim's own row mid-upgrade.
+  it("keeps a Cancel arrival's columns off a run no Cancel claimed", async () => {
+    const schema = freshSchema();
+    await migrateWfGraphDatabase({ url: requirePostgresTestUrl(), schema });
+    const execute = (statement: string) =>
+      withAdminClient(async (client) => {
+        await client.unsafe(statement);
+      });
+    const insertRun = (id: string, claim: string) =>
+      execute(`
+        insert into "${schema}"."workflow_executions"
+          (id, workflow_id, workflow_version_id, status, start_source,
+           termination_kind, termination_requested_at, termination_reason,
+           termination_node_id, cancel_event_name)
+        values
+          ('${id}', 'wf_1', 'ver_1', 'running', 'event', ${claim}, 'appointment.canceled')
+      `);
+    await execute(`
+      insert into "${schema}"."workflows" (id, name, graph)
+      values ('wf_1', 'Appointments', '{"nodes":[],"edges":[]}'::jsonb);
+      insert into "${schema}"."workflow_versions"
+        (id, workflow_id, version, graph, catalog_fingerprint, graph_digest)
+      values ('ver_1', 'wf_1', 1, '{"nodes":[],"edges":[]}'::jsonb, 'catalog', 'digest');
+    `);
+
+    await expect(
+      insertRun("exec_unclaimed", "null, null, null, null")
+    ).rejects.toThrow();
+    await expect(
+      insertRun(
+        "exec_exited",
+        "'exit', '2026-03-01 00:00:00', 'entity_not_found', 'node_1'"
+      )
+    ).rejects.toThrow();
+    await expect(
+      insertRun("exec_canceled", "'cancel', '2026-03-01 00:00:00', null, null")
+    ).resolves.toBeUndefined();
+  });
+
   it("gives a draft snapshot from before last_pinned_at its creation time as its last pin", async () => {
     const schema = freshSchema();
     const url = requirePostgresTestUrl();
