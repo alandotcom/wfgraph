@@ -17,6 +17,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
+  isGeneratingAtom,
   workflowGraphUpdateAtom,
 } from "#src/lib/workflow-ui-store";
 import {
@@ -70,6 +71,7 @@ import type {
 import {
   newlyCreatedNodeIdAtom,
   workflowDragActiveAtom,
+  workflowDragOriginAtom,
 } from "#src/lib/workflow-graph-session-store";
 import {
   EMPTY_SELECTION,
@@ -229,6 +231,39 @@ function keepSelectionInDraft(get: Getter, set: Setter) {
   );
 }
 
+function isSettledPosition(change: NodeChange<WorkflowNode>): boolean {
+  return change.type === "position" && change.dragging === false;
+}
+
+/**
+ * Return the nodes a drag moved to where they were before it, and drop its
+ * undo entry. For a drag the editing lock interrupted: the draft takes no
+ * write while something else owns the canvas, so the move is not saved.
+ */
+function cancelNodeDrag(get: Getter, set: Setter) {
+  const origin = get(workflowDragOriginAtom);
+  if (!origin) {
+    return;
+  }
+  set(workflowDragOriginAtom, null);
+  const positions = new Map(
+    origin.nodes.map((node) => [node.id, node.position])
+  );
+  set(
+    nodesStateAtom,
+    mapOrSame(get(nodesStateAtom), (node) => {
+      const position = positions.get(node.id);
+      return position && position !== node.position
+        ? { ...omit(node, ["dragging"]), position }
+        : node;
+    })
+  );
+  const history = get(historyAtom);
+  if (history.at(-1) === origin) {
+    set(historyAtom, history.slice(0, -1));
+  }
+}
+
 export const onNodesChangeAtom = atom(
   null,
   (get, set, changes: NodeChange<WorkflowNode>[]) => {
@@ -241,7 +276,11 @@ export const onNodesChangeAtom = atom(
       })
     );
 
-    if (!draftEditable(get)) {
+    // The canvas is locked while the agent rewrites the graph, too.
+    if (!draftEditable(get) || get(isGeneratingAtom)) {
+      if (changes.some(isSettledPosition)) {
+        cancelNodeDrag(get, set);
+      }
       return;
     }
 
@@ -254,19 +293,17 @@ export const onNodesChangeAtom = atom(
     const isDragFrame = filteredChanges.some(
       (change) => change.type === "position" && change.dragging === true
     );
-    const isDragSettled = filteredChanges.some(
-      (change) => change.type === "position" && change.dragging === false
-    );
+    const isDragSettled = filteredChanges.some(isSettledPosition);
 
     if (isDragFrame && !get(workflowDragActiveAtom)) {
       // A drag arrives as a stream of frames. Only the first still has the
       // pre-drag positions worth snapshotting.
       pushHistory(get, set);
-      set(workflowDragActiveAtom, true);
+      set(workflowDragOriginAtom, get(historyAtom).at(-1) ?? null);
     }
 
     if (isDragSettled) {
-      set(workflowDragActiveAtom, false);
+      set(workflowDragOriginAtom, null);
     }
 
     if (filteredChanges.length > 0) {
