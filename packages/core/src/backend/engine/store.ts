@@ -171,9 +171,13 @@ export type WaitStateSnapshot = {
   wake: WaitWake | null;
 };
 
+/**
+ * A settle the Wait writes itself. A timeout is settled only by
+ * `settleWaitTimeout`, which checks for an arrival in the same write.
+ */
 export type MarkWaitStateStatusInput = {
   waitStateId: string;
-  status: "resumed" | "timed_out" | "cancelled";
+  status: "resumed" | "cancelled";
 };
 
 /**
@@ -259,7 +263,7 @@ export type WorkflowStore = {
   readWaitState(
     waitStateId: string
   ): Effect.Effect<WaitStateSnapshot | null, StoreFailure>;
-  /** Closes out a wait row once the run resumes, times out, or is cancelled. */
+  /** Closes out a wait row once its Wait resumes or is cancelled. */
   markWaitStateStatus(
     input: MarkWaitStateStatusInput
   ): Effect.Effect<void, StoreFailure>;
