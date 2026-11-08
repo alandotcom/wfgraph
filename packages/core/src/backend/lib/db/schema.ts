@@ -563,8 +563,10 @@ export const workflowWaitStates = pgTable(
     subscribedEvents: text("subscribed_events").array(),
     metadata: jsonb("metadata").$type<JsonObject>(),
     createdAt: timestamp("created_at").notNull().default(utcNow()),
-    // While `resuming`, this is the claim's lease timestamp and fencing token.
-    // Settling the claim replaces it with the actual resume time.
+    // Set when an Event or a manual resume claims the row, and read back as
+    // when that wake arrived. No other wake sets it, and no write guards on
+    // it. The Wait settling the row writes the time it resumed or timed out
+    // here, and clears it when it cancels the row.
     resumedAt: timestamp("resumed_at"),
     cancelledAt: timestamp("cancelled_at"),
     /** The durable step that parked on this row, which reads `wake` back. */
