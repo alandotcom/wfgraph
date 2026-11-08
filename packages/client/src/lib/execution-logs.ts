@@ -1,11 +1,13 @@
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
+  nodeStatusInRun,
   type EntityEligibilityReason,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { ExecutionLogEntry } from "@wfgraph/shared/graph/types";
 import { decodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
+import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 import type {
   ExecutionLogsResult,
@@ -424,26 +426,22 @@ export function createExecutionLogsMap(
 }
 
 /**
- * A run that stopped leaves its unfinished steps recorded as pending or running,
- * because nothing ever came back to close them out. They read as cancelled,
- * which is a step's own vocabulary rather than the run's.
+ * A run's steps as `nodeStatusInRun` reads them, which is what the server's
+ * status read answers too. A step its run's end cut off carries a reason when
+ * it recorded none.
  */
 export function applyExecutionStatusToLogs(
   logEntries: ExecutionLog[],
   executionStatus: string
 ): ExecutionLog[] {
-  if (executionStatus !== "canceled" && executionStatus !== "superseded") {
-    return logEntries;
-  }
-
-  return logEntries.map((log) => {
-    if (log.status === "pending" || log.status === "running") {
-      return {
-        ...log,
-        status: "cancelled" as const,
-        error: log.error || "Run cancelled before step completion",
-      };
-    }
-    return log;
+  return mapOrSame(logEntries, (log) => {
+    const status = nodeStatusInRun(log.status, executionStatus);
+    return status === log.status
+      ? log
+      : {
+          ...log,
+          status,
+          error: log.error || "Run cancelled before step completion",
+        };
   });
 }
