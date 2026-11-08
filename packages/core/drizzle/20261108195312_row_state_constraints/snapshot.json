@@ -1,0 +1,589 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "c5d5d840-8f0a-4a2e-8767-e3f5da562401",
+  "prevIds": [
+    "22b8b6c3-651a-4656-82b0-4902b409468b"
+  ],
+  "footprints": [
+    {
+      "statementType": "drop_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflows"
+      ],
+      "writes": [
+        "s|fk|public.workflows.workflows_published_version_id_workflow_versions_id_fk",
+        "n|fk|public.workflows.workflows_published_version_id_workflow_versions_id_fk",
+        "e|fk|public.workflows.workflows_published_version_id_workflow_versions_id_fk",
+        "n|con|public.workflows.workflows_published_version_id_workflow_versions_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.workflows",
+        "n|sch|public",
+        "e|col|public.workflows.published_version_id"
+      ]
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_executions",
+        "workflow_executions_in_flight_by_entity_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_executions_in_flight_by_entity_idx",
+        "n|idx|public.workflow_executions_in_flight_by_entity_idx",
+        "e|idx|public.workflow_executions_in_flight_by_entity_idx",
+        "n|rel|public.workflow_executions_in_flight_by_entity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.workflow_id",
+        "n|col|public.workflow_executions.entity_value",
+        "n|col|public.workflow_executions.run_mode"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "942d0c0272cc89f1"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_executions",
+        "workflow_executions_in_flight_by_typed_entity_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_executions_in_flight_by_typed_entity_idx",
+        "n|idx|public.workflow_executions_in_flight_by_typed_entity_idx",
+        "e|idx|public.workflow_executions_in_flight_by_typed_entity_idx",
+        "n|rel|public.workflow_executions_in_flight_by_typed_entity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.workflow_id",
+        "n|col|public.workflow_executions.entity_type",
+        "n|col|public.workflow_executions.entity_id",
+        "n|col|public.workflow_executions.run_mode"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "2537c4fb3d3f7ee4"
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_wait_states",
+        "workflow_wait_states_execution_node_uidx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_wait_states_execution_node_uidx",
+        "n|idx|public.workflow_wait_states_execution_node_uidx",
+        "e|idx|public.workflow_wait_states_execution_node_uidx",
+        "n|rel|public.workflow_wait_states_execution_node_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_wait_states",
+        "n|sch|public",
+        "n|col|public.workflow_wait_states.execution_id",
+        "n|col|public.workflow_wait_states.node_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflows"
+      ],
+      "writes": [
+        "s|fk|public.workflows.workflows_published_version_id_workflow_versions_id_fkey",
+        "n|fk|public.workflows.workflows_published_version_id_workflow_versions_id_fkey",
+        "e|fk|public.workflows.workflows_published_version_id_workflow_versions_id_fkey",
+        "n|con|public.workflows.workflows_published_version_id_workflow_versions_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.workflows",
+        "n|sch|public",
+        "n|tbl|public.workflow_versions",
+        "n|sch|public",
+        "n|col|public.workflows.published_version_id",
+        "n|col|public.workflow_versions.id",
+        "e|uniqueness|public.workflow_versions.id"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "integrations"
+      ],
+      "writes": [
+        "s|ck|public.integrations.integrations_refresh_claim_check",
+        "n|ck|public.integrations.integrations_refresh_claim_check",
+        "e|ck|public.integrations.integrations_refresh_claim_check",
+        "n|con|public.integrations.integrations_refresh_claim_check"
+      ],
+      "reads": [
+        "n|tbl|public.integrations",
+        "n|sch|public",
+        "n|col|public.integrations.refresh_state",
+        "n|col|public.integrations.refresh_claim_id",
+        "n|col|public.integrations.refresh_claimed_at"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "oauth_authorization_attempts"
+      ],
+      "writes": [
+        "s|ck|public.oauth_authorization_attempts.oauth_authorization_attempts_integration_check",
+        "n|ck|public.oauth_authorization_attempts.oauth_authorization_attempts_integration_check",
+        "e|ck|public.oauth_authorization_attempts.oauth_authorization_attempts_integration_check",
+        "n|con|public.oauth_authorization_attempts.oauth_authorization_attempts_integration_check"
+      ],
+      "reads": [
+        "n|tbl|public.oauth_authorization_attempts",
+        "n|sch|public",
+        "n|col|public.oauth_authorization_attempts.mode",
+        "n|col|public.oauth_authorization_attempts.integration_id"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "oauth_authorization_attempts"
+      ],
+      "writes": [
+        "s|ck|public.oauth_authorization_attempts.oauth_authorization_attempts_result_check",
+        "n|ck|public.oauth_authorization_attempts.oauth_authorization_attempts_result_check",
+        "e|ck|public.oauth_authorization_attempts.oauth_authorization_attempts_result_check",
+        "n|con|public.oauth_authorization_attempts.oauth_authorization_attempts_result_check"
+      ],
+      "reads": [
+        "n|tbl|public.oauth_authorization_attempts",
+        "n|sch|public",
+        "n|col|public.oauth_authorization_attempts.status",
+        "n|col|public.oauth_authorization_attempts.result_integration_id"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_logs"
+      ],
+      "writes": [
+        "s|ck|public.workflow_execution_logs.workflow_execution_logs_status_check",
+        "n|ck|public.workflow_execution_logs.workflow_execution_logs_status_check",
+        "e|ck|public.workflow_execution_logs.workflow_execution_logs_status_check",
+        "n|con|public.workflow_execution_logs.workflow_execution_logs_status_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_logs",
+        "n|sch|public",
+        "n|col|public.workflow_execution_logs.status",
+        "n|col|public.workflow_execution_logs.error"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_schedule"
+      ],
+      "writes": [
+        "s|ck|public.workflow_execution_schedule.workflow_execution_schedule_lease_check",
+        "n|ck|public.workflow_execution_schedule.workflow_execution_schedule_lease_check",
+        "e|ck|public.workflow_execution_schedule.workflow_execution_schedule_lease_check",
+        "n|con|public.workflow_execution_schedule.workflow_execution_schedule_lease_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public",
+        "n|col|public.workflow_execution_schedule.state",
+        "n|col|public.workflow_execution_schedule.owner_token",
+        "n|col|public.workflow_execution_schedule.lease_expires_at",
+        "n|col|public.workflow_execution_schedule.worker_id",
+        "n|col|public.workflow_execution_schedule.running_step_id",
+        "n|col|public.workflow_execution_schedule.running_node_id"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_steps"
+      ],
+      "writes": [
+        "s|ck|public.workflow_execution_steps.workflow_execution_steps_value_check",
+        "n|ck|public.workflow_execution_steps.workflow_execution_steps_value_check",
+        "e|ck|public.workflow_execution_steps.workflow_execution_steps_value_check",
+        "n|con|public.workflow_execution_steps.workflow_execution_steps_value_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_steps",
+        "n|sch|public",
+        "n|col|public.workflow_execution_steps.status",
+        "n|col|public.workflow_execution_steps.value"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_steps"
+      ],
+      "writes": [
+        "s|ck|public.workflow_execution_steps.workflow_execution_steps_failures_check",
+        "n|ck|public.workflow_execution_steps.workflow_execution_steps_failures_check",
+        "e|ck|public.workflow_execution_steps.workflow_execution_steps_failures_check",
+        "n|con|public.workflow_execution_steps.workflow_execution_steps_failures_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_steps",
+        "n|sch|public",
+        "n|col|public.workflow_execution_steps.failures",
+        "n|col|public.workflow_execution_steps.status"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_executions"
+      ],
+      "writes": [
+        "s|ck|public.workflow_executions.workflow_executions_status_check",
+        "n|ck|public.workflow_executions.workflow_executions_status_check",
+        "e|ck|public.workflow_executions.workflow_executions_status_check",
+        "n|con|public.workflow_executions.workflow_executions_status_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.status"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_wait_states"
+      ],
+      "writes": [
+        "s|ck|public.workflow_wait_states.workflow_wait_states_status_check",
+        "n|ck|public.workflow_wait_states.workflow_wait_states_status_check",
+        "e|ck|public.workflow_wait_states.workflow_wait_states_status_check",
+        "n|con|public.workflow_wait_states.workflow_wait_states_status_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_wait_states",
+        "n|sch|public",
+        "n|col|public.workflow_wait_states.status"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_wait_states"
+      ],
+      "writes": [
+        "s|ck|public.workflow_wait_states.workflow_wait_states_wake_check",
+        "n|ck|public.workflow_wait_states.workflow_wait_states_wake_check",
+        "e|ck|public.workflow_wait_states.workflow_wait_states_wake_check",
+        "n|con|public.workflow_wait_states.workflow_wait_states_wake_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_wait_states",
+        "n|sch|public",
+        "n|col|public.workflow_wait_states.status",
+        "n|col|public.workflow_wait_states.wake"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflows"
+      ],
+      "writes": [
+        "s|ck|public.workflows.workflows_mode_check",
+        "n|ck|public.workflows.workflows_mode_check",
+        "e|ck|public.workflows.workflows_mode_check",
+        "n|con|public.workflows.workflows_mode_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflows",
+        "n|sch|public",
+        "n|col|public.workflows.mode"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflows"
+      ],
+      "writes": [
+        "s|ck|public.workflows.workflows_visibility_check",
+        "n|ck|public.workflows.workflows_visibility_check",
+        "e|ck|public.workflows.workflows_visibility_check",
+        "n|con|public.workflows.workflows_visibility_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflows",
+        "n|sch|public",
+        "n|col|public.workflows.visibility"
+      ]
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_executions"
+      ],
+      "writes": [
+        "s|ck|public.workflow_executions.workflow_executions_termination_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.termination_kind",
+        "n|col|public.workflow_executions.termination_requested_at",
+        "n|col|public.workflow_executions.termination_reason",
+        "n|col|public.workflow_executions.termination_node_id",
+        "n|col|public.workflow_executions.cancel_event_name",
+        "n|col|public.workflow_executions.cancel_payload",
+        "n|col|public.workflow_executions.cancel_delivery_id",
+        "e|col|public.workflow_executions.termination_kind",
+        "e|col|public.workflow_executions.termination_requested_at",
+        "e|col|public.workflow_executions.termination_reason",
+        "e|col|public.workflow_executions.termination_node_id"
+      ],
+      "sqlHash": "62bfe73713a59617"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_wait_states",
+        "name": "workflow_wait_states_execution_node_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "execution_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "node_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflows",
+        "name": "workflows_published_version_id_workflow_versions_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "published_version_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "workflow_versions",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "RESTRICT",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "integrations",
+        "name": "integrations_refresh_claim_check",
+        "value": "(\"refresh_state\" = 'refreshing' and \"refresh_claim_id\" is not null and \"refresh_claimed_at\" is not null) or (\"refresh_state\" <> 'refreshing' and \"refresh_claim_id\" is null and \"refresh_claimed_at\" is null)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "oauth_authorization_attempts",
+        "name": "oauth_authorization_attempts_integration_check",
+        "value": "(\"mode\" = 'create' and \"integration_id\" is null) or (\"mode\" = 'reconnect' and \"integration_id\" is not null)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "oauth_authorization_attempts",
+        "name": "oauth_authorization_attempts_result_check",
+        "value": "(\"status\" = 'succeeded') = (\"result_integration_id\" is not null)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_logs",
+        "name": "workflow_execution_logs_status_check",
+        "value": "\"status\" in ('running', 'success', 'error')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_schedule",
+        "name": "workflow_execution_schedule_lease_check",
+        "value": "(\"state\" = 'leased' and \"owner_token\" is not null and \"lease_expires_at\" is not null and \"worker_id\" is not null) or (\"state\" <> 'leased' and \"owner_token\" is null and \"lease_expires_at\" is null and \"worker_id\" is null and \"running_step_id\" is null and \"running_node_id\" is null)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_steps",
+        "name": "workflow_execution_steps_value_check",
+        "value": "\"status\" = 'succeeded' or \"value\" is null",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_execution_steps",
+        "name": "workflow_execution_steps_failures_check",
+        "value": "\"failures\" >= 0 and (\"status\" = 'succeeded' or \"failures\" > 0)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_executions",
+        "name": "workflow_executions_status_check",
+        "value": "\"status\" in ('running', 'waiting', 'completed', 'canceled', 'exited', 'superseded', 'failed')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_wait_states",
+        "name": "workflow_wait_states_status_check",
+        "value": "\"status\" in ('waiting', 'resuming', 'resumed', 'timed_out', 'cancelled')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_wait_states",
+        "name": "workflow_wait_states_wake_check",
+        "value": "(\"status\" <> 'waiting' or \"wake\" is null) and (\"status\" <> 'resuming' or \"wake\" is not null)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflows",
+        "name": "workflows_mode_check",
+        "value": "\"mode\" in ('live', 'test')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflows",
+        "name": "workflows_visibility_check",
+        "value": "\"visibility\" in ('private', 'public')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"workflows\",\"workflows_published_version_id_workflow_versions_id_fk\"]"
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"workflow_executions_in_flight_by_entity_idx\"]",
+      "set": {
+        "where": "\"status\" in ('running', 'waiting')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"workflow_executions_in_flight_by_typed_entity_idx\"]",
+      "set": {
+        "where": "\"status\" in ('running', 'waiting')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"workflow_executions\",\"workflow_executions_termination_check\"]",
+      "set": {
+        "value": "(\"termination_kind\" is null and \"termination_requested_at\" is null and \"termination_reason\" is null and \"termination_node_id\" is null and \"cancel_event_name\" is null and \"cancel_payload\" is null and \"cancel_delivery_id\" is null) or (\"termination_kind\" = 'cancel' and \"termination_requested_at\" is not null and \"termination_reason\" is null and \"termination_node_id\" is null) or (\"termination_kind\" = 'exit' and \"termination_requested_at\" is not null and \"termination_reason\" in ('entity_condition_not_met', 'entity_not_found') and \"termination_node_id\" is not null and \"cancel_event_name\" is null and \"cancel_payload\" is null and \"cancel_delivery_id\" is null)"
+      }
+    }
+  ]
+}
