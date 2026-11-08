@@ -460,6 +460,6 @@ describe("applyExecutionStatusToLogs", () => {
     const [cancelled] = applyExecutionStatusToLogs([runningLog], "canceled");
 
     expect(cancelled?.status).toBe("cancelled");
-    expect(cancelled?.error).toBe("Run cancelled before step completion");
+    expect(cancelled?.error).toBe("Run ended before step completion");
   });
 });
