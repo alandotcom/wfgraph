@@ -138,15 +138,35 @@ describe("applyAgentGraphAtom", () => {
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["a", "b"]);
   });
 
-  it("refuses while a past run is pinned to the canvas", () => {
+  it("writes the Draft while a past run is pinned to the canvas", () => {
     const store = createGraphStore([actionNode("a")]);
-    // The overlay only owns the canvas while the owner has Runs open,
-    // so both have to be true for the refusal to be the one under test.
+    // The overlay only owns the canvas while the owner has Runs open, so both
+    // are set. Opening Runs mid-turn must not lose the turn's work.
     showWorkspaceRoute(store, { view: "runs" });
     store.set(executionOverlayGraphAtom, {
       nodes: [actionNode("a")],
       edges: [],
     });
+
+    const applied = store.set(applyAgentGraphAtom, {
+      workflowId: "workflow_1",
+      turnId,
+      recordHistory: true,
+      nodes: [actionNode("a"), actionNode("b")],
+      edges: [],
+      catalog,
+    });
+
+    expect(applied).toBe(true);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["a", "b"]);
+    expect(
+      store.get(executionOverlayGraphAtom)?.nodes.map((node) => node.id)
+    ).toEqual(["a"]);
+  });
+
+  it("writes the Draft while Changes is open", () => {
+    const store = createGraphStore([actionNode("a")]);
+    showWorkspaceRoute(store, { view: "changes" });
 
     store.set(applyAgentGraphAtom, {
       workflowId: "workflow_1",
@@ -157,7 +177,7 @@ describe("applyAgentGraphAtom", () => {
       catalog,
     });
 
-    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["a"]);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["a", "b"]);
   });
 
   it("refuses a graph from a workflow that is no longer open", () => {
