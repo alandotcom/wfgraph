@@ -8,12 +8,16 @@ ALTER TABLE "workflows" ADD CONSTRAINT "workflows_published_version_id_workflow_
 ALTER TABLE "integrations" ADD CONSTRAINT "integrations_refresh_claim_check" CHECK (("refresh_state" = 'refreshing' and "refresh_claim_id" is not null and "refresh_claimed_at" is not null) or ("refresh_state" <> 'refreshing' and "refresh_claim_id" is null and "refresh_claimed_at" is null));--> statement-breakpoint
 ALTER TABLE "oauth_authorization_attempts" ADD CONSTRAINT "oauth_authorization_attempts_integration_check" CHECK (("mode" = 'create' and "integration_id" is null) or ("mode" = 'reconnect' and "integration_id" is not null));--> statement-breakpoint
 ALTER TABLE "oauth_authorization_attempts" ADD CONSTRAINT "oauth_authorization_attempts_result_check" CHECK (("status" = 'succeeded') = ("result_integration_id" is not null));--> statement-breakpoint
+ALTER TABLE "workflow_event_subscriptions" ADD CONSTRAINT "workflow_event_subscriptions_role_check" CHECK ("role" in ('start', 'cancel', 'wait'));--> statement-breakpoint
 ALTER TABLE "workflow_execution_logs" ADD CONSTRAINT "workflow_execution_logs_status_check" CHECK ("status" in ('running', 'success', 'error'));--> statement-breakpoint
 ALTER TABLE "workflow_execution_schedule" ADD CONSTRAINT "workflow_execution_schedule_lease_check" CHECK (("state" = 'leased' and "owner_token" is not null and "lease_expires_at" is not null and "worker_id" is not null) or ("state" <> 'leased' and "owner_token" is null and "lease_expires_at" is null and "worker_id" is null and "running_step_id" is null and "running_node_id" is null));--> statement-breakpoint
 ALTER TABLE "workflow_execution_steps" ADD CONSTRAINT "workflow_execution_steps_value_check" CHECK ("status" = 'succeeded' or "value" is null);--> statement-breakpoint
 ALTER TABLE "workflow_execution_steps" ADD CONSTRAINT "workflow_execution_steps_failures_check" CHECK ("failures" >= 0 and ("status" = 'succeeded' or "failures" > 0));--> statement-breakpoint
 ALTER TABLE "workflow_executions" ADD CONSTRAINT "workflow_executions_status_check" CHECK ("status" in ('running', 'waiting', 'completed', 'canceled', 'exited', 'superseded', 'failed'));--> statement-breakpoint
+ALTER TABLE "workflow_executions" ADD CONSTRAINT "workflow_executions_start_source_check" CHECK ("start_source" in ('event', 'schedule', 'manual'));--> statement-breakpoint
+ALTER TABLE "workflow_executions" ADD CONSTRAINT "workflow_executions_run_mode_check" CHECK ("run_mode" in ('live', 'test'));--> statement-breakpoint
 ALTER TABLE "workflow_wait_states" ADD CONSTRAINT "workflow_wait_states_status_check" CHECK ("status" in ('waiting', 'resuming', 'resumed', 'timed_out', 'cancelled'));--> statement-breakpoint
+ALTER TABLE "workflow_wait_states" ADD CONSTRAINT "workflow_wait_states_wait_type_check" CHECK ("wait_type" in ('delay', 'event'));--> statement-breakpoint
 ALTER TABLE "workflow_wait_states" ADD CONSTRAINT "workflow_wait_states_wake_check" CHECK (("status" <> 'waiting' or "wake" is null) and ("status" <> 'resuming' or "wake" is not null));--> statement-breakpoint
 ALTER TABLE "workflows" ADD CONSTRAINT "workflows_mode_check" CHECK ("mode" in ('live', 'test'));--> statement-breakpoint
 ALTER TABLE "workflows" ADD CONSTRAINT "workflows_visibility_check" CHECK ("visibility" in ('private', 'public'));--> statement-breakpoint

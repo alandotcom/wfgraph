@@ -2,7 +2,7 @@
   "type": "diff",
   "version": "9",
   "dialect": "postgres",
-  "id": "c5d5d840-8f0a-4a2e-8767-e3f5da562401",
+  "id": "14ac5263-fcd5-4451-a1a7-5155cc4665a6",
   "prevIds": [
     "22b8b6c3-651a-4656-82b0-4902b409468b"
   ],
@@ -185,6 +185,25 @@
       "statementTarget": [
         "table",
         "public",
+        "workflow_event_subscriptions"
+      ],
+      "writes": [
+        "s|ck|public.workflow_event_subscriptions.workflow_event_subscriptions_role_check",
+        "n|ck|public.workflow_event_subscriptions.workflow_event_subscriptions_role_check",
+        "e|ck|public.workflow_event_subscriptions.workflow_event_subscriptions_role_check",
+        "n|con|public.workflow_event_subscriptions.workflow_event_subscriptions_role_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_event_subscriptions",
+        "n|sch|public",
+        "n|col|public.workflow_event_subscriptions.role"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
         "workflow_execution_logs"
       ],
       "writes": [
@@ -288,6 +307,44 @@
       "statementTarget": [
         "table",
         "public",
+        "workflow_executions"
+      ],
+      "writes": [
+        "s|ck|public.workflow_executions.workflow_executions_start_source_check",
+        "n|ck|public.workflow_executions.workflow_executions_start_source_check",
+        "e|ck|public.workflow_executions.workflow_executions_start_source_check",
+        "n|con|public.workflow_executions.workflow_executions_start_source_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.start_source"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_executions"
+      ],
+      "writes": [
+        "s|ck|public.workflow_executions.workflow_executions_run_mode_check",
+        "n|ck|public.workflow_executions.workflow_executions_run_mode_check",
+        "e|ck|public.workflow_executions.workflow_executions_run_mode_check",
+        "n|con|public.workflow_executions.workflow_executions_run_mode_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_executions",
+        "n|sch|public",
+        "n|col|public.workflow_executions.run_mode"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
         "workflow_wait_states"
       ],
       "writes": [
@@ -300,6 +357,25 @@
         "n|tbl|public.workflow_wait_states",
         "n|sch|public",
         "n|col|public.workflow_wait_states.status"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_wait_states"
+      ],
+      "writes": [
+        "s|ck|public.workflow_wait_states.workflow_wait_states_wait_type_check",
+        "n|ck|public.workflow_wait_states.workflow_wait_states_wait_type_check",
+        "e|ck|public.workflow_wait_states.workflow_wait_states_wait_type_check",
+        "n|con|public.workflow_wait_states.workflow_wait_states_wait_type_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_wait_states",
+        "n|sch|public",
+        "n|col|public.workflow_wait_states.wait_type"
       ]
     },
     {
@@ -474,6 +550,16 @@
       "op": "create",
       "row": {
         "schema": "public",
+        "table": "workflow_event_subscriptions",
+        "name": "workflow_event_subscriptions_role_check",
+        "value": "\"role\" in ('start', 'cancel', 'wait')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
         "table": "workflow_execution_logs",
         "name": "workflow_execution_logs_status_check",
         "value": "\"status\" in ('running', 'success', 'error')",
@@ -524,9 +610,39 @@
       "op": "create",
       "row": {
         "schema": "public",
+        "table": "workflow_executions",
+        "name": "workflow_executions_start_source_check",
+        "value": "\"start_source\" in ('event', 'schedule', 'manual')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_executions",
+        "name": "workflow_executions_run_mode_check",
+        "value": "\"run_mode\" in ('live', 'test')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
         "table": "workflow_wait_states",
         "name": "workflow_wait_states_status_check",
         "value": "\"status\" in ('waiting', 'resuming', 'resumed', 'timed_out', 'cancelled')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_wait_states",
+        "name": "workflow_wait_states_wait_type_check",
+        "value": "\"wait_type\" in ('delay', 'event')",
         "entityType": "checks"
       }
     },
