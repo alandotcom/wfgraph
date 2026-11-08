@@ -89,6 +89,7 @@ function readInitialAgentPanelSize(): AgentPanelSize {
 const agentPanelOpenStateAtom = atom(
   readCookie(AGENT_PANEL_OPEN_COOKIE) === "true"
 );
+const agentPanelExpandedStateAtom = atom(false);
 
 export const isAgentPanelOpenAtom = atom(
   (get) => get(agentPanelOpenStateAtom),
@@ -96,18 +97,29 @@ export const isAgentPanelOpenAtom = atom(
     const value =
       typeof next === "function" ? next(get(agentPanelOpenStateAtom)) : next;
     set(agentPanelOpenStateAtom, value);
+    if (!value) {
+      set(agentPanelExpandedStateAtom, false);
+    }
     writeCookie(AGENT_PANEL_OPEN_COOKIE, String(value));
   }
 );
 
 /**
- * Whether the panel covers the editor rather than sitting on the canvas.
+ * Whether the panel covers the editor rather than sitting on the canvas. Only
+ * an open panel can.
  *
  * Deliberately not persisted, and cleared when the panel closes: covering the
  * editor is something a reader asks for to read one long turn, so the next time
  * they open the agent it should be back on the canvas with the graph in view.
  */
-export const isAgentPanelExpandedAtom = atom(false);
+export const isAgentPanelExpandedAtom = atom(
+  (get) => get(agentPanelOpenStateAtom) && get(agentPanelExpandedStateAtom),
+  (get, set, next: boolean | ((previous: boolean) => boolean)) => {
+    const value =
+      typeof next === "function" ? next(get(isAgentPanelExpandedAtom)) : next;
+    set(agentPanelExpandedStateAtom, value && get(agentPanelOpenStateAtom));
+  }
+);
 
 const agentPanelSizeStateAtom = atom(readInitialAgentPanelSize());
 
