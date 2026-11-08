@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import { recordRunCompleted } from "#src/backend/engine/terminal-record";
+import { SilentAppLoggerLayer } from "#src/backend/lib/effect/test-layers";
+import { cancelInFlightRuns } from "#src/backend/services/executions/end-runs";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type {
@@ -33,24 +35,32 @@ const EVENT_ARRIVAL = {
 /** When a claim or a Cancel claim writes, which a re-queue is due at. */
 const NOW = new Date("2026-01-01T00:00:00.000Z");
 
+/** A timeline entry a case has the database refuse. */
+type RefusedEntry = "run_completed" | "run_cancelled" | "run_superseded";
+
 /**
- * A trigger refusing every `run_completed` timeline entry, which is how an
+ * A trigger refusing every timeline entry of `eventType`, which is how an
  * insert the database fails, or a process dying before the insert, leaves the
  * entry unwritten.
  */
-const REFUSE_RUN_COMPLETED_ENTRY = {
-  postgresql: `create function refuse_run_completed() returns trigger language plpgsql as $$ begin raise exception 'timeline entry refused'; end $$;
-    create trigger refuse_run_completed before insert on workflow_execution_events
-    for each row when (new.event_type = 'run_completed') execute function refuse_run_completed();`,
-  sqlite: `create trigger refuse_run_completed before insert on workflow_execution_events
-    when new.event_type = 'run_completed' begin select raise(abort, 'timeline entry refused'); end;`,
-} as const;
+function refuseEntry(eventType: RefusedEntry) {
+  const name = `refuse_${eventType}`;
+  return {
+    postgresql: `create function ${name}() returns trigger language plpgsql as $$ begin raise exception 'timeline entry refused'; end $$;
+    create trigger ${name} before insert on workflow_execution_events
+    for each row when (new.event_type = '${eventType}') execute function ${name}();`,
+    sqlite: `create trigger ${name} before insert on workflow_execution_events
+    when new.event_type = '${eventType}' begin select raise(abort, 'timeline entry refused'); end;`,
+  };
+}
 
-const ACCEPT_RUN_COMPLETED_ENTRY = {
-  postgresql:
-    "drop trigger refuse_run_completed on workflow_execution_events; drop function refuse_run_completed();",
-  sqlite: "drop trigger refuse_run_completed;",
-} as const;
+function acceptEntry(eventType: RefusedEntry) {
+  const name = `refuse_${eventType}`;
+  return {
+    postgresql: `drop trigger ${name} on workflow_execution_events; drop function ${name}();`,
+    sqlite: `drop trigger ${name};`,
+  };
+}
 
 /** The first-wins start that the race cases in this file make. */
 const startFirstWins = (
@@ -595,11 +605,11 @@ export function describeExecutionConformance({
         });
       }).pipe(Effect.ignore);
 
-      await store.execute(REFUSE_RUN_COMPLETED_ENTRY);
+      await store.execute(refuseEntry("run_completed"));
       try {
         await database.run(recordCompletion);
       } finally {
-        await store.execute(ACCEPT_RUN_COMPLETED_ENTRY);
+        await store.execute(acceptEntry("run_completed"));
       }
       await database.run(recordCompletion);
 
@@ -616,6 +626,50 @@ export function describeExecutionConformance({
         })
       );
       expect(ended).toEqual({ status: "completed", terminalEntries: 1 });
+    });
+
+    it("never leaves a canceled run without its run_cancelled entry, even when the database refuses that entry once", async () => {
+      const store = await openDatabase();
+      const database = await store.open();
+      await seedPublishedWorkflow(database);
+      const started = await attemptStart(database, {
+        deliveryId: "delivery_cancel_entry",
+      });
+      if (started.status !== "started") {
+        throw new Error("The run was refused");
+      }
+      const executionId = started.execution.id;
+      const cancel = cancelInFlightRuns({
+        workflowId: "wf_1",
+        executionIds: [executionId],
+        reason: "Canceled from the Runs view",
+      }).pipe(Effect.provide(SilentAppLoggerLayer));
+
+      await store.execute(refuseEntry("run_cancelled"));
+      try {
+        await database.run(cancel);
+      } finally {
+        await store.execute(acceptEntry("run_cancelled"));
+      }
+      const retried = await database.run(cancel);
+
+      const ended = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const events = yield* executions.listEvents(executionId);
+          return {
+            status: (yield* executions.findStatusById(executionId))?.status,
+            cancelled: events
+              .filter((event) => event.eventType === "run_cancelled")
+              .map(({ message, metadata }) => ({ message, metadata })),
+          };
+        })
+      );
+      expect(ended).toEqual({
+        status: "canceled",
+        cancelled: [{ message: "Canceled from the Runs view", metadata: {} }],
+      });
+      expect(retried.endedExecutionIds).toEqual([executionId]);
     });
 
     it("writes a terminal write's announcement only from the write that ends the run", async () => {
