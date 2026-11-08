@@ -76,6 +76,20 @@ function createDraftStreamHarness() {
         )
       );
     },
+    end() {
+      const stream = streams.at(-1);
+      if (!stream) {
+        throw new Error("Draft stream is not connected");
+      }
+      // The event stream's close event, which the client reads as
+      // a finished iterator rather than a failure.
+      stream.controller.enqueue(
+        encoder.encode(
+          `event: close\ndata: ${JSON.stringify({ json: null })}\n\n`
+        )
+      );
+      stream.controller.close();
+    },
     fail(error: Error) {
       const stream = streams.at(-1);
       if (!stream) {
@@ -864,6 +878,57 @@ describe("WorkflowDraftSync", () => {
 
     await waitFor(() => expect(store.get(workflowNotFoundAtom)).toBe(true));
     expect(subscriptionRead).toBe(2);
+  });
+
+  it("reconnects a subscription the server ended normally", async () => {
+    const draftStream = createDraftStreamHarness();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const procedurePath = extractRpcProcedurePath(rpcUrl(input));
+        if (procedurePath === "workflow/subscribeDraft") {
+          return draftStream.open();
+        }
+        if (procedurePath === "workflow/getById") {
+          return rpcJsonResponse(workflowPayload(2, "remote"));
+        }
+        throw new Error(`Unexpected RPC procedure: ${procedurePath}`);
+      })
+    );
+
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, WORKFLOW_ID);
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: WORKFLOW_ID,
+      draftRevision: 1,
+    });
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [actionNode("local")],
+      edges: [],
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <JotaiProvider store={store}>
+        <QueryClientProvider client={queryClient}>
+          <WorkflowDraftSync workflowId={WORKFLOW_ID} />
+        </QueryClientProvider>
+      </JotaiProvider>
+    );
+    await waitFor(() => expect(draftStream.connectionCount).toBe(1));
+
+    draftStream.end();
+    await waitFor(() => expect(draftStream.connectionCount).toBe(2), {
+      timeout: 3_000,
+    });
+    draftStream.emit(2);
+
+    await waitFor(
+      () =>
+        expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["remote"]),
+      { timeout: 2_000 }
+    );
   });
 
   it("closes the draft subscription when the editor unmounts", async () => {
