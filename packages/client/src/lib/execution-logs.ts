@@ -441,7 +441,7 @@ export function applyExecutionStatusToLogs(
       : {
           ...log,
           status,
-          error: log.error || "Run cancelled before step completion",
+          error: log.error || "Run ended before step completion",
         };
   });
 }
