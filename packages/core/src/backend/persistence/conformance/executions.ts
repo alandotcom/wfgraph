@@ -1387,6 +1387,16 @@ export function describeExecutionConformance({
       ).rejects.toThrow();
       await expect(
         database.execute(
+          `update workflow_executions set run_mode = 'staging' where ${run}`
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `update workflow_executions set start_source = 'webhook' where ${run}`
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
           `update workflow_executions set status = 'waiting' where ${run}`
         )
       ).resolves.toBeUndefined();

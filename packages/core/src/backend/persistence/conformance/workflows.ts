@@ -807,6 +807,32 @@ export function describeWorkflowConformance({
       ).resolves.toBeUndefined();
     });
 
+    it("holds an event subscription's role to its vocabulary", async () => {
+      const database = await openDatabase();
+      await seedPublishedWorkflow(await database.open(), {
+        eventSubscriptions: [
+          {
+            workflowId: "wf_1",
+            eventName: "appointment/created",
+            role: "start",
+            correlationPath: null,
+            connectionId: null,
+          },
+        ],
+      });
+
+      await expect(
+        database.execute(
+          "update workflow_event_subscriptions set role = 'resume'"
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          "update workflow_event_subscriptions set role = 'cancel'"
+        )
+      ).resolves.toBeUndefined();
+    });
+
     it("refuses to delete the version a workflow publishes, and deletes it with its workflow", async () => {
       const database = await openDatabase();
       const connection = await database.open();
