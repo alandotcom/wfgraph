@@ -352,7 +352,7 @@ const executionSummarySchema = Schema.Struct({
   workflowVersionId: idSchema,
   versionKind: workflowVersionKindSchema,
   versionNumber: workflowExecutionFields.versionNumber,
-  status: Schema.String,
+  status: workflowExecutionStatusSchema,
   startSource: workflowExecutionFields.startSource,
   runMode: workflowExecutionFields.runMode,
   startEventName: workflowExecutionFields.startEventName,
@@ -939,7 +939,7 @@ export const workflowContract = {
     .output(
       contractSchema(
         Schema.Struct({
-          status: Schema.String,
+          status: workflowExecutionStatusSchema,
           nodeStatuses: listOf(
             Schema.Struct({
               nodeId: Schema.String,
