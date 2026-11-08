@@ -130,3 +130,55 @@ describe("useCanvasConnections on a focused Group", () => {
     expect(toast.info).not.toHaveBeenCalled();
   });
 });
+
+describe("useCanvasConnections connect gesture", () => {
+  it("forgets a gesture that ended while the canvas was locked", () => {
+    const store = createGraphStore(ungroupedGraph());
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <JotaiProvider store={store}>{children}</JotaiProvider>
+    );
+    const { result, rerender } = renderHook(
+      ({ locked }: { locked: boolean }) =>
+        useCanvasConnections({
+          nodes: store.get(canvasNodesAtom),
+          graphNodes: store.get(nodesAtom),
+          storeEdges: store.get(edgesAtom),
+          catalog,
+          connectionsLocked: locked,
+          insertsNodes: true,
+          screenToFlowPosition: (position) => position,
+        }),
+      { wrapper, initialProps: { locked: false } }
+    );
+    const pane = document.createElement("div");
+    const releaseOverPane = () =>
+      result.current.onConnectEnd(
+        { target: pane, clientX: 40, clientY: 400 } as unknown as MouseEvent,
+        { isValid: false } as never
+      );
+    const before = graphOf(store);
+
+    act(() => {
+      result.current.onConnectStart(new MouseEvent("mousedown"), {
+        nodeId: "a",
+        handleId: null,
+        handleType: "source",
+      });
+    });
+    rerender({ locked: true });
+    act(() => {
+      releaseOverPane();
+      result.current.onConnectStart(new MouseEvent("mousedown"), {
+        nodeId: "b",
+        handleId: null,
+        handleType: "source",
+      });
+    });
+    rerender({ locked: false });
+    act(() => {
+      releaseOverPane();
+    });
+
+    expect(graphOf(store)).toEqual(before);
+  });
+});
