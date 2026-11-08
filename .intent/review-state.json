@@ -874,39 +874,39 @@
       ]
     },
     "source:packages/core/src/backend/engine/core-wait-delay.test.ts": {
-      "fingerprint": "4c20bfd2ab49a61abf85f6ef971ea441aea69c16ff8fa4dde7d6db42f4443711",
+      "fingerprint": "7fad2b4e834fa2e4217331cc3c2e9240c70437486abd903468e15e483507c368",
       "snapshot": {
-        "packages/core/src/backend/engine/core-wait-delay.test.ts": "0977a7ea9fddd2e2e1b0361f889804c6772247c9c266918cbf2d0183853f3e00"
+        "packages/core/src/backend/engine/core-wait-delay.test.ts": "57f384b67921a8af6d123e8a351746173a738a07d5b3d145789d95543263d5a8"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "37019c249e7d347664b953176acec31bebebb334",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "Test or conformance code that no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     },
     "source:packages/core/src/backend/engine/core-wait-migrate.replay-cases.ts": {
-      "fingerprint": "958e2ec960d3654a5cc4656440c722780dab46b75193c5022efe0b519a091707",
+      "fingerprint": "b2c2c2882b467a775772eab532c23d2610210b37564f41ab4a3f198fbee4cbb9",
       "snapshot": {
-        "packages/core/src/backend/engine/core-wait-migrate.replay-cases.ts": "0d96f6ad9eb606d2c719212db7b0005eb21fe4d68851bbe508e5db0bf8f96133"
+        "packages/core/src/backend/engine/core-wait-migrate.replay-cases.ts": "a5ccff0a0ad60425d63f945f9a1f8936e0c5c1426e959ae59b7b3ae89b7b73a7"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
-      "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     },
     "source:packages/core/src/backend/engine/store.ts": {
-      "fingerprint": "eb5af3408bc08ce924244f197a88879f4fbfb66481d4e4af72bcb5547a69d7d8",
+      "fingerprint": "442bc93022024b86a9c790cc7545c25b1b556f321d8b77d8d983b0f33ee7376a",
       "snapshot": {
-        "packages/core/src/backend/engine/store.ts": "ac6320d436375979e218023cb3ed0ba34b712393195c32c072f95da439204fb8"
+        "packages/core/src/backend/engine/store.ts": "6887a677da27a9c45beef0172f7136e8d794451ca0c743da779b73a6326bbab3"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "37019c249e7d347664b953176acec31bebebb334",
       "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
       ]
     },
     "source:packages/core/src/backend/engine/wait-delay.ts": {
@@ -958,15 +958,15 @@
       ]
     },
     "source:packages/core/src/backend/lib/db/schema.ts": {
-      "fingerprint": "809194a87a01325b73002cf570a1038fd39e352add7745bd616df10293e1a0b5",
+      "fingerprint": "cd20c25d34c3d4510b22c53ad43fceeacd243de7d5b43fb4c2d2a28709d13f31",
       "snapshot": {
-        "packages/core/src/backend/lib/db/schema.ts": "3b3242b7f7a7b422cd82e7518b15a2e7f4f2cdf466eeffe6872438aac9301696"
+        "packages/core/src/backend/lib/db/schema.ts": "d396845fe864120325c843f5af954acf07f011a0b4d7bab09b1608f96cdbb890"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "head": "37019c249e7d347664b953176acec31bebebb334",
       "outcome": "no-change",
-      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
       "evidence": [
-        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-fencing.ts": {
@@ -994,27 +994,27 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-waits.ts": {
-      "fingerprint": "5274d71450de00e3228506eeb403a9dc01116a48a9432fbd8419767f523c83ed",
+      "fingerprint": "0b6004c8f132fa3dccb789b0f0c3052e0fab8aa84fa13f8907ee82c64bcc5d67",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-waits.ts": "1eced6ee68cebd9eae57ac8533b4e633676ffd0bfb4dc6ad9897d2a103f922c3"
+        "packages/core/src/backend/persistence/conformance/execution-waits.ts": "3f60b645b2b12bba1bbc4f8715cac31af3561c4025f7dba41a577832249782c7"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "head": "37019c249e7d347664b953176acec31bebebb334",
       "outcome": "out-of-scope",
-      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "reason": "Test or conformance code that no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/executions.ts": {
-      "fingerprint": "4a1bbfceaba60fa31a04251397515e5c844db3be57d8d0191da98814c5842005",
+      "fingerprint": "a4dd4a5dafc164184769395f42890496d29e0fccd2697f37817d40ca3d69f633",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/executions.ts": "d6c4d90c901fe619a358d77e2c0835fbcb6e0520d2bc8cc059130aea32132154"
+        "packages/core/src/backend/persistence/conformance/executions.ts": "557a2f81f17a999cc38e16e1c8bf63b36e56f66128fcfef20491457ad229fc46"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "head": "37019c249e7d347664b953176acec31bebebb334",
       "outcome": "out-of-scope",
-      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "reason": "Test or conformance code that no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/integrations.ts": {
@@ -1054,15 +1054,15 @@
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/runs.ts": {
-      "fingerprint": "4a33cdcfd07d318a13b4921518da1e3c000767589e6aa80fb7ea6f4ba0df3b50",
+      "fingerprint": "0c6f95db276361bb50ae74dfad0f5a268b43040beb833f6c0977577aff68ec58",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/runs.ts": "2711750de63061d39555579d54d746e5900c5ed66f81faa4b8d1c7e83e70c4f1"
+        "packages/core/src/backend/persistence/sqlite/executions/runs.ts": "a3541b4e856dd3a6dd2e5d6ceb0b029394f692a2f87ed9367b29bbc81e1f6d04"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "37019c249e7d347664b953176acec31bebebb334",
       "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/integrations.ts": {
@@ -1114,15 +1114,15 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/runs.ts": {
-      "fingerprint": "0563afef596875688f0416e97f41bb6f17818b8db0f3952b8d4f8c9c79bec6f8",
+      "fingerprint": "c9286cfc799965faac512abf9d419a3121d28c8c6fcdc793d39fe99e8629b9cb",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/runs.ts": "6ef12fc58c7e862e5264944a2760beaf78d0cf16cd9e413d24b5d70297033a34"
+        "packages/core/src/backend/services/executions/repo/runs.ts": "db15ae0f171a312fa8822595905083caefa2b7ad8a8775b0d4a6216a3ca65af1"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "37019c249e7d347664b953176acec31bebebb334",
       "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
       ]
     },
     "source:packages/core/src/backend/services/executions/status.test.ts": {
@@ -1582,15 +1582,15 @@
       ]
     },
     "source:packages/core/src/backend/engine/recording-store.ts": {
-      "fingerprint": "b3553711777c3e8b4c2eb1c002fd28e6a772b1fca81cf1cabc584af6d76073dd",
+      "fingerprint": "08ccd1e828232430ee9c44b58665eb8165ab9904fb620390f169f561e1fb3d2e",
       "snapshot": {
-        "packages/core/src/backend/engine/recording-store.ts": "bb8760b94a7cf5aa91d99ac0a6d5aa82c1c863207e6fdca2591b1868acd8bd57"
+        "packages/core/src/backend/engine/recording-store.ts": "4a4f8105df0f298a53a6e38e718faac5d6a6ae0c08371e188a11b80468b99ab0"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
-      "outcome": "no-change",
-      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     },
     "source:packages/core/src/backend/lib/db/migrations-sql.test.ts": {
@@ -1630,15 +1630,15 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-schedule.ts": {
-      "fingerprint": "168b6fdca638126cadad0bfbc81f537761f149e8c401dd5d07316c6aa80f7a86",
+      "fingerprint": "878c568bd1eb5770e07495f8bcbb908cdc4a4d3f7efe3f331b539402ffe060f7",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-schedule.ts": "fe6f2a6aa152547c1d9aff0da26e5bb86d4987c69248525756e771101ecce94a"
+        "packages/core/src/backend/persistence/conformance/execution-schedule.ts": "44b64fb87a2d487eff105bbc8d9361569760dadd80cda7b3d9d78cf5f210dc25"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "head": "37019c249e7d347664b953176acec31bebebb334",
       "outcome": "out-of-scope",
-      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "reason": "Test or conformance code that no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/schedule-support.ts": {
@@ -1654,15 +1654,15 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/workflows.ts": {
-      "fingerprint": "85eb60184ec6f1c53aa80cdf64a45805fcea6884b71416cba15845aed805dd14",
+      "fingerprint": "2915a7b1c5674023137b2f84d3fd59db0012c759d101c120bacf2013801c51bf",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/workflows.ts": "3b83f7af41c8d45aa145c4db936bd4eca5c919d085dc2dee7f542f47b02faa72"
+        "packages/core/src/backend/persistence/conformance/workflows.ts": "914838dbf01f4cf37f33e345e3aaf841133d965f461dd204f36b129979fda44f"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "head": "37019c249e7d347664b953176acec31bebebb334",
       "outcome": "out-of-scope",
-      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "reason": "Test or conformance code that no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     },
     "source:packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": {
@@ -1747,6 +1747,186 @@
       "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
       "evidence": [
         "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/drizzle/20261108202253_row_state_constraints/migration.sql": {
+      "fingerprint": "5a76373cac1c5fe42d8ebb2d589fa5efb93ff058e3c204666674aa476057c813",
+      "snapshot": {
+        "packages/core/drizzle/20261108202253_row_state_constraints/migration.sql": "6dc48a54e50c8273a7934437356b5ba4e2e0d8e1b571ff9723d1aeeef3deaa3a"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "no-change",
+      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "evidence": [
+        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+      ]
+    },
+    "source:packages/core/drizzle/20261108202253_row_state_constraints/snapshot.json": {
+      "fingerprint": "4d5e88f0f53f16b09e348440d4235805fcb54d5c1b89f6fe8c1ffafa6f968ddd",
+      "snapshot": {
+        "packages/core/drizzle/20261108202253_row_state_constraints/snapshot.json": "21e7b7078853d9a32e64ad9694228064cbf6726e6f68691f1a1a4b851e3b9d12"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "no-change",
+      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "evidence": [
+        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core-cancel.replay-cases.ts": {
+      "fingerprint": "ae10b94da5e16a19ae22edea951743ee2e964770f3eeb51c4dedeae2d13c3fa6",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-cancel.replay-cases.ts": "05943a681c6911a7962771ac8a72252907ae468e75c8144578269578c5c485f2"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core-cancel.test.ts": {
+      "fingerprint": "3b9fc4a3ace45d568b437fcce8e1d7b7dc4af6178d5885788bb36687182801a9",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-cancel.test.ts": "9626475ab0f15cd7d37c3cc82ca61fb8edf6db95bc76773306a30165feed2968"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core-parallel-wait.replay-cases.ts": {
+      "fingerprint": "affebc63aae9ce6c1023a6c1cc293587ac6cb058464029e9d6b5d70a8fc243e6",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-parallel-wait.replay-cases.ts": "75ef9de13d8e9317adae55215671ed168545eada61cad63bc65ed7548bf131f5"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core-park.test.ts": {
+      "fingerprint": "5cc5292175f79ed71871b6872eac2fc5f8eb5e9198349f2319c408770866b9a2",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-park.test.ts": "d9fca2db4116137f027f414227dde4ea35a5d12cad322b4aaa2fe0b419fe3c16"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core-wait.test.ts": {
+      "fingerprint": "0cbfdd704e965cce79a2f8d24a42d5a1b3c7745b6e1f354efa65f3523e8c8203",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-wait.test.ts": "d4b2f408d731093da1c003d5c61e93a4bb5115c787a3401cd164f8563e6ed2c0"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core.test.ts": {
+      "fingerprint": "495ba48ef0dc896689588ab0f009898f154d0067ae86cebdf6728da3684a5c04",
+      "snapshot": {
+        "packages/core/src/backend/engine/core.test.ts": "1d412850893774e8e83b46ddbbd807177e9a50ff1a61973c8bcb7eda4f85a17d"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core.ts": {
+      "fingerprint": "5d5b22e60ce46d50579de9f138d9d4e7b46395ef5731994d6b2040003319abd3",
+      "snapshot": {
+        "packages/core/src/backend/engine/core.ts": "4cf8a2578df599235e0219869804281f9dc40ea7775e96139e4121671585eafb"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "no-change",
+      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "evidence": [
+        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/engine/db-store.test.ts": {
+      "fingerprint": "aebac8a11f66c84672e273e7d995731ee74414a43ed0bdb107558ca6c7718655",
+      "snapshot": {
+        "packages/core/src/backend/engine/db-store.test.ts": "a4138921c73356553cdf6f407ea0bbcb0dae5c66450a68c7c180b2580c2b0ab1"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/engine/db-store.ts": {
+      "fingerprint": "75cb89014b7745187b451004e3eaf3fb5925c7340ac4711c93a88af5c7042246",
+      "snapshot": {
+        "packages/core/src/backend/engine/db-store.ts": "6c486d925efb0217bc1874ee4335886bf8601e135e3c53a86762668bebf82199"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "no-change",
+      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "evidence": [
+        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/engine/entity-eligibility.test.ts": {
+      "fingerprint": "8c5619d750f45cc586a5e4d90507a369247ebe7693e6a15e107f6c61e5b5c75c",
+      "snapshot": {
+        "packages/core/src/backend/engine/entity-eligibility.test.ts": "60dd7a78c3b83ebb531ecb485bd208d71f5b6d5995afab7317e0af996964feaa"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/engine/terminal-record.test.ts": {
+      "fingerprint": "adeaf79870fc7c3e0d1cba391274656b03f2568dc12b38a095535ed3d1f307cd",
+      "snapshot": {
+        "packages/core/src/backend/engine/terminal-record.test.ts": "49855e1e14c4e3ff9fd9f83a496255e79abc48968687dffab22eebe4fb42e0cc"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/engine/terminal-record.ts": {
+      "fingerprint": "afe428c93c78d75ad587cf40dd1306dc186f68b07dcfae50d2455993cb37eadf",
+      "snapshot": {
+        "packages/core/src/backend/engine/terminal-record.ts": "7c85d7cfb65d6a1616c45aaaad9bf9d07765df5c994f7558898953674a639761"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "no-change",
+      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "evidence": [
+        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/engine/testing/wait-fixtures.ts": {
+      "fingerprint": "2666c4b2e10f224d0bac05839b644fbf37d9d0c05d65e6d47c3a31c64450e0b8",
+      "snapshot": {
+        "packages/core/src/backend/engine/testing/wait-fixtures.ts": "0c7eedd08646720febc9c533b265420719e16035f349d2059e6b621ec40c27bd"
+      },
+      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "outcome": "out-of-scope",
+      "reason": "Test or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     }
   }
