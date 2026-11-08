@@ -80,6 +80,16 @@ function ResizeGrip({
     [onResize]
   );
 
+  // Release, cancel and a lost capture each end the drag, and only the first
+  // of them to arrive persists the size.
+  const endDrag = useCallback(() => {
+    if (!origin.current) {
+      return;
+    }
+    origin.current = null;
+    onResizeEnd();
+  }, [onResizeEnd]);
+
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLButtonElement>) => {
       const delta = {
@@ -109,11 +119,14 @@ function ResizeGrip({
         origin.current = { x: event.clientX, y: event.clientY };
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
+      onLostPointerCapture={endDrag}
+      onPointerCancel={endDrag}
       onPointerMove={onPointerMove}
       onPointerUp={(event) => {
-        origin.current = null;
-        event.currentTarget.releasePointerCapture(event.pointerId);
-        onResizeEnd();
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        endDrag();
       }}
       type="button"
     >
