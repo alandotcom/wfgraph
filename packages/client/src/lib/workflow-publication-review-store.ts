@@ -46,21 +46,15 @@ export type ReadyPublicationReview = {
 type PublicationReviewSession =
   | PendingPublicationReview
   | ReadyPublicationReview;
-type PublicationReviewRequestState = { epoch: number; pending: boolean };
 
 const publicationReviewSessionsStateAtom = atom<
   Readonly<Record<string, PublicationReviewSession>>
 >({});
-const publicationReviewRequestStateAtom = atom<
-  Readonly<Record<string, PublicationReviewRequestState>>
->({});
-
-function requestStateFor(
-  states: Readonly<Record<string, PublicationReviewRequestState>>,
-  workflowId: string
-): PublicationReviewRequestState {
-  return states[workflowId] ?? { epoch: 0, pending: false };
-}
+/**
+ * The newest epoch issued per workflow. It outlives the session, so a callback
+ * from a review that has since been cleared still loses authority.
+ */
+const publicationReviewEpochsAtom = atom<Readonly<Record<string, number>>>({});
 
 /** The preflight session belongs only to the workflow currently in the editor. */
 export const publicationReviewSessionAtom = atom((get) => {
@@ -75,13 +69,9 @@ export const isPublicationReviewActiveAtom = atom(
   (get) => get(publicationReviewSessionAtom) !== null
 );
 
-export const isPublicationReviewPendingAtom = atom((get) => {
-  const workflowId = get(currentWorkflowIdAtom);
-  return workflowId
-    ? requestStateFor(get(publicationReviewRequestStateAtom), workflowId)
-        .pending
-    : false;
-});
+export const isPublicationReviewPendingAtom = atom(
+  (get) => get(publicationReviewSessionAtom)?.pending === true
+);
 
 export const publicationReviewAtom = atom<ReadyPublicationReview | null>(
   (get) => {
@@ -100,12 +90,10 @@ export const beginPublicationReviewAtom = atom(
     ) {
       return null;
     }
-    const epoch =
-      requestStateFor(get(publicationReviewRequestStateAtom), workflowId)
-        .epoch + 1;
-    set(publicationReviewRequestStateAtom, (states) => ({
-      ...states,
-      [workflowId]: { epoch, pending: true },
+    const epoch = (get(publicationReviewEpochsAtom)[workflowId] ?? 0) + 1;
+    set(publicationReviewEpochsAtom, (epochs) => ({
+      ...epochs,
+      [workflowId]: epoch,
     }));
     set(publicationReviewSessionsStateAtom, (sessions) => ({
       ...sessions,
@@ -122,41 +110,12 @@ export const beginPublicationReviewAtom = atom(
 export const installPublicationReviewAtom = atom(
   null,
   (get, set, review: ReadyPublicationReview) => {
-    if (
-      requestStateFor(get(publicationReviewRequestStateAtom), review.workflowId)
-        .epoch !== review.epoch
-    ) {
+    if (get(publicationReviewEpochsAtom)[review.workflowId] !== review.epoch) {
       return false;
     }
     set(publicationReviewSessionsStateAtom, (sessions) => ({
       ...sessions,
       [review.workflowId]: review,
-    }));
-    set(publicationReviewRequestStateAtom, (states) => ({
-      ...states,
-      [review.workflowId]: {
-        ...requestStateFor(states, review.workflowId),
-        pending: false,
-      },
-    }));
-    return true;
-  }
-);
-
-/** Marks a current request settled without allowing an older callback to unlock it. */
-export const settlePublicationReviewAtom = atom(
-  null,
-  (get, set, input: { workflowId: string; epoch: number }) => {
-    const state = requestStateFor(
-      get(publicationReviewRequestStateAtom),
-      input.workflowId
-    );
-    if (state.epoch !== input.epoch) {
-      return false;
-    }
-    set(publicationReviewRequestStateAtom, (states) => ({
-      ...states,
-      [input.workflowId]: { ...state, pending: false },
     }));
     return true;
   }
@@ -168,12 +127,12 @@ export const clearPublicationReviewAtom = atom(
   (get, set, input?: string | { workflowId: string; epoch?: number }) => {
     const workflowId = typeof input === "string" ? input : input?.workflowId;
     const expectedEpoch = typeof input === "string" ? undefined : input?.epoch;
-    const requestStates = get(publicationReviewRequestStateAtom);
-    const workflowIds = workflowId ? [workflowId] : Object.keys(requestStates);
+    const epochs = get(publicationReviewEpochsAtom);
+    const workflowIds = workflowId ? [workflowId] : Object.keys(epochs);
 
     if (
       expectedEpoch !== undefined &&
-      requestStateFor(requestStates, workflowId ?? "").epoch !== expectedEpoch
+      (epochs[workflowId ?? ""] ?? 0) !== expectedEpoch
     ) {
       return false;
     }
@@ -183,11 +142,10 @@ export const clearPublicationReviewAtom = atom(
       const { [workflowId]: _cleared, ...remaining } = sessions;
       return remaining;
     });
-    set(publicationReviewRequestStateAtom, (states) => {
-      const next = { ...states };
+    set(publicationReviewEpochsAtom, (current) => {
+      const next = { ...current };
       for (const id of workflowIds) {
-        const state = requestStateFor(states, id);
-        next[id] = { epoch: state.epoch + 1, pending: false };
+        next[id] = (current[id] ?? 0) + 1;
       }
       return next;
     });

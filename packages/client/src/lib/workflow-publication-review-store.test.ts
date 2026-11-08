@@ -15,7 +15,6 @@ import {
   isPublicationReviewActiveAtom,
   isPublicationReviewPendingAtom,
   publicationReviewAtom,
-  settlePublicationReviewAtom,
 } from "#src/lib/workflow-publication-review-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { savedWorkflow } from "./workflow-save-test-support";
@@ -168,7 +167,7 @@ describe("publication review store", () => {
     expect(store.get(publicationReviewAtom)).toBeNull();
   });
 
-  it("keeps a newer A request locked when the older A request settles after A to B to A", () => {
+  it("keeps a newer A request locked when the older A request answers after A to B to A", () => {
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_a");
     const firstEpoch = store.set(beginPublicationReviewAtom, "workflow_a");
@@ -177,7 +176,7 @@ describe("publication review store", () => {
     const secondEpoch = store.set(beginPublicationReviewAtom, "workflow_a");
 
     expect(
-      store.set(settlePublicationReviewAtom, {
+      store.set(clearPublicationReviewAtom, {
         workflowId: "workflow_a",
         epoch: firstEpoch ?? 0,
       })
@@ -200,9 +199,21 @@ describe("publication review store", () => {
         },
       })
     ).toBe(false);
-    store.set(settlePublicationReviewAtom, {
+    expect(store.get(isPublicationReviewPendingAtom)).toBe(true);
+    store.set(installPublicationReviewAtom, {
       workflowId: "workflow_a",
       epoch: secondEpoch ?? 0,
+      pending: false,
+      graph,
+      expectedDraftRevision: 1,
+      expectedPublishedVersionId: null,
+      review: {
+        proposedVersion: 1,
+        baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        draftGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        nodeChanges: [],
+        edgeChanges: [],
+      },
     });
     expect(store.get(isPublicationReviewPendingAtom)).toBe(false);
   });
