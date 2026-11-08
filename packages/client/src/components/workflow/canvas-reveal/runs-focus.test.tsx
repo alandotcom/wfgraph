@@ -302,9 +302,7 @@ describe("Runs Focus node evidence", () => {
     expect(aside()?.querySelector("header")?.textContent).toContain("Canceled");
     const shown = within(evidence());
     expect(shown.getByRole("heading", { name: "Cancellation" })).toBeTruthy();
-    expect(
-      shown.getByText("Run ended before step completion")
-    ).toBeTruthy();
+    expect(shown.getByText("Run ended before step completion")).toBeTruthy();
     expect(
       await shown.findByText(/Run canceled by a Cancel Event/)
     ).toBeTruthy();
