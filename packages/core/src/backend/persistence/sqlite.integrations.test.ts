@@ -54,6 +54,7 @@ describe("native SQLite integration persistence", () => {
           integrationId: integration.id,
           claimId: "expired_state",
           expectedRevision: integration.configRevision,
+          from: "idle",
         });
         yield* integrations.createOAuthAuthorizationAttempt({
           stateHash: "expired_state",

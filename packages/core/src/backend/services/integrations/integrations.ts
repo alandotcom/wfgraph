@@ -31,7 +31,10 @@ import {
   maskIntegrationConfig,
   SECRET_MASK,
 } from "#src/backend/services/integrations/integration-config-masking";
-import { IntegrationRepo } from "#src/backend/services/integrations/repo";
+import {
+  claimableFrom,
+  IntegrationRepo,
+} from "#src/backend/services/integrations/repo";
 import {
   attemptVendorStep,
   describeUnavailableIntegration,
@@ -462,6 +465,7 @@ export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
     integrationId,
     claimId: globalThis.crypto.randomUUID(),
     expectedRevision: integration.configRevision,
+    from: claimableFrom(integration.refreshState),
   };
   const claim = yield* repo
     .claimRefresh(claimInput)

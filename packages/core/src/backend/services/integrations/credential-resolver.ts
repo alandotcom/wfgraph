@@ -329,6 +329,7 @@ export const resolveIntegrationCredentials = Effect.fn(
         integrationId,
         claimId,
         expectedRevision: integration.configRevision,
+        from: "idle",
       })
       .pipe(
         Effect.catchTag("DatabaseError", () =>
@@ -382,6 +383,7 @@ export const resolveIntegrationCredentials = Effect.fn(
         integrationId,
         claimId,
         expectedRevision: integration.configRevision,
+        from: "idle",
       })
     );
     return yield* registration.failure;
