@@ -829,8 +829,9 @@ function failPreparation<Prepared>(
  * producer writes its wake into the row's `wake` column, and an Event or claim
  * wake there is answered whatever version the row was parked from: the TLA+
  * Migration model resumes a Wait from an Event taken before the re-park, under
- * the version the run then pins. A cancelled row is the Cancel Event having
- * claimed the run in the same window.
+ * the version the run then pins. A Cancel or Exit claim leaves the status and
+ * writes its wake. A row read here as cancelled was settled by the run's
+ * terminal write, which refuses this pass at its next write.
  */
 function readMissedWake(
   branch: WaitBranchContext,
