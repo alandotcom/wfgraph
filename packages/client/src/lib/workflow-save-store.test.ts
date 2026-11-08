@@ -17,6 +17,7 @@ import {
   successfulSaveGenerationAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
+import { hydrateWorkflowAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "./workflow-save-test-support";
 
@@ -498,6 +499,77 @@ describe("saveWorkflowAtom", () => {
 
     expect(outcome).toBeNull();
     expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("the failure the open workflow shows", () => {
+  it("is cleared when another workflow opens", async () => {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = createSaveStore("workflow_a");
+
+    const save = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    pending.shift()?.reject(new Error("network is down"));
+    await save;
+    expect(store.get(lastSaveErrorAtom)?.message).toBe("network is down");
+
+    store.set(hydrateWorkflowAtom, savedWorkflow("workflow_b"));
+
+    expect(store.get(lastSaveErrorAtom)).toBeNull();
+  });
+
+  it("does not take a failure of the workflow left behind", async () => {
+    const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = createSaveStore("workflow_a");
+
+    const save = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    store.set(hydrateWorkflowAtom, savedWorkflow("workflow_b"));
+    pending.shift()?.reject(new Error("network is down"));
+    await save;
+
+    expect(store.get(lastSaveErrorAtom)).toBeNull();
+    expect(errorToast).toHaveBeenCalledWith("network is down");
+  });
+
+  it("is not cleared by a save of the workflow left behind", async () => {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = createSaveStore("workflow_a");
+
+    const save = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    store.set(hydrateWorkflowAtom, savedWorkflow("workflow_b"));
+    const frame: WorkflowNode = {
+      id: "g",
+      type: "group",
+      position: { x: 0, y: 0 },
+      data: { label: "Group", type: "group" },
+    };
+    const refused = await store.set(saveWorkflowAtom, {
+      nodes: [
+        frame,
+        { ...actionNode("a"), parentId: "g", extent: "parent" },
+        { ...actionNode("b"), parentId: "g", extent: "parent" },
+      ],
+      edges: [edge("onto_frame", "a", "g")],
+    });
+    expect(refused).toMatchObject({ ok: false });
+
+    pending.shift()?.resolve(savedWorkflow("workflow_a"));
+    await save;
+
+    expect(store.get(lastSaveErrorAtom)).toBe(
+      refused?.ok === false ? refused.error : undefined
+    );
   });
 });
 
