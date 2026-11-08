@@ -1,4 +1,5 @@
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { nodeStatusInRun } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   type JsonObject,
   type JsonValue,
@@ -209,7 +210,6 @@ export async function answerWorkflowRunRpc(
       const status =
         served.items.find((item) => item.id === executionId)?.status ??
         "completed";
-      const stopped = status === "canceled" || status === "superseded";
       const logs = (served.logsByExecutionId[executionId] ?? []).flatMap(
         (entry) => {
           const row = readJsonObject(entry);
@@ -222,14 +222,9 @@ export async function answerWorkflowRunRpc(
       );
       return rpcJsonResponse({
         status,
-        // A stopped run reports its unfinished nodes as cancelled, as the
-        // server's status read does.
         nodeStatuses: logs.map((log) => ({
           nodeId: log.nodeId,
-          status:
-            stopped && (log.status === "pending" || log.status === "running")
-              ? "cancelled"
-              : log.status,
+          status: nodeStatusInRun(log.status, status),
         })),
         // The open waits the logs read serves, as the server reads both from
         // the same wait rows.
