@@ -56,10 +56,6 @@ function outcomeFields(outcome: ScheduleFireOutcome) {
         kind: outcome.kind,
         nextWakeAt: outcome.nextWakeAt,
         superseded: outcome.superseded > 0 ? outcome.superseded : undefined,
-        failedToSupersede:
-          outcome.failedToSupersede.length > 0
-            ? outcome.failedToSupersede.length
-            : undefined,
       });
     case "refused":
       return {

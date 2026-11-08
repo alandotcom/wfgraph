@@ -30,7 +30,10 @@ import {
   endedRunColumns,
   insertExecution,
 } from "#src/backend/persistence/sqlite/executions/runs";
-import { recordAuditEventWrite } from "#src/backend/persistence/sqlite/executions/audit";
+import {
+  recordAuditEventsWrite,
+  recordAuditEventWrite,
+} from "#src/backend/persistence/sqlite/executions/audit";
 import {
   endExecutions,
   insertRunSchedule,
@@ -80,34 +83,45 @@ function findByDelivery(database: SqliteExecutor, execution: NewExecution) {
     .pipe(Effect.map((row) => (row ? sqliteExecution(row) : null)));
 }
 
+/**
+ * Ends the runs `ids` names that are still in flight and unclaimed as
+ * `superseded`, each with its `run_superseded` entry, and answers their ids.
+ */
 function supersedeInFlightExecutions(
   database: SqliteExecutor,
   ids: string[],
-  supersededReason: string
+  input: Pick<StartForEntityInput, "execution" | "supersededReason">
 ) {
   if (ids.length === 0) return Effect.succeed<string[]>([]);
   return endExecutions(
     database,
-    database
-      .update(workflowExecutions)
-      .set({
-        ...endedRunColumns("superseded"),
-        error: supersededReason,
-      })
-      .where(
-        and(
-          inArray(workflowExecutions.id, ids),
-          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-          isNull(workflowExecutions.terminationKind)
-        )
-      )
-      .returning({ id: workflowExecutions.id })
-      .pipe(
-        Effect.map((rows) => {
-          const ended = rows.map((row) => row.id);
-          return { result: ended, ended };
+    Effect.gen(function* () {
+      const rows = yield* database
+        .update(workflowExecutions)
+        .set({
+          ...endedRunColumns("superseded"),
+          error: input.supersededReason,
         })
-      )
+        .where(
+          and(
+            inArray(workflowExecutions.id, ids),
+            inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+            isNull(workflowExecutions.terminationKind)
+          )
+        )
+        .returning({ id: workflowExecutions.id });
+      const ended = rows.map((row) => row.id);
+      yield* recordAuditEventsWrite(
+        ended.map((executionId) => ({
+          workflowId: input.execution.workflowId,
+          executionId,
+          eventType: "run_superseded",
+          message: input.supersededReason,
+          metadata: { eventName: input.execution.startEventName },
+        }))
+      )(database);
+      return { result: ended, ended };
+    })
   );
 }
 
@@ -168,8 +182,9 @@ export function admitStart(
  * Decides a start that consults no Entity admission decision and opens its
  * run in the caller's write transaction. The delivery's own row answers
  * first. First-wins refuses a start while a run for the entity is in flight,
- * and newest-wins ends those runs `superseded`, settling their schedule and
- * wait rows, before it opens the new one.
+ * and newest-wins ends those runs `superseded`, writing each one's
+ * `run_superseded` entry and settling its schedule and wait rows, before it
+ * opens the new one.
  */
 export function admitWithConcurrency(
   database: SqliteExecutor,
@@ -228,7 +243,7 @@ export function admitWithConcurrency(
     const supersededExecutionIds = yield* supersedeInFlightExecutions(
       database,
       inFlight.map((row) => row.id),
-      input.supersededReason
+      input
     );
 
     return {

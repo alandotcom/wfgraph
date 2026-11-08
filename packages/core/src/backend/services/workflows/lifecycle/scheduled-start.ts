@@ -33,10 +33,7 @@ import {
   toWorkflowRunTarget,
 } from "#src/backend/services/executions/run-rows";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import {
-  announceDisplacedRuns,
-  startRequestFor,
-} from "#src/backend/services/workflows/lifecycle/concurrency";
+import { startRequestFor } from "#src/backend/services/workflows/lifecycle/concurrency";
 
 /**
  * How many times one fire checks the published version, when its fire or its
@@ -113,8 +110,7 @@ export function scheduledRefusal(input: {
  * What one fire did.
  *
  * - `started`: it opened a run for `slot`, superseding `superseded` runs under
- *   newest-wins; `failedToSupersede` names those whose timeline entry the
- *   database refused.
+ *   newest-wins.
  * - `refused`: first-wins deferred to the runs in flight, and the fire
  *   recorded a Refused Start for `slot`.
  * - `skipped`: the published graph cannot run, or the fire's retries are
@@ -130,7 +126,6 @@ export type ScheduleFireOutcome =
       slot: Date;
       nextWakeAt: Date;
       superseded: number;
-      failedToSupersede: string[];
     }
   | {
       kind: "refused";
@@ -287,17 +282,12 @@ export const fireSchedule = Effect.fn("wfgraph.schedule.fire")(
       }
 
       const { execution, supersededExecutionIds } = fired.start;
-      const announced = yield* announceDisplacedRuns({
-        workflowId: workflow.id,
-        supersededExecutionIds,
-      });
       const started: ScheduleFireOutcome = {
         kind: "started",
         executionId: execution.id,
         versionId: version.id,
         ...times,
         superseded: supersededExecutionIds.length,
-        failedToSupersede: announced.failedExecutionIds,
       };
       return started;
     });

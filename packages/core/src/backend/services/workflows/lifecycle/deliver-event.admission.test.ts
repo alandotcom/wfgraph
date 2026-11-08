@@ -182,7 +182,6 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
             workflowId: "wf_1",
             executionId: "exec_winner",
             supersededExecutionIds: [],
-            failedToSupersede: [],
           });
           assert.strictEqual(startRunMock.mock.calls.length, 1);
           assert.deepInclude(startRunMock.mock.calls[0]?.[0].execution, {

@@ -428,9 +428,8 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       return response;
     }
 
-    // The response contract declares `supersededExecutions` and
-    // `failedToSupersede` with `optionalKey`, so an ordinary start leaves both
-    // keys out.
+    // The response contract declares `supersededExecutions` with
+    // `optionalKey`, so an ordinary start leaves the key out.
     const response: WorkflowExecuteResponse = omitUndefined({
       status: "running",
       executionId: started.executionId,
@@ -438,10 +437,6 @@ export const postWorkflowExecute = Effect.fn("wfgraph.execution.start")(
       supersededExecutions:
         started.supersededExecutionIds.length > 0
           ? started.supersededExecutionIds.length
-          : undefined,
-      failedToSupersede:
-        started.failedToSupersede.length > 0
-          ? started.failedToSupersede
           : undefined,
     });
     return response;
