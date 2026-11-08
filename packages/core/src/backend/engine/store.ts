@@ -216,11 +216,30 @@ export type RequestExecutionExitInput = {
   checkedAt: string;
 };
 
+/** The timeline events that say how a run ended. */
+export type TerminalAuditEventType = Extract<
+  WorkflowRunAuditEventType,
+  "run_completed" | "run_failed" | "run_cancelled" | "run_exited"
+>;
+
+/**
+ * The timeline entry a terminal write carries. The store inserts it in the
+ * transaction that writes the terminal row, and only when that write is the
+ * one that ends the run, so an ended run never reads without it.
+ */
+export type TerminalAnnouncement = {
+  workflowId: string;
+  eventType: TerminalAuditEventType;
+  message: string;
+  metadata: JsonObjectDraft;
+};
+
 export type CompleteRunInput = {
   executionId: string;
   status: "completed" | "failed" | "canceled" | "exited";
   output?: unknown;
   failure?: EngineFailure | undefined;
+  announcement: TerminalAnnouncement;
 };
 
 export type WorkflowStore = {
@@ -328,10 +347,11 @@ export type WorkflowStore = {
   ): Effect.Effect<PendingCancel | null, StoreFailure>;
   /**
    * Attempts the terminal state and returns the authoritative stored outcome.
-   * `didWrite` identifies this call as the compare-and-set winner, and `null`
-   * means no execution row exists. A database refusal remains in the error
-   * channel; terminal-record policy logs it and fails the durable step, so
-   * the executor retries the write.
+   * `didWrite` identifies this call as the compare-and-set winner, which alone
+   * writes the input's announcement, and `null` means no execution row exists.
+   * A database refusal, of the row or of its announcement, writes neither and
+   * remains in the error channel; terminal-record policy logs it and fails the
+   * durable step, so the executor retries the write.
    */
   completeRun(
     input: CompleteRunInput

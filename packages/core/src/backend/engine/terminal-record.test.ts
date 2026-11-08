@@ -121,15 +121,15 @@ describe("terminal record completion policy", () => {
           },
         ]);
         expect(recording.terminationState?.status).toBe("running");
-        expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+        expect(recording.timeline).toHaveLength(0);
 
         const retried = yield* recordRunCompleted({ ...terminalInput, store });
 
         expect(retried).toEqual({ status: "completed" });
         expect(recording.terminationState?.status).toBe("completed");
-        expect(
-          recording.callsOf("recordAuditEvent").map((call) => call.eventType)
-        ).toEqual(["run_completed"]);
+        expect(recording.timeline.map((call) => call.eventType)).toEqual([
+          "run_completed",
+        ]);
       })
   );
 
@@ -155,6 +155,7 @@ describe("terminal record completion policy", () => {
             entityType: "appointment",
             conditionId: "condition_1",
           },
+          exitClaim,
         } as const;
 
         const failure = yield* Effect.flip(recordRunCompleted(exitInput));
@@ -164,7 +165,7 @@ describe("terminal record completion policy", () => {
           status: "running",
           claim: exitClaim,
         });
-        expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+        expect(recording.timeline).toHaveLength(0);
 
         const retried = yield* recordRunCompleted(exitInput);
 
@@ -179,9 +180,24 @@ describe("terminal record completion policy", () => {
           },
         });
         expect(recording.terminationState?.status).toBe("exited");
-        expect(
-          recording.callsOf("recordAuditEvent").map((call) => call.eventType)
-        ).toEqual(["run_exited"]);
+        expect(recording.timeline).toEqual([
+          {
+            workflowId: "workflow_1",
+            executionId: "exec_1",
+            eventType: "run_exited",
+            message: "Run exited because the Entity was ineligible",
+            metadata: {
+              resultCount: 1,
+              runMode: "live",
+              reason: "entity_condition_not_met",
+              entityType: "appointment",
+              conditionId: "condition_1",
+              nodeId: "send-reminder",
+              checkedAt: "2026-10-19T15:00:00.000Z",
+              checkpoint: "before-node",
+            },
+          },
+        ]);
       })
   );
 
@@ -206,15 +222,15 @@ describe("terminal record completion policy", () => {
         const failure = yield* Effect.flip(recordRunFailed(failedInput));
 
         expect(failure).toBe(databaseError);
-        expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+        expect(recording.timeline).toHaveLength(0);
 
         const retried = yield* recordRunFailed(failedInput);
 
         expect(retried).toEqual({ status: "failed" });
         expect(recording.terminationState?.status).toBe("failed");
-        expect(
-          recording.callsOf("recordAuditEvent").map((call) => call.eventType)
-        ).toEqual(["run_failed"]);
+        expect(recording.timeline.map((call) => call.eventType)).toEqual([
+          "run_failed",
+        ]);
       })
   );
 
@@ -270,16 +286,22 @@ describe("terminal record completion policy", () => {
         status: "exited",
         output: { ok: true },
         failure: undefined,
-      });
-      expect(recording.callsOf("recordAuditEvent")).toEqual([
-        expect.objectContaining({
+        announcement: {
+          workflowId: "workflow_1",
           eventType: "run_exited",
-          metadata: expect.objectContaining({
+          message: "Run exited because the Entity was ineligible",
+          metadata: {
+            resultCount: 1,
+            runMode: "live",
+            reason: "entity_condition_not_met",
             entityType: "appointment",
+            conditionId: "condition_1",
             nodeId: "send-reminder",
-          }),
-        }),
-      ]);
+            checkedAt: "2026-10-19T15:00:00.000Z",
+            checkpoint: "before-node",
+          },
+        },
+      });
     })
   );
 
@@ -318,7 +340,7 @@ describe("terminal record completion policy", () => {
 
       expect(failure).toBe(databaseError);
       expect(call).toBe(2);
-      expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+      expect(recording.timeline).toHaveLength(0);
       expect(recordingLoggerLayer.lines).toEqual([
         {
           level: "Warn",
@@ -360,7 +382,7 @@ describe("terminal record completion policy", () => {
           recording.callsOf("completeRun").map((call) => call.status)
         ).toEqual(["completed"]);
         expect(recording.terminationState?.status).toBe("running");
-        expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+        expect(recording.timeline).toHaveLength(0);
       })
   );
 
@@ -382,7 +404,7 @@ describe("terminal record completion policy", () => {
         });
 
         expect(result).toEqual({ status: "canceled" });
-        expect(recording.callsOf("recordAuditEvent")).toEqual([
+        expect(recording.timeline).toEqual([
           expect.objectContaining({
             eventType: "run_cancelled",
             message: "Run canceled at the Canceled outlet",
@@ -421,7 +443,7 @@ describe("terminal record completion policy", () => {
             recording.callsOf("completeRun").map((call) => call.status)
           ).toEqual(["failed"]);
           expect(recording.terminationState?.status).toBe("running");
-          expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+          expect(recording.timeline).toHaveLength(0);
         }
       })
   );
@@ -447,7 +469,7 @@ describe("terminal record completion policy", () => {
         expect(
           recording.callsOf("completeRun").map((call) => call.status)
         ).toEqual(["canceled"]);
-        expect(recording.callsOf("recordAuditEvent")).toEqual([
+        expect(recording.timeline).toEqual([
           expect.objectContaining({
             eventType: "run_cancelled",
             message:
@@ -479,7 +501,7 @@ describe("terminal record completion policy", () => {
         expect(
           recording.callsOf("completeRun").map((call) => call.status)
         ).toEqual(["canceled"]);
-        expect(recording.callsOf("recordAuditEvent")).toEqual([
+        expect(recording.timeline).toEqual([
           {
             workflowId: "workflow_1",
             executionId: "exec_1",
@@ -514,7 +536,7 @@ describe("terminal record completion policy", () => {
         });
 
         expect(result).toEqual({ status: "canceled" });
-        expect(recording.callsOf("recordAuditEvent")).toEqual([
+        expect(recording.timeline).toEqual([
           expect.objectContaining({
             eventType: "run_cancelled",
             message:
@@ -561,7 +583,7 @@ describe("terminal record completion policy", () => {
 
         expect(failure).toBe(databaseError);
         expect(call).toBe(2);
-        expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+        expect(recording.timeline).toHaveLength(0);
       })
   );
 
@@ -612,7 +634,7 @@ describe("terminal record completion policy", () => {
             properties: { status: "exited" },
           },
         ]);
-        expect(recording.callsOf("recordAuditEvent")).toHaveLength(0);
+        expect(recording.timeline).toHaveLength(0);
       })
   );
 });

@@ -358,7 +358,7 @@ describe("run persistence through the store port", () => {
     expect(completions[0]?.executionId).toBe("exec_success");
     expect(completions[0]?.status).toBe("completed");
 
-    const audits = store.callsOf("recordAuditEvent");
+    const audits = store.timeline;
     expect(audits).toHaveLength(1);
     expect(audits[0]?.eventType).toBe("run_completed");
     expect(audits[0]?.workflowId).toBe("workflow_success");
@@ -460,7 +460,7 @@ describe("run persistence through the store port", () => {
       kind: "failure",
       message: "boom",
     });
-    expect(store.callsOf("recordAuditEvent")[0]?.eventType).toBe("run_failed");
+    expect(store.timeline[0]?.eventType).toBe("run_failed");
   });
 
   it("records an unchecked engine exception as a defect", async () => {
@@ -523,7 +523,7 @@ describe("run persistence through the store port", () => {
       actions
     );
 
-    expect(store.callsOf("recordAuditEvent")[0]?.message).toBe(
+    expect(store.timeline[0]?.message).toBe(
       "Run completed successfully (test recipients)"
     );
   });
@@ -698,17 +698,17 @@ describe("run persistence through the store port", () => {
       executeWorkflow(input, runtime, storeRefusing("completeRun"), actions)
     ).rejects.toThrow("run log unreachable");
     expect(runtime.memo.has("workflow-run-completed")).toBe(false);
-    expect(
-      store.callsOf("recordAuditEvent").map((call) => call.eventType)
-    ).not.toContain("run_completed");
+    expect(store.timeline.map((call) => call.eventType)).not.toContain(
+      "run_completed"
+    );
 
     const result = await executeWorkflow(input, runtime, store, actions);
 
     expect(result).toMatchObject({ kind: "ended", success: true });
     expect(store.terminationState?.status).toBe("completed");
-    expect(
-      store.callsOf("recordAuditEvent").map((call) => call.eventType)
-    ).toContain("run_completed");
+    expect(store.timeline.map((call) => call.eventType)).toContain(
+      "run_completed"
+    );
   });
 
   // The error a run carries is the one a person reads in the Runs view, so it
@@ -793,9 +793,9 @@ describe("run persistence through the store port", () => {
       "Subscription cancelled by the provider"
     );
     expect(store.callsOf("completeRun")[0]?.status).toBe("failed");
-    expect(
-      store.callsOf("recordAuditEvent").map((call) => call.eventType)
-    ).toContain("run_failed");
+    expect(store.timeline.map((call) => call.eventType)).toContain(
+      "run_failed"
+    );
   });
 
   /** A runtime that exhausts retries for one terminal durable step. */
@@ -811,18 +811,21 @@ describe("run persistence through the store port", () => {
   }
 
   /**
-   * A store that records the terminal write and answers that it claimed
-   * nothing, which is what a cancellation that reached the row first and a
-   * refused row write both look like from here.
+   * A store whose row a newer start ended just before the terminal write, so
+   * the write claims nothing, which is what a cancellation that reached the
+   * row first and a refused row write both look like from here.
    */
   function storeClaimingNothing(): RecordingWorkflowStore {
     return {
       ...store,
       completeRun: (input) =>
-        Effect.as(store.completeRun(input), {
-          status: "superseded" as const,
-          claim: null,
-          didWrite: false,
+        Effect.suspend(() => {
+          store.terminationState = {
+            status: "superseded",
+            claim: null,
+            didWrite: false,
+          };
+          return store.completeRun(input);
         }),
     };
   }
@@ -843,9 +846,9 @@ describe("run persistence through the store port", () => {
 
     expect(result).toMatchObject({ kind: "ended", success: true });
     expect(store.callsOf("completeRun")).toHaveLength(1);
-    expect(
-      store.callsOf("recordAuditEvent").map((call) => call.eventType)
-    ).not.toContain("run_completed");
+    expect(store.timeline.map((call) => call.eventType)).not.toContain(
+      "run_completed"
+    );
   });
 
   it("lets a refused completion step escape for durable retry", async () => {
@@ -863,7 +866,7 @@ describe("run persistence through the store port", () => {
     ).rejects.toThrow("terminal write refused");
 
     expect(store.callsOf("completeRun")).toHaveLength(0);
-    expect(store.callsOf("recordAuditEvent")).toHaveLength(0);
+    expect(store.timeline).toHaveLength(0);
   });
 });
 

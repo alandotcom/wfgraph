@@ -14,6 +14,12 @@ const terminalWrite = {
   executionId: "exec_1",
   status: "completed",
   output: { ok: true },
+  announcement: {
+    workflowId: "workflow_1",
+    eventType: "run_completed",
+    message: "Run completed successfully",
+    metadata: {},
+  },
 } as const;
 
 describe("completeRun", () => {

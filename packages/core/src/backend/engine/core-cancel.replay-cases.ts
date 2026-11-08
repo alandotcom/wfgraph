@@ -226,9 +226,7 @@ export function claimAtTerminalWrite(
 
 /** The `run_cancelled` rows the run wrote to its timeline. */
 export function cancelledAudits(store: RecordingWorkflowStore) {
-  return store
-    .callsOf("recordAuditEvent")
-    .filter((event) => event.eventType === "run_cancelled");
+  return store.timeline.filter((event) => event.eventType === "run_cancelled");
 }
 
 /**
@@ -349,8 +347,7 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
       }),
     ]);
     expect(
-      store
-        .callsOf("recordAuditEvent")
+      store.timeline
         .map((event) => event.eventType)
         .filter((eventType) => eventType === "run_completed")
     ).toEqual([]);

@@ -47,6 +47,7 @@ import {
   type SqliteExecutionListRow,
 } from "#src/backend/persistence/sqlite/executions/rows";
 import { endExecutions } from "#src/backend/persistence/sqlite/executions/schedule";
+import { recordAuditEventWrite } from "#src/backend/persistence/sqlite/executions/audit";
 
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
@@ -674,7 +675,8 @@ export function endedRunColumns(status: TerminalExecutionStatus) {
 
 /**
  * The terminal write behind `finishRun`. The write that made the row terminal
- * deletes the run's schedule row and step memo in the same transaction.
+ * inserts its announcement and deletes the run's schedule row and step memo in
+ * the same transaction.
  */
 export function finishRunWrite(input: FinishRunInput) {
   return (database: SqliteExecutor) =>
@@ -702,6 +704,12 @@ export function finishRunWrite(input: FinishRunInput) {
             )
           )
           .returning();
+        if (written && input.announcement) {
+          yield* recordAuditEventWrite({
+            ...input.announcement,
+            executionId: input.executionId,
+          })(database);
+        }
         return yield* endedBy(database, input.executionId, written);
       })
     );

@@ -113,7 +113,7 @@ describe("a run claimed for the Canceled outlet", () => {
     const completions = store.callsOf("completeRun");
     expect(completions).toHaveLength(1);
     expect(completions[0]?.status).toBe("canceled");
-    expect(store.callsOf("recordAuditEvent").at(-1)).toMatchObject({
+    expect(store.timeline.at(-1)).toMatchObject({
       eventType: "run_cancelled",
       message: "Run canceled at the Canceled outlet",
     });
@@ -532,7 +532,7 @@ describe("a Cancel claim that lands after the last boundary read", () => {
       ).rejects.toBeDefined();
 
       expect(store.callsOf("completeRun")).toHaveLength(0);
-      expect(store.callsOf("recordAuditEvent")).toHaveLength(0);
+      expect(store.timeline).toHaveLength(0);
       expect(rowsOpenedFor(store, "cleanup_1")).toBe(0);
 
       // The claim the interrupted attempt left behind is what the retry's own

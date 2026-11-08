@@ -207,9 +207,7 @@ export function expectHaltedByClaim(
     { waitStateId: "wait_state_1", status: "cancelled" },
   ]);
   expect(
-    store
-      .callsOf("recordAuditEvent")
-      .filter((event) => event.eventType === "run_resumed")
+    store.timeline.filter((event) => event.eventType === "run_resumed")
   ).toEqual([
     expect.objectContaining({
       message: CLAIM_WAKE_MESSAGE[kind],

@@ -618,6 +618,80 @@ export function describeExecutionConformance({
       expect(ended).toEqual({ status: "completed", terminalEntries: 1 });
     });
 
+    it("writes a terminal write's announcement only from the write that ends the run", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const started = await attemptStart(database, {
+        deliveryId: "delivery_announced_end",
+      });
+      if (started.status !== "started") {
+        throw new Error("The run was refused");
+      }
+      const executionId = started.execution.id;
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const refusedExit = yield* executions.finishRun({
+            executionId,
+            status: "exited",
+            announcement: {
+              workflowId: "wf_1",
+              eventType: "run_exited",
+              message: "Run exited because the Entity was ineligible",
+              metadata: { runMode: "live" },
+            },
+          });
+          const completed = yield* executions.finishRun({
+            executionId,
+            status: "completed",
+            announcement: {
+              workflowId: "wf_1",
+              eventType: "run_completed",
+              message: "Run completed successfully",
+              metadata: { resultCount: 2, runMode: "live" },
+            },
+          });
+          const repeated = yield* executions.finishRun({
+            executionId,
+            status: "failed",
+            announcement: {
+              workflowId: "wf_1",
+              eventType: "run_failed",
+              message: "Run failed with fatal error",
+              metadata: { error: "late", runMode: "live" },
+            },
+          });
+          const events = yield* executions.listEvents(executionId);
+          return {
+            didWrite: [refusedExit, completed, repeated].map(
+              (state) => state?.didWrite
+            ),
+            ending: events
+              .filter((event) => event.eventType !== "run_started")
+              .map(({ workflowId, eventType, message, metadata }) => ({
+                workflowId,
+                eventType,
+                message,
+                metadata,
+              })),
+          };
+        })
+      );
+
+      expect(result).toEqual({
+        didWrite: [false, true, false],
+        ending: [
+          {
+            workflowId: "wf_1",
+            eventType: "run_completed",
+            message: "Run completed successfully",
+            metadata: { resultCount: 2, runMode: "live" },
+          },
+        ],
+      });
+    });
+
     // The Intake model's `ExecutionAndScheduleTogether`: an open run always has
     // a schedule row, because one write inserts both, and a start Concurrency
     // refuses or displaces leaves no schedule row behind.

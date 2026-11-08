@@ -591,8 +591,7 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
     expect(dispatchClock(run.executed, "after_long")).toBeUndefined();
     // The sibling's timeline names the Exit that woke it, and its row closed.
     expect(
-      store
-        .callsOf("recordAuditEvent")
+      store.timeline
         .filter((event) => event.eventType === "run_resumed")
         .map((event) => event.message)
     ).toContain("Run woken by an Exit in node 'long_wait'");

@@ -41,7 +41,12 @@ import {
   type TerminalExecutionStatus,
   type TerminationKind,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
+import type {
+  JsonObject,
+  JsonObjectDraft,
+  JsonValue,
+} from "@wfgraph/shared/types/json";
+import { recordAuditEventWrite } from "#src/backend/services/executions/repo/audit";
 import type {
   StoreWrite,
   ExecutionPageQuery,
@@ -231,6 +236,14 @@ function buildPageFilters(query: ExecutionPageQuery): SQL[] {
   return filters;
 }
 
+/** The timeline entry saying how a run ended, which `finishRun` writes with its row. */
+type TerminalRunAnnouncement = {
+  workflowId: string;
+  eventType: "run_completed" | "run_failed" | "run_cancelled" | "run_exited";
+  message: string;
+  metadata?: JsonObjectDraft | undefined;
+};
+
 /** The `workflow_executions` slice of `ExecutionRepo`. */
 export type RunsRepoMethods = {
   /**
@@ -386,8 +399,9 @@ export type RunsRepoMethods = {
    * Write the run's own terminal row and return the authoritative state. The
    * same in-flight guard as `endInFlight` prevents a completion from
    * overwriting an earlier Cancel or Exit claim. The write that made the row
-   * terminal cancels the run's open wait rows and deletes its schedule row and
-   * step memo in the same transaction.
+   * terminal inserts `announcement` on the run's timeline, cancels the run's
+   * open wait rows and deletes its schedule row and step memo in the same
+   * transaction.
    */
   readonly finishRun: StoreWrite<
     {
@@ -395,6 +409,7 @@ export type RunsRepoMethods = {
       status: "completed" | "failed" | "canceled" | "exited";
       output?: JsonValue | undefined;
       error?: string | undefined;
+      announcement?: TerminalRunAnnouncement | undefined;
     },
     ExecutionTerminationState | null
   >;
@@ -778,6 +793,12 @@ export function finishRunWrite(input: FinishRunInput) {
           )
         )
         .returning(TERMINATION_COLUMNS);
+      if (written && input.announcement) {
+        await recordAuditEventWrite({
+          ...input.announcement,
+          executionId: input.executionId,
+        })(tx);
+      }
 
       return await endedBy(tx, input.executionId, written);
     });

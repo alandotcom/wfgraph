@@ -92,7 +92,7 @@ function logRows(store: RecordingWorkflowStore): Record<string, string> {
 }
 
 function auditEventTypes(store: RecordingWorkflowStore): string[] {
-  return store.callsOf("recordAuditEvent").map((event) => event.eventType);
+  return store.timeline.map((event) => event.eventType);
 }
 
 /** What a run that ended a pass parked writes, whatever else it did. */
