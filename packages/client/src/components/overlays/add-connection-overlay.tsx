@@ -233,6 +233,8 @@ export function ConfigureConnectionOverlay({
   const hasTest = catalogEntry?.hasTest === true;
 
   const saving = create.isPending || testForSave.isPending || oauthPending;
+  // A Test of the entered credentials holds every way to save until it answers.
+  const busy = saving || testNewCredentials.isPending;
 
   const saveConnection = async () => {
     if (!canCreate) {
@@ -394,7 +396,7 @@ export function ConfigureConnectionOverlay({
                       variant: "outline" as const,
                       onClick: handleSave,
                       loading: create.isPending && !oauthPending,
-                      disabled: saving,
+                      disabled: busy,
                     },
                   ]
                 : []),
@@ -404,13 +406,20 @@ export function ConfigureConnectionOverlay({
                       label: `Connect with ${catalogEntry.oauth.label}`,
                       onClick: handleOAuthCreate,
                       loading: oauthPending,
-                      disabled: saving && !oauthPending,
+                      disabled: busy && !oauthPending,
                     },
                   ]
                 : []),
             ]
           : canCreate
-            ? [{ label: "Create", onClick: handleSave, loading: saving }]
+            ? [
+                {
+                  label: "Create",
+                  onClick: handleSave,
+                  loading: saving,
+                  disabled: busy,
+                },
+              ]
             : []),
       ]}
       overlayId={overlayId}
