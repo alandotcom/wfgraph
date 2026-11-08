@@ -94,6 +94,11 @@ export type WorkflowDraftService = {
   ) => Effect.Effect<WorkflowDraftUpdate, { readonly reason: string }>;
   /** Read the immutable document stored after one successful update. */
   readonly revision: (revision: number) => Effect.Effect<AgentDocument>;
+  /** The newest stored revision and its number; the opening graph is 0. */
+  readonly latest: Effect.Effect<{
+    readonly revision: number;
+    readonly document: AgentDocument;
+  }>;
   /** The extension surface, fixed for the turn. */
   readonly catalog: ExtensionCatalog;
   /** The connections the operator can bind an action to, fixed for the turn. */
@@ -177,6 +182,12 @@ export function makeWorkflowDraft(
                 );
           })
         ),
+      latest: Ref.get(state).pipe(
+        Effect.map((snapshot) => ({
+          revision: snapshot.revisions.length - 1,
+          document: snapshot.document,
+        }))
+      ),
       catalog: input.catalog,
       integrations: input.integrations,
       validateDraft: input.validateDraft,

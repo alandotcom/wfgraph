@@ -9,6 +9,7 @@ import { layerFromDraft } from "@wfgraph/agent/document";
 import { agentToolkit, agentToolkitLayer } from "@wfgraph/agent/toolkit";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { agenticSteps, withGraphParts } from "#src/backend/agent/chat";
+import { makeAgentToolSession } from "#src/backend/agent/tool-session";
 import {
   finishReasonFailure,
   type AgentTraceEvent,
@@ -42,6 +43,7 @@ const draft: WorkflowDraftService = {
   }),
   update: () => Effect.die("unused"),
   revision: () => Effect.succeed(document),
+  latest: Effect.succeed({ revision: 1, document }),
   catalog: { actions: [], entities: [], events: [], integrations: [] },
   integrations: [],
   validateDraft: () => ({
@@ -53,19 +55,6 @@ const draft: WorkflowDraftService = {
 };
 
 const part = Response.makePart;
-
-function revisionRecorder(sessionDraft: WorkflowDraftService) {
-  let revision = 0;
-  return {
-    recordGraphRevision: Effect.fn("recordGraphRevision")(function* () {
-      revision += 1;
-      return {
-        revision,
-        document: yield* sessionDraft.revision(revision),
-      };
-    }),
-  };
-}
 
 describe("withGraphParts", () => {
   it.effect(
@@ -88,7 +77,7 @@ describe("withGraphParts", () => {
                 preliminary: false,
               }),
             }),
-            revisionRecorder(draft),
+            { draft },
             (event) => trace.push(event)
           )
         );
@@ -145,7 +134,7 @@ describe("withGraphParts", () => {
               }),
             }),
           }),
-          revisionRecorder(draft),
+          { draft },
           (event) => trace.push(event)
         )
       );
@@ -192,7 +181,7 @@ describe("withGraphParts", () => {
                 toolkit,
                 observeTrace: (event) => trace.push(event),
               }).pipe(Stream.provide(modelLayer)),
-              revisionRecorder(draft),
+              { draft },
               (event) => trace.push(event)
             ),
             () => Effect.void
@@ -244,11 +233,7 @@ describe("withGraphParts", () => {
 
       const parts = yield* Stream.runCollect(
         observeAgentStream(
-          withGraphParts(
-            providerParts,
-            revisionRecorder(draft),
-            () => undefined
-          ),
+          withGraphParts(providerParts, { draft }, () => undefined),
           () => Effect.void
         )
       );
@@ -292,6 +277,10 @@ describe("withGraphParts", () => {
               return { document: next, dissolvedGroups: [] };
             }),
           revision: (revision) => Effect.succeed(revisions[revision]!),
+          latest: Effect.sync(() => ({
+            revision: revisions.length - 1,
+            document: current,
+          })),
           catalog: { actions: [], entities: [], events: [], integrations: [] },
           integrations: [],
           validateDraft: () => ({
@@ -356,7 +345,7 @@ describe("withGraphParts", () => {
               toolkit,
               observeTrace: (event) => trace.push(event),
             }).pipe(Stream.provide(modelLayer)),
-            revisionRecorder(delayedDraft),
+            { draft: delayedDraft },
             (event) => trace.push(event)
           )
         );
@@ -397,6 +386,113 @@ describe("withGraphParts", () => {
           expect(revision).toBeDefined();
           expect(revision?.document).toBe(revisions[result.graphRevision!]);
         }
+      })
+  );
+
+  it.effect(
+    "draws no revision for a refused write and the draft's own revision for an accepted one",
+    () =>
+      Effect.gen(function* () {
+        const trace: AgentTraceEvent[] = [];
+        const toolSession = yield* makeAgentToolSession({
+          document,
+          catalog: { actions: [], entities: [], events: [], integrations: [] },
+          integrations: [],
+          validateDraft: () => ({
+            draftValid: true,
+            structuralIssues: [],
+            publishBlockers: [],
+            warnings: [],
+          }),
+        });
+        let modelCalls = 0;
+        const modelLayer = Layer.effect(
+          LanguageModel.LanguageModel,
+          LanguageModel.make({
+            generateText: () => Effect.succeed([]),
+            streamText: () =>
+              Stream.fromIterable(
+                modelCalls++ === 0
+                  ? [
+                      part("tool-call", {
+                        id: "refused",
+                        name: "update_node",
+                        params: { nodeId: "missing", label: "Nowhere" },
+                        providerExecuted: false,
+                      }),
+                      part("tool-call", {
+                        id: "accepted",
+                        name: "update_node",
+                        params: { nodeId: "entry", label: "Renamed" },
+                        providerExecuted: false,
+                      }),
+                      part("finish", {
+                        reason: "tool-calls",
+                        usage: new Response.Usage({
+                          inputTokens: { total: 10 },
+                          outputTokens: { total: 5 },
+                        }),
+                      }),
+                    ]
+                  : [
+                      part("finish", {
+                        reason: "stop",
+                        usage: new Response.Usage({
+                          inputTokens: { total: 10 },
+                          outputTokens: { total: 2 },
+                        }),
+                      }),
+                    ]
+              ),
+          })
+        );
+
+        const responseParts = yield* Stream.runCollect(
+          withGraphParts(
+            agenticSteps({
+              session: yield* Chat.fromPrompt([]),
+              toolkit: toolSession.toolkit,
+              observeTrace: (event) => trace.push(event),
+            }).pipe(Stream.provide(modelLayer)),
+            toolSession,
+            (event) => trace.push(event)
+          )
+        );
+        const renamed = yield* toolSession.draft.current;
+
+        expect(renamed.nodes[0]?.data.label).toBe("Renamed");
+        expect(
+          trace.flatMap((event) =>
+            event.type === "tool-result"
+              ? [{ id: event.id, graphRevision: event.graphRevision }]
+              : []
+          )
+        ).toEqual([
+          { id: "refused", graphRevision: undefined },
+          { id: "accepted", graphRevision: 1 },
+        ]);
+        expect(
+          trace.filter((event) => event.type === "graph-revision")
+        ).toEqual([
+          {
+            type: "graph-revision",
+            step: 1,
+            toolCallId: "accepted",
+            revision: 1,
+            document: renamed,
+          },
+        ]);
+        expect(
+          responseParts.filter((response) => response.type === "graph")
+        ).toEqual([
+          {
+            type: "graph",
+            graph: createSerializedWorkflowGraph({
+              nodes: [...renamed.nodes],
+              edges: [...renamed.edges],
+            }),
+          },
+        ]);
       })
   );
 });
