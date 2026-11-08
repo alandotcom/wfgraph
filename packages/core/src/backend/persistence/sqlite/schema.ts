@@ -507,6 +507,14 @@ export const workflowExecutionSteps = sqliteTable(
       "workflow_execution_steps_value_json_check",
       sql`${table.value} is null or json_valid(${table.value})`
     ),
+    check(
+      "workflow_execution_steps_value_check",
+      sql`${table.status} = 'succeeded' or ${table.value} is null`
+    ),
+    check(
+      "workflow_execution_steps_failures_check",
+      sql`${table.failures} >= 0 and (${table.status} = 'succeeded' or ${table.failures} > 0)`
+    ),
   ]
 );
 
