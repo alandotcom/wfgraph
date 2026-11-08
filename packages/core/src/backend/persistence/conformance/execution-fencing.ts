@@ -10,7 +10,10 @@
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-import { type PersistenceTestRegistry } from "#src/backend/persistence/conformance/support";
+import {
+  notYetDue,
+  type PersistenceTestRegistry,
+} from "#src/backend/persistence/conformance/support";
 import {
   T0,
   LEASE_MS,
@@ -309,6 +312,77 @@ export function describeExecutionFencingConformance({
       );
 
       expect(summary?.duration).toMatch(/^\d+$/);
+    });
+
+    // The Runs view prints a run with no duration as a dash, so every way a
+    // run ends writes one, not only the run finishing itself.
+    it("writes the duration of a run ended from outside it", async () => {
+      const connection = await seeded(await openConnection());
+      const durations = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const durationOf = (executionId: string) =>
+            Effect.map(
+              executions.findSummaryById(executionId),
+              (summary) => summary?.duration
+            );
+          const entityStart = (concurrency: "unlimited" | "newest-wins") =>
+            executions.startForEntity({
+              execution: {
+                workflowId: "wf_1",
+                workflowVersionId: "ver_1",
+                startSource: "event",
+                runMode: "live",
+                entityValue: "appointment_1",
+                input: {},
+              },
+              concurrency,
+              supersededReason: "newer start",
+              startedEntry: notYetDue.startedEntry,
+              now: T0,
+            });
+
+          const canceled = yield* scheduledRun(T0);
+          yield* executions.endInFlight({
+            executionId: canceled,
+            status: "canceled",
+          });
+          const superseded = yield* scheduledRun(T0);
+          yield* executions.endInFlight({
+            executionId: superseded,
+            status: "superseded",
+          });
+          const displaced = yield* entityStart("unlimited");
+          const newer = yield* entityStart("newest-wins");
+          if (displaced.status !== "started" || newer.status !== "started") {
+            throw new Error("Start was refused");
+          }
+          const recorded = yield* executions.insertTerminal({
+            workflowId: "wf_1",
+            workflowVersionId: "ver_1",
+            startSource: "manual",
+            runMode: "live",
+            input: {},
+            status: "canceled",
+          });
+
+          return {
+            displacedBy: newer.supersededExecutionIds,
+            canceled: yield* durationOf(canceled),
+            superseded: yield* durationOf(superseded),
+            displaced: yield* durationOf(displaced.execution.id),
+            recorded: yield* durationOf(recorded.id),
+          };
+        })
+      );
+
+      expect(durations).toEqual({
+        displacedBy: [expect.any(String)],
+        canceled: expect.stringMatching(/^\d+$/),
+        superseded: expect.stringMatching(/^\d+$/),
+        displaced: expect.stringMatching(/^\d+$/),
+        recorded: "0",
+      });
     });
 
     it("refuses a fenced write that addresses a run the fence does not name", async () => {
