@@ -15,7 +15,9 @@ import { generateId } from "@wfgraph/shared/utils/id";
 import { readJsonObject, type JsonValue } from "@wfgraph/shared/types/json";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
+  TERMINAL_EXECUTION_STATUSES,
   type ExecutionSide,
+  type TerminalExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs";
 import type {
@@ -147,11 +149,7 @@ export function insertExecution(
   return Effect.gen(function* () {
     const id = generateId();
     const now = Date.now();
-    const isTerminal =
-      status === "completed" ||
-      status === "failed" ||
-      status === "canceled" ||
-      status === "exited";
+    const isTerminal = TERMINAL_EXECUTION_STATUSES.includes(status);
     const [row] = yield* database
       .insert(workflowExecutions)
       .values({
@@ -175,6 +173,7 @@ export function insertExecution(
         scheduleTimeZone: input.scheduled?.schedule.timeZone ?? null,
         cancelledAt: status === "canceled" ? now : null,
         completedAt: isTerminal ? now : null,
+        duration: isTerminal ? "0" : null,
       })
       .returning();
     if (!row) throw new Error("SQLite did not return the inserted execution");
@@ -482,14 +481,10 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
         endExecutions(
           database,
           Effect.gen(function* () {
-            const now = Date.now();
             const [written] = yield* database
               .update(workflowExecutions)
               .set({
-                status: input.status,
-                waitingAt: null,
-                cancelledAt: input.status === "canceled" ? now : null,
-                completedAt: now,
+                ...endedRunColumns(input.status),
                 error: input.error ?? null,
               })
               .where(
@@ -661,6 +656,23 @@ export function requestExitWrite(input: RequestExitInput) {
 }
 
 /**
+ * The columns every update that ends a run sets beside its own, so no ended
+ * run is missing a completion time or a duration.
+ */
+export function endedRunColumns(status: TerminalExecutionStatus) {
+  const now = Date.now();
+  return {
+    status,
+    waitingAt: null,
+    cancelledAt: status === "canceled" ? now : null,
+    completedAt: now,
+    // node:sqlite binds a JS number as REAL, so the difference is cast to an
+    // integer first, or the text would read "5.0".
+    duration: sql<string>`cast(cast(${now} - ${workflowExecutions.startedAt} as integer) as text)`,
+  };
+}
+
+/**
  * The terminal write behind `finishRun`. The write that made the row terminal
  * deletes the run's schedule row and step memo in the same transaction.
  */
@@ -675,19 +687,12 @@ export function finishRunWrite(input: FinishRunInput) {
             : input.status === "exited"
               ? eq(workflowExecutions.terminationKind, "exit")
               : isNull(workflowExecutions.terminationKind);
-        const now = Date.now();
         const [written] = yield* database
           .update(workflowExecutions)
           .set({
-            status: input.status,
+            ...endedRunColumns(input.status),
             output: encodeJson(input.output),
             error: input.error ?? null,
-            waitingAt: null,
-            cancelledAt: input.status === "canceled" ? now : null,
-            completedAt: now,
-            // node:sqlite binds a JS number as REAL, so the difference is cast
-            // to an integer first, or the text would read "5.0".
-            duration: sql`cast(cast(${now} - ${workflowExecutions.startedAt} as integer) as text)`,
           })
           .where(
             and(

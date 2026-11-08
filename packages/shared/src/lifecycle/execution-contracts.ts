@@ -104,6 +104,11 @@ export const TERMINAL_EXECUTION_STATUSES = difference(
   IN_FLIGHT_EXECUTION_STATUSES
 );
 
+export type TerminalExecutionStatus = Exclude<
+  WorkflowExecutionStatus,
+  (typeof IN_FLIGHT_EXECUTION_STATUSES)[number]
+>;
+
 /**
  * How a node's run-log row reads within its run. Nothing writes to a run's rows
  * once the run has ended, so a row still `pending` or `running` then was cut

@@ -18,6 +18,7 @@ import {
   type EntityEligibilityReason,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { recordAuditEventWrite } from "#src/backend/services/executions/repo/audit";
+import { endedRunColumns } from "#src/backend/services/executions/repo/runs";
 import {
   endExecutions,
   insertRunSchedule,
@@ -239,9 +240,7 @@ export async function admitWithConcurrency(
           const superseded = await inner
             .update(workflowExecutions)
             .set({
-              status: "superseded",
-              waitingAt: null,
-              completedAt: new Date(),
+              ...endedRunColumns("superseded"),
               error: input.supersededReason,
             })
             .where(

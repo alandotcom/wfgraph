@@ -38,6 +38,7 @@ import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type EntityEligibilityReason,
   type ExecutionSide,
+  type TerminalExecutionStatus,
   type TerminationKind,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
@@ -581,6 +582,7 @@ export function makeRunsMethods(
             startedAt: now,
             completedAt: now,
             cancelledAt: input.status === "canceled" ? now : null,
+            duration: "0",
           })
           .returning();
 
@@ -595,16 +597,9 @@ export function makeRunsMethods(
     endInFlight: (input) =>
       database.query((db) =>
         endExecutions(db, [input.executionId], async (tx) => {
-          const now = new Date();
           const [written] = await tx
             .update(workflowExecutions)
-            .set({
-              status: input.status,
-              waitingAt: null,
-              cancelledAt: input.status === "canceled" ? now : null,
-              completedAt: now,
-              error: input.error,
-            })
+            .set({ ...endedRunColumns(input.status), error: input.error })
             .where(inFlightExecution(input.executionId, "started"))
             .returning(TERMINATION_COLUMNS);
 
@@ -735,6 +730,25 @@ export function requestExitWrite(input: RequestExitInput) {
 }
 
 /**
+ * The columns every update that ends a run sets beside its own, so no ended
+ * run is missing a completion time or a duration.
+ */
+export function endedRunColumns(status: TerminalExecutionStatus) {
+  const now = new Date();
+  return {
+    status,
+    waitingAt: null,
+    cancelledAt: status === "canceled" ? now : null,
+    completedAt: now,
+    // Derived here rather than passed in, because the caller's clock can be
+    // the workflow function body, which a durable runtime re-runs on every
+    // attempt and after every wait. The row holds when it started, so both
+    // ends of the elapsed come from the same place.
+    duration: sql<string>`round(extract(epoch from ((now() at time zone 'utc') - ${workflowExecutions.startedAt})) * 1000)::text`,
+  };
+}
+
+/**
  * The terminal write behind `finishRun`. A fenced caller holds the schedule
  * row `for update`, because the write deletes it.
  */
@@ -750,17 +764,9 @@ export function finishRunWrite(input: FinishRunInput) {
       const [written] = await tx
         .update(workflowExecutions)
         .set({
-          status: input.status,
+          ...endedRunColumns(input.status),
           output: input.output,
           error: input.error,
-          waitingAt: null,
-          cancelledAt: input.status === "canceled" ? new Date() : null,
-          completedAt: new Date(),
-          // Derived here rather than passed in, because the caller's clock is
-          // the workflow function body, which a durable runtime re-runs on
-          // every attempt and after every wait. The row holds when it started,
-          // so both ends of the elapsed come from the same place.
-          duration: sql`round(extract(epoch from ((now() at time zone 'utc') - ${workflowExecutions.startedAt})) * 1000)::text`,
         })
         .where(
           and(
