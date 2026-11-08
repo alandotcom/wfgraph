@@ -78,7 +78,7 @@ export function updateNodesStatus(
 /**
  * Stores this run's payload on the entry node, so the run overlay opens on it
  * next time. The write goes through the graph store, which the autosave queue
- * watches.
+ * watches. A run is not an edit, so it leaves no undo step.
  */
 export function rememberTestPayload(input: {
   nodes: WorkflowNode[];
@@ -92,6 +92,7 @@ export function rememberTestPayload(input: {
 
   input.updateNodeData({
     id: entryNode.id,
+    recordHistory: false,
     data: {
       config: {
         ...entryNode.data.config,

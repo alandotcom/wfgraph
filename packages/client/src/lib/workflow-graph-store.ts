@@ -1072,6 +1072,8 @@ export const applyNodeLayoutAtom = atom(
 export type NodeDataUpdate = {
   id: string;
   data: Partial<Omit<WorkflowNodeData, "status">>;
+  /** False for a write that is not an edit, which leaves no undo step. */
+  recordHistory?: boolean | undefined;
 };
 
 /**
@@ -1081,13 +1083,15 @@ export type NodeDataUpdate = {
  */
 export const updateNodeDataAtom = atom(
   null,
-  (get, set, { id, data }: NodeDataUpdate) => {
+  (get, set, { id, data, recordHistory = true }: NodeDataUpdate) => {
     if (!draftEditable(get)) {
       return;
     }
 
     const currentNodes = get(nodesStateAtom);
-    pushHistory(get, set);
+    if (recordHistory) {
+      pushHistory(get, set);
+    }
 
     const oldNode = currentNodes.find((node) => node.id === id);
     const oldLabel = oldNode?.data.label;
