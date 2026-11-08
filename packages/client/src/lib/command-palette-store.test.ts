@@ -7,7 +7,7 @@ import {
 } from "#src/lib/command-palette-store";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
+import { activeAgentTurnIdAtom } from "#src/lib/workflow-ui-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 /** A store with a workflow open and nothing holding the canvas. */
@@ -52,7 +52,7 @@ describe("opening the command palette", () => {
 
   it("opens root search but refuses Add step while generation rewrites the graph", () => {
     const store = editorStore();
-    store.set(isGeneratingAtom, true);
+    store.set(activeAgentTurnIdAtom, Symbol("agent-turn"));
 
     expect(store.set(openCommandPaletteAtom, { id: "root" })).toBe(true);
     expect(store.set(openCommandPaletteAtom, { id: "add-step" })).toBe(false);

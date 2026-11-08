@@ -122,10 +122,10 @@ describe("applyAgentGraphAtom", () => {
 
   it("still writes while the agent's own turn holds the canvas lock", () => {
     const store = createGraphStore([actionNode("a")]);
-    // The turn sets this so the user cannot drag a node out from under an edit
-    // in flight. The agent's own writes are the reason the lock exists, so they
-    // are the one thing it must not stop.
-    store.set(isGeneratingAtom, true);
+    // The running turn locks the canvas so the user cannot drag a node out
+    // from under an edit in flight. The agent's own writes are the reason the
+    // lock exists, so they are the one thing it must not stop.
+    expect(store.get(isGeneratingAtom)).toBe(true);
 
     store.set(applyAgentGraphAtom, {
       workflowId: "workflow_1",

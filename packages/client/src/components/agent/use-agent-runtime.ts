@@ -29,10 +29,7 @@ import {
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
-import {
-  activeAgentTurnIdAtom,
-  isGeneratingAtom,
-} from "#src/lib/workflow-ui-store";
+import { activeAgentTurnIdAtom } from "#src/lib/workflow-ui-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 
 /**
@@ -159,7 +156,6 @@ function turnResult(content: TurnContent, failure: string | undefined) {
 export function useAgentRuntime(workflowId: string) {
   const catalog = useExtensionCatalog();
   const applyGraph = useSetAtom(applyAgentGraphAtom);
-  const setIsGenerating = useSetAtom(isGeneratingAtom);
 
   const adapter = useMemo<ChatModelAdapter>(
     () => ({
@@ -174,7 +170,6 @@ export function useAgentRuntime(workflowId: string) {
 
         const turnId = Symbol("agent-turn");
         appStore.set(activeAgentTurnIdAtom, turnId);
-        setIsGenerating(true);
         let content: TurnContent = [];
         let hasAppliedGraph = false;
         let failure: string | undefined;
@@ -262,12 +257,11 @@ export function useAgentRuntime(workflowId: string) {
             appStore.get(activeAgentTurnIdAtom) === turnId
           ) {
             appStore.set(activeAgentTurnIdAtom, null);
-            setIsGenerating(false);
           }
         }
       },
     }),
-    [applyGraph, catalog, setIsGenerating, workflowId]
+    [applyGraph, catalog, workflowId]
   );
 
   return useLocalRuntime(adapter);
