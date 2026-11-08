@@ -17,7 +17,7 @@ import {
   successfulSaveGenerationAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
-import { hydrateWorkflowAtom } from "#src/lib/workflow-graph-store";
+import { hydrateWorkflowAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "./workflow-save-test-support";
 
@@ -570,6 +570,72 @@ describe("the failure the open workflow shows", () => {
     expect(store.get(lastSaveErrorAtom)).toBe(
       refused?.ok === false ? refused.error : undefined
     );
+  });
+});
+
+describe("reopening a workflow whose save has not landed", () => {
+  function openWorkflowA() {
+    const store = createSaveStore(null);
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("workflow_a", { nodes: [actionNode("before")], edges: [] })
+    );
+    return store;
+  }
+
+  /** What the route loader hands the editor: the server's graph from before the save. */
+  function reopenWithServerSnapshot(store: ReturnType<typeof createSaveStore>) {
+    store.set(hydrateWorkflowAtom, {
+      ...savedWorkflow("workflow_a", {
+        nodes: [actionNode("before")],
+        edges: [],
+      }),
+      saveGeneration:
+        store.get(successfulSaveGenerationAtom).get("workflow_a") ?? 0,
+    });
+  }
+
+  const savedAfter = () => ({
+    ...savedWorkflow("workflow_a", { nodes: [actionNode("after")], edges: [] }),
+    draftRevision: 2,
+  });
+
+  it("shows the edit still in flight, and calls it saved once it lands", async () => {
+    const store = openWorkflowA();
+    const save = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("after")], edges: [] },
+      { immediate: true }
+    );
+    store.set(hydrateWorkflowAtom, savedWorkflow("workflow_b"));
+
+    reopenWithServerSnapshot(store);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["after"]);
+    expect(store.get(hasUnsavedChangesAtom)).toBe(true);
+
+    pending.shift()?.resolve(savedAfter());
+    await save;
+
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["after"]);
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+  });
+
+  it("shows the edit still waiting for the debounce", async () => {
+    const store = openWorkflowA();
+    store.set(autosaveDelayAtom, 0);
+    const save = store.set(saveWorkflowAtom, {
+      nodes: [actionNode("after")],
+      edges: [],
+    });
+    store.set(hydrateWorkflowAtom, savedWorkflow("workflow_b"));
+
+    reopenWithServerSnapshot(store);
+    await waitForCalls(1);
+    pending.shift()?.resolve(savedAfter());
+    await save;
+
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["after"]);
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
   });
 });
 
