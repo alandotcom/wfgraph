@@ -50,11 +50,18 @@ describe("getExecutionStatus", () => {
         })
     );
 
-    // A run whose own retries ran out ends `failed` with the node it was on
-    // still open, the way a canceled or superseded run leaves its nodes. A
-    // node that failed keeps its own error.
-    it.effect.each(["failed", "canceled", "superseded"] as const)(
-      "answers a %s run's open nodes as cancelled",
+    // Nothing writes to a node's row once its run has ended, so a row still
+    // open reads as cancelled whatever the run ended in: a run whose retries
+    // ran out, an Exit, or a completion whose close of the row failed. A node
+    // that failed keeps its own error.
+    it.effect.each([
+      "completed",
+      "failed",
+      "canceled",
+      "exited",
+      "superseded",
+    ] as const)(
+      "answers the open nodes as cancelled once the run is %s",
       (status) =>
         Effect.gen(function* () {
           const result = yield* getExecutionStatus("exec_1").pipe(

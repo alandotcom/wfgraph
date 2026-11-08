@@ -357,6 +357,84 @@ describe("toExecutionDetail", () => {
   });
 });
 
+describe("toExecutionDetail logs of an ended run", () => {
+  const basePayload: ExecutionLogsResult = {
+    execution: {
+      id: "exec_ended",
+      workflowId: "wf_1",
+      workflowVersionId: "ver_1",
+      versionKind: "published",
+      versionNumber: 7,
+      status: "completed",
+      input: {},
+      output: {},
+      error: null,
+      startedAt: "2026-03-01T10:00:00.000Z",
+      scheduledFor: null,
+      scheduleDescription: null,
+      completedAt: "2026-03-01T10:00:05.000Z",
+      duration: "5000",
+      runMode: "live",
+      startSource: "event",
+      startEventName: "appointment.updated",
+      entityValue: null,
+    },
+    logs: [
+      {
+        id: "log_send",
+        executionId: "exec_ended",
+        nodeId: "send",
+        nodeName: "Send",
+        nodeType: "action",
+        status: "success",
+        input: {},
+        output: {},
+        startedAt: "2026-03-01T10:00:01.000Z",
+        completedAt: "2026-03-01T10:00:02.000Z",
+        duration: "1000",
+        error: null,
+        retries: 0,
+      },
+      {
+        id: "log_wait",
+        executionId: "exec_ended",
+        nodeId: "wait_1",
+        nodeName: "Wait",
+        nodeType: "action",
+        status: "running",
+        input: {},
+        output: null,
+        startedAt: "2026-03-01T10:00:03.000Z",
+        completedAt: null,
+        duration: null,
+        error: null,
+        retries: 0,
+      },
+    ],
+    retryLimit: 4,
+    waits: [],
+    exit: null,
+    schedule: null,
+  };
+
+  // Nothing writes to a node's row once its run has ended, so a row still
+  // open was cut off, whatever the run ended in.
+  it.each(["completed", "failed", "canceled", "exited", "superseded"] as const)(
+    "reads an open step as cancelled once the run is %s",
+    (status) => {
+      const { logs } = toExecutionDetail({
+        ...basePayload,
+        execution: { ...basePayload.execution, status },
+      });
+
+      expect(logs.map((log) => [log.nodeId, log.status])).toEqual([
+        ["send", "success"],
+        ["wait_1", "cancelled"],
+      ]);
+    }
+  );
+});
+
 describe("applyExecutionStatusToLogs", () => {
   const runningLog = {
     id: "log_wait",
