@@ -27,7 +27,10 @@ import {
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/persistence/sqlite/schema";
-import { insertExecution } from "#src/backend/persistence/sqlite/executions/runs";
+import {
+  endedRunColumns,
+  insertExecution,
+} from "#src/backend/persistence/sqlite/executions/runs";
 import { recordAuditEventWrite } from "#src/backend/persistence/sqlite/executions/audit";
 import {
   endExecutions,
@@ -89,9 +92,7 @@ function supersedeInFlightExecutions(
     database
       .update(workflowExecutions)
       .set({
-        status: "superseded",
-        waitingAt: null,
-        completedAt: Date.now(),
+        ...endedRunColumns("superseded"),
         error: supersededReason,
       })
       .where(
