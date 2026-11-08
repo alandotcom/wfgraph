@@ -126,6 +126,21 @@ describe("collectAgentEvalResult", () => {
     );
   });
 
+  it("answers no final response when the turn ends on a tool call with no result", () => {
+    const parts: AgentStreamPart[] = [
+      { type: "text-delta", id: "text-1", delta: "I will add the step. " },
+      {
+        type: "tool-call",
+        id: "call-1",
+        name: "add_node",
+        input: { actionId: "slack/send-message", label: "Notify" },
+      },
+      { type: "error", message: "The agent reached its step limit." },
+    ];
+
+    expect(collectAgentEvalResult(initialDocument, parts).finalText).toBe("");
+  });
+
   it("uses all assistant text when the turn has no tool result", () => {
     const parts: AgentStreamPart[] = [
       { type: "text-delta", id: "text-1", delta: "I need more detail. " },
