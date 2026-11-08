@@ -34,6 +34,7 @@ import type {
 } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { endExecutions } from "#src/backend/services/executions/repo/schedule";
+import type { RunScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type EntityEligibilityReason,
@@ -236,10 +237,13 @@ function buildPageFilters(query: ExecutionPageQuery): SQL[] {
   return filters;
 }
 
-/** The timeline entry saying how a run ended, which `finishRun` writes with its row. */
-type TerminalRunAnnouncement = {
+/**
+ * The timeline entry saying how a run ended, which the write that ends it
+ * inserts with its row.
+ */
+type RunEndingAnnouncement<EventType extends RunScopedAuditEventType> = {
   workflowId: string;
-  eventType: "run_completed" | "run_failed" | "run_cancelled" | "run_exited";
+  eventType: EventType;
   message: string;
   metadata?: JsonObjectDraft | undefined;
 };
@@ -357,14 +361,18 @@ export type RunsRepoMethods = {
    * `cancelledAt`; `superseded` is newest-wins Concurrency letting a newer
    * start take this run's place, which is routine and not a cancellation.
    *
-   * A write that made the row terminal also cancels the run's open wait rows
-   * and deletes its schedule row and step memo, so a pass holding its lease is
-   * refused at its next fenced write.
+   * A write that made the row terminal also inserts `announcement` on the
+   * run's timeline, cancels the run's open wait rows and deletes its schedule
+   * row and step memo, so a pass holding its lease is refused at its next
+   * fenced write.
    */
   readonly endInFlight: (input: {
     executionId: string;
     status: "canceled" | "superseded";
     error?: string | undefined;
+    announcement?:
+      | RunEndingAnnouncement<"run_cancelled" | "run_superseded">
+      | undefined;
   }) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
   /**
    * Atomically claims an execution-wide Entity Eligibility exit and returns the
@@ -409,7 +417,11 @@ export type RunsRepoMethods = {
       status: "completed" | "failed" | "canceled" | "exited";
       output?: JsonValue | undefined;
       error?: string | undefined;
-      announcement?: TerminalRunAnnouncement | undefined;
+      announcement?:
+        | RunEndingAnnouncement<
+            "run_completed" | "run_failed" | "run_cancelled" | "run_exited"
+          >
+        | undefined;
     },
     ExecutionTerminationState | null
   >;
@@ -617,6 +629,12 @@ export function makeRunsMethods(
             .set({ ...endedRunColumns(input.status), error: input.error })
             .where(inFlightExecution(input.executionId, "started"))
             .returning(TERMINATION_COLUMNS);
+          if (written && input.announcement) {
+            await recordAuditEventWrite({
+              ...input.announcement,
+              executionId: input.executionId,
+            })(tx);
+          }
 
           return await endedBy(tx, input.executionId, written);
         })

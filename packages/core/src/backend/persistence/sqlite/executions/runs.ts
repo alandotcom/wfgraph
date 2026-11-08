@@ -499,6 +499,12 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
                 )
               )
               .returning();
+            if (written && input.announcement) {
+              yield* recordAuditEventWrite({
+                ...input.announcement,
+                executionId: input.executionId,
+              })(database);
+            }
             return yield* endedBy(database, input.executionId, written);
           })
         )

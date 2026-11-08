@@ -47,6 +47,23 @@ const services = Layer.mergeAll(
 const refusedWrite = () =>
   Effect.fail(new DatabaseError({ cause: "connection lost" }));
 
+/** The cancel `endInFlight` is asked to write, carrying its timeline entry. */
+const cancelWrite = (input: {
+  executionId: string;
+  reason: string;
+  eventName?: string | undefined;
+}): Parameters<Repo["endInFlight"]>[0] => ({
+  executionId: input.executionId,
+  status: "canceled",
+  error: input.reason,
+  announcement: {
+    workflowId: "workflow_1",
+    eventType: "run_cancelled",
+    message: input.reason,
+    metadata: { eventName: input.eventName },
+  },
+});
+
 describe("cancelInFlightRuns", () => {
   it.effect("reports a run whose terminal write the database refused", () =>
     Effect.gen(function* () {
@@ -70,31 +87,28 @@ describe("cancelInFlightRuns", () => {
 
       assert.deepStrictEqual(endInFlight.mock.calls, [
         [
-          {
+          cancelWrite({
             executionId: "exec_success",
-            status: "canceled",
-            error: "Cancelled by event",
-          },
+            reason: "Cancelled by event",
+            eventName: "appointment.cancelled",
+          }),
         ],
         [
-          {
+          cancelWrite({
             executionId: "exec_failed",
-            status: "canceled",
-            error: "Cancelled by event",
-          },
+            reason: "Cancelled by event",
+            eventName: "appointment.cancelled",
+          }),
         ],
       ]);
-      // One run_cancelled for the winner, one run_cancel_requested recording
-      // that the other run's status could not be written.
+      // The winner's run_cancelled rode on its terminal write. The other
+      // run's status could not be written, which run_cancel_requested says.
       assert.deepStrictEqual(
         recordAuditEvent.mock.calls.map(([entry]) => [
           entry.executionId,
           entry.eventType,
         ]),
-        [
-          ["exec_success", "run_cancelled"],
-          ["exec_failed", "run_cancel_requested"],
-        ]
+        [["exec_failed", "run_cancel_requested"]]
       );
       assert.deepStrictEqual(summary, {
         endedExecutionIds: ["exec_success"],
@@ -156,7 +170,7 @@ describe("cancelInFlightRuns", () => {
   // query and this write, so the row keeps its terminal status. A run another
   // cancel ended first is the same race.
   it.effect(
-    "does not count or audit an execution that ended before the cancel write",
+    "does not count an execution that ended before the cancel write",
     () =>
       Effect.gen(function* () {
         endInFlight
@@ -196,18 +210,18 @@ describe("cancelInFlightRuns", () => {
           eventName: "appointment.cancelled",
         }).pipe(Effect.provide(services));
 
-        assert.strictEqual(endInFlight.mock.calls.length, 3);
-        assert.deepStrictEqual(recordAuditEvent.mock.calls, [
-          [
-            {
-              workflowId: "workflow_1",
-              executionId: "exec_still_waiting",
-              eventType: "run_cancelled",
-              message: "Cancelled by event",
-              metadata: { eventName: "appointment.cancelled" },
-            },
-          ],
-        ]);
+        assert.deepStrictEqual(
+          endInFlight.mock.calls.map(([write]) => write),
+          ["exec_completed", "exec_already_canceled", "exec_still_waiting"].map(
+            (executionId) =>
+              cancelWrite({
+                executionId,
+                reason: "Cancelled by event",
+                eventName: "appointment.cancelled",
+              })
+          )
+        );
+        assert.strictEqual(recordAuditEvent.mock.calls.length, 0);
         assert.deepStrictEqual(summary, {
           endedExecutionIds: ["exec_still_waiting"],
           failedExecutionIds: [],
