@@ -489,7 +489,7 @@ export function makeSqliteIntegrationRepo(
             .where(
               and(
                 eq(integrations.id, input.integrationId),
-                ne(integrations.refreshState, "refreshing"),
+                eq(integrations.refreshState, input.from),
                 eq(integrations.configRevision, input.expectedRevision)
               )
             )
@@ -525,7 +525,7 @@ export function makeSqliteIntegrationRepo(
         database
           .update(integrations)
           .set({
-            refreshState: "idle",
+            refreshState: input.from,
             refreshClaimId: null,
             refreshClaimedAt: null,
           })

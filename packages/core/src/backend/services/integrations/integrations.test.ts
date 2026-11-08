@@ -354,6 +354,7 @@ describe("integration deletion", () => {
             integrationId: "int_1",
             claimId: claimed.claimId,
             expectedRevision: 0,
+            from: "idle",
           });
           assert.deepStrictEqual(deleted, claimed);
         })

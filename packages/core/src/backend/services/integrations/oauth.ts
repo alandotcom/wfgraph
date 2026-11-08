@@ -21,7 +21,10 @@ import {
   removeStoredOAuthGrant,
   serializeStoredOAuthGrant,
 } from "#src/backend/services/integrations/oauth-grant";
-import { IntegrationRepo } from "#src/backend/services/integrations/repo";
+import {
+  claimableFrom,
+  IntegrationRepo,
+} from "#src/backend/services/integrations/repo";
 import type { OAuthAuthorizationAttemptPayload } from "#src/backend/services/integrations/oauth-attempt-payload";
 import { findIntegration } from "@wfgraph/shared/extensions/catalog";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
@@ -597,6 +600,7 @@ export const completeIntegrationOAuth = Effect.fn("completeIntegrationOAuth")(
       integrationId: integration.id,
       claimId: stateHash,
       expectedRevision: attempt.payload.configRevision,
+      from: claimableFrom(integration.refreshState),
     };
     const claimed = yield* Effect.result(repo.claimRefresh(claimInput));
     if (Result.isFailure(claimed)) {
@@ -788,6 +792,7 @@ export const deleteIntegrationOAuth = Effect.fn("deleteIntegrationOAuth")(
       integrationId,
       claimId,
       expectedRevision: integration.configRevision,
+      from: "idle" as const,
     };
     const claim = yield* repo
       .claimRefresh(claimInput)

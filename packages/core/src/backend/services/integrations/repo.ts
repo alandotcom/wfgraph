@@ -103,6 +103,23 @@ type RefreshClaimInput = {
   expectedRevision: number;
 };
 
+/** A state a refresh claim is taken from, and so the state its release restores. */
+type ClaimableRefreshState = Exclude<IntegrationRefreshState, "refreshing">;
+
+type RefreshClaimRequest = RefreshClaimInput & {
+  from: ClaimableRefreshState;
+};
+
+/**
+ * The state a claim decided on this read is taken from. A row another owner
+ * holds is claimable once that owner hands it back to idle.
+ */
+export function claimableFrom(
+  state: IntegrationRefreshState
+): ClaimableRefreshState {
+  return state === "reauthorization_required" ? state : "idle";
+}
+
 const ownedRefreshClaim = (input: RefreshClaimInput) =>
   and(
     eq(integrations.id, input.integrationId),
@@ -207,14 +224,20 @@ export class IntegrationRepo extends Context.Service<
         config: IntegrationConfig;
       }
     ) => Effect.Effect<boolean, DatabaseError>;
+    /**
+     * Takes the row only from the state and revision the caller read, so a
+     * claim decided before another writer fenced the row for reauthorization
+     * is lost rather than taking the fence.
+     */
     readonly claimRefresh: (
-      input: RefreshClaimInput
+      input: RefreshClaimRequest
     ) => Effect.Effect<RefreshClaimOutcome, DatabaseError>;
     readonly completeRefresh: (
       input: RefreshClaimInput & { config: IntegrationConfig }
     ) => Effect.Effect<boolean, DatabaseError>;
+    /** Hands an owned claim's row back to the state it was claimed from. */
     readonly releaseRefreshClaim: (
-      input: RefreshClaimInput
+      input: RefreshClaimRequest
     ) => Effect.Effect<boolean, DatabaseError>;
     readonly markReauthorizationRequired: (
       input: RefreshClaimInput
@@ -429,7 +452,7 @@ export function makeIntegrationRepoLayer(
                 .where(
                   and(
                     eq(integrations.id, input.integrationId),
-                    ne(integrations.refreshState, "refreshing"),
+                    eq(integrations.refreshState, input.from),
                     eq(integrations.configRevision, input.expectedRevision)
                   )
                 )
@@ -472,7 +495,7 @@ export function makeIntegrationRepoLayer(
             const released = await db
               .update(integrations)
               .set({
-                refreshState: "idle",
+                refreshState: input.from,
                 refreshClaimId: null,
                 refreshClaimedAt: null,
               })

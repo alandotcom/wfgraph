@@ -66,6 +66,7 @@ export function describeIntegrationConformance({
               integrationId: inserted.id,
               claimId: "delete-claim",
               expectedRevision: 1,
+              from: "idle",
             }),
             deleted: yield* integrations.deleteOwnedRefreshClaim({
               integrationId: inserted.id,
@@ -111,6 +112,7 @@ export function describeIntegrationConformance({
             integrationId: integration.id,
             claimId: "old_claim",
             expectedRevision: 0,
+            from: "idle",
           });
           const firstCompletion = yield* integrations.completeRefresh({
             integrationId: integration.id,
@@ -122,6 +124,7 @@ export function describeIntegrationConformance({
             integrationId: integration.id,
             claimId: "new_claim",
             expectedRevision: 1,
+            from: "idle",
           });
           const staleDelete = yield* integrations.deleteOwnedRefreshClaim({
             integrationId: integration.id,
@@ -163,6 +166,7 @@ export function describeIntegrationConformance({
             integrationId: integration.id,
             claimId: "reconnect_state",
             expectedRevision: integration.configRevision,
+            from: "idle",
           });
           yield* integrations.createOAuthAuthorizationAttempt({
             stateHash: "reconnect_state",
@@ -407,6 +411,7 @@ export function describeIntegrationConformance({
               integrationId: integration.id,
               claimId,
               expectedRevision: integration.configRevision,
+              from: "idle",
             });
           })
         );
@@ -447,11 +452,13 @@ export function describeIntegrationConformance({
             integrationId: integration.id,
             claimId: "claim_1",
             expectedRevision: 0,
+            from: "idle",
           });
           const competing = yield* integrations.claimRefresh({
             integrationId: integration.id,
             claimId: "claim_2",
             expectedRevision: 0,
+            from: "idle",
           });
           const staleCompletion = yield* integrations.completeRefresh({
             integrationId: integration.id,
@@ -471,11 +478,13 @@ export function describeIntegrationConformance({
             integrationId: integration.id,
             claimId: "claim_3",
             expectedRevision: 1,
+            from: "idle",
           });
           const staleRelease = yield* integrations.releaseRefreshClaim({
             integrationId: integration.id,
             claimId: "claim_1",
             expectedRevision: 1,
+            from: "idle",
           });
           const staleReauthorization =
             yield* integrations.markReauthorizationRequired({
@@ -487,12 +496,14 @@ export function describeIntegrationConformance({
             integrationId: integration.id,
             claimId: "claim_3",
             expectedRevision: 1,
+            from: "idle",
           });
 
           yield* integrations.claimRefresh({
             integrationId: integration.id,
             claimId: "claim_4",
             expectedRevision: 1,
+            from: "idle",
           });
           const reauthorization =
             yield* integrations.markReauthorizationRequired({
@@ -507,6 +518,7 @@ export function describeIntegrationConformance({
             integrationId: integration.id,
             claimId: "reconnect_claim",
             expectedRevision: 1,
+            from: "reauthorization_required",
           });
           const reconnected = yield* integrations.completeRefresh({
             integrationId: integration.id,
@@ -519,6 +531,7 @@ export function describeIntegrationConformance({
             integrationId: "missing",
             claimId: "claim_5",
             expectedRevision: 0,
+            from: "idle",
           });
 
           return {
@@ -574,6 +587,109 @@ export function describeIntegrationConformance({
       expect(result.missing).toEqual({ status: "not_found" });
     });
 
+    it("takes a refresh claim only from the state its caller read, and hands that state back on release", async () => {
+      const database = await openConnection();
+      const result = await database.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          const integration = yield* integrations.insert({
+            name: "Refreshable",
+            type: "linear",
+            config: { accessToken: "old" },
+          });
+          const owner = {
+            integrationId: integration.id,
+            claimId: "owner",
+            expectedRevision: 0,
+            from: "idle",
+          } as const;
+          yield* integrations.claimRefresh(owner);
+          yield* integrations.markReauthorizationRequired(owner);
+          const staleClaim = yield* integrations.claimRefresh({
+            ...owner,
+            claimId: "read_before_the_fence",
+          });
+          const reconnect = {
+            ...owner,
+            claimId: "reconnect",
+            from: "reauthorization_required",
+          } as const;
+          const reconnectClaim = yield* integrations.claimRefresh(reconnect);
+          const released = yield* integrations.releaseRefreshClaim(reconnect);
+          return {
+            staleClaim,
+            reconnectClaim,
+            released,
+            stored: yield* integrations.findById(integration.id),
+          };
+        })
+      );
+
+      expect(result.staleClaim).toEqual({ status: "lost" });
+      expect(result.reconnectClaim).toEqual({ status: "acquired" });
+      expect(result.released).toBe(true);
+      expect(result.stored).toMatchObject({
+        config: { accessToken: "old" },
+        configRevision: 0,
+        refreshState: "reauthorization_required",
+        refreshClaimId: null,
+      });
+    });
+
+    it("refuses a claim from idle on a row whose expired reconnect the reaper fenced", async () => {
+      const database = await openConnection();
+      const result = await database.run(
+        Effect.gen(function* () {
+          const integrations = yield* IntegrationRepo;
+          const integration = yield* integrations.insert({
+            name: "Reconnecting",
+            type: "linear",
+            config: { accessToken: "old" },
+          });
+          const attempt = (stateHash: string) =>
+            integrations.createOAuthAuthorizationAttempt({
+              stateHash,
+              integrationId: integration.id,
+              expiresAt: new Date("2099-01-01T00:00:00Z"),
+              browserBindingHash: "browser_hash",
+              payload: {
+                kind: "reconnect",
+                redirectUri: "https://example.test/oauth/callback",
+                configRevision: 0,
+              },
+            });
+          yield* attempt("expiring_state");
+          yield* integrations.claimOAuthAuthorizationAttempt({
+            stateHash: "expiring_state",
+            browserBindingHash: "browser_hash",
+            expiresAt: new Date("2020-01-01T00:00:00Z"),
+          });
+          yield* integrations.claimRefresh({
+            integrationId: integration.id,
+            claimId: "expiring_state",
+            expectedRevision: 0,
+            from: "idle",
+          });
+          yield* attempt("next_state");
+          return {
+            staleClaim: yield* integrations.claimRefresh({
+              integrationId: integration.id,
+              claimId: "read_before_the_fence",
+              expectedRevision: 0,
+              from: "idle",
+            }),
+            stored: yield* integrations.findById(integration.id),
+          };
+        })
+      );
+
+      expect(result.staleClaim).toEqual({ status: "lost" });
+      expect(result.stored).toMatchObject({
+        refreshState: "reauthorization_required",
+        refreshClaimId: null,
+      });
+    });
+
     it("keeps an owned refresh authoritative over a racing manual config update", async () => {
       const database = await openConnection();
       const result = await database.run(
@@ -588,6 +704,7 @@ export function describeIntegrationConformance({
             integrationId: integration.id,
             claimId: "claim_1",
             expectedRevision: integration.configRevision,
+            from: "idle",
           });
           const manual = yield* integrations.update(integration.id, {
             config: { accessToken: "manual" },
@@ -608,6 +725,7 @@ export function describeIntegrationConformance({
             integrationId: integration.id,
             claimId: "reconnect_claim",
             expectedRevision: afterRefresh.configRevision,
+            from: "idle",
           });
           const reconnected = yield* integrations.completeRefresh({
             integrationId: integration.id,
@@ -619,6 +737,7 @@ export function describeIntegrationConformance({
             integrationId: integration.id,
             claimId: "stale_reader",
             expectedRevision: afterRefresh.configRevision,
+            from: "idle",
           });
 
           return {
@@ -720,6 +839,7 @@ export function describeIntegrationConformance({
               integrationId: "int_missing",
               claimId: "claim_1",
               expectedRevision: 0,
+              from: "idle",
             }),
             deletion: yield* integrations.deleteOwnedRefreshClaim({
               integrationId: "int_missing",
