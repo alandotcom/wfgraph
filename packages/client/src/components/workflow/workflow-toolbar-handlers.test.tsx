@@ -37,6 +37,7 @@ import { PREFLIGHT_BUSY_MESSAGE } from "#src/hooks/use-workflow-issue-preflight"
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
   canvasEditingLockedAtom,
+  hydrateWorkflowAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
   onNodesChangeAtom,
@@ -1374,6 +1375,146 @@ describe("useWorkflowActions publication preflight", () => {
         view.getByRole("status", { name: "editing lock" }).textContent
       ).toBe("false")
     );
+  });
+
+  describe("a review that ends while the publish is saving", () => {
+    function serveHeldSave() {
+      const save = deferred<Response>();
+      const paths: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockImplementation(
+        async (url: RequestInfo | URL) => {
+          const path = extractRpcProcedurePath(rpcUrl(url));
+          paths.push(path);
+          if (path === "workflow/update") {
+            return save.promise;
+          }
+          if (path === "workflow/compareVersion") {
+            return rpcJsonResponse({
+              baseVersion: null,
+              proposedVersion: 1,
+              baseGraph: expectedSnapshot,
+              draftGraph: expectedSnapshot,
+              hasChanges: true,
+              nodeChanges: [],
+              edgeChanges: [],
+            });
+          }
+          throw new Error(`Unexpected RPC procedure: ${path}`);
+        }
+      );
+      return { paths, save };
+    }
+
+    /** Reopening the same workflow is the route's way of ending its review. */
+    async function reopenThenLetTheSaveLand(
+      store: ReturnType<typeof workflowStore>,
+      save: ReturnType<typeof deferred<Response>>
+    ) {
+      act(() => store.set(hydrateWorkflowAtom, savedWorkflow(workflowId)));
+      await act(async () => {
+        save.resolve(
+          rpcJsonResponse(
+            savedWorkflowResponse({ hasUnpublishedChanges: true })
+          )
+        );
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+    }
+
+    it("sends no comparison", async () => {
+      const { paths, save } = serveHeldSave();
+      const store = workflowStore();
+      const view = renderProbe({ store });
+
+      fireEvent.click(
+        await view.findByRole("button", { name: "Start publish" })
+      );
+      await waitFor(() => expect(paths).toEqual(["workflow/update"]));
+      await reopenThenLetTheSaveLand(store, save);
+
+      expect(paths).toEqual(["workflow/update"]);
+    });
+
+    it("opens no issues list", async () => {
+      const { save } = serveHeldSave();
+      const store = workflowStore();
+      const view = renderProbe({
+        probe: <PublishProbe workflowState={groupProblemState()} />,
+        extensionCatalog: groupProblemCatalog,
+        store,
+      });
+
+      fireEvent.click(
+        await view.findByRole("button", { name: "Start publish" })
+      );
+      await reopenThenLetTheSaveLand(store, save);
+
+      expect(view.getByLabelText("overlay count").textContent).toBe("0");
+    });
+  });
+
+  it("reports and records a publish that lands after its workflow was left", async () => {
+    const successToast = vi.spyOn(toast, "success");
+    const publish = deferred<Response>();
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL) => {
+        const path = extractRpcProcedurePath(rpcUrl(url));
+        if (path === "workflow/update") {
+          return rpcJsonResponse(
+            savedWorkflowResponse({
+              hasUnpublishedChanges: true,
+              publishedVersionId: "version_7",
+            })
+          );
+        }
+        if (path === "workflow/compareVersion") {
+          return rpcJsonResponse({
+            baseVersion: {
+              id: "version_7",
+              version: 7,
+              publishedAt: "2026-08-23T15:00:00.000Z",
+              isCurrent: true,
+            },
+            proposedVersion: 8,
+            baseGraph: expectedSnapshot,
+            draftGraph: expectedSnapshot,
+            hasChanges: true,
+            nodeChanges: [],
+            edgeChanges: [],
+          });
+        }
+        if (path === "workflow/publish") {
+          return publish.promise;
+        }
+        throw new Error(`Unexpected RPC procedure: ${path}`);
+      }
+    );
+    const store = workflowStore();
+    const view = renderProbe({ store });
+
+    fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
+    await waitFor(() => expect(view.getByText("ready")).toBeTruthy());
+    fireEvent.click(view.getByRole("button", { name: "Confirm publish" }));
+    act(() => store.set(hydrateWorkflowAtom, savedWorkflow("workflow_2")));
+    await act(async () => {
+      publish.resolve(
+        rpcJsonResponse({
+          ...savedWorkflowResponse({
+            hasUnpublishedChanges: false,
+            publishedVersionId: "version_8",
+          }),
+          draftRevision: 3,
+          publishedVersion: 8,
+          publishedAt: "2026-08-23T16:00:00.000Z",
+        })
+      );
+    });
+
+    await waitFor(() =>
+      expect(successToast).toHaveBeenCalledWith("Published version 8")
+    );
+    act(() => store.set(currentWorkflowIdAtom, workflowId));
+    expect(store.get(currentWorkflowDraftRevisionAtom)).toBe(3);
   });
 
   it("discards a comparison response after navigating to another workflow", async () => {
