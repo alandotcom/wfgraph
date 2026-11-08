@@ -284,6 +284,1206 @@
         "pnpm exec vitest run --project node packages/evals/src/skills: 8 cloudflare-worker cases passed; the Queue-only deployment fails the grader with the run still waiting and the deployment with neither fails with no run",
         "WFGRAPH_TEST_DATABASE_URL=postgresql://workflow:workflow@127.0.0.1:55437/workflow_builder vitest --project postgres: 3 Hyperdrive cases passed against the docker compose server"
       ]
+    },
+    "source:packages/agent/src/document.ts": {
+      "fingerprint": "6b77ac538e401849ce082269cdb67402295715751f9357a94d1c9d95a55e249e",
+      "snapshot": {
+        "packages/agent/src/document.ts": "e5ad38b651550711a3611b85456a03668508a51b42e3ca9a768923e3b8bb68e5"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/client/src/components/agent/agent-panel.test.tsx": {
+      "fingerprint": "283a5c23f2384781c23abac06dab3786294da269e2d76593a6ad7f44f7c69770",
+      "snapshot": {
+        "packages/client/src/components/agent/agent-panel.test.tsx": "c6fde2a653dbe4de439263c602f975ae3a7bbf798edfe8aa3c26d6d249a66312"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/agent/agent-panel.tsx": {
+      "fingerprint": "ba91f4d1c3600314f3df80be5aa8682422ca66e961323b1008022cdfd696aa6e",
+      "snapshot": {
+        "packages/client/src/components/agent/agent-panel.tsx": "679433613ddcd06280cb7c914c71b0774895f99706fb35d0a8071dc2bc684d6d"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/agent/use-agent-runtime.ts": {
+      "fingerprint": "9d8408fb71f93c75c267ab6aad4d34dff5fe4efecef68965b8a1b1590425197b",
+      "snapshot": {
+        "packages/client/src/components/agent/use-agent-runtime.ts": "ebc0a8aca9b2282f0c009b8b79e884c5f56727f235cac3b7038cb270074c5726"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/overlays/add-connection-overlay.tsx": {
+      "fingerprint": "068029045dff433fc6e69b78a0f6c88e9890bb109d7d4201cf1bda2ecd8a8ad3",
+      "snapshot": {
+        "packages/client/src/components/overlays/add-connection-overlay.tsx": "746d39819414e3d1223d40e29bb2902691c27393ea6d5b35d5016f64878c7958"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/overlays/oauth-connection-overlays.test.tsx": {
+      "fingerprint": "b99323cbdc3e2158296dac53a1d2e2c4411c6491bac07818b2d0429d435a0e65",
+      "snapshot": {
+        "packages/client/src/components/overlays/oauth-connection-overlays.test.tsx": "1e983540f8010f8a03aab663efbe43e2247cd5278dbc6a5957f0e6edcd2c114c"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/overlays/overlay-provider.tsx": {
+      "fingerprint": "9397918c85604e28abf1626ffd8bb5ed581511596069517c2b0b5f3bc4215457",
+      "snapshot": {
+        "packages/client/src/components/overlays/overlay-provider.tsx": "3402c7828b1b06fa29eff237c5ab126726cc3a52d2ec8310a1eedc8cc3054ef8"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/overlays/types.ts": {
+      "fingerprint": "15361a04ab1e3c1ccd79519bc3e38c5927242d03957143bed099fb7be1fe8da6",
+      "snapshot": {
+        "packages/client/src/components/overlays/types.ts": "96993aea985cb237316230807805df5c5a4618db092c6ef8d156c3c08e6a87a5"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/canvas-reveal/runs-focus.test.tsx": {
+      "fingerprint": "cf3987a517972cd770b91f27b2143613169934e3ab6c20c0dbddb30a02afe13d",
+      "snapshot": {
+        "packages/client/src/components/workflow/canvas-reveal/runs-focus.test.tsx": "c196d98b6371044b0dce03ee715f610bcb6b36b1744ccbbf10a3ee79d0fd2cbe"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/run-status-projection.tsx": {
+      "fingerprint": "6de8747abcc794d106090894168bb4dbe69814211e9366e8915ca9fcb6eec5ec",
+      "snapshot": {
+        "packages/client/src/components/workflow/run-status-projection.tsx": "5a174b99c63598dd59d1dbc97bdaa69ee0f3a9807259fc7ae0bc3039ab3c0eef"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/use-canvas-connections.test.tsx": {
+      "fingerprint": "e59ae203a908d6ccb4018131780d8cc5109ca60f166962eb82aba1dedf8bb8cc",
+      "snapshot": {
+        "packages/client/src/components/workflow/use-canvas-connections.test.tsx": "04df9baa2af90906ad76be8ac7d72d528462bebaab12a779726414888efb0c21"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/use-canvas-connections.ts": {
+      "fingerprint": "fbbf0babd2afec1486176cbc4d3b3e4102a235b7114519e4691a03c6ba73bc11",
+      "snapshot": {
+        "packages/client/src/components/workflow/use-canvas-connections.ts": "8d2600c68b3821c50c40bcb174e17ef5a14663e50c688d019c8773fb3e2d9a94"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-canvas.tsx": {
+      "fingerprint": "fca84d7b628107dc676b272bdf7f1c6c3e139ee7d714dec8f1bb346c7a210a80",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-canvas.tsx": "a2525621509ac867df3f6f5ec6f9194c672b0522ccb163a3fbf61a4bbbf46081"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-draft-sync.test.tsx": {
+      "fingerprint": "fc3dc8c7b05903ec447f89659a2efb175be0f0bef149d80894ddb10541d1be0f",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-draft-sync.test.tsx": "d6bfc6cee77462e017949fa445c7b261c4688805467a551dc49c3d237484a145"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-run-handlers.ts": {
+      "fingerprint": "6418d62c5415c2e7a8d361fda8a04da66a1f39d7609af94f1c428bf7480e2244",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-run-handlers.ts": "213c4f4df73f3568c064f74aa45e39a273003e5e024498a75598bb1c4c644580"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-run-start.test.tsx": {
+      "fingerprint": "279c284a444f57139de2596242c21085d33e4167c85d58fa7b2914b99ea49265",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-run-start.test.tsx": "6671bfc12ee1c6abe54cab6856ec3a5682e42cc92109fcb6dc23d8e5013b052a"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-toolbar-chrome.test-support.tsx": {
+      "fingerprint": "74d2ad3b92af05f1e8ad95be53cf270b8efb0c1e08451f28214f03b625e480d1",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-toolbar-chrome.test-support.tsx": "fd36bf706a1e19279510d60bfb446885f371ce2d448c5320961d9fc2559ccc31"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-toolbar-handlers.test.tsx": {
+      "fingerprint": "0c14ff23823e42e6cc0ac058f77cd047909b08129de8cb4dd48a01d83a8e151f",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-toolbar-handlers.test.tsx": "0ea6314e19875f56f6de1324c14dad11fc4c88a977c66feccfd2611966b1fa65"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-toolbar-handlers.ts": {
+      "fingerprint": "f10f094b2e158433682c0edfc9f8d7e8aaef9cef7630420d9d39ec254e9a5c6b",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-toolbar-handlers.ts": "d5c9d211d186458672705ea740bdf213c66f5b868d0aed05f9f0657e2301ee08"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-toolbar-state.ts": {
+      "fingerprint": "232431da7b2232596faa3169624ae76d2bc7322a43404954d9414c69106b8898",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-toolbar-state.ts": "ebbf3bad15fe798c02e16b50f2e9eebb9b27cd713b1a51b53d7360dccb5fd861"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-toolbar-test-support.tsx": {
+      "fingerprint": "fd61cf28d4f90135ad986a9afc048e9bbb84b82c5ed507ae4d7285aa93042481",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-toolbar-test-support.tsx": "5265147f17ea012960953f4150bf249afe54e58a0012f00b1729f972b8124ac6"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/hooks/effects.ts": {
+      "fingerprint": "d218d2c0e7a9cab9804f7160cf1f2487fac5dada2f3b5bf621c0731a36f36917",
+      "snapshot": {
+        "packages/client/src/hooks/effects.ts": "6eafa51386f5d636cc10d86c5132ab8382cffaa37e0d1194dac5aa230d0d62df"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/hooks/use-set-published-mode.ts": {
+      "fingerprint": "529c7de51a95050276c8dcbac23d85dbeba93bb0846bca6620d0c0a85ca8374e",
+      "snapshot": {
+        "packages/client/src/hooks/use-set-published-mode.ts": "7c6812efa50640f043154fa9c190b8faaa4156e759b97272045402d72eaefe7d"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/hooks/use-workflow-issues.test.tsx": {
+      "fingerprint": "a0d0d0da98ab099ee2fb99e21e3c501408f61855155717524774be3648af8f0f",
+      "snapshot": {
+        "packages/client/src/hooks/use-workflow-issues.test.tsx": "3363efda692b66414ebaa3a022e7896f0a3688fbd98f4f31aedf51e70a7870cb"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/hooks/use-workflow-issues.ts": {
+      "fingerprint": "38b9db3f92e1c7f29976f2daf782763638ba22e2d2aa534f05b88bf164b29853",
+      "snapshot": {
+        "packages/client/src/hooks/use-workflow-issues.ts": "f08048ec26071c56c75ed26dfc2fa9a743bd0db338f4b90890b5a5375db7e8cc"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/agent-graph-apply.test.ts": {
+      "fingerprint": "bf83a31d3b76d9ee5ea04c67c50f25b6a0cbbd2addb21e11907e2280cbc6c5de",
+      "snapshot": {
+        "packages/client/src/lib/agent-graph-apply.test.ts": "6d760398442b6f9f557359055f93b3955fe984a4ad84eb4af4fa1b0b644e5c59"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/command-palette-store.test.ts": {
+      "fingerprint": "99edab92c782090c472bd3789d051c631c8c5d9d0c1f8693826519ee40c46ad7",
+      "snapshot": {
+        "packages/client/src/lib/command-palette-store.test.ts": "261f8f668f0b0aa2e3dbeaf8529f9a8ae8e2b0813c3f38e006c2565da796852f"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/execution-logs.test.ts": {
+      "fingerprint": "35a4c700cf917d6f3298ceb8f5843be5cf9b8b7a08e44de650ff7f133f821305",
+      "snapshot": {
+        "packages/client/src/lib/execution-logs.test.ts": "110bb517ae13d673579b332dda4142fdcb40ccdef690e48cb2bf5908a01f8da0"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/execution-logs.ts": {
+      "fingerprint": "11245965792bd84d928ab3c986e1c01c863636c988729752db5ef5beb392a141",
+      "snapshot": {
+        "packages/client/src/lib/execution-logs.ts": "af997b222b3db2081968b53a4574ac77d6a175cdea37ba453510e1acb49f5379"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/rpc-fetch-test-support.ts": {
+      "fingerprint": "8d76c8ddf90253a7f5cf95c64734129c929f83f9469f81d15c3aca63594f9544",
+      "snapshot": {
+        "packages/client/src/lib/rpc-fetch-test-support.ts": "986c6fc810b48c20a3e1ed314219ed4f0514247a94ce159e3584b8153cf76b3a"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-comparison-store.test.ts": {
+      "fingerprint": "278e9c1a64ce39e2af9f1bc7ac31048bd734d795ac5871eb3ecfa31052b5b5de",
+      "snapshot": {
+        "packages/client/src/lib/workflow-comparison-store.test.ts": "9d0a079afce7fc478339162b3a89d189b67fa06df121d74549fe590dbe1af523"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-graph-presentation-store.ts": {
+      "fingerprint": "d0b03f9583847670669e0eae312161d7fcd6060f69e525e7b27a83c91d0282b6",
+      "snapshot": {
+        "packages/client/src/lib/workflow-graph-presentation-store.ts": "38eaa84de34918977b73598680d42d386a949e04079151a46ecd859294ab2c23"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-graph-session-store.ts": {
+      "fingerprint": "c990e63daf0f9df452e5d9a5b91e1a528f94439e83dd5a64a3843f8629f4894f",
+      "snapshot": {
+        "packages/client/src/lib/workflow-graph-session-store.ts": "f326478ac69db39d331667411f4681e1c909e1fd4234a92ddda12755cf0d2463"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-graph-store.test.ts": {
+      "fingerprint": "f286a09508a4eaae3c1b6b0ff04f68c3a01787a4ad18f4d986588fcfa5a0d20b",
+      "snapshot": {
+        "packages/client/src/lib/workflow-graph-store.test.ts": "1f58ca93a88169b1895032b6cf6cc1a958de93357b91144ac8462d50f0df491b"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-graph-store.ts": {
+      "fingerprint": "ee12ca6bb5a53d87fcf4f1f79b88219364738dad6d0f25d27f07497c309cee75",
+      "snapshot": {
+        "packages/client/src/lib/workflow-graph-store.ts": "f778ebbbac09cf98a3ba9b1bb3f99c25fab771828590df0dec9b52c3f0f58626"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-publication-review-store.test.ts": {
+      "fingerprint": "27d46f789108258c25637391d314e5fea50e7e44c93f36da62fbcb557316ab8c",
+      "snapshot": {
+        "packages/client/src/lib/workflow-publication-review-store.test.ts": "e07db7ffb7d2dee725fe6ca87beee1f1c82997475e1bcad8928df9b0cab7c9a2"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-publication-review-store.ts": {
+      "fingerprint": "f4044728dda6fe8967f74bc03d11486f6dc18fe7338699794c0cfdf755e143e7",
+      "snapshot": {
+        "packages/client/src/lib/workflow-publication-review-store.ts": "1bd477467eb78e726169ffb33d7f47eaffc3da193d75990b2ae1efdc2bedceb0"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-run-actions.test.ts": {
+      "fingerprint": "5861b3c0a49f3739a078f136ca52d129c952b8be67fe0e9d72d4639beecab1fc",
+      "snapshot": {
+        "packages/client/src/lib/workflow-run-actions.test.ts": "4a408ab65c8a6c94b3c2a02fdfc4e8f014519dad52d04f22446390fa0490b305"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-run-actions.ts": {
+      "fingerprint": "6ea7969da97889f8e8f1eb983a24c99cc261b0e987aae98b7522978e8692bd20",
+      "snapshot": {
+        "packages/client/src/lib/workflow-run-actions.ts": "016d15e57ff30542df9f47789cd3f91d56bedf9946e675940aac902f2e7fb70d"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-save-store.test.ts": {
+      "fingerprint": "e651a1b2d49dc971da13456dc7099136712f628272b38abf4cc213a4b44b5816",
+      "snapshot": {
+        "packages/client/src/lib/workflow-save-store.test.ts": "5351b0f86ffd9e47fe4ffdcfd99a14c7ec7443ed29f7b6deb85cd8c2552c16df"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-save-store.ts": {
+      "fingerprint": "02b4889f500590b2bc8a7b672b28c73a4cff66c1ad4925f7ff3c2603c7d45d2f",
+      "snapshot": {
+        "packages/client/src/lib/workflow-save-store.ts": "9f317a023548a3b2218207834ecceda6a7b084e16b747eface9d1b52d2332c56"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-ui-store.test.ts": {
+      "fingerprint": "66c8437d6978d0348e1c715f031c99ebc2aa4797e94f9baeac1ccdf571b4d251",
+      "snapshot": {
+        "packages/client/src/lib/workflow-ui-store.test.ts": "5783b64644cb33ef0ee82d87650e59b94daf17cacd4aee388e0a9e4fb5ffdc93"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/workflow-ui-store.ts": {
+      "fingerprint": "622868bfb16fabd2c36e8eb345148b9d5f370777a9284601de6dc6f501c97187",
+      "snapshot": {
+        "packages/client/src/lib/workflow-ui-store.ts": "1421d2f2d27e1f4d18cd31207c5fbf957e4a8a5a6fb5e9821958b7f547c4d38d"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/routes/workflows/[workflowId]/page.tsx": {
+      "fingerprint": "da4e271c71976388e234597f0215d7bb9b4f72722df6db3ae6ad76fec9cbc4c6",
+      "snapshot": {
+        "packages/client/src/routes/workflows/[workflowId]/page.tsx": "89c44085c3023c3504f84c67d488c2ec4fcb635df733b0b8102fe50527789552"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/agent/chat.test.ts": {
+      "fingerprint": "6a038aec97e1acea8e7ff00256ffbfa107a26f8ec0da7a736c710b8ba91ce942",
+      "snapshot": {
+        "packages/core/src/backend/agent/chat.test.ts": "6a7a3050222306f1a73db5e0528bf75b368293380320beddd19e1a3bb5c24ba3"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/agent/chat.ts": {
+      "fingerprint": "45b12a5e907e72ed129b818c3dc8711d5c8a52cf30b0f9441bf826deccda887c",
+      "snapshot": {
+        "packages/core/src/backend/agent/chat.ts": "935f1df1a07506fe74357f17c93ea472b3d1f59eafeec9aa0e82b823ea1b906b"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/agent/tool-session.test.ts": {
+      "fingerprint": "fad16e034f3e01547ae6ed728a883226f060eaf0335b2d1cf015f2d4bac47906",
+      "snapshot": {
+        "packages/core/src/backend/agent/tool-session.test.ts": "8b2c173d4977f7eb32878d01b2ef3ace1d2d7178570d63b41942d083524dd3b1"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/agent/tool-session.ts": {
+      "fingerprint": "a3090bce5c4928527427bfbc790f6bd0e7fb13b8aaf7e525f47adca5073e4db7",
+      "snapshot": {
+        "packages/core/src/backend/agent/tool-session.ts": "7ddd3adc23d7fdf5529600c7e3cf9e891aeb5ea9a52439b476f9c69bc8d27434"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core-cancel.sqlite.test.ts": {
+      "fingerprint": "c2a89df50c4a530cf6fb2a4d95597c42cfe2f50f8cf0edfc81476097ea0c4fcf",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-cancel.sqlite.test.ts": "b51ac98e4542e31e9d52c9afd6ba242e786a1afff83f429c1ff818717e47c322"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core-wait-delay.test.ts": {
+      "fingerprint": "4c20bfd2ab49a61abf85f6ef971ea441aea69c16ff8fa4dde7d6db42f4443711",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-wait-delay.test.ts": "0977a7ea9fddd2e2e1b0361f889804c6772247c9c266918cbf2d0183853f3e00"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core-wait-migrate.replay-cases.ts": {
+      "fingerprint": "958e2ec960d3654a5cc4656440c722780dab46b75193c5022efe0b519a091707",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-wait-migrate.replay-cases.ts": "0d96f6ad9eb606d2c719212db7b0005eb21fe4d68851bbe508e5db0bf8f96133"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/engine/store.ts": {
+      "fingerprint": "eb5af3408bc08ce924244f197a88879f4fbfb66481d4e4af72bcb5547a69d7d8",
+      "snapshot": {
+        "packages/core/src/backend/engine/store.ts": "ac6320d436375979e218023cb3ed0ba34b712393195c32c072f95da439204fb8"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/engine/wait-delay.ts": {
+      "fingerprint": "f95996cab600ccf9919cc84c944effa28461da5dab8fb978c1a3d86fe90034e9",
+      "snapshot": {
+        "packages/core/src/backend/engine/wait-delay.ts": "09995e88655e6d23f933e3878408adeff37be3b72ded589a71d0f667b0472594"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/engine/wait.ts": {
+      "fingerprint": "bc300309fab8f2e7b4da2c3bd87812794ee4fb7bc808f2ce9a63893ced1dcee2",
+      "snapshot": {
+        "packages/core/src/backend/engine/wait.ts": "2363f639f50fbda1f4bd4d462673b095df94272822f1fc8311e555c38cb8c5d2"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/executor/testing/pass-cases.ts": {
+      "fingerprint": "27400ea936147dbbe1948c14647f0c7b46ebef9a5c48eb054c471ad7dfe99f16",
+      "snapshot": {
+        "packages/core/src/backend/executor/testing/pass-cases.ts": "dcab6fa38e05107a53324adaa86b4f7d37739b756522aa27b7d165495a5a76cd"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/executor/testing/run-fixtures.ts": {
+      "fingerprint": "095c031f31b067b70319ed4e1f167f3b9748edeba185109a0406eecf804d9cbc",
+      "snapshot": {
+        "packages/core/src/backend/executor/testing/run-fixtures.ts": "ee25d2621100da45fb6ad83a6ae23cf5602bad917aead648b7a47817b51e70a5"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/lib/db/schema.ts": {
+      "fingerprint": "c5d6eab057b6cad5a130a363d308844e0651062090b5889818d3751c0bf68467",
+      "snapshot": {
+        "packages/core/src/backend/lib/db/schema.ts": "ff5780db1a5c1dec396693f29e705daa43a3713f4d6c7ba9870f6c59bd87607f"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/execution-fencing.ts": {
+      "fingerprint": "d36baf98b675f427c19f7e25071304fcf0bb3be6eeab999a6adadb35091cfd69",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/execution-fencing.ts": "919dbc021b533b7400aab71d04e6d8ccfa6249e039fd58ca712eee8e162d46b0"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/execution-producers.ts": {
+      "fingerprint": "e75ed8e5254ed151ef367a81d8bd87edcaabe20c53dc5f549d8c8521a1e5aaf9",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/execution-producers.ts": "64fa9b4d4b6b3da2a3c1ec7618c992c43cb4ac3a7e1f48cf3bdb765da38c7dd5"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/execution-waits.ts": {
+      "fingerprint": "d498436301912f508036fb3a46d48680d34eebb5d2934d6756f2fa569cb93f54",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/execution-waits.ts": "7474cd868b88b30ab043301bcb21d90d997d91d57edae9e565c52d42069df57b"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/executions.ts": {
+      "fingerprint": "11e93f903b4fbc7d9fe978d031c6d2186678a49fd762a1a899cb056a56f721ae",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/executions.ts": "f76e4f8efaf9ff7bb091eb2d9c1fc3a3fcda6e49cd3deb813b8a52165566ab4b"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/integrations.ts": {
+      "fingerprint": "4a6ffb9b828598840edf06b51ee11e9f3a6490391d7b779301def36d1e46fda1",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/integrations.ts": "0a83fe13712254ebcbb83a325667bb8693ab6b21b9bf00a9bde21b0e2a87dd8d"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite.integrations.test.ts": {
+      "fingerprint": "9679bee8aab5f8c01bda4ac107cf9df9f71346e7140d1cdef4cdfe3b6fdec735",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite.integrations.test.ts": "00b809e911b4a93e45a82f1f611fa27dfb958a6d6398aa1c0b3faa926f2ac17b"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/executions/admission.ts": {
+      "fingerprint": "0a2e8bb4f24a1fc6808b0968aee1413bd04a2420daa48a1f35b46c61981487c4",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/executions/admission.ts": "5def80ea7ee83f72c35a08377b2a5c938eedce733a5c91fb592aa161fe3bd7b1"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/executions/runs.ts": {
+      "fingerprint": "4a33cdcfd07d318a13b4921518da1e3c000767589e6aa80fb7ea6f4ba0df3b50",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/executions/runs.ts": "2711750de63061d39555579d54d746e5900c5ed66f81faa4b8d1c7e83e70c4f1"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/integrations.ts": {
+      "fingerprint": "02823a9f623084d9310121cfd3a5757ec18df48ddab7a0ab7526c94388942c3b",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/integrations.ts": "674da982e10662c628703cae8942335dd773ca97634ef5641850f6720d7ce40b"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/driver.ts": {
+      "fingerprint": "313c642ac739ccc0eb4679ee9cdb4b69a425de3b1ed064bdf91ae450d4e8b5b0",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/driver.ts": "053c4e4156406ed1d4379e34cf151a56d0c8ca6b46597aa9bb551900cbc8c04e"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/admission.ts": {
+      "fingerprint": "ea95014371243b37be50c47ed697a6392f34804e9745c82579cc5d08f9bf4f90",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/admission.ts": "0da8b84a7666b126ee185f4e94523c9023cc0581a7512119b9d8d2cfc0a111ea"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/release-policy.ts": {
+      "fingerprint": "ca260573d8c594aa6e07b2078fad7750ecbbcc5e64d86cb5212cb370c663b34a",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/release-policy.ts": "a3044d43f55ef99877b0ee46db619af9dd4fe038086dea664efdd817a8eb1625"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/runs.ts": {
+      "fingerprint": "0563afef596875688f0416e97f41bb6f17818b8db0f3952b8d4f8c9c79bec6f8",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/runs.ts": "6ef12fc58c7e862e5264944a2760beaf78d0cf16cd9e413d24b5d70297033a34"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/status.test.ts": {
+      "fingerprint": "2d80137d9f046cf200f41fa7819c3f6b71b0b9ec9fd834262fc842e3c2a8161c",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/status.test.ts": "c116746478750455d874d6588d9b3f6f960c5c71a411df7507418bf517c87cb1"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/status.ts": {
+      "fingerprint": "8486b45d4fb7a69e0e3335e2fa6627d329fd00cfbc6e653d7f02274c60b22522",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/status.ts": "29cf0cc9f910b04168fac7781cbc92ef66ad05cfbded450c9acf3fcd37cceec3"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/testing/driver-cases.ts": {
+      "fingerprint": "7175c9149623a7086ec571d58f62dd4d76468f5edb7dec5c62bab482b22f9339",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/testing/driver-cases.ts": "f848015ef6d1fb85fe1d544c19c01e6bf813b9959a7adc7edec6b594fb996ad8"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/services/integrations/credential-resolver.ts": {
+      "fingerprint": "ba9f0044d5792e4cde0195d4ef295ac1fe73dd0b16917ef5f1f14199a3a99fcb",
+      "snapshot": {
+        "packages/core/src/backend/services/integrations/credential-resolver.ts": "022dd67b0a13b21d0b6b082f0c2169a22749d7fb7d8bea98e307a6d265910bbc"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/services/integrations/integrations.test.ts": {
+      "fingerprint": "5f7eff845546a2a02a7cd8d7d510f606516de2f95982b2c06ee7259988a56ac0",
+      "snapshot": {
+        "packages/core/src/backend/services/integrations/integrations.test.ts": "1fe05c58a6cb85d8f1ade93ccb1b6fa046ca3811ad30a34a95ec248417996383"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/services/integrations/integrations.ts": {
+      "fingerprint": "55d5181ae58665676c2931454c75603e00405eda14ffdf13435337baecc3bcce",
+      "snapshot": {
+        "packages/core/src/backend/services/integrations/integrations.ts": "a4597c6dc2917946b4add46bfe309ebc3b4788b3c925c923b6af08fb0a181280"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/services/integrations/oauth.ts": {
+      "fingerprint": "93909b5bb325fb8f5ab7511f9b5de60737a3ab2a2c859d0655738d310eca6e9c",
+      "snapshot": {
+        "packages/core/src/backend/services/integrations/oauth.ts": "53d791cfd9ac8c3fe1734625a3080b6199bc0764e2e793221d10704161bac323"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/services/integrations/refresh-claims.sqlite.test.ts": {
+      "fingerprint": "ff2e92f669f65561f649d90493fb7776d0f204ca667dc7a23e95990c7d6c36b3",
+      "snapshot": {
+        "packages/core/src/backend/services/integrations/refresh-claims.sqlite.test.ts": "1ee557d402f1ad785447dfa8c6601590c38957a95b6d3805a173dac71939e720"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/services/integrations/repo.ts": {
+      "fingerprint": "50605b235b612c54d8c7e3feff7a98c7519f31c381fbdd75940da87d1d159a73",
+      "snapshot": {
+        "packages/core/src/backend/services/integrations/repo.ts": "e34fbc0552b07a059ec8f5d7aede09b87bab91727be40229e2eab4f13413b0b9"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/cancel-mode.sqlite.test.ts": {
+      "fingerprint": "73e3c47ad1d6e529aba13ea50a5dd71028c2bfa866ccb78122bb3ddbcb78c618",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/cancel-mode.sqlite.test.ts": "3655f9249196d780163a5bf3293c9f7770249b8e0b945425dfe19f2f76122dfd"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/cancel.test.ts": {
+      "fingerprint": "133f0435e3747f25317add383546d83bbd44c12f46f3b7f0aa12fd8db6b76d87",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/cancel.test.ts": "8025cf31aac089d135788287bea35da18f85fb52e014a42c9a82d76dd73f6d60"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/cancel.ts": {
+      "fingerprint": "16663f772ede9767a1f22e8000897d3e5697a54f31dea4b725a926afe1dca215",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/cancel.ts": "e1b611e9d8495507f44e77d969c7b8d642d4a4c44ec99d6591696d6f6dd75096"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/deliver-event.test.ts": {
+      "fingerprint": "546ae247159e5c56ee9961b29c0da27eda5ff0ea6d4020772d6a4852e79f48d7",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/deliver-event.test.ts": "d07e8305ed41957f30f9b9162437990c24f737de3843403890b600718e4e5fc7"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/deliver-event.ts": {
+      "fingerprint": "62be465e71d7a3d082f99fa3e77d830fdc029724f25e9a27e4ba7db26d69d377",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/deliver-event.ts": "10b68fedc786970588f06d8a80708763b11675046a155f72df32239df00b442c"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/evals/src/agent/result.test.ts": {
+      "fingerprint": "4ce16b46344da3219b73ce65e2f4f55ee9d89fb14f49e12ec50cc8a472875020",
+      "snapshot": {
+        "packages/evals/src/agent/result.test.ts": "bab1db6ae57d3b8e9d3ed62c14b2469e1727bbbef7ec67c9f831612f0e51400f"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/evals/src/agent/result.ts": {
+      "fingerprint": "3e34166272982d0ac0ffecc8c0e4d759f1c666fdbd82460196b88dcdb7d97805",
+      "snapshot": {
+        "packages/evals/src/agent/result.ts": "89e06f8618f29f903b2a62eb10837fd44bbc7855485dbfcb165cd1cbd3fac17e"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/evals/src/eval/describe-eval.test.ts": {
+      "fingerprint": "b2e4b244b27af20780bc7e091489e7eab6f43254e200475c72982e11ed0d4a94",
+      "snapshot": {
+        "packages/evals/src/eval/describe-eval.test.ts": "3169352c41a6a52e6158da1f69adfe1b75b4941d6ff1569043ba97a4c11b7e73"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/evals/src/eval/describe-eval.ts": {
+      "fingerprint": "b29be98242e51507f3924deead7e47e43fbe403113b310b389fa105cddaee050",
+      "snapshot": {
+        "packages/evals/src/eval/describe-eval.ts": "e35cd9858b954e6e2394c4baf7fc63276720749045be2c578dd91518d3d7cca6"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/evals/src/eval/reporter.test.ts": {
+      "fingerprint": "aeac7d0c4fe2422e75f3aafe2b95bb8d0f2ca70f87345e47e05140636a4d59be",
+      "snapshot": {
+        "packages/evals/src/eval/reporter.test.ts": "db7f1fee09c57e4eb53ccfd3237bff244f0f365ce4b93d442279738a376080a4"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/evals/src/eval/reporter.ts": {
+      "fingerprint": "550a1b21030801aaa2c2bd4e50c82110cf154a725f8e42144666117a81134d0f",
+      "snapshot": {
+        "packages/evals/src/eval/reporter.ts": "914f35de688e951b8bed88e65f16b6ac1cf6141e97531e05c68a618cd89fe12e"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/plugins/src/resend/events.ts": {
+      "fingerprint": "2596e5a44295df2d84b1915bd7fbe50fcf7087dceeccff428139772fcec946d0",
+      "snapshot": {
+        "packages/plugins/src/resend/events.ts": "fd195db6681a16ad176b7adc897ce0465eae155214db26f9b997bbb7e7ecdecf"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/shared/src/graph/execution-log-statuses.ts": {
+      "fingerprint": "6358a1e31ac716448fa4896e4bf75d115cbc4fc5a93b29b78d0e73e4504ba5b2",
+      "snapshot": {
+        "packages/shared/src/graph/execution-log-statuses.ts": "8d6beab23b10fa5d1d9ecbcbf6ef935f6860df78856dd7105a1da89d745e2e40"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/shared/src/graph/schemas.test.ts": {
+      "fingerprint": "ddbcaf0e85d9308f1315bcd0052ceda58d131c61e37892a7ea06b8fb87997011",
+      "snapshot": {
+        "packages/shared/src/graph/schemas.test.ts": "1e7111dbef2b9b7dcf1168e42ff6dac40e54f0286cd505a6aa16c7627454f0cd"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/shared/src/graph/schemas.ts": {
+      "fingerprint": "d709eaa2545cc023b50215e3c9615dba14566bc45433d1109f53f76f82c3211f",
+      "snapshot": {
+        "packages/shared/src/graph/schemas.ts": "18e0e253836e58fe123916f79f695ab69ff34f6841e297a63886a000509cc218"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/shared/src/graph/types.ts": {
+      "fingerprint": "b7590d0782bd8e01f95890b007d58d7c171ada91eb3acb0eb373cc9ff4b1b1de",
+      "snapshot": {
+        "packages/shared/src/graph/types.ts": "8f66341b370cba3dad0825518fbcbabb846082f2efc4f5855b8a0870610b79d6"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/shared/src/lifecycle/execution-contracts.ts": {
+      "fingerprint": "71737156f9c0cbeaa7a02c9075a067118086dab52eb180eb04eb8f583fce0371",
+      "snapshot": {
+        "packages/shared/src/lifecycle/execution-contracts.ts": "ab3f91b8889c8d3b037d07481fc662e621e97d42069681df1e88a3d856c0ad75"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/shared/src/lifecycle/wait-subscription.test.ts": {
+      "fingerprint": "667b09695b1e2f0593460f3545863ae7a9080d453aa26c37dc54817fe38baa07",
+      "snapshot": {
+        "packages/shared/src/lifecycle/wait-subscription.test.ts": "497f1534f8c28eeb30554fb2a4b80e60576af9a0b8e43f36408511612c170017"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/shared/src/lifecycle/wait-subscription.ts": {
+      "fingerprint": "293425a3aaf258d45e9bfe37bd84bed5aa0b47f973fcde50024819db5b9352b4",
+      "snapshot": {
+        "packages/shared/src/lifecycle/wait-subscription.ts": "6002de492219e070d794799b1d3822d17084f90368ff2abb7510734758a16ff9"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
+    },
+    "source:packages/shared/src/rpc/contracts.test.ts": {
+      "fingerprint": "7cbd171e5d178770e54bce019f4bc52e598c09f493df5879bfcfc73199d9fce4",
+      "snapshot": {
+        "packages/shared/src/rpc/contracts.test.ts": "f319b23ab9c1b5bafc91edc3f2f8ba95e06eec6341e42f534a2a5026ee56ee75"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/shared/src/rpc/contracts/workflows.ts": {
+      "fingerprint": "510de3d1e729ef7e585a1e6a4fe5d00d0a26a1c2aef6250fc10781e63fb60a5c",
+      "snapshot": {
+        "packages/shared/src/rpc/contracts/workflows.ts": "0491c3d7dd5b89288966bc92326f9084ebdf5f6510060e9554a367dfa9b96c28"
+      },
+      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "outcome": "no-change",
+      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "evidence": [
+        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+      ]
     }
   }
 }
