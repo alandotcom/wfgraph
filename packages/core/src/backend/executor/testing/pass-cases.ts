@@ -479,7 +479,6 @@ function describeCases(
         const executions = yield* ExecutionRepo;
         yield* executions.requestCancelForEntity({
           workflowId: "wf_1",
-          runMode: "live",
           entityValue: ENTITY,
           eventName: CANCEL_EVENT,
           payload: { reason: "customer left" },

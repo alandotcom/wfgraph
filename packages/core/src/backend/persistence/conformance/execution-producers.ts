@@ -33,7 +33,6 @@ function cancelAppointment(deliveryId: string, now: Date) {
   return Effect.flatMap(ExecutionRepo, (executions) =>
     executions.requestCancelForEntity({
       workflowId: "wf_1",
-      runMode: "live",
       entityValue: "appointment_1",
       eventName: "appointment/cancelled",
       payload: { reason: "customer left" },
@@ -634,7 +633,6 @@ export function describeExecutionProducerConformance({
             Effect.flatMap(cancelArrival(), (deliveryId) =>
               executions.requestCancelForEntity({
                 workflowId: "wf_1",
-                runMode: "live",
                 entityValue: "appointment_1",
                 eventName: "appointment/cancelled",
                 payload: { reason: "customer left" },
@@ -724,7 +722,6 @@ export function describeExecutionProducerConformance({
           const cancel = (deliveryId: string, now: Date) =>
             executions.requestCancelForEntity({
               workflowId: "wf_1",
-              runMode: "live",
               entityValue: "appointment_1",
               eventName: "appointment/cancelled",
               payload: { reason: "customer left" },

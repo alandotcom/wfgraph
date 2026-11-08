@@ -226,7 +226,6 @@ export function cancelEntity(input: {
     const executions = yield* ExecutionRepo;
     const claims = yield* executions.requestCancelForEntity({
       workflowId: input.workflowId,
-      runMode: "live",
       entityValue: input.entityValue,
       eventName: CANCEL_EVENT,
       payload: {},

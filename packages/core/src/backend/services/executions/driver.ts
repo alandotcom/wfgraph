@@ -25,7 +25,6 @@ import {
   type NewInboxEvent,
   type StartForEntityInput,
   type WaitResumeClaim,
-  type WorkflowExecution,
 } from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
@@ -105,7 +104,6 @@ export class ExecutionDriver extends Context.Service<
     readonly requestCanceledOutlet: (
       input: {
         workflowId: string;
-        runMode: WorkflowExecution["runMode"];
         eventName: string;
         payload: JsonObject;
         /** The arrival's inbox id, which a retried delivery is answered by. */

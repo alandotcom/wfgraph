@@ -24,7 +24,6 @@ const requestCanceledOutletMock = vi.fn<
 
 const cancelInput = {
   workflowId: "wf_1",
-  runMode: "live" as const,
   eventName: "app/appointment.canceled",
   payload: { appointment: { id: "appt_8813" }, reason: "patient called" },
   deliveryId: "inbox_1",
