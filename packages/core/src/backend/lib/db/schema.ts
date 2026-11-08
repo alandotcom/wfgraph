@@ -23,7 +23,9 @@ import {
   type EntityEligibilityReason,
   IN_FLIGHT_EXECUTION_STATUSES,
   type NodeLogStatus,
+  STORED_NODE_LOG_STATUSES,
   type TerminationKind,
+  WORKFLOW_EXECUTION_STATUSES,
   type WorkflowExecutionStartSource,
   type WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -40,6 +42,7 @@ import {
   type ParkWake,
   STEP_MEMO_STATUSES,
   type StepMemoStatus,
+  WAIT_STATE_STATUSES,
   type WaitStateStatus,
 } from "@wfgraph/shared/lifecycle/execution-schedule";
 import {
@@ -72,16 +75,15 @@ export type OAuthAuthorizationAttemptStatus =
   | "succeeded"
   | "failed";
 
-// This is safe to interpolate with `sql.raw`: it comes from the closed
-// lower-case union in shared, so a value cannot introduce SQL syntax.
-const integrationRefreshStateLiterals = INTEGRATION_REFRESH_STATES.map(
-  (state) => `'${state}'`
-).join(", ");
-
-/** The version kinds as SQL literals. Safe to interpolate for the same reason. */
-const workflowVersionKindLiterals = WORKFLOW_VERSION_KINDS.map(
-  (kind) => `'${kind}'`
-).join(", ");
+/**
+ * A closed list of lower-case words from shared, as the SQL literals a check
+ * or a partial index names. `sql.raw` interpolates it as written, which is
+ * safe because no member can carry a quote. A predicate built from the list
+ * a query guards on cannot drift from that query.
+ */
+function literals(values: readonly string[]) {
+  return sql.raw(values.map((value) => `'${value}'`).join(", "));
+}
 
 export const workflows = pgTable(
   "workflows",
@@ -119,6 +121,11 @@ export const workflows = pgTable(
   },
   (table) => [
     uniqueIndex("workflows_name_ci_uidx").on(sql`lower(${table.name})`),
+    check("workflows_mode_check", sql`${table.mode} in ('live', 'test')`),
+    check(
+      "workflows_visibility_check",
+      sql`${table.visibility} in ('private', 'public')`
+    ),
     // The version sweep at publish deletes workflow_versions rows, and this FK
     // is `on delete set null`, so Postgres runs that action on every one of
     // them. Unindexed, each delete scans the whole workflows table; the sweep's
@@ -183,7 +190,7 @@ export const workflowVersions = pgTable(
     ),
     check(
       "workflow_versions_kind_check",
-      sql`${table.kind} in (${sql.raw(workflowVersionKindLiterals)})`
+      sql`${table.kind} in (${literals(WORKFLOW_VERSION_KINDS)})`
     ),
     // `kind` and `version` state the same fact twice, and readers depend on the
     // pairing: `asPublishedVersion` treats a numbered row as published history,
@@ -232,7 +239,7 @@ export const integrations = pgTable(
   (table) => [
     check(
       "integrations_refresh_state_check",
-      sql`${table.refreshState} in (${sql.raw(integrationRefreshStateLiterals)})`
+      sql`${table.refreshState} in (${literals(INTEGRATION_REFRESH_STATES)})`
     ),
   ]
 );
@@ -274,18 +281,6 @@ export const oauthAuthorizationAttempts = pgTable(
     index("oauth_authorization_attempts_expires_at_idx").on(table.expiresAt),
   ]
 );
-
-/**
- * The in-flight statuses as SQL literals, for the partial index below.
- *
- * They are quoted by hand because `sql.raw` interpolates them as written. That is
- * safe by construction rather than by escaping: the list is a closed union of
- * lower-case words declared in `execution-contracts.ts`, so nothing here can
- * carry a quote.
- */
-const inFlightStatusLiterals = IN_FLIGHT_EXECUTION_STATUSES.map(
-  (status) => `'${status}'`
-).join(", ");
 
 export const workflowExecutions = pgTable(
   "workflow_executions",
@@ -366,6 +361,10 @@ export const workflowExecutions = pgTable(
   },
   (table) => [
     check(
+      "workflow_executions_status_check",
+      sql`${table.status} in (${literals(WORKFLOW_EXECUTION_STATUSES)})`
+    ),
+    check(
       "workflow_executions_entity_identity_pair_check",
       sql`(${table.entityType} is null and ${table.entityId} is null) or (${table.entityType} is not null and ${table.entityId} is not null)`
     ),
@@ -416,10 +415,14 @@ export const workflowExecutions = pgTable(
     // list the query's guard is, so the two cannot drift.
     index("workflow_executions_in_flight_by_entity_idx")
       .on(table.workflowId, table.entityValue, table.runMode)
-      .where(sql`${table.status} in (${sql.raw(inFlightStatusLiterals)})`),
+      .where(
+        sql`${table.status} in (${literals(IN_FLIGHT_EXECUTION_STATUSES)})`
+      ),
     index("workflow_executions_in_flight_by_typed_entity_idx")
       .on(table.workflowId, table.entityType, table.entityId, table.runMode)
-      .where(sql`${table.status} in (${sql.raw(inFlightStatusLiterals)})`),
+      .where(
+        sql`${table.status} in (${literals(IN_FLIGHT_EXECUTION_STATUSES)})`
+      ),
     // workflow_version_id cascades from workflow_versions, and this is the
     // largest table in the schema: without this index, deleting a version
     // scans every execution row to find the ones the cascade must remove.
@@ -487,8 +490,7 @@ export const workflowExecutionLogs = pgTable(
     nodeType: text("node_type").notNull(),
     // No write stores `cancelled`. The status poll answers it for a row still
     // open on a stopped run, mapping an open row of a terminal run onto that
-    // word. The column is text with no check
-    // constraint, so the vocabulary widens without a migration.
+    // word.
     status: text("status").notNull().$type<NodeLogStatus>(),
     // Both are whatever the node handled, scrubbed by `redactSensitiveData` on
     // the way here. A step's payload is JSON but need not be an object: an
@@ -515,6 +517,10 @@ export const workflowExecutionLogs = pgTable(
     releasedOutlet: text("released_outlet"),
   },
   (table) => [
+    check(
+      "workflow_execution_logs_status_check",
+      sql`${table.status} in (${literals(STORED_NODE_LOG_STATUSES)})`
+    ),
     index("workflow_execution_logs_execution_id_idx").on(table.executionId),
     // A node has one log row per run: `nodeLogId` derives the row id from the
     // two, and the executor-state reads join a node's name on them.
@@ -578,6 +584,10 @@ export const workflowWaitStates = pgTable(
     wake: jsonb("wake").$type<ParkWake>(),
   },
   (table) => [
+    check(
+      "workflow_wait_states_status_check",
+      sql`${table.status} in (${literals(WAIT_STATE_STATUSES)})`
+    ),
     uniqueIndex("workflow_wait_states_resume_token_uidx").on(table.resumeToken),
     index("workflow_wait_states_execution_status_idx").on(
       table.executionId,
@@ -599,26 +609,6 @@ export const workflowWaitStates = pgTable(
       .where(sql`${table.status} = 'waiting'`),
   ]
 );
-
-/**
- * The schedule kinds and states and the memo statuses as SQL literals. Each
- * list is a closed set of lower-case words declared in
- * `@wfgraph/shared/lifecycle/execution-schedule`, so `sql.raw` interpolates
- * them safely.
- */
-const scheduleKindLiterals = EXECUTION_SCHEDULE_KINDS.map(
-  (kind) => `'${kind}'`
-).join(", ");
-const scheduleStateLiterals = EXECUTION_SCHEDULE_STATES.map(
-  (state) => `'${state}'`
-).join(", ");
-const stepMemoStatusLiterals = STEP_MEMO_STATUSES.map(
-  (status) => `'${status}'`
-).join(", ");
-/** The inbox statuses as SQL literals, safe to interpolate for the same reason. */
-const eventInboxStatusLiterals = EVENT_INBOX_STATUSES.map(
-  (status) => `'${status}'`
-).join(", ");
 
 /**
  * The event inbox: one row per Event arrival. The row is the durable record of
@@ -672,7 +662,7 @@ export const workflowEventInbox = pgTable(
   (table) => [
     check(
       "workflow_event_inbox_status_check",
-      sql`${table.status} in (${sql.raw(eventInboxStatusLiterals)})`
+      sql`${table.status} in (${literals(EVENT_INBOX_STATUSES)})`
     ),
     check(
       "workflow_event_inbox_settled_check",
@@ -812,11 +802,11 @@ export const workflowExecutionSchedule = pgTable(
   (table) => [
     check(
       "workflow_execution_schedule_kind_check",
-      sql`${table.kind} in (${sql.raw(scheduleKindLiterals)})`
+      sql`${table.kind} in (${literals(EXECUTION_SCHEDULE_KINDS)})`
     ),
     check(
       "workflow_execution_schedule_state_check",
-      sql`${table.state} in (${sql.raw(scheduleStateLiterals)})`
+      sql`${table.state} in (${literals(EXECUTION_SCHEDULE_STATES)})`
     ),
     check(
       "workflow_execution_schedule_subject_check",
@@ -883,7 +873,7 @@ export const workflowExecutionSteps = pgTable(
     primaryKey({ columns: [table.scheduleId, table.stepId] }),
     check(
       "workflow_execution_steps_status_check",
-      sql`${table.status} in (${sql.raw(stepMemoStatusLiterals)})`
+      sql`${table.status} in (${literals(STEP_MEMO_STATUSES)})`
     ),
     check(
       "workflow_execution_steps_error_check",
