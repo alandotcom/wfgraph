@@ -376,6 +376,20 @@ describe("node data failure messages", () => {
     expect(message).not.toContain("token_abc");
   });
 
+  it.each([
+    ["waitDelayTimingMode", "tomorrow"],
+    ["waitGateMode", "sometimes"],
+    ["waitTimeoutBehavior", "retry"],
+  ])("refuses a Wait node whose %s is no option of it", (key, value) => {
+    const message = messageFor({
+      label: "Wait",
+      type: "action",
+      config: { actionType: "Wait", waitDuration: "1h", [key]: value },
+    });
+
+    expect(message).toContain(key);
+  });
+
   it("keeps the rejected node data out of the message", () => {
     const message = messageFor({
       label: "Webhook",

@@ -78,6 +78,28 @@ describe("readWaitConfig", () => {
     expect(read.valid).toBe(false);
   });
 
+  it("refuses a delay timing that is neither duration nor until", () => {
+    expect(
+      readWaitConfig(
+        waitConfig({ waitDuration: "1h", waitDelayTimingMode: "tomorrow" })
+      ).valid
+    ).toBe(false);
+  });
+
+  it("reads the delay timing the node declares", () => {
+    const read = readWaitConfig(
+      waitConfig({
+        waitDelayTimingMode: "until",
+        waitUntil: "2026-03-01T09:00:00Z",
+      })
+    );
+
+    expect(read).toMatchObject({
+      valid: true,
+      config: { waitDelayTimingMode: "until" },
+    });
+  });
+
   it("refuses a subscription naming no Event", () => {
     expect(
       readWaitConfig(
