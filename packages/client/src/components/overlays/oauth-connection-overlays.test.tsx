@@ -323,6 +323,49 @@ describe("OAuth connection overlays", () => {
     );
   });
 
+  it("offers no create while a Test of the entered credentials is running", async () => {
+    let answerTest: (response: Response) => void = () => undefined;
+    stubFetch(async (input) => {
+      const path = String(input);
+      if (path.includes("/api/rpc/integration/testCredentials")) {
+        return new Promise<Response>((resolve) => {
+          answerTest = resolve;
+        });
+      }
+      throw new Error(`unexpected request: ${path}`);
+    });
+
+    renderOverlay(
+      <ConfigureConnectionOverlay overlayId="add_resend" type="resend" />
+    );
+    fireEvent.change(screen.getByLabelText("API key"), {
+      target: { value: "api-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Test" }));
+
+    const createManually = () =>
+      screen.getByRole("button", {
+        name: "Create manually",
+      }) as HTMLButtonElement;
+    const connect = () =>
+      screen.getByRole("button", {
+        name: "Connect with Resend",
+      }) as HTMLButtonElement;
+    await waitFor(() => expect(createManually().disabled).toBe(true));
+    expect(connect().disabled).toBe(true);
+
+    await act(async () => {
+      answerTest(
+        new Response(
+          JSON.stringify({ json: { status: "success", message: "Connected" } }),
+          { headers: { "content-type": "application/json" } }
+        )
+      );
+    });
+    await waitFor(() => expect(createManually().disabled).toBe(false));
+    expect(connect().disabled).toBe(false);
+  });
+
   it("creates directly when credential testing is denied", async () => {
     const fetch = stubFetch(
       async (input) => {
