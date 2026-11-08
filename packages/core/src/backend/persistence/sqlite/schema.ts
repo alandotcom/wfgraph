@@ -10,11 +10,24 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import type { TerminationKind } from "@wfgraph/shared/lifecycle/execution-contracts";
+import {
+  IN_FLIGHT_EXECUTION_STATUSES,
+  type TerminationKind,
+  WORKFLOW_EXECUTION_STATUSES,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 
 const caseInsensitiveText = customType<{ data: string }>({
   dataType: () => "text COLLATE NOCASE",
 });
+
+/**
+ * A closed list of lower-case words from shared, as the SQL literals a check
+ * or a partial index names. `sql.raw` interpolates it as written, which is
+ * safe because no member can carry a quote.
+ */
+function literals(values: readonly string[]) {
+  return sql.raw(values.map((value) => `'${value}'`).join(", "));
+}
 
 export const workflows = sqliteTable(
   "workflows",
@@ -170,7 +183,9 @@ export const workflowExecutions = sqliteTable(
     ),
     index("executions_workflow_in_flight_version_started_idx")
       .on(table.workflowId, table.workflowVersionId, table.startedAt)
-      .where(sql`${table.status} in ('pending', 'running', 'waiting')`),
+      .where(
+        sql`${table.status} in (${literals(IN_FLIGHT_EXECUTION_STATUSES)})`
+      ),
     // Deleting a version finds its runs through this index, for the cascade
     // and for the check that a draft snapshot is unreferenced.
     index("executions_workflow_version_idx").on(table.workflowVersionId),
@@ -181,7 +196,7 @@ export const workflowExecutions = sqliteTable(
       .where(sql`${table.completedAt} is not null`),
     check(
       "workflow_executions_status_check",
-      sql`${table.status} in ('pending', 'running', 'waiting', 'completed', 'failed', 'canceled', 'exited', 'superseded')`
+      sql`${table.status} in (${literals(WORKFLOW_EXECUTION_STATUSES)})`
     ),
     check(
       "workflow_executions_entity_identity_pair_check",

@@ -324,7 +324,6 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
           (current.claim.kind === "cancel" && input.status === "canceled");
         const stillInFlight =
           !current ||
-          current.status === "pending" ||
           current.status === "running" ||
           current.status === "waiting";
         if (!claimMatches || !stillInFlight) {
