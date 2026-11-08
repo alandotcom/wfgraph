@@ -499,13 +499,28 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     [canvasWritesSelection, inspectNode]
   );
 
+  // React Flow still ends a Draft drag the editing lock interrupted, and the
+  // store has to see that end to close the drag, though it takes nothing else.
+  const onLockedNodesChange = useCallback(
+    (changes: Parameters<typeof onNodesChange>[0]) => {
+      const settled = changes.filter(
+        (change) => change.type === "position" && change.dragging === false
+      );
+      if (settled.length > 0) {
+        onNodesChange(settled);
+      }
+    },
+    [onNodesChange]
+  );
+
   const onComparisonNodesChange = useCallback(
     (changes: Parameters<typeof onNodesChange>[0]) => {
       if (currentWorkflowId) {
         moveComparisonNodes({ workflowId: currentWorkflowId, changes });
       }
+      onLockedNodesChange(changes);
     },
-    [currentWorkflowId, moveComparisonNodes]
+    [currentWorkflowId, moveComparisonNodes, onLockedNodesChange]
   );
 
   const handleNodesChange = useCallback(
@@ -610,7 +625,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
               interaction.comparisonVisible
                 ? onComparisonNodesChange
                 : graphEditingLocked
-                  ? undefined
+                  ? onLockedNodesChange
                   : handleNodesChange
             }
             onMoveEnd={() => {

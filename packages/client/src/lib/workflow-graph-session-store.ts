@@ -52,8 +52,18 @@ const logger = getClientLogger("workflow", "graph");
 
 /** Lets the config panel focus a node that has not received an action type yet. */
 export const newlyCreatedNodeIdAtom = atom<string | null>(null);
-/** Keeps one pointer drag as one undoable graph change. */
-export const workflowDragActiveAtom = atom(false);
+/**
+ * The graph before the pointer drag in progress, which is also the undo entry
+ * the drag pushed, or null when no drag is in progress. Keeps one drag as one
+ * undoable change, and is what a drag the editing lock interrupts returns to.
+ */
+export const workflowDragOriginAtom = atom<{
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+} | null>(null);
+export const workflowDragActiveAtom = atom(
+  (get) => get(workflowDragOriginAtom) !== null
+);
 
 export type RemoteWorkflowUpdateDisposition = "install" | "conflict" | "defer";
 
@@ -125,7 +135,7 @@ export const remoteDraftChangeAtom = atom((get) => {
 
 /** End transient pointer state when the workflow editor leaves the page. */
 export const endWorkflowEditorLifetimeAtom = atom(null, (_get, set) => {
-  set(workflowDragActiveAtom, false);
+  set(workflowDragOriginAtom, null);
 });
 
 /**
@@ -164,7 +174,7 @@ export const loadWorkflowGraphAtom = atom(
     set(edgesStateAtom, unselected.edges);
     set(historyAtom, []);
     set(futureAtom, []);
-    set(workflowDragActiveAtom, false);
+    set(workflowDragOriginAtom, null);
     set(newlyCreatedNodeIdAtom, null);
     set(
       hasUnsavedChangesAtom,
