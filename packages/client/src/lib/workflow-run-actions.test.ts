@@ -14,7 +14,10 @@ import {
   nodesAtom,
   updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowIdAtom,
+  workflowApiAtom,
+} from "#src/lib/workflow-save-store";
 import { nextTestPayloads, readEntryTestPayloads } from "#src/lib/test-payload";
 
 beforeEach(() => {
@@ -48,6 +51,9 @@ function actionNode(id: string): WorkflowNode {
 describe("rememberTestPayload", () => {
   it("keeps the run's payload on the entry node without adding an undo step", () => {
     const store = createStore();
+    // The edit queues a debounced save. A save that never answers keeps it off
+    // the global fetch a later file in this worker stubs.
+    store.set(workflowApiAtom, { update: () => new Promise(() => undefined) });
     store.set(currentWorkflowIdAtom, "workflow_1");
     store.set(loadWorkflowGraphAtom, {
       nodes: [lifecycleNode("t"), actionNode("a")],
