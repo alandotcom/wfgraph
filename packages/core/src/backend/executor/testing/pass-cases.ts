@@ -29,6 +29,7 @@ import {
   actionNode,
   CANCEL_EVENT,
   CANCELABLE,
+  cancelEntity,
   createGate,
   delay,
   edge,
@@ -178,6 +179,21 @@ const endedRun: RepoWrap = (repo) => ({
       .pipe(
         Effect.map((summary) =>
           summary === null ? null : { ...summary, status: "canceled" }
+        )
+      ),
+});
+
+/** Reads every run as pinning a version that does not exist. */
+const missingVersion: RepoWrap = (repo) => ({
+  ...repo,
+  findSummaryById: (executionId) =>
+    repo
+      .findSummaryById(executionId)
+      .pipe(
+        Effect.map((summary) =>
+          summary === null
+            ? null
+            : { ...summary, workflowVersionId: "ver_gone" }
         )
       ),
 });
@@ -364,6 +380,23 @@ function describeCases(
   function logsOf(harness: Harness, nodeId: string) {
     return readRun(harness).then((run) =>
       run.logs.filter((log) => log.nodeId === nodeId)
+    );
+  }
+
+  /** The run's timeline after its "run started" entry, newest first. */
+  function endingOf(harness: Harness) {
+    return harness.connection.run(
+      Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        const events = yield* executions.listEvents(harness.executionId);
+        return events
+          .filter((event) => event.eventType !== "run_started")
+          .map(({ eventType, message, metadata }) => ({
+            eventType,
+            message,
+            metadata,
+          }));
+      })
     );
   }
 
@@ -1228,7 +1261,7 @@ function describeCases(
     expect(run.schedule).toBeNull();
   });
 
-  it("ends the run failed once a step outside any node spends its retries", async () => {
+  it("ends the run failed, with its timeline entry, once a step outside any node spends its retries", async () => {
     const harness = await startRun(
       createSerializedWorkflowGraph({
         nodes: [lifecycleNode(), actionNode("send", "test/send")],
@@ -1268,7 +1301,94 @@ function describeCases(
     ]);
     expect(run.schedule).toBeNull();
     expect(run.memo).toEqual([]);
+    expect(await endingOf(harness)).toEqual([
+      {
+        eventType: "run_failed",
+        message: "Run failed with fatal error",
+        metadata: { error: run.error, failureKind: "failure", runMode: "live" },
+      },
+    ]);
     expect(await harness.pass()).toBeNull();
+  });
+
+  it("ends canceled, with its timeline entry, a run under a Cancel claim once a step outside any node spends its retries", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(CANCELABLE), actionNode("send", "test/send")],
+        edges: [edge("entry", "send", "started")],
+      })
+    );
+    // Every terminal record the engine writes is refused.
+    const refuseEnding = wrapFenced((writes) => ({
+      ...writes,
+      finishRun: () =>
+        Effect.fail(
+          new DatabaseError({ cause: new Error("connection reset") })
+        ),
+    }));
+
+    const results: Array<PassResult | null> = [];
+    results.push(await harness.pass({ wrap: refuseEnding }));
+    // The Cancel Event claims the run once its node has run.
+    await harness.connection.run(
+      cancelEntity({ workflowId: "wf_1", entityValue: ENTITY, now: now() })
+    );
+    for (let pass = 2; pass <= 5; pass += 1) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
+      results.push(await harness.pass({ wrap: refuseEnding }));
+    }
+    results.push(await harness.pass());
+
+    expect(results.map((result) => result?.kind)).toEqual([
+      "retry",
+      "retry",
+      "retry",
+      "retry",
+      "retries_spent",
+      "subject_failed",
+    ]);
+    const run = await readRun(harness);
+    expect(run.status).toBe("canceled");
+    expect(run.schedule).toBeNull();
+    expect(await endingOf(harness)).toEqual([
+      {
+        eventType: "run_cancelled",
+        message:
+          "Run canceled after a fatal error; the Canceled outlet did not run",
+        metadata: { error: run.error, failureKind: "failure", runMode: "live" },
+      },
+      expect.objectContaining({ eventType: "run_cancel_requested" }),
+    ]);
+  });
+
+  it("ends a run whose version is gone failed, with its timeline entry", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(), actionNode("send", "test/send")],
+        edges: [edge("entry", "send", "started")],
+      })
+    );
+
+    expect(await harness.pass({ wrap: missingVersion })).toEqual({
+      kind: "unavailable",
+      reason: "missing_version",
+      ending: "written",
+      severity: "info",
+    });
+    const run = await readRun(harness);
+    expect(run.status).toBe("failed");
+    expect(run.schedule).toBeNull();
+    expect(await endingOf(harness)).toEqual([
+      {
+        eventType: "run_failed",
+        message: "Run failed with fatal error",
+        metadata: {
+          error: "The requested workflow version does not exist",
+          failureKind: "failure",
+          runMode: "live",
+        },
+      },
+    ]);
   });
 
   it("releases a run it has nothing to run for when deleting its row fails, and deletes the row on the next pass", async () => {
