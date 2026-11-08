@@ -5,6 +5,8 @@
 
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
+import { createDbWorkflowStore } from "#src/backend/engine/db-store";
+import { recordRunCompleted } from "#src/backend/engine/terminal-record";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type {
@@ -30,6 +32,25 @@ const EVENT_ARRIVAL = {
 
 /** When a claim or a Cancel claim writes, which a re-queue is due at. */
 const NOW = new Date("2026-01-01T00:00:00.000Z");
+
+/**
+ * A trigger refusing every `run_completed` timeline entry, which is how an
+ * insert the database fails, or a process dying before the insert, leaves the
+ * entry unwritten.
+ */
+const REFUSE_RUN_COMPLETED_ENTRY = {
+  postgresql: `create function refuse_run_completed() returns trigger language plpgsql as $$ begin raise exception 'timeline entry refused'; end $$;
+    create trigger refuse_run_completed before insert on workflow_execution_events
+    for each row when (new.event_type = 'run_completed') execute function refuse_run_completed();`,
+  sqlite: `create trigger refuse_run_completed before insert on workflow_execution_events
+    when new.event_type = 'run_completed' begin select raise(abort, 'timeline entry refused'); end;`,
+} as const;
+
+const ACCEPT_RUN_COMPLETED_ENTRY = {
+  postgresql:
+    "drop trigger refuse_run_completed on workflow_execution_events; drop function refuse_run_completed();",
+  sqlite: "drop trigger refuse_run_completed;",
+} as const;
 
 /** The first-wins start that the race cases in this file make. */
 const startFirstWins = (
@@ -543,6 +564,58 @@ export function describeExecutionConformance({
         claim: expectedClaim,
         didWrite: false,
       });
+    });
+
+    it("never leaves an ended run without its terminal timeline entry, even when the database refuses that entry once", async () => {
+      const store = await openDatabase();
+      const database = await store.open();
+      await seedPublishedWorkflow(database);
+      const started = await attemptStart(database, {
+        deliveryId: "delivery_terminal_entry",
+      });
+      if (started.status !== "started") {
+        throw new Error("The run was refused");
+      }
+      const executionId = started.execution.id;
+      // One attempt of the durable step that records the run's end. A refused
+      // attempt fails the step, which the executor runs again.
+      const recordCompletion = Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        yield* recordRunCompleted({
+          store: createDbWorkflowStore({
+            reads: executions,
+            writes: executions,
+          }),
+          executionId,
+          workflowId: "wf_1",
+          status: "completed",
+          output: null,
+          resultCount: 0,
+          runMode: "live",
+        });
+      }).pipe(Effect.ignore);
+
+      await store.execute(REFUSE_RUN_COMPLETED_ENTRY);
+      try {
+        await database.run(recordCompletion);
+      } finally {
+        await store.execute(ACCEPT_RUN_COMPLETED_ENTRY);
+      }
+      await database.run(recordCompletion);
+
+      const ended = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const events = yield* executions.listEvents(executionId);
+          return {
+            status: (yield* executions.findStatusById(executionId))?.status,
+            terminalEntries: events.filter(
+              (event) => event.eventType === "run_completed"
+            ).length,
+          };
+        })
+      );
+      expect(ended).toEqual({ status: "completed", terminalEntries: 1 });
     });
 
     // The Intake model's `ExecutionAndScheduleTogether`: an open run always has
