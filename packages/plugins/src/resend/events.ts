@@ -276,7 +276,7 @@ type EmailDataSchema =
   | typeof emailReceivedData;
 
 function emailEvent(
-  type: string,
+  type: Extract<ResendWebhookEventType, `email.${string}`>,
   label: string,
   description: string,
   data: EmailDataSchema = emailData
@@ -301,7 +301,7 @@ type IdDataSchema =
   | typeof suppressionData;
 
 function idEvent(
-  type: string,
+  type: Exclude<ResendWebhookEventType, `email.${string}`>,
   label: string,
   description: string,
   data: IdDataSchema
