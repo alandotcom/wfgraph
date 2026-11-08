@@ -37,7 +37,6 @@ import {
 } from "#src/lib/workflow-graph-types";
 import {
   collectAllWorkflowIssues,
-  NO_ISSUES,
   sameIssues,
   workflowIssuesAtom,
 } from "#src/lib/workflow-issues-store";
@@ -59,6 +58,9 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /** How long the canvas must sit still before it is validated again. */
 const SETTLE_MS = 300;
+
+/** Stands in for a connection list that has not arrived, kept stable for the memo. */
+const NO_CONNECTIONS: ReadonlyArray<{ id: string; type: string }> = [];
 
 export function useCollectWorkflowIssues(): void {
   const nodes = useAtomValue(nodesAtom);
@@ -88,22 +90,20 @@ export function useCollectWorkflowIssues(): void {
   const providerIssues = useProviderFieldIssues(persisted, catalog);
 
   const issues = useMemo(() => {
-    // `undefined` is "the connection list has not arrived", which is a
-    // different answer from "this operator has no connections". Defaulting it
-    // to `[]` accused every node that named a connection, and -- because the
-    // literal was new each render -- wrote the atom, re-rendered the canvas,
-    // and arrived back here without bound.
-    if (!integrations) {
-      return NO_ISSUES;
-    }
-
-    return collectAllWorkflowIssues({
+    const collected = collectAllWorkflowIssues({
       nodes: persisted,
       edges: persistedEdges,
       catalog,
-      integrations,
+      integrations: integrations ?? NO_CONNECTIONS,
       providerIssues,
     });
+    // `undefined` is "the connection list has not arrived", or never will for
+    // an operator who may not read it, which is a different answer from "this
+    // operator has no connections". Whether a connection exists is then
+    // unknown, so that one question is left out rather than answered no.
+    return integrations
+      ? collected
+      : collected.filter((issue) => issue.kind !== "missing_integration");
   }, [persisted, persistedEdges, catalog, integrations, providerIssues]);
 
   // Keeping the previous list when the verdict has not changed is what stops
