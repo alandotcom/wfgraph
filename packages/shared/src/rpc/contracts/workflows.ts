@@ -17,11 +17,11 @@ import {
   workflowVersionUsageInputSchema,
   workflowVersionUsagePayloadSchema,
 } from "#src/graph/publication-contracts";
-import { EXECUTION_LOG_STATUSES } from "#src/graph/execution-log-statuses";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
 import { WORKFLOW_VERSION_KINDS } from "#src/graph/version-kinds";
 import {
   ENTITY_ELIGIBILITY_REASONS,
+  NODE_LOG_STATUSES,
   WORKFLOW_EXECUTION_IGNORED_REASONS,
   WORKFLOW_EXECUTION_START_SOURCES,
   WORKFLOW_EXECUTION_STATUSES,
@@ -141,7 +141,7 @@ const workflowVersionKindSchema = Schema.Literals(WORKFLOW_VERSION_KINDS);
 const workflowExecutionStatusSchema = Schema.Literals(
   WORKFLOW_EXECUTION_STATUSES
 );
-const executionLogStatusSchema = Schema.Literals(EXECUTION_LOG_STATUSES);
+const executionLogStatusSchema = Schema.Literals(NODE_LOG_STATUSES);
 
 /** An instant the database executor reports, as an ISO 8601 string. */
 const executorInstant = isoTimestampString();

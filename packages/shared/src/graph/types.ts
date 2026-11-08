@@ -1,4 +1,4 @@
-import type { ExecutionLogStatus } from "#src/graph/execution-log-statuses";
+import type { NodeLogStatus } from "#src/lifecycle/execution-contracts";
 import type { SerializedWorkflowGraphInput } from "#src/graph/schemas";
 
 export type WorkflowNodeType = "lifecycle" | "action" | "add" | "group";
@@ -83,7 +83,7 @@ export type ExecutionLogEntry = {
   nodeId: string;
   nodeName: string;
   nodeType: string;
-  status: ExecutionLogStatus;
+  status: NodeLogStatus;
   input?: unknown;
   output?: unknown;
   startedAt?: Date | string;
