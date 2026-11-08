@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "jotai";
+import { toast } from "sonner";
 import { ApiError, type SavedWorkflow } from "#src/lib/rpc-client";
 import { DRAFT_CONFLICT_CODE } from "@wfgraph/shared/rpc/error-codes";
 import {
@@ -106,6 +107,10 @@ async function waitForCalls(count: number) {
 
 beforeEach(() => {
   pending.length = 0;
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("saveWorkflowAtom", () => {
@@ -375,6 +380,52 @@ describe("saveWorkflowAtom", () => {
     expect(store.get(hasUnsavedChangesAtom)).toBe(true);
     expect(store.get(lastSaveErrorAtom)?.message).toBe("network is down");
     expect(store.get(isSavingAtom)).toBe(false);
+  });
+
+  it("reports a failed save once", async () => {
+    const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = createSaveStore();
+
+    const save = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    pending.shift()?.reject(new Error("network is down"));
+    await save;
+
+    expect(errorToast).toHaveBeenCalledTimes(1);
+    expect(errorToast).toHaveBeenCalledWith("network is down");
+  });
+
+  it("holds a draft conflict as the failure while later edits are refused", async () => {
+    const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = createSaveStore();
+    store.set(autosaveDelayAtom, 0);
+    const conflict = new ApiError(
+      409,
+      "The workflow draft changed",
+      DRAFT_CONFLICT_CODE
+    );
+
+    const first = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    pending.shift()?.reject(conflict);
+    await first;
+
+    const laterEdit = store.set(saveWorkflowAtom, {
+      nodes: [actionNode("node_2")],
+      edges: [],
+    });
+    expect(store.get(lastSaveErrorAtom)).toBe(conflict);
+    expect(await laterEdit).toMatchObject({ ok: false, error: conflict });
+
+    expect(store.get(lastSaveErrorAtom)).toBe(conflict);
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(errorToast).toHaveBeenCalledTimes(1);
   });
 
   it("carries a failed patch into a newer queued save", async () => {
