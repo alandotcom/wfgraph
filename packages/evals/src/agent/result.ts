@@ -48,6 +48,7 @@ export function collectAgentEvalResult(
         break;
       case "tool-call":
         flushText();
+        finalText = "";
         events.push({
           type: "tool_call",
           id: part.id,
