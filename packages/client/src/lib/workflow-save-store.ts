@@ -1,4 +1,4 @@
-import { atom } from "jotai";
+import { atom, type Getter } from "jotai";
 import { toast } from "sonner";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { DRAFT_CONFLICT_CODE } from "@wfgraph/shared/rpc/error-codes";
@@ -180,6 +180,8 @@ type SaveQueue = {
    * it — and dropping it would also strand everyone awaiting it.
    */
   pending: PendingSave[];
+  /** The entry whose `update` is on the wire, already taken off `pending`. */
+  inFlight: PendingSave | null;
   /**
    * The graph a failed request did not persist, kept per workflow until
    * another save for that workflow can carry it. Without this, a later partial
@@ -233,6 +235,7 @@ type SaveQueue = {
 const saveQueueAtom = atom((): SaveQueue => ({
   timeoutId: null,
   pending: [],
+  inFlight: null,
   failedGraphs: new Map(),
   refusedGraphs: new Map(),
   blockedConflicts: new Map(),
@@ -240,6 +243,24 @@ const saveQueueAtom = atom((): SaveQueue => ({
   nextRenameRequestId: 0,
   isFlushing: false,
 }));
+
+/**
+ * The newest graph of a workflow the queue holds that the server has not
+ * answered yet, queued or in flight, or null. A snapshot read while one is
+ * outstanding is older than what the editor last showed for that workflow.
+ */
+export function outstandingGraph(
+  get: Getter,
+  workflowId: string
+): WorkflowGraphPatch | null {
+  const queue = get(saveQueueAtom);
+  const newest = [queue.inFlight, ...queue.pending].findLast(
+    (entry) => entry?.workflowId === workflowId && entry.patch.nodes
+  );
+  return newest?.patch.nodes
+    ? { nodes: newest.patch.nodes, edges: newest.patch.edges }
+    : null;
+}
 
 /** Installs a server revision and clears any stale-write block for that workflow. */
 export const recordLoadedDraftRevisionAtom = atom(
@@ -373,6 +394,7 @@ export const saveWorkflowAtom = atom(
           if (!next) {
             break;
           }
+          queue.inFlight = next;
 
           let outcome: SaveOutcome;
           try {
@@ -484,6 +506,7 @@ export const saveWorkflowAtom = atom(
             });
           }
 
+          queue.inFlight = null;
           for (const resolve of next.waiters) {
             resolve(outcome);
           }

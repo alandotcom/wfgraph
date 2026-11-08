@@ -22,6 +22,7 @@ import {
   isSavingAtom,
   lastSaveErrorAtom,
   lastSavedAtAtom,
+  outstandingGraph,
   recordLoadedDraftRevisionAtom,
   successfulSaveGenerationAtom,
   workflowLoadErrorAtom,
@@ -204,10 +205,16 @@ export const hydrateWorkflowAtom = atom(
     set(currentWorkflowIdAtom, workflow.id);
 
     if (!clientIsAheadOfServer) {
-      set(loadWorkflowGraphAtom, {
-        nodes: workflow.nodes,
-        edges: workflow.edges,
-      });
+      // Leaving a workflow with its save queued or in flight leaves that graph
+      // in the queue, newer than a snapshot read before the save landed.
+      const outstanding = outstandingGraph(get, workflow.id);
+      set(
+        loadWorkflowGraphAtom,
+        outstanding ?? { nodes: workflow.nodes, edges: workflow.edges }
+      );
+      if (outstanding) {
+        set(hasUnsavedChangesAtom, true);
+      }
       set(recordLoadedDraftRevisionAtom, {
         workflowId: workflow.id,
         draftRevision: workflow.draftRevision,
