@@ -11,6 +11,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import {
+  ENTITY_ELIGIBILITY_REASONS,
   IN_FLIGHT_EXECUTION_STATUSES,
   NODE_LOG_STATUSES,
   type TerminationKind,
@@ -217,9 +218,12 @@ export const workflowExecutions = sqliteTable(
       "workflow_executions_schedule_check",
       sql`(${table.scheduledFor} is null and ${table.scheduleCron} is null and ${table.scheduleTimeZone} is null) or (${table.scheduledFor} is not null and ${table.scheduleCron} is not null and ${table.scheduleTimeZone} is not null and ${table.startSource} = 'schedule')`
     ),
+    // Unlike PostgreSQL's, this leaves the Cancel arrival's columns free. A
+    // legacy database's Cancel claims are restored only after every pending
+    // migration has run, so a rebuild holding them would refuse those rows.
     check(
       "workflow_executions_termination_check",
-      sql`(${table.terminationKind} is null and ${table.terminationRequestedAt} is null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'cancel' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'exit' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} in ('entity_condition_not_met', 'entity_not_found') and ${table.terminationNodeId} is not null)`
+      sql`(${table.terminationKind} is null and ${table.terminationRequestedAt} is null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'cancel' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'exit' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} in (${literals(ENTITY_ELIGIBILITY_REASONS)}) and ${table.terminationNodeId} is not null)`
     ),
     check(
       "workflow_executions_start_source_check",

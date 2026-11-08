@@ -20,6 +20,7 @@ import {
 } from "@wfgraph/shared/types/integration";
 import { generateId } from "@wfgraph/shared/utils/id";
 import {
+  ENTITY_ELIGIBILITY_REASONS,
   type EntityEligibilityReason,
   IN_FLIGHT_EXECUTION_STATUSES,
   type NodeLogStatus,
@@ -370,7 +371,7 @@ export const workflowExecutions = pgTable(
     ),
     check(
       "workflow_executions_termination_check",
-      sql`(${table.terminationKind} is null and ${table.terminationRequestedAt} is null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'cancel' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'exit' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} in ('entity_condition_not_met', 'entity_not_found') and ${table.terminationNodeId} is not null)`
+      sql`(${table.terminationKind} is null and ${table.terminationRequestedAt} is null and ${table.terminationReason} is null and ${table.terminationNodeId} is null and ${table.cancelEventName} is null and ${table.cancelPayload} is null and ${table.cancelDeliveryId} is null) or (${table.terminationKind} = 'cancel' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} is null and ${table.terminationNodeId} is null) or (${table.terminationKind} = 'exit' and ${table.terminationRequestedAt} is not null and ${table.terminationReason} in (${literals(ENTITY_ELIGIBILITY_REASONS)}) and ${table.terminationNodeId} is not null and ${table.cancelEventName} is null and ${table.cancelPayload} is null and ${table.cancelDeliveryId} is null)`
     ),
     check(
       "workflow_executions_schedule_check",
