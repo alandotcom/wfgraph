@@ -730,15 +730,15 @@
       ]
     },
     "source:packages/client/src/lib/workflow-run-actions.test.ts": {
-      "fingerprint": "5861b3c0a49f3739a078f136ca52d129c952b8be67fe0e9d72d4639beecab1fc",
+      "fingerprint": "6156f97fb65b7512b1246842d0a12cee9dee5477b66f15cdf6381f6bea36b9f3",
       "snapshot": {
-        "packages/client/src/lib/workflow-run-actions.test.ts": "4a408ab65c8a6c94b3c2a02fdfc4e8f014519dad52d04f22446390fa0490b305"
+        "packages/client/src/lib/workflow-run-actions.test.ts": "908154a2cde8c504a824be325ee2828ecbb0ee132598e6d5c80853f818d9edc9"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "54d07c30f0d8c7eec5e1e626f93383475b944a28",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "Test code that no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml lists no client sources."
       ]
     },
     "source:packages/client/src/lib/workflow-run-actions.ts": {
