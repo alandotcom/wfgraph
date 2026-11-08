@@ -12,6 +12,7 @@ import {
   recordLoadedDraftRevisionAtom,
   renameWorkflowAtom,
   saveWorkflowAtom,
+  setWorkflowModeAtom,
   successfulSaveGenerationAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
@@ -449,6 +450,54 @@ describe("saveWorkflowAtom", () => {
   });
 });
 
+describe("setWorkflowModeAtom", () => {
+  it("does not send a mode switch that failed with a later save", async () => {
+    const store = createSaveStore();
+
+    const modeSwitch = store.set(setWorkflowModeAtom, "test");
+    pending.shift()?.reject(new Error("network is down"));
+    expect(await modeSwitch).toMatchObject({ ok: false });
+
+    const graphSave = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    await waitForCalls(2);
+    pending.shift()?.resolve(savedWorkflow("workflow_1"));
+    await graphSave;
+
+    expect(updateMock.mock.calls[1]?.[1]).not.toHaveProperty("mode");
+  });
+
+  it("does not send a mode switch that failed alongside a graph edit with a later save", async () => {
+    const store = createSaveStore();
+    store.set(autosaveDelayAtom, 0);
+
+    const graphEdit = store.set(saveWorkflowAtom, {
+      nodes: [actionNode("node_1")],
+      edges: [],
+    });
+    const modeSwitch = store.set(setWorkflowModeAtom, "test");
+    pending.shift()?.reject(new Error("network is down"));
+    await Promise.all([graphEdit, modeSwitch]);
+
+    const retry = store.set(
+      saveWorkflowAtom,
+      { name: "Renamed" },
+      { immediate: true }
+    );
+    await waitForCalls(2);
+    pending.shift()?.resolve(savedWorkflow("workflow_1"));
+    await retry;
+
+    expect(updateMock.mock.calls[1]?.[1]).toMatchObject({
+      nodes: [expect.objectContaining({ id: "node_1" })],
+    });
+    expect(updateMock.mock.calls[1]?.[1]).not.toHaveProperty("mode");
+  });
+});
+
 describe("renameWorkflowAtom", () => {
   it("puts the old name back and keeps a refused one out of every later save", async () => {
     const store = createSaveStore();
@@ -524,6 +573,41 @@ describe("renameWorkflowAtom", () => {
     await Promise.all([firstRename, secondRename]);
 
     expect(store.get(currentWorkflowNameAtom)).toBe("Original");
+  });
+
+  it("keeps a refused name out of a graph edit queued while the queue was already sending", async () => {
+    const store = createSaveStore();
+    store.set(autosaveDelayAtom, 0);
+    store.set(currentWorkflowNameAtom, "Appointment reminders");
+
+    const graphInFlight = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("node_1")], edges: [] },
+      { immediate: true }
+    );
+    const rename = store.set(renameWorkflowAtom, "Onboarding drip");
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_1"),
+      name: "Appointment reminders",
+    });
+    await waitForCalls(2);
+
+    const laterEdit = store.set(saveWorkflowAtom, {
+      nodes: [actionNode("node_2")],
+      edges: [],
+    });
+    pending
+      .shift()
+      ?.reject(new Error('Workflow name "Onboarding drip" already exists'));
+    await waitForCalls(3);
+    pending.shift()?.resolve(savedWorkflow("workflow_1"));
+    await Promise.all([graphInFlight, rename, laterEdit]);
+
+    expect(updateMock.mock.calls[2]?.[1]).toMatchObject({
+      nodes: [expect.objectContaining({ id: "node_2" })],
+    });
+    expect(updateMock.mock.calls[2]?.[1]).not.toHaveProperty("name");
+    expect(store.get(currentWorkflowNameAtom)).toBe("Appointment reminders");
   });
 
   it("does not let an older identical request roll back a newer success", async () => {
