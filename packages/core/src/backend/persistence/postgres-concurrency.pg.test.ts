@@ -1149,7 +1149,7 @@ describePostgres("PostgreSQL concurrency", () => {
       );
       const [timer] = await withAdminClient((client) =>
         client.unsafe<{ id: string }[]>(
-          `update "${schema}".workflow_execution_schedule set state = 'leased', owner_token = 'tok_1' where kind = 'cron' returning id`
+          `update "${schema}".workflow_execution_schedule set state = 'leased', owner_token = 'tok_1', worker_id = 'worker_1', lease_expires_at = '2100-01-01T00:00:00.000Z' where kind = 'cron' returning id`
         )
       );
       if (!timer) throw new Error("Publish wrote no timer");

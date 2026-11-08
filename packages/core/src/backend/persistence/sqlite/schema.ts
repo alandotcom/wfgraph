@@ -467,6 +467,10 @@ export const workflowExecutionSchedule = sqliteTable(
       "workflow_execution_schedule_subject_check",
       sql`(${table.kind} = 'run' and ${table.executionId} is not null and ${table.inboxId} is null and ${table.workflowId} is null and ${table.cron} is null and ${table.timeZone} is null) or (${table.kind} = 'delivery' and ${table.inboxId} is not null and ${table.executionId} is null and ${table.workflowId} is null and ${table.cron} is null and ${table.timeZone} is null) or (${table.kind} = 'cron' and ${table.workflowId} is not null and ${table.cron} is not null and ${table.timeZone} is not null and ${table.executionId} is null and ${table.inboxId} is null)`
     ),
+    check(
+      "workflow_execution_schedule_lease_check",
+      sql`(${table.state} = 'leased' and ${table.ownerToken} is not null and ${table.leaseExpiresAt} is not null and ${table.workerId} is not null) or (${table.state} <> 'leased' and ${table.ownerToken} is null and ${table.leaseExpiresAt} is null and ${table.workerId} is null and ${table.runningStepId} is null and ${table.runningNodeId} is null)`
+    ),
   ]
 );
 

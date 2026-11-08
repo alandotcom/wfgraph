@@ -34,6 +34,7 @@ import {
 import {
   at,
   cronTimers,
+  leaseScheduleRow,
 } from "#src/backend/persistence/conformance/schedule-support";
 
 const WORKFLOW_ID = "wf_cron";
@@ -153,9 +154,7 @@ async function leaseTimer(
   scheduleId: string,
   ownerToken: string
 ): Promise<CronFence> {
-  await database.execute(
-    `update workflow_execution_schedule set state = 'leased', owner_token = '${ownerToken}' where id = '${scheduleId}'`
-  );
+  await leaseScheduleRow(database, scheduleId, ownerToken);
   return { kind: "cron", scheduleId, workflowId: WORKFLOW_ID, ownerToken };
 }
 
