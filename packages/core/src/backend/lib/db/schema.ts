@@ -589,7 +589,17 @@ export const workflowWaitStates = pgTable(
       "workflow_wait_states_status_check",
       sql`${table.status} in (${literals(WAIT_STATE_STATUSES)})`
     ),
+    check(
+      "workflow_wait_states_wake_check",
+      sql`(${table.status} <> 'waiting' or ${table.wake} is null) and (${table.status} <> 'resuming' or ${table.wake} is not null)`
+    ),
     uniqueIndex("workflow_wait_states_resume_token_uidx").on(table.resumeToken),
+    // A park reuses its run's row for the same Wait node, so a run holds at
+    // most one row per node, and every lookup of that row reads this index.
+    uniqueIndex("workflow_wait_states_execution_node_uidx").on(
+      table.executionId,
+      table.nodeId
+    ),
     index("workflow_wait_states_execution_status_idx").on(
       table.executionId,
       table.status

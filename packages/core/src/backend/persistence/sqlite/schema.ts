@@ -312,14 +312,16 @@ export const workflowWaitStates = sqliteTable(
     resumedAt: integer("resumed_at"),
     cancelledAt: integer("cancelled_at"),
     parkStepId: text("park_step_id"),
-    // JSON text holding a `ParkWake`. It carries no json_valid check, because
-    // adding a table check makes the migration rebuild the whole table; the
-    // repository decodes it on every read instead.
+    // JSON text holding a `ParkWake`.
     wake: text("wake"),
   },
   (table) => [
     index("waits_execution_status_idx").on(table.executionId, table.status),
     index("waits_workflow_status_idx").on(table.workflowId, table.status),
+    uniqueIndex("waits_execution_node_uidx").on(
+      table.executionId,
+      table.nodeId
+    ),
     check(
       "workflow_wait_states_wait_type_check",
       sql`${table.waitType} in ('delay', 'event')`
@@ -335,6 +337,14 @@ export const workflowWaitStates = sqliteTable(
     check(
       "workflow_wait_states_metadata_json_check",
       sql`${table.metadata} is null or (json_valid(${table.metadata}) and json_type(${table.metadata}) = 'object')`
+    ),
+    check(
+      "workflow_wait_states_wake_json_check",
+      sql`${table.wake} is null or json_valid(${table.wake})`
+    ),
+    check(
+      "workflow_wait_states_wake_check",
+      sql`(${table.status} <> 'waiting' or ${table.wake} is null) and (${table.status} <> 'resuming' or ${table.wake} is not null)`
     ),
   ]
 );
