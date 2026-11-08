@@ -96,4 +96,26 @@ describe("formatEvalCase", () => {
       "  error: harness exploded",
     ]);
   });
+
+  it.each([
+    { state: "passed", mark: "✓" },
+    { state: "failed", mark: "✗" },
+    { state: "skipped", mark: "↓" },
+    { state: "pending", mark: "…" },
+  ] as const)("marks a $state case with $mark", ({ state, mark }) => {
+    const [header] = formatEvalCase({
+      name: "suite > case",
+      state,
+      record: {
+        harness: "workflow-build-agent",
+        durationMs: 500,
+        scores: [],
+        events: [],
+        errors: [],
+        artifacts: {},
+      },
+    }).map((line) => stripVTControlCharacters(line));
+
+    expect(header).toBe(`${mark} suite > case 0.5s`);
+  });
 });

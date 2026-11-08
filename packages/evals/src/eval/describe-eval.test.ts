@@ -44,6 +44,16 @@ const repliesHello: Judge<string, Output> = {
       : { score: 0, rationale: "Did not reply hello." },
 };
 
+const crashesOnCrash: Judge<string, Output> = {
+  name: "CrashesOnCrash",
+  assess: ({ input }) => {
+    if (input === "crash judge") {
+      throw new Error("judge exploded");
+    }
+    return { score: 1, rationale: "Did not crash." };
+  },
+};
+
 const neverSatisfied: Judge<string, Output> = {
   name: "NeverSatisfied",
   assess: () => ({ score: 0.25, rationale: "Advisory only." }),
@@ -105,7 +115,7 @@ describeEval(
   {
     harness: echoHarness,
     judges: [repliesHello],
-    advisoryJudges: [neverSatisfied],
+    advisoryJudges: [neverSatisfied, crashesOnCrash],
   },
   (evalCase) => {
     evalCase(
@@ -124,6 +134,7 @@ describeEval(
         expect(task.meta.eval?.scores.map((score) => score.judge)).toEqual([
           "RepliesHello",
           "NeverSatisfied",
+          "CrashesOnCrash",
         ]);
       }
     );
@@ -148,6 +159,20 @@ describeEval(
           errors: ["harness exploded"],
         });
         expect(task.meta.eval?.output).toBeUndefined();
+      }
+    );
+
+    evalCase(
+      "records the run and the failure when a judge throws",
+      async ({ run, task }) => {
+        await expect(run("crash judge")).rejects.toThrow("judge exploded");
+        expect(task.meta.eval).toMatchObject({
+          harness: "echo",
+          output: { reply: "crash judge" },
+          scores: [],
+          errors: ["judge exploded"],
+          artifacts: { seen: "crash judge" },
+        });
       }
     );
   }
