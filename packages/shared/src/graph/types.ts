@@ -1,3 +1,4 @@
+import type { ExecutionLogStatus } from "#src/graph/execution-log-statuses";
 import type { SerializedWorkflowGraphInput } from "#src/graph/schemas";
 
 export type WorkflowNodeType = "lifecycle" | "action" | "add" | "group";
@@ -82,7 +83,7 @@ export type ExecutionLogEntry = {
   nodeId: string;
   nodeName: string;
   nodeType: string;
-  status: "pending" | "running" | "success" | "error" | "cancelled";
+  status: ExecutionLogStatus;
   input?: unknown;
   output?: unknown;
   startedAt?: Date | string;
