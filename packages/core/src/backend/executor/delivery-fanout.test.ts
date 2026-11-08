@@ -187,7 +187,6 @@ describe("fanOutDelivery", () => {
         workflowId: "wf_1",
         executionId: "exec_new",
         supersededExecutionIds: ["exec_old"],
-        failedToSupersede: [],
       })
     );
     const recorder = recordingStep();

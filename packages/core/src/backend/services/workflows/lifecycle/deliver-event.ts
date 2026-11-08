@@ -106,7 +106,6 @@ export type LifecycleDeliveryOutcome =
       workflowId: string;
       executionId: string;
       supersededExecutionIds: string[];
-      failedToSupersede: string[];
     }
   | {
       kind: "refused";
@@ -485,7 +484,6 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       workflowId: workflow.id,
       executionId: started.executionId,
       supersededExecutionIds: started.supersededExecutionIds,
-      failedToSupersede: started.failedToSupersede,
     };
     return outcome;
   }
@@ -561,7 +559,6 @@ const answerFromCommittedDecision = Effect.fn("answerFromCommittedDecision")(
       workflowId: input.workflowId,
       executionId: committed.id,
       supersededExecutionIds: [],
-      failedToSupersede: [],
     };
     return started;
   }

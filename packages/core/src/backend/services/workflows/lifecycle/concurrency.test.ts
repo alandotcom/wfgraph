@@ -10,7 +10,6 @@ import {
   stubExecutionRepo,
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
-import { DatabaseError } from "#src/backend/lib/effect/database";
 import type { ExecutionDriver } from "#src/backend/services/executions/driver";
 import type { WorkflowVersion } from "#src/backend/lib/db/schema";
 import type {
@@ -156,7 +155,6 @@ describe("startWithConcurrency", () => {
           status: "started",
           executionId: "exec_new",
           supersededExecutionIds: [],
-          failedToSupersede: [],
         });
         assert.strictEqual(repo.calls.length, 1);
         assert.strictEqual(repo.calls[0]?.concurrency, "unlimited");
@@ -281,41 +279,39 @@ describe("startWithConcurrency", () => {
     );
 
     // Supersede-then-start: the transaction that opened and scheduled the new
-    // run flipped the displaced rows, which are then stopped, and their ids come
-    // back so the caller knows not to deliver this Event to their waits.
-    // Announcing is `end-runs`' own; here it is the stop that proves the real
-    // neighbour ran.
-    it.effect("announces the runs the transaction superseded", () =>
-      Effect.gen(function* () {
-        const outcome = yield* startWithConcurrency({
-          workflow,
-          concurrency: "newest-wins",
-          start: eventStart,
-          runMode: "live",
-          payload: {},
-          logger: makeRecordingLogger().logger,
-        }).pipe(
-          Effect.provide(
-            stubStart({
-              status: "started",
-              execution: createExecution(),
-              supersededExecutionIds: ["exec_old"],
-            }).layer
-          )
-        );
+    // run flipped the displaced rows and wrote why each ended, with the reason
+    // this start handed it. Their ids come back so the caller knows not to
+    // deliver this Event to their waits.
+    it.effect(
+      "hands the transaction the reason a displaced run ends with",
+      () =>
+        Effect.gen(function* () {
+          const repo = stubStart({
+            status: "started",
+            execution: createExecution(),
+            supersededExecutionIds: ["exec_old"],
+          });
 
-        assert.deepStrictEqual(outcome, {
-          status: "started",
-          executionId: "exec_new",
-          supersededExecutionIds: ["exec_old"],
-          failedToSupersede: [],
-        });
-        assert.deepInclude(recordAuditEventMock.mock.calls[0]?.[0], {
-          executionId: "exec_old",
-          eventType: "run_superseded",
-          message: "Superseded by a newer start from app/appointment.created",
-        });
-      })
+          const outcome = yield* startWithConcurrency({
+            workflow,
+            concurrency: "newest-wins",
+            start: eventStart,
+            runMode: "live",
+            payload: {},
+            logger: makeRecordingLogger().logger,
+          }).pipe(Effect.provide(repo.layer));
+
+          assert.deepStrictEqual(outcome, {
+            status: "started",
+            executionId: "exec_new",
+            supersededExecutionIds: ["exec_old"],
+          });
+          assert.strictEqual(
+            repo.calls[0]?.supersededReason,
+            "Superseded by a newer start from app/appointment.created"
+          );
+          assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
+        })
     );
 
     // The opening entry names the graph the new row pins, read by the id the
@@ -363,43 +359,6 @@ describe("startWithConcurrency", () => {
         }).pipe(Effect.provide(repo.layer));
 
         assert.strictEqual(repo.calls[0]?.execution.deliveryId, "dlv_4021");
-      })
-    );
-
-    // A timeline entry the database refused leaves a superseded run with no
-    // record of why it ended, so the caller hears about it rather than
-    // reading one clean new run.
-    it.effect("carries a half-recorded supersede back to the caller", () =>
-      Effect.gen(function* () {
-        recordAuditEventMock.mockReturnValue(
-          Effect.fail(new DatabaseError({ cause: "connection lost" }))
-        );
-
-        const outcome = yield* startWithConcurrency({
-          workflow,
-          concurrency: "newest-wins",
-          start: eventStart,
-          runMode: "live",
-          payload: {},
-          logger: makeRecordingLogger().logger,
-        }).pipe(
-          Effect.provide(
-            stubStart({
-              status: "started",
-              execution: createExecution(),
-              supersededExecutionIds: ["exec_old"],
-            }).layer
-          )
-        );
-
-        assert.deepStrictEqual(
-          outcome.status === "started" ? outcome.failedToSupersede : [],
-          ["exec_old"]
-        );
-        assert.strictEqual(
-          recordAuditEventMock.mock.calls[0]?.[0].executionId,
-          "exec_old"
-        );
       })
     );
   });

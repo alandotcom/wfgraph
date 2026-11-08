@@ -398,7 +398,6 @@ describe("applyLifecycleRules", () => {
           workflowId: "wf_1",
           executionId: "exec_new",
           supersededExecutionIds: [],
-          failedToSupersede: [],
         });
         assert.strictEqual(
           startRunMock.mock.calls[0]?.[0].execution.entityValue,

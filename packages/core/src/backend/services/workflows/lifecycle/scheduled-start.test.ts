@@ -219,7 +219,6 @@ describe("fireSchedule", () => {
             slot: SLOT,
             nextWakeAt: NEXT_WAKE,
             superseded: 0,
-            failedToSupersede: [],
           });
           const [request] = services.fired;
           assert.deepStrictEqual(request?.expected, {

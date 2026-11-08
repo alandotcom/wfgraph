@@ -9,10 +9,7 @@ import {
   stubExecutionRepo,
 } from "#src/backend/lib/effect/test-layers";
 import type { ExecutionRepo } from "#src/backend/services/executions/repo";
-import {
-  announceSupersededRuns,
-  cancelInFlightRuns,
-} from "#src/backend/services/executions/end-runs";
+import { cancelInFlightRuns } from "#src/backend/services/executions/end-runs";
 
 type Repo = ExecutionRepo["Service"];
 
@@ -228,42 +225,5 @@ describe("cancelInFlightRuns", () => {
           claimedExecutionIds: [],
         });
       })
-  );
-});
-
-// The rows are already terminal when this runs -- the entity lock flipped them
-// and deleted their schedule rows -- so there is no compare-and-set here and no
-// lost race to report. What is left is the timeline.
-describe("announceSupersededRuns", () => {
-  it.effect("says on each displaced run's timeline why it ended", () =>
-    Effect.gen(function* () {
-      const summary = yield* announceSupersededRuns({
-        workflowId: "workflow_1",
-        executionIds: ["exec_old"],
-        reason: "Superseded by a newer start from appointment.rescheduled",
-        eventName: "appointment.rescheduled",
-      }).pipe(Effect.provide(services));
-
-      assert.strictEqual(endInFlight.mock.calls.length, 0);
-      assert.strictEqual(
-        recordAuditEvent.mock.calls.at(0)?.[0]?.eventType,
-        "run_superseded"
-      );
-      assert.deepStrictEqual(summary, { failedExecutionIds: [] });
-    })
-  );
-
-  it.effect("names the runs whose timeline entry was refused", () =>
-    Effect.gen(function* () {
-      recordAuditEvent.mockImplementationOnce(refusedWrite);
-
-      const summary = yield* announceSupersededRuns({
-        workflowId: "workflow_1",
-        executionIds: ["exec_old"],
-        reason: "Superseded by a newer start",
-      }).pipe(Effect.provide(services));
-
-      assert.deepStrictEqual(summary, { failedExecutionIds: ["exec_old"] });
-    })
   );
 });

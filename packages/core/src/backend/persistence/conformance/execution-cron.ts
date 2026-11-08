@@ -863,6 +863,9 @@ export function describeExecutionCronConformance({
             firstSchedule: yield* executions.findSchedule({
               executionId: firstRunId,
             }),
+            firstSuperseded: (yield* executions.listEvents(firstRunId))
+              .filter((event) => event.eventType === "run_superseded")
+              .map(({ message, metadata }) => ({ message, metadata })),
           };
         })
       );
@@ -877,6 +880,9 @@ export function describeExecutionCronConformance({
       });
       expect(result.firstStatus?.status).toBe("superseded");
       expect(result.firstSchedule).toBeNull();
+      expect(result.firstSuperseded).toEqual([
+        { message: "Superseded by a newer start", metadata: {} },
+      ]);
     });
 
     it("deletes a timer whose schedule the published version no longer declares, and fires nothing", async () => {

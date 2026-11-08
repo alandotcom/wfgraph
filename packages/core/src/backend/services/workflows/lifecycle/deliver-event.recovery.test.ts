@@ -468,7 +468,6 @@ describe("a delivery retried after its Execution was committed", () => {
     workflowId: "wf_1",
     executionId: "exec_winner",
     supersededExecutionIds: [],
-    failedToSupersede: [],
   };
 
   /** Rules that name no Start Event at all, as an unpublish-and-republish left them. */

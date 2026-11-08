@@ -17,7 +17,10 @@ import {
   isEntityEligibilityReason,
   type EntityEligibilityReason,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import { recordAuditEventWrite } from "#src/backend/services/executions/repo/audit";
+import {
+  recordAuditEventsWrite,
+  recordAuditEventWrite,
+} from "#src/backend/services/executions/repo/audit";
 import { endedRunColumns } from "#src/backend/services/executions/repo/runs";
 import {
   endExecutions,
@@ -193,8 +196,9 @@ export async function admitStart(
  * Decides a start that consults no Entity admission decision and opens its
  * run, in the caller's transaction, as `admitStart` describes. The delivery's
  * own row answers first. First-wins refuses a start while a run for the
- * entity is in flight, and newest-wins ends those runs `superseded`, settling
- * their schedule and wait rows, before it opens the new one.
+ * entity is in flight, and newest-wins ends those runs `superseded`, writing
+ * each one's `run_superseded` entry and settling its schedule and wait rows,
+ * before it opens the new one.
  */
 export async function admitWithConcurrency(
   tx: WfGraphTransaction,
@@ -254,6 +258,15 @@ export async function admitWithConcurrency(
             )
             .returning({ id: workflowExecutions.id });
           const ended = superseded.map((row) => row.id);
+          await recordAuditEventsWrite(
+            ended.map((executionId) => ({
+              workflowId: execution.workflowId,
+              executionId,
+              eventType: "run_superseded",
+              message: input.supersededReason,
+              metadata: { eventName: execution.startEventName },
+            }))
+          )(inner);
           return { result: ended, ended };
         });
 

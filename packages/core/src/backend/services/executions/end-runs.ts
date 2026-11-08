@@ -1,17 +1,11 @@
 /**
- * Ending a run from outside it, which happens two ways and in two orders.
+ * Canceling a run from outside it: the row flips behind a compare-and-set, and
+ * a run that finished or claimed termination first keeps its own outcome.
  *
- * A cancel decides and then acts: the row flips behind a compare-and-set, and
- * a run that finished or claimed termination first keeps its own outcome. A
- * supersede has already been decided: `ExecutionRepo.startForEntity` flips
- * those rows inside the lock that made room for the newer start, so all that
- * is left is saying why on their timelines.
- *
- * The terminal write cancels the run's open wait rows and deletes its schedule
- * row in its own transaction, so a pass holding the run has its next fenced
- * write refused with `LeaseLost`. A cancel's write carries the run's
- * `run_cancelled` entry, so the database commits or refuses both, and a
- * refused one is reported in the ids the cancel returns.
+ * The terminal write carries the run's `run_cancelled` entry, cancels its open
+ * wait rows and deletes its schedule row in its own transaction, so a pass
+ * holding the run has its next fenced write refused with `LeaseLost`. A write
+ * the database refuses is reported in the ids the cancel returns.
  */
 
 import { Effect } from "effect";
@@ -97,38 +91,6 @@ const recordEndingFailure = Effect.fn("recordEndingFailure")(function* (input: {
           run: { execution: input.executionId },
           error: failure.cause,
         })
-      )
-    );
-});
-
-const recordRunEnded = Effect.fn("recordRunEnded")(function* (input: {
-  workflowId: string;
-  executionId: string;
-  eventType: "run_superseded";
-  reason: string;
-  eventName?: string | undefined;
-}) {
-  const repo = yield* ExecutionRepo;
-  const logger = yield* loggerFor(input.workflowId);
-
-  return yield* repo
-    .recordAuditEvent({
-      workflowId: input.workflowId,
-      executionId: input.executionId,
-      eventType: input.eventType,
-      message: input.reason,
-      metadata: { eventName: input.eventName },
-    })
-    .pipe(
-      Effect.as(true),
-      Effect.catchTag("DatabaseError", (failure) =>
-        logger
-          .error("Failed to record the end of an execution", {
-            run: { execution: input.executionId },
-            event: { name: input.eventName },
-            error: failure.cause,
-          })
-          .pipe(Effect.as(false))
       )
     );
 });
@@ -238,42 +200,3 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
 
   return runEndOutcome("ended", executionId);
 });
-
-/**
- * Records what ended the runs newest-wins Concurrency displaced.
- *
- * Those rows, their wait rows and their schedule rows were all written inside
- * the lock that made room for the newer start, so there is no compare-and-set
- * here: this is the announcement half of a decision already made. Answers the
- * runs whose timeline entry the database refused.
- */
-export const announceSupersededRuns = Effect.fn("announceSupersededRuns")(
-  function* (input: {
-    workflowId: string;
-    executionIds: string[];
-    reason: string;
-    eventName?: string | undefined;
-  }) {
-    const outcomes = yield* Effect.forEach(
-      uniq(input.executionIds),
-      (executionId) =>
-        Effect.map(
-          recordRunEnded({
-            workflowId: input.workflowId,
-            executionId,
-            eventType: "run_superseded",
-            reason: input.reason,
-            eventName: input.eventName,
-          }),
-          (recorded) => ({ executionId, failed: !recorded })
-        ),
-      { concurrency: "unbounded" }
-    );
-
-    return {
-      failedExecutionIds: outcomes
-        .filter((entry) => entry.failed)
-        .map((entry) => entry.executionId),
-    };
-  }
-);
