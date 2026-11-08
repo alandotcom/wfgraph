@@ -292,6 +292,16 @@ function serveRunRequests(options: {
   vi.spyOn(globalThis, "fetch").mockImplementation(
     async (url: RequestInfo | URL, init?: RequestInit) => {
       const path = extractRpcProcedurePath(rpcUrl(url));
+      // The started run's first status read belongs to the Runs view the
+      // start opens, not to the run command these cases describe.
+      if (path === "workflow/getExecutionStatus") {
+        return rpcJsonResponse({
+          status: "running",
+          nodeStatuses: [],
+          openWaitNodeIds: [],
+          retryingNodeIds: [],
+        });
+      }
       const input = await parseRpcRequestInput(init);
       requests.push({ path, input });
       if (path === "workflow/update") {

@@ -24,6 +24,8 @@ import {
   type WorkflowIssuePreflightResult,
 } from "#src/hooks/use-workflow-issue-preflight";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import { can } from "#src/lib/authorization";
 import {
   orpcQuery,
   refreshRunHistory,
@@ -167,7 +169,7 @@ export function useWorkflowHandlers({
     isExecuting,
     nodes,
     publication,
-    setIsExecuting,
+    setRunStartInFlight,
     updateNodeData,
     workflowMode,
   } = state;
@@ -206,6 +208,20 @@ export function useWorkflowHandlers({
       orpcQuery.workflow.getById.queryOptions({ input: { workflowId } })
     );
     setCurrentWorkflowMode(workflow.mode);
+  };
+
+  /** The status read `RunStatusProjection` polls, shared through the cache. */
+  const readFirstRunStatus = async (executionId: string) => {
+    if (!can(WfGraphOperations.workflowGetExecutionStatus.id)) {
+      return;
+    }
+    await queryClient
+      .query(
+        orpcQuery.workflow.getExecutionStatus.queryOptions({
+          input: { executionId },
+        })
+      )
+      .catch(() => undefined);
   };
 
   // No errorMessage: a rejected run carries a server message worth reading, and
@@ -278,40 +294,46 @@ export function useWorkflowHandlers({
     // run's pinned graph arrives.
     setExecutionOverlay(null);
 
-    setIsExecuting(true);
-    await executeWorkflowRun({
-      runWorkflow: () =>
-        runWorkflow.mutateAsync(
-          omitUndefined({
-            workflowId: currentWorkflowId,
-            input: request.input,
-            eventName: request.eventName,
-            // An absent field means the published graph, on the wire and in the UI.
-            graph: target.graph === "draft" ? ("draft" as const) : undefined,
-            // What the run dialog displayed. The server refuses the run when the
-            // published version or the Published mode has moved since, so a
-            // dialog left open across a publish or a mode change cannot start a
-            // run for a graph or a set of recipients nobody saw.
-            expected:
-              target.graph === "published" && publishedVersionId
-                ? { versionId: publishedVersionId, mode: target.workflowMode }
-                : undefined,
-          })
-        ),
-      nodes,
-      setNodeStatuses,
-      setIsExecuting,
-      runLabel: runCommandLabel(target),
-      // The URL is the one writer of which run is open; the run selection and
-      // the pinned-graph overlay are derived from it.
-      navigateToExecution: (executionId) =>
-        navigate({
-          to: "/workflows/$workflowId",
-          params: { workflowId: currentWorkflowId },
-          search: { view: "runs", executionId },
-        }),
-    });
-    // Don't set executing to false here - let polling handle it
+    setRunStartInFlight(true);
+    try {
+      await executeWorkflowRun({
+        runWorkflow: () =>
+          runWorkflow.mutateAsync(
+            omitUndefined({
+              workflowId: currentWorkflowId,
+              input: request.input,
+              eventName: request.eventName,
+              // An absent field means the published graph, on the wire and in the UI.
+              graph: target.graph === "draft" ? ("draft" as const) : undefined,
+              // What the run dialog displayed. The server refuses the run when the
+              // published version or the Published mode has moved since, so a
+              // dialog left open across a publish or a mode change cannot start a
+              // run for a graph or a set of recipients nobody saw.
+              expected:
+                target.graph === "published" && publishedVersionId
+                  ? { versionId: publishedVersionId, mode: target.workflowMode }
+                  : undefined,
+            })
+          ),
+        nodes,
+        setNodeStatuses,
+        runLabel: runCommandLabel(target),
+        // The URL is the one writer of which run is open; the run selection and
+        // the pinned-graph overlay are derived from it. The start stays in
+        // flight through the started run's first status read, so Run is never
+        // free while the run it just started reads as unknown.
+        navigateToExecution: async (executionId) => {
+          await navigate({
+            to: "/workflows/$workflowId",
+            params: { workflowId: currentWorkflowId },
+            search: { view: "runs", executionId },
+          });
+          await readFirstRunStatus(executionId);
+        },
+      });
+    } finally {
+      setRunStartInFlight(false);
+    }
   };
 
   /**

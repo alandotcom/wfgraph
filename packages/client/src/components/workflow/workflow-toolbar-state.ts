@@ -19,6 +19,7 @@ import {
 import {
   clearWorkflowAtom,
   edgesAtom,
+  isExecutingAtom,
   nodesAtom,
   type NodeDataUpdate,
   updateNodeDataAtom,
@@ -39,7 +40,10 @@ import {
   hasUnsavedChangesAtom,
   isSavingAtom,
 } from "#src/lib/workflow-save-store";
-import { isExecutingAtom, isGeneratingAtom } from "#src/lib/workflow-ui-store";
+import {
+  isGeneratingAtom,
+  runStartInFlightAtom,
+} from "#src/lib/workflow-ui-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 /** The operations that directly determine a workflow toolbar control. */
@@ -112,7 +116,7 @@ export type WorkflowToolbarState = WorkflowToolbarCapabilities & {
   publication: ReturnType<typeof selectPublicationState> | undefined;
 
   // The writers behind the toolbar's controls.
-  setIsExecuting: (value: boolean) => void;
+  setRunStartInFlight: (value: boolean) => void;
   clearWorkflow: () => void;
   updateNodeData: (update: NodeDataUpdate) => void;
   undo: () => void;
@@ -124,7 +128,8 @@ export type WorkflowToolbarState = WorkflowToolbarCapabilities & {
 export function useWorkflowToolbarState(): WorkflowToolbarState {
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
-  const [isExecuting, setIsExecuting] = useAtom(isExecutingAtom);
+  const isExecuting = useAtomValue(isExecutingAtom);
+  const setRunStartInFlight = useSetAtom(runStartInFlightAtom);
   const [isGenerating] = useAtom(isGeneratingAtom);
   const clearWorkflow = useSetAtom(clearWorkflowAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
@@ -157,7 +162,7 @@ export function useWorkflowToolbarState(): WorkflowToolbarState {
     nodes,
     edges,
     isExecuting,
-    setIsExecuting,
+    setRunStartInFlight,
     isGenerating,
     clearWorkflow,
     updateNodeData,

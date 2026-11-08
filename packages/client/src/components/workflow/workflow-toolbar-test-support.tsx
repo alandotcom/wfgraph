@@ -90,7 +90,7 @@ export function state(): WorkflowToolbarState {
     nodes,
     edges: [],
     isExecuting: false,
-    setIsExecuting: vi.fn(),
+    setRunStartInFlight: vi.fn(),
     isGenerating: false,
     clearWorkflow: vi.fn(),
     updateNodeData: vi.fn(),

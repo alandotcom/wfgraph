@@ -79,7 +79,6 @@ describe("executeWorkflowRun", () => {
       ),
       nodes: [] as WorkflowNode[],
       setNodeStatuses: vi.fn(),
-      setIsExecuting: vi.fn(),
       runLabel: "Run draft",
       navigateToExecution: vi.fn(async () => {}),
       ...overrides,
@@ -170,7 +169,6 @@ describe("executeWorkflowRun", () => {
   // open, rather than being cleared.
   it("resets every node to idle and leaves the URL alone when the run was ignored", async () => {
     const setNodeStatuses = vi.fn();
-    const setIsExecuting = vi.fn();
     const navigateToExecution = vi.fn(async () => {});
     const runWorkflow = vi.fn(async (): Promise<WorkflowExecuteResult> => ({
       status: "ignored",
@@ -183,7 +181,6 @@ describe("executeWorkflowRun", () => {
         runWorkflow,
         nodes: [lifecycleNode("t")],
         setNodeStatuses,
-        setIsExecuting,
         navigateToExecution,
       })
     );
@@ -192,14 +189,12 @@ describe("executeWorkflowRun", () => {
       { nodeId: "t", status: "none" },
     ]);
     expect(navigateToExecution).not.toHaveBeenCalled();
-    expect(setIsExecuting).toHaveBeenCalledWith(false);
   });
 
   // Same decision, the other branch that starts nothing: the mutation itself
   // failed, so there is likewise no new execution for the URL to point at.
   it("marks every node error and leaves the URL alone when the run mutation rejects", async () => {
     const setNodeStatuses = vi.fn();
-    const setIsExecuting = vi.fn();
     const navigateToExecution = vi.fn(async () => {});
     const runWorkflow = vi.fn(async (): Promise<WorkflowExecuteResult> => {
       throw new Error("boom");
@@ -210,7 +205,6 @@ describe("executeWorkflowRun", () => {
         runWorkflow,
         nodes: [lifecycleNode("t"), actionNode("a")],
         setNodeStatuses,
-        setIsExecuting,
         navigateToExecution,
       })
     );
@@ -220,6 +214,5 @@ describe("executeWorkflowRun", () => {
       { nodeId: "a", status: "error" },
     ]);
     expect(navigateToExecution).not.toHaveBeenCalled();
-    expect(setIsExecuting).toHaveBeenLastCalledWith(false);
   });
 });

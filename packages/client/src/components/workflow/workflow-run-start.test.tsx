@@ -42,6 +42,7 @@ import {
 import {
   extractRpcProcedurePath,
   parseRpcRequestInput,
+  rpcErrorResponse,
   rpcJsonResponse,
   rpcUrl,
 } from "#src/lib/rpc-fetch-test-support";
@@ -282,6 +283,37 @@ describe("starting a run with another run open", () => {
           status: "ignored",
           runMode: "test",
           reason: "workflow_paused",
+        })
+      );
+      await heldExecute.promise;
+    });
+    await waitFor(() => expect(busy().textContent).toBe("false"));
+  });
+
+  it("frees Run once the start request fails", async () => {
+    const { view } = await renderWithOpenRun({
+      view: "runs",
+      executionId: "exec_a",
+    });
+    const busy = () => view.getByRole("status", { name: "run busy" });
+
+    fireEvent.click(view.getByRole("button", { name: "Run published" }));
+    await waitFor(() =>
+      expect(
+        view.getByRole("status", { name: "overlay count" }).textContent
+      ).toBe("1")
+    );
+    fireEvent.click(view.getByRole("button", { name: "Confirm run" }));
+    await waitFor(() => expect(executeCalls).toHaveLength(1));
+    expect(busy().textContent).toBe("true");
+
+    await act(async () => {
+      heldExecute.resolve(
+        rpcErrorResponse({
+          code: "INTERNAL_SERVER_ERROR",
+          status: 500,
+          message: "boom",
+          data: { error: "boom" },
         })
       );
       await heldExecute.promise;

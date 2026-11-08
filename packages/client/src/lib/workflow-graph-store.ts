@@ -106,6 +106,7 @@ export {
   canvasNodesAtom,
   clearNodeStatusesAtom,
   displayNodesAtom,
+  isExecutingAtom,
   isExecutionOverlayActiveAtom,
   presentedGraphAtom,
   presentedGraphStructureAtom,
