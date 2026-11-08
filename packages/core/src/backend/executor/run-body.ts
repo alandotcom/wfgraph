@@ -9,6 +9,7 @@
 import { Effect } from "effect";
 import { executeWorkflow } from "#src/backend/engine/core";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
+import { outsideGraphAnnouncement } from "#src/backend/engine/terminal-record";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import {
   noWorkflowEntities,
@@ -84,16 +85,50 @@ function endUnavailableRun(
   writes: RunPassWrites,
   executionId: string,
   unavailable: RunInputUnavailable
-): Effect.Effect<void, DatabaseError | LeaseLost> {
+): Effect.Effect<void, DatabaseError | LeaseLost, ExecutionRepo> {
   if (unavailable.reason === "missing_version") {
-    return writes
-      .finishRun({ executionId, status: "failed", error: unavailable.message })
-      .pipe(Effect.asVoid);
+    return Effect.gen(function* () {
+      const end = yield* endingOutsideGraph(
+        writes,
+        executionId,
+        unavailable.message
+      );
+      if (end !== null) yield* end("failed");
+    });
   }
   if (unavailable.reason === "not_in_flight") {
     return writes.dropSchedule();
   }
   return Effect.void;
+}
+
+/**
+ * The terminal write of a run ended without walking its graph, as the status
+ * the caller names, with `error` and the timeline entry that says so. Null
+ * when the run's row is gone.
+ */
+function endingOutsideGraph(
+  writes: RunPassWrites,
+  executionId: string,
+  error: string
+) {
+  return Effect.gen(function* () {
+    const executions = yield* ExecutionRepo;
+    const run = yield* executions.findSummaryById(executionId);
+    if (run === null) return null;
+    return (status: "failed" | "canceled" | "exited") =>
+      writes.finishRun({
+        executionId,
+        status,
+        error,
+        announcement: outsideGraphAnnouncement({
+          workflowId: run.workflowId,
+          runMode: run.runMode,
+          status,
+          error,
+        }),
+      });
+  });
 }
 
 /**
@@ -103,11 +138,9 @@ function endUnavailableRun(
  */
 function failRun(writes: RunPassWrites, executionId: string, error: string) {
   return Effect.gen(function* () {
-    const written = yield* writes.finishRun({
-      executionId,
-      status: "failed",
-      error,
-    });
+    const end = yield* endingOutsideGraph(writes, executionId, error);
+    if (end === null) return;
+    const written = yield* end("failed");
     const claim = written?.claim;
     if (
       written === null ||
@@ -118,10 +151,6 @@ function failRun(writes: RunPassWrites, executionId: string, error: string) {
     ) {
       return;
     }
-    yield* writes.finishRun({
-      executionId,
-      status: claim.kind === "cancel" ? "canceled" : "exited",
-      error,
-    });
+    yield* end(claim.kind === "cancel" ? "canceled" : "exited");
   });
 }
