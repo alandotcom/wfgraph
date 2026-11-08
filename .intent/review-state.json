@@ -958,15 +958,15 @@
       ]
     },
     "source:packages/core/src/backend/lib/db/schema.ts": {
-      "fingerprint": "c5d6eab057b6cad5a130a363d308844e0651062090b5889818d3751c0bf68467",
+      "fingerprint": "809194a87a01325b73002cf570a1038fd39e352add7745bd616df10293e1a0b5",
       "snapshot": {
-        "packages/core/src/backend/lib/db/schema.ts": "ff5780db1a5c1dec396693f29e705daa43a3713f4d6c7ba9870f6c59bd87607f"
+        "packages/core/src/backend/lib/db/schema.ts": "3b3242b7f7a7b422cd82e7518b15a2e7f4f2cdf466eeffe6872438aac9301696"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
       "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-fencing.ts": {
@@ -994,51 +994,51 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-waits.ts": {
-      "fingerprint": "d498436301912f508036fb3a46d48680d34eebb5d2934d6756f2fa569cb93f54",
+      "fingerprint": "5274d71450de00e3228506eeb403a9dc01116a48a9432fbd8419767f523c83ed",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-waits.ts": "7474cd868b88b30ab043301bcb21d90d997d91d57edae9e565c52d42069df57b"
+        "packages/core/src/backend/persistence/conformance/execution-waits.ts": "1eced6ee68cebd9eae57ac8533b4e633676ffd0bfb4dc6ad9897d2a103f922c3"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/executions.ts": {
-      "fingerprint": "11e93f903b4fbc7d9fe978d031c6d2186678a49fd762a1a899cb056a56f721ae",
+      "fingerprint": "4a1bbfceaba60fa31a04251397515e5c844db3be57d8d0191da98814c5842005",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/executions.ts": "f76e4f8efaf9ff7bb091eb2d9c1fc3a3fcda6e49cd3deb813b8a52165566ab4b"
+        "packages/core/src/backend/persistence/conformance/executions.ts": "d6c4d90c901fe619a358d77e2c0835fbcb6e0520d2bc8cc059130aea32132154"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/integrations.ts": {
-      "fingerprint": "4a6ffb9b828598840edf06b51ee11e9f3a6490391d7b779301def36d1e46fda1",
+      "fingerprint": "27ff43bffad966982ab522147873069e29fb5e1ae6f7d6db8912b22624748f37",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/integrations.ts": "0a83fe13712254ebcbb83a325667bb8693ab6b21b9bf00a9bde21b0e2a87dd8d"
+        "packages/core/src/backend/persistence/conformance/integrations.ts": "87ab3dc4a2e4a06b3d85549941adabd448f30d2598c313c3464f848817553eb6"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite.integrations.test.ts": {
-      "fingerprint": "9679bee8aab5f8c01bda4ac107cf9df9f71346e7140d1cdef4cdfe3b6fdec735",
+      "fingerprint": "5e5cad0c67bfdc5cbde14489327223bb1401219703e74d54b5ae05e604beebed",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite.integrations.test.ts": "00b809e911b4a93e45a82f1f611fa27dfb958a6d6398aa1c0b3faa926f2ac17b"
+        "packages/core/src/backend/persistence/sqlite.integrations.test.ts": "f7b51340286909316d2bb05c041bda0c96b588d20450732ac73575793ac99e6c"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/admission.ts": {
@@ -1414,27 +1414,27 @@
       ]
     },
     "source:packages/shared/src/graph/types.ts": {
-      "fingerprint": "b7590d0782bd8e01f95890b007d58d7c171ada91eb3acb0eb373cc9ff4b1b1de",
+      "fingerprint": "bc76bb5e450cc7c2af2f950e0221f8f0c6c1a0678b5e0ee0b4f2ec1fd222d801",
       "snapshot": {
-        "packages/shared/src/graph/types.ts": "8f66341b370cba3dad0825518fbcbabb846082f2efc4f5855b8a0870610b79d6"
+        "packages/shared/src/graph/types.ts": "ebf4c66902f702482bc37218e23a3bbcecacada46b67b429572d2a8908508c50"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
       "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
       ]
     },
     "source:packages/shared/src/lifecycle/execution-contracts.ts": {
-      "fingerprint": "71737156f9c0cbeaa7a02c9075a067118086dab52eb180eb04eb8f583fce0371",
+      "fingerprint": "0984c4c8e0ca3d4720b4322dbda5430dd14ec97a60a078a1b234ee6671eec769",
       "snapshot": {
-        "packages/shared/src/lifecycle/execution-contracts.ts": "ab3f91b8889c8d3b037d07481fc662e621e97d42069681df1e88a3d856c0ad75"
+        "packages/shared/src/lifecycle/execution-contracts.ts": "c8bdcf90fb5624ffad2fe958b19f84d2353a0fa2bbd15e5751b2859c687a9bee"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
       "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
       ]
     },
     "source:packages/shared/src/lifecycle/wait-subscription.test.ts": {
@@ -1474,15 +1474,279 @@
       ]
     },
     "source:packages/shared/src/rpc/contracts/workflows.ts": {
-      "fingerprint": "510de3d1e729ef7e585a1e6a4fe5d00d0a26a1c2aef6250fc10781e63fb60a5c",
+      "fingerprint": "05d0e9fc5fd9b5e2200232131a96b53eaf4270edc25c5f69598a8e4fa52deb30",
       "snapshot": {
-        "packages/shared/src/rpc/contracts/workflows.ts": "0491c3d7dd5b89288966bc92326f9084ebdf5f6510060e9554a367dfa9b96c28"
+        "packages/shared/src/rpc/contracts/workflows.ts": "b34488ca7e796a249d79d2fdb44b89fdd599e92282373b628f4f148823b315b4"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
       "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-run-detail.test.tsx": {
+      "fingerprint": "355f235844bd2e610482cbdec2baf0c61da853d3956d0390bcf540cccc94b655",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-run-detail.test.tsx": "801427f60d28c267104daf79e244e499d67bf8732bb1ca94e292847ff6b060c4"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-run-shared.tsx": {
+      "fingerprint": "71cb07e996a28e7174f34f2cf21783185c9bb6d26fa46321bcd1f4c23d73e307",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-run-shared.tsx": "6f6b667e22310c39ba130a8b4cddddbf372c34d0a852f4b30f67823ca2b687d2"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-run-summary-row.tsx": {
+      "fingerprint": "6a01fa200a676613cf6e805be3812251eb9ebeafe5535b5699c26125a2fa3984",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-run-summary-row.tsx": "40edfa412c018b78088502741a13f690f828cab86cde5063b3caa05c573f57c3"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/client/src/lib/run-history-filters.ts": {
+      "fingerprint": "d31fee96381769a9ab2ac91ec247511549006d641038cfa81f84d70580471f0b",
+      "snapshot": {
+        "packages/client/src/lib/run-history-filters.ts": "b248e34f5af033ad52b71bfc663f3fa8c47da547c30e7496eb49c68444e35965"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/drizzle-sqlite/20261108195313_row_state_constraints/migration.sql": {
+      "fingerprint": "9a92352e86701c44eb2fe7e995b00cace16c710781aa4a14fee9d429e1071449",
+      "snapshot": {
+        "packages/core/drizzle-sqlite/20261108195313_row_state_constraints/migration.sql": "10fd4b19e4a2e2696b7f6e60e581669d29b3cea93ccbb282e1c1f7fd839ff163"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "no-change",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "evidence": [
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/drizzle-sqlite/20261108195313_row_state_constraints/snapshot.json": {
+      "fingerprint": "242ce645c3a9ffefb7ad12d2fea8d327b3882a4cedc7c9e5dc40d947b5cf5d1c",
+      "snapshot": {
+        "packages/core/drizzle-sqlite/20261108195313_row_state_constraints/snapshot.json": "83191522ff791776e3a0efc27772c6d2f05777ce6584e620e43afcb41e344d53"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "no-change",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "evidence": [
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/drizzle/20261108195312_row_state_constraints/migration.sql": {
+      "fingerprint": "52db6207a37f0f6ad1186f6265bfdc28da6b8527ca7d8b845caef71a2587920a",
+      "snapshot": {
+        "packages/core/drizzle/20261108195312_row_state_constraints/migration.sql": "332e1857ebf4bed27aaf1690846b17576b9a4f305892981e7c42bc62a2d7379c"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "no-change",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "evidence": [
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/drizzle/20261108195312_row_state_constraints/snapshot.json": {
+      "fingerprint": "21c3a00eea7efd9298dc41b826e37ede89a45128a1220ffea00e1aaaf21ef210",
+      "snapshot": {
+        "packages/core/drizzle/20261108195312_row_state_constraints/snapshot.json": "82c561e37b1dec68997f9040e3a1460564726b0ff8c312d9cadf0f6f26d94ecb"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "no-change",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "evidence": [
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/engine/recording-store.ts": {
+      "fingerprint": "b3553711777c3e8b4c2eb1c002fd28e6a772b1fca81cf1cabc584af6d76073dd",
+      "snapshot": {
+        "packages/core/src/backend/engine/recording-store.ts": "bb8760b94a7cf5aa91d99ac0a6d5aa82c1c863207e6fdca2591b1868acd8bd57"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "no-change",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "evidence": [
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/lib/db/migrations-sql.test.ts": {
+      "fingerprint": "ae4a991d143924a366db6eff85ed1add3f1eade4e7359189cdd7d074b868d4d7",
+      "snapshot": {
+        "packages/core/src/backend/lib/db/migrations-sql.test.ts": "def991437c3caf44c88af8787c2f8b3f048fdc5f0332420cfa49dcc353d8a420"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/lib/db/schema.test.ts": {
+      "fingerprint": "f98184ec585488c47dcede7249f6d943ed242ec157aa45490cb998a253c58964",
+      "snapshot": {
+        "packages/core/src/backend/lib/db/schema.test.ts": "6965820305b2efa9b072b0456a8c1fdb5cf13b39dd4060f1f40e527040530215"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/execution-cron.ts": {
+      "fingerprint": "1c6ba904651b00741b0102609a1395f1728c7f14c74c1c2883874214664f63f1",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/execution-cron.ts": "94cb0a479029c87ed67d2c144941cfd7692a321c2f68aba32aa147ac2b9cbcb1"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/execution-schedule.ts": {
+      "fingerprint": "168b6fdca638126cadad0bfbc81f537761f149e8c401dd5d07316c6aa80f7a86",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/execution-schedule.ts": "fe6f2a6aa152547c1d9aff0da26e5bb86d4987c69248525756e771101ecce94a"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/schedule-support.ts": {
+      "fingerprint": "f349c22e752f7e1db284968362aefe89c2c92a7c2504f519f5077b3fb35cf91c",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/schedule-support.ts": "169ff8f970299a0d57a842098cf434f9870b3a13772c81b8291f56a42bae26b8"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/workflows.ts": {
+      "fingerprint": "85eb60184ec6f1c53aa80cdf64a45805fcea6884b71416cba15845aed805dd14",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/workflows.ts": "3b83f7af41c8d45aa145c4db936bd4eca5c919d085dc2dee7f542f47b02faa72"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": {
+      "fingerprint": "654fd15736f842d661cb2e1accf4ee532b8f63879b4f7d81fec678f5b3c4e1e7",
+      "snapshot": {
+        "packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": "46432c4a702cd316d5d7c69e98d916363717d89bdb9375611aa425663f8bff7c"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/postgres-migrations.pg.test.ts": {
+      "fingerprint": "4b02f8a1b968dd3e2cd662ab97bb741cdc08d6973f29b9f13f753e8838df7009",
+      "snapshot": {
+        "packages/core/src/backend/persistence/postgres-migrations.pg.test.ts": "b75e5cc0752dd15ed1deff9b0db2688b359d70f61292382f332a822487b5dc5f"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "out-of-scope",
+      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "evidence": [
+        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/executions/rows.ts": {
+      "fingerprint": "fc0797109dcc8c2366837351787e66702ca87ef77bb0a6fbfa49ce24bc73be0c",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/executions/rows.ts": "b230387e23727b93a3fa04c8170915b3a017103a35ea8e04874649352bb454f5"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "no-change",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "evidence": [
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/generated-migrations.ts": {
+      "fingerprint": "266cce87c012d8230132ea515b2b5c347b77a44350558dcad7db8b103b91e12d",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/generated-migrations.ts": "7394ef80e79f0652d36c935b690e661863a2d0aa37de6a4cab421d46c141e13b"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "no-change",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "evidence": [
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/migrations.ts": {
+      "fingerprint": "9606a09cc87a03ea6b0941db82124cedeb6ac847b008525c0d966c9df22a1eb1",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/migrations.ts": "71abfe3acc292bf732621124a4cacbcb1ec516401c26c0b50f90a746872305e0"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "no-change",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "evidence": [
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/schema.ts": {
+      "fingerprint": "0daaf409c2081089cc9d7929b6e1a652df4f73f24c0cf30b3756d139504234c1",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/schema.ts": "00d44f662919cb83bc0d1307fd67d3b3f45696f1701191fdd93ffa9b621af95f"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "no-change",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "evidence": [
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+      ]
+    },
+    "source:packages/shared/src/lifecycle/execution-schedule.ts": {
+      "fingerprint": "c6f0adf684c1c67e5b487c56caf7f92b4ffcaedb19a254ab1906b3d357bf47f1",
+      "snapshot": {
+        "packages/shared/src/lifecycle/execution-schedule.ts": "0e65747300b9818d58b1357a20c0ffc019cb1dfd2372ee9a29053530d9a79d20"
+      },
+      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "outcome": "no-change",
+      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "evidence": [
+        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
       ]
     }
   }
