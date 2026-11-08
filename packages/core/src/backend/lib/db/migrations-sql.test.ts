@@ -96,12 +96,10 @@ describe("the generated migrations", () => {
       `CREATE INDEX "workflow_execution_events_workflow_type_created_at_idx" ON "workflow_execution_events" ("workflow_id","event_type","created_at")`
     );
   });
-  // The version sweep at publish is the first thing that deletes a
-  // workflow_versions row, and published_version_id is `on delete set null`, so
-  // Postgres runs that action for every version deleted whether a referrer
-  // exists or not. Without this index it scans the whole workflows table each
-  // time, and the sweep also asks the same question in its own predicate.
-  it("index the published_version_id a workflow_versions delete sets null", async () => {
+  // Postgres checks published_version_id's foreign key for every version
+  // deleted, whether a referrer exists or not. Without this index it scans the
+  // whole workflows table each time.
+  it("index the published_version_id every workflow_versions delete checks", async () => {
     const sql = (await readMigrations())
       .map((migration) => migration.sql)
       .join("\n");

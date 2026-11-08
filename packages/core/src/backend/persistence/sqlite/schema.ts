@@ -54,14 +54,14 @@ export const workflows = sqliteTable(
     visibility: text("visibility").notNull().default("private"),
     publishedVersionId: text("published_version_id").references(
       (): AnySQLiteColumn => workflowVersions.id,
-      { onDelete: "set null" }
+      { onDelete: "restrict" }
     ),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [
-    // Deleting a version runs the `on delete set null` action of this foreign
-    // key, which finds the workflows naming that version through this index.
+    // Deleting a version checks this foreign key for a workflow naming it,
+    // which it finds through this index.
     index("workflows_published_version_idx").on(table.publishedVersionId),
     check("workflows_is_paused_check", sql`${table.isPaused} in (0, 1)`),
     check("workflows_mode_check", sql`${table.mode} in ('live', 'test')`),
