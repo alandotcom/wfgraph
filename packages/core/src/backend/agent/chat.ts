@@ -163,7 +163,7 @@ export type SteppedAgentPart = {
  */
 export function withGraphParts(
   parts: Stream.Stream<SteppedAgentPart, unknown>,
-  session: Pick<AgentToolSession, "recordGraphRevision">,
+  session: Pick<AgentToolSession, "draft">,
   observeTrace: AgentTraceObserver
 ): Stream.Stream<AgentStreamPart, unknown> {
   return parts.pipe(
@@ -174,7 +174,7 @@ export function withGraphParts(
           !part.isFailure &&
           WRITE_TOOL_NAMES.has(part.name);
         const graphRevision = writesGraph
-          ? yield* session.recordGraphRevision()
+          ? yield* session.draft.latest
           : undefined;
         const traceEvent = traceResponsePart({
           step,

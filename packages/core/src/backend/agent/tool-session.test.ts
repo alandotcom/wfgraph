@@ -3,7 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { makeAgentToolSession } from "#src/backend/agent/tool-session";
 
 describe("makeAgentToolSession", () => {
-  it.effect("owns the monotonic revision linked to each successful write", () =>
+  it.effect("numbers its draft's revisions from the opening graph", () =>
     Effect.gen(function* () {
       const session = yield* makeAgentToolSession({
         document: { nodes: [], edges: [] },
@@ -28,7 +28,7 @@ describe("makeAgentToolSession", () => {
         edges: [],
       }));
 
-      const revision = yield* session.recordGraphRevision();
+      const revision = yield* session.draft.latest;
       expect(revision).toEqual({
         revision: 1,
         document: {
