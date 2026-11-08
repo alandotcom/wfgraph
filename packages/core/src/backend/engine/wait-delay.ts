@@ -12,6 +12,7 @@
  * claimed by another branch (`exit`) wake it like any other park.
  */
 
+import { waitValueKeysIn } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
@@ -71,11 +72,12 @@ function planDelayWait(
   const normalizedWaitTimezone = waitTimezone?.trim() || undefined;
   const waitGateMode = readWaitGateMode(config);
   const anchorAt = attempt.anchorAt ?? new Date();
+  const owned = new Set(waitValueKeysIn(config));
   const target = resolveWaitTarget({
     now: anchorAt,
-    waitDuration: config.waitDuration,
-    waitUntil: config.waitUntil,
-    waitOffset: config.waitOffset,
+    waitDuration: owned.has("waitDuration") ? config.waitDuration : undefined,
+    waitUntil: owned.has("waitUntil") ? config.waitUntil : undefined,
+    waitOffset: owned.has("waitOffset") ? config.waitOffset : undefined,
     waitTimezone: normalizedWaitTimezone,
   });
 
