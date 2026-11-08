@@ -4,11 +4,14 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import { recordRunCompleted } from "#src/backend/engine/terminal-record";
+import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { SilentAppLoggerLayer } from "#src/backend/lib/effect/test-layers";
+import { makeExecutionDriverLayer } from "#src/backend/services/executions/driver";
 import { cancelInFlightRuns } from "#src/backend/services/executions/end-runs";
+import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type {
@@ -61,6 +64,38 @@ function acceptEntry(eventType: RefusedEntry) {
     sqlite: `drop trigger ${name};`,
   };
 }
+
+/**
+ * One attempt of the durable step that starts a newest-wins run of `wf_1` for
+ * an arrival. A refused attempt fails the step, which the executor runs again.
+ */
+const startNewestWins = (deliveryId: string) =>
+  Effect.gen(function* () {
+    const appLogger = yield* AppLogger;
+    return yield* startWithConcurrency({
+      workflow: {
+        id: "wf_1",
+        name: "Appointments",
+        graph: emptyGraph,
+        versionId: "ver_1",
+        catalogFingerprint: "catalog",
+      },
+      concurrency: "newest-wins",
+      start: {
+        source: "event",
+        eventName: "appointment/rescheduled",
+        deliveryId,
+        entityValue: "appointment_1",
+      },
+      runMode: "live",
+      payload: {},
+      logger: appLogger.get("conformance"),
+    });
+  }).pipe(
+    Effect.provide(
+      Layer.mergeAll(SilentAppLoggerLayer, makeExecutionDriverLayer([]))
+    )
+  );
 
 /** The first-wins start that the race cases in this file make. */
 const startFirstWins = (
@@ -673,6 +708,46 @@ export function describeExecutionConformance({
       });
       expect(retried.endedExecutionIds).toEqual([executionId]);
       expect(repeated.endedExecutionIds).toEqual([]);
+    });
+
+    it("never leaves a superseded run without its run_superseded entry, even when the database refuses that entry once", async () => {
+      const store = await openDatabase();
+      const database = await store.open();
+      await seedPublishedWorkflow(database);
+      const displaced = await database.run(startNewestWins("delivery_first"));
+      if (displaced.status !== "started") {
+        throw new Error("The first run was refused");
+      }
+      await store.execute(refuseEntry("run_superseded"));
+      try {
+        await database.run(Effect.ignore(startNewestWins("delivery_second")));
+      } finally {
+        await store.execute(acceptEntry("run_superseded"));
+      }
+      await database.run(startNewestWins("delivery_second"));
+
+      const superseded = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const events = yield* executions.listEvents(displaced.executionId);
+          return {
+            status: (yield* executions.findStatusById(displaced.executionId))
+              ?.status,
+            entries: events
+              .filter((event) => event.eventType === "run_superseded")
+              .map(({ message, metadata }) => ({ message, metadata })),
+          };
+        })
+      );
+      expect(superseded).toEqual({
+        status: "superseded",
+        entries: [
+          {
+            message: "Superseded by a newer start from appointment/rescheduled",
+            metadata: { eventName: "appointment/rescheduled" },
+          },
+        ],
+      });
     });
 
     it("writes a terminal write's announcement only from the write that ends the run", async () => {
