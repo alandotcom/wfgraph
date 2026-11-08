@@ -513,6 +513,18 @@ describe("workflow execution logs RPC output contract", () => {
 
     expect(result).toHaveProperty("issues");
   });
+
+  it("refuses a run status outside the Execution vocabulary", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutionLogs);
+
+    const result = await decode({
+      ...payload,
+      execution: { ...payload.execution, status: "succeeded" },
+      schedule: null,
+    });
+
+    expect(result).toHaveProperty("issues");
+  });
 });
 
 describe("workflow execution status RPC output contract", () => {
@@ -527,6 +539,19 @@ describe("workflow execution status RPC output contract", () => {
     });
 
     expect(result).toHaveProperty("value");
+  });
+
+  it("refuses a run status outside the Execution vocabulary", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutionStatus);
+
+    const result = await decode({
+      status: "succeeded",
+      nodeStatuses: [],
+      openWaitNodeIds: [],
+      retryingNodeIds: [],
+    });
+
+    expect(result).toHaveProperty("issues");
   });
 });
 
