@@ -77,6 +77,25 @@ describe("wait node - delay mode", () => {
     ]);
   });
 
+  it("waits out the duration when the node declares duration timing over a stale until", async () => {
+    const { execution } = runWait({
+      config: {
+        waitMode: "delay",
+        waitDelayTimingMode: "duration",
+        waitDuration: "1h",
+        waitUntil: "2020-01-01T00:00:00Z",
+      },
+      store,
+    });
+    await execution;
+
+    const created = store.callsOf("createWaitState");
+    expect(created).toHaveLength(1);
+    expect(
+      Date.parse(created[0]?.waitUntilIso ?? "") - Date.now()
+    ).toBeGreaterThan(3_500_000);
+  });
+
   it("normalizes timezone whitespace before applying allowed hours", async () => {
     const { runtime, execution } = runWait({
       config: {
