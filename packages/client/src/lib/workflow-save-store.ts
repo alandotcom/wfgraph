@@ -1,4 +1,5 @@
 import { atom } from "jotai";
+import { toast } from "sonner";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { DRAFT_CONFLICT_CODE } from "@wfgraph/shared/rpc/error-codes";
 import { getClientLogger } from "#src/lib/logger";
@@ -71,11 +72,8 @@ export const hasUnsavedChangesAtom = atom(false);
 export const lastSavedAtAtom = atom<Date | null>(null);
 
 /**
- * The last save failure, or null after a save succeeds.
- *
- * A debounced save has no caller waiting on it, so without this a failed
- * autosave would only ever reach the console while the UI kept claiming the
- * workflow was saved.
+ * The last save failure, or null after a save succeeds. The status strip reads
+ * it; the toast that reports a failure comes from the queue itself, once.
  */
 export const lastSaveErrorAtom = atom<Error | null>(null);
 
@@ -157,8 +155,10 @@ function mergePatches(
 
 /**
  * What a caller gets back. Saves never reject: a debounced save has no `await`
- * behind it, and a rejection nothing handles is an unhandled rejection. Callers
- * that need to report a failure read it off the resolved value instead.
+ * behind it, and a rejection nothing handles is an unhandled rejection. The
+ * queue reports a failure to the operator itself, because a debounced save has
+ * no caller to do it, so a caller reads the outcome only to decide what to do
+ * next.
  */
 export type SaveOutcome =
   | { ok: true; workflow: SavedWorkflow }
@@ -259,6 +259,10 @@ export const recordLoadedDraftRevisionAtom = atom(
   }
 );
 
+function reportSaveFailure(error: Error) {
+  toast.error(error.message || "Failed to save workflow");
+}
+
 function toError(error: unknown): Error {
   return error instanceof Error
     ? error
@@ -321,19 +325,21 @@ export const saveWorkflowAtom = atom(
     // The edit is unsaved from the moment it is queued, whether or not there is
     // a workflow to send it to yet.
     set(hasUnsavedChangesAtom, true);
+    const workflowId = get(currentWorkflowIdAtom);
+    const queue = get(saveQueueAtom);
     // A newer edit retires the last failure: the write that failed is not the
     // one the editor is now holding. Without this the failure never clears --
     // the dirty flag is not lowered on the failure path -- and the status
     // readout could never reach "Save failed", because a failed save always
-    // leaves something unsaved to report instead.
-    set(lastSaveErrorAtom, null);
-
-    const workflowId = get(currentWorkflowIdAtom);
+    // leaves something unsaved to report instead. A draft conflict is the
+    // exception, because it refuses this edit too until the workflow reloads.
+    set(
+      lastSaveErrorAtom,
+      workflowId ? (queue.blockedConflicts.get(workflowId) ?? null) : null
+    );
     if (!workflowId) {
       return null;
     }
-
-    const queue = get(saveQueueAtom);
 
     // Every graph writer keeps its Groups whole, so a refusal here means one of
     // them left a Group half built. Nothing is queued, which keeps that graph
@@ -346,6 +352,7 @@ export const saveWorkflowAtom = atom(
       const error = new Error(groupRefusal);
       queue.refusedGraphs.set(workflowId, error);
       set(lastSaveErrorAtom, error);
+      reportSaveFailure(error);
       logger.error("Save refused a malformed Group", { workflowId });
       return { ok: false, error };
     }
@@ -437,6 +444,11 @@ export const saveWorkflowAtom = atom(
             }
           } catch (error) {
             const saveError = toError(error);
+            // A refusal by a conflict already reported sends no request, so it
+            // is not a new failure to tell the operator about.
+            if (queue.blockedConflicts.get(next.workflowId) !== error) {
+              reportSaveFailure(saveError);
+            }
             if (
               error instanceof ApiError &&
               error.code === DRAFT_CONFLICT_CODE

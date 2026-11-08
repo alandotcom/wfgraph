@@ -145,10 +145,7 @@ export function useWorkflowActions(
     if (!currentWorkflowId || isGenerating || !canUpdate) {
       return;
     }
-    const outcome = await saveWorkflow({ nodes, edges }, { immediate: true });
-    if (outcome && !outcome.ok) {
-      toast.error(outcome.error.message || "Failed to save workflow");
-    }
+    await saveWorkflow({ nodes, edges }, { immediate: true });
   }, [canUpdate, currentWorkflowId, edges, isGenerating, nodes, saveWorkflow]);
 
   // Cmd+S shares the command palette's save path, so an explicit save and the
@@ -307,9 +304,6 @@ export function useWorkflowActions(
     const saved = await saveWorkflow({ nodes, edges }, { immediate: true });
     if (!saved?.ok) {
       clearPublicationReview({ workflowId: currentWorkflowId, epoch });
-      if (saved) {
-        toast.error(saved.error.message || "Failed to save workflow");
-      }
       return;
     }
 

@@ -36,7 +36,6 @@ export function useSetPublishedMode(): (mode: WorkflowMode) => Promise<void> {
 
       const outcome = await setWorkflowMode(mode);
       if (!outcome?.ok) {
-        toast.error("Failed to set Published mode");
         return;
       }
 
