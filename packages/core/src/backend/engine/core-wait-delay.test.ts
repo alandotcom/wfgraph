@@ -65,9 +65,7 @@ describe("wait node - delay mode", () => {
       },
     ]);
 
-    const auditTypes = store
-      .callsOf("recordAuditEvent")
-      .map((c) => c.eventType);
+    const auditTypes = store.timeline.map((c) => c.eventType);
     expect(auditTypes).toEqual(["run_waiting", "run_resumed", "run_completed"]);
 
     const stepLogs = waitStepLogs(store);
@@ -134,7 +132,7 @@ describe("wait node - delay mode", () => {
     // Nothing to wait for means no wait-state row and no park at all.
     expect(store.callsOf("createWaitState")).toHaveLength(0);
     expect(runtime.waits).toHaveLength(0);
-    expect(store.callsOf("recordAuditEvent")[0]?.eventType).toBe("run_skipped");
+    expect(store.timeline[0]?.eventType).toBe("run_skipped");
   });
 
   it("continues when a target is late but within its maximum lateness", async () => {
@@ -293,9 +291,7 @@ describe("wait node - delay mode", () => {
     ]);
     expect(store.callsOf("markExecutionRunning")).toEqual([]);
     expect(
-      store
-        .callsOf("recordAuditEvent")
-        .filter((event) => event.eventType === "run_resumed")
+      store.timeline.filter((event) => event.eventType === "run_resumed")
     ).toEqual([
       expect.objectContaining({
         message: "Run woken by an Exit in node 'Wait'",
@@ -331,13 +327,11 @@ describe("wait node - delay mode", () => {
       expect(result.results.after_wait).toBeUndefined();
       // Nothing parked, so the timeline has no park and no resume to record.
       expect(
-        store
-          .callsOf("recordAuditEvent")
-          .filter(
-            (event) =>
-              event.eventType === "run_waiting" ||
-              event.eventType === "run_resumed"
-          )
+        store.timeline.filter(
+          (event) =>
+            event.eventType === "run_waiting" ||
+            event.eventType === "run_resumed"
+        )
       ).toEqual([]);
       expect(waitStepLogs(store).closed).toEqual([
         expect.objectContaining({ status: "success" }),

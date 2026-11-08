@@ -1,19 +1,20 @@
 /**
  * The terminal row and timeline event a finished run leaves behind, on the path
- * that walked its graph to the end and on the one that died on an error.
+ * that walked its graph to the end and on the one that died on an error. The
+ * event rides on the terminal write, which commits both or neither.
  */
 
 import type {
   CompleteRunInput,
   ExecutionTerminationState,
   PendingCancel,
-  RecordAuditEventInput,
   StoreFailure,
-  WorkflowRunAuditEventType,
+  TerminalAnnouncement,
+  TerminalAuditEventType,
   WorkflowStore,
 } from "#src/backend/engine/store";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import { Cause, Effect } from "effect";
+import { Effect } from "effect";
 import { type EngineFailure } from "#src/backend/engine/engine-failure";
 import type {
   EntityEligibilityReason,
@@ -37,6 +38,10 @@ export type RunExitOutcome = {
 };
 
 type RunExitContext = Pick<RunExitOutcome, "entityType" | "conditionId">;
+
+type TerminationClaim = ExecutionTerminationState["claim"];
+
+type ExitClaim = Extract<NonNullable<TerminationClaim>, { kind: "exit" }>;
 
 /** Appends the recipients a test run sent to. */
 function withRecipients(message: string, runMode: "live" | "test"): string {
@@ -114,18 +119,7 @@ const TERMINAL_AUDIT_EVENT = {
   failed: "run_failed",
   canceled: "run_cancelled",
   exited: "run_exited",
-} as const satisfies Record<TraversalTerminalStatus, WorkflowRunAuditEventType>;
-
-function isTraversalTerminal(
-  status: WorkflowExecutionStatus
-): status is TraversalTerminalStatus {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "canceled" ||
-    status === "exited"
-  );
-}
+} as const satisfies Record<TraversalTerminalStatus, TerminalAuditEventType>;
 
 function isInFlight(status: ExecutionTerminationState["status"]): boolean {
   return IN_FLIGHT_EXECUTION_STATUSES.some((candidate) => candidate === status);
@@ -169,9 +163,19 @@ function writeClaimedStatus(input: {
 }
 
 /**
- * Attempts the caller's verdict, then finalizes a racing Exit claim. The
- * returned state is authoritative, so the engine never reports its stale local
- * traversal verdict after persistence selected another outcome.
+ * What the timeline says about a terminal write of `status`. `exitClaim` is the
+ * claim behind a write of `exited`, and undefined for every other status.
+ */
+type Announce = (
+  status: TraversalTerminalStatus,
+  exitClaim: ExitClaim | undefined
+) => TerminalAnnouncement;
+
+/**
+ * Attempts the caller's verdict, then finalizes a racing Exit claim, each
+ * write carrying the entry `announce` words for it. The returned state is
+ * authoritative, so the engine never reports its stale local traversal verdict
+ * after persistence selected another outcome.
  *
  * A racing Cancel claim is returned unwritten, still in flight, because the
  * caller takes the Canceled outlet for that claim before it records canceled.
@@ -181,20 +185,27 @@ function writeClaimedStatus(input: {
  */
 function finalizeRun(input: {
   store: WorkflowStore;
-  run: CompleteRunInput;
+  run: Omit<CompleteRunInput, "announcement">;
+  exitClaim?: ExitClaim | undefined;
+  announce: Announce;
 }): Effect.Effect<ExecutionTerminationState | null, StoreFailure> {
   return Effect.gen(function* () {
-    const first = yield* input.store.completeRun(input.run).pipe(
-      Effect.tapError((error) =>
-        Effect.logWarning("Terminal run record not written").pipe(
-          Effect.annotateLogs({
-            executionId: input.run.executionId,
-            status: input.run.status,
-            error,
-          })
+    const first = yield* input.store
+      .completeRun({
+        ...input.run,
+        announcement: input.announce(input.run.status, input.exitClaim),
+      })
+      .pipe(
+        Effect.tapError((error) =>
+          Effect.logWarning("Terminal run record not written").pipe(
+            Effect.annotateLogs({
+              executionId: input.run.executionId,
+              status: input.run.status,
+              error,
+            })
+          )
         )
-      )
-    );
+      );
     if (
       !first ||
       first.didWrite ||
@@ -206,35 +217,29 @@ function finalizeRun(input: {
 
     return yield* writeClaimedStatus({
       store: input.store,
-      run: { ...input.run, status: "exited", failure: undefined },
+      run: {
+        ...input.run,
+        status: "exited",
+        failure: undefined,
+        announcement: input.announce("exited", first.claim),
+      },
     });
   });
 }
 
 function exitMetadata(
-  state: ExecutionTerminationState,
+  claim: TerminationClaim | undefined,
   context: RunExitContext | undefined
 ): RunExitOutcome | undefined {
-  return state.claim?.kind === "exit" && context
+  return claim?.kind === "exit" && context
     ? {
-        reason: state.claim.reason,
+        reason: claim.reason,
         entityType: context.entityType,
         conditionId: context.conditionId,
-        nodeId: state.claim.nodeId,
-        checkedAt: state.claim.requestedAt,
+        nodeId: claim.nodeId,
+        checkedAt: claim.requestedAt,
       }
     : undefined;
-}
-
-function announce(
-  store: WorkflowStore,
-  announcement: RecordAuditEventInput
-): Effect.Effect<void> {
-  return Effect.catchCause(store.recordAuditEvent(announcement), (cause) =>
-    Effect.logError("Failed to announce the run's outcome").pipe(
-      Effect.annotateLogs({ error: Cause.squash(cause) })
-    )
-  );
 }
 
 /**
@@ -254,6 +259,8 @@ export function recordRunCompleted(input: {
   resultCount: number;
   runMode: "live" | "test";
   exitContext?: RunExitContext | undefined;
+  /** The Exit claim that selected `exited`, which the `run_exited` entry reports. */
+  exitClaim?: ExitClaim | undefined;
   /**
    * What became of the Canceled outlet the caller ran for a Cancel claim that
    * refused this record's first attempt. Absent on every other call, including
@@ -277,6 +284,28 @@ export function recordRunCompleted(input: {
         output: input.output,
         failure: input.failure,
       },
+      exitClaim: input.exitClaim,
+      announce: (status, exitClaim) => {
+        const exit = exitMetadata(exitClaim, input.exitContext);
+        return {
+          workflowId: input.workflowId,
+          eventType: TERMINAL_AUDIT_EVENT[status],
+          message: buildRunCompletedMessage(input.runMode, status),
+          metadata: exit
+            ? {
+                resultCount: input.resultCount,
+                runMode: input.runMode,
+                ...exit,
+                checkpoint: "before-node",
+              }
+            : omitUndefined({
+                resultCount: input.resultCount,
+                runMode: input.runMode,
+                canceledOutlet:
+                  status === "canceled" ? input.canceledOutlet : undefined,
+              }),
+        };
+      },
     });
     const cancelClaim = refusingCancelClaim(state);
     if (state && cancelClaim) {
@@ -286,39 +315,15 @@ export function recordRunCompleted(input: {
       return { status: state.status, cancelClaim };
     }
     const status = state?.status ?? input.status;
-    const exit = state ? exitMetadata(state, input.exitContext) : undefined;
-    if (!state?.didWrite) {
-      if (state) {
-        yield* Effect.logInfo("Run did not claim the terminal record").pipe(
-          Effect.annotateLogs({ status })
-        );
-      }
-      return { status, ...(exit ? { exit } : {}) };
+    if (state && !state.didWrite) {
+      yield* Effect.logInfo("Run did not claim the terminal record").pipe(
+        Effect.annotateLogs({ status })
+      );
     }
-    if (!isTraversalTerminal(status)) {
-      return { status };
-    }
-
-    yield* announce(input.store, {
-      workflowId: input.workflowId,
-      executionId: input.executionId,
-      eventType: TERMINAL_AUDIT_EVENT[status],
-      message: buildRunCompletedMessage(input.runMode, status),
-      metadata: exit
-        ? {
-            resultCount: input.resultCount,
-            runMode: input.runMode,
-            ...exit,
-            checkpoint: "before-node",
-          }
-        : omitUndefined({
-            resultCount: input.resultCount,
-            runMode: input.runMode,
-            canceledOutlet:
-              status === "canceled" ? input.canceledOutlet : undefined,
-          }),
-    });
-    return { status, ...(exit ? { exit } : {}) };
+    return {
+      status,
+      exit: exitMetadata(state?.claim, input.exitContext),
+    };
   });
 }
 
@@ -350,54 +355,53 @@ export function recordRunFailed(input: {
 > {
   return Effect.gen(function* () {
     const requestedStatus = input.outcome.kind;
-    const run: CompleteRunInput = {
-      executionId: input.executionId,
-      status: requestedStatus,
-      failure: input.failure,
-    };
-    const state = yield* finalizeRun({ store: input.store, run });
+    const state = yield* finalizeRun({
+      store: input.store,
+      run: {
+        executionId: input.executionId,
+        status: requestedStatus,
+        failure: input.failure,
+      },
+      announce: (status, exitClaim) => {
+        const exit = exitMetadata(exitClaim, input.exitContext);
+        return {
+          workflowId: input.workflowId,
+          eventType: TERMINAL_AUDIT_EVENT[status],
+          message: buildRunFailedMessage(input.runMode, status, input.outcome),
+          metadata: exit
+            ? {
+                ...exit,
+                checkpoint: "before-node",
+                runMode: input.runMode,
+              }
+            : status === "canceled" && input.outcome.kind === "canceled"
+              ? {
+                  error: input.failure.message,
+                  failureKind: input.failure.kind,
+                  runMode: input.runMode,
+                  canceledOutlet: input.outcome.outlet,
+                }
+              : {
+                  error: input.failure.message,
+                  failureKind: input.failure.kind,
+                  runMode: input.runMode,
+                },
+        };
+      },
+    });
     const cancelClaim = refusingCancelClaim(state);
     if (state && cancelClaim) {
       return { status: state.status, cancelClaim };
     }
     const status = state?.status ?? requestedStatus;
-    const exit = state ? exitMetadata(state, input.exitContext) : undefined;
-    if (!state?.didWrite) {
-      if (state) {
-        yield* Effect.logInfo("Run did not claim the terminal record").pipe(
-          Effect.annotateLogs({ status })
-        );
-      }
-      return { status, ...(exit ? { exit } : {}) };
+    if (state && !state.didWrite) {
+      yield* Effect.logInfo("Run did not claim the terminal record").pipe(
+        Effect.annotateLogs({ status })
+      );
     }
-    if (!isTraversalTerminal(status)) {
-      return { status };
-    }
-
-    yield* announce(input.store, {
-      workflowId: input.workflowId,
-      executionId: input.executionId,
-      eventType: TERMINAL_AUDIT_EVENT[status],
-      message: buildRunFailedMessage(input.runMode, status, input.outcome),
-      metadata: exit
-        ? {
-            ...exit,
-            checkpoint: "before-node",
-            runMode: input.runMode,
-          }
-        : status === "canceled" && input.outcome.kind === "canceled"
-          ? {
-              error: input.failure.message,
-              failureKind: input.failure.kind,
-              runMode: input.runMode,
-              canceledOutlet: input.outcome.outlet,
-            }
-          : {
-              error: input.failure.message,
-              failureKind: input.failure.kind,
-              runMode: input.runMode,
-            },
-    });
-    return { status, ...(exit ? { exit } : {}) };
+    return {
+      status,
+      exit: exitMetadata(state?.claim, input.exitContext),
+    };
   });
 }

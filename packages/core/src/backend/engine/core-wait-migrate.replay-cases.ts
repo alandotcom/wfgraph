@@ -471,9 +471,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
       },
     ]);
     expect(
-      store
-        .callsOf("recordAuditEvent")
-        .filter((event) => event.eventType === "run_resumed")
+      store.timeline.filter((event) => event.eventType === "run_resumed")
     ).toEqual([
       expect.objectContaining({
         message: "Run resumed from wait on billing/payment.settled",
@@ -547,9 +545,7 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
     ]);
     expect(store.callsOf("markExecutionRunning")).toEqual([]);
     expect(
-      store
-        .callsOf("recordAuditEvent")
-        .filter((event) => event.eventType === "run_resumed")
+      store.timeline.filter((event) => event.eventType === "run_resumed")
     ).toEqual([
       expect.objectContaining({
         message: "Run woken by an Exit in node 'Wait'",

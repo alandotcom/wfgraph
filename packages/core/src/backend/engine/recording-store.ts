@@ -63,6 +63,11 @@ export type RecordingWorkflowStore = WorkflowStore & {
   /** Inputs of the calls made to one method, in order. */
   callsOf<M extends StoreMethod>(method: M): StoreCallInputs[M][];
   /**
+   * Every timeline entry the store wrote, in order: each `recordAuditEvent`,
+   * and the announcement of each `completeRun` that ended the run.
+   */
+  readonly timeline: RecordAuditEventInput[];
+  /**
    * Set to `undefined` to model a first park the execution row refused, which
    * is a run that ended or was moved to another Workflow Version. Left unset,
    * every park opens a row, subject to the claim on `terminationState`.
@@ -113,6 +118,7 @@ function claimAdmits(
 
 export function createRecordingWorkflowStore(): RecordingWorkflowStore {
   const calls: RecordedStoreCall[] = [];
+  const timeline: RecordAuditEventInput[] = [];
   const byMethod: { [M in StoreMethod]: StoreCallInputs[M][] } = {
     startStepLog: [],
     completeStepLog: [],
@@ -148,6 +154,8 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
 
     callsOf: (method) => byMethod[method],
 
+    timeline,
+
     createWaitStateAnswer: "open",
     reparkAnswer: { ok: true },
     waitState: null,
@@ -160,6 +168,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
 
     reset() {
       calls.length = 0;
+      timeline.length = 0;
       waitUntilById.clear();
       for (const recordedInputs of Object.values(byMethod)) {
         recordedInputs.length = 0;
@@ -186,6 +195,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "recordAuditEvent", input });
         byMethod.recordAuditEvent.push(input);
+        timeline.push(input);
       });
     },
 
@@ -335,6 +345,10 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
           claim: current?.claim ?? null,
           didWrite: true,
         };
+        timeline.push({
+          ...input.announcement,
+          executionId: input.executionId,
+        });
         return store.terminationState;
       });
     },

@@ -399,7 +399,7 @@ function executeWorkflowInner(
             ? "completed"
             : "failed";
 
-      return { terminalStatus, exitContext };
+      return { terminalStatus, exitContext, exitClaim };
     });
 
     return Effect.gen(function* () {
@@ -512,6 +512,7 @@ function executeWorkflowInner(
           resultCount: traversal.resultCount,
           runMode,
           exitContext: outcome.value.exitContext,
+          exitClaim: outcome.value.exitClaim,
           canceledOutlet,
         });
 

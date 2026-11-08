@@ -605,9 +605,9 @@ describe("per-node Entity Eligibility", () => {
       },
     ]);
     expect(store.callsOf("completeRun")[0]?.status).toBe("exited");
-    const exitAudit = store
-      .callsOf("recordAuditEvent")
-      .find((event) => event.eventType === "run_exited");
+    const exitAudit = store.timeline.find(
+      (event) => event.eventType === "run_exited"
+    );
     expect(exitAudit?.metadata).toMatchObject({
       reason: "entity_condition_not_met",
       entityType: "appointment",
@@ -655,7 +655,7 @@ describe("per-node Entity Eligibility", () => {
     ).rejects.toThrow("terminal unavailable");
 
     expect(terminalWrites).toBe(2);
-    expect(store.callsOf("recordAuditEvent")).toHaveLength(0);
+    expect(store.timeline).toHaveLength(0);
   });
 
   it("reports the stored Exit claim when this checkpoint lost it", async () => {

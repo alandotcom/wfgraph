@@ -141,9 +141,7 @@ describe("wait node - event mode", () => {
     });
     expect(result.results.after_wait?.success).toBe(true);
     expect(
-      store
-        .callsOf("recordAuditEvent")
-        .some((event) => event.eventType === "run_timed_out")
+      store.timeline.some((event) => event.eventType === "run_timed_out")
     ).toBe(false);
     const replay = await runWait({
       store: {
@@ -200,9 +198,7 @@ describe("wait node - event mode", () => {
       },
     ]);
     expect(
-      store
-        .callsOf("recordAuditEvent")
-        .filter((event) => event.eventType === "run_resumed")
+      store.timeline.filter((event) => event.eventType === "run_resumed")
     ).toEqual([
       expect.objectContaining({
         message: "Run resumed from wait on billing/payment.settled",
@@ -244,9 +240,7 @@ describe("wait node - event mode", () => {
     await execution;
 
     expect(
-      store
-        .callsOf("recordAuditEvent")
-        .filter((event) => event.eventType === "run_resumed")
+      store.timeline.filter((event) => event.eventType === "run_resumed")
     ).toEqual([
       expect.objectContaining({
         message: "Run resumed from the Runs view",
@@ -383,9 +377,7 @@ describe("wait node - event mode", () => {
     ]);
     expect(store.callsOf("markExecutionRunning")).toEqual([]);
     expect(
-      store
-        .callsOf("recordAuditEvent")
-        .filter((event) => event.eventType === "run_resumed")
+      store.timeline.filter((event) => event.eventType === "run_resumed")
     ).toEqual([
       expect.objectContaining({
         message: "Run woken by an Exit in node 'Wait'",
@@ -507,7 +499,7 @@ describe("wait node - event mode", () => {
     expect(store.callsOf("settleWaitTimeout")).toEqual([
       { waitStateId: "wait_state_1" },
     ]);
-    expect(store.callsOf("recordAuditEvent").map((c) => c.eventType)).toEqual([
+    expect(store.timeline.map((c) => c.eventType)).toEqual([
       "run_waiting",
       "run_timed_out",
       "run_completed",

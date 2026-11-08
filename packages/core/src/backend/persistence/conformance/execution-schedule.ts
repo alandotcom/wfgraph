@@ -470,6 +470,11 @@ export function describeExecutionScheduleConformance({
           const finished = yield* pass.finishRun({
             executionId,
             status: "completed",
+            announcement: {
+              workflowId: "wf_1",
+              eventType: "run_completed",
+              message: "Run completed successfully",
+            },
           });
           const afterEnd = yield* Effect.flip(
             pass.recordAuditEvent({
@@ -494,6 +499,9 @@ export function describeExecutionScheduleConformance({
             schedule: yield* executions.findSchedule({ executionId }),
             memo: yield* executions.listStepMemo({ executionId }),
             logs: yield* executions.listLogs(executionId),
+            ending: (yield* executions.listEvents(executionId))
+              .filter((event) => event.eventType !== "run_started")
+              .map((event) => event.eventType),
             cancelled,
             cancelledSchedule: yield* executions.findSchedule({
               executionId: cancelledId,
@@ -510,6 +518,7 @@ export function describeExecutionScheduleConformance({
       expect(result.schedule).toBeNull();
       expect(result.memo).toEqual([]);
       expect(result.logs).toHaveLength(1);
+      expect(result.ending).toEqual(["run_completed"]);
       expect(result.cancelled).toMatchObject({
         status: "canceled",
         didWrite: true,

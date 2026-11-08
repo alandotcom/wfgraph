@@ -111,6 +111,7 @@ export function createDbWorkflowStore(bound: {
         status: input.status,
         output: redactSensitiveData(input.output),
         error: input.failure?.message,
+        announcement: input.announcement,
       })
       .pipe(
         Effect.map((state) => (state ? engineTerminationState(state) : null))
