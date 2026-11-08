@@ -23,7 +23,7 @@ import {
   executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
 } from "#src/lib/workflow-graph-store";
-import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
+import { activeAgentTurnIdAtom } from "#src/lib/workflow-ui-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
@@ -183,7 +183,7 @@ export function renderChrome(
     });
   }
   if (lock.generating) {
-    store.set(isGeneratingAtom, true);
+    store.set(activeAgentTurnIdAtom, Symbol("agent-turn"));
   }
   // Which workflow is open, as the loader would have written it. The palette
   // refuses to open without one, and the workflow menu's own draft case passes

@@ -37,9 +37,12 @@ export const showMinimapAtom = atom(false);
  * starts nothing. Whether the open run is in progress is the projection's.
  */
 export const runStartInFlightAtom = atom(false);
-export const isGeneratingAtom = atom(false);
 /** Identifies the only agent turn allowed to change the open workflow. */
 export const activeAgentTurnIdAtom = atom<symbol | null>(null);
+/** Whether an agent turn is running, which locks the canvas to its writes. */
+export const isGeneratingAtom = atom(
+  (get) => get(activeAgentTurnIdAtom) !== null
+);
 export type WorkflowGraphUpdate = {
   workflowId: string;
   revision: number;

@@ -30,7 +30,6 @@ import {
 } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
-  isGeneratingAtom,
   workflowGraphUpdateAtom,
 } from "#src/lib/workflow-ui-store";
 import { clearPublicationReviewAtom } from "#src/lib/workflow-publication-review-store";
@@ -98,9 +97,7 @@ function remoteWorkflowUpdateDisposition(
   get: Getter
 ): RemoteWorkflowUpdateDisposition {
   const browserWorkIsIdle =
-    !get(isSavingAtom) &&
-    get(activeAgentTurnIdAtom) === null &&
-    !get(isGeneratingAtom);
+    !get(isSavingAtom) && get(activeAgentTurnIdAtom) === null;
 
   if (browserWorkIsIdle && get(hasUnsavedChangesAtom) && draftEditable(get)) {
     return "conflict";
@@ -234,7 +231,6 @@ export const hydrateWorkflowAtom = atom(
     }
 
     set(activeAgentTurnIdAtom, null);
-    set(isGeneratingAtom, false);
     set(currentWorkflowNameAtom, workflow.name);
     set(lastSavedAtAtom, null);
     set(currentWorkflowVisibilityAtom, workflow.visibility ?? "private");
