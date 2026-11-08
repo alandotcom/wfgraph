@@ -51,7 +51,6 @@ import {
   publicationReviewAtom,
   publicationReviewSessionAtom,
   type ReadyPublicationReview,
-  settlePublicationReviewAtom,
 } from "#src/lib/workflow-publication-review-store";
 import {
   groupWorkflowIssuesForOverlay,
@@ -116,7 +115,6 @@ export function useWorkflowActions(
   const beginPublicationReview = useSetAtom(beginPublicationReviewAtom);
   const installPublicationReview = useSetAtom(installPublicationReviewAtom);
   const clearPublicationReview = useSetAtom(clearPublicationReviewAtom);
-  const settlePublicationReview = useSetAtom(settlePublicationReviewAtom);
   const publishingReviewRef = useRef<string | null>(null);
   // Only the fields this hook's own bodies read. The run and issue handlers
   // take the whole state and destructure it themselves.
@@ -389,12 +387,7 @@ export function useWorkflowActions(
             workflowId: comparisonInput.workflowId,
             epoch,
           });
-          return;
         }
-        settlePublicationReview({
-          workflowId: comparisonInput.workflowId,
-          epoch,
-        });
       },
     });
   };
