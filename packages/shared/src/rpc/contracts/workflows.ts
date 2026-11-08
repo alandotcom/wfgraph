@@ -17,6 +17,7 @@ import {
   workflowVersionUsageInputSchema,
   workflowVersionUsagePayloadSchema,
 } from "#src/graph/publication-contracts";
+import { EXECUTION_LOG_STATUSES } from "#src/graph/execution-log-statuses";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
 import { WORKFLOW_VERSION_KINDS } from "#src/graph/version-kinds";
 import {
@@ -140,6 +141,7 @@ const workflowVersionKindSchema = Schema.Literals(WORKFLOW_VERSION_KINDS);
 const workflowExecutionStatusSchema = Schema.Literals(
   WORKFLOW_EXECUTION_STATUSES
 );
+const executionLogStatusSchema = Schema.Literals(EXECUTION_LOG_STATUSES);
 
 /** An instant the database executor reports, as an ISO 8601 string. */
 const executorInstant = isoTimestampString();
@@ -325,13 +327,7 @@ const executionLogSchema = Schema.Struct({
   nodeId: Schema.String,
   nodeName: Schema.String,
   nodeType: Schema.String,
-  status: Schema.Literals([
-    "pending",
-    "running",
-    "success",
-    "error",
-    "cancelled",
-  ]),
+  status: executionLogStatusSchema,
   input: Schema.Unknown,
   output: Schema.Unknown,
   error: Schema.NullOr(Schema.String),
@@ -943,13 +939,7 @@ export const workflowContract = {
           nodeStatuses: listOf(
             Schema.Struct({
               nodeId: Schema.String,
-              status: Schema.Literals([
-                "pending",
-                "running",
-                "success",
-                "error",
-                "cancelled",
-              ]),
+              status: executionLogStatusSchema,
             })
           ),
           /**
