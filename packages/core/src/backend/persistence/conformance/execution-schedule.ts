@@ -969,5 +969,127 @@ export function describeExecutionScheduleConformance({
         },
       ]);
     });
+
+    it("holds a schedule row's lease columns to its leased state", async () => {
+      const database = await openDatabase();
+      const connection = await seeded(await database.open());
+      const scheduleId = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* openRun;
+          const schedule = yield* executions.findSchedule({ executionId });
+          if (!schedule) throw new Error("The run has no schedule row");
+          return schedule.id;
+        })
+      );
+      const row = `id = '${scheduleId}'`;
+      const update = "update workflow_execution_schedule set";
+      const expiry = at(LEASE_MS);
+      const lease = {
+        postgresql: `owner_token = 'tok_1', worker_id = 'worker_1', lease_expires_at = '${expiry.toISOString()}'`,
+        sqlite: `owner_token = 'tok_1', worker_id = 'worker_1', lease_expires_at = ${expiry.getTime()}`,
+      };
+
+      await expect(
+        database.execute(`${update} state = 'leased' where ${row}`)
+      ).rejects.toThrow();
+      await expect(
+        database.execute({
+          postgresql: `${update} ${lease.postgresql} where ${row}`,
+          sqlite: `${update} ${lease.sqlite} where ${row}`,
+        })
+      ).rejects.toThrow();
+      await expect(
+        database.execute(`${update} running_step_id = 'step_1' where ${row}`)
+      ).rejects.toThrow();
+      await expect(
+        database.execute({
+          postgresql: `${update} state = 'leased', owner_token = 'tok_1', lease_expires_at = '${expiry.toISOString()}' where ${row}`,
+          sqlite: `${update} state = 'leased', owner_token = 'tok_1', lease_expires_at = ${expiry.getTime()} where ${row}`,
+        })
+      ).rejects.toThrow();
+      await expect(
+        database.execute({
+          postgresql: `${update} state = 'leased', running_step_id = 'step_1', ${lease.postgresql} where ${row}`,
+          sqlite: `${update} state = 'leased', running_step_id = 'step_1', ${lease.sqlite} where ${row}`,
+        })
+      ).resolves.toBeUndefined();
+    });
+
+    it("holds a step memo row's value and failure count to its status", async () => {
+      const database = await openDatabase();
+      const connection = await seeded(await database.open());
+      const scheduleId = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* openRun;
+          const schedule = yield* executions.findSchedule({ executionId });
+          if (!schedule) throw new Error("The run has no schedule row");
+          return schedule.id;
+        })
+      );
+      const memo = (
+        stepId: string,
+        row: { status: string; failures: number; value: string; error: string }
+      ) => {
+        const columns = "schedule_id, step_id, status, failures, value, error";
+        const values = `'${scheduleId}', '${stepId}', '${row.status}', ${row.failures}, ${row.value}, ${row.error}`;
+        return database.execute({
+          postgresql: `insert into workflow_execution_steps (${columns}) values (${values})`,
+          sqlite: `insert into workflow_execution_steps (${columns}, created_at) values (${values}, 0)`,
+        });
+      };
+
+      // Only a step that answered holds an answer.
+      await expect(
+        memo("failing_with_value", {
+          status: "failing",
+          failures: 1,
+          value: "'1'",
+          error: "'boom'",
+        })
+      ).rejects.toThrow();
+      // A failing or failed row counts at least the failure that made it.
+      await expect(
+        memo("failing_without_failure", {
+          status: "failing",
+          failures: 0,
+          value: "null",
+          error: "'boom'",
+        })
+      ).rejects.toThrow();
+      await expect(
+        memo("failed_without_failure", {
+          status: "failed",
+          failures: 0,
+          value: "null",
+          error: "'boom'",
+        })
+      ).rejects.toThrow();
+      await expect(
+        memo("succeeded_negative", {
+          status: "succeeded",
+          failures: -1,
+          value: "'1'",
+          error: "null",
+        })
+      ).rejects.toThrow();
+      await expect(
+        memo("failing", {
+          status: "failing",
+          failures: 1,
+          value: "null",
+          error: "'boom'",
+        })
+      ).resolves.toBeUndefined();
+      await expect(
+        memo("succeeded_after_retries", {
+          status: "succeeded",
+          failures: 2,
+          value: "'1'",
+          error: "null",
+        })
+      ).resolves.toBeUndefined();
+    });
   });
 }

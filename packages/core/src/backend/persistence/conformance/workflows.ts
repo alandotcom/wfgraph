@@ -19,6 +19,7 @@ import {
 
 export function describeWorkflowConformance({
   openConnection,
+  openDatabase,
 }: PersistenceTestRegistry): void {
   describe("workflows", () => {
     it("increments draft revisions and rejects stale graph writes", async () => {
@@ -787,6 +788,50 @@ export function describeWorkflowConformance({
       expect(result.whileRunning).toHaveLength(1);
       expect(result.whilePaused).toEqual([]);
       expect(result.paused).toMatchObject({ id: "wf_1", isPaused: true });
+    });
+
+    it("holds a workflow's mode and visibility to their vocabularies", async () => {
+      const database = await openDatabase();
+      await seedPublishedWorkflow(await database.open());
+
+      await expect(
+        database.execute("update workflows set mode = 'staging'")
+      ).rejects.toThrow();
+      await expect(
+        database.execute("update workflows set visibility = 'shared'")
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          "update workflows set mode = 'test', visibility = 'public'"
+        )
+      ).resolves.toBeUndefined();
+    });
+
+    it("refuses to delete the version a workflow publishes, and deletes it with its workflow", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      await seedPublishedWorkflow(connection);
+
+      await expect(
+        database.execute("delete from workflow_versions where id = 'ver_1'")
+      ).rejects.toThrow();
+      const published = await connection.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          return yield* workflows.findByIdWithPublishedVersion("wf_1");
+        })
+      );
+      expect(published?.publishedVersion?.id).toBe("ver_1");
+
+      await connection.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          yield* workflows.deleteById("wf_1");
+        })
+      );
+      expect(
+        await database.selectIds("select id from workflow_versions")
+      ).toEqual([]);
     });
   });
 }

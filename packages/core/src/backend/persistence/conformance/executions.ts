@@ -1198,5 +1198,56 @@ export function describeExecutionConformance({
         result.workflowTwoCancellations.map((event) => event.message)
       ).not.toContain("Oldest cancel event");
     });
+
+    it("holds a run's status and its node log's status to the words a write stores", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      await seedPublishedWorkflow(connection);
+      const started = await attemptStart(connection, {
+        deliveryId: "delivery_1",
+      });
+      if (started.status !== "started") throw new Error("Start was refused");
+      const executionId = started.execution.id;
+      const logId = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.openNodeLog({
+            executionId,
+            nodeId: "node_1",
+            nodeName: "Create task",
+            nodeType: "action",
+          });
+        })
+      );
+      const run = `id = '${executionId}'`;
+      const log = `id = '${logId}'`;
+
+      // No write ever stored `pending`, so a run cannot hold it.
+      await expect(
+        database.execute(
+          `update workflow_executions set status = 'pending' where ${run}`
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `update workflow_executions set status = 'paused' where ${run}`
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `update workflow_execution_logs set status = 'skipped' where ${log}`
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          `update workflow_executions set status = 'waiting' where ${run}`
+        )
+      ).resolves.toBeUndefined();
+      await expect(
+        database.execute(
+          `update workflow_execution_logs set status = 'success' where ${log}`
+        )
+      ).resolves.toBeUndefined();
+    });
   });
 }
