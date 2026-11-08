@@ -2,7 +2,7 @@
  * Binds a harness and its judges to a Vitest suite. A case calls the `run`
  * fixture with its input, which runs the harness, scores the output with every
  * judge, records the case on `task.meta.eval`, and throws when a gating judge
- * scored below 1. A harness failure is recorded and rethrown unchanged.
+ * scored below 1. A harness or judge failure is recorded and rethrown unchanged.
  */
 import { describe, test } from "vitest";
 import type { JsonValue } from "@wfgraph/shared/types/json";
@@ -91,17 +91,26 @@ async function runEvalCase<Input, Output extends JsonValue>(
     throw error;
   }
 
-  const scores = scoreEvalRun(options, { input, output: result.output });
-  context.task.meta.eval = {
+  const record = {
     harness: options.harness.name,
     durationMs: performance.now() - startedAt,
-    scores,
     output: result.output,
     events: result.events,
     usage: result.usage,
-    errors: result.errors,
     artifacts,
   };
+  let scores: JudgeScore[];
+  try {
+    scores = scoreEvalRun(options, { input, output: result.output });
+  } catch (error) {
+    context.task.meta.eval = {
+      ...record,
+      scores: [],
+      errors: [...result.errors, getErrorMessage(error)],
+    };
+    throw error;
+  }
+  context.task.meta.eval = { ...record, scores, errors: result.errors };
 
   const failure = describeFailingScores(scores, result.events);
   if (failure !== undefined) {

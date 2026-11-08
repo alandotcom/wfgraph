@@ -4,15 +4,22 @@
  * so the blocks are sorted by name rather than printed as each one lands.
  */
 import { styleText } from "node:util";
-import type { Reporter, TestCase, Vitest } from "vitest/node";
+import type { Reporter, TestCase, TestState, Vitest } from "vitest/node";
 import { compareText } from "@wfgraph/shared/types/string";
 import type { EvalCaseRecord, TranscriptEvent } from "#src/eval/types";
 
 type ReportedCase = {
   name: string;
-  state: "passed" | "failed" | "skipped" | "pending";
+  state: TestState;
   record: EvalCaseRecord;
 };
+
+const STATE_MARKS = {
+  passed: { color: "green", glyph: "✓" },
+  failed: { color: "red", glyph: "✗" },
+  skipped: { color: "yellow", glyph: "↓" },
+  pending: { color: "dim", glyph: "…" },
+} as const satisfies Record<TestState, { color: string; glyph: string }>;
 
 /** Tool names in call order, a run of one name collapsed to `name ×n`. */
 function describeToolActivity(events: readonly TranscriptEvent[]): string {
@@ -39,10 +46,8 @@ function describeToolActivity(events: readonly TranscriptEvent[]): string {
 /** The report block for one case, as the lines the terminal prints. */
 export function formatEvalCase(reported: ReportedCase): string[] {
   const { record } = reported;
-  const mark =
-    reported.state === "passed"
-      ? styleText("green", "✓")
-      : styleText("red", "✗");
+  const { color, glyph } = STATE_MARKS[reported.state];
+  const mark = styleText(color, glyph);
   const seconds = `${(record.durationMs / 1000).toFixed(1)}s`;
   const lines = [`${mark} ${reported.name} ${styleText("dim", seconds)}`];
 
