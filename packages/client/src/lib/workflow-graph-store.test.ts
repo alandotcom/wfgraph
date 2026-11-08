@@ -58,7 +58,6 @@ import {
 } from "#src/lib/workflow-save-store";
 import {
   activeAgentTurnIdAtom,
-  isGeneratingAtom,
   workflowGraphUpdateAtom,
   workflowWorkspaceViewAtom,
   selectedExecutionIdAtom,
@@ -1131,7 +1130,7 @@ describe("installRemoteWorkflowAtom", () => {
       },
     ]);
 
-    store.set(isGeneratingAtom, true);
+    store.set(activeAgentTurnIdAtom, Symbol("agent-turn"));
     store.set(onNodesChangeAtom, [
       {
         type: "position",
