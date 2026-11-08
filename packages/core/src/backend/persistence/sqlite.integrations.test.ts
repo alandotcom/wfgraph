@@ -202,11 +202,16 @@ describe("native SQLite integration persistence", () => {
 
     const inspection = new DatabaseSync(filename);
     try {
+      // Each state as a write leaves it: only `refreshing` holds a claim.
       for (const state of INTEGRATION_REFRESH_STATES) {
+        const [claimId, claimedAt] =
+          state === "refreshing" ? ["claim_1", 1] : [null, null];
         expect(() =>
           inspection
-            .prepare("UPDATE integrations SET refresh_state = ? WHERE id = ?")
-            .run(state, integrationId)
+            .prepare(
+              "UPDATE integrations SET refresh_state = ?, refresh_claim_id = ?, refresh_claimed_at = ? WHERE id = ?"
+            )
+            .run(state, claimId, claimedAt, integrationId)
         ).not.toThrow();
       }
     } finally {

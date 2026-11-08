@@ -585,6 +585,10 @@ export const integrations = sqliteTable(
       "integrations_refresh_state_check",
       sql`${table.refreshState} in (${literals(INTEGRATION_REFRESH_STATES)})`
     ),
+    check(
+      "integrations_refresh_claim_check",
+      sql`(${table.refreshState} = 'refreshing' and ${table.refreshClaimId} is not null and ${table.refreshClaimedAt} is not null) or (${table.refreshState} <> 'refreshing' and ${table.refreshClaimId} is null and ${table.refreshClaimedAt} is null)`
+    ),
   ]
 );
 
@@ -614,6 +618,14 @@ export const oauthAuthorizationAttempts = sqliteTable(
     check(
       "oauth_authorization_attempts_status_check",
       sql`${table.status} in ('pending', 'processing', 'succeeded', 'failed')`
+    ),
+    check(
+      "oauth_authorization_attempts_integration_check",
+      sql`(${table.mode} = 'create' and ${table.integrationId} is null) or (${table.mode} = 'reconnect' and ${table.integrationId} is not null)`
+    ),
+    check(
+      "oauth_authorization_attempts_result_check",
+      sql`(${table.status} = 'succeeded') = (${table.resultIntegrationId} is not null)`
     ),
   ]
 );

@@ -242,6 +242,12 @@ export const integrations = pgTable(
       "integrations_refresh_state_check",
       sql`${table.refreshState} in (${literals(INTEGRATION_REFRESH_STATES)})`
     ),
+    // A refresh claim is the owner id and the claim time, written together
+    // when the row moves to `refreshing` and cleared together when it leaves.
+    check(
+      "integrations_refresh_claim_check",
+      sql`(${table.refreshState} = 'refreshing' and ${table.refreshClaimId} is not null and ${table.refreshClaimedAt} is not null) or (${table.refreshState} <> 'refreshing' and ${table.refreshClaimId} is null and ${table.refreshClaimedAt} is null)`
+    ),
   ]
 );
 
@@ -275,6 +281,16 @@ export const oauthAuthorizationAttempts = pgTable(
     check(
       "oauth_authorization_attempts_status_check",
       sql`${table.status} in ('pending', 'processing', 'succeeded', 'failed')`
+    ),
+    // A create attempt has no integration row until its callback succeeds,
+    // and a reconnect attempt always names the row it reconnects.
+    check(
+      "oauth_authorization_attempts_integration_check",
+      sql`(${table.mode} = 'create' and ${table.integrationId} is null) or (${table.mode} = 'reconnect' and ${table.integrationId} is not null)`
+    ),
+    check(
+      "oauth_authorization_attempts_result_check",
+      sql`(${table.status} = 'succeeded') = (${table.resultIntegrationId} is not null)`
     ),
     index("oauth_authorization_attempts_integration_id_idx").on(
       table.integrationId
