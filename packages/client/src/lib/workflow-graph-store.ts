@@ -19,6 +19,7 @@ import {
   activeAgentTurnIdAtom,
   isGeneratingAtom,
   workflowGraphUpdateAtom,
+  workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import {
   formatTemplateToken,
@@ -935,6 +936,9 @@ export const duplicateSelectionAtom = atom(
  *
  * The caller marks the first graph in a turn as its undo boundary. The agent
  * chooses no coordinates, so every graph update gets a complete layout pass.
+ * The turn is the Draft's only writer while it runs, so its graph lands on the
+ * Draft whichever workspace is presenting: a graph refused because the user
+ * opened Runs mid-turn would be the turn's work lost.
  *
  * Node identity is preserved for anything the agent left alone: `displayNodesAtom`
  * keeps a paint cache keyed on it, so rebuilding every node would re-render every
@@ -956,8 +960,7 @@ export const applyAgentGraphAtom = atom(
   ) => {
     if (
       input.workflowId !== get(currentWorkflowIdAtom) ||
-      input.turnId !== get(activeAgentTurnIdAtom) ||
-      !draftEditable(get)
+      input.turnId !== get(activeAgentTurnIdAtom)
     ) {
       return false;
     }
@@ -1002,12 +1005,14 @@ export const applyAgentGraphAtom = atom(
     set(nodesStateAtom, orderGroupParentsFirst(reconciled));
     set(edgesStateAtom, input.edges);
     // The agent's graph can drop a selected step, and the repair can dissolve
-    // a selected frame.
-    keepSelectionInDraft(get, set);
-    set(workflowGraphUpdateAtom, {
-      workflowId: input.workflowId,
-      revision: (get(workflowGraphUpdateAtom)?.revision ?? 0) + 1,
-    });
+    // a selected frame. Runs and Changes select in, and fit, their own graphs.
+    if (get(workflowWorkspaceViewAtom) === "draft") {
+      keepSelectionInDraft(get, set);
+      set(workflowGraphUpdateAtom, {
+        workflowId: input.workflowId,
+        revision: (get(workflowGraphUpdateAtom)?.revision ?? 0) + 1,
+      });
+    }
     requestGraphSave(get, set, { immediate: true });
     return true;
   }
