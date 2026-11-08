@@ -36,8 +36,6 @@ export type OverlayOptions = {
   closeOnBackdropClick?: boolean | undefined;
   /** Whether pressing Escape closes the overlay (default: true) */
   closeOnEscape?: boolean | undefined;
-  /** Callback when overlay is closed */
-  onClose?: (() => void) | undefined;
 };
 
 /**

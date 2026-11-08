@@ -57,17 +57,7 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
   const open = useCallback<OverlayContextValue["open"]>(
     (component, props, options): string => {
       const item = createOverlayItem(component, props, options);
-      setStack((prev) => {
-        // Opening discards whatever was up, and those overlays are as closed as
-        // any the user dismissed, so they get their `onClose` like every other
-        // path here. Without this a config sheet replaced by the Test Run
-        // overlay left the run it was showing pinned to the canvas, with
-        // editing locked and no panel on screen to say why (#96).
-        for (const discarded of prev) {
-          discarded.options.onClose?.();
-        }
-        return [item];
-      });
+      setStack([item]);
       return item.id;
     },
     []
@@ -83,59 +73,26 @@ export function OverlayProvider({ children }: OverlayProviderProps) {
   );
 
   const pop = useCallback(() => {
-    setStack((prev) => {
-      if (prev.length <= 1) {
-        // If only one item, close it and call onClose
-        const item = prev[0];
-        item?.options.onClose?.();
-        return [];
-      }
-      // Pop the top item and call its onClose
-      const poppedItem = prev.at(-1);
-      poppedItem?.options.onClose?.();
-      return prev.slice(0, -1);
-    });
+    setStack((prev) => prev.slice(0, -1));
   }, []);
 
   const replace = useCallback<OverlayContextValue["replace"]>(
     (component, props, options): string => {
       const item = createOverlayItem(component, props, options);
-      setStack((prev) => {
-        if (prev.length === 0) {
-          return [item];
-        }
-        // Replace the top item
-        const poppedItem = prev.at(-1);
-        poppedItem?.options.onClose?.();
-        return [...prev.slice(0, -1), item];
-      });
+      setStack((prev) => [...prev.slice(0, -1), item]);
       return item.id;
     },
     []
   );
 
   const closeAll = useCallback(() => {
-    setStack((prev) => {
-      // Call onClose for all items
-      for (const item of prev) {
-        item.options.onClose?.();
-      }
-      return [];
-    });
+    setStack([]);
   }, []);
 
   const close = useCallback((id: string) => {
     setStack((prev) => {
       const index = prev.findIndex((item) => item.id === id);
-      if (index === -1) {
-        return prev;
-      }
-
-      // Call onClose for all items from this index onwards
-      for (let i = index; i < prev.length; i++) {
-        prev[i].options.onClose?.();
-      }
-      return prev.slice(0, index);
+      return index === -1 ? prev : prev.slice(0, index);
     });
   }, []);
 
