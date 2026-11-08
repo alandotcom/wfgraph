@@ -459,7 +459,6 @@ const workflowExecutionRunningSchema = Schema.Struct({
   executionId: Schema.String,
   runMode: workflowRunModeSchema,
   supersededExecutions: Schema.optionalKey(Schema.Finite),
-  failedToSupersede: Schema.optionalKey(listOf(Schema.String)),
 });
 
 // A paused workflow gets a run row saying it declined, so the runs list still

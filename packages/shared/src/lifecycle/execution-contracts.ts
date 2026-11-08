@@ -231,11 +231,6 @@ export type WorkflowExecutionRunningResponse = {
    * one. Absent means none, which is every start under first-wins or unlimited.
    */
   supersededExecutions?: number;
-  /**
-   * Runs marked superseded that no cancel signal reached, so each may still be
-   * live. Absent is the ordinary case; present means this start half-landed.
-   */
-  failedToSupersede?: string[];
 };
 
 export type WorkflowExecutionIgnoredResponse = {
