@@ -81,6 +81,24 @@ export function cronTimers(
 }
 
 /**
+ * Leases one schedule row to a worker under `ownerToken`, standing in for the
+ * claim. The lease outlasts every instant a case claims at, so no claim
+ * sweeps it as expired.
+ */
+export function leaseScheduleRow(
+  database: CaseDatabase,
+  scheduleId: string,
+  ownerToken: string
+): Promise<void> {
+  const update = `update workflow_execution_schedule set state = 'leased', owner_token = '${ownerToken}', worker_id = 'worker_1', lease_expires_at =`;
+  const row = `where id = '${scheduleId}'`;
+  return database.execute({
+    postgresql: `${update} '${notYetDue.now.toISOString()}' ${row}`,
+    sqlite: `${update} ${notYetDue.now.getTime()} ${row}`,
+  });
+}
+
+/**
  * Leases a delivery's schedule row under `ownerToken`, standing in for the
  * claim, and answers the fence a pass holding that lease carries.
  */
@@ -89,9 +107,7 @@ export async function leaseDelivery(
   delivery: { inboxId: string; scheduleId: string },
   ownerToken: string
 ): Promise<DeliveryFence> {
-  await database.execute(
-    `update workflow_execution_schedule set state = 'leased', owner_token = '${ownerToken}' where id = '${delivery.scheduleId}'`
-  );
+  await leaseScheduleRow(database, delivery.scheduleId, ownerToken);
   return { kind: "delivery", ...delivery, ownerToken };
 }
 
