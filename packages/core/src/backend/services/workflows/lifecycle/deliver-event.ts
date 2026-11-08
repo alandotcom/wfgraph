@@ -362,7 +362,6 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
 
       const canceledExecutionIds = yield* requestCanceledOutlet({
         workflowId: workflow.id,
-        runMode: workflow.mode,
         eventName: input.event.name,
         payload: input.payload,
         deliveryId: input.deliveryId,

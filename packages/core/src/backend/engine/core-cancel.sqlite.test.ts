@@ -173,7 +173,6 @@ describe("a Canceled-side Wait over native SQLite", () => {
           yield* executions.requestCancelForEntity({
             workflowId: "wf_1",
             entityValue: "appointment_1",
-            runMode: "live",
             eventName: "app/appointment.canceled",
             payload: { reason: "customer left" },
             deliveryId: yield* cancelArrival(),

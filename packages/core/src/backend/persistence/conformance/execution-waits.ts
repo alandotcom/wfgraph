@@ -593,7 +593,6 @@ export function describeExecutionWaitConformance({
             now: NOW,
             workflowId: "wf_1",
             entityValue: "appointment_canceled_side",
-            runMode: "live",
             eventName: "appointment/cancelled",
             payload: { reason: "customer left" },
             deliveryId: yield* cancelArrival(),

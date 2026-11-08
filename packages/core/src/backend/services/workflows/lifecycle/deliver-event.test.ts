@@ -718,7 +718,6 @@ describe("applyLifecycleRules", () => {
         assert.deepStrictEqual(requestCanceledOutletMock.mock.calls[0]?.[0], {
           workflowId: "wf_1",
           entityValue: "appt_8813",
-          runMode: "live",
           eventName: "app/appointment.canceled",
           payload,
           deliveryId: "delivery_1",

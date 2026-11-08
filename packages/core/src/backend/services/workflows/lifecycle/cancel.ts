@@ -13,7 +13,6 @@ import { Effect } from "effect";
 import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import type { ExecutionEntitySelector } from "#src/backend/services/executions/repo";
 import type { JsonObject } from "@wfgraph/shared/types/json";
-import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 
 /**
  * Claims every in-flight run of this workflow about this entity for the Canceled
@@ -31,7 +30,6 @@ export const requestCanceledOutlet = Effect.fn(
 )(function* (
   input: {
     workflowId: string;
-    runMode: WorkflowMode;
     eventName: string;
     payload: JsonObject;
     /** The arrival's inbox id. */

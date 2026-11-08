@@ -440,7 +440,6 @@ function describeCases(
       const driver = yield* ExecutionDriver;
       return yield* driver.requestCanceledOutlet({
         workflowId: run.workflowId,
-        runMode: "live",
         entityValue: run.entityValue,
         eventName: CANCEL_EVENT,
         payload: {},
@@ -559,7 +558,6 @@ function describeCases(
         const wakesBefore = app.worker.calls();
         const claims = yield* driver.requestCanceledOutlet({
           workflowId: run.workflowId,
-          runMode: "live",
           entityValue: run.entityValue,
           eventName: CANCEL_EVENT,
           payload: {},

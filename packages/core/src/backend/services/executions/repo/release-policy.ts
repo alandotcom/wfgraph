@@ -20,7 +20,6 @@ import type {
   ParkWake,
 } from "@wfgraph/shared/lifecycle/execution-schedule";
 import type { JsonValue } from "@wfgraph/shared/types/json";
-import type { WorkflowMode } from "@wfgraph/shared/graph/types";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
@@ -620,7 +619,6 @@ export type DueSchedule = { scheduleId: string; executionId: string | null };
 /** The run row columns the Cancel producer's decisions read. */
 type CancelColumns = {
   workflowId: Column;
-  runMode: Column;
   entityValue: Column;
   entityType: Column;
   entityId: Column;
@@ -629,19 +627,22 @@ type CancelColumns = {
   cancelDeliveryId: Column;
 };
 
-/** The runs one Cancel arrival is about, in one workflow. */
+/**
+ * The runs one Cancel arrival is about, in one workflow. A run's mode is not
+ * part of it: a run keeps the mode it started in, and a Published mode
+ * switched since must not hide it from its Entity's Cancel Event.
+ */
 export type CancelScope = {
   workflowId: string;
-  runMode: WorkflowMode;
 } & ExecutionEntitySelector;
 
-/** Whether a run is about the Cancel's Entity, in its workflow and run mode. */
+/** Whether a run is about the Cancel's Entity, in its workflow. */
 function inCancelScope(columns: CancelColumns, scope: CancelScope): SQL {
   const entity =
     scope.entityType === undefined
       ? sql`${columns.entityValue} = ${scope.entityValue}`
       : sql`${columns.entityType} = ${scope.entityType} and ${columns.entityId} = ${scope.entityId}`;
-  return sql`(${columns.workflowId} = ${scope.workflowId} and ${entity} and ${columns.runMode} = ${scope.runMode})`;
+  return sql`(${columns.workflowId} = ${scope.workflowId} and ${entity})`;
 }
 
 /**
