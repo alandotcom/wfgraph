@@ -299,22 +299,33 @@ current match. About 511,000 states.
 
 One node opens its log row in a `log-open` step, reads a value from vendor A in
 a `read` step, sends it to vendor B in a `send` step with an idempotency key
-(ADR-0009), and closes its log row in a `log-close` step. Vendor A may answer
-differently each time, or throw a retriable error. The send may succeed, be
-refused (a `StepFailure`, stored as a value), or throw a retriable error. Each
-step counts its own failures, and an expired lease counts against the step its
-holder was running ("Retries"). A pass loads the memo when it claims the run,
-and `run(step, fn)` writes the memo row after `fn`, fenced on the lease. The log
-writes and the node's outcome are store writes, which commit in their own
-transactions and are fenced on the lease too ("Fencing store writes"). The two
-log steps are idempotent writes that store no memo row (`runIdempotent`): they
-run on every pass, and the pass reads the node's log row and skips an open of a
-row that exists and a close the conditional close would refuse. With
-`PassReadsLogRows` off, the guards alone hold every rule. The read finds the
-row by the id `LogIdIsTheStepId` derives and skips only what
+(ADR-0009), and closes its log row with a direct store write. Vendor A may
+answer differently each time, or throw a retriable error. The send may succeed,
+be refused (a `StepFailure`, stored as a value), or throw a retriable error.
+Each step counts its own failures. The holder's heartbeat records the step it is
+running on the schedule row, a memo write for that step clears it, and an
+expired lease counts against the step the row names ("Retries"). A pass loads
+the memo when it claims the run, and `run(step, fn)` writes the memo row after
+`fn`, fenced on the lease. The log writes and the node's outcome are store
+writes, which commit in their own transactions and are fenced on the lease too
+("Fencing store writes").
+
+The log open is an idempotent step that stores no memo row (`runIdempotent`),
+and the close is no step at all: both run on every pass, and the pass reads the
+node's log row when it claims the run and skips an open of a row that exists
+and a close the conditional close would refuse. The open's insert may throw a
+retriable error, counted against the open's own step, and a step whose retries
+are spent is refused before it runs, which fails the node. A later success over
+those failures marks the open's memo row succeeded (`SuccessReconcilesFailures`),
+after which a failure of the open is counted by nobody. The open is never the
+step the heartbeat records (`IdempotentStepIsNeverRunning`). The read is
+load-bearing: with `PassReadsLogRows` off, a pass runs the insert of an open
+that already succeeded again, and a failure there is counted by nobody, so the
+node can retry its open forever (mutation `pass-reads-no-log-rows`). The read
+finds the row by the id `LogIdIsTheStepId` derives and skips only what
 `CloseIsConditional` refuses, so the mutations `log-id-random` and
 `log-close-unconditional` turn off the half of the read that rests on their
-guard, and each still breaks its rule. About 13,000 states.
+guard, and each still breaks its rule. About 52,000 states.
 
 This is at-least-once by design: a worker whose lease expired mid-step can still
 call a vendor once more before its memo write is refused, and a crash or an
@@ -330,6 +341,7 @@ The rules check what the design promises despite that.
 | `OneLogRowPerNode` | The node has one log row, however many passes open it. | The Runs view shows a node twice, and a later node reads the wrong row's output. |
 | `LogClosedOnce` | The node's log row is closed once, however many passes close it. | A finished node's output or duration is overwritten. |
 | `NodeOutcomeIsFinal` | Once the node has succeeded or failed, nothing rewrites that outcome. | A stale worker turns a succeeded node into a failed one. |
+| `FinishedNodeNeverRefused` | Once the node's log row is closed as a success, the node is never failed or refused afterwards, and none of its steps reads as retrying. | The Runs view shows a finished node as retrying, and failures charged to its log open on later passes refuse it and fail the run. |
 | `NodeEnds` (liveness) | The node ends. | The run loops on a node forever. |
 
 ### `Timing`: leases, heartbeats, polling and the Worker driver
@@ -486,9 +498,9 @@ the directories of those names under `services/workflows/`.
 | `Arrivals`: `Scan`, `Record` | Section 7.2 | `listWaitCandidatePage` and `deliverWaitCandidates` in `lifecycle/deliver-event.ts` |
 | `Handler`: `Read`, `Send`, `ReadMemo`, `SendMemo`, `ReadIsMemoized`, `RefusalIsAValue` | ADR-0009 | `run` in `executor/runtime.ts`, which answers a `succeeded` memo row with its value, and otherwise runs the step and records its value through `writeStepMemo` in `repo/schedule.ts` and `sqlite/schedule.ts`, fenced on the lease; `StepFailure` and `RememberedStep` in `extensions/steps/define-step.ts` |
 | `Handler`: `SendCarriesAKey` | ADR-0009 | the idempotency key `callExternal` passes, in `extensions/steps/external-http.ts` |
-| `Handler`: `Open`, `Close`, `LogIdIsTheStepId`, `CloseIsConditional`, `PassReadsLogRows` | | `nodeLogId`, `openNodeLogWrite` and `closeNodeLogWrite` in `repo/node-logs.ts`, and their twins in `sqlite/logs.ts`: the row id derives from the execution and node ids, the insert keeps the first row, and the fenced close applies to a row still `running`, or to an `error` row when it reports `success` (`nodeLogCloseGuard` in `repo/release-policy.ts`, a WHERE condition). The `node:<n>:log-open` and `node:<n>:log-close:<status>` steps in `engine/step-log.ts` run through `runIdempotent` in `executor/runtime.ts`, which stores no memo row and counts a failure against the step as `run` does. `startStepLog` and `completeStepLog` in `engine/db-store.ts` read the run's log rows once per pass through `listNodeStatuses`, on the first log write, and skip what the model's `seenOpen` and `seenClose` skip (`nodeLogCloseApplies` in `repo/release-policy.ts`). The model reads the row at `Claim`, which is the same read because only the lease holder writes log rows. The model has no `error` close, so it does not check a retry that corrects a row closed as `error`. |
+| `Handler`: `Open`, `OpenSucceeded`, `Close`, `LogIdIsTheStepId`, `CloseIsConditional`, `PassReadsLogRows`, `SuccessReconcilesFailures` | | `nodeLogId`, `openNodeLogWrite` and `closeNodeLogWrite` in `repo/node-logs.ts`, and their twins in `sqlite/logs.ts`: the row id derives from the execution and node ids, the insert keeps the first row, and every close, fenced or not, applies to a row still `running`, or to an `error` row when it reports `success` (`nodeLogCloseGuard` in `repo/node-log-close.ts`, a WHERE condition). The `node:<n>:log-open` step in `engine/step-log.ts`, and the Wait's open in `engine/wait.ts`, run through `runIdempotent` in `executor/runtime.ts`, which refuses a step whose memo row is `failed`, counts a failure the step throws against its id, and on a success over a `failing` row writes the row `succeeded` through `writeStepMemo`. The close is `closeStepLogQuietly` in `engine/step-log.ts`, a store write that counts no failure. `runBody` in `executor/run-body.ts` reads the run's log rows through `listNodeLogStates` when the pass opens, and `startStepLog` and `completeStepLog` in `engine/db-store.ts` skip what the model's `seenOpen` and `seenClose` skip (`nodeLogCloseApplies` in `repo/node-log-close.ts`). The model has no `error` close, so it does not check a retry that corrects a row closed as `error`, and its open and reconciling write are one action where the code makes two writes. |
 | `Handler`: `StoreWriteIsFenced`, `MayWrite`, `Outcome`, `Release` | | `makeFencedWrites` in `repo/fenced-writes.ts` and `makeSqliteFencedWrites` in `sqlite/fenced-writes.ts`, held to the fence's run by `guardStoreWrites` in `repo/fencing.ts`; `watchStoreWrites` in `executor/runtime.ts`, through which `createDbWorkflowStore` (`engine/db-store.ts`) writes on a pass (`executor/run-body.ts`); `releasePass` in `repo/schedule.ts`; `endRunWrite` in `repo/runs.ts`. The pass that wrote the terminal record makes its remaining store writes unfenced (the `ended` phase in `executor/runtime.ts`); no model has a write after the terminal record. |
-| `Handler`: `AttemptsArePerStep`, `FailingStep`, `RetriesSpent`, `StepOf` | "Retries"; "Lease and liveness" | `countStepFailure` and `STEP_RETRY_LIMIT` in `repo/release-policy.ts`, which count a step's failures on its memo row; `sweptStepFailures` in `repo/release-policy.ts` and the running step `renewLeaseWhileRunning` records in `executor/pass.ts`. The run's own count, for a failure no step owns, is not modelled: `claimAttempt` and `retriesSpent` in `repo/release-policy.ts` end such a run `failed` past the limit, which takes more faults than any model allows. |
+| `Handler`: `AttemptsArePerStep`, `FailingStep`, `RetriesSpent`, `Settled`, `RunningStepOf`, `Heartbeat`, `IdempotentStepIsNeverRunning`, `LeaseExpires`, `SweepDeadLease` | "Retries"; "Lease and liveness" | `countStepFailure` and `STEP_RETRY_LIMIT` in `repo/release-policy.ts`, which count a step's failures on its memo row and leave a `succeeded` row alone; `sweptStepFailures` in `repo/release-policy.ts` and the running step `renewLeaseWhileRunning` records in `executor/pass.ts`, read from `PassState.runningStep`, which `run` reports and `runIdempotent` never does; `runningAfterMemo` in `repo/release-policy.ts`, which a memo write uses to clear the running step it names. The run's own count, for a failure no step owns, is not modelled: `claimAttempt` and `retriesSpent` in `repo/release-policy.ts` end such a run `failed` past the limit, which takes more faults than any model allows. |
 | `Timing`: `NodeLease`, `NodeHeartbeat`, `NodePoll`, `Expire`, `SweepLateness` | "Wake latency" | `DEFAULT_LEASE_MS`, `DEFAULT_HEARTBEAT_MS` and the `pollMs` option of `runWorkerLoop` in `executor/worker-loop.ts`; `renewLeaseWhileRunning` in `executor/pass.ts`; the expired-lease sweep in `claimDue`. The loop also claims at a released run's own `wake_at` and on a same-process wake (`createWorkerWake`), both sooner than the poll the model bounds, and on a run another process's producer announced through the PostgreSQL backend's `NOTIFY` broadcast (`makeExecutionDriverLayer` in `executions/driver.ts`). |
 | `Timing`: `WorkerLease`, `WorkerCron`, `WorkerBudget`, `QueueMaxDelay`, `Kill`, `WorkerUsesCron` | Section 8, "Cloudflare Worker over Hyperdrive" | `WORKER_LEASE_MS` (5 minutes), `WORKER_HEARTBEAT_MS` (1 minute), `WORKER_TICK_BUDGET_MS` (14 minutes) and `WORKER_TICK_CLAIM_WINDOW_MS` (10 minutes) in `worker.ts`, whose `scheduled` handler is the host's one-minute Cron Trigger (`WorkerCron`, `WorkerUsesCron`) and whose `queue` handler is the Queue consumer; `tick` in `executor/worker-loop.ts`, which cuts a pass still running at the budget, releasing its row due at once with one failure counted against its running step, as the model's `Kill` followed by the lease sweep counts it. `Kill` is the platform ending the invocation at its 15-minute wall time, which the lease recovers; the model's `WorkerBudget` is that wall time, so the code's 5-minute lease over 15 minutes is the model's 2:6 ratio unscaled, and the tick's own 14-minute budget cuts its passes before the kill. The tick's pass limit (`WORKER_TICK_PASS_LIMIT`), which bounds its CPU time, ends a tick early, which the model's next cron or queue invocation covers. A wake message names no row and carries no delay (`createQueueWake` in `executor/queue-wake.ts`), so every deadline is the cron's, which is the model's `QueueMaxDelay` arm with the sleep longer than the cap. |
 | `Timing`: `ClaimWaitsForTheDeadline` | | the `wake_at <= now` condition on `queued` and `waiting` rows in `claimDue` |
