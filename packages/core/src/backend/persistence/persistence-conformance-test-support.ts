@@ -13,6 +13,7 @@ import {
 } from "#src/backend/persistence/conformance/support";
 import { describeWorkflowConformance } from "#src/backend/persistence/conformance/workflows";
 import { describeExecutionConformance } from "#src/backend/persistence/conformance/executions";
+import { describeExecutionRunEndingConformance } from "#src/backend/persistence/conformance/execution-run-endings";
 import { describeExecutionWaitConformance } from "#src/backend/persistence/conformance/execution-waits";
 import { describeExecutionScheduleConformance } from "#src/backend/persistence/conformance/execution-schedule";
 import { describeExecutionExecutorStateConformance } from "#src/backend/persistence/conformance/execution-executor-state";
@@ -67,6 +68,7 @@ export function describePersistenceConformance(
     describeWorkflowConformance(registry);
     describeDraftSnapshotConformance(registry);
     describeExecutionConformance(registry);
+    describeExecutionRunEndingConformance(registry);
     describeExecutionWaitConformance(registry);
     describeExecutionScheduleConformance(registry);
     describeExecutionExecutorStateConformance(registry);

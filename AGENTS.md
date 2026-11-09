@@ -234,7 +234,7 @@ states the invariant in brief.
 
 **One contract, two backends, one suite.** `backend/persistence/conformance/` holds every case
 that is about the repository contract rather than about an engine, one file per aggregate over
-`support.ts` (the executions aggregate has more files: `execution-waits.ts` for its wait rows, `execution-schedule.ts`, `execution-fencing.ts` and `execution-producers.ts` for its schedule and memo rows, `execution-executor-state.ts` for the Runs view's reads of them, `execution-inbox.ts` for the event inbox, `execution-retention.ts` for the run-history sweep, and `execution-cron.ts` for cron schedule timers, over `schedule-support.ts`; the workflows aggregate keeps its draft snapshots in `draft-snapshots.ts`), which owns the cipher, the seed, and the registry that closes what a case opened.
+`support.ts` (the executions aggregate has more files: `execution-waits.ts` for its wait rows, `execution-schedule.ts`, `execution-fencing.ts` and `execution-producers.ts` for its schedule and memo rows, `execution-executor-state.ts` for the Runs view's reads of them, `execution-inbox.ts` for the event inbox, `execution-retention.ts` for the run-history sweep, `execution-run-endings.ts` for how each cause ends a run, and `execution-cron.ts` for cron schedule timers, over `schedule-support.ts`; the workflows aggregate keeps its draft snapshots in `draft-snapshots.ts`), which owns the cipher, the seed, and the registry that closes what a case opened.
 `persistence-conformance-test-support.ts` composes them, and both backends run the result:
 `sqlite.conformance.test.ts` and `postgres.conformance.pg.test.ts`. A case belongs there unless
 it reaches past the repositories into one engine's own storage, which is what is left in

@@ -313,7 +313,7 @@ export function describeExecutionFencingConformance({
     });
 
     // The Runs view prints a run with no duration as a dash. Every run-ending
-    // write is held to that by the run-ending table in `executions.ts`; a run
+    // write is held to that by the run-ending table in `execution-run-endings.ts`; a run
     // recorded already ended is the one that never passes through it.
     it("writes a zero duration on a run recorded already ended", async () => {
       const connection = await seeded(await openConnection());

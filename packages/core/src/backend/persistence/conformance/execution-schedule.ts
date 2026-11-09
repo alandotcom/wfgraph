@@ -447,7 +447,7 @@ export function describeExecutionScheduleConformance({
       });
     });
 
-    // The run-ending table in `executions.ts` holds every ending to deleting
+    // The run-ending table in `execution-run-endings.ts` holds every ending to deleting
     // the schedule row and memo. This case adds what it does not read: the
     // node logs stay, and the pass that ended the run is refused afterwards.
     it("keeps the logs of a run its own pass ended, and refuses that pass's next fenced write", async () => {
