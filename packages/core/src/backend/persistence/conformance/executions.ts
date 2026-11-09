@@ -20,6 +20,10 @@ import {
   type ExecutionTerminationState,
 } from "#src/backend/services/executions/repo";
 import type {
+  OutsideGraphEnding,
+  RunVerdict,
+} from "#src/backend/services/executions/repo/run-end-policy";
+import type {
   ConformanceConnection,
   PersistenceTestRegistry,
 } from "#src/backend/persistence/conformance/support";
@@ -29,6 +33,7 @@ import {
   emptyGraph,
   notYetDue,
   seedPublishedWorkflow,
+  verdict,
 } from "#src/backend/persistence/conformance/support";
 import {
   at,
@@ -120,21 +125,25 @@ const startFirstWins = (
   deliveryId: string
 ) => attemptStart(connection, { deliveryId, concurrency: "first-wins" });
 
-/** One way a run ends today. */
-type RunEndingWrite =
-  | {
-      kind: "finishRun";
-      status: "completed" | "failed" | "canceled" | "exited";
-    }
-  | { kind: "endInFlight"; status: "canceled" | "superseded" }
+/**
+ * One run-ending cause as the table sends it. `endRun` takes a verdict or an
+ * outside-graph ending, `cancelRun` a cancel, and a newest-wins start
+ * supersedes.
+ */
+type TableEnding =
+  | RunVerdict
+  | OutsideGraphEnding
+  | { kind: "cancel" }
   | { kind: "supersede" };
 
-/** The state a run is in when a run-ending write reaches it. */
-type RunBeforeEnding =
-  | "unclaimed"
-  | "cancel-claimed"
-  | "exit-claimed"
-  | "ended";
+/** The states a run can be in when a run-ending write reaches it. */
+const RUN_STATES = [
+  "unclaimed",
+  "cancel-claimed",
+  "exit-claimed",
+  "ended",
+] as const;
+type RunBeforeEnding = (typeof RUN_STATES)[number];
 
 /** The timeline entry each ending status is announced with. */
 const ENDING_ENTRY = {
@@ -145,78 +154,144 @@ const ENDING_ENTRY = {
   superseded: "run_superseded",
 } as const;
 
-/** The reason a newest-wins start supersedes a run with, which its entry reads. */
-const SUPERSEDED_REASON = "Superseded by a newer start";
-
 /** The one Entity every run in the run-ending cases is about. */
 const ENDING_ENTITY = {
   entityType: "appointment",
   entityId: "appointment_1",
 } as const;
 
-const finishRunAs = (
-  status: "completed" | "failed" | "canceled" | "exited"
-): RunEndingWrite => ({ kind: "finishRun", status });
-const endInFlightAs = (status: "canceled" | "superseded"): RunEndingWrite => ({
-  kind: "endInFlight",
+/** The reason the table's cancel stops a run with, which its entry reads. */
+const CANCEL_REASON = "Canceled from the Runs view";
+
+/** The Exit claim the table's exit-claimed run holds. */
+const EXIT_CLAIM = {
+  reason: "entity_condition_not_met",
+  nodeId: "node_check",
+} as const;
+
+const verdictOf = (status: RunVerdict["status"]): RunVerdict => ({
+  kind: "verdict",
   status,
+  exitContext: { entityType: "appointment", conditionId: "condition_1" },
+  reached: { kind: "walked", resultCount: 0 },
 });
-const supersede: RunEndingWrite = { kind: "supersede" };
+
+const EXITED_MESSAGE = "Run exited because the Entity was ineligible";
 
 /**
- * Every run-ending write against every state a run can be in, and whether the
- * write ends the run. `finishRun` ends a run whose claim matches its status:
- * no claim for completed and failed, a Cancel claim for canceled, an Exit claim
- * for exited. `endInFlight` and a newest-wins supersede end only a run holding
- * no claim. No write ends a run that has already ended.
+ * The entry a verdict that an Exit claim ends carries, built from the claim
+ * and the condition the verdict names.
+ */
+const EXIT_ENTRY_METADATA = {
+  ...EXIT_CLAIM,
+  entityType: "appointment",
+  conditionId: "condition_1",
+  checkpoint: "before-node",
+} as const;
+
+/** How one ending leaves a run: ended in a status with an entry, or left. */
+type EndingOutcome = {
+  status: keyof typeof ENDING_ENTRY;
+  message: string;
+  metadata?: Record<string, unknown> | undefined;
+} | null;
+
+const endsAs = (
+  status: keyof typeof ENDING_ENTRY,
+  message: string,
+  metadata?: Record<string, unknown>
+): EndingOutcome => ({ status, message, metadata });
+
+const VERDICT_EXITED = endsAs("exited", EXITED_MESSAGE, EXIT_ENTRY_METADATA);
+
+/**
+ * Every run-ending cause against every state a run can be in, and the status
+ * and entry it ends the run with, or null when it leaves the run alone.
+ *
+ * A verdict under an Exit claim ends the run `exited`; under a Cancel claim
+ * only a `canceled` verdict ends it. An outside-graph ending writes `failed`,
+ * or the status its claim selects. A cancel or a supersede ends only a run
+ * holding no claim. Nothing ends a run that has already ended.
  */
 const RUN_ENDINGS: ReadonlyArray<{
-  write: RunEndingWrite;
-  against: RunBeforeEnding;
-  ends: boolean;
+  ending: TableEnding;
+  outcomes: Record<RunBeforeEnding, EndingOutcome>;
 }> = [
-  { write: finishRunAs("completed"), against: "unclaimed", ends: true },
-  { write: finishRunAs("completed"), against: "cancel-claimed", ends: false },
-  { write: finishRunAs("completed"), against: "exit-claimed", ends: false },
-  { write: finishRunAs("completed"), against: "ended", ends: false },
-  { write: finishRunAs("failed"), against: "unclaimed", ends: true },
-  { write: finishRunAs("failed"), against: "cancel-claimed", ends: false },
-  { write: finishRunAs("failed"), against: "exit-claimed", ends: false },
-  { write: finishRunAs("failed"), against: "ended", ends: false },
-  { write: finishRunAs("canceled"), against: "unclaimed", ends: false },
-  { write: finishRunAs("canceled"), against: "cancel-claimed", ends: true },
-  { write: finishRunAs("canceled"), against: "exit-claimed", ends: false },
-  { write: finishRunAs("canceled"), against: "ended", ends: false },
-  { write: finishRunAs("exited"), against: "unclaimed", ends: false },
-  { write: finishRunAs("exited"), against: "cancel-claimed", ends: false },
-  { write: finishRunAs("exited"), against: "exit-claimed", ends: true },
-  { write: finishRunAs("exited"), against: "ended", ends: false },
-  { write: endInFlightAs("canceled"), against: "unclaimed", ends: true },
-  { write: endInFlightAs("canceled"), against: "cancel-claimed", ends: false },
-  { write: endInFlightAs("canceled"), against: "exit-claimed", ends: false },
-  { write: endInFlightAs("canceled"), against: "ended", ends: false },
-  { write: endInFlightAs("superseded"), against: "unclaimed", ends: true },
   {
-    write: endInFlightAs("superseded"),
-    against: "cancel-claimed",
-    ends: false,
+    ending: verdictOf("completed"),
+    outcomes: {
+      unclaimed: endsAs("completed", "Run completed successfully"),
+      "cancel-claimed": null,
+      "exit-claimed": VERDICT_EXITED,
+      ended: null,
+    },
   },
-  { write: endInFlightAs("superseded"), against: "exit-claimed", ends: false },
-  { write: endInFlightAs("superseded"), against: "ended", ends: false },
-  { write: supersede, against: "unclaimed", ends: true },
-  { write: supersede, against: "cancel-claimed", ends: false },
-  { write: supersede, against: "exit-claimed", ends: false },
-  { write: supersede, against: "ended", ends: false },
+  {
+    ending: verdictOf("failed"),
+    outcomes: {
+      unclaimed: endsAs("failed", "Run completed with errors"),
+      "cancel-claimed": null,
+      "exit-claimed": VERDICT_EXITED,
+      ended: null,
+    },
+  },
+  {
+    ending: verdictOf("canceled"),
+    outcomes: {
+      unclaimed: null,
+      "cancel-claimed": endsAs(
+        "canceled",
+        "Run canceled at the Canceled outlet"
+      ),
+      "exit-claimed": VERDICT_EXITED,
+      ended: null,
+    },
+  },
+  {
+    ending: verdictOf("exited"),
+    outcomes: {
+      unclaimed: null,
+      "cancel-claimed": null,
+      "exit-claimed": VERDICT_EXITED,
+      ended: null,
+    },
+  },
+  {
+    ending: { kind: "outsideGraph", error: "A step outside any node failed" },
+    outcomes: {
+      unclaimed: endsAs("failed", "Run failed with fatal error"),
+      "cancel-claimed": endsAs(
+        "canceled",
+        "Run canceled after a fatal error; the Canceled outlet did not run"
+      ),
+      "exit-claimed": endsAs("exited", EXITED_MESSAGE),
+      ended: null,
+    },
+  },
+  {
+    ending: { kind: "cancel" },
+    outcomes: {
+      unclaimed: endsAs("canceled", CANCEL_REASON),
+      "cancel-claimed": null,
+      "exit-claimed": null,
+      ended: null,
+    },
+  },
+  {
+    ending: { kind: "supersede" },
+    outcomes: {
+      unclaimed: endsAs("superseded", "Superseded by a newer start"),
+      "cancel-claimed": null,
+      "exit-claimed": null,
+      ended: null,
+    },
+  },
 ];
 
-function endingStatus(write: RunEndingWrite) {
-  return write.kind === "supersede" ? "superseded" : write.status;
-}
-
-function endingLabel(write: RunEndingWrite): string {
-  return write.kind === "supersede"
-    ? "a newest-wins supersede"
-    : `${write.kind} ${write.status}`;
+function endingLabel(ending: TableEnding): string {
+  if (ending.kind === "verdict") return `a ${ending.status} verdict`;
+  if (ending.kind === "outsideGraph") return "an outside-graph ending";
+  return ending.kind === "cancel" ? "a cancel" : "a newest-wins supersede";
 }
 
 /**
@@ -237,7 +312,6 @@ function runBeforeEnding(state: RunBeforeEnding) {
         input: {},
       },
       concurrency: "unlimited",
-      supersededReason: SUPERSEDED_REASON,
       startedEntry: notYetDue.startedEntry,
       now: T0,
     });
@@ -263,20 +337,19 @@ function runBeforeEnding(state: RunBeforeEnding) {
       });
     }
     if (state === "exit-claimed") {
-      yield* executions.requestExit({
-        executionId,
-        reason: "entity_condition_not_met",
-        nodeId: "node_check",
-      });
+      yield* executions.requestExit({ executionId, ...EXIT_CLAIM });
     }
     if (state === "ended") {
-      yield* executions.finishRun({ executionId, status: "completed" });
+      yield* executions.endRun({
+        executionId,
+        ending: verdictOf("completed"),
+      });
     }
     return { executionId, waitStateId };
   });
 }
 
-/** What a caller of `finishRun` or `endInFlight` reads off its answer. */
+/** What a caller of `endRun` or `cancelRun` reads off its answer. */
 function answered(state: ExecutionTerminationState | null) {
   return {
     didWrite: state?.didWrite,
@@ -286,54 +359,39 @@ function answered(state: ExecutionTerminationState | null) {
 }
 
 /**
- * Runs one run-ending write against `executionId`, announcing it with the
- * entry its status takes, and answers what its caller reads: the termination
- * state for `finishRun` and `endInFlight`, and for a supersede whether the
- * start displaced the run.
+ * Sends one ending to `executionId` and answers what its caller reads: the
+ * termination state for `endRun` and `cancelRun`, and for a supersede whether
+ * the start displaced the run.
  */
-function endRun(write: RunEndingWrite, executionId: string) {
+function sendEnding(ending: TableEnding, executionId: string) {
   return Effect.gen(function* () {
     const executions = yield* ExecutionRepo;
-    if (write.kind === "supersede") {
-      const start = yield* executions.startForEntity({
-        execution: {
-          workflowId: "wf_1",
-          workflowVersionId: "ver_1",
-          startSource: "event",
-          runMode: "live",
-          ...ENDING_ENTITY,
-          input: {},
-        },
-        concurrency: "newest-wins",
-        supersededReason: SUPERSEDED_REASON,
-        ...notYetDue,
-      });
-      if (start.status !== "started") throw new Error("Start was refused");
-      return { didWrite: start.supersededExecutionIds.includes(executionId) };
+    switch (ending.kind) {
+      case "supersede": {
+        const start = yield* executions.startForEntity({
+          execution: {
+            workflowId: "wf_1",
+            workflowVersionId: "ver_1",
+            startSource: "event",
+            runMode: "live",
+            ...ENDING_ENTITY,
+            input: {},
+          },
+          concurrency: "newest-wins",
+          ...notYetDue,
+        });
+        if (start.status !== "started") throw new Error("Start was refused");
+        return {
+          didWrite: start.supersededExecutionIds.includes(executionId),
+        };
+      }
+      case "cancel":
+        return answered(
+          yield* executions.cancelRun({ executionId, reason: CANCEL_REASON })
+        );
+      default:
+        return answered(yield* executions.endRun({ executionId, ending }));
     }
-    const announcement = {
-      workflowId: "wf_1",
-      message: `Run ended ${write.status}`,
-    };
-    return answered(
-      write.kind === "finishRun"
-        ? yield* executions.finishRun({
-            executionId,
-            status: write.status,
-            announcement: {
-              ...announcement,
-              eventType: ENDING_ENTRY[write.status],
-            },
-          })
-        : yield* executions.endInFlight({
-            executionId,
-            status: write.status,
-            announcement: {
-              ...announcement,
-              eventType: ENDING_ENTRY[write.status],
-            },
-          })
-    );
   });
 }
 
@@ -355,11 +413,15 @@ function observeRun(executionId: string, waitStateId: string) {
       completedAt: row?.completedAt ?? null,
       duration: row?.duration ?? null,
       cancelledAt: row?.cancelledAt ?? null,
-      entries: events.map(({ id, eventType, message }) => ({
-        id,
-        eventType,
-        message,
-      })),
+      entries: events.map(
+        ({ id, workflowId, eventType, message, metadata }) => ({
+          id,
+          workflowId,
+          eventType,
+          message,
+          metadata,
+        })
+      ),
       wait: (yield* executions.findWaitStateById(waitStateId))?.status,
       schedule: yield* executions.findSchedule({ executionId }),
       memo: memo.map((entry) => entry.stepId),
@@ -698,18 +760,10 @@ export function describeExecutionConformance({
             payload: {},
             deliveryId: yield* cancelArrival(),
           });
-          const completion = yield* executions.finishRun({
+          // The run's own verdict meets the Exit claim, which selects exited.
+          const exited = yield* executions.endRun({
             executionId: started.execution.id,
-            status: "completed",
-            output: { shouldNotPersist: true },
-          });
-          const exited = yield* executions.finishRun({
-            executionId: started.execution.id,
-            status: "exited",
-          });
-          const repeatedExit = yield* executions.finishRun({
-            executionId: started.execution.id,
-            status: "exited",
+            ending: verdict("completed"),
           });
           const afterTerminal = yield* executions.requestExit({
             executionId: started.execution.id,
@@ -722,9 +776,7 @@ export function describeExecutionConformance({
             first,
             replayed,
             cancel,
-            completion,
             exited,
-            repeatedExit,
             afterTerminal,
             summary: yield* executions.findSummaryById(started.execution.id),
             inFlight: yield* executions.listInFlightByWorkflow("wf_1"),
@@ -751,30 +803,17 @@ export function describeExecutionConformance({
         didWrite: false,
       });
       expect(result.cancel).toEqual([]);
-      expect(result.completion).toMatchObject({
-        status: "running",
-        claim: expectedClaim,
-        didWrite: false,
-      });
       expect(result.exited).toMatchObject({
         status: "exited",
         claim: expectedClaim,
         didWrite: true,
-      });
-      expect(result.repeatedExit).toMatchObject({
-        status: "exited",
-        claim: expectedClaim,
-        didWrite: false,
       });
       expect(result.afterTerminal).toMatchObject({
         status: "exited",
         claim: expectedClaim,
         didWrite: false,
       });
-      expect(result.summary).toMatchObject({
-        status: "exited",
-        output: null,
-      });
+      expect(result.summary).toMatchObject({ status: "exited" });
       expect(result.inFlight).toEqual([]);
 
       const terminalReplay = await attemptStart(database, {
@@ -823,19 +862,7 @@ export function describeExecutionConformance({
             reason: "entity_condition_not_met",
             nodeId: "node_check",
           });
-          const refusedExitFinish = yield* executions.finishRun({
-            executionId: started.execution.id,
-            status: "exited",
-          });
-          const canceled = yield* executions.finishRun({
-            executionId: started.execution.id,
-            status: "canceled",
-          });
-          const repeatedCancel = yield* executions.endInFlight({
-            executionId: started.execution.id,
-            status: "canceled",
-          });
-          return { cancel, exit, refusedExitFinish, canceled, repeatedCancel };
+          return { cancel, exit };
         })
       );
 
@@ -855,21 +882,6 @@ export function describeExecutionConformance({
       ]);
       expect(result.exit).toMatchObject({
         status: "running",
-        claim: expectedClaim,
-        didWrite: false,
-      });
-      expect(result.refusedExitFinish).toMatchObject({
-        status: "running",
-        claim: expectedClaim,
-        didWrite: false,
-      });
-      expect(result.canceled).toMatchObject({
-        status: "canceled",
-        claim: expectedClaim,
-        didWrite: true,
-      });
-      expect(result.repeatedCancel).toMatchObject({
-        status: "canceled",
         claim: expectedClaim,
         didWrite: false,
       });
@@ -896,11 +908,9 @@ export function describeExecutionConformance({
             writes: executions,
           }),
           executionId,
-          workflowId: "wf_1",
           status: "completed",
           output: null,
           resultCount: 0,
-          runMode: "live",
         });
       }).pipe(Effect.ignore);
 
@@ -1067,80 +1077,6 @@ export function describeExecutionConformance({
       ]);
     });
 
-    it("writes a terminal write's announcement only from the write that ends the run", async () => {
-      const database = await openConnection();
-      await seedPublishedWorkflow(database);
-      const started = await attemptStart(database, {
-        deliveryId: "delivery_announced_end",
-      });
-      if (started.status !== "started") {
-        throw new Error("The run was refused");
-      }
-      const executionId = started.execution.id;
-
-      const result = await database.run(
-        Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
-          const refusedExit = yield* executions.finishRun({
-            executionId,
-            status: "exited",
-            announcement: {
-              workflowId: "wf_1",
-              eventType: "run_exited",
-              message: "Run exited because the Entity was ineligible",
-              metadata: { runMode: "live" },
-            },
-          });
-          const completed = yield* executions.finishRun({
-            executionId,
-            status: "completed",
-            announcement: {
-              workflowId: "wf_1",
-              eventType: "run_completed",
-              message: "Run completed successfully",
-              metadata: { resultCount: 2, runMode: "live" },
-            },
-          });
-          const repeated = yield* executions.finishRun({
-            executionId,
-            status: "failed",
-            announcement: {
-              workflowId: "wf_1",
-              eventType: "run_failed",
-              message: "Run failed with fatal error",
-              metadata: { error: "late", runMode: "live" },
-            },
-          });
-          const events = yield* executions.listEvents(executionId);
-          return {
-            didWrite: [refusedExit, completed, repeated].map(
-              (state) => state?.didWrite
-            ),
-            ending: events
-              .filter((event) => event.eventType !== "run_started")
-              .map(({ workflowId, eventType, message, metadata }) => ({
-                workflowId,
-                eventType,
-                message,
-                metadata,
-              })),
-          };
-        })
-      );
-
-      expect(result).toEqual({
-        didWrite: [false, true, false],
-        ending: [
-          {
-            workflowId: "wf_1",
-            eventType: "run_completed",
-            message: "Run completed successfully",
-            metadata: { resultCount: 2, runMode: "live" },
-          },
-        ],
-      });
-    });
-
     // The Intake model's `ExecutionAndScheduleTogether`: an open run always has
     // a schedule row, because one write inserts both, and a start Concurrency
     // refuses or displaces leaves no schedule row behind.
@@ -1167,7 +1103,6 @@ export function describeExecutionConformance({
                 input: {},
               },
               concurrency: input.concurrency,
-              supersededReason: "newer start",
               startedEntry: {
                 message: "Event-triggered run of v1 started",
                 metadata: { startSource: "event" },
@@ -1293,7 +1228,6 @@ export function describeExecutionConformance({
               input: { appointmentId: "appointment_1" },
             },
             concurrency: "first-wins",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (start.status !== "started") throw new Error("Start was refused");
@@ -1346,7 +1280,6 @@ export function describeExecutionConformance({
               input: { appointmentId: "appointment_1" },
             },
             concurrency: "first-wins",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (start.status !== "started") throw new Error("Start was refused");
@@ -1432,9 +1365,9 @@ export function describeExecutionConformance({
             eventType: "run_completed",
             message: "Completed",
           });
-          const finished = yield* executions.finishRun({
+          const finished = yield* executions.endRun({
             executionId,
-            status: "canceled",
+            ending: verdict("canceled"),
           });
 
           const snapshot = {
@@ -1505,6 +1438,10 @@ export function describeExecutionConformance({
       ]);
       expect(result.outputs).toEqual({ node_1: { taskId: "task_1" } });
       expect(result.events).toMatchObject([
+        {
+          eventType: "run_cancelled",
+          message: "Run canceled at the Canceled outlet",
+        },
         { message: "Completed" },
         {
           eventType: "run_cancel_requested",
@@ -1535,7 +1472,6 @@ export function describeExecutionConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") {
@@ -1591,7 +1527,6 @@ export function describeExecutionConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") {
@@ -1660,7 +1595,6 @@ export function describeExecutionConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") {
@@ -1857,88 +1791,95 @@ export function describeExecutionConformance({
     });
   });
 
-  describe("how each run-ending write ends a run", () => {
-    for (const { write, against, ends } of RUN_ENDINGS) {
-      it(`${endingLabel(write)} against a ${against} run ${ends ? "ends it" : "leaves it as it was"}`, async () => {
-        const connection = await openConnection();
-        await seedPublishedWorkflow(connection);
+  describe("how each run-ending cause ends a run", () => {
+    for (const { ending, outcomes } of RUN_ENDINGS) {
+      for (const against of RUN_STATES) {
+        const outcome = outcomes[against];
+        it(`${endingLabel(ending)} against a ${against} run ${outcome ? `ends it ${outcome.status}` : "leaves it as it was"}`, async () => {
+          const connection = await openConnection();
+          await seedPublishedWorkflow(connection);
 
-        const { before, answer, after } = await connection.run(
-          Effect.gen(function* () {
-            const { executionId, waitStateId } =
-              yield* runBeforeEnding(against);
-            return {
-              before: yield* observeRun(executionId, waitStateId),
-              answer: yield* endRun(write, executionId),
-              after: yield* observeRun(executionId, waitStateId),
-            };
-          })
-        );
+          const { before, answer, after } = await connection.run(
+            Effect.gen(function* () {
+              const { executionId, waitStateId } =
+                yield* runBeforeEnding(against);
+              return {
+                before: yield* observeRun(executionId, waitStateId),
+                answer: yield* sendEnding(ending, executionId),
+                after: yield* observeRun(executionId, waitStateId),
+              };
+            })
+          );
 
-        // The run holds what the write would settle, so a write that leaves
-        // it alone is told apart from a run with nothing to settle.
-        if (against === "ended") {
-          expect(before).toMatchObject({
-            status: "completed",
-            claim: null,
+          // The run holds what the write would settle, so a write that leaves
+          // it alone is told apart from a run with nothing to settle.
+          if (against === "ended") {
+            expect(before).toMatchObject({
+              status: "completed",
+              claim: null,
+              wait: "cancelled",
+              schedule: null,
+              memo: [],
+            });
+          } else {
+            expect(OPEN_PARK_STATUSES).toContain(before.wait);
+            expect(before).toMatchObject({
+              claim:
+                against === "cancel-claimed"
+                  ? "cancel"
+                  : against === "exit-claimed"
+                    ? "exit"
+                    : null,
+              completedAt: null,
+              schedule: { executionId: expect.any(String) },
+              memo: ["node:send:dispatch"],
+            });
+          }
+
+          const added = after.entries.filter(
+            (entry) => !before.entries.some(({ id }) => id === entry.id)
+          );
+          if (outcome === null) {
+            expect(answer).toEqual(
+              ending.kind === "supersede"
+                ? { didWrite: false }
+                : {
+                    didWrite: false,
+                    status: before.status,
+                    claim: before.claim,
+                  }
+            );
+            expect(after).toEqual(before);
+            return;
+          }
+          const { status } = outcome;
+          expect(answer).toEqual(
+            ending.kind === "supersede"
+              ? { didWrite: true }
+              : { didWrite: true, status, claim: before.claim }
+          );
+          expect(added).toEqual([
+            {
+              id: expect.any(String),
+              workflowId: "wf_1",
+              eventType: ENDING_ENTRY[status],
+              message: outcome.message,
+              metadata: expect.objectContaining(outcome.metadata ?? {}),
+            },
+          ]);
+          expect(after).toEqual({
+            status,
+            claim: before.claim,
+            completedAt: expect.any(Date),
+            duration: expect.stringMatching(/^\d+$/),
+            cancelledAt: status === "canceled" ? expect.any(Date) : null,
+            entries: expect.arrayContaining(before.entries),
             wait: "cancelled",
             schedule: null,
             memo: [],
           });
-        } else {
-          expect(OPEN_PARK_STATUSES).toContain(before.wait);
-          expect(before).toMatchObject({
-            claim:
-              against === "cancel-claimed"
-                ? "cancel"
-                : against === "exit-claimed"
-                  ? "exit"
-                  : null,
-            completedAt: null,
-            schedule: { executionId: expect.any(String) },
-            memo: ["node:send:dispatch"],
-          });
-        }
-
-        const status = endingStatus(write);
-        const added = after.entries
-          .filter((entry) => !before.entries.some(({ id }) => id === entry.id))
-          .map(({ eventType, message }) => ({ eventType, message }));
-        if (!ends) {
-          expect(answer).toEqual(
-            write.kind === "supersede"
-              ? { didWrite: false }
-              : { didWrite: false, status: before.status, claim: before.claim }
-          );
-          expect(after).toEqual(before);
-          return;
-        }
-        expect(answer).toEqual(
-          write.kind === "supersede"
-            ? { didWrite: true }
-            : { didWrite: true, status, claim: before.claim }
-        );
-        expect(added).toEqual([
-          {
-            eventType: ENDING_ENTRY[status],
-            message:
-              write.kind === "supersede"
-                ? SUPERSEDED_REASON
-                : `Run ended ${status}`,
-          },
-        ]);
-        expect(after).toEqual({
-          status,
-          claim: before.claim,
-          completedAt: expect.any(Date),
-          duration: expect.stringMatching(/^\d+$/),
-          cancelledAt: status === "canceled" ? expect.any(Date) : null,
-          entries: expect.arrayContaining(before.entries),
-          wait: "cancelled",
-          schedule: null,
-          memo: [],
         });
-      });
+      }
     }
   });
 }

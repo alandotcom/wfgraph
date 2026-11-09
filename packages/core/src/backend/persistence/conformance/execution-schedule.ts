@@ -21,6 +21,7 @@ import {
 import {
   type PersistenceTestRegistry,
   notYetDue,
+  verdict,
 } from "#src/backend/persistence/conformance/support";
 import {
   T0,
@@ -446,7 +447,10 @@ export function describeExecutionScheduleConformance({
       });
     });
 
-    it("deletes the schedule row and step memo with the terminal write and keeps the logs", async () => {
+    // The run-ending table in `executions.ts` holds every ending to deleting
+    // the schedule row and memo. This case adds what it does not read: the
+    // node logs stay, and the pass that ended the run is refused afterwards.
+    it("keeps the logs of a run its own pass ended, and refuses that pass's next fenced write", async () => {
       const connection = await seeded(await openConnection());
       const result = await connection.run(
         Effect.gen(function* () {
@@ -467,14 +471,9 @@ export function describeExecutionScheduleConformance({
               leaseExpiresAt: at(LEASE_MS),
             })
           );
-          const finished = yield* pass.finishRun({
+          const finished = yield* pass.endRun({
             executionId,
-            status: "completed",
-            announcement: {
-              workflowId: "wf_1",
-              eventType: "run_completed",
-              message: "Run completed successfully",
-            },
+            ending: verdict("completed"),
           });
           const afterEnd = yield* Effect.flip(
             pass.recordAuditEvent({
@@ -485,14 +484,6 @@ export function describeExecutionScheduleConformance({
             })
           );
 
-          // A policy cancel ends a run from outside its pass, and takes the
-          // run's schedule row with it the same way.
-          const cancelledId = yield* scheduledRun(T0);
-          const cancelled = yield* executions.endInFlight({
-            executionId: cancelledId,
-            status: "canceled",
-          });
-
           return {
             finished,
             afterEnd,
@@ -502,10 +493,6 @@ export function describeExecutionScheduleConformance({
             ending: (yield* executions.listEvents(executionId))
               .filter((event) => event.eventType !== "run_started")
               .map((event) => event.eventType),
-            cancelled,
-            cancelledSchedule: yield* executions.findSchedule({
-              executionId: cancelledId,
-            }),
           };
         })
       );
@@ -519,16 +506,12 @@ export function describeExecutionScheduleConformance({
       expect(result.memo).toEqual([]);
       expect(result.logs).toHaveLength(1);
       expect(result.ending).toEqual(["run_completed"]);
-      expect(result.cancelled).toMatchObject({
-        status: "canceled",
-        didWrite: true,
-      });
-      expect(result.cancelledSchedule).toBeNull();
     });
 
     // A fatal failure in one branch writes the run's terminal record while a
     // sibling Wait is still parked, and a parked Wait of a run that ended must
-    // not stay addressable by an Event or by the Runs view.
+    // not stay addressable by an Event or by the Runs view. The run-ending
+    // table parks one Wait; this case holds a woken one beside it.
 
     it("cancels every open wait row of a run in the transaction that ends it", async () => {
       const connection = await seeded(await openConnection());
@@ -545,28 +528,14 @@ export function describeExecutionScheduleConformance({
             wake: { kind: "timeout" },
             now: at(1_000),
           });
-          yield* executions.fenced(fence).finishRun({
+          yield* executions.fenced(fence).endRun({
             executionId,
-            status: "failed",
-            error: "A step failed",
-          });
-
-          // A policy cancel ends a run from outside its pass the same way.
-          const cancelledId = yield* openRun;
-          const cancelledWait = yield* park(
-            cancelledId,
-            "wait_cancelled",
-            at(90_000)
-          );
-          yield* executions.endInFlight({
-            executionId: cancelledId,
-            status: "canceled",
+            ending: { kind: "outsideGraph", error: "A step failed" },
           });
 
           return {
             parked: yield* executions.findPark(parked),
             woken: yield* executions.findPark(woken),
-            cancelled: yield* executions.findPark(cancelledWait),
             waiting: yield* executions.listWaitingStates(executionId),
           };
         })
@@ -577,7 +546,6 @@ export function describeExecutionScheduleConformance({
         status: "cancelled",
         wake: { kind: "timeout" },
       });
-      expect(result.cancelled).toMatchObject({ status: "cancelled" });
       expect(result.waiting).toEqual([]);
     });
 
@@ -660,7 +628,6 @@ export function describeExecutionScheduleConformance({
                 input: {},
               },
               concurrency: "unlimited",
-              supersededReason: "newer start",
               startedEntry: notYetDue.startedEntry,
               now,
             });

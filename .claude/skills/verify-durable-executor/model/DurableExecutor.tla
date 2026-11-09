@@ -75,7 +75,7 @@ CanceledSideAdmits == claim = "cancel"        \* a Cancel claim admits the Cance
 WakeIsUnclaimed(p) == park[p] = "open"        \* claimWaitState: `status = 'waiting'`
 ParkIsDue(p) == park[p] = "open"              \* the claim's `wake_at <= now()`: only an open park has a deadline
 ClaimIsFree == claim = "none"                 \* requestCancelForEntity and requestExit write a free claim only
-RunInFlight == status = "running"             \* finishRun updates an in-flight row only
+RunInFlight == status = "running"             \* endRun updates an in-flight row only
 ReleaseReadsWaitRows == TRUE                  \* the release decides from the wait rows, not the pass's view
 FailedNodeEndsRun == claim = "none"           \* "Retries": a node that failed for good ends the run only when no claim has work left
 

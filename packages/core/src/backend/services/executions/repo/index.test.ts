@@ -80,7 +80,6 @@ function harness(answers: {
             deliveryId: deliveryId ?? undefined,
           },
           concurrency,
-          supersededReason: "Superseded by a newer start",
           startedEntry: {
             message: "Event-triggered run started",
             metadata: {},

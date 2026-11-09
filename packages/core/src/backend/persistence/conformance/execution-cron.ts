@@ -240,7 +240,6 @@ function fire(input: {
           input: {},
         },
         concurrency: input.concurrency ?? "unlimited",
-        supersededReason: "Superseded by a newer start",
         startedEntry: notYetDue.startedEntry,
       },
       slot,

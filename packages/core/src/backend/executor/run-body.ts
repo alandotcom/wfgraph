@@ -9,7 +9,6 @@
 import { Effect } from "effect";
 import { executeWorkflow } from "#src/backend/engine/core";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
-import { outsideGraphAnnouncement } from "#src/backend/engine/terminal-record";
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import {
   noWorkflowEntities,
@@ -28,7 +27,6 @@ import {
   RunInputUnavailable,
 } from "#src/backend/services/executions/run-input";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export function runBody(input: {
   /**
@@ -77,16 +75,16 @@ export function runBody(input: {
 
 /**
  * The write that ends the row of a run that cannot be loaded. A run whose
- * version is missing can never run, so it ends failed, or in the status a
- * Cancel or Exit claim it holds selects. Nothing will run an ended run again,
- * so its schedule row and memo go. A run whose row is gone
- * took its schedule and memo rows with it.
+ * version is missing can never run, so it ends as `endRun` decides for a run
+ * ended outside its graph: failed, or the status a claim it holds selects.
+ * Nothing will run an ended run again, so its schedule row and memo go. A run
+ * whose row is gone took its schedule and memo rows with it.
  */
 function endUnavailableRun(
   writes: RunPassWrites,
   executionId: string,
   unavailable: RunInputUnavailable
-): Effect.Effect<void, DatabaseError | LeaseLost, ExecutionRepo> {
+): Effect.Effect<void, DatabaseError | LeaseLost> {
   if (unavailable.reason === "missing_version") {
     return failRun(writes, executionId, unavailable.message);
   }
@@ -97,54 +95,11 @@ function endUnavailableRun(
 }
 
 /**
- * The terminal write of a run ended without walking its graph, as the status
- * the caller names, with `error` and the timeline entry that says so. Null
- * when the run's row is gone.
- */
-function endingOutsideGraph(
-  writes: RunPassWrites,
-  executionId: string,
-  error: string
-) {
-  return Effect.gen(function* () {
-    const executions = yield* ExecutionRepo;
-    const run = yield* executions.findSummaryById(executionId);
-    if (run === null) return null;
-    return (status: "failed" | "canceled" | "exited") =>
-      writes.finishRun({
-        executionId,
-        status,
-        error,
-        announcement: outsideGraphAnnouncement({
-          workflowId: run.workflowId,
-          runMode: run.runMode,
-          status,
-          error,
-        }),
-      });
-  });
-}
-
-/**
- * Writes the run's terminal record as failed with `error`. A run holding a
- * Cancel or Exit claim refuses `failed`, so it ends in the status its claim
- * names instead, carrying the same error.
+ * Ends the run with `error` without walking its graph: failed, or canceled or
+ * exited when it holds a Cancel or Exit claim.
  */
 function failRun(writes: RunPassWrites, executionId: string, error: string) {
-  return Effect.gen(function* () {
-    const end = yield* endingOutsideGraph(writes, executionId, error);
-    if (end === null) return;
-    const written = yield* end("failed");
-    const claim = written?.claim;
-    if (
-      written === null ||
-      written.didWrite ||
-      claim === null ||
-      claim === undefined ||
-      !IN_FLIGHT_EXECUTION_STATUSES.some((status) => status === written.status)
-    ) {
-      return;
-    }
-    yield* end(claim.kind === "cancel" ? "canceled" : "exited");
-  });
+  return writes
+    .endRun({ executionId, ending: { kind: "outsideGraph", error } })
+    .pipe(Effect.asVoid);
 }

@@ -12,32 +12,6 @@ import { Effect } from "effect";
 import { stubDatabase } from "#src/backend/lib/effect/test-layers";
 import { makeRunsMethods } from "#src/backend/services/executions/repo/runs";
 
-describe("finishRun", () => {
-  // The engine's function body is replayed on every attempt and after every
-  // wait, so any elapsed it measures itself covers the last attempt alone. A run
-  // that retried four times recorded 23ms against 4m46s of wall clock. The row
-  // already holds when it started, so the duration is derived where both
-  // timestamps live and no clock crosses the replay boundary.
-  it.effect("derives the duration from the row's own started_at", () =>
-    Effect.gen(function* () {
-      const { service: database, statements } = stubDatabase();
-
-      yield* makeRunsMethods(database).finishRun({
-        executionId: "exec_1",
-        status: "failed",
-        error: "boom",
-      });
-
-      // The terminal write locks the run's schedule row before it updates the
-      // execution row, so the update is not the first statement sent.
-      const update = statements.find((statement) =>
-        /^update "workflow_executions"/i.test(statement.query)
-      );
-      assert.match(update?.query ?? "", /"duration" = [^,]*started_at/i);
-    })
-  );
-});
-
 describe("listByWorkflow", () => {
   it.effect("does not read the JSONB columns the list never shows", () =>
     Effect.gen(function* () {

@@ -12,20 +12,18 @@ import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 const terminalWrite = {
   executionId: "exec_1",
-  status: "completed",
-  output: { ok: true },
-  announcement: {
-    workflowId: "workflow_1",
-    eventType: "run_completed",
-    message: "Run completed successfully",
-    metadata: {},
+  ending: {
+    kind: "verdict",
+    status: "completed",
+    output: { ok: true },
+    reached: { kind: "walked", resultCount: 1 },
   },
 } as const;
 
 describe("completeRun", () => {
   layer(
     stubExecutionRepo({
-      finishRun: () =>
+      endRun: () =>
         Effect.succeed({
           executionId: "exec_1",
           status: "completed",
@@ -53,7 +51,7 @@ describe("completeRun", () => {
 
   layer(
     stubExecutionRepo({
-      finishRun: () =>
+      endRun: () =>
         Effect.succeed({
           executionId: "exec_1",
           status: "canceled",
@@ -83,7 +81,7 @@ describe("completeRun", () => {
 
   layer(
     stubExecutionRepo({
-      finishRun: () =>
+      endRun: () =>
         Effect.fail(new DatabaseError({ cause: new Error("no connection") })),
     })
   )((it) => {

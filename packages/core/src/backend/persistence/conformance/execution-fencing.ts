@@ -11,9 +11,9 @@ import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import {
-  notYetDue,
   type PersistenceTestRegistry,
   terminalEntry,
+  verdict,
 } from "#src/backend/persistence/conformance/support";
 import {
   T0,
@@ -73,8 +73,8 @@ export function describeExecutionFencingConformance({
                 side: "started",
               })
             ),
-            finishRun: yield* Effect.flip(
-              forged.finishRun({ executionId, status: "completed" })
+            endRun: yield* Effect.flip(
+              forged.endRun({ executionId, ending: verdict("completed") })
             ),
             audit: yield* Effect.flip(
               stale.recordAuditEvent({
@@ -96,7 +96,7 @@ export function describeExecutionFencingConformance({
 
       expect(result.memo._tag).toBe("LeaseLost");
       expect(result.markRunning._tag).toBe("LeaseLost");
-      expect(result.finishRun._tag).toBe("LeaseLost");
+      expect(result.endRun._tag).toBe("LeaseLost");
       expect(result.audit._tag).toBe("LeaseLost");
       expect(result.dropped._tag).toBe("LeaseLost");
       expect(result.memoRows).toEqual([
@@ -252,9 +252,9 @@ export function describeExecutionFencingConformance({
             leaseExpiresAt: at(LEASE_MS),
           });
           const waitStateId = yield* park(executionId, "wait_open", at(90_000));
-          const cancelled = yield* executions.endInFlight({
+          const cancelled = yield* executions.cancelRun({
             executionId,
-            status: "canceled",
+            reason: "Canceled by a Lifecycle Rule",
           });
           return {
             cancelled,
@@ -267,7 +267,7 @@ export function describeExecutionFencingConformance({
               })
             ),
             staleFinish: yield* refusalOf(
-              pass.finishRun({ executionId, status: "completed" })
+              pass.endRun({ executionId, ending: verdict("completed") })
             ),
             staleRelease: yield* refusalOf(
               pass.releasePass({ outcome: { kind: "parked" }, now: at(1_000) })
@@ -307,7 +307,7 @@ export function describeExecutionFencingConformance({
           const { fence } = yield* claimRun(executionId, T0);
           yield* executions
             .fenced(fence)
-            .finishRun({ executionId, status: "completed" });
+            .endRun({ executionId, ending: verdict("completed") });
           return yield* executions.findSummaryById(executionId);
         })
       );
@@ -315,49 +315,14 @@ export function describeExecutionFencingConformance({
       expect(summary?.duration).toMatch(/^\d+$/);
     });
 
-    // The Runs view prints a run with no duration as a dash, so every way a
-    // run ends writes one, not only the run finishing itself.
-    it("writes the duration of a run ended from outside it", async () => {
+    // The Runs view prints a run with no duration as a dash. Every run-ending
+    // write is held to that by the run-ending table in `executions.ts`; a run
+    // recorded already ended is the one that never passes through it.
+    it("writes a zero duration on a run recorded already ended", async () => {
       const connection = await seeded(await openConnection());
-      const durations = await connection.run(
+      const duration = await connection.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
-          const durationOf = (executionId: string) =>
-            Effect.map(
-              executions.findSummaryById(executionId),
-              (summary) => summary?.duration
-            );
-          const entityStart = (concurrency: "unlimited" | "newest-wins") =>
-            executions.startForEntity({
-              execution: {
-                workflowId: "wf_1",
-                workflowVersionId: "ver_1",
-                startSource: "event",
-                runMode: "live",
-                entityValue: "appointment_1",
-                input: {},
-              },
-              concurrency,
-              supersededReason: "newer start",
-              startedEntry: notYetDue.startedEntry,
-              now: T0,
-            });
-
-          const canceled = yield* scheduledRun(T0);
-          yield* executions.endInFlight({
-            executionId: canceled,
-            status: "canceled",
-          });
-          const superseded = yield* scheduledRun(T0);
-          yield* executions.endInFlight({
-            executionId: superseded,
-            status: "superseded",
-          });
-          const displaced = yield* entityStart("unlimited");
-          const newer = yield* entityStart("newest-wins");
-          if (displaced.status !== "started" || newer.status !== "started") {
-            throw new Error("Start was refused");
-          }
           const recorded = yield* executions.insertTerminal({
             workflowId: "wf_1",
             workflowVersionId: "ver_1",
@@ -367,24 +332,11 @@ export function describeExecutionFencingConformance({
             status: "canceled",
             announcement: terminalEntry,
           });
-
-          return {
-            displacedBy: newer.supersededExecutionIds,
-            canceled: yield* durationOf(canceled),
-            superseded: yield* durationOf(superseded),
-            displaced: yield* durationOf(displaced.execution.id),
-            recorded: yield* durationOf(recorded.id),
-          };
+          return (yield* executions.findSummaryById(recorded.id))?.duration;
         })
       );
 
-      expect(durations).toEqual({
-        displacedBy: [expect.any(String)],
-        canceled: expect.stringMatching(/^\d+$/),
-        superseded: expect.stringMatching(/^\d+$/),
-        displaced: expect.stringMatching(/^\d+$/),
-        recorded: "0",
-      });
+      expect(duration).toBe("0");
     });
 
     it("refuses a fenced write that addresses a run the fence does not name", async () => {
@@ -411,8 +363,11 @@ export function describeExecutionFencingConformance({
                 side: "started",
               })
             ),
-            finishRun: yield* refusalOf(
-              pass.finishRun({ executionId: otherId, status: "completed" })
+            endRun: yield* refusalOf(
+              pass.endRun({
+                executionId: otherId,
+                ending: verdict("completed"),
+              })
             ),
             openNodeLog: yield* refusalOf(
               pass.openNodeLog({
@@ -431,7 +386,10 @@ export function describeExecutionFencingConformance({
               })
             ),
             crossedFinish: yield* refusalOf(
-              crossed.finishRun({ executionId: otherId, status: "completed" })
+              crossed.endRun({
+                executionId: otherId,
+                ending: verdict("completed"),
+              })
             ),
             crossedMemo: yield* refusalOf(
               crossed.writeStepMemo({
@@ -454,7 +412,7 @@ export function describeExecutionFencingConformance({
 
       expect(result).toMatchObject({
         markRunning: "LeaseLost",
-        finishRun: "LeaseLost",
+        endRun: "LeaseLost",
         openNodeLog: "LeaseLost",
         audit: "LeaseLost",
         crossedFinish: "LeaseLost",

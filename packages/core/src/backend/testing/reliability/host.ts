@@ -34,9 +34,11 @@ export type ReliabilityHost = ReturnType<typeof fixtureExtensions> & {
   /**
    * One-shot repository faults a scenario arms. `admission` fires after
    * `startForEntity` commits a Start's run, so the delivery loses the answer
-   * and the executor retries it. `completion` fires before a `completed` terminal
-   * write and `terminal` before any other, whether a pass makes it fenced or
-   * after it ended the run. `claim` fires after an Event delivery's claim
+   * and the executor retries it. `completion` fires before an `endRun` of a
+   * `completed` verdict, and `terminal` before every other `endRun`, whether a
+   * pass makes it fenced or after it ended the run, and before a `cancelRun`.
+   * A supersede ends runs inside `startForEntity`, which `admission` faults.
+   * `claim` fires after an Event delivery's claim
    * of a parked Wait commits, which resolves the park and re-queues the run in
    * the same write, so the delivery retries a claim that already landed.
    */
@@ -242,11 +244,11 @@ function injectRepositoryFaults(
   // A pass writes the terminal record through its fenced writes while it holds
   // the lease, and through the unfenced method once it has ended the run, so
   // both carry the same one-shot fault.
-  const finishRun = <A, E>(
-    input: { status: string },
+  const endRun = <A, E>(
+    input: Parameters<ExecutionRepo["Service"]["endRun"]>[0],
     write: Effect.Effect<A, E>
   ) =>
-    input.status === "completed"
+    input.ending.kind === "verdict" && input.ending.status === "completed"
       ? faults.completion.apply(write, "before")
       : faults.terminal.apply(write, "before");
   return {
@@ -259,12 +261,14 @@ function injectRepositoryFaults(
         ...repo,
         startForEntity: (input) =>
           faults.admission.apply(repo.startForEntity(input), "after"),
-        finishRun: (input) => finishRun(input, repo.finishRun(input)),
+        endRun: (input) => endRun(input, repo.endRun(input)),
+        cancelRun: (input) =>
+          faults.terminal.apply(repo.cancelRun(input), "before"),
         fenced: (fence) => {
           const writes = repo.fenced(fence);
           return {
             ...writes,
-            finishRun: (input) => finishRun(input, writes.finishRun(input)),
+            endRun: (input) => endRun(input, writes.endRun(input)),
           };
         },
         claimWaitingStateById: (input) =>

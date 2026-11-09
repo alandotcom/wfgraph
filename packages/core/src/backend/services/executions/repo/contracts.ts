@@ -569,12 +569,6 @@ export type StartForEntityInput = {
   concurrency: Concurrency;
   /** Stable key shared with an admission refusal for this Event delivery. */
   admissionDecisionId?: string | undefined;
-  /**
-   * Written onto a displaced run's `error`, which run history shows, and as
-   * the message of the `run_superseded` entry the same transaction writes on
-   * its timeline, whose metadata names the event that started this run.
-   */
-  supersededReason: string;
   /** The run's opening timeline entry, written as a `run_started` row. */
   startedEntry: { message: string; metadata: JsonObject };
   /** When the new run falls due: its schedule row's `wake_at`. */

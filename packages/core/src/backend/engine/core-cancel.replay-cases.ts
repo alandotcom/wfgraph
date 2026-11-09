@@ -304,9 +304,9 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
       reason: "customer left",
       orderId: "o_1",
     });
-    expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
-      "canceled",
-    ]);
+    expect(
+      store.callsOf("completeRun").map((call) => call.ending.status)
+    ).toEqual(["canceled"]);
     expect(cancelledAudits(store)).toEqual([
       expect.objectContaining({
         message: "Run canceled at the Canceled outlet",
@@ -333,10 +333,9 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
     expect(rowsOpenedFor(store, "after_1")).toBe(1);
     expect(rowsOpenedFor(store, "cleanup_1")).toBe(1);
     expect(recorded.Cleanup).toMatchObject({ reason: "customer left" });
-    expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
-      "completed",
-      "canceled",
-    ]);
+    expect(
+      store.callsOf("completeRun").map((call) => call.ending.status)
+    ).toEqual(["completed", "canceled"]);
     expect(store.terminationState?.status).toBe("canceled");
     expect(cancelledAudits(store)).toEqual([
       expect.objectContaining({
@@ -413,10 +412,9 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
     // The park names the Canceled side, which is what the run's own Cancel claim
     // admits. The same park on the Started side is refused (`core-wait.test.ts`).
     expect(store.callsOf("createWaitState")[0]?.side).toBe("canceled");
-    expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
-      "completed",
-      "canceled",
-    ]);
+    expect(
+      store.callsOf("completeRun").map((call) => call.ending.status)
+    ).toEqual(["completed", "canceled"]);
     expect(cancelledAudits(store)).toHaveLength(1);
   });
 
@@ -455,9 +453,9 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
     // carried.
     expect(recorded.Cleanup).toMatchObject({ reason: "customer left" });
     expect(run.value.status).toBe("canceled");
-    expect(store.callsOf("completeRun").map((call) => call.status)).toEqual([
-      "canceled",
-    ]);
+    expect(
+      store.callsOf("completeRun").map((call) => call.ending.status)
+    ).toEqual(["canceled"]);
     expect(cancelledAudits(store)).toHaveLength(1);
   });
 

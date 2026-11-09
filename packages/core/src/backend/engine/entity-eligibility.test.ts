@@ -604,7 +604,7 @@ describe("per-node Entity Eligibility", () => {
         checkedAt: "2026-10-19T15:00:00.000Z",
       },
     ]);
-    expect(store.callsOf("completeRun")[0]?.status).toBe("exited");
+    expect(store.callsOf("completeRun")[0]?.ending.status).toBe("exited");
     const exitAudit = store.timeline.find(
       (event) => event.eventType === "run_exited"
     );
@@ -618,26 +618,25 @@ describe("per-node Entity Eligibility", () => {
     expect(JSON.stringify(store.calls)).not.toContain("appt_secret");
   });
 
-  it("lets a claimed terminal write failure escape for durable retry", async () => {
+  it("lets a refused terminal write under an Exit claim escape for durable retry", async () => {
     const databaseError = new DatabaseError({
       cause: new Error("terminal unavailable"),
     });
     const store = createRecordingWorkflowStore();
+    store.terminationState = {
+      status: "running",
+      claim: {
+        kind: "exit",
+        requestedAt: "2026-10-19T15:00:00.000Z",
+        reason: "entity_condition_not_met",
+        nodeId: "second",
+      },
+      didWrite: false,
+    };
     let terminalWrites = 0;
     store.completeRun = () => {
       terminalWrites += 1;
-      return terminalWrites === 1
-        ? Effect.succeed({
-            status: "running" as const,
-            claim: {
-              kind: "exit" as const,
-              requestedAt: "2026-10-19T15:00:00.000Z",
-              reason: "entity_condition_not_met" as const,
-              nodeId: "second",
-            },
-            didWrite: false,
-          })
-        : Effect.fail(databaseError);
+      return Effect.fail(databaseError);
     };
     const entities = entityPort([
       { outcome: "eligible" },
@@ -654,7 +653,7 @@ describe("per-node Entity Eligibility", () => {
       )
     ).rejects.toThrow("terminal unavailable");
 
-    expect(terminalWrites).toBe(2);
+    expect(terminalWrites).toBe(1);
     expect(store.timeline).toHaveLength(0);
   });
 

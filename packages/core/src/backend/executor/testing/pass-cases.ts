@@ -1271,12 +1271,12 @@ function describeCases(
     // The run's completed record is refused every time it is written.
     const refuseCompletion = wrapFenced((writes) => ({
       ...writes,
-      finishRun: (input) =>
-        input.status === "completed"
+      endRun: (input) =>
+        input.ending.kind === "verdict" && input.ending.status === "completed"
           ? Effect.fail(
               new DatabaseError({ cause: new Error("connection reset") })
             )
-          : writes.finishRun(input),
+          : writes.endRun(input),
     }));
 
     const results: Array<PassResult | null> = [];
@@ -1321,7 +1321,7 @@ function describeCases(
     // Every terminal record the engine writes is refused.
     const refuseEnding = wrapFenced((writes) => ({
       ...writes,
-      finishRun: () =>
+      endRun: () =>
         Effect.fail(
           new DatabaseError({ cause: new Error("connection reset") })
         ),

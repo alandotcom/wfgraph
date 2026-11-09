@@ -263,9 +263,9 @@ describe("workflow engine replay safety", () => {
         error: { message: "the vendor said no" },
       });
     }
-    expect(store.callsOf("completeRun").map((run) => run.status)).toEqual([
-      "failed",
-    ]);
+    expect(
+      store.callsOf("completeRun").map((run) => run.ending.status)
+    ).toEqual(["failed"]);
   });
 
   it("re-runs everything without a memo, proving the memo is what prevents it", async () => {
@@ -386,7 +386,7 @@ describe("workflow engine replay safety", () => {
    *
    * The node's row carries the second verdict, because its close is an UPDATE by
    * id that no memo covers. The run's terminal row carries the first and cannot
-   * be moved: that write is a memoized step, and `finishRun` updates an in-flight
+   * be moved: that write is a memoized step, and `endRun` updates an in-flight
    * row alone, so the correction is refused twice over.
    */
   it("closes a node's row with the later verdict and returns the first terminal verdict", async () => {
@@ -442,9 +442,9 @@ describe("workflow engine replay safety", () => {
       "error",
       "success",
     ]);
-    expect(store.callsOf("completeRun").map((run) => run.status)).toEqual([
-      "failed",
-    ]);
+    expect(
+      store.callsOf("completeRun").map((run) => run.ending.status)
+    ).toEqual(["failed"]);
   });
 
   it("creates the wait state and terminal run record exactly once across a replay", async () => {

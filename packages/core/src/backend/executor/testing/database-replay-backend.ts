@@ -108,7 +108,6 @@ export function openDatabaseReplayBackend(
             input: {},
           },
           concurrency: "unlimited",
-          supersededReason: "newer start",
           startedEntry: { message: "Manual run started", metadata: {} },
           now: virtual(0),
         });

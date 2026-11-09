@@ -136,17 +136,10 @@ export const startWithConcurrency = Effect.fn(
   return outcome;
 });
 
-function supersededReason(eventName: string | undefined): string {
-  return eventName
-    ? `Superseded by a newer start from ${eventName}`
-    : "Superseded by a newer start";
-}
-
 /**
- * What a start asks `ExecutionRepo.startForEntity` to admit: the row to open,
- * its "run started" entry, and the reason a displaced run is ended with, which
- * is also its `run_superseded` entry's message. An Event's admission decision
- * is the caller's to add.
+ * What a start asks `ExecutionRepo.startForEntity` to admit: the row to open
+ * and its "run started" entry. An Event's admission decision is the caller's
+ * to add.
  */
 export const startRequestFor = Effect.fnUntraced(function* (
   input: Omit<StartWithConcurrencyInput, "logger">
@@ -169,7 +162,6 @@ export const startRequestFor = Effect.fnUntraced(function* (
   const request: Omit<StartForEntityInput, "now" | "admissionDecisionId"> = {
     execution,
     concurrency: input.concurrency,
-    supersededReason: supersededReason(start.eventName),
     startedEntry: yield* runStartedEntry(execution),
   };
   return request;

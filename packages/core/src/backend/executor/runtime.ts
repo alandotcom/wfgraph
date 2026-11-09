@@ -72,10 +72,10 @@ export type PassStop =
  * Where one pass stands.
  *
  * - `running`: every write is fenced on the pass's owner token.
- * - `ended`: the pass's own fenced write made the run terminal, which deleted
- *   the schedule row the fence stands on. No other pass can hold the run any
- *   more, so the store writes that follow, such as the run's closing timeline
- *   entry, are made unfenced, and nothing more is memoized.
+ * - `ended`: the pass's own fenced `endRun` made the run terminal and wrote its
+ *   closing timeline entry, and deleted the schedule row the fence stands on.
+ *   No other pass can hold the run any more, so any store write that follows
+ *   is made unfenced, and nothing more is memoized.
  * - `stopped`: see `PassStop`.
  */
 export type PassPhase =
@@ -289,8 +289,8 @@ export function watchStoreWrites(input: {
   );
   return {
     ...store,
-    finishRun: (write) =>
-      store.finishRun(write).pipe(
+    endRun: (write) =>
+      store.endRun(write).pipe(
         Effect.tap((written) =>
           Effect.sync(() => {
             if (written?.didWrite === true) state.ended();

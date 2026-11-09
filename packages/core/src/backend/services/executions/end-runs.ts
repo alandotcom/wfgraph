@@ -1,6 +1,6 @@
 /**
- * Canceling a run from outside it: the row flips behind a compare-and-set, and
- * a run that finished or claimed termination first keeps its own outcome.
+ * Canceling a run from outside it through `ExecutionRepo.cancelRun`: a run that
+ * finished or claimed termination first keeps its own outcome.
  *
  * The terminal write carries the run's `run_cancelled` entry, cancels its open
  * wait rows and deletes its schedule row in its own transaction, so a pass
@@ -145,16 +145,10 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
   const logger = yield* loggerFor(workflowId);
 
   const termination = yield* repo
-    .endInFlight({
+    .cancelRun({
       executionId,
-      status: "canceled",
-      error: input.reason,
-      announcement: {
-        workflowId,
-        eventType: "run_cancelled",
-        message: input.reason,
-        metadata: { eventName: input.eventName },
-      },
+      reason: input.reason,
+      eventName: input.eventName,
     })
     .pipe(
       Effect.catchTag("DatabaseError", (failure) =>

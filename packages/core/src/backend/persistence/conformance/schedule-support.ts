@@ -45,7 +45,6 @@ export function scheduledRun(wakeAt: Date) {
         input: {},
       },
       concurrency: "unlimited",
-      supersededReason: "newer start",
       startedEntry: notYetDue.startedEntry,
       now: wakeAt,
     });

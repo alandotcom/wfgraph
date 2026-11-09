@@ -26,7 +26,7 @@ const listWaitingStates = vi.fn<Repo["listWaitingStates"]>(() =>
   Effect.succeed([])
 );
 const recordAuditEvent = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
-const endInFlight = vi.fn<Repo["endInFlight"]>(() =>
+const cancelRun = vi.fn<Repo["cancelRun"]>(() =>
   Effect.succeed({
     executionId: "exec_1",
     status: "canceled",
@@ -66,7 +66,7 @@ beforeEach(() => {
   );
   listWaitingStates.mockImplementation(() => Effect.succeed([]));
   recordAuditEvent.mockImplementation(() => Effect.void);
-  endInFlight.mockImplementation(() =>
+  cancelRun.mockImplementation(() =>
     Effect.succeed({
       executionId: "exec_1",
       status: "canceled",
@@ -83,7 +83,7 @@ const services = Layer.mergeAll(
     findStatusById,
     listWaitingStates,
     recordAuditEvent,
-    endInFlight,
+    cancelRun,
   })
 );
 
@@ -103,7 +103,7 @@ describe("postExecutionCancel", () => {
         status: "canceled",
         cancelledWaitStates: 0,
       });
-      assert.strictEqual(endInFlight.mock.calls.length, 1);
+      assert.strictEqual(cancelRun.mock.calls.length, 1);
       assert.strictEqual(
         recordAuditEvent.mock.calls.filter(
           ([event]) => event.eventType === "run_cancel_requested"
@@ -131,7 +131,7 @@ describe("postExecutionCancel", () => {
         status: "canceled",
         cancelledWaitStates: 1,
       });
-      assert.strictEqual(endInFlight.mock.calls.length, 1);
+      assert.strictEqual(cancelRun.mock.calls.length, 1);
     })
   );
 
@@ -142,7 +142,7 @@ describe("postExecutionCancel", () => {
     "answers an internal failure when the terminal write is refused",
     () =>
       Effect.gen(function* () {
-        endInFlight.mockImplementationOnce(() =>
+        cancelRun.mockImplementationOnce(() =>
           Effect.fail(new DatabaseError({ cause: "connection lost" }))
         );
 
@@ -173,7 +173,7 @@ describe("postExecutionCancel", () => {
       );
 
       assert.strictEqual(failure._tag, "Conflict");
-      assert.strictEqual(endInFlight.mock.calls.length, 0);
+      assert.strictEqual(cancelRun.mock.calls.length, 0);
     })
   );
 
@@ -189,7 +189,7 @@ describe("postExecutionCancel", () => {
       );
 
       assert.strictEqual(failure._tag, "Conflict");
-      assert.strictEqual(endInFlight.mock.calls.length, 0);
+      assert.strictEqual(cancelRun.mock.calls.length, 0);
     })
   );
 
@@ -199,7 +199,7 @@ describe("postExecutionCancel", () => {
   // here would take the outlet away from it.
   it.effect("refuses a run an earlier Cancel claim already owns", () =>
     Effect.gen(function* () {
-      endInFlight.mockImplementation(() =>
+      cancelRun.mockImplementation(() =>
         Effect.succeed({
           executionId: "exec_1",
           status: "running",

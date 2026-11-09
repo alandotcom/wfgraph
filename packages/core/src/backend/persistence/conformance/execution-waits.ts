@@ -19,6 +19,7 @@ import {
   notYetDue,
   publishSecondVersion,
   seedPublishedWorkflow,
+  verdict,
 } from "#src/backend/persistence/conformance/support";
 
 /**
@@ -49,7 +50,6 @@ function startEventWait(
           input: {},
         },
         concurrency: "unlimited",
-        supersededReason: "newer start",
         ...notYetDue,
       });
       if (started.status !== "started") throw new Error("start refused");
@@ -233,7 +233,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") throw new Error("start refused");
@@ -489,7 +488,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") {
@@ -583,7 +581,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") throw new Error("start refused");
@@ -751,7 +748,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") throw new Error("start refused");
@@ -838,7 +834,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") {
@@ -908,7 +903,6 @@ export function describeExecutionWaitConformance({
                 input: {},
               },
               concurrency: "unlimited",
-              supersededReason: "newer start",
               ...notYetDue,
             });
             if (started.status !== "started") {
@@ -979,7 +973,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") {
@@ -1055,7 +1048,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started")
@@ -1120,7 +1112,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started")
@@ -1205,7 +1196,6 @@ export function describeExecutionWaitConformance({
                 input: {},
               },
               concurrency: "unlimited",
-              supersededReason: "newer start",
               ...notYetDue,
             });
 
@@ -1279,7 +1269,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started")
@@ -1369,7 +1358,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started")
@@ -1444,7 +1432,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (open.status !== "started") throw new Error("Start was refused");
@@ -1458,15 +1445,13 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (finished.status !== "started")
             throw new Error("Start was refused");
-          yield* executions.finishRun({
+          yield* executions.endRun({
             executionId: finished.execution.id,
-            status: "completed",
-            output: null,
+            ending: verdict("completed"),
           });
 
           // A run of another workflow, to show the list is scoped to one.
@@ -1479,7 +1464,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
 
@@ -1535,7 +1519,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started")
@@ -1617,7 +1600,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started")
@@ -1693,7 +1675,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started")
@@ -1782,7 +1763,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started")
@@ -1854,7 +1834,6 @@ export function describeExecutionWaitConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started")
@@ -1932,7 +1911,6 @@ export function describeExecutionWaitConformance({
                 input: {},
               },
               concurrency: "unlimited",
-              supersededReason: "newer start",
               ...notYetDue,
             });
             if (started.status !== "started") {

@@ -232,7 +232,7 @@ describe("execution start and cancel spans", () => {
           Effect.succeed({ id: "exec_1", status: "running" }),
         listWaitingStates: () => Effect.succeed([]),
         recordAuditEvent: () => Effect.void,
-        endInFlight: () =>
+        cancelRun: () =>
           Effect.succeed({
             executionId: "exec_1",
             status: "canceled",

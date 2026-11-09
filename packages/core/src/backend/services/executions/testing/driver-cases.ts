@@ -207,7 +207,6 @@ function startOn(workflow: PublishedWorkflow, deliveryId?: string) {
         input: {},
       },
       concurrency: "unlimited",
-      supersededReason: "newer start",
       startedEntry: { message: "Event-triggered run started", metadata: {} },
     });
     if (started.status !== "started") throw new Error("Start refused");

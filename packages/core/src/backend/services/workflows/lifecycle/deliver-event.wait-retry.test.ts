@@ -70,7 +70,6 @@ it.each([false, true])(
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "replaced",
             startedEntry: { message: "Manual run started", metadata: {} },
             now: new Date(),
           });

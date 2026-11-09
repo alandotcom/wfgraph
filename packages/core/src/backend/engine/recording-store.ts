@@ -11,6 +11,7 @@ import {
   claimKindAdmits,
   type ExecutionSide,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { decideRunEnd } from "#src/backend/services/executions/repo/run-end-policy";
 import { Effect } from "effect";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
@@ -64,7 +65,7 @@ export type RecordingWorkflowStore = WorkflowStore & {
   callsOf<M extends StoreMethod>(method: M): StoreCallInputs[M][];
   /**
    * Every timeline entry the store wrote, in order: each `recordAuditEvent`,
-   * and the announcement of each `completeRun` that ended the run.
+   * and the entry of each `completeRun` that ended the run.
    */
   readonly timeline: RecordAuditEventInput[];
   /**
@@ -96,6 +97,11 @@ export type RecordingWorkflowStore = WorkflowStore & {
   waitingIfParkedAnswer: boolean;
   /** Shared execution boundary state used by node-admission and exit tests. */
   terminationState: ExecutionTerminationState | null;
+  /**
+   * The run's own columns a terminal entry reads, as a database backend reads
+   * them off the execution row. Defaults to a live run of `workflow_1`.
+   */
+  run: { workflowId: string; runMode: "live" | "test" };
   /**
    * The deadline the last accepted park or re-park wrote on a wait row this
    * store opened, by the id it answered for the row. `driveWithReplay` reads a park's
@@ -163,6 +169,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
     markRunningAnswer: true,
     waitingIfParkedAnswer: false,
     terminationState: null,
+    run: { workflowId: "workflow_1", runMode: "live" },
 
     waitUntilOf: (waitStateId) => waitUntilById.get(waitStateId),
 
@@ -328,25 +335,28 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
         calls.push({ method: "completeRun", input });
         byMethod.completeRun.push(input);
         const current = store.terminationState;
-        const claimMatches =
-          !current?.claim ||
-          (current.claim.kind === "exit" && input.status === "exited") ||
-          (current.claim.kind === "cancel" && input.status === "canceled");
-        const stillInFlight =
-          !current ||
-          current.status === "running" ||
-          current.status === "waiting";
-        if (!claimMatches || !stillInFlight) {
+        // The recording store keeps no run output, so the verdict's output,
+        // which the port leaves unredacted and untyped, is not decided on.
+        const decision = decideRunEnd(
+          { ...input.ending, output: undefined },
+          {
+            status: current?.status ?? "running",
+            claim: current?.claim ?? null,
+            runMode: store.run.runMode,
+          }
+        );
+        if (decision.kind === "leave") {
           return current ? { ...current, didWrite: false } : null;
         }
 
         store.terminationState = {
-          status: input.status,
+          status: decision.status,
           claim: current?.claim ?? null,
           didWrite: true,
         };
         timeline.push({
-          ...input.announcement,
+          ...decision.entry,
+          workflowId: store.run.workflowId,
           executionId: input.executionId,
         });
         return store.terminationState;

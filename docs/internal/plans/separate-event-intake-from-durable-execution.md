@@ -346,7 +346,7 @@ expired in the middle of a step could therefore:
   (`markExecutionRunning`);
 - cancel the live worker's open log and wait rows (`cancelOpenWork`);
 - take an Exit claim the live worker did not decide (`requestExit`);
-- write the run's terminal record before the live worker does (`finishRun`).
+- write the run's terminal record before the live worker does (`endRun`).
 
 So every store write the executor makes carries the pass's `owner_token`, and
 the repository checks it against the schedule row inside the write's own

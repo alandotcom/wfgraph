@@ -106,12 +106,12 @@ export function createDbWorkflowStore(bound: {
     input: CompleteRunInput
   ): Effect.Effect<ExecutionTerminationState | null, StoreFailure> {
     return writes
-      .finishRun({
+      .endRun({
         executionId: input.executionId,
-        status: input.status,
-        output: redactSensitiveData(input.output),
-        error: input.failure?.message,
-        announcement: input.announcement,
+        ending: {
+          ...input.ending,
+          output: redactSensitiveData(input.ending.output),
+        },
       })
       .pipe(
         Effect.map((state) => (state ? engineTerminationState(state) : null))

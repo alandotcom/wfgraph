@@ -34,6 +34,7 @@ import {
   conformanceCipher,
   notYetDue,
   publishSecondVersion,
+  verdict,
 } from "#src/backend/persistence/conformance/support";
 
 const emptyGraph = createSerializedWorkflowGraph({ nodes: [], edges: [] });
@@ -99,7 +100,6 @@ describePostgres("PostgreSQL concurrency", () => {
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") throw new Error("Start refused");
@@ -206,7 +206,6 @@ describePostgres("PostgreSQL concurrency", () => {
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") throw new Error("Start refused");
@@ -292,13 +291,12 @@ describePostgres("PostgreSQL concurrency", () => {
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") throw new Error("Start refused");
-          yield* executions.finishRun({
+          yield* executions.endRun({
             executionId: started.execution.id,
-            status: "completed",
+            ending: verdict("completed"),
           });
           return started.execution.id;
         })
@@ -431,7 +429,6 @@ describePostgres("PostgreSQL concurrency", () => {
                 input: {},
               },
               concurrency: "first-wins",
-              supersededReason: "newer start",
               ...notYetDue,
             });
           })
@@ -481,7 +478,6 @@ describePostgres("PostgreSQL concurrency", () => {
                 input: {},
               },
               concurrency: "newest-wins",
-              supersededReason: "newer start",
               ...notYetDue,
             });
           })
@@ -659,7 +655,6 @@ describePostgres("PostgreSQL concurrency", () => {
                 input: {},
               },
               concurrency: "unlimited",
-              supersededReason: "newer start",
               ...notYetDue,
             });
           })
@@ -714,7 +709,6 @@ describePostgres("PostgreSQL concurrency", () => {
               input: {},
             },
             concurrency: "first-wins",
-            supersededReason: "newer start",
             ...notYetDue,
           });
         })
@@ -742,7 +736,6 @@ describePostgres("PostgreSQL concurrency", () => {
             input: {},
           },
           concurrency: "unlimited",
-          supersededReason: "newer start",
           startedEntry: notYetDue.startedEntry,
           now,
         });
@@ -929,7 +922,6 @@ describePostgres("PostgreSQL concurrency", () => {
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             startedEntry: notYetDue.startedEntry,
             now,
           });
@@ -1198,7 +1190,6 @@ describePostgres("PostgreSQL concurrency", () => {
                       input: {},
                     },
                     concurrency: "unlimited",
-                    supersededReason: "newer start",
                     startedEntry: notYetDue.startedEntry,
                   },
                   slot: new Date("2026-03-01T09:05:00.000Z"),

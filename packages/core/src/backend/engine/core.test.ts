@@ -342,6 +342,7 @@ describe("run persistence through the store port", () => {
   });
 
   it("writes the terminal run record and its timeline event on success", async () => {
+    store.run = { workflowId: "workflow_success", runMode: "live" };
     await executeWorkflow(
       {
         graph: createLifecycleToActionGraph(),
@@ -356,7 +357,7 @@ describe("run persistence through the store port", () => {
     const completions = store.callsOf("completeRun");
     expect(completions).toHaveLength(1);
     expect(completions[0]?.executionId).toBe("exec_success");
-    expect(completions[0]?.status).toBe("completed");
+    expect(completions[0]?.ending.status).toBe("completed");
 
     const audits = store.timeline;
     expect(audits).toHaveLength(1);
@@ -455,10 +456,9 @@ describe("run persistence through the store port", () => {
     );
 
     const completions = store.callsOf("completeRun");
-    expect(completions[0]?.status).toBe("failed");
-    expect(completions[0]?.failure).toEqual({
-      kind: "failure",
-      message: "boom",
+    expect(completions[0]?.ending.status).toBe("failed");
+    expect(completions[0]?.ending.reached).toMatchObject({
+      error: "boom",
     });
     expect(store.timeline[0]?.eventType).toBe("run_failed");
   });
@@ -504,13 +504,13 @@ describe("run persistence through the store port", () => {
         message: "catalog invariant broke",
       },
     });
-    expect(store.callsOf("completeRun")[0]?.failure).toEqual({
-      kind: "defect",
-      message: "catalog invariant broke",
+    expect(store.callsOf("completeRun")[0]?.ending.reached).toMatchObject({
+      error: "catalog invariant broke",
     });
   });
 
   it("names the recipients of a test run in its timeline message", async () => {
+    store.run = { workflowId: "workflow_test_mode", runMode: "test" };
     await executeWorkflow(
       {
         graph: createLifecycleToActionGraph(),
@@ -568,7 +568,7 @@ describe("run persistence through the store port", () => {
       success: true,
       data: { ok: true },
     });
-    expect(store.callsOf("completeRun")[0]?.status).toBe("completed");
+    expect(store.callsOf("completeRun")[0]?.ending.status).toBe("completed");
   });
 
   // The opposite half of the same policy: nothing has happened when the row is
@@ -680,7 +680,7 @@ describe("run persistence through the store port", () => {
 
     expect(result).toMatchObject({ kind: "ended", success: true });
     expect(store.callsOf("completeRun")).toHaveLength(1);
-    expect(store.callsOf("completeRun")[0]?.status).toBe("completed");
+    expect(store.callsOf("completeRun")[0]?.ending.status).toBe("completed");
   });
 
   // A refused terminal row fails the terminal step, which a durable runtime
@@ -732,9 +732,8 @@ describe("run persistence through the store port", () => {
     expect(result).toMatchObject({ kind: "ended", success: false });
     expect(executionError(result.results.action_1)).toBe("boom");
     expect(store.callsOf("completeRun")).toHaveLength(1);
-    expect(store.callsOf("completeRun")[0]?.failure).toEqual({
-      kind: "failure",
-      message: "boom",
+    expect(store.callsOf("completeRun")[0]?.ending.reached).toMatchObject({
+      error: "boom",
     });
   });
 
@@ -792,7 +791,7 @@ describe("run persistence through the store port", () => {
     expect(executionError(result.results.action_1)).toBe(
       "Subscription cancelled by the provider"
     );
-    expect(store.callsOf("completeRun")[0]?.status).toBe("failed");
+    expect(store.callsOf("completeRun")[0]?.ending.status).toBe("failed");
     expect(store.timeline.map((call) => call.eventType)).toContain(
       "run_failed"
     );

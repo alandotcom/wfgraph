@@ -14,7 +14,7 @@ import type {
   WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
-import type { EngineFailure } from "#src/backend/engine/engine-failure";
+import type { RunVerdict } from "#src/backend/services/executions/repo/run-end-policy";
 import type { WaitWake } from "#src/backend/engine/runtime";
 import type {
   DatabaseError,
@@ -216,30 +216,14 @@ export type RequestExecutionExitInput = {
   checkedAt: string;
 };
 
-/** The timeline events that say how a run ended. */
-export type TerminalAuditEventType = Extract<
-  WorkflowRunAuditEventType,
-  "run_completed" | "run_failed" | "run_cancelled" | "run_exited"
->;
-
 /**
- * The timeline entry a terminal write carries. The store inserts it in the
- * transaction that writes the terminal row, and only when that write is the
- * one that ends the run, so an ended run never reads without it.
+ * The engine's verdict on its run, as `decideRunEnd` reads it. `output` is
+ * whatever the traversal produced; the adapter redacts it before it reaches a
+ * table.
  */
-export type TerminalAnnouncement = {
-  workflowId: string;
-  eventType: TerminalAuditEventType;
-  message: string;
-  metadata: JsonObjectDraft;
-};
-
 export type CompleteRunInput = {
   executionId: string;
-  status: "completed" | "failed" | "canceled" | "exited";
-  output?: unknown;
-  failure?: EngineFailure | undefined;
-  announcement: TerminalAnnouncement;
+  ending: Omit<RunVerdict, "output"> & { output?: unknown };
 };
 
 export type WorkflowStore = {
@@ -346,12 +330,12 @@ export type WorkflowStore = {
     executionId: string
   ): Effect.Effect<PendingCancel | null, StoreFailure>;
   /**
-   * Attempts the terminal state and returns the authoritative stored outcome.
-   * `didWrite` identifies this call as the compare-and-set winner, which alone
-   * writes the input's announcement, and `null` means no execution row exists.
-   * A database refusal, of the row or of its announcement, writes neither and
-   * remains in the error channel; terminal-record policy logs it and fails the
-   * durable step, so the executor retries the write.
+   * Ends the run as `decideRunEnd` decides from the verdict and the claim the
+   * run holds, and returns the authoritative stored outcome. `didWrite` says
+   * this call ended the run and wrote its timeline entry, and `null` means no
+   * execution row exists. A database refusal, of the row or of its entry,
+   * writes neither and remains in the error channel; terminal-record policy
+   * logs it and fails the durable step, so the executor retries the write.
    */
   completeRun(
     input: CompleteRunInput
@@ -378,5 +362,9 @@ export const noopWorkflowStore: WorkflowStore = {
   readTerminationState: () => Effect.succeed(null),
   readPendingCancel: () => Effect.succeed(null),
   completeRun: (input) =>
-    Effect.succeed({ status: input.status, claim: null, didWrite: true }),
+    Effect.succeed({
+      status: input.ending.status,
+      claim: null,
+      didWrite: true,
+    }),
 };

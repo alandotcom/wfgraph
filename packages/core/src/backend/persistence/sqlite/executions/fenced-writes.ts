@@ -18,7 +18,7 @@ import {
   openNodeLogWrite,
 } from "#src/backend/persistence/sqlite/executions/logs";
 import {
-  finishRunWrite,
+  endRunWrite,
   markRunningWrite,
   markWaitingIfParkedWrite,
   requestExitWrite,
@@ -71,7 +71,7 @@ export function makeSqliteFencedWrites(
             return state;
           })
         ),
-      finishRun: (input) => writeFenced(store, fence, finishRunWrite(input)),
+      endRun: (input) => writeFenced(store, fence, endRunWrite(input)),
     }),
   });
 }

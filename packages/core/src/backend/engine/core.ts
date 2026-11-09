@@ -34,12 +34,12 @@ import {
 } from "#src/backend/engine/scheduler";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
 import {
-  type CanceledOutletOutcome,
   recordRunCompleted,
   recordRunFailed,
   type RunFailureOutcome,
   type TraversalTerminalStatus,
 } from "#src/backend/engine/terminal-record";
+import type { CanceledOutletOutcome } from "#src/backend/services/executions/repo/run-end-policy";
 import { Traversal } from "#src/backend/engine/traversal";
 import {
   endsPass,
@@ -319,7 +319,7 @@ function executeWorkflowInner(
   entities: WorkflowEntities
 ) {
   return Effect.suspend(() => {
-    const { executionId, workflowId, runMode = "live" } = input;
+    const { executionId, workflowId } = input;
     const {
       nodes,
       edgeCount,
@@ -399,7 +399,7 @@ function executeWorkflowInner(
             ? "completed"
             : "failed";
 
-      return { terminalStatus, exitContext, exitClaim };
+      return { terminalStatus, exitContext };
     });
 
     return Effect.gen(function* () {
@@ -448,10 +448,8 @@ function executeWorkflowInner(
           recordRunFailed({
             store,
             executionId,
-            workflowId,
             outcome: failureOutcome,
             failure,
-            runMode,
             exitContext,
           });
 
@@ -505,14 +503,11 @@ function executeWorkflowInner(
         recordRunCompleted({
           store,
           executionId,
-          workflowId,
           status,
           output: traversal.deterministicTerminalOutput(),
           failure: traversal.firstFailure(),
           resultCount: traversal.resultCount,
-          runMode,
           exitContext: outcome.value.exitContext,
-          exitClaim: outcome.value.exitClaim,
           canceledOutlet,
         });
 

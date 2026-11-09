@@ -8,6 +8,7 @@
 
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -45,24 +46,27 @@ import {
   type TerminalExecutionStatus,
   type TerminationKind,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type {
-  JsonObject,
-  JsonObjectDraft,
-  JsonValue,
-} from "@wfgraph/shared/types/json";
+import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
 import {
   recordAuditEventsWrite,
   recordAuditEventWrite,
 } from "#src/backend/services/executions/repo/audit";
+import {
+  decideRunEnd,
+  type OutsideGraphEnding,
+  type RunEndClaim,
+  type RunEnding,
+  type RunVerdict,
+} from "#src/backend/services/executions/repo/run-end-policy";
 import type {
   StoreWrite,
   ExecutionPageQuery,
   ExecutionStatusRow,
   ExecutionSummary,
+  ExecutionTerminationClaim,
   ExecutionTerminationState,
   GlobalExecutionRow,
   InFlightExecutionRow,
-  NewAuditEvent,
   NewTerminalExecution,
   PendingCancel,
   WorkflowExecution,
@@ -370,27 +374,20 @@ export type RunsRepoMethods = {
    */
   readonly markWaitingIfParked: StoreWrite<{ executionId: string }, boolean>;
   /**
-   * End a run from outside it, answering whether this write is the one that
-   * made the row terminal.
+   * Stops a run from outside it: an operator, a Cancel Event or a Lifecycle
+   * Rule. Answers the run's state, `didWrite` saying whether this write ended
+   * it, or null when the row is absent.
    *
-   * Compare-and-set, because a running execution routinely completes between a
-   * candidate query and this write and the finished row keeps its own status.
-   * `canceled` is an operator or a Cancel Event stopping the run, so it stamps
-   * `cancelledAt`; `superseded` is newest-wins Concurrency letting a newer
-   * start take this run's place, which is routine and not a cancellation.
-   *
-   * A write that made the row terminal also inserts `announcement` on the
-   * run's timeline, cancels the run's open wait rows and deletes its schedule
-   * row and step memo, so a pass holding its lease is refused at its next
-   * fenced write.
+   * A run that already ended, or that holds a Cancel or Exit claim its own pass
+   * will finalize, is left as it was (`decideRunEnd`). The write that ends the
+   * run stamps `cancelledAt`, writes its `run_cancelled` entry, cancels its
+   * open wait rows and deletes its schedule row and step memo, so a pass
+   * holding its lease is refused at its next fenced write.
    */
-  readonly endInFlight: (input: {
+  readonly cancelRun: (input: {
     executionId: string;
-    status: "canceled" | "superseded";
-    error?: string | undefined;
-    announcement?:
-      | RunEndingAnnouncement<"run_cancelled" | "run_superseded">
-      | undefined;
+    reason: string;
+    eventName?: string | undefined;
   }) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
   /**
    * Atomically claims an execution-wide Entity Eligibility exit and returns the
@@ -422,25 +419,18 @@ export type RunsRepoMethods = {
     executionId: string
   ) => Effect.Effect<PendingCancel | null, DatabaseError>;
   /**
-   * Write the run's own terminal row and return the authoritative state. The
-   * same in-flight guard as `endInFlight` prevents a completion from
-   * overwriting an earlier Cancel or Exit claim. The write that made the row
-   * terminal inserts `announcement` on the run's timeline, cancels the run's
-   * open wait rows and deletes its schedule row and step memo in the same
-   * transaction.
+   * Ends the run from inside it: the engine's verdict, or the executor ending
+   * a run it could not walk. Answers the run's state, `didWrite` saying
+   * whether this write ended it, or null when the row is absent.
+   *
+   * `decideRunEnd` picks the status from the run's claim, read under the
+   * write's lock, so a claim cannot land between the decision and the write.
+   * A verdict a Cancel claim refuses leaves the run in flight for the engine to
+   * run the Canceled outlet. The write that ends the run writes its timeline
+   * entry and settles its wait rows, schedule row and step memo.
    */
-  readonly finishRun: StoreWrite<
-    {
-      executionId: string;
-      status: "completed" | "failed" | "canceled" | "exited";
-      output?: JsonValue | undefined;
-      error?: string | undefined;
-      announcement?:
-        | RunEndingAnnouncement<
-            "run_completed" | "run_failed" | "run_cancelled" | "run_exited"
-          >
-        | undefined;
-    },
+  readonly endRun: StoreWrite<
+    { executionId: string; ending: RunVerdict | OutsideGraphEnding },
     ExecutionTerminationState | null
   >;
 };
@@ -646,14 +636,11 @@ export function makeRunsMethods(
     markWaitingIfParked: (input) =>
       database.query(markWaitingIfParkedWrite(input)),
 
-    endInFlight: (input) =>
+    cancelRun: ({ executionId, ...cancel }) =>
       database.query(async (db) => {
         const [state] = await endRunsWrite(db, {
-          executionIds: [input.executionId],
-          status: input.status,
-          claim: null,
-          error: input.error,
-          entry: input.announcement,
+          executionIds: [executionId],
+          ending: { kind: "cancel", ...cancel },
         });
         return state ?? null;
       }),
@@ -701,7 +688,7 @@ export function makeRunsMethods(
         };
       }),
 
-    finishRun: (input) => database.query(finishRunWrite(input)),
+    endRun: (input) => database.query(endRunWrite(input)),
   };
 }
 
@@ -710,7 +697,7 @@ type MarkWaitingIfParkedInput = Parameters<
   RunsRepoMethods["markWaitingIfParked"]
 >[0];
 type RequestExitInput = Parameters<RunsRepoMethods["requestExit"]>[0];
-type FinishRunInput = Parameters<RunsRepoMethods["finishRun"]>[0];
+type EndRunInput = Parameters<RunsRepoMethods["endRun"]>[0];
 
 /** The update behind `markRunning`, on whichever handle the caller holds. */
 export function markRunningWrite(input: MarkRunningInput) {
@@ -800,100 +787,116 @@ function endedRunColumns(status: TerminalExecutionStatus) {
 }
 
 /**
- * The terminal write behind `finishRun`. A fenced caller holds the schedule
- * row `for update`, because the write deletes it.
+ * The terminal write behind `endRun`. A fenced caller holds the schedule row
+ * `for update`, because the write deletes it.
  */
-export function finishRunWrite(input: FinishRunInput) {
+export function endRunWrite(input: EndRunInput) {
   return async (db: Executor): Promise<ExecutionTerminationState | null> => {
     const [state] = await endRunsWrite(db, {
       executionIds: [input.executionId],
-      status: input.status,
-      claim: FINALIZED_CLAIM[input.status],
-      output: input.output,
-      error: input.error,
-      entry: input.announcement,
+      ending: input.ending,
     });
     return state ?? null;
   };
 }
 
-/** The claim a run must hold for `finishRun` to end it in each status. */
-const FINALIZED_CLAIM = {
-  completed: null,
-  failed: null,
-  canceled: "cancel",
-  exited: "exit",
-} as const satisfies Record<FinishRunInput["status"], TerminationKind | null>;
-
-/**
- * What one run-ending write asks: end each named run that is still in flight
- * and holds `claim` (no claim when null) as `status`, writing `entry` on the
- * timeline of each run it ends.
- */
-export type RunsToEnd = {
-  executionIds: readonly string[];
-  status: TerminalExecutionStatus;
-  claim: TerminationKind | null;
-  output?: JsonValue | undefined;
-  error?: string | undefined;
-  entry?:
-    | Omit<Extract<NewAuditEvent, { executionId: string }>, "executionId">
-    | undefined;
-};
+/** A stored claim in the facts `decideRunEnd` reads of it. */
+export function runEndClaim(
+  claim: ExecutionTerminationClaim | null
+): RunEndClaim | null {
+  if (claim === null) return null;
+  return claim.kind === "cancel"
+    ? { kind: "cancel" }
+    : {
+        kind: "exit",
+        reason: claim.reason,
+        nodeId: claim.nodeId,
+        requestedAt: claim.requestedAt.toISOString(),
+      };
+}
 
 /**
  * The one write that ends runs. In one transaction, a savepoint of a fenced
- * one, it locks the runs' schedule rows in the order every fenced write takes
- * them, writes the terminal columns on each run its guard admits, inserts one
- * timeline entry per ended run, and settles their wait rows, schedule rows and
- * step memos. Answers the state of every named run that exists, `didWrite`
- * telling the runs it ended from the ones it left.
+ * one, it locks the runs' schedule rows and then their execution rows, in the
+ * order every fenced write takes them, so no claim lands between the read and
+ * the write. `decideRunEnd` decides each run from what was read. Each run it
+ * ends gets its terminal columns, written compare-and-set against that read,
+ * and one timeline entry, and has its wait rows, schedule row and step memo
+ * settled. Answers the state of every named run that exists.
  */
 export function endRunsWrite(
   db: Executor,
-  input: RunsToEnd
+  input: { executionIds: readonly string[]; ending: RunEnding }
 ): Promise<ExecutionTerminationState[]> {
   const ids = [...input.executionIds];
   if (ids.length === 0) return Promise.resolve([]);
   return db.transaction(async (tx) => {
     await lockSchedules(tx, ids);
-    const written = await tx
-      .update(workflowExecutions)
-      .set({
-        ...endedRunColumns(input.status),
-        output: input.output,
-        error: input.error,
+    const runs = await tx
+      .select({
+        ...TERMINATION_COLUMNS,
+        workflowId: workflowExecutions.workflowId,
+        runMode: workflowExecutions.runMode,
       })
-      .where(
-        and(
-          inArray(workflowExecutions.id, ids),
-          inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES]),
-          input.claim === null
-            ? isNull(workflowExecutions.terminationKind)
-            : eq(workflowExecutions.terminationKind, input.claim)
+      .from(workflowExecutions)
+      .where(inArray(workflowExecutions.id, ids))
+      .orderBy(asc(workflowExecutions.id))
+      .for("update");
+    const decided = runs.map((run) => {
+      const stored = executionTerminationState(run);
+      return {
+        run,
+        stored,
+        decision: decideRunEnd(input.ending, {
+          status: run.status,
+          claim: runEndClaim(stored.claim),
+          runMode: run.runMode,
+        }),
+      };
+    });
+    for (const { run, decision } of decided) {
+      if (decision.kind === "leave") continue;
+      // eslint-disable-next-line eslint/no-await-in-loop -- one transaction runs one statement at a time
+      const [written] = await tx
+        .update(workflowExecutions)
+        .set({
+          ...endedRunColumns(decision.status),
+          output: decision.output,
+          error: decision.error,
+        })
+        .where(
+          and(
+            eq(workflowExecutions.id, run.executionId),
+            eq(workflowExecutions.status, run.status),
+            run.kind === null
+              ? isNull(workflowExecutions.terminationKind)
+              : eq(workflowExecutions.terminationKind, run.kind)
+          )
         )
-      )
-      .returning(TERMINATION_COLUMNS);
-    const ended = written.map((row) => row.executionId);
-    const { entry } = input;
-    if (entry) {
-      await recordAuditEventsWrite(
-        ended.map((executionId) => ({ ...entry, executionId }))
-      )(tx);
+        .returning({ id: workflowExecutions.id });
+      if (!written) {
+        throw new Error("A run changed under the lock its ending holds");
+      }
     }
-    const left = ids.filter((id) => !ended.includes(id));
-    const stored =
-      left.length === 0
-        ? []
-        : await tx
-            .select(TERMINATION_COLUMNS)
-            .from(workflowExecutions)
-            .where(inArray(workflowExecutions.id, left));
-    await settleEndedExecutions(tx, ended);
-    return [
-      ...written.map((row) => executionTerminationState(row, true)),
-      ...stored.map((row) => executionTerminationState(row)),
-    ];
+    const ended = decided.flatMap(({ run, decision }) =>
+      decision.kind === "write" ? [{ run, decision }] : []
+    );
+    await recordAuditEventsWrite(
+      ended.map(({ run, decision }) => ({
+        ...decision.entry,
+        workflowId: run.workflowId,
+        executionId: run.executionId,
+      }))
+    )(tx);
+    await settleEndedExecutions(
+      tx,
+      ended.map(({ run }) => run.executionId)
+    );
+    return decided.map(({ stored, decision }) =>
+      decision.kind === "write"
+        ? { ...stored, status: decision.status, didWrite: true }
+        : stored
+    );
   });
 }
 

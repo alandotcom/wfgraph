@@ -306,9 +306,10 @@ describe("startWithConcurrency", () => {
             executionId: "exec_new",
             supersededExecutionIds: ["exec_old"],
           });
+          // The superseded run's entry names this Event, read off the new row.
           assert.strictEqual(
-            repo.calls[0]?.supersededReason,
-            "Superseded by a newer start from app/appointment.created"
+            repo.calls[0]?.execution.startEventName,
+            "app/appointment.created"
           );
           assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
         })

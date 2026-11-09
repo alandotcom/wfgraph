@@ -15,7 +15,10 @@ import { sortBy } from "es-toolkit/array";
 import { omit } from "es-toolkit/object";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import { executorActivityOf } from "#src/backend/services/executions/repo/executor-activity";
-import type { PersistenceTestRegistry } from "#src/backend/persistence/conformance/support";
+import {
+  type PersistenceTestRegistry,
+  verdict,
+} from "#src/backend/persistence/conformance/support";
 import {
   T0,
   LEASE_MS,
@@ -136,7 +139,7 @@ export function describeExecutionExecutorStateConformance({
           );
           yield* executions
             .fenced(last)
-            .finishRun({ executionId, status: "completed" });
+            .endRun({ executionId, ending: verdict("completed") });
           return {
             queued,
             leased,
@@ -312,7 +315,7 @@ export function describeExecutionExecutorStateConformance({
           const { fence } = yield* claimRun(other, at(10_000));
           yield* executions
             .fenced(fence)
-            .finishRun({ executionId: other, status: "failed" });
+            .endRun({ executionId: other, ending: verdict("failed") });
           return {
             failingNodes,
             ended: yield* executions.listFailingNodeIds(other),
@@ -380,7 +383,7 @@ export function describeExecutionExecutorStateConformance({
           const { fence: endedFence } = yield* claimRun(ended, at(10_000));
           yield* executions
             .fenced(endedFence)
-            .finishRun({ executionId: ended, status: "completed" });
+            .endRun({ executionId: ended, ending: verdict("completed") });
 
           // Due, and no claim follows.
           const unclaimed = yield* scheduledRun(at(20_000));
@@ -530,7 +533,7 @@ export function describeExecutionExecutorStateConformance({
 
           // Once the run ends its memo is deleted, and a close made after
           // that keeps the count the row already holds.
-          yield* live.finishRun({ executionId, status: "completed" });
+          yield* live.endRun({ executionId, ending: verdict("completed") });
           yield* executions.closeNodeLog({
             logId: send,
             status: "success",

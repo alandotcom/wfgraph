@@ -16,6 +16,7 @@ import {
   notYetDue,
   seedPublishedWorkflow,
   terminalEntry,
+  verdict,
 } from "#src/backend/persistence/conformance/support";
 
 export function describeWorkflowConformance({
@@ -158,7 +159,6 @@ export function describeWorkflowConformance({
                 input: {},
               },
               concurrency: "unlimited",
-              supersededReason: "newer start",
               ...notYetDue,
             });
           }
@@ -171,7 +171,6 @@ export function describeWorkflowConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           yield* executions.startForEntity({
@@ -183,7 +182,6 @@ export function describeWorkflowConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
 
@@ -200,24 +198,31 @@ export function describeWorkflowConformance({
               announcement: terminalEntry,
             });
           }
-          const superseded = yield* executions.startForEntity({
+          // A newest-wins start supersedes the first run, and the newer run
+          // then completes, which leaves both of them ended.
+          const startOnCurrent = executions.startForEntity({
             execution: {
               workflowId: "wf_1",
               workflowVersionId: "ver_3",
               startSource: "manual",
               runMode: "test",
+              entityValue: "superseded_entity",
               input: {},
             },
-            concurrency: "unlimited",
-            supersededReason: "newer start",
+            concurrency: "newest-wins",
             ...notYetDue,
           });
-          if (superseded.status !== "started") {
-            throw new Error("Start was refused");
+          yield* startOnCurrent;
+          const newer = yield* startOnCurrent;
+          if (
+            newer.status !== "started" ||
+            newer.supersededExecutionIds.length !== 1
+          ) {
+            throw new Error("The newer start superseded no run");
           }
-          yield* executions.endInFlight({
-            executionId: superseded.execution.id,
-            status: "superseded",
+          yield* executions.endRun({
+            executionId: newer.execution.id,
+            ending: verdict("completed"),
           });
 
           yield* workflows.insert({
@@ -248,7 +253,6 @@ export function describeWorkflowConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
 
@@ -318,7 +322,6 @@ export function describeWorkflowConformance({
                 input: {},
               },
               concurrency: "unlimited",
-              supersededReason: "newer start",
               ...notYetDue,
             });
           }
@@ -645,7 +648,6 @@ export function describeWorkflowConformance({
                 input: {},
               },
               concurrency: "unlimited",
-              supersededReason: "newer start",
               ...notYetDue,
             });
             if (started.status !== "started") {
@@ -747,7 +749,6 @@ export function describeWorkflowConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             ...notYetDue,
           });
           if (started.status !== "started") {

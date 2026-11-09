@@ -194,15 +194,7 @@ export function admitWithConcurrency(
 
     const superseded = yield* endRunsWrite(database, {
       executionIds: inFlight.map((row) => row.id),
-      status: "superseded",
-      claim: null,
-      error: input.supersededReason,
-      entry: {
-        workflowId: execution.workflowId,
-        eventType: "run_superseded",
-        message: input.supersededReason,
-        metadata: { eventName: execution.startEventName },
-      },
+      ending: { kind: "supersede", startEventName: execution.startEventName },
     });
     const supersededExecutionIds = superseded
       .filter((state) => state.didWrite)

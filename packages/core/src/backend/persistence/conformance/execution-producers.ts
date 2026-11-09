@@ -604,7 +604,6 @@ export function describeExecutionProducerConformance({
                 input: {},
               },
               concurrency: "unlimited",
-              supersededReason: "newer start",
               startedEntry: notYetDue.startedEntry,
               now: T0,
             });
@@ -714,7 +713,6 @@ export function describeExecutionProducerConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             startedEntry: notYetDue.startedEntry,
             now: T0,
           });
@@ -809,7 +807,6 @@ export function describeExecutionProducerConformance({
               input: {},
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             startedEntry: notYetDue.startedEntry,
             now: at(2_000),
           });

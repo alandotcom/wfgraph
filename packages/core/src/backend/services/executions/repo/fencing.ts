@@ -54,7 +54,7 @@ export const STORE_WRITE_NAMES = [
   "markRunning",
   "markWaitingIfParked",
   "requestExit",
-  "finishRun",
+  "endRun",
 ] as const;
 export type StoreWriteName = (typeof STORE_WRITE_NAMES)[number];
 
@@ -153,7 +153,7 @@ const addressedRun: {
   markRunning: (input) => input.executionId,
   markWaitingIfParked: (input) => input.executionId,
   requestExit: (input) => input.executionId,
-  finishRun: (input) => input.executionId,
+  endRun: (input) => input.executionId,
 };
 
 /**

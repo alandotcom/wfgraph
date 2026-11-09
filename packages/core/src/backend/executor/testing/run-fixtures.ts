@@ -202,7 +202,6 @@ export function startScheduledRun(input: {
         input: {},
       },
       concurrency: "unlimited",
-      supersededReason: "newer start",
       startedEntry: { message: "Event-triggered run started", metadata: {} },
       now: input.wakeAt,
     });

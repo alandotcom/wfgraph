@@ -17,6 +17,7 @@ import {
 } from "#src/backend/services/integrations/cipher";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import type { RunVerdict } from "#src/backend/services/executions/repo/run-end-policy";
 import type {
   WfGraphPersistenceInstance,
   WfGraphRunCapabilities,
@@ -27,6 +28,18 @@ export const emptyGraph = createSerializedWorkflowGraph({
   nodes: [],
   edges: [],
 });
+
+/**
+ * A verdict the engine reached by walking the graph, for a case that needs a
+ * run ended and reads nothing of its entry's wording.
+ */
+export function verdict(status: RunVerdict["status"]): RunVerdict {
+  return {
+    kind: "verdict",
+    status,
+    reached: { kind: "walked", resultCount: 0 },
+  };
+}
 
 /**
  * The two `startForEntity` inputs a case passes when it is not about the new
@@ -319,7 +332,6 @@ export function attemptStart(
           input: {},
         }),
         concurrency: options.concurrency ?? "unlimited",
-        supersededReason: "newer start",
         admissionDecisionId: options.admissionDecisionId,
         ...notYetDue,
       });

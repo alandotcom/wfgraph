@@ -29,7 +29,7 @@ import {
 } from "#src/backend/services/executions/repo/node-logs";
 import { exitWakeForClaim } from "#src/backend/services/executions/repo/release-policy";
 import {
-  finishRunWrite,
+  endRunWrite,
   markRunningWrite,
   markWaitingIfParkedWrite,
   requestExitWrite,
@@ -87,8 +87,8 @@ export function makeFencedWrites(
           return state;
         }),
       // The terminal write deletes the schedule row it stands on.
-      finishRun: (input) =>
-        writeFenced(database, fence, finishRunWrite(input), "update"),
+      endRun: (input) =>
+        writeFenced(database, fence, endRunWrite(input), "update"),
     }),
   });
 }

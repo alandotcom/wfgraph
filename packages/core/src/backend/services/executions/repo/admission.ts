@@ -233,15 +233,7 @@ export async function admitWithConcurrency(
   // displaces nothing.
   const superseded = await endRunsWrite(tx, {
     executionIds: ids,
-    status: "superseded",
-    claim: null,
-    error: input.supersededReason,
-    entry: {
-      workflowId: execution.workflowId,
-      eventType: "run_superseded",
-      message: input.supersededReason,
-      metadata: { eventName: execution.startEventName },
-    },
+    ending: { kind: "supersede", startEventName: execution.startEventName },
   });
   const supersededExecutionIds = superseded
     .filter((state) => state.didWrite)

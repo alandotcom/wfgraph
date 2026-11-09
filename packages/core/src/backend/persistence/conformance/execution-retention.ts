@@ -18,6 +18,7 @@ import {
   seedPublishedWorkflow,
   setTimestamp,
   terminalEntry,
+  verdict,
 } from "#src/backend/persistence/conformance/support";
 import {
   RETENTION_CUTOFF,
@@ -187,7 +188,10 @@ export function describeExecutionRetentionConformance({
             metadata: {},
           });
           if (!wait) throw new Error("Wait was refused");
-          yield* executions.finishRun({ executionId, status: "completed" });
+          yield* executions.endRun({
+            executionId,
+            ending: verdict("completed"),
+          });
           return wait.waitStateId;
         })
       );
@@ -213,7 +217,7 @@ export function describeExecutionRetentionConformance({
       );
       const after = await connection.run(read);
 
-      expect(before).toEqual({ logs: 1, events: 1, wait: true });
+      expect(before).toEqual({ logs: 1, events: 2, wait: true });
       expect(swept).toBe(1);
       expect(after).toEqual({ logs: 0, events: 0, wait: false });
     });
@@ -357,7 +361,10 @@ export function describeExecutionRetentionConformance({
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
           for (const executionId of Object.values(runs)) {
-            yield* executions.finishRun({ executionId, status: "completed" });
+            yield* executions.endRun({
+              executionId,
+              ending: verdict("completed"),
+            });
           }
         })
       );

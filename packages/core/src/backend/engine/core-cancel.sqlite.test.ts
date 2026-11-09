@@ -160,7 +160,6 @@ describe("a Canceled-side Wait over native SQLite", () => {
               input: { reason: "started normally" },
             },
             concurrency: "unlimited",
-            supersededReason: "newer start",
             startedEntry: { message: "Run started", metadata: {} },
             now: new Date(),
           });
