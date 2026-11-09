@@ -32,6 +32,7 @@ describe("completeRun", () => {
       Effect.gen(function* () {
         const repo = yield* ExecutionRepo;
         const result = yield* createDbWorkflowStore({
+          executionId: "exec_1",
           reads: repo,
           writes: repo,
         }).completeRun(terminalWrite);
@@ -56,9 +57,11 @@ describe("completeRun", () => {
       Effect.gen(function* () {
         const repo = yield* ExecutionRepo;
         const error = yield* Effect.flip(
-          createDbWorkflowStore({ reads: repo, writes: repo }).completeRun(
-            terminalWrite
-          )
+          createDbWorkflowStore({
+            executionId: "exec_1",
+            reads: repo,
+            writes: repo,
+          }).completeRun(terminalWrite)
         );
 
         expect(error).toBeInstanceOf(DatabaseError);

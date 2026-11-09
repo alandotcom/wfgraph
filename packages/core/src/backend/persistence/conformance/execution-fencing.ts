@@ -15,6 +15,7 @@ import {
   type FencedExecutionWrites,
 } from "#src/backend/services/executions/repo";
 import { nodeLogId } from "#src/backend/services/executions/repo/node-logs";
+import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import { nodeLogCloseApplies } from "#src/backend/services/executions/repo/release-policy";
 import {
   type PersistenceTestRegistry,
@@ -284,6 +285,130 @@ export function describeExecutionFencingConformance({
           [(log) => log.nodeId]
         )
       );
+    });
+
+    // A pass's store reads the run's log rows on its first log write. It
+    // skips an open for a node that has a row, and a close the fenced close's
+    // guard would refuse, so a pass replaying nodes an earlier pass logged
+    // writes nothing for them. Its own writes keep what it read current.
+    it("reads a run's log rows once per store, and skips the log writes that would change nothing", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(executionId, T0);
+          const pass = executions.fenced(fence);
+          const open = (nodeId: string) => ({
+            executionId,
+            nodeId,
+            nodeName: nodeId,
+            nodeType: "action",
+            input: { nodeId },
+          });
+          const logIdOf = (nodeId: string) => nodeLogId(executionId, nodeId);
+
+          // What an earlier pass left: a node it closed as a success, one it
+          // closed as an error, and one it left running.
+          for (const nodeId of ["succeeded", "failed", "running"]) {
+            yield* pass.openNodeLog(open(nodeId));
+          }
+          yield* pass.closeNodeLog({
+            logId: logIdOf("succeeded"),
+            status: "success",
+            output: { attempt: 1 },
+            durationMs: 1,
+          });
+          yield* pass.closeNodeLog({
+            logId: logIdOf("failed"),
+            status: "error",
+            error: "attempt 1",
+            durationMs: 1,
+          });
+
+          const reads: string[] = [];
+          const opens: string[] = [];
+          const closes: string[] = [];
+          const store = createDbWorkflowStore({
+            executionId,
+            reads: {
+              ...executions,
+              listNodeStatuses: (id) =>
+                Effect.suspend(() => {
+                  reads.push(id);
+                  return executions.listNodeStatuses(id);
+                }),
+            },
+            writes: {
+              ...pass,
+              openNodeLog: (input) =>
+                Effect.suspend(() => {
+                  opens.push(input.nodeId);
+                  return pass.openNodeLog(input);
+                }),
+              closeNodeLog: (input) =>
+                Effect.suspend(() => {
+                  closes.push(`${input.logId}:${input.status}`);
+                  return pass.closeNodeLog(input);
+                }),
+            },
+          });
+          const closeWith = (nodeId: string, status: "success" | "error") =>
+            store.completeStepLog({
+              logId: logIdOf(nodeId),
+              status,
+              output: status === "success" ? { attempt: 2 } : undefined,
+              error: status === "error" ? "attempt 2" : undefined,
+              durationMs: 2,
+            });
+
+          // Parallel branches log side by side, and their first writes share
+          // the store's one read.
+          const handles = yield* Effect.forEach(
+            ["succeeded", "running", "fresh"],
+            (nodeId) => store.startStepLog(open(nodeId)),
+            { concurrency: "unbounded" }
+          );
+          yield* closeWith("succeeded", "error");
+          yield* closeWith("failed", "error");
+          yield* closeWith("failed", "success");
+          yield* closeWith("running", "success");
+          yield* closeWith("fresh", "error");
+          // The store's own close made `fresh` an error, so a second error
+          // close is skipped as well.
+          yield* closeWith("fresh", "error");
+
+          const logs = yield* executions.listNodeStatuses(executionId);
+          return {
+            executionId,
+            handles: handles.map((handle) => handle.logId),
+            reads,
+            opens,
+            closes,
+            statuses: Object.fromEntries(
+              logs.map((log) => [log.nodeId, log.status])
+            ),
+          };
+        })
+      );
+
+      expect(result.reads).toHaveLength(1);
+      expect(result.opens).toEqual(["fresh"]);
+      const logIdOf = (nodeId: string) => nodeLogId(result.executionId, nodeId);
+      expect(result.closes).toEqual([
+        `${logIdOf("failed")}:success`,
+        `${logIdOf("running")}:success`,
+        `${logIdOf("fresh")}:error`,
+      ]);
+      expect(result.handles).toEqual(
+        ["succeeded", "running", "fresh"].map(logIdOf)
+      );
+      expect(result.statuses).toEqual({
+        succeeded: "success",
+        failed: "success",
+        running: "success",
+        fresh: "error",
+      });
     });
 
     it("refuses a leased pass's next write once a policy cancel ends its run", async () => {

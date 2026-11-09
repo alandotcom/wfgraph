@@ -579,6 +579,7 @@ export function describeExecutionConformance({
         const executions = yield* ExecutionRepo;
         yield* recordVerdict({
           store: createDbWorkflowStore({
+            executionId,
             reads: executions,
             writes: executions,
           }),

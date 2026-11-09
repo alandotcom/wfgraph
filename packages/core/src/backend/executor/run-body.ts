@@ -60,7 +60,11 @@ export function runBody(input: {
             settle: endUnavailableRun(writes, executionId, loaded),
           } as const;
         }
-        const store = createDbWorkflowStore({ reads: executions, writes });
+        const store = createDbWorkflowStore({
+          executionId,
+          reads: executions,
+          writes,
+        });
         const actions = input.actions();
         return {
           kind: "ready",

@@ -183,7 +183,11 @@ describe("a Canceled-side Wait over native SQLite", () => {
       );
 
       const repo = await runtime.runPromise(ExecutionRepo);
-      const store = createDbWorkflowStore({ reads: repo, writes: repo });
+      const store = createDbWorkflowStore({
+        executionId,
+        reads: repo,
+        writes: repo,
+      });
 
       const result = await executeWorkflow(
         {
