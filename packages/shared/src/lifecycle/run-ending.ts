@@ -1,8 +1,8 @@
 /**
- * How a run ends. A caller names why (`RunEnding`), and `decideRunEnd` answers
- * from the run's stored status and claim what to write, timeline entry
- * included, or that the run is left alone. Both database backends and the
- * engine's recording store decide with it, and none imports a database.
+ * How a run ends. A caller names why (`RunEnding`). `decideRunEnd` answers from
+ * the run's stored status and claim what to write, timeline entry included, or
+ * why the run is left, and `planRunEnds` applies it to every run one write
+ * locked. Both backends and the engine's recording store plan with it.
  */
 
 import type { RunScopedAuditEventType } from "#src/lifecycle/audit-event-types";

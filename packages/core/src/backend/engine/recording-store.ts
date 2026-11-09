@@ -12,7 +12,8 @@ import {
   type ExecutionSide,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
-  decideRunEnd,
+  answerForOneRun,
+  planRunEnds,
   type RunEndEntry,
 } from "@wfgraph/shared/lifecycle/run-ending";
 import { Effect } from "effect";
@@ -347,24 +348,27 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
         calls.push({ method: "completeRun", input });
         byMethod.completeRun.push(input);
         const current = store.terminationState;
-        const decision = decideRunEnd(input.verdict, {
-          status: current?.status ?? "running",
-          claim: current?.claim ?? null,
-          runMode: store.run.runMode,
-        });
-        if (decision.kind !== "write") return decision;
-
-        store.terminationState = {
-          status: decision.status,
-          claim: current?.claim ?? null,
-          didWrite: true,
-        };
-        timeline.push({
-          ...decision.entry,
-          workflowId: store.run.workflowId,
-          executionId: input.executionId,
-        });
-        return { kind: "ended", status: decision.status };
+        const plan = planRunEnds(
+          [
+            {
+              executionId: input.executionId,
+              workflowId: store.run.workflowId,
+              status: current?.status ?? "running",
+              claim: current?.claim ?? null,
+              runMode: store.run.runMode,
+            },
+          ],
+          input.verdict
+        );
+        for (const ended of plan.ended) {
+          store.terminationState = {
+            status: ended.status,
+            claim: current?.claim ?? null,
+            didWrite: true,
+          };
+          timeline.push(ended.entry);
+        }
+        return answerForOneRun(plan);
       });
     },
   };
