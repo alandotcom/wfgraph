@@ -12,9 +12,13 @@ import { SilentAppLoggerLayer } from "#src/backend/lib/effect/test-layers";
 import { makeExecutionDriverLayer } from "#src/backend/services/executions/driver";
 import { cancelInFlightRuns } from "#src/backend/services/executions/end-runs";
 import { recordPausedRunIgnored } from "#src/backend/services/executions/run-rows";
+import { OPEN_PARK_STATUSES } from "#src/backend/services/executions/repo/release-policy";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import {
+  ExecutionRepo,
+  type ExecutionTerminationState,
+} from "#src/backend/services/executions/repo";
 import type {
   ConformanceConnection,
   PersistenceTestRegistry,
@@ -26,6 +30,14 @@ import {
   notYetDue,
   seedPublishedWorkflow,
 } from "#src/backend/persistence/conformance/support";
+import {
+  at,
+  claimRun,
+  LEASE_MS,
+  memoWrite,
+  park,
+  T0,
+} from "#src/backend/persistence/conformance/schedule-support";
 
 /**
  * The wake a claim records on the row it takes, which every claim case here
@@ -107,6 +119,253 @@ const startFirstWins = (
   connection: ConformanceConnection,
   deliveryId: string
 ) => attemptStart(connection, { deliveryId, concurrency: "first-wins" });
+
+/** One way a run ends today. */
+type RunEndingWrite =
+  | {
+      kind: "finishRun";
+      status: "completed" | "failed" | "canceled" | "exited";
+    }
+  | { kind: "endInFlight"; status: "canceled" | "superseded" }
+  | { kind: "supersede" };
+
+/** The state a run is in when a run-ending write reaches it. */
+type RunBeforeEnding =
+  | "unclaimed"
+  | "cancel-claimed"
+  | "exit-claimed"
+  | "ended";
+
+/** The timeline entry each ending status is announced with. */
+const ENDING_ENTRY = {
+  completed: "run_completed",
+  failed: "run_failed",
+  canceled: "run_cancelled",
+  exited: "run_exited",
+  superseded: "run_superseded",
+} as const;
+
+/** The reason a newest-wins start supersedes a run with, which its entry reads. */
+const SUPERSEDED_REASON = "Superseded by a newer start";
+
+/** The one Entity every run in the run-ending cases is about. */
+const ENDING_ENTITY = {
+  entityType: "appointment",
+  entityId: "appointment_1",
+} as const;
+
+const finishRunAs = (
+  status: "completed" | "failed" | "canceled" | "exited"
+): RunEndingWrite => ({ kind: "finishRun", status });
+const endInFlightAs = (status: "canceled" | "superseded"): RunEndingWrite => ({
+  kind: "endInFlight",
+  status,
+});
+const supersede: RunEndingWrite = { kind: "supersede" };
+
+/**
+ * Every run-ending write against every state a run can be in, and whether the
+ * write ends the run. `finishRun` ends a run whose claim matches its status:
+ * no claim for completed and failed, a Cancel claim for canceled, an Exit claim
+ * for exited. `endInFlight` and a newest-wins supersede end only a run holding
+ * no claim. No write ends a run that has already ended.
+ */
+const RUN_ENDINGS: ReadonlyArray<{
+  write: RunEndingWrite;
+  against: RunBeforeEnding;
+  ends: boolean;
+}> = [
+  { write: finishRunAs("completed"), against: "unclaimed", ends: true },
+  { write: finishRunAs("completed"), against: "cancel-claimed", ends: false },
+  { write: finishRunAs("completed"), against: "exit-claimed", ends: false },
+  { write: finishRunAs("completed"), against: "ended", ends: false },
+  { write: finishRunAs("failed"), against: "unclaimed", ends: true },
+  { write: finishRunAs("failed"), against: "cancel-claimed", ends: false },
+  { write: finishRunAs("failed"), against: "exit-claimed", ends: false },
+  { write: finishRunAs("failed"), against: "ended", ends: false },
+  { write: finishRunAs("canceled"), against: "unclaimed", ends: false },
+  { write: finishRunAs("canceled"), against: "cancel-claimed", ends: true },
+  { write: finishRunAs("canceled"), against: "exit-claimed", ends: false },
+  { write: finishRunAs("canceled"), against: "ended", ends: false },
+  { write: finishRunAs("exited"), against: "unclaimed", ends: false },
+  { write: finishRunAs("exited"), against: "cancel-claimed", ends: false },
+  { write: finishRunAs("exited"), against: "exit-claimed", ends: true },
+  { write: finishRunAs("exited"), against: "ended", ends: false },
+  { write: endInFlightAs("canceled"), against: "unclaimed", ends: true },
+  { write: endInFlightAs("canceled"), against: "cancel-claimed", ends: false },
+  { write: endInFlightAs("canceled"), against: "exit-claimed", ends: false },
+  { write: endInFlightAs("canceled"), against: "ended", ends: false },
+  { write: endInFlightAs("superseded"), against: "unclaimed", ends: true },
+  {
+    write: endInFlightAs("superseded"),
+    against: "cancel-claimed",
+    ends: false,
+  },
+  { write: endInFlightAs("superseded"), against: "exit-claimed", ends: false },
+  { write: endInFlightAs("superseded"), against: "ended", ends: false },
+  { write: supersede, against: "unclaimed", ends: true },
+  { write: supersede, against: "cancel-claimed", ends: false },
+  { write: supersede, against: "exit-claimed", ends: false },
+  { write: supersede, against: "ended", ends: false },
+];
+
+function endingStatus(write: RunEndingWrite) {
+  return write.kind === "supersede" ? "superseded" : write.status;
+}
+
+function endingLabel(write: RunEndingWrite): string {
+  return write.kind === "supersede"
+    ? "a newest-wins supersede"
+    : `${write.kind} ${write.status}`;
+}
+
+/**
+ * Opens a run of `wf_1` about {@link ENDING_ENTITY}, leases it, writes one
+ * step memo row, parks it on one Wait, and then puts it in `state`. Answers
+ * the run's id and its wait row's id.
+ */
+function runBeforeEnding(state: RunBeforeEnding) {
+  return Effect.gen(function* () {
+    const executions = yield* ExecutionRepo;
+    const started = yield* executions.startForEntity({
+      execution: {
+        workflowId: "wf_1",
+        workflowVersionId: "ver_1",
+        startSource: "event",
+        runMode: "live",
+        ...ENDING_ENTITY,
+        input: {},
+      },
+      concurrency: "unlimited",
+      supersededReason: SUPERSEDED_REASON,
+      startedEntry: notYetDue.startedEntry,
+      now: T0,
+    });
+    if (started.status !== "started") throw new Error("Start was refused");
+    const executionId = started.execution.id;
+    const { fence } = yield* claimRun(executionId, T0);
+    yield* executions.fenced(fence).writeStepMemo(
+      memoWrite({
+        stepId: "node:send:dispatch",
+        value: { sent: true },
+        leaseExpiresAt: at(LEASE_MS),
+      })
+    );
+    const waitStateId = yield* park(executionId, "wait_1", notYetDue.now);
+    if (state === "cancel-claimed") {
+      yield* executions.requestCancelForEntity({
+        now: T0,
+        workflowId: "wf_1",
+        ...ENDING_ENTITY,
+        eventName: "appointment/cancelled",
+        payload: {},
+        deliveryId: yield* cancelArrival(),
+      });
+    }
+    if (state === "exit-claimed") {
+      yield* executions.requestExit({
+        executionId,
+        reason: "entity_condition_not_met",
+        nodeId: "node_check",
+      });
+    }
+    if (state === "ended") {
+      yield* executions.finishRun({ executionId, status: "completed" });
+    }
+    return { executionId, waitStateId };
+  });
+}
+
+/** What a caller of `finishRun` or `endInFlight` reads off its answer. */
+function answered(state: ExecutionTerminationState | null) {
+  return {
+    didWrite: state?.didWrite,
+    status: state?.status,
+    claim: state?.claim?.kind ?? null,
+  };
+}
+
+/**
+ * Runs one run-ending write against `executionId`, announcing it with the
+ * entry its status takes, and answers what its caller reads: the termination
+ * state for `finishRun` and `endInFlight`, and for a supersede whether the
+ * start displaced the run.
+ */
+function endRun(write: RunEndingWrite, executionId: string) {
+  return Effect.gen(function* () {
+    const executions = yield* ExecutionRepo;
+    if (write.kind === "supersede") {
+      const start = yield* executions.startForEntity({
+        execution: {
+          workflowId: "wf_1",
+          workflowVersionId: "ver_1",
+          startSource: "event",
+          runMode: "live",
+          ...ENDING_ENTITY,
+          input: {},
+        },
+        concurrency: "newest-wins",
+        supersededReason: SUPERSEDED_REASON,
+        ...notYetDue,
+      });
+      if (start.status !== "started") throw new Error("Start was refused");
+      return { didWrite: start.supersededExecutionIds.includes(executionId) };
+    }
+    const announcement = {
+      workflowId: "wf_1",
+      message: `Run ended ${write.status}`,
+    };
+    return answered(
+      write.kind === "finishRun"
+        ? yield* executions.finishRun({
+            executionId,
+            status: write.status,
+            announcement: {
+              ...announcement,
+              eventType: ENDING_ENTRY[write.status],
+            },
+          })
+        : yield* executions.endInFlight({
+            executionId,
+            status: write.status,
+            announcement: {
+              ...announcement,
+              eventType: ENDING_ENTRY[write.status],
+            },
+          })
+    );
+  });
+}
+
+/** Everything a later reader can see of one run and the rows it holds. */
+function observeRun(executionId: string, waitStateId: string) {
+  return Effect.gen(function* () {
+    const executions = yield* ExecutionRepo;
+    const rows = yield* executions.listByWorkflow({
+      workflowId: "wf_1",
+      includeSuperseded: true,
+    });
+    const row = rows.find((candidate) => candidate.id === executionId);
+    const termination = yield* executions.findTerminationState(executionId);
+    const events = yield* executions.listEvents(executionId);
+    const memo = yield* executions.listStepMemo({ executionId });
+    return {
+      status: row?.status,
+      claim: termination?.claim?.kind ?? null,
+      completedAt: row?.completedAt ?? null,
+      duration: row?.duration ?? null,
+      cancelledAt: row?.cancelledAt ?? null,
+      entries: events.map(({ id, eventType, message }) => ({
+        id,
+        eventType,
+        message,
+      })),
+      wait: (yield* executions.findWaitStateById(waitStateId))?.status,
+      schedule: yield* executions.findSchedule({ executionId }),
+      memo: memo.map((entry) => entry.stepId),
+    };
+  });
+}
 
 export function describeExecutionConformance({
   openConnection,
@@ -1596,5 +1855,90 @@ export function describeExecutionConformance({
         )
       ).resolves.toBeUndefined();
     });
+  });
+
+  describe("how each run-ending write ends a run", () => {
+    for (const { write, against, ends } of RUN_ENDINGS) {
+      it(`${endingLabel(write)} against a ${against} run ${ends ? "ends it" : "leaves it as it was"}`, async () => {
+        const connection = await openConnection();
+        await seedPublishedWorkflow(connection);
+
+        const { before, answer, after } = await connection.run(
+          Effect.gen(function* () {
+            const { executionId, waitStateId } =
+              yield* runBeforeEnding(against);
+            return {
+              before: yield* observeRun(executionId, waitStateId),
+              answer: yield* endRun(write, executionId),
+              after: yield* observeRun(executionId, waitStateId),
+            };
+          })
+        );
+
+        // The run holds what the write would settle, so a write that leaves
+        // it alone is told apart from a run with nothing to settle.
+        if (against === "ended") {
+          expect(before).toMatchObject({
+            status: "completed",
+            claim: null,
+            wait: "cancelled",
+            schedule: null,
+            memo: [],
+          });
+        } else {
+          expect(OPEN_PARK_STATUSES).toContain(before.wait);
+          expect(before).toMatchObject({
+            claim:
+              against === "cancel-claimed"
+                ? "cancel"
+                : against === "exit-claimed"
+                  ? "exit"
+                  : null,
+            completedAt: null,
+            schedule: { executionId: expect.any(String) },
+            memo: ["node:send:dispatch"],
+          });
+        }
+
+        const status = endingStatus(write);
+        const added = after.entries
+          .filter((entry) => !before.entries.some(({ id }) => id === entry.id))
+          .map(({ eventType, message }) => ({ eventType, message }));
+        if (!ends) {
+          expect(answer).toEqual(
+            write.kind === "supersede"
+              ? { didWrite: false }
+              : { didWrite: false, status: before.status, claim: before.claim }
+          );
+          expect(after).toEqual(before);
+          return;
+        }
+        expect(answer).toEqual(
+          write.kind === "supersede"
+            ? { didWrite: true }
+            : { didWrite: true, status, claim: before.claim }
+        );
+        expect(added).toEqual([
+          {
+            eventType: ENDING_ENTRY[status],
+            message:
+              write.kind === "supersede"
+                ? SUPERSEDED_REASON
+                : `Run ended ${status}`,
+          },
+        ]);
+        expect(after).toEqual({
+          status,
+          claim: before.claim,
+          completedAt: expect.any(Date),
+          duration: expect.stringMatching(/^\d+$/),
+          cancelledAt: status === "canceled" ? expect.any(Date) : null,
+          entries: expect.arrayContaining(before.entries),
+          wait: "cancelled",
+          schedule: null,
+          memo: [],
+        });
+      });
+    }
   });
 }
