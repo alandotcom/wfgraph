@@ -18,8 +18,12 @@ import {
   TERMINAL_EXECUTION_STATUSES,
   type ExecutionSide,
   type TerminalExecutionStatus,
+  type TerminationKind,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs";
+import type {
+  RunsRepoMethods,
+  RunsToEnd,
+} from "#src/backend/services/executions/repo/runs";
 import type {
   ExecutionSummary,
   ExecutionTerminationState,
@@ -46,8 +50,11 @@ import {
   sqliteVersionKind,
   type SqliteExecutionListRow,
 } from "#src/backend/persistence/sqlite/executions/rows";
-import { endExecutions } from "#src/backend/persistence/sqlite/executions/schedule";
-import { recordAuditEventWrite } from "#src/backend/persistence/sqlite/executions/audit";
+import { settleEndedExecutions } from "#src/backend/persistence/sqlite/executions/schedule";
+import {
+  recordAuditEventsWrite,
+  recordAuditEventWrite,
+} from "#src/backend/persistence/sqlite/executions/audit";
 
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
@@ -492,35 +499,13 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
       store.write(markWaitingIfParkedWrite(input)),
     endInFlight: (input) =>
       store.write((database) =>
-        endExecutions(
-          database,
-          Effect.gen(function* () {
-            const [written] = yield* database
-              .update(workflowExecutions)
-              .set({
-                ...endedRunColumns(input.status),
-                error: input.error ?? null,
-              })
-              .where(
-                and(
-                  eq(workflowExecutions.id, input.executionId),
-                  inArray(
-                    workflowExecutions.status,
-                    IN_FLIGHT_EXECUTION_STATUSES
-                  ),
-                  isNull(workflowExecutions.terminationKind)
-                )
-              )
-              .returning();
-            if (written && input.announcement) {
-              yield* recordAuditEventWrite({
-                ...input.announcement,
-                executionId: input.executionId,
-              })(database);
-            }
-            return yield* endedBy(database, input.executionId, written);
-          })
-        )
+        endRunsWrite(database, {
+          executionIds: [input.executionId],
+          status: input.status,
+          claim: null,
+          error: input.error,
+          entry: input.announcement,
+        }).pipe(Effect.map(([state]) => state ?? null))
       ),
     requestExit: (input) => store.write(requestExitWrite(input)),
     canAdmitNode: (executionId) =>
@@ -598,23 +583,6 @@ function writtenOrStored(
     .pipe(Effect.map((row) => (row ? terminationState(row) : null)));
 }
 
-/**
- * What a terminal write hands `endExecutions`: its answer, and the run it
- * ended when its guard admitted the row.
- */
-function endedBy(
-  database: SqliteExecutor,
-  executionId: string,
-  written: typeof workflowExecutions.$inferSelect | undefined
-) {
-  return writtenOrStored(database, executionId, written).pipe(
-    Effect.map((result) => ({
-      result,
-      ended: written ? [written.id] : [],
-    }))
-  );
-}
-
 /** The update behind `markRunning`, inside the caller's write transaction. */
 export function markRunningWrite(input: MarkRunningInput) {
   return (database: SqliteExecutor) =>
@@ -679,7 +647,7 @@ export function requestExitWrite(input: RequestExitInput) {
  * The columns every update that ends a run sets beside its own, so no ended
  * run is missing a completion time or a duration.
  */
-export function endedRunColumns(status: TerminalExecutionStatus) {
+function endedRunColumns(status: TerminalExecutionStatus) {
   const now = Date.now();
   return {
     status,
@@ -692,44 +660,75 @@ export function endedRunColumns(status: TerminalExecutionStatus) {
   };
 }
 
-/**
- * The terminal write behind `finishRun`. The write that made the row terminal
- * inserts its announcement and deletes the run's schedule row and step memo in
- * the same transaction.
- */
+/** The terminal write behind `finishRun`. */
 export function finishRunWrite(input: FinishRunInput) {
   return (database: SqliteExecutor) =>
-    endExecutions(
-      database,
-      Effect.gen(function* () {
-        const claimGuard =
-          input.status === "canceled"
-            ? eq(workflowExecutions.terminationKind, "cancel")
-            : input.status === "exited"
-              ? eq(workflowExecutions.terminationKind, "exit")
-              : isNull(workflowExecutions.terminationKind);
-        const [written] = yield* database
-          .update(workflowExecutions)
-          .set({
-            ...endedRunColumns(input.status),
-            output: encodeJson(input.output),
-            error: input.error ?? null,
-          })
-          .where(
-            and(
-              eq(workflowExecutions.id, input.executionId),
-              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-              claimGuard
-            )
-          )
-          .returning();
-        if (written && input.announcement) {
-          yield* recordAuditEventWrite({
-            ...input.announcement,
-            executionId: input.executionId,
-          })(database);
-        }
-        return yield* endedBy(database, input.executionId, written);
+    endRunsWrite(database, {
+      executionIds: [input.executionId],
+      status: input.status,
+      claim: FINALIZED_CLAIM[input.status],
+      output: input.output,
+      error: input.error,
+      entry: input.announcement,
+    }).pipe(Effect.map(([state]) => state ?? null));
+}
+
+/** The claim a run must hold for `finishRun` to end it in each status. */
+const FINALIZED_CLAIM = {
+  completed: null,
+  failed: null,
+  canceled: "cancel",
+  exited: "exit",
+} as const satisfies Record<FinishRunInput["status"], TerminationKind | null>;
+
+/**
+ * The one write that ends runs, inside the caller's write transaction, as the
+ * PostgreSQL backend's `endRunsWrite` describes: the terminal columns on each
+ * named run its guard admits, one timeline entry per ended run, and the
+ * settle of their wait rows, schedule rows and step memos.
+ */
+export function endRunsWrite(database: SqliteExecutor, input: RunsToEnd) {
+  const ids = [...input.executionIds];
+  if (ids.length === 0) {
+    return Effect.succeed<ExecutionTerminationState[]>([]);
+  }
+  return Effect.gen(function* () {
+    const written = yield* database
+      .update(workflowExecutions)
+      .set({
+        ...endedRunColumns(input.status),
+        output: encodeJson(input.output),
+        error: input.error ?? null,
       })
-    );
+      .where(
+        and(
+          inArray(workflowExecutions.id, ids),
+          inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
+          input.claim === null
+            ? isNull(workflowExecutions.terminationKind)
+            : eq(workflowExecutions.terminationKind, input.claim)
+        )
+      )
+      .returning();
+    const ended = written.map((row) => row.id);
+    const { entry } = input;
+    if (entry) {
+      yield* recordAuditEventsWrite(
+        ended.map((executionId) => ({ ...entry, executionId }))
+      )(database);
+    }
+    const left = ids.filter((id) => !ended.includes(id));
+    const stored =
+      left.length === 0
+        ? []
+        : yield* database
+            .select()
+            .from(workflowExecutions)
+            .where(inArray(workflowExecutions.id, left));
+    yield* settleEndedExecutions(database, ended);
+    return [
+      ...written.map((row) => terminationState(row, true)),
+      ...stored.map((row) => terminationState(row)),
+    ];
+  });
 }

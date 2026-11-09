@@ -113,7 +113,7 @@ export function writeFenced<A>(
  * open, as `OPEN_PARK_STATUSES` describes: their open wait rows are cancelled
  * and their schedule rows are deleted, which deletes the step memo by cascade.
  */
-function settleEndedExecutions(
+export function settleEndedExecutions(
   database: SqliteExecutor,
   executionIds: readonly string[]
 ) {
@@ -132,22 +132,6 @@ function settleEndedExecutions(
     yield* database
       .delete(workflowExecutionSchedule)
       .where(inArray(workflowExecutionSchedule.executionId, ids));
-  });
-}
-
-/**
- * Runs a write that may make runs terminal inside the caller's write
- * transaction. `write` reports which runs it ended, and their open wait rows,
- * schedule rows and step memos are settled before the transaction commits.
- */
-export function endExecutions<A, E>(
-  database: SqliteExecutor,
-  write: Effect.Effect<{ result: A; ended: readonly string[] }, E>
-): Effect.Effect<A, unknown> {
-  return Effect.gen(function* () {
-    const { result, ended } = yield* write;
-    yield* settleEndedExecutions(database, ended);
-    return result;
   });
 }
 

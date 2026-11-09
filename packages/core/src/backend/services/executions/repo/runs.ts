@@ -33,7 +33,10 @@ import type {
   WfGraphTransaction,
 } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
-import { endExecutions } from "#src/backend/services/executions/repo/schedule";
+import {
+  lockSchedules,
+  settleEndedExecutions,
+} from "#src/backend/services/executions/repo/schedule";
 import type { RunScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
@@ -47,7 +50,10 @@ import type {
   JsonObjectDraft,
   JsonValue,
 } from "@wfgraph/shared/types/json";
-import { recordAuditEventWrite } from "#src/backend/services/executions/repo/audit";
+import {
+  recordAuditEventsWrite,
+  recordAuditEventWrite,
+} from "#src/backend/services/executions/repo/audit";
 import type {
   StoreWrite,
   ExecutionPageQuery,
@@ -56,6 +62,7 @@ import type {
   ExecutionTerminationState,
   GlobalExecutionRow,
   InFlightExecutionRow,
+  NewAuditEvent,
   NewTerminalExecution,
   PendingCancel,
   WorkflowExecution,
@@ -640,23 +647,16 @@ export function makeRunsMethods(
       database.query(markWaitingIfParkedWrite(input)),
 
     endInFlight: (input) =>
-      database.query((db) =>
-        endExecutions(db, [input.executionId], async (tx) => {
-          const [written] = await tx
-            .update(workflowExecutions)
-            .set({ ...endedRunColumns(input.status), error: input.error })
-            .where(inFlightExecution(input.executionId, "started"))
-            .returning(TERMINATION_COLUMNS);
-          if (written && input.announcement) {
-            await recordAuditEventWrite({
-              ...input.announcement,
-              executionId: input.executionId,
-            })(tx);
-          }
-
-          return await endedBy(tx, input.executionId, written);
-        })
-      ),
+      database.query(async (db) => {
+        const [state] = await endRunsWrite(db, {
+          executionIds: [input.executionId],
+          status: input.status,
+          claim: null,
+          error: input.error,
+          entry: input.announcement,
+        });
+        return state ?? null;
+      }),
 
     requestExit: (input) => database.query(requestExitWrite(input)),
 
@@ -784,7 +784,7 @@ export function requestExitWrite(input: RequestExitInput) {
  * The columns every update that ends a run sets beside its own, so no ended
  * run is missing a completion time or a duration.
  */
-export function endedRunColumns(status: TerminalExecutionStatus) {
+function endedRunColumns(status: TerminalExecutionStatus) {
   const now = new Date();
   return {
     status,
@@ -804,40 +804,97 @@ export function endedRunColumns(status: TerminalExecutionStatus) {
  * row `for update`, because the write deletes it.
  */
 export function finishRunWrite(input: FinishRunInput) {
-  return (db: Executor): Promise<ExecutionTerminationState | null> =>
-    endExecutions(db, [input.executionId], async (tx) => {
-      const claimGuard =
-        input.status === "canceled"
-          ? eq(workflowExecutions.terminationKind, "cancel")
-          : input.status === "exited"
-            ? eq(workflowExecutions.terminationKind, "exit")
-            : isNull(workflowExecutions.terminationKind);
-      const [written] = await tx
-        .update(workflowExecutions)
-        .set({
-          ...endedRunColumns(input.status),
-          output: input.output,
-          error: input.error,
-        })
-        .where(
-          and(
-            eq(workflowExecutions.id, input.executionId),
-            inArray(workflowExecutions.status, [
-              ...IN_FLIGHT_EXECUTION_STATUSES,
-            ]),
-            claimGuard
-          )
-        )
-        .returning(TERMINATION_COLUMNS);
-      if (written && input.announcement) {
-        await recordAuditEventWrite({
-          ...input.announcement,
-          executionId: input.executionId,
-        })(tx);
-      }
-
-      return await endedBy(tx, input.executionId, written);
+  return async (db: Executor): Promise<ExecutionTerminationState | null> => {
+    const [state] = await endRunsWrite(db, {
+      executionIds: [input.executionId],
+      status: input.status,
+      claim: FINALIZED_CLAIM[input.status],
+      output: input.output,
+      error: input.error,
+      entry: input.announcement,
     });
+    return state ?? null;
+  };
+}
+
+/** The claim a run must hold for `finishRun` to end it in each status. */
+const FINALIZED_CLAIM = {
+  completed: null,
+  failed: null,
+  canceled: "cancel",
+  exited: "exit",
+} as const satisfies Record<FinishRunInput["status"], TerminationKind | null>;
+
+/**
+ * What one run-ending write asks: end each named run that is still in flight
+ * and holds `claim` (no claim when null) as `status`, writing `entry` on the
+ * timeline of each run it ends.
+ */
+export type RunsToEnd = {
+  executionIds: readonly string[];
+  status: TerminalExecutionStatus;
+  claim: TerminationKind | null;
+  output?: JsonValue | undefined;
+  error?: string | undefined;
+  entry?:
+    | Omit<Extract<NewAuditEvent, { executionId: string }>, "executionId">
+    | undefined;
+};
+
+/**
+ * The one write that ends runs. In one transaction, a savepoint of a fenced
+ * one, it locks the runs' schedule rows in the order every fenced write takes
+ * them, writes the terminal columns on each run its guard admits, inserts one
+ * timeline entry per ended run, and settles their wait rows, schedule rows and
+ * step memos. Answers the state of every named run that exists, `didWrite`
+ * telling the runs it ended from the ones it left.
+ */
+export function endRunsWrite(
+  db: Executor,
+  input: RunsToEnd
+): Promise<ExecutionTerminationState[]> {
+  const ids = [...input.executionIds];
+  if (ids.length === 0) return Promise.resolve([]);
+  return db.transaction(async (tx) => {
+    await lockSchedules(tx, ids);
+    const written = await tx
+      .update(workflowExecutions)
+      .set({
+        ...endedRunColumns(input.status),
+        output: input.output,
+        error: input.error,
+      })
+      .where(
+        and(
+          inArray(workflowExecutions.id, ids),
+          inArray(workflowExecutions.status, [...IN_FLIGHT_EXECUTION_STATUSES]),
+          input.claim === null
+            ? isNull(workflowExecutions.terminationKind)
+            : eq(workflowExecutions.terminationKind, input.claim)
+        )
+      )
+      .returning(TERMINATION_COLUMNS);
+    const ended = written.map((row) => row.executionId);
+    const { entry } = input;
+    if (entry) {
+      await recordAuditEventsWrite(
+        ended.map((executionId) => ({ ...entry, executionId }))
+      )(tx);
+    }
+    const left = ids.filter((id) => !ended.includes(id));
+    const stored =
+      left.length === 0
+        ? []
+        : await tx
+            .select(TERMINATION_COLUMNS)
+            .from(workflowExecutions)
+            .where(inArray(workflowExecutions.id, left));
+    await settleEndedExecutions(tx, ended);
+    return [
+      ...written.map((row) => executionTerminationState(row, true)),
+      ...stored.map((row) => executionTerminationState(row)),
+    ];
+  });
 }
 
 /**
@@ -857,19 +914,4 @@ async function writtenOrStored(
     .where(eq(workflowExecutions.id, executionId))
     .limit(1);
   return current ? executionTerminationState(current) : null;
-}
-
-/**
- * What a terminal write hands `endExecutions`: its answer, and the run it
- * ended when its guard admitted the row.
- */
-async function endedBy(
-  db: Executor,
-  executionId: string,
-  written: TerminationRow | undefined
-): Promise<{ result: ExecutionTerminationState | null; ended: string[] }> {
-  return {
-    result: await writtenOrStored(db, executionId, written),
-    ended: written ? [written.executionId] : [],
-  };
 }

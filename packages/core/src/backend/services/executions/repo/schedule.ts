@@ -164,7 +164,7 @@ export async function lockSchedules(
  * open, as `OPEN_PARK_STATUSES` describes: their open wait rows are cancelled
  * and their schedule rows are deleted, which deletes the step memo by cascade.
  */
-async function settleEndedExecutions(
+export async function settleEndedExecutions(
   tx: Executor,
   executionIds: readonly string[]
 ): Promise<void> {
@@ -182,30 +182,6 @@ async function settleEndedExecutions(
   await tx
     .delete(workflowExecutionSchedule)
     .where(inArray(workflowExecutionSchedule.executionId, ids));
-}
-
-/**
- * Runs a write that may make runs terminal, as one transaction.
- *
- * The candidates' schedule rows are locked first, in the order every fenced
- * write takes them. `write` reports which runs it ended, and their open wait
- * rows, schedule rows and step memos are settled before the transaction
- * commits. Inside a fenced write the transaction is a savepoint of the fenced
- * one.
- */
-export function endExecutions<A>(
-  db: Executor,
-  candidateIds: readonly string[],
-  write: (
-    tx: WfGraphTransaction
-  ) => Promise<{ result: A; ended: readonly string[] }>
-): Promise<A> {
-  return db.transaction(async (tx) => {
-    await lockSchedules(tx, candidateIds);
-    const { result, ended } = await write(tx);
-    await settleEndedExecutions(tx, ended);
-    return result;
-  });
 }
 
 /**

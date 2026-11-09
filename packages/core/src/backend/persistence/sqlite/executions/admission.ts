@@ -27,17 +27,11 @@ import {
   workflowExecutions,
 } from "#src/backend/persistence/sqlite/schema";
 import {
-  endedRunColumns,
+  endRunsWrite,
   insertExecution,
 } from "#src/backend/persistence/sqlite/executions/runs";
-import {
-  recordAuditEventsWrite,
-  recordAuditEventWrite,
-} from "#src/backend/persistence/sqlite/executions/audit";
-import {
-  endExecutions,
-  insertRunSchedule,
-} from "#src/backend/persistence/sqlite/executions/schedule";
+import { recordAuditEventWrite } from "#src/backend/persistence/sqlite/executions/audit";
+import { insertRunSchedule } from "#src/backend/persistence/sqlite/executions/schedule";
 import {
   optionalJsonObject,
   sqliteExecution,
@@ -81,48 +75,6 @@ function findByDelivery(database: SqliteExecutor, execution: NewExecution) {
     )
     .get()
     .pipe(Effect.map((row) => (row ? sqliteExecution(row) : null)));
-}
-
-/**
- * Ends the runs `ids` names that are still in flight and unclaimed as
- * `superseded`, each with its `run_superseded` entry, and answers their ids.
- */
-function supersedeInFlightExecutions(
-  database: SqliteExecutor,
-  ids: string[],
-  input: Pick<StartForEntityInput, "execution" | "supersededReason">
-) {
-  if (ids.length === 0) return Effect.succeed<string[]>([]);
-  return endExecutions(
-    database,
-    Effect.gen(function* () {
-      const rows = yield* database
-        .update(workflowExecutions)
-        .set({
-          ...endedRunColumns("superseded"),
-          error: input.supersededReason,
-        })
-        .where(
-          and(
-            inArray(workflowExecutions.id, ids),
-            inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES),
-            isNull(workflowExecutions.terminationKind)
-          )
-        )
-        .returning({ id: workflowExecutions.id });
-      const ended = rows.map((row) => row.id);
-      yield* recordAuditEventsWrite(
-        ended.map((executionId) => ({
-          workflowId: input.execution.workflowId,
-          executionId,
-          eventType: "run_superseded",
-          message: input.supersededReason,
-          metadata: { eventName: input.execution.startEventName },
-        }))
-      )(database);
-      return { result: ended, ended };
-    })
-  );
 }
 
 /**
@@ -240,11 +192,21 @@ export function admitWithConcurrency(
       };
     }
 
-    const supersededExecutionIds = yield* supersedeInFlightExecutions(
-      database,
-      inFlight.map((row) => row.id),
-      input
-    );
+    const superseded = yield* endRunsWrite(database, {
+      executionIds: inFlight.map((row) => row.id),
+      status: "superseded",
+      claim: null,
+      error: input.supersededReason,
+      entry: {
+        workflowId: execution.workflowId,
+        eventType: "run_superseded",
+        message: input.supersededReason,
+        metadata: { eventName: execution.startEventName },
+      },
+    });
+    const supersededExecutionIds = superseded
+      .filter((state) => state.didWrite)
+      .map((state) => state.executionId);
 
     return {
       status: "started" as const,

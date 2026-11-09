@@ -17,15 +17,9 @@ import {
   isEntityEligibilityReason,
   type EntityEligibilityReason,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import {
-  recordAuditEventsWrite,
-  recordAuditEventWrite,
-} from "#src/backend/services/executions/repo/audit";
-import { endedRunColumns } from "#src/backend/services/executions/repo/runs";
-import {
-  endExecutions,
-  insertRunSchedule,
-} from "#src/backend/services/executions/repo/schedule";
+import { recordAuditEventWrite } from "#src/backend/services/executions/repo/audit";
+import { endRunsWrite } from "#src/backend/services/executions/repo/runs";
+import { insertRunSchedule } from "#src/backend/services/executions/repo/schedule";
 import type {
   ConcurrencyStartOutcome,
   EntityStartOutcome,
@@ -237,38 +231,21 @@ export async function admitWithConcurrency(
 
   // Newest-wins only. First-wins deferred to the runs it found above, and
   // displaces nothing.
-  const supersededExecutionIds =
-    ids.length === 0
-      ? []
-      : await endExecutions(tx, ids, async (inner) => {
-          const superseded = await inner
-            .update(workflowExecutions)
-            .set({
-              ...endedRunColumns("superseded"),
-              error: input.supersededReason,
-            })
-            .where(
-              and(
-                inArray(workflowExecutions.id, ids),
-                inArray(workflowExecutions.status, [
-                  ...IN_FLIGHT_EXECUTION_STATUSES,
-                ]),
-                isNull(workflowExecutions.terminationKind)
-              )
-            )
-            .returning({ id: workflowExecutions.id });
-          const ended = superseded.map((row) => row.id);
-          await recordAuditEventsWrite(
-            ended.map((executionId) => ({
-              workflowId: execution.workflowId,
-              executionId,
-              eventType: "run_superseded",
-              message: input.supersededReason,
-              metadata: { eventName: execution.startEventName },
-            }))
-          )(inner);
-          return { result: ended, ended };
-        });
+  const superseded = await endRunsWrite(tx, {
+    executionIds: ids,
+    status: "superseded",
+    claim: null,
+    error: input.supersededReason,
+    entry: {
+      workflowId: execution.workflowId,
+      eventType: "run_superseded",
+      message: input.supersededReason,
+      metadata: { eventName: execution.startEventName },
+    },
+  });
+  const supersededExecutionIds = superseded
+    .filter((state) => state.didWrite)
+    .map((state) => state.executionId);
 
   const opened = await openRun(tx, input);
   return opened.status === "started"
