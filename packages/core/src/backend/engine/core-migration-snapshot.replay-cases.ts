@@ -23,23 +23,14 @@ import type { WorkflowActions } from "#src/backend/engine/actions";
 
 /**
  * The graph before and after a Migration. Before it, `source` runs behind a
- * one-second Wait beside a ten-second `wait_1`. After it, `source` sits above
- * `wait_1`, and `after` addresses its output. With `returnToOriginal` the
- * version before the Migration already addresses it the same way.
- *
- * `pad` sits between `wait_1` and `after` in both versions. Under the version
- * before the Migration, `after` reads a node of a sibling branch, which a pass
- * that replays both branches runs side by side, and `pad` lets `source` finish
- * before `after` resolves its input.
+ * one-second Wait `wait_b` and above the ten-second `wait_1`. After it,
+ * `wait_b` is gone and `source` hangs off the Lifecycle Node directly. In both,
+ * `after` sits below `wait_1`, so every node it can read is upstream of it.
+ * The version after the Migration has `after` read `source`, and with
+ * `returnToOriginal` the version before it does too.
  */
 export function migrationGraph(migrated: boolean, returnToOriginal: boolean) {
   const source = { ...createAfterWaitNode(), id: "source" };
-  const padBase = createAfterWaitNode();
-  const pad = {
-    ...padBase,
-    id: "pad",
-    data: { ...padBase.data, label: "Pad" },
-  };
   const after: WorkflowNode = {
     ...createAfterWaitNode(),
     id: "after",
@@ -56,7 +47,6 @@ export function migrationGraph(migrated: boolean, returnToOriginal: boolean) {
     nodes: [
       createLifecycleNode("life"),
       source,
-      pad,
       createWaitNode("wait_1", { waitMode: "delay", waitDuration: "10s" }),
       ...(migrated
         ? []
@@ -76,40 +66,28 @@ export function migrationGraph(migrated: boolean, returnToOriginal: boolean) {
             },
           },
     ],
-    edges: migrated
-      ? [
-          {
-            id: "ls",
-            source: "life",
-            target: "source",
-            sourceHandle: "started",
-          },
-          {
-            id: "sw",
-            source: "source",
-            target: "wait_1",
-            sourceHandle: "true",
-          },
-          { id: "wp", source: "wait_1", target: "pad" },
-          { id: "pa", source: "pad", target: "after", sourceHandle: "true" },
-        ]
-      : [
-          {
-            id: "lb",
-            source: "life",
-            target: "wait_b",
-            sourceHandle: "started",
-          },
-          { id: "bs", source: "wait_b", target: "source" },
-          {
-            id: "lw",
-            source: "life",
-            target: "wait_1",
-            sourceHandle: "started",
-          },
-          { id: "wp", source: "wait_1", target: "pad" },
-          { id: "pa", source: "pad", target: "after", sourceHandle: "true" },
-        ],
+    edges: [
+      ...(migrated
+        ? [
+            {
+              id: "ls",
+              source: "life",
+              target: "source",
+              sourceHandle: "started",
+            },
+          ]
+        : [
+            {
+              id: "lb",
+              source: "life",
+              target: "wait_b",
+              sourceHandle: "started",
+            },
+            { id: "bs", source: "wait_b", target: "source" },
+          ]),
+      { id: "sw", source: "source", target: "wait_1", sourceHandle: "true" },
+      { id: "wa", source: "wait_1", target: "after" },
+    ],
   });
 }
 
