@@ -123,7 +123,6 @@ describe("the log writes", () => {
             ["succeeded", "running", "fresh"],
             (nodeId) =>
               store.startStepLog({
-                executionId: "exec_1",
                 nodeId,
                 nodeName: nodeId,
                 nodeType: "action",

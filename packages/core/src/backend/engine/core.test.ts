@@ -384,14 +384,12 @@ describe("run persistence through the store port", () => {
 
     expect(store.callsOf("startStepLog")).toEqual([
       {
-        executionId: "exec_logs",
         nodeId: "lifecycle_1",
         nodeName: "Lifecycle",
         nodeType: "lifecycle",
         input: { lifecycleData: { donorId: "d_123" } },
       },
       {
-        executionId: "exec_logs",
         nodeId: "action_1",
         nodeName: "Host Action",
         nodeType: HOST_ACTION_ID,

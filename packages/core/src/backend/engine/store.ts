@@ -59,8 +59,8 @@ export type WorkflowStepLogHandle = {
   startTime: number;
 };
 
+/** A node's log row to open, in the run the store was built for. */
 export type StartStepLogInput = {
-  executionId: string;
   nodeId: string;
   nodeName: string;
   nodeType: string;
@@ -223,11 +223,21 @@ export type CompleteRunInput = {
 };
 
 export type WorkflowStore = {
-  /** Opens a step-log row and returns the handle that closes it. */
+  /**
+   * Opens the node's step-log row and returns the handle that closes it. The
+   * engine opens a node's row again on every pass that reaches the node, so
+   * a second open for the same run and node answers the first row, unchanged,
+   * with the `startTime` of the first open.
+   */
   startStepLog(
     input: StartStepLogInput
   ): Effect.Effect<WorkflowStepLogHandle, StoreFailure>;
-  /** Closes a row opened by `startStepLog`. */
+  /**
+   * Closes a row opened by `startStepLog`. The engine closes a node's row on
+   * every pass that reaches the close, so a close is refused, writing
+   * nothing, when the row holds `success`, and when an `error` close meets a
+   * row that holds `error`. A `success` close corrects an `error` row.
+   */
   completeStepLog(
     input: CompleteStepLogInput
   ): Effect.Effect<void, StoreFailure>;

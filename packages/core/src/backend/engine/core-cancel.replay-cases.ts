@@ -237,12 +237,7 @@ export function cancelledAudits(store: RecordingWorkflowStore) {
  * handler's own calls cannot tell a replay from a second run either.
  */
 export function rowsOpenedFor(store: RecordingWorkflowStore, nodeId: string) {
-  return new Set(
-    store
-      .callsOf("startStepLog")
-      .filter((row) => row.nodeId === nodeId)
-      .map((row) => row.executionId)
-  ).size;
+  return store.logIdOf(nodeId) === undefined ? 0 : 1;
 }
 
 /** The Canceled outlet, opening with one Wait and one Recorder behind it. */

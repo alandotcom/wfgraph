@@ -124,6 +124,7 @@ export function createDbWorkflowStore(bound: {
         }
         yield* writes.openNodeLog({
           ...input,
+          executionId: bound.executionId,
           input: redactSensitiveData(input.input),
         });
         const startedAt = new Date();

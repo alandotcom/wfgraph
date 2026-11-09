@@ -30,8 +30,8 @@ import { runIdempotentDurable } from "#src/backend/engine/durable";
  * The schema leaves `executionId` optional because a step decodes its own
  * `_context` back out of an input record and a failed decode there costs the
  * whole context. The engine writes the id on every node, and saying so once here
- * is what lets the row below read it off the context rather than be handed the
- * same value a second time.
+ * is what lets the warning a failed close logs name the run without being
+ * handed the same value a second time.
  */
 export type NodeContext = StepContext & { executionId: string };
 
@@ -50,7 +50,6 @@ export function openStepLog(target: {
 }): Effect.Effect<WorkflowStepLogHandle, EngineFailure> {
   return target.store
     .startStepLog({
-      executionId: target.context.executionId,
       nodeId: target.context.nodeId,
       nodeName: target.context.nodeName,
       nodeType: target.context.nodeType,

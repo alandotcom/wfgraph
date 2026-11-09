@@ -34,7 +34,7 @@ export function runDurable<A, E>(
   step: DurableStepRef,
   effect: Effect.Effect<A, E>
 ): Effect.Effect<A, EngineFailure> {
-  return crossInto(runtime.run, step, effect);
+  return crossInto((ref, fn) => runtime.run(ref, fn), step, effect);
 }
 
 /**
@@ -46,7 +46,7 @@ export function runIdempotentDurable<A, E>(
   step: DurableStepRef,
   effect: Effect.Effect<A, E>
 ): Effect.Effect<A, EngineFailure> {
-  return crossInto(runtime.runIdempotent, step, effect);
+  return crossInto((ref, fn) => runtime.runIdempotent(ref, fn), step, effect);
 }
 
 /** Runs `effect` as the step `step` of one of the runtime's two step methods. */

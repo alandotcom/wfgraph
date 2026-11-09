@@ -30,6 +30,7 @@ import type {
   RequestExecutionExitInput,
   StartStepLogInput,
   WaitStateSnapshot,
+  WorkflowStepLogHandle,
   WorkflowRunAuditEventType,
   WorkflowStore,
 } from "#src/backend/engine/store";
@@ -162,8 +163,8 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
   };
 
   const waitUntilById = new Map<string, Date>();
-  /** The row `startStepLog` answers, by run and node. */
-  const logRows = new Map<string, { nodeId: string; logId: string }>();
+  /** The handle `startStepLog` answers, by node id. */
+  const logHandles = new Map<string, WorkflowStepLogHandle>();
   const recordWaitUntil = (
     waitStateId: string,
     waitUntilIso: string | null | undefined
@@ -193,30 +194,31 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
 
     waitUntilOf: (waitStateId) => waitUntilById.get(waitStateId),
 
-    logIdOf: (nodeId) =>
-      [...logRows.values()].find((row) => row.nodeId === nodeId)?.logId,
+    logIdOf: (nodeId) => logHandles.get(nodeId)?.logId,
 
     reset() {
       calls.length = 0;
       timeline.length = 0;
       waitUntilById.clear();
-      logRows.clear();
+      logHandles.clear();
       for (const recordedInputs of Object.values(byMethod)) {
         recordedInputs.length = 0;
       }
     },
 
-    // One id per run and node, numbered in the order the nodes first open,
-    // so an open that runs again answers the row it opened before, as the
-    // derived id of the database store does.
+    // One row per node, numbered in the order the nodes first open, so an
+    // open that runs again answers the handle it answered before, as the
+    // database store does.
     startStepLog(input) {
       return Effect.sync(() => {
         calls.push({ method: "startStepLog", input });
         byMethod.startStepLog.push(input);
-        const key = `${input.executionId}\0${input.nodeId}`;
-        const logId = logRows.get(key)?.logId ?? `log_${logRows.size + 1}`;
-        logRows.set(key, { nodeId: input.nodeId, logId });
-        return { logId, startTime: Date.now() };
+        const handle = logHandles.get(input.nodeId) ?? {
+          logId: `log_${logHandles.size + 1}`,
+          startTime: Date.now(),
+        };
+        logHandles.set(input.nodeId, handle);
+        return handle;
       });
     },
 

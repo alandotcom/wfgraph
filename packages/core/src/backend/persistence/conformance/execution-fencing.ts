@@ -18,7 +18,6 @@ import {
   type CloseNodeLogInput,
   nodeLogId,
 } from "#src/backend/services/executions/repo/node-logs";
-import { nodeLogCloseApplies } from "#src/backend/services/executions/repo/node-log-close";
 import {
   type PersistenceTestRegistry,
   terminalEntry,
@@ -35,17 +34,14 @@ import {
   seeded,
 } from "#src/backend/persistence/conformance/schedule-support";
 
-type CloseStatus = "success" | "error";
-
 /**
  * The fenced close transitions, one node each: the close the row gets first,
- * if any, and the close that follows it. Only `running` to either status and
- * `error` to `success` apply.
+ * if any, and the close that follows it.
  */
 const CLOSE_TRANSITIONS: readonly {
   nodeId: string;
-  first?: CloseStatus | undefined;
-  second: CloseStatus;
+  first?: CloseNodeLogInput["status"] | undefined;
+  second: CloseNodeLogInput["status"];
 }[] = [
   { nodeId: "running_to_success", second: "success" },
   { nodeId: "running_to_error", second: "error" },
@@ -58,7 +54,7 @@ const CLOSE_TRANSITIONS: readonly {
 /** The close of the row `logId` with `status` that attempt `attempt` makes. */
 function closeInput(input: {
   logId: string;
-  status: CloseStatus;
+  status: CloseNodeLogInput["status"];
   attempt: number;
 }): CloseNodeLogInput {
   const { logId, status, attempt } = input;
@@ -68,16 +64,6 @@ function closeInput(input: {
     output: status === "success" ? { attempt } : undefined,
     error: status === "error" ? `attempt ${attempt}` : undefined,
     durationMs: attempt,
-  };
-}
-
-/** The outcome columns a close with `status` from attempt `attempt` writes. */
-function closeOf(status: CloseStatus, attempt: number) {
-  return {
-    status,
-    output: status === "success" ? { attempt } : null,
-    error: status === "error" ? `attempt ${attempt}` : null,
-    duration: String(attempt),
   };
 }
 
@@ -241,7 +227,7 @@ export function describeExecutionFencingConformance({
           const close = (
             writes: FencedExecutionWrites,
             nodeId: string,
-            status: CloseStatus,
+            status: CloseNodeLogInput["status"],
             attempt: number
           ) =>
             writes.closeNodeLog(
@@ -293,16 +279,59 @@ export function describeExecutionFencingConformance({
         })
       );
 
-      expect(sortBy(result, [(log) => log.nodeId])).toEqual(
-        sortBy(
-          CLOSE_TRANSITIONS.map(({ nodeId, first, second }) =>
-            first === undefined || nodeLogCloseApplies(first, second)
-              ? { nodeId, ...closeOf(second, 2), retries: 1 }
-              : { nodeId, ...closeOf(first, 1), retries: 0 }
-          ),
-          [(log) => log.nodeId]
-        )
-      );
+      // Only `running` to either status and `error` to `success` apply. An
+      // applied close writes the second attempt's outcome and reads the
+      // node's failure into `retries`; a refused one leaves the first close.
+      expect(sortBy(result, [(log) => log.nodeId])).toEqual([
+        {
+          nodeId: "error_to_error",
+          status: "error",
+          output: null,
+          error: "attempt 1",
+          duration: "1",
+          retries: 0,
+        },
+        {
+          nodeId: "error_to_success",
+          status: "success",
+          output: { attempt: 2 },
+          error: null,
+          duration: "2",
+          retries: 1,
+        },
+        {
+          nodeId: "running_to_error",
+          status: "error",
+          output: null,
+          error: "attempt 2",
+          duration: "2",
+          retries: 1,
+        },
+        {
+          nodeId: "running_to_success",
+          status: "success",
+          output: { attempt: 2 },
+          error: null,
+          duration: "2",
+          retries: 1,
+        },
+        {
+          nodeId: "success_to_error",
+          status: "success",
+          output: { attempt: 1 },
+          error: null,
+          duration: "1",
+          retries: 0,
+        },
+        {
+          nodeId: "success_to_success",
+          status: "success",
+          output: { attempt: 1 },
+          error: null,
+          duration: "1",
+          retries: 0,
+        },
+      ]);
     });
 
     it("refuses a leased pass's next write once a policy cancel ends its run", async () => {
