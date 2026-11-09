@@ -12,7 +12,7 @@ import {
   type TerminalExecutionStatus,
   type WorkflowExecutionStatus,
 } from "#src/lifecycle/execution-contracts";
-import type { JsonObjectDraft, JsonValue } from "#src/types/json";
+import type { JsonObjectDraft } from "#src/types/json";
 import { omitUndefined } from "#src/utils/omit-undefined";
 
 /**
@@ -32,31 +32,37 @@ export type RunExitOutcome = RunExitContext & {
   checkedAt: string;
 };
 
-/** The engine walked the graph and reached `status`. */
-export type RunVerdict = {
+/** The traversal walked the graph to its end, with `resultCount` nodes run. */
+type Walked = { kind: "walked"; resultCount: number };
+
+/** An error escaped the traversal. `error` is the message the row keeps. */
+type Fatal = { kind: "fatal"; error: string; failureKind: string };
+
+type VerdictOf<Status, Reached> = {
   kind: "verdict";
-  status: "completed" | "failed" | "canceled" | "exited";
-  output?: JsonValue | undefined;
+  status: Status;
+  reached: Reached;
+  /** What an Exit claim's entry names, for a run with Entity Eligibility. */
   exitContext?: RunExitContext | undefined;
-  /**
-   * How the traversal reached `status`, which the entry is worded from:
-   * `walked` ran the graph to its end, and `fatal` is an error that escaped it.
-   * `error` is the message the run's row keeps.
-   */
-  reached:
-    | {
-        kind: "walked";
-        resultCount: number;
-        error?: string | undefined;
-        canceledOutlet?: CanceledOutletOutcome | undefined;
-      }
-    | {
-        kind: "fatal";
-        error: string;
-        failureKind: string;
-        canceledOutlet?: CanceledOutletOutcome | undefined;
-      };
 };
+
+/**
+ * The engine walked the graph and reached a verdict. Each status carries only
+ * the evidence it can have: a failed run its error, and a canceled run what
+ * became of its Canceled outlet. A walked canceled run with no outlet outcome
+ * reached the outlet on its own, and its `error` is a node's failure.
+ */
+export type RunVerdict =
+  | VerdictOf<"completed", Walked>
+  | VerdictOf<"failed", (Walked & { error: string }) | Fatal>
+  | VerdictOf<
+      "canceled",
+      | (Walked & {
+          error?: string | undefined;
+          canceledOutlet?: "ran" | "failed" | undefined;
+        })
+      | (Fatal & { canceledOutlet: CanceledOutletOutcome })
+    >;
 
 /**
  * The executor ends a run it could not walk: a step outside any node spent its
@@ -84,6 +90,7 @@ export type RunEnding =
   | CancelEnding
   | SupersedeEnding;
 
+/** The part of a run's termination claim an ending reads. */
 export type RunEndClaim =
   | { kind: "cancel" }
   | {
@@ -108,23 +115,18 @@ const ENTRY_TYPE = {
   superseded: "run_superseded",
 } as const satisfies Record<TerminalExecutionStatus, RunScopedAuditEventType>;
 
-export type RunEndEntry<
-  Status extends TerminalExecutionStatus = TerminalExecutionStatus,
-> = {
-  eventType: (typeof ENTRY_TYPE)[Status];
+export type RunEndEntry = {
+  eventType: (typeof ENTRY_TYPE)[TerminalExecutionStatus];
   message: string;
   metadata: JsonObjectDraft;
 };
 
-export type RunEndDecision<
-  Status extends TerminalExecutionStatus = TerminalExecutionStatus,
-> =
+export type RunEndDecision =
   | {
       kind: "write";
-      status: Status;
-      output: JsonValue | undefined;
+      status: TerminalExecutionStatus;
       error: string | undefined;
-      entry: RunEndEntry<Status>;
+      entry: RunEndEntry;
     }
   | { kind: "leave" };
 
@@ -136,42 +138,43 @@ const LEAVE = { kind: "leave" } as const satisfies RunEndDecision;
  * - A verdict under an Exit claim ends the run `exited`. Under a Cancel claim
  *   only a `canceled` verdict ends it, so the engine runs the Canceled outlet
  *   before it records `canceled`. With no claim, `completed` and `failed` end
- *   it and the two claimed statuses leave it.
+ *   it and `canceled` leaves it.
  * - An outside-graph ending writes `failed`, or the status the claim selects.
  * - A cancel or a supersede ends only a run holding no claim, since the run's
  *   own pass finalizes the claim it holds.
  */
-export function decideRunEnd(
-  ending: RunVerdict,
-  row: RunEndRow
-): RunEndDecision<RunVerdict["status"]>;
-export function decideRunEnd(ending: RunEnding, row: RunEndRow): RunEndDecision;
 export function decideRunEnd(
   ending: RunEnding,
   row: RunEndRow
 ): RunEndDecision {
   if (!isInFlight(row.status)) return LEAVE;
   switch (ending.kind) {
-    case "verdict": {
-      const status = verdictStatus(ending.status, row.claim);
-      if (status === null) return LEAVE;
+    case "verdict":
+      if (row.claim?.kind === "exit") {
+        return {
+          kind: "write",
+          status: "exited",
+          // The run ended because its Entity was ineligible, so the verdict's
+          // error is not the reason it ended.
+          error: undefined,
+          entry: exitedEntry(ending, row.claim, row.runMode),
+        };
+      }
+      if ((row.claim?.kind === "cancel") !== (ending.status === "canceled")) {
+        return LEAVE;
+      }
       return {
         kind: "write",
-        status,
-        output: ending.output,
-        // A verdict an Exit claim overrode keeps no error: the run ended
-        // because its Entity was ineligible.
-        error: status === ending.status ? ending.reached.error : undefined,
-        entry: verdictEntry(ending, status, row),
+        status: ending.status,
+        error: ending.status === "completed" ? undefined : ending.reached.error,
+        entry: verdictEntry(ending, row.runMode),
       };
-    }
     case "outsideGraph": {
       const status =
         row.claim === null ? "failed" : CLAIMED_STATUS[row.claim.kind];
       return {
         kind: "write",
         status,
-        output: undefined,
         error: ending.error,
         entry: {
           eventType: ENTRY_TYPE[status],
@@ -184,53 +187,46 @@ export function decideRunEnd(
         },
       };
     }
-    case "cancel":
-      if (row.claim !== null) return LEAVE;
-      return {
-        kind: "write",
-        status: "canceled",
-        output: undefined,
-        error: ending.reason,
-        entry: {
-          eventType: "run_cancelled",
-          message: ending.reason,
-          metadata: { eventName: ending.eventName },
-        },
-      };
+    default:
+      return row.claim === null ? stoppedFromOutside(ending) : LEAVE;
   }
-  if (row.claim !== null) return LEAVE;
-  const reason = supersededReason(ending.startEventName);
-  return {
-    kind: "write",
-    status: "superseded",
-    output: undefined,
-    error: reason,
-    entry: {
-      eventType: "run_superseded",
-      message: reason,
-      metadata: { eventName: ending.startEventName },
-    },
-  };
 }
 
 function isInFlight(status: WorkflowExecutionStatus): boolean {
   return IN_FLIGHT_EXECUTION_STATUSES.some((candidate) => candidate === status);
 }
 
-type VerdictStatus = RunVerdict["status"];
-
 const CLAIMED_STATUS = {
   cancel: "canceled",
   exit: "exited",
-} as const satisfies Record<RunEndClaim["kind"], VerdictStatus>;
+} as const satisfies Record<RunEndClaim["kind"], TerminalExecutionStatus>;
 
-function verdictStatus(
-  verdict: VerdictStatus,
-  claim: RunEndClaim | null
-): VerdictStatus | null {
-  if (claim?.kind === "exit") return "exited";
-  if (claim?.kind === "cancel") return verdict === "canceled" ? verdict : null;
-  return verdict === "completed" || verdict === "failed" ? verdict : null;
+/** A cancel or a supersede, which stops a run from outside it. */
+function stoppedFromOutside(
+  ending: CancelEnding | SupersedeEnding
+): RunEndDecision {
+  const { status, reason, eventName } =
+    ending.kind === "cancel"
+      ? ({
+          status: "canceled",
+          reason: ending.reason,
+          eventName: ending.eventName,
+        } as const)
+      : ({
+          status: "superseded",
+          reason: supersededReason(ending.startEventName),
+          eventName: ending.startEventName,
+        } as const);
+  return {
+    kind: "write",
+    status,
+    error: reason,
+    entry: {
+      eventType: ENTRY_TYPE[status],
+      message: reason,
+      metadata: { eventName },
+    },
+  };
 }
 
 function supersededReason(eventName: string | undefined): string {
@@ -245,18 +241,19 @@ function withRecipients(message: string, runMode: "live" | "test"): string {
 
 const EXITED_MESSAGE = "Run exited because the Entity was ineligible";
 
+const FATAL_MESSAGE = "Run failed with fatal error";
+
 const OUTSIDE_GRAPH_MESSAGE = {
-  failed: "Run failed with fatal error",
+  failed: FATAL_MESSAGE,
   canceled: "Run canceled after a fatal error; the Canceled outlet did not run",
   exited: EXITED_MESSAGE,
-} as const satisfies Record<Exclude<VerdictStatus, "completed">, string>;
+} as const;
 
 const WALKED_MESSAGE = {
   completed: "Run completed successfully",
   failed: "Run completed with errors",
   canceled: "Run canceled at the Canceled outlet",
-  exited: EXITED_MESSAGE,
-} as const satisfies Record<VerdictStatus, string>;
+} as const satisfies Record<RunVerdict["status"], string>;
 
 const CANCELED_FATAL_MESSAGE = {
   entered: "Run canceled at the Canceled outlet, then ended on a fatal error",
@@ -266,55 +263,72 @@ const CANCELED_FATAL_MESSAGE = {
 
 function verdictEntry(
   verdict: RunVerdict,
-  status: VerdictStatus,
-  row: RunEndRow
-): RunEndEntry<VerdictStatus> {
-  const eventType = ENTRY_TYPE[status];
-  const exit =
-    status === "exited"
-      ? exitOutcome(row.claim, verdict.exitContext)
-      : undefined;
+  runMode: "live" | "test"
+): RunEndEntry {
+  const eventType = ENTRY_TYPE[verdict.status];
+  const canceledOutlet =
+    verdict.status === "canceled" ? verdict.reached.canceledOutlet : undefined;
   const { reached } = verdict;
   if (reached.kind === "walked") {
     return {
       eventType,
-      message: withRecipients(WALKED_MESSAGE[status], row.runMode),
-      metadata: exit
-        ? {
-            resultCount: reached.resultCount,
-            runMode: row.runMode,
-            ...exit,
-            checkpoint: "before-node",
-          }
-        : omitUndefined({
-            resultCount: reached.resultCount,
-            runMode: row.runMode,
-            canceledOutlet:
-              status === "canceled" ? reached.canceledOutlet : undefined,
-          }),
+      message: withRecipients(WALKED_MESSAGE[verdict.status], runMode),
+      metadata: omitUndefined({
+        resultCount: reached.resultCount,
+        runMode,
+        canceledOutlet,
+      }),
     };
   }
-  const canceledOutlet =
-    status === "canceled" ? reached.canceledOutlet : undefined;
   return {
     eventType,
     message: withRecipients(
-      canceledOutlet
-        ? CANCELED_FATAL_MESSAGE[canceledOutlet]
-        : status === "exited"
-          ? EXITED_MESSAGE
-          : "Run failed with fatal error",
-      row.runMode
+      canceledOutlet ? CANCELED_FATAL_MESSAGE[canceledOutlet] : FATAL_MESSAGE,
+      runMode
     ),
-    metadata: exit
-      ? { ...exit, checkpoint: "before-node", runMode: row.runMode }
-      : omitUndefined({
-          error: reached.error,
-          failureKind: reached.failureKind,
-          runMode: row.runMode,
-          canceledOutlet,
-        }),
+    metadata: omitUndefined({
+      error: reached.error,
+      failureKind: reached.failureKind,
+      runMode,
+      canceledOutlet,
+    }),
   };
+}
+
+/**
+ * The entry of a verdict an Exit claim ended. A run with no Entity Eligibility
+ * context keeps the verdict's own fields in place of the Exit's.
+ */
+function exitedEntry(
+  verdict: RunVerdict,
+  claim: Extract<RunEndClaim, { kind: "exit" }>,
+  runMode: "live" | "test"
+): RunEndEntry {
+  return {
+    eventType: "run_exited",
+    message: withRecipients(EXITED_MESSAGE, runMode),
+    metadata: exitedMetadata(
+      verdict.reached,
+      exitOutcome(claim, verdict.exitContext),
+      runMode
+    ),
+  };
+}
+
+function exitedMetadata(
+  reached: RunVerdict["reached"],
+  exit: RunExitOutcome | undefined,
+  runMode: "live" | "test"
+): JsonObjectDraft {
+  if (exit) {
+    const exitFields = { runMode, ...exit, checkpoint: "before-node" };
+    return reached.kind === "walked"
+      ? { resultCount: reached.resultCount, ...exitFields }
+      : exitFields;
+  }
+  return reached.kind === "walked"
+    ? { resultCount: reached.resultCount, runMode }
+    : { error: reached.error, failureKind: reached.failureKind, runMode };
 }
 
 export function exitOutcome(

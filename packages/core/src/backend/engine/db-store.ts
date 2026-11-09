@@ -23,9 +23,7 @@ import type { WaitWake } from "#src/backend/engine/runtime";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import { isoTerminationClaim } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type {
-  CompleteRunInput,
   ExecutionTerminationState,
-  StoreFailure,
   WorkflowStore,
 } from "#src/backend/engine/store";
 import type { ExecutionTerminationState as StoredTerminationState } from "#src/backend/services/executions/repo/contracts";
@@ -86,22 +84,6 @@ export function createDbWorkflowStore(bound: {
   writes: StoreWrites;
 }): WorkflowStore {
   const { reads, writes } = bound;
-
-  function completeRun(
-    input: CompleteRunInput
-  ): Effect.Effect<ExecutionTerminationState | null, StoreFailure> {
-    return writes
-      .endRun({
-        executionId: input.executionId,
-        ending: {
-          ...input.ending,
-          output: redactSensitiveData(input.ending.output),
-        },
-      })
-      .pipe(
-        Effect.map((state) => (state ? engineTerminationState(state) : null))
-      );
-  }
 
   return {
     // Step payloads can carry secrets pulled in through templates, so they are
@@ -181,6 +163,11 @@ export function createDbWorkflowStore(bound: {
 
     readPendingCancel: (executionId) => reads.findPendingCancel(executionId),
 
-    completeRun,
+    completeRun: ({ executionId, verdict, output }) =>
+      writes
+        .endRun({ executionId, ending: verdict, output })
+        .pipe(
+          Effect.map((state) => (state ? engineTerminationState(state) : null))
+        ),
   };
 }

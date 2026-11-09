@@ -33,13 +33,12 @@ import {
   type PassParked,
 } from "#src/backend/engine/scheduler";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
-import {
-  recordRunCompleted,
-  recordRunFailed,
-  type RunFailureOutcome,
-  type TraversalTerminalStatus,
-} from "#src/backend/engine/terminal-record";
-import type { CanceledOutletOutcome } from "@wfgraph/shared/lifecycle/run-ending";
+import { recordVerdict } from "#src/backend/engine/terminal-record";
+import type {
+  CanceledOutletOutcome,
+  RunExitContext,
+  RunVerdict,
+} from "@wfgraph/shared/lifecycle/run-ending";
 import { Traversal } from "#src/backend/engine/traversal";
 import {
   endsPass,
@@ -330,6 +329,14 @@ function executeWorkflowInner(
       entityEligibility,
     } = prepareRun(input, runtime, store, actions, entities);
 
+    const exitContext: RunExitContext | undefined =
+      entityEligibility?.entityType
+        ? {
+            entityType: entityEligibility.entityType,
+            conditionId: entityEligibility.conditionId,
+          }
+        : undefined;
+
     // This body is re-run on every attempt and after every wait, so this clock
     // measures the current attempt alone. The run's own elapsed is derived from
     // its stored `started_at` where the row is closed.
@@ -381,30 +388,11 @@ function executeWorkflowInner(
           payload: termination.claim.payload,
         });
       }
-      const exitClaim =
-        termination?.claim?.kind === "exit" ? termination.claim : undefined;
-      const exitContext = entityEligibility?.entityType
-        ? {
-            entityType: entityEligibility.entityType,
-            conditionId: entityEligibility.conditionId,
-          }
-        : undefined;
-      // The persisted first claim outranks traversal results. Exit takes no
-      // graph outlet, and a Cancel claim has taken the Canceled outlet by now.
-      const terminalStatus: TraversalTerminalStatus = exitClaim
-        ? "exited"
-        : cancelBoundary.hasLeftStartedBranch()
-          ? "canceled"
-          : traversal.allSucceeded()
-            ? "completed"
-            : "failed";
-
-      return { terminalStatus, exitContext };
     });
 
     return Effect.gen(function* () {
       const outcome = yield* execute.pipe(
-        Effect.map((value) => ({ kind: "completed" as const, value })),
+        Effect.as({ kind: "completed" as const }),
         // A walk that settled parked is no failure of the run, so it passes on
         // to the one place below that ends a pass parked.
         Effect.catchCauseIf(
@@ -437,20 +425,11 @@ function executeWorkflowInner(
         // whatever died happens to contain the word.
         const cancelled = cancelBoundary.hasLeftStartedBranch();
 
-        const exitContext = entityEligibility?.entityType
-          ? {
-              entityType: entityEligibility.entityType,
-              conditionId: entityEligibility.conditionId,
-            }
-          : undefined;
-
-        const recordFailure = (failureOutcome: RunFailureOutcome) =>
-          recordRunFailed({
+        const recordFailure = (canceledOutlet?: CanceledOutletOutcome) =>
+          recordVerdict({
             store,
             executionId,
-            outcome: failureOutcome,
-            failure,
-            exitContext,
+            verdict: fatalVerdict(failure, exitContext, canceledOutlet),
           });
 
         // Same exactly-once treatment as the success path. A refusal here
@@ -459,11 +438,7 @@ function executeWorkflowInner(
         const failedRecord = yield* runDurable(
           runtime,
           { id: "workflow-run-failed", name: "Run failed", nodeId: null },
-          recordFailure(
-            cancelled
-              ? { kind: "canceled", outlet: "entered" }
-              : { kind: "failed" }
-          )
+          recordFailure(cancelled ? "entered" : undefined)
         );
 
         // A Cancel claim the terminal write was the first to see refused the
@@ -479,7 +454,7 @@ function executeWorkflowInner(
                 runtime,
                 scheduler,
                 claim,
-                record: (outlet) => recordFailure({ kind: "canceled", outlet }),
+                record: recordFailure,
               });
 
         return {
@@ -497,18 +472,19 @@ function executeWorkflowInner(
       // The output, failure and count are read when each step is built, so the
       // record written after the Canceled outlet runs includes that outlet.
       const recordCompletion = (
-        status: TraversalTerminalStatus,
-        canceledOutlet?: CanceledOutletOutcome
+        canceled: boolean,
+        canceledOutlet?: "ran" | "failed"
       ) =>
-        recordRunCompleted({
+        recordVerdict({
           store,
           executionId,
-          status,
+          verdict: walkedVerdict({
+            traversal,
+            canceled,
+            exitContext,
+            canceledOutlet,
+          }),
           output: traversal.deterministicTerminalOutput(),
-          failure: traversal.firstFailure(),
-          resultCount: traversal.resultCount,
-          exitContext: outcome.value.exitContext,
-          canceledOutlet,
         });
 
       // Wrapped as a durable step so the terminal record and its audit event are
@@ -517,7 +493,7 @@ function executeWorkflowInner(
       const completed = yield* runDurable(
         runtime,
         { id: "workflow-run-completed", name: "Run completed", nodeId: null },
-        recordCompletion(outcome.value.terminalStatus)
+        recordCompletion(cancelBoundary.hasLeftStartedBranch())
       );
 
       // A Cancel claim that landed after the outcome read refused the record
@@ -533,7 +509,7 @@ function executeWorkflowInner(
               runtime,
               scheduler,
               claim,
-              record: (outlet) => recordCompletion("canceled", outlet),
+              record: (outlet) => recordCompletion(true, outlet),
             });
 
       const attemptMs = Date.now() - attemptStartTime;
@@ -633,7 +609,7 @@ function runCanceledOutletThenRecord<A, E>(input: {
   runtime: WorkflowExecutionRuntime;
   scheduler: NodeScheduler;
   claim: PendingCancel;
-  record: (outlet: CanceledOutletOutcome) => Effect.Effect<A, E>;
+  record: (outlet: "ran" | "failed") => Effect.Effect<A, E>;
 }): Effect.Effect<A, EngineFailure | PassParked> {
   return Effect.gen(function* () {
     const outlet = yield* input.scheduler.runCanceledOutlet(input.claim).pipe(
@@ -659,4 +635,70 @@ function runCanceledOutletThenRecord<A, E>(input: {
       input.record(outlet)
     );
   });
+}
+
+/**
+ * The verdict of a traversal that walked the graph to its end. A run that left
+ * the Started branch is canceled, and otherwise its first failed node decides
+ * between failed and completed.
+ */
+function walkedVerdict(input: {
+  traversal: Traversal;
+  canceled: boolean;
+  exitContext: RunExitContext | undefined;
+  canceledOutlet?: "ran" | "failed" | undefined;
+}): RunVerdict {
+  const { traversal, exitContext } = input;
+  const resultCount = traversal.resultCount;
+  const failure = traversal.firstFailure();
+  if (input.canceled) {
+    return {
+      kind: "verdict",
+      status: "canceled",
+      exitContext,
+      reached: {
+        kind: "walked",
+        resultCount,
+        error: failure?.message,
+        canceledOutlet: input.canceledOutlet,
+      },
+    };
+  }
+  return failure
+    ? {
+        kind: "verdict",
+        status: "failed",
+        exitContext,
+        reached: { kind: "walked", resultCount, error: failure.message },
+      }
+    : {
+        kind: "verdict",
+        status: "completed",
+        exitContext,
+        reached: { kind: "walked", resultCount },
+      };
+}
+
+/**
+ * The verdict of an error that escaped the traversal: canceled when the run
+ * had taken or then ran the Canceled outlet, and failed otherwise.
+ */
+function fatalVerdict(
+  failure: EngineFailure,
+  exitContext: RunExitContext | undefined,
+  canceledOutlet: CanceledOutletOutcome | undefined
+): RunVerdict {
+  const reached = {
+    kind: "fatal",
+    error: failure.message,
+    failureKind: failure.kind,
+  } as const;
+  return canceledOutlet
+    ? {
+        kind: "verdict",
+        status: "canceled",
+        exitContext,
+        reached: { ...reached, canceledOutlet },
+      }
+    : { kind: "verdict", status: "failed", exitContext, reached };
 }

@@ -664,6 +664,7 @@ export function endRunWrite(input: EndRunInput) {
     endRunsWrite(database, {
       executionIds: [input.executionId],
       ending: input.ending,
+      output: input.output,
     }).pipe(Effect.map(([state]) => state ?? null));
 }
 
@@ -675,7 +676,11 @@ export function endRunWrite(input: EndRunInput) {
  */
 export function endRunsWrite(
   database: SqliteExecutor,
-  input: { executionIds: readonly string[]; ending: RunEnding }
+  input: {
+    executionIds: readonly string[];
+    ending: RunEnding;
+    output?: JsonValue | undefined;
+  }
 ): Effect.Effect<ExecutionTerminationState[], unknown> {
   const ids = [...input.executionIds];
   if (ids.length === 0) return Effect.succeed([]);
@@ -707,7 +712,7 @@ export function endRunsWrite(
           .update(workflowExecutions)
           .set({
             ...endedRunColumns(decision.status),
-            output: encodeJson(decision.output),
+            output: encodeJson(input.output),
             error: decision.error ?? null,
           })
           .where(

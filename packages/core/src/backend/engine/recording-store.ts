@@ -11,7 +11,10 @@ import {
   claimKindAdmits,
   type ExecutionSide,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import { decideRunEnd } from "@wfgraph/shared/lifecycle/run-ending";
+import {
+  decideRunEnd,
+  type RunEndEntry,
+} from "@wfgraph/shared/lifecycle/run-ending";
 import { Effect } from "effect";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
@@ -26,8 +29,17 @@ import type {
   RequestExecutionExitInput,
   StartStepLogInput,
   WaitStateSnapshot,
+  WorkflowRunAuditEventType,
   WorkflowStore,
 } from "#src/backend/engine/store";
+
+/**
+ * A timeline entry the recording store keeps: one `recordAuditEvent` wrote, or
+ * the one a `completeRun` that ended the run wrote.
+ */
+export type RecordedTimelineEntry = Omit<RecordAuditEventInput, "eventType"> & {
+  eventType: WorkflowRunAuditEventType | RunEndEntry["eventType"];
+};
 
 /** The input each store method receives, keyed by method name. */
 type StoreCallInputs = {
@@ -67,7 +79,7 @@ export type RecordingWorkflowStore = WorkflowStore & {
    * Every timeline entry the store wrote, in order: each `recordAuditEvent`,
    * and the entry of each `completeRun` that ended the run.
    */
-  readonly timeline: RecordAuditEventInput[];
+  readonly timeline: RecordedTimelineEntry[];
   /**
    * Set to `undefined` to model a first park the execution row refused, which
    * is a run that ended or was moved to another Workflow Version. Left unset,
@@ -124,7 +136,7 @@ function claimAdmits(
 
 export function createRecordingWorkflowStore(): RecordingWorkflowStore {
   const calls: RecordedStoreCall[] = [];
-  const timeline: RecordAuditEventInput[] = [];
+  const timeline: RecordedTimelineEntry[] = [];
   const byMethod: { [M in StoreMethod]: StoreCallInputs[M][] } = {
     startStepLog: [],
     completeStepLog: [],
@@ -335,16 +347,11 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
         calls.push({ method: "completeRun", input });
         byMethod.completeRun.push(input);
         const current = store.terminationState;
-        // The recording store keeps no run output, so the verdict's output,
-        // which the port leaves unredacted and untyped, is not decided on.
-        const decision = decideRunEnd(
-          { ...input.ending, output: undefined },
-          {
-            status: current?.status ?? "running",
-            claim: current?.claim ?? null,
-            runMode: store.run.runMode,
-          }
-        );
+        const decision = decideRunEnd(input.verdict, {
+          status: current?.status ?? "running",
+          claim: current?.claim ?? null,
+          runMode: store.run.runMode,
+        });
         if (decision.kind === "leave") {
           return current ? { ...current, didWrite: false } : null;
         }

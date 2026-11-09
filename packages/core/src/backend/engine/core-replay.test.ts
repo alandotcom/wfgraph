@@ -264,7 +264,7 @@ describe("workflow engine replay safety", () => {
       });
     }
     expect(
-      store.callsOf("completeRun").map((run) => run.ending.status)
+      store.callsOf("completeRun").map((run) => run.verdict.status)
     ).toEqual(["failed"]);
   });
 
@@ -443,7 +443,7 @@ describe("workflow engine replay safety", () => {
       "success",
     ]);
     expect(
-      store.callsOf("completeRun").map((run) => run.ending.status)
+      store.callsOf("completeRun").map((run) => run.verdict.status)
     ).toEqual(["failed"]);
   });
 

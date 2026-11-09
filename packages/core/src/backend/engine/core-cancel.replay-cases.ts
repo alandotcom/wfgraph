@@ -305,7 +305,7 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
       orderId: "o_1",
     });
     expect(
-      store.callsOf("completeRun").map((call) => call.ending.status)
+      store.callsOf("completeRun").map((call) => call.verdict.status)
     ).toEqual(["canceled"]);
     expect(cancelledAudits(store)).toEqual([
       expect.objectContaining({
@@ -334,7 +334,7 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
     expect(rowsOpenedFor(store, "cleanup_1")).toBe(1);
     expect(recorded.Cleanup).toMatchObject({ reason: "customer left" });
     expect(
-      store.callsOf("completeRun").map((call) => call.ending.status)
+      store.callsOf("completeRun").map((call) => call.verdict.status)
     ).toEqual(["completed", "canceled"]);
     expect(store.terminationState?.status).toBe("canceled");
     expect(cancelledAudits(store)).toEqual([
@@ -413,7 +413,7 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
     // admits. The same park on the Started side is refused (`core-wait.test.ts`).
     expect(store.callsOf("createWaitState")[0]?.side).toBe("canceled");
     expect(
-      store.callsOf("completeRun").map((call) => call.ending.status)
+      store.callsOf("completeRun").map((call) => call.verdict.status)
     ).toEqual(["completed", "canceled"]);
     expect(cancelledAudits(store)).toHaveLength(1);
   });
@@ -454,7 +454,7 @@ export function defineCancelReplayCases(executor: ReplayExecutor): void {
     expect(recorded.Cleanup).toMatchObject({ reason: "customer left" });
     expect(run.value.status).toBe("canceled");
     expect(
-      store.callsOf("completeRun").map((call) => call.ending.status)
+      store.callsOf("completeRun").map((call) => call.verdict.status)
     ).toEqual(["canceled"]);
     expect(cancelledAudits(store)).toHaveLength(1);
   });

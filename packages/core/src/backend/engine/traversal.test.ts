@@ -97,7 +97,6 @@ describe("Traversal result keys", () => {
         assert.isTrue(Object.hasOwn(recorded.results, "__proto__"));
         assert.equal(Object.getPrototypeOf(recorded.results), Object.prototype);
         assert.equal(recorded.resultCount, 1);
-        assert.isFalse(recorded.allSucceeded());
         assert.deepStrictEqual(recorded.firstFailure(), failure.error);
 
         const completed = new Traversal([], []);
@@ -109,7 +108,6 @@ describe("Traversal result keys", () => {
           Object.prototype
         );
         assert.equal(completed.resultCount, 1);
-        assert.isFalse(completed.allSucceeded());
         assert.deepStrictEqual(completed.firstFailure(), failure.error);
       })
   );

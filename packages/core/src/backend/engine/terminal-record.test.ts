@@ -5,17 +5,22 @@ import {
   type RecordingWorkflowStore,
 } from "#src/backend/engine/recording-store";
 import type { WorkflowStore } from "#src/backend/engine/store";
-import {
-  recordRunCompleted,
-  recordRunFailed,
-} from "#src/backend/engine/terminal-record";
+import { recordVerdict } from "#src/backend/engine/terminal-record";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 
 const terminalInput = {
   executionId: "exec_1",
-  status: "completed",
+  verdict: {
+    kind: "verdict",
+    status: "completed",
+    reached: { kind: "walked", resultCount: 1 },
+  },
   output: { ok: true },
-  resultCount: 1,
+} as const;
+
+const exitContext = {
+  entityType: "appointment",
+  conditionId: "condition_1",
 } as const;
 
 function recordingLogger() {
@@ -76,12 +81,18 @@ const cancelClaim = {
   payload: { reason: "customer left" },
 } as const;
 
-const fatalInput = {
-  executionId: "exec_1",
-  failure: { kind: "failure", message: "outcome read exhausted its retries" },
-} as const;
+const fatalVerdict = (failureKind: string) =>
+  ({
+    kind: "verdict",
+    status: "failed",
+    reached: {
+      kind: "fatal",
+      error: "outcome read exhausted its retries",
+      failureKind,
+    },
+  }) as const;
 
-describe("terminal record completion policy", () => {
+describe("recordVerdict", () => {
   it.effect(
     "fails so the step retries when the database refuses a run with no claim",
     () =>
@@ -99,7 +110,7 @@ describe("terminal record completion policy", () => {
         const recordingLoggerLayer = recordingLogger();
 
         const failure = yield* Effect.flip(
-          recordRunCompleted({ ...terminalInput, store }).pipe(
+          recordVerdict({ ...terminalInput, store }).pipe(
             Effect.provide(recordingLoggerLayer.layer)
           )
         );
@@ -110,8 +121,8 @@ describe("terminal record completion policy", () => {
             level: "Warn",
             message: "Terminal run record not written",
             properties: {
-              executionId: "exec_1",
-              status: "completed",
+              run: { execution: "exec_1" },
+              outcome: { verdict: "completed" },
               error: databaseError,
             },
           },
@@ -119,7 +130,7 @@ describe("terminal record completion policy", () => {
         expect(recording.terminationState?.status).toBe("running");
         expect(recording.timeline).toHaveLength(0);
 
-        const retried = yield* recordRunCompleted({ ...terminalInput, store });
+        const retried = yield* recordVerdict({ ...terminalInput, store });
 
         expect(retried).toEqual({ status: "completed" });
         expect(recording.terminationState?.status).toBe("completed");
@@ -145,15 +156,11 @@ describe("terminal record completion policy", () => {
         const store = storeRefusingFirstCompletion(recording, databaseError);
         const exitInput = {
           ...terminalInput,
-          status: "exited",
+          verdict: { ...terminalInput.verdict, exitContext },
           store,
-          exitContext: {
-            entityType: "appointment",
-            conditionId: "condition_1",
-          },
-        } as const;
+        };
 
-        const failure = yield* Effect.flip(recordRunCompleted(exitInput));
+        const failure = yield* Effect.flip(recordVerdict(exitInput));
 
         expect(failure).toBe(databaseError);
         expect(recording.terminationState).toMatchObject({
@@ -162,7 +169,7 @@ describe("terminal record completion policy", () => {
         });
         expect(recording.timeline).toHaveLength(0);
 
-        const retried = yield* recordRunCompleted(exitInput);
+        const retried = yield* recordVerdict(exitInput);
 
         expect(retried).toEqual({
           status: "exited",
@@ -175,107 +182,8 @@ describe("terminal record completion policy", () => {
           },
         });
         expect(recording.terminationState?.status).toBe("exited");
-        expect(recording.timeline).toEqual([
-          {
-            workflowId: "workflow_1",
-            executionId: "exec_1",
-            eventType: "run_exited",
-            message: "Run exited because the Entity was ineligible",
-            metadata: {
-              resultCount: 1,
-              runMode: "live",
-              reason: "entity_condition_not_met",
-              entityType: "appointment",
-              conditionId: "condition_1",
-              nodeId: "send-reminder",
-              checkedAt: "2026-10-19T15:00:00.000Z",
-              checkpoint: "before-node",
-            },
-          },
-        ]);
-      })
-  );
-
-  it.effect(
-    "fails the failed-run record so the step retries when the database refuses",
-    () =>
-      Effect.gen(function* () {
-        const databaseError = new DatabaseError({
-          cause: new Error("no connection"),
-        });
-        const recording = createRecordingWorkflowStore();
-        const store = storeRefusingFirstCompletion(recording, databaseError);
-        const failedInput = {
-          store,
-          executionId: "exec_1",
-          outcome: { kind: "failed" },
-          failure: { kind: "failure", message: "node exploded" },
-        } as const;
-
-        const failure = yield* Effect.flip(recordRunFailed(failedInput));
-
-        expect(failure).toBe(databaseError);
-        expect(recording.timeline).toHaveLength(0);
-
-        const retried = yield* recordRunFailed(failedInput);
-
-        expect(retried).toEqual({ status: "failed" });
-        expect(recording.terminationState?.status).toBe("failed");
         expect(recording.timeline.map((call) => call.eventType)).toEqual([
-          "run_failed",
-        ]);
-      })
-  );
-
-  it.effect(
-    "ends exited, with the Exit entry, a completed verdict that meets an Exit claim",
-    () =>
-      Effect.gen(function* () {
-        const recording = createRecordingWorkflowStore();
-        recording.terminationState = {
-          status: "running",
-          claim: exitClaim,
-          didWrite: false,
-        };
-
-        const result = yield* recordRunCompleted({
-          ...terminalInput,
-          store: recording,
-          failure: { kind: "failure", message: "losing traversal failure" },
-          exitContext: {
-            entityType: "appointment",
-            conditionId: "condition_1",
-          },
-        });
-
-        expect(result).toEqual({
-          status: "exited",
-          exit: {
-            reason: "entity_condition_not_met",
-            entityType: "appointment",
-            conditionId: "condition_1",
-            nodeId: "send-reminder",
-            checkedAt: "2026-10-19T15:00:00.000Z",
-          },
-        });
-        expect(recording.callsOf("completeRun")).toHaveLength(1);
-        expect(recording.timeline).toEqual([
-          {
-            workflowId: "workflow_1",
-            executionId: "exec_1",
-            eventType: "run_exited",
-            message: "Run exited because the Entity was ineligible",
-            metadata: {
-              resultCount: 1,
-              runMode: "live",
-              reason: "entity_condition_not_met",
-              entityType: "appointment",
-              conditionId: "condition_1",
-              nodeId: "send-reminder",
-              checkedAt: "2026-10-19T15:00:00.000Z",
-              checkpoint: "before-node",
-            },
-          },
+          "run_exited",
         ]);
       })
   );
@@ -291,7 +199,7 @@ describe("terminal record completion policy", () => {
           didWrite: false,
         };
 
-        const result = yield* recordRunCompleted({
+        const result = yield* recordVerdict({
           ...terminalInput,
           store: recording,
         });
@@ -304,37 +212,10 @@ describe("terminal record completion policy", () => {
           },
         });
         expect(
-          recording.callsOf("completeRun").map((call) => call.ending.status)
+          recording.callsOf("completeRun").map((call) => call.verdict.status)
         ).toEqual(["completed"]);
         expect(recording.terminationState?.status).toBe("running");
         expect(recording.timeline).toHaveLength(0);
-      })
-  );
-
-  it.effect(
-    "records canceled at the Canceled outlet once the caller has run it",
-    () =>
-      Effect.gen(function* () {
-        const recording = createRecordingWorkflowStore();
-        recording.terminationState = {
-          status: "running",
-          claim: cancelClaim,
-          didWrite: false,
-        };
-
-        const result = yield* recordRunCompleted({
-          ...terminalInput,
-          status: "canceled",
-          store: recording,
-        });
-
-        expect(result).toEqual({ status: "canceled" });
-        expect(recording.timeline).toEqual([
-          expect.objectContaining({
-            eventType: "run_cancelled",
-            message: "Run canceled at the Canceled outlet",
-          }),
-        ]);
       })
   );
 
@@ -350,10 +231,9 @@ describe("terminal record completion policy", () => {
             didWrite: false,
           };
 
-          const result = yield* recordRunFailed({
-            ...fatalInput,
-            failure: { kind, message: "outcome read exhausted its retries" },
-            outcome: { kind: "failed" },
+          const result = yield* recordVerdict({
+            executionId: "exec_1",
+            verdict: fatalVerdict(kind),
             store: recording,
           });
 
@@ -364,152 +244,9 @@ describe("terminal record completion policy", () => {
               payload: { reason: "customer left" },
             },
           });
-          expect(
-            recording.callsOf("completeRun").map((call) => call.ending.status)
-          ).toEqual(["failed"]);
           expect(recording.terminationState?.status).toBe("running");
           expect(recording.timeline).toHaveLength(0);
         }
-      })
-  );
-
-  it.effect(
-    "records a fatal run that had entered the Canceled outlet as canceled there",
-    () =>
-      Effect.gen(function* () {
-        const recording = createRecordingWorkflowStore();
-        recording.terminationState = {
-          status: "running",
-          claim: cancelClaim,
-          didWrite: false,
-        };
-
-        const result = yield* recordRunFailed({
-          ...fatalInput,
-          outcome: { kind: "canceled", outlet: "entered" },
-          store: recording,
-        });
-
-        expect(result).toEqual({ status: "canceled" });
-        expect(
-          recording.callsOf("completeRun").map((call) => call.ending.status)
-        ).toEqual(["canceled"]);
-        expect(recording.timeline).toEqual([
-          expect.objectContaining({
-            eventType: "run_cancelled",
-            message:
-              "Run canceled at the Canceled outlet, then ended on a fatal error",
-            metadata: expect.objectContaining({ canceledOutlet: "entered" }),
-          }),
-        ]);
-      })
-  );
-
-  it.effect(
-    "records canceled at the Canceled outlet after a fatal error once the caller has run it",
-    () =>
-      Effect.gen(function* () {
-        const recording = createRecordingWorkflowStore();
-        recording.terminationState = {
-          status: "running",
-          claim: cancelClaim,
-          didWrite: false,
-        };
-
-        const result = yield* recordRunFailed({
-          ...fatalInput,
-          outcome: { kind: "canceled", outlet: "ran" },
-          store: recording,
-        });
-
-        expect(result).toEqual({ status: "canceled" });
-        expect(
-          recording.callsOf("completeRun").map((call) => call.ending.status)
-        ).toEqual(["canceled"]);
-        expect(recording.timeline).toEqual([
-          {
-            workflowId: "workflow_1",
-            executionId: "exec_1",
-            eventType: "run_cancelled",
-            message: "Run canceled at the Canceled outlet after a fatal error",
-            metadata: {
-              error: "outcome read exhausted its retries",
-              failureKind: "failure",
-              runMode: "live",
-              canceledOutlet: "ran",
-            },
-          },
-        ]);
-      })
-  );
-
-  it.effect(
-    "says the Canceled outlet failed when the caller reports it did",
-    () =>
-      Effect.gen(function* () {
-        const recording = createRecordingWorkflowStore();
-        recording.terminationState = {
-          status: "running",
-          claim: cancelClaim,
-          didWrite: false,
-        };
-
-        const result = yield* recordRunFailed({
-          ...fatalInput,
-          outcome: { kind: "canceled", outlet: "failed" },
-          store: recording,
-        });
-
-        expect(result).toEqual({ status: "canceled" });
-        expect(recording.timeline).toEqual([
-          expect.objectContaining({
-            eventType: "run_cancelled",
-            message:
-              "Run canceled after a fatal error; the Canceled outlet failed",
-            metadata: expect.objectContaining({ canceledOutlet: "failed" }),
-          }),
-        ]);
-      })
-  );
-
-  it.effect(
-    "ends exited, with the Exit entry, a fatal verdict that meets an Exit claim",
-    () =>
-      Effect.gen(function* () {
-        const recording = createRecordingWorkflowStore();
-        recording.terminationState = {
-          status: "running",
-          claim: exitClaim,
-          didWrite: false,
-        };
-
-        const result = yield* recordRunFailed({
-          ...fatalInput,
-          outcome: { kind: "failed" },
-          store: recording,
-          exitContext: {
-            entityType: "appointment",
-            conditionId: "condition_1",
-          },
-        });
-
-        expect(result).toMatchObject({ status: "exited" });
-        expect(recording.callsOf("completeRun")).toHaveLength(1);
-        expect(recording.timeline).toEqual([
-          expect.objectContaining({
-            eventType: "run_exited",
-            message: "Run exited because the Entity was ineligible",
-            metadata: {
-              reason: "entity_condition_not_met",
-              entityType: "appointment",
-              conditionId: "condition_1",
-              nodeId: "send-reminder",
-              checkedAt: "2026-10-19T15:00:00.000Z",
-              checkpoint: "before-node",
-              runMode: "live",
-            },
-          }),
-        ]);
       })
   );
 
@@ -534,13 +271,10 @@ describe("terminal record completion policy", () => {
         };
         const recordingLoggerLayer = recordingLogger();
 
-        const result = yield* recordRunCompleted({
+        const result = yield* recordVerdict({
           ...terminalInput,
+          verdict: { ...terminalInput.verdict, exitContext },
           store,
-          exitContext: {
-            entityType: "appointment",
-            conditionId: "condition_1",
-          },
         }).pipe(Effect.provide(recordingLoggerLayer.layer));
 
         expect(result).toEqual({
@@ -557,10 +291,26 @@ describe("terminal record completion policy", () => {
           {
             level: "Info",
             message: "Run did not claim the terminal record",
-            properties: { status: "exited" },
+            properties: { outcome: { verdict: "completed", status: "exited" } },
           },
         ]);
         expect(recording.timeline).toHaveLength(0);
       })
+  );
+
+  it.effect("redacts the output before it reaches the store", () =>
+    Effect.gen(function* () {
+      const recording = createRecordingWorkflowStore();
+
+      yield* recordVerdict({
+        ...terminalInput,
+        output: { apiKey: "sk-live-123", ok: true },
+        store: recording,
+      });
+
+      const [written] = recording.callsOf("completeRun");
+      expect(written?.output).toMatchObject({ ok: true });
+      expect(JSON.stringify(written?.output)).not.toContain("sk-live-123");
+    })
   );
 });

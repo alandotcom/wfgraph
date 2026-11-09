@@ -6,7 +6,11 @@
  * store call sits inside a memoized step that round-trips through that runtime.
  */
 
-import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
+import type {
+  JsonObject,
+  JsonObjectDraft,
+  JsonValue,
+} from "@wfgraph/shared/types/json";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
   EntityEligibilityReason,
@@ -205,13 +209,13 @@ export type RequestExecutionExitInput = {
 };
 
 /**
- * The engine's verdict on its run, as `decideRunEnd` reads it. `output` is
- * whatever the traversal produced; the adapter redacts it before it reaches a
- * table.
+ * The engine's verdict on its run, and the output the run answers with,
+ * already redacted.
  */
 export type CompleteRunInput = {
   executionId: string;
-  ending: Omit<RunVerdict, "output"> & { output?: unknown };
+  verdict: RunVerdict;
+  output?: JsonValue | undefined;
 };
 
 export type WorkflowStore = {
@@ -351,7 +355,7 @@ export const noopWorkflowStore: WorkflowStore = {
   readPendingCancel: () => Effect.succeed(null),
   completeRun: (input) =>
     Effect.succeed({
-      status: input.ending.status,
+      status: input.verdict.status,
       claim: null,
       didWrite: true,
     }),

@@ -600,9 +600,10 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
         .callsOf("markWaitStateStatus")
         .filter((call) => call.status === "cancelled")
     ).toHaveLength(1);
-    expect(
-      store.callsOf("completeRun").map((call) => call.ending.status)
-    ).toEqual(["exited"]);
+    expect(store.timeline.map((event) => event.eventType)).toContain(
+      "run_exited"
+    );
+    expect(store.callsOf("completeRun")).toHaveLength(1);
   });
 
   // Only a park writes "waiting", and the short branch's resume writes
@@ -745,7 +746,7 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
     expect(closedAt).toBeGreaterThanOrEqual(0);
     expect(closedAt).toBeLessThan(canceledBranchAt);
     expect(
-      store.callsOf("completeRun").map((call) => call.ending.status)
+      store.callsOf("completeRun").map((call) => call.verdict.status)
     ).toEqual(["canceled"]);
   });
 
@@ -784,7 +785,7 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
         .toSorted()
     ).toEqual(["cancelled", "cancelled"]);
     expect(
-      store.callsOf("completeRun").map((call) => call.ending.status)
+      store.callsOf("completeRun").map((call) => call.verdict.status)
     ).toEqual(["canceled"]);
     // One pass parks both Waits, and the pass after the Cancel Event ends it.
     expect(run.invocations).toBe(2);

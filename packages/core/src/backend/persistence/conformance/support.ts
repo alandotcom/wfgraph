@@ -34,11 +34,14 @@ export const emptyGraph = createSerializedWorkflowGraph({
  * run ended and reads nothing of its entry's wording.
  */
 export function verdict(status: RunVerdict["status"]): RunVerdict {
-  return {
-    kind: "verdict",
-    status,
-    reached: { kind: "walked", resultCount: 0 },
-  };
+  const reached = { kind: "walked", resultCount: 0 } as const;
+  return status === "failed"
+    ? {
+        kind: "verdict",
+        status,
+        reached: { ...reached, error: "A node failed" },
+      }
+    : { kind: "verdict", status, reached };
 }
 
 /**

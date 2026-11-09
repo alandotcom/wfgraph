@@ -278,10 +278,6 @@ export class Traversal {
     return Object.keys(this.results).length;
   }
 
-  allSucceeded(): boolean {
-    return Object.values(this.results).every((result) => result.success);
-  }
-
   /** The typed failure the run ended with, taken from its first failed node. */
   firstFailure(): EngineFailure | undefined {
     return executionFailure(

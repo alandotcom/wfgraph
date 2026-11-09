@@ -12,12 +12,12 @@ import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
 const terminalWrite = {
   executionId: "exec_1",
-  ending: {
+  verdict: {
     kind: "verdict",
     status: "completed",
-    output: { ok: true },
     reached: { kind: "walked", resultCount: 1 },
   },
+  output: { ok: true },
 } as const;
 
 describe("completeRun", () => {

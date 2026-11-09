@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { Effect, Layer } from "effect";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
-import { recordRunCompleted } from "#src/backend/engine/terminal-record";
+import { recordVerdict } from "#src/backend/engine/terminal-record";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { SilentAppLoggerLayer } from "#src/backend/lib/effect/test-layers";
 import { makeExecutionDriverLayer } from "#src/backend/services/executions/driver";
@@ -160,10 +160,8 @@ const EXIT_CLAIM = {
 } as const;
 
 const verdictOf = (status: RunVerdict["status"]): RunVerdict => ({
-  kind: "verdict",
-  status,
+  ...verdict(status),
   exitContext: { entityType: "appointment", conditionId: "condition_1" },
-  reached: { kind: "walked", resultCount: 0 },
 });
 
 const EXITED_MESSAGE = "Run exited because the Entity was ineligible";
@@ -220,15 +218,6 @@ const RUN_ENDINGS: ReadonlyArray<{
         "canceled",
         "Run canceled at the Canceled outlet"
       ),
-      "exit-claimed": VERDICT_EXITED,
-      ended: null,
-    },
-  },
-  {
-    ending: verdictOf("exited"),
-    outcomes: {
-      unclaimed: null,
-      "cancel-claimed": null,
       "exit-claimed": VERDICT_EXITED,
       ended: null,
     },
@@ -870,15 +859,14 @@ export function describeExecutionConformance({
       // attempt fails the step, which the executor runs again.
       const recordCompletion = Effect.gen(function* () {
         const executions = yield* ExecutionRepo;
-        yield* recordRunCompleted({
+        yield* recordVerdict({
           store: createDbWorkflowStore({
             reads: executions,
             writes: executions,
           }),
           executionId,
-          status: "completed",
+          verdict: verdict("completed"),
           output: null,
-          resultCount: 0,
         });
       }).pipe(Effect.ignore);
 

@@ -122,7 +122,7 @@ describe("a run claimed for the Canceled outlet", () => {
 
     const completions = store.callsOf("completeRun");
     expect(completions).toHaveLength(1);
-    expect(completions[0]?.ending.status).toBe("canceled");
+    expect(completions[0]?.verdict.status).toBe("canceled");
     expect(store.timeline.at(-1)).toMatchObject({
       eventType: "run_cancelled",
       message: "Run canceled at the Canceled outlet",
@@ -244,7 +244,7 @@ describe("a run claimed for the Canceled outlet", () => {
     );
 
     expect(recorded).toEqual({});
-    expect(store.callsOf("completeRun")[0]?.ending.status).toBe("canceled");
+    expect(store.callsOf("completeRun")[0]?.verdict.status).toBe("canceled");
   });
 
   it("honors a pending cancel when the active node fails through the error channel", async () => {
@@ -267,7 +267,7 @@ describe("a run claimed for the Canceled outlet", () => {
 
     expect(Object.keys(recorded)).toEqual(["Cleanup"]);
     expect(result.results.after_1).toBeUndefined();
-    expect(store.callsOf("completeRun")[0]?.ending.status).toBe("canceled");
+    expect(store.callsOf("completeRun")[0]?.verdict.status).toBe("canceled");
   });
 
   it("ends completed when the run finished before any cancel landed", async () => {
@@ -280,7 +280,7 @@ describe("a run claimed for the Canceled outlet", () => {
 
     expect(result).toMatchObject({ kind: "ended", success: true });
     expect(Object.keys(recorded)).toEqual(["After"]);
-    expect(store.callsOf("completeRun")[0]?.ending.status).toBe("completed");
+    expect(store.callsOf("completeRun")[0]?.verdict.status).toBe("completed");
     // One read per node the run walked: entry, Producer, After.
     expect(store.callsOf("readPendingCancel")).toHaveLength(3);
   });
@@ -348,7 +348,7 @@ describe("a run claimed for the Canceled outlet", () => {
       "Left",
       "Right",
     ]);
-    expect(store.callsOf("completeRun")[0]?.ending.status).toBe("canceled");
+    expect(store.callsOf("completeRun")[0]?.verdict.status).toBe("canceled");
   });
 
   // A parked run reaches no boundary of its own, so a Cancel Event resolves its
@@ -380,7 +380,7 @@ describe("a run claimed for the Canceled outlet", () => {
 
     expect(Object.keys(recorded)).toEqual(["Cleanup"]);
     expect(store.callsOf("markWaitStateStatus")[0]?.status).toBe("cancelled");
-    expect(store.callsOf("completeRun")[0]?.ending.status).toBe("canceled");
+    expect(store.callsOf("completeRun")[0]?.verdict.status).toBe("canceled");
   });
 });
 /**
@@ -457,7 +457,7 @@ describe("a Cancel claim that lands after the last boundary read", () => {
     expect(rowsOpenedFor(store, "after_1")).toBe(1);
     expect(rowsOpenedFor(store, "cleanup_1")).toBe(1);
     expect(
-      store.callsOf("completeRun").map((call) => call.ending.status)
+      store.callsOf("completeRun").map((call) => call.verdict.status)
     ).toEqual(["completed", "canceled"]);
     expect(cancelledAudits(store)).toEqual([
       expect.objectContaining({
@@ -490,7 +490,7 @@ describe("a Cancel claim that lands after the last boundary read", () => {
         orderId: "o_1",
       });
       expect(
-        store.callsOf("completeRun").map((call) => call.ending.status)
+        store.callsOf("completeRun").map((call) => call.verdict.status)
       ).toEqual(["failed", "canceled"]);
       expect(cancelledAudits(store)).toEqual([
         expect.objectContaining({
@@ -555,7 +555,7 @@ describe("a Cancel claim that lands after the last boundary read", () => {
       expect(retried.status).toBe("canceled");
       expect(rowsOpenedFor(store, "cleanup_1")).toBe(1);
       expect(
-        store.callsOf("completeRun").map((call) => call.ending.status)
+        store.callsOf("completeRun").map((call) => call.verdict.status)
       ).toEqual(["canceled"]);
       expect(cancelledAudits(store)).toEqual([
         expect.objectContaining({

@@ -604,7 +604,7 @@ describe("per-node Entity Eligibility", () => {
         checkedAt: "2026-10-19T15:00:00.000Z",
       },
     ]);
-    expect(store.callsOf("completeRun")[0]?.ending.status).toBe("exited");
+    expect(store.callsOf("completeRun")).toHaveLength(1);
     const exitAudit = store.timeline.find(
       (event) => event.eventType === "run_exited"
     );

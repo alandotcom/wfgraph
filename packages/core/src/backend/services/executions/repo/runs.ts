@@ -47,7 +47,11 @@ import {
   type TerminalExecutionStatus,
   type TerminationKind,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
+import type {
+  JsonObject,
+  JsonObjectDraft,
+  JsonValue,
+} from "@wfgraph/shared/types/json";
 import {
   recordAuditEventsWrite,
   recordAuditEventWrite,
@@ -429,7 +433,12 @@ export type RunsRepoMethods = {
    * entry and settles its wait rows, schedule row and step memo.
    */
   readonly endRun: StoreWrite<
-    { executionId: string; ending: RunVerdict | OutsideGraphEnding },
+    {
+      executionId: string;
+      ending: RunVerdict | OutsideGraphEnding;
+      /** What the run answers with, which a verdict that ends it writes. */
+      output?: JsonValue | undefined;
+    },
     ExecutionTerminationState | null
   >;
 };
@@ -794,6 +803,7 @@ export function endRunWrite(input: EndRunInput) {
     const [state] = await endRunsWrite(db, {
       executionIds: [input.executionId],
       ending: input.ending,
+      output: input.output,
     });
     return state ?? null;
   };
@@ -810,7 +820,11 @@ export function endRunWrite(input: EndRunInput) {
  */
 export function endRunsWrite(
   db: Executor,
-  input: { executionIds: readonly string[]; ending: RunEnding }
+  input: {
+    executionIds: readonly string[];
+    ending: RunEnding;
+    output?: JsonValue | undefined;
+  }
 ): Promise<ExecutionTerminationState[]> {
   const ids = [...input.executionIds];
   if (ids.length === 0) return Promise.resolve([]);
@@ -845,7 +859,7 @@ export function endRunsWrite(
         .update(workflowExecutions)
         .set({
           ...endedRunColumns(decision.status),
-          output: decision.output,
+          output: input.output,
           error: decision.error,
         })
         .where(
