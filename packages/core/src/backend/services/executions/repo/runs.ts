@@ -313,9 +313,20 @@ export type RunsRepoMethods = {
     workflowId: string;
     deliveryId: string;
   }) => Effect.Effect<WorkflowExecution | null, DatabaseError>;
-  /** Record a run that never started, already in its terminal status. */
+  /**
+   * Record a run that never started, already in its terminal status, with
+   * `announcement` on its timeline in the same transaction. The entry is
+   * written for the inserted row's workflow.
+   */
   readonly insertTerminal: (
-    input: NewTerminalExecution
+    input: NewTerminalExecution & {
+      announcement: Omit<
+        RunEndingAnnouncement<
+          "run_completed" | "run_failed" | "run_cancelled" | "run_ignored"
+        >,
+        "workflowId"
+      >;
+    }
   ) => Effect.Effect<WorkflowExecution, DatabaseError>;
   /**
    * Move a run back from "waiting" to "running" under the version the caller
@@ -588,33 +599,40 @@ export function makeRunsMethods(
         return execution ?? null;
       }),
 
-    insertTerminal: (input) =>
-      database.query(async (db) => {
-        const now = new Date();
-        const [execution] = await db
-          .insert(workflowExecutions)
-          .values({
+    insertTerminal: ({ announcement, ...input }) =>
+      database.query((db) =>
+        db.transaction(async (tx) => {
+          const now = new Date();
+          const [execution] = await tx
+            .insert(workflowExecutions)
+            .values({
+              workflowId: input.workflowId,
+              workflowVersionId: input.workflowVersionId,
+              status: input.status,
+              startSource: input.startSource,
+              runMode: input.runMode,
+              startEventName: input.startEventName,
+              entityValue: input.entityValue,
+              entityType: input.entityType,
+              entityId: input.entityId,
+              input: input.input,
+              output: input.output,
+              error: input.error,
+              startedAt: now,
+              completedAt: now,
+              cancelledAt: input.status === "canceled" ? now : null,
+              duration: "0",
+            })
+            .returning();
+          await recordAuditEventWrite({
+            ...announcement,
             workflowId: input.workflowId,
-            workflowVersionId: input.workflowVersionId,
-            status: input.status,
-            startSource: input.startSource,
-            runMode: input.runMode,
-            startEventName: input.startEventName,
-            entityValue: input.entityValue,
-            entityType: input.entityType,
-            entityId: input.entityId,
-            input: input.input,
-            output: input.output,
-            error: input.error,
-            startedAt: now,
-            completedAt: now,
-            cancelledAt: input.status === "canceled" ? now : null,
-            duration: "0",
-          })
-          .returning();
+            executionId: execution.id,
+          })(tx);
 
-        return execution;
-      }),
+          return execution;
+        })
+      ),
 
     markRunning: (input) => database.query(markRunningWrite(input)),
 

@@ -755,7 +755,7 @@ export function describeExecutionConformance({
       });
     });
 
-    it("never leaves a paused workflow's ignored run without its run_ignored entry, even when the database refuses that entry", async () => {
+    it("commits a paused workflow's ignored run with its run_ignored entry, and writes neither when the database refuses the entry", async () => {
       const store = await openDatabase();
       const database = await store.open();
       await seedPublishedWorkflow(database);
@@ -766,6 +766,23 @@ export function describeExecutionConformance({
         runMode: "live",
         payload: {},
       });
+      const readRuns = Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        const rows = yield* executions.listByWorkflow({
+          workflowId: "wf_1",
+          includeSuperseded: true,
+        });
+        return yield* Effect.forEach(rows, (row) =>
+          executions.listEvents(row.id).pipe(
+            Effect.map((events) => ({
+              status: row.status,
+              ignored: events
+                .filter((event) => event.eventType === "run_ignored")
+                .map(({ message, metadata }) => ({ message, metadata })),
+            }))
+          )
+        );
+      });
 
       await store.execute(refuseEntry("run_ignored"));
       try {
@@ -773,27 +790,22 @@ export function describeExecutionConformance({
       } finally {
         await store.execute(acceptEntry("run_ignored"));
       }
+      const afterRefusal = await database.run(readRuns);
+      await database.run(ignore);
+      const afterAccept = await database.run(readRuns);
 
-      const runs = await database.run(
-        Effect.gen(function* () {
-          const executions = yield* ExecutionRepo;
-          const rows = yield* executions.listByWorkflow({
-            workflowId: "wf_1",
-            includeSuperseded: true,
-          });
-          return yield* Effect.forEach(rows, (row) =>
-            executions.listEvents(row.id).pipe(
-              Effect.map((events) => ({
-                status: row.status,
-                ignoredEntries: events.filter(
-                  (event) => event.eventType === "run_ignored"
-                ).length,
-              }))
-            )
-          );
-        })
-      );
-      expect(runs.filter((run) => run.ignoredEntries !== 1)).toEqual([]);
+      expect(afterRefusal).toEqual([]);
+      expect(afterAccept).toEqual([
+        {
+          status: "completed",
+          ignored: [
+            {
+              message: "Ignored manual run because workflow is paused",
+              metadata: { reason: "workflow_paused", runMode: "live" },
+            },
+          ],
+        },
+      ]);
     });
 
     it("writes a terminal write's announcement only from the write that ends the run", async () => {

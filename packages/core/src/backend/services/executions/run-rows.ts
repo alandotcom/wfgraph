@@ -483,7 +483,8 @@ export const runStartedEntry = Effect.fn("runStartedEntry")(function* (
 /**
  * Writes an execution row for a request that reached a verdict without ever
  * running the graph, such as a cancellation or an ignored event. The row starts
- * and completes at the same instant so the run list still shows the decision.
+ * and completes at the same instant so the run list still shows the decision,
+ * and its `audit` entry commits in the same transaction as the row.
  *
  * A caller owes a row whenever the runs list is the only feedback it gives: the
  * manual execute route answers a screen whose next question is "what happened",
@@ -493,7 +494,7 @@ export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
   function* (input: RecordTerminalWorkflowRunInput) {
     const repo = yield* ExecutionRepo;
 
-    const execution = yield* repo.insertTerminal({
+    return yield* repo.insertTerminal({
       workflowId: input.workflowId,
       workflowVersionId: input.workflowVersionId,
       status: input.status,
@@ -504,17 +505,8 @@ export const recordTerminalWorkflowRun = Effect.fn("recordTerminalWorkflowRun")(
       input: input.payload,
       output: input.output,
       error: input.error,
+      announcement: input.audit,
     });
-
-    yield* repo.recordAuditEvent({
-      workflowId: input.workflowId,
-      executionId: execution.id,
-      eventType: input.audit.eventType,
-      message: input.audit.message,
-      metadata: input.audit.metadata,
-    });
-
-    return execution;
   }
 );
 

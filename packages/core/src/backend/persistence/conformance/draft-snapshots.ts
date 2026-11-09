@@ -17,6 +17,7 @@ import {
   emptyGraph,
   seedPublishedWorkflow,
   setTimestamp,
+  terminalEntry,
 } from "#src/backend/persistence/conformance/support";
 import {
   RETENTION_CUTOFF,
@@ -58,6 +59,7 @@ function pinDraftRun(versionId: string) {
       runMode: "test",
       input: {},
       status: "completed",
+      announcement: terminalEntry,
     });
   });
 }
@@ -117,6 +119,7 @@ export function describeDraftSnapshotConformance({
             runMode: "test",
             input: {},
             status: "completed",
+            announcement: terminalEntry,
           });
 
           // A run now references the first row, which puts it beyond the

@@ -15,6 +15,7 @@ import {
   emptyGraph,
   notYetDue,
   seedPublishedWorkflow,
+  terminalEntry,
 } from "#src/backend/persistence/conformance/support";
 
 export function describeWorkflowConformance({
@@ -196,6 +197,7 @@ export function describeWorkflowConformance({
               runMode: "test",
               input: {},
               status,
+              announcement: terminalEntry,
             });
           }
           const superseded = yield* executions.startForEntity({

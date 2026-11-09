@@ -634,11 +634,12 @@ describe("postWorkflowExecute", () => {
           reason: "workflow_paused",
         });
         assert.strictEqual(repo.terminals[0]?.status, "completed");
-        assert.deepStrictEqual(repo.starts, []);
-        assert.deepStrictEqual(
-          repo.audits.map((audit) => audit.eventType),
-          ["run_ignored"]
+        assert.strictEqual(
+          repo.terminals[0]?.announcement.eventType,
+          "run_ignored"
         );
+        assert.deepStrictEqual(repo.starts, []);
+        assert.deepStrictEqual(repo.audits, []);
       })
     );
 

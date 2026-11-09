@@ -58,6 +58,15 @@ export function cancelArrival(now: Date = notYetDue.now) {
   });
 }
 
+/**
+ * The timeline entry `insertTerminal` requires, for a case that records a
+ * terminal run only to have one to read back.
+ */
+export const terminalEntry = {
+  eventType: "run_ignored",
+  message: "Run ignored because the workflow is paused",
+} as const;
+
 /** The one key every backend seals with. */
 export const conformanceCipher = createIntegrationCipher({
   key: "c".repeat(64),

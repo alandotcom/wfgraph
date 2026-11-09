@@ -13,6 +13,7 @@ import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import {
   notYetDue,
   type PersistenceTestRegistry,
+  terminalEntry,
 } from "#src/backend/persistence/conformance/support";
 import {
   T0,
@@ -364,6 +365,7 @@ export function describeExecutionFencingConformance({
             runMode: "live",
             input: {},
             status: "canceled",
+            announcement: terminalEntry,
           });
 
           return {

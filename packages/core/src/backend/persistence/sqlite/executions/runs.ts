@@ -470,9 +470,22 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
           .get()
           .pipe(Effect.map((row) => (row ? sqliteExecution(row) : null)))
       ),
-    insertTerminal: (input) =>
+    insertTerminal: ({ announcement, ...input }) =>
       store.write((database) =>
-        insertExecution(database, input, input.status, input)
+        Effect.gen(function* () {
+          const execution = yield* insertExecution(
+            database,
+            input,
+            input.status,
+            input
+          );
+          yield* recordAuditEventWrite({
+            ...announcement,
+            workflowId: input.workflowId,
+            executionId: execution.id,
+          })(database);
+          return execution;
+        })
       ),
     markRunning: (input) => store.write(markRunningWrite(input)),
     markWaitingIfParked: (input) =>

@@ -17,6 +17,7 @@ import {
   attemptStart,
   seedPublishedWorkflow,
   setTimestamp,
+  terminalEntry,
 } from "#src/backend/persistence/conformance/support";
 import {
   RETENTION_CUTOFF,
@@ -70,6 +71,7 @@ export function describeExecutionRetentionConformance({
                 runMode: "live",
                 input: {},
                 status,
+                announcement: terminalEntry,
               })
               .pipe(Effect.map((execution) => execution.id));
           return {

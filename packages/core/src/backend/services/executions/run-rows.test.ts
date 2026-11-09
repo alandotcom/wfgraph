@@ -373,7 +373,6 @@ describe("recordPausedRunIgnored", () => {
                     status: "completed",
                   });
                 }),
-              recordAuditEvent: () => Effect.void,
             })
           )
         );
@@ -390,6 +389,11 @@ describe("recordPausedRunIgnored", () => {
           status: "ignored",
           reason: "workflow_paused",
           runMode: "test",
+        });
+        assert.deepStrictEqual(recorded.announcement, {
+          eventType: "run_ignored",
+          message: "Ignored event because workflow is paused",
+          metadata: { reason: "workflow_paused", runMode: "test" },
         });
       })
     );
