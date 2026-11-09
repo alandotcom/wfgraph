@@ -98,16 +98,17 @@ handle's `startTime`.
 
 The database executor's implementation (`executor/runtime.ts`) adds two rules:
 
-- A success over a `failing` memo row writes the row `succeeded` through the
-  existing memo write, which keeps the failure count for the node log's `retries`
-  and clears the schedule row's running step in the same transaction. Without it, a
-  finished node kept reading as retrying for the rest of the run, and failures
-  added to its count on later passes until it was refused. This write happens only
-  on that recovery path.
-- An idempotent step is never the step the heartbeat records as running. A lease
-  expiry or a budget cut during a millisecond log write counts as the run's own
-  failure, as a failure between steps does, rather than against a log step that may
-  already have finished.
+- A success over a `failing` memo row is recorded through the existing memo write,
+  which marks the memo row `succeeded` and keeps its failure count for the node
+  log's `retries`. Without it, a finished node kept reading as
+  retrying for the rest of the run, and failures added to its count on later passes
+  until it was refused. This write happens only on that recovery path.
+- An idempotent step is never the step the heartbeat records as running, so a
+  budget cut or a lease expiry during a millisecond log write is counted as one
+  between steps would be. With no step recorded as running, a budget cut counts no
+  failure: the `interrupted` release keeps the run's `attempt` and re-queues the row
+  at once. A lease that expires with no step recorded as running adds one to the
+  run's `attempt` when the row is next claimed (`claimAttempt`).
 
 **The close is a direct store write.** `runWithStepLog` closes the row through
 `closeStepLogQuietly`, which swallows a failure. The close counts no
@@ -135,19 +136,18 @@ per pass replaces two fenced transactions per replayed node.
 Per action node: memo rows 3 to 1, schedule updates 3 to 1, fenced transactions
 5 to 3. Per Wait, one memo row and one schedule update fewer.
 
-Measured on the branch with the harness, 3,000 runs:
+Measured on `eec27e1a` with the same harness, 3,000 runs at 30 per second. The
+Wait's open runs through `runIdempotent` at that commit, so the "After" column
+holds no memo row for it.
 
-| Measure                                 | Before | After  |
-| --------------------------------------- | ------ | ------ |
-| Memo rows per run                       | 29     | 15     |
-| Schedule updates per run                | 33     | 19     |
-| Schedule updates applied as HOT         | 0%     | 79%    |
-| `workflow_execution_schedule` peak dead | 57,846 | 10,279 |
-| `workflow_execution_steps` peak dead    | 52,083 | 25,212 |
-
-The measurement predates the Wait's open moving off its memoized step, so the Wait's
-open memo row and the schedule update its memo write made are still in the "After"
-column; each run of the harness passes one Wait.
+| Measure                                 | Before   | After    |
+| --------------------------------------- | -------- | -------- |
+| Memo rows per run                       | 29       | 14       |
+| Schedule updates per run                | 33       | 18       |
+| Schedule updates applied as HOT         | 0%       | 78%      |
+| `workflow_execution_schedule` peak dead | 57,846   | 10,007   |
+| `workflow_execution_steps` peak dead    | 52,083   | 22,938   |
+| `workflow_execution_steps` peak heap    | 7,080 KB | 3,000 KB |
 
 ### What changes in behaviour
 

@@ -562,12 +562,16 @@ export function createExecutorRuntime(
     },
 
     // An idempotent step is a store write of a few milliseconds, so it is
-    // never the step the heartbeat records as running: a lease that expires
-    // or a budget that runs out during it counts as the run's own failure, as
-    // one between steps does. A failure `fn` throws still counts against the
-    // step's id. A success over a `failing` row an earlier pass left marks the
-    // row `succeeded`, keeping its failure count for the node log's
-    // `retries`, so the node no longer reads as retrying.
+    // never the step the heartbeat records as running, and a budget cut or a
+    // lease expiry during it is counted as one between steps would be. With
+    // no step recorded as running, a budget cut counts no failure: the
+    // `interrupted` release keeps the run's `attempt` and re-queues the row at
+    // once (`stepFailureOf`, `decideRelease`). A lease that expires with no
+    // step recorded as running adds one to the run's `attempt` when the row is
+    // next claimed (`claimAttempt`). A failure `fn` throws still counts
+    // against the step's id. A success over a `failing` row an earlier pass
+    // left marks the row `succeeded`, keeping its failure count for the node
+    // log's `retries`, so the node no longer reads as retrying.
     runIdempotent: async <T>(
       step: DurableStepRef,
       fn: () => Promise<T>
