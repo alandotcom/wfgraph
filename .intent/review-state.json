@@ -858,15 +858,15 @@
       ]
     },
     "source:packages/core/src/backend/engine/core-cancel.sqlite.test.ts": {
-      "fingerprint": "c2a89df50c4a530cf6fb2a4d95597c42cfe2f50f8cf0edfc81476097ea0c4fcf",
+      "fingerprint": "1e79039f9da8a0a53821ca22d581294d53cd8ca1cdbc44705ee682844a40b7e8",
       "snapshot": {
-        "packages/core/src/backend/engine/core-cancel.sqlite.test.ts": "b51ac98e4542e31e9d52c9afd6ba242e786a1afff83f429c1ff818717e47c322"
+        "packages/core/src/backend/engine/core-cancel.sqlite.test.ts": "6dbe43955aeee495a627517dcac7a58bd0459719f83e9a382543f13a24ece439"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/core-wait-delay.test.ts": {
@@ -894,15 +894,15 @@
       ]
     },
     "source:packages/core/src/backend/engine/store.ts": {
-      "fingerprint": "442bc93022024b86a9c790cc7545c25b1b556f321d8b77d8d983b0f33ee7376a",
+      "fingerprint": "e5bfcac01fbf789f088eacd82d5f8d4011072ce46b7a94bd460bf31a44ca4665",
       "snapshot": {
-        "packages/core/src/backend/engine/store.ts": "6887a677da27a9c45beef0172f7136e8d794451ca0c743da779b73a6326bbab3"
+        "packages/core/src/backend/engine/store.ts": "fb10b20e7db506c29573ae8c846f0b5ba9fe1a5b7059ca3e3674cab0069b6b37"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
-      "outcome": "no-change",
-      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/wait-delay.ts": {
@@ -930,25 +930,27 @@
       ]
     },
     "source:packages/core/src/backend/executor/testing/pass-cases.ts": {
-      "fingerprint": "ae8a1f83c5bd6b3f8c0f17191cf6c2d55231cff811d7cb570572db63e52d9dd3",
+      "fingerprint": "bd26f2033e020d6cac668747681777c7e8602382f747332e50e39fc53f46c957",
       "snapshot": {
-        "packages/core/src/backend/executor/testing/pass-cases.ts": "6a686aa601c58579d2902fa67be22328ae4d5dbf9b7e864a11b05e866e936b63"
+        "packages/core/src/backend/executor/testing/pass-cases.ts": "22f8e3c9e082592d69cf63e366dc671da0b06cb8d3486ca6be42df7af0dcd778"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml"]
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
     },
     "source:packages/core/src/backend/executor/testing/run-fixtures.ts": {
-      "fingerprint": "095c031f31b067b70319ed4e1f167f3b9748edeba185109a0406eecf804d9cbc",
+      "fingerprint": "ebbe360e8c26295aaa701e90bce7002c42a590efd46847acd1703cd8ac14ef2e",
       "snapshot": {
-        "packages/core/src/backend/executor/testing/run-fixtures.ts": "ee25d2621100da45fb6ad83a6ae23cf5602bad917aead648b7a47817b51e70a5"
+        "packages/core/src/backend/executor/testing/run-fixtures.ts": "609aeb9f1eee8944a3ce0091fd8aae5e0be4dd5cd753c7bba58acec4ae60352d"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/lib/db/schema.ts": {
@@ -964,50 +966,52 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-fencing.ts": {
-      "fingerprint": "d36baf98b675f427c19f7e25071304fcf0bb3be6eeab999a6adadb35091cfd69",
+      "fingerprint": "9266c38af55718778c8bce4228fd4b0291fc593b93e2bda0d248c28a38e21cb9",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-fencing.ts": "919dbc021b533b7400aab71d04e6d8ccfa6249e039fd58ca712eee8e162d46b0"
+        "packages/core/src/backend/persistence/conformance/execution-fencing.ts": "7429252711e5efa3252a51121146897ba5d3a07a722e69adc43ef6df6b0ce8c1"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-producers.ts": {
-      "fingerprint": "e75ed8e5254ed151ef367a81d8bd87edcaabe20c53dc5f549d8c8521a1e5aaf9",
+      "fingerprint": "20fb283b1ff5bd317068d17fff99f68d4b7f1539817a195b0f53793abb27675d",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-producers.ts": "64fa9b4d4b6b3da2a3c1ec7618c992c43cb4ac3a7e1f48cf3bdb765da38c7dd5"
+        "packages/core/src/backend/persistence/conformance/execution-producers.ts": "642ca38657efaa074a92c03dfa379d6429ff990542d459400a389e06b8b70619"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-waits.ts": {
-      "fingerprint": "0b6004c8f132fa3dccb789b0f0c3052e0fab8aa84fa13f8907ee82c64bcc5d67",
+      "fingerprint": "7aa4cfc683595e3d04dd7bea01d77192636f82e46d994735142114cf3ae6940e",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-waits.ts": "3f60b645b2b12bba1bbc4f8715cac31af3561c4025f7dba41a577832249782c7"
+        "packages/core/src/backend/persistence/conformance/execution-waits.ts": "525299bee7601442bb43a2bcc1a186245d6f05ecdb8d05ecc06a8243b7bff285"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/executions.ts": {
-      "fingerprint": "f78112006c5b93536d0f127217b1abf3bad70e22167145dd6deee3fa3cfa8b34",
+      "fingerprint": "b85b3cbe2b3098bbe4b7cd84f787a138042170a48be9d2ff550fe06f790520ba",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/executions.ts": "ca82893de9b1cbb630c4d3a44f53061599d02e2774a2cd47612d33978b81554f"
+        "packages/core/src/backend/persistence/conformance/executions.ts": "1926363d4424b29e5aeec72151d16b1bfc5179a3998dfaed2ab1aed6604a33e2"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml"]
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
     },
     "source:packages/core/src/backend/persistence/conformance/integrations.ts": {
       "fingerprint": "27ff43bffad966982ab522147873069e29fb5e1ae6f7d6db8912b22624748f37",
@@ -1034,27 +1038,27 @@
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/admission.ts": {
-      "fingerprint": "aecf1bff9df23fa536412a82ac9d381612b3ef35746a6b24e09e14489b2bfdca",
+      "fingerprint": "4085397c4432f960b625faa53e1836db38f066d721113d753fc954c0ce5f6013",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/admission.ts": "4c87dfdd85dd632d57aa34d1647a95b94c9f841437bdb5ffc7ad32e5371d6800"
+        "packages/core/src/backend/persistence/sqlite/executions/admission.ts": "1c98fdac04b1149cbd8dd690bbcff12ede1e4e7910a7156a558fea82de5d8ea1"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
-      "outcome": "no-change",
-      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/runs.ts": {
-      "fingerprint": "ab23ad3417d67dfbc70b47655ec8d6bc40c178e06883bdc9814df8ba82c39c99",
+      "fingerprint": "536032884153e45e21f95fab397a8b4bd441fd5c1922de00b7d5f411fbae3575",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/runs.ts": "38b8e411aa97039b489783f8d836a1549e80db638dc58114aa6db3df4c0e6a2b"
+        "packages/core/src/backend/persistence/sqlite/executions/runs.ts": "b8ef0a9655d4a50226ddefc85e53e1e82ba1a8671a4e3b3e096f23c12639ab0b"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
-      "outcome": "no-change",
-      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/integrations.ts": {
@@ -1082,15 +1086,15 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/admission.ts": {
-      "fingerprint": "96922eaee3324520287045067bc52d60244c95a42283f7a835173d42d8430ec0",
+      "fingerprint": "30604920ae7eb83b96a30b40a1ad7e677c37bd2d21c3791efcb73847a285b2bd",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/admission.ts": "d52492c0b487df7dd2ce1206f80ec463d344721dc764580fbefa98247de868ab"
+        "packages/core/src/backend/services/executions/repo/admission.ts": "05253f5e2adb5f208ad2246a0d596ebd66fec1b82be42d4a3ce0762df2d9115f"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
-      "outcome": "no-change",
-      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/release-policy.ts": {
@@ -1106,15 +1110,15 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/runs.ts": {
-      "fingerprint": "73067154cfa86b11ad93dd7911b81d06a62e4a0a6bda2f5ec56febe56fb34ca7",
+      "fingerprint": "7581c0777156a4ce4f4313d80574c4f6fafbf7461711d11d0a67f0f84ce29a45",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/runs.ts": "79d4ed87b75c550de3acf0bda46b38dde279ca97ace1d92e150206903e1c4838"
+        "packages/core/src/backend/services/executions/repo/runs.ts": "0f9ccd0bfc3a0a35e348e8cb8e907a03cc21397abaf08964340c8cf25e49e081"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
-      "outcome": "no-change",
-      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/services/executions/status.test.ts": {
@@ -1142,15 +1146,15 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/testing/driver-cases.ts": {
-      "fingerprint": "7175c9149623a7086ec571d58f62dd4d76468f5edb7dec5c62bab482b22f9339",
+      "fingerprint": "2e9901db448bdd546a84de660fa28fd362c954d736fb7cccd3528a69f7a20213",
       "snapshot": {
-        "packages/core/src/backend/services/executions/testing/driver-cases.ts": "f848015ef6d1fb85fe1d544c19c01e6bf813b9959a7adc7edec6b594fb996ad8"
+        "packages/core/src/backend/services/executions/testing/driver-cases.ts": "e70e6cde3fa63799b0b0f9be6ee856b4bc17572dd370bc14823bc83b6e044b7a"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/services/integrations/credential-resolver.ts": {
@@ -1416,15 +1420,15 @@
       ]
     },
     "source:packages/shared/src/lifecycle/execution-contracts.ts": {
-      "fingerprint": "e127357f36d75abcf3a19bd5d212b9dceca028f30221f519da7fdc3ab2bac41e",
+      "fingerprint": "e06fe5e12fa8d61e7988513bd47b419f4baaa43b427c6fa9ab600025daf99168",
       "snapshot": {
-        "packages/shared/src/lifecycle/execution-contracts.ts": "3de60919c025b66e4d148914638e6e1ec930184dd759b7825758e17eec7c1c98"
+        "packages/shared/src/lifecycle/execution-contracts.ts": "cb68a7b17ce993a36d26463eb7503457bcf3b85052773b751b495ade4ca1601c"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
-      "outcome": "no-change",
-      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/shared/src/lifecycle/wait-subscription.test.ts": {
@@ -1572,15 +1576,15 @@
       ]
     },
     "source:packages/core/src/backend/engine/recording-store.ts": {
-      "fingerprint": "08ccd1e828232430ee9c44b58665eb8165ab9904fb620390f169f561e1fb3d2e",
+      "fingerprint": "7eb9287a7f38f7bbd5eda49fd8d4a6153c4ec03041695afef5d6b2627d44b9a3",
       "snapshot": {
-        "packages/core/src/backend/engine/recording-store.ts": "4a4f8105df0f298a53a6e38e718faac5d6a6ae0c08371e188a11b80468b99ab0"
+        "packages/core/src/backend/engine/recording-store.ts": "75bf5b1f28553048a5581c025a27225a7fa1f0d506d3505f4b17825acbd9eb16"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/lib/db/migrations-sql.test.ts": {
@@ -1608,61 +1612,63 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-cron.ts": {
-      "fingerprint": "6fd6f074e0f452cd79154ee4f84a97d9fe478e37df68e1677c4b079237d5efd1",
+      "fingerprint": "8cd91aed61122775cf7b9e861acb4325824a3d051c332c529c11421c3612c425",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-cron.ts": "9d4e945f61b7f144368aa2e9f00d05367a709b4fdc1eda6253e08cd88b816bdd"
+        "packages/core/src/backend/persistence/conformance/execution-cron.ts": "b77caeab17907d691cd66c25c5386b8e34dab8d9b84950a146ecc7294dbebcd1"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml"]
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-schedule.ts": {
-      "fingerprint": "878c568bd1eb5770e07495f8bcbb908cdc4a4d3f7efe3f331b539402ffe060f7",
+      "fingerprint": "446d431543b0b7e76fd0a492061cac72ab25d5e236ea4dcae8e0653d264c4983",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-schedule.ts": "44b64fb87a2d487eff105bbc8d9361569760dadd80cda7b3d9d78cf5f210dc25"
+        "packages/core/src/backend/persistence/conformance/execution-schedule.ts": "ef3e792e5688a07eddce7ddbad2af4aa8dff54982c03a37af8781b04ae507726"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/schedule-support.ts": {
-      "fingerprint": "f349c22e752f7e1db284968362aefe89c2c92a7c2504f519f5077b3fb35cf91c",
+      "fingerprint": "156706be9c657bcba2275b06376ce30addf83cdeb7558ec9219ff474ef853190",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/schedule-support.ts": "169ff8f970299a0d57a842098cf434f9870b3a13772c81b8291f56a42bae26b8"
+        "packages/core/src/backend/persistence/conformance/schedule-support.ts": "26700c590ce724e6e073546021d784efee89a0e1f885038059004daf3b772a2b"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/workflows.ts": {
-      "fingerprint": "2915a7b1c5674023137b2f84d3fd59db0012c759d101c120bacf2013801c51bf",
+      "fingerprint": "d68087d19f7a3aad96a4443d2e917236e5c19331c80b308da18a23e4a53e6789",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/workflows.ts": "914838dbf01f4cf37f33e345e3aaf841133d965f461dd204f36b129979fda44f"
+        "packages/core/src/backend/persistence/conformance/workflows.ts": "2109aec41357f6f3b207e4bcd3fd82b30da478b5d5960236407bf2878983ced7"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": {
-      "fingerprint": "654fd15736f842d661cb2e1accf4ee532b8f63879b4f7d81fec678f5b3c4e1e7",
+      "fingerprint": "9c9657040bf6f7c6c2d4dc7ee6d5e8e8195e3a3ab5468169f35e75a4149c1b6c",
       "snapshot": {
-        "packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": "46432c4a702cd316d5d7c69e98d916363717d89bdb9375611aa425663f8bff7c"
+        "packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": "9467106c27594ab41aa147ab110ab80a6f78a2d2abbfca340c98501393ad6530"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/persistence/postgres-migrations.pg.test.ts": {
@@ -1678,15 +1684,15 @@
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/rows.ts": {
-      "fingerprint": "fc0797109dcc8c2366837351787e66702ca87ef77bb0a6fbfa49ce24bc73be0c",
+      "fingerprint": "8d21a7c95fff878c6e8e1a04503ff680817c7855c7185583180ee8761ccce4df",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/rows.ts": "b230387e23727b93a3fa04c8170915b3a017103a35ea8e04874649352bb454f5"
+        "packages/core/src/backend/persistence/sqlite/executions/rows.ts": "6bbf1a0643060248f8f45061a02bef020fc6efb30f09361f5a3b4ea15e6e4492"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
-      "outcome": "no-change",
-      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/generated-migrations.ts": {
@@ -1762,39 +1768,39 @@
       ]
     },
     "source:packages/core/src/backend/engine/core-cancel.replay-cases.ts": {
-      "fingerprint": "ae10b94da5e16a19ae22edea951743ee2e964770f3eeb51c4dedeae2d13c3fa6",
+      "fingerprint": "26f4ef4485925a38bd916b9258a2927199f89cc698c14577f8cd7a3c92e1b598",
       "snapshot": {
-        "packages/core/src/backend/engine/core-cancel.replay-cases.ts": "05943a681c6911a7962771ac8a72252907ae468e75c8144578269578c5c485f2"
+        "packages/core/src/backend/engine/core-cancel.replay-cases.ts": "4e2a7ff9e3ca261875336f526e3155279a89358bdcadc9e8e442e979354f9349"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/core-cancel.test.ts": {
-      "fingerprint": "3b9fc4a3ace45d568b437fcce8e1d7b7dc4af6178d5885788bb36687182801a9",
+      "fingerprint": "891c0d64619b69c52a241dc7a14a13ede24b133d8abca69c039ebf8c30df0909",
       "snapshot": {
-        "packages/core/src/backend/engine/core-cancel.test.ts": "9626475ab0f15cd7d37c3cc82ca61fb8edf6db95bc76773306a30165feed2968"
+        "packages/core/src/backend/engine/core-cancel.test.ts": "668b7e19a5e19f58015b427d6963bbe6dfbc649ebc2e3124b70a75104e0bf095"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/core-parallel-wait.replay-cases.ts": {
-      "fingerprint": "affebc63aae9ce6c1023a6c1cc293587ac6cb058464029e9d6b5d70a8fc243e6",
+      "fingerprint": "a64232f84e145189c63fc3b632e94624b7bd6438ffb0657afec874b438d9251f",
       "snapshot": {
-        "packages/core/src/backend/engine/core-parallel-wait.replay-cases.ts": "75ef9de13d8e9317adae55215671ed168545eada61cad63bc65ed7548bf131f5"
+        "packages/core/src/backend/engine/core-parallel-wait.replay-cases.ts": "83093750b03d94c27da230906453e66a5afcaec48bdc463ca4e48e0acb6ecb42"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/core-park.test.ts": {
@@ -1822,87 +1828,87 @@
       ]
     },
     "source:packages/core/src/backend/engine/core.test.ts": {
-      "fingerprint": "495ba48ef0dc896689588ab0f009898f154d0067ae86cebdf6728da3684a5c04",
+      "fingerprint": "4be889c70ac5cda1a622ce358e0be8d0383470f5c5957fbf1ea6f1e3904e7e87",
       "snapshot": {
-        "packages/core/src/backend/engine/core.test.ts": "1d412850893774e8e83b46ddbbd807177e9a50ff1a61973c8bcb7eda4f85a17d"
+        "packages/core/src/backend/engine/core.test.ts": "331ef79b0edd10e368bb5fd84fe92156354064f4b961169ae45b3c0c40b3770b"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/core.ts": {
-      "fingerprint": "5d5b22e60ce46d50579de9f138d9d4e7b46395ef5731994d6b2040003319abd3",
+      "fingerprint": "2a77705b1935b3d082074752bb649d02f821835bf7b4d3ec267bbc545a3c90ea",
       "snapshot": {
-        "packages/core/src/backend/engine/core.ts": "4cf8a2578df599235e0219869804281f9dc40ea7775e96139e4121671585eafb"
+        "packages/core/src/backend/engine/core.ts": "d41e65d45cc0015af09623bb7e6694947eb9cd1622eb8320c7d9c079b9b3f7bc"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
-      "outcome": "no-change",
-      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/db-store.test.ts": {
-      "fingerprint": "aebac8a11f66c84672e273e7d995731ee74414a43ed0bdb107558ca6c7718655",
+      "fingerprint": "d9a0db8108204e0de3fd44384e1f828be8845f42899c8654e7f55a75896fe4c0",
       "snapshot": {
-        "packages/core/src/backend/engine/db-store.test.ts": "a4138921c73356553cdf6f407ea0bbcb0dae5c66450a68c7c180b2580c2b0ab1"
+        "packages/core/src/backend/engine/db-store.test.ts": "d9c840b9fddb5c43f1473b518b27d871f6f83de9a278759bb468b69b15ed659e"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/db-store.ts": {
-      "fingerprint": "75cb89014b7745187b451004e3eaf3fb5925c7340ac4711c93a88af5c7042246",
+      "fingerprint": "c5a698e902a4b8c867e23a78b1e353bb1ab796b511f7355d1e7558ff36f0d34f",
       "snapshot": {
-        "packages/core/src/backend/engine/db-store.ts": "6c486d925efb0217bc1874ee4335886bf8601e135e3c53a86762668bebf82199"
+        "packages/core/src/backend/engine/db-store.ts": "4cd6243b27008eb09d3f7371f9d2648dbf9405847872cb9e2b139254472b569a"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
-      "outcome": "no-change",
-      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/entity-eligibility.test.ts": {
-      "fingerprint": "8c5619d750f45cc586a5e4d90507a369247ebe7693e6a15e107f6c61e5b5c75c",
+      "fingerprint": "15aa5100fce1b6e0002a2f09f326f74c04373fb187d3b5aa2f6ffea2aae1d307",
       "snapshot": {
-        "packages/core/src/backend/engine/entity-eligibility.test.ts": "60dd7a78c3b83ebb531ecb485bd208d71f5b6d5995afab7317e0af996964feaa"
+        "packages/core/src/backend/engine/entity-eligibility.test.ts": "49f46385242f81f4998f02170c432452e6fefd6b5a5db8dd7f6b49187c8cf8f3"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/terminal-record.test.ts": {
-      "fingerprint": "adeaf79870fc7c3e0d1cba391274656b03f2568dc12b38a095535ed3d1f307cd",
+      "fingerprint": "37272ccd23b30e57f825b5e10621eba056c9738b219be5359094676f0453890c",
       "snapshot": {
-        "packages/core/src/backend/engine/terminal-record.test.ts": "49855e1e14c4e3ff9fd9f83a496255e79abc48968687dffab22eebe4fb42e0cc"
+        "packages/core/src/backend/engine/terminal-record.test.ts": "a7f72572afd8bccc22a222660a82d85c77efd204b209a47e21b9de7555ed5985"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/terminal-record.ts": {
-      "fingerprint": "1dd37abf6ff21a8c43be6fb497226976d46464afa94d4911911666b9411b5043",
+      "fingerprint": "0b54f782c658603c02cd600eb841fa4c983855cfb2bf01d3922194cf9eb46d79",
       "snapshot": {
-        "packages/core/src/backend/engine/terminal-record.ts": "38f679f20f0993a034e1bd6108da1cc538c56c395fb6dba63ed5d936fbc0e327"
+        "packages/core/src/backend/engine/terminal-record.ts": "90723a70ed6d576106e7a7190622861d7aeb2e918ca8fdd9241cc9fe661fd8ac"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
-      "outcome": "no-change",
-      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/engine/testing/wait-fixtures.ts": {
@@ -1940,71 +1946,75 @@
       "evidence": ["_artifacts/skill_tree.yaml"]
     },
     "source:packages/core/src/backend/executor/run-body.ts": {
-      "fingerprint": "e0b93eda3e3dd6b8881730a20397ded9c92eee5ffc443e2bd00b7f39204321b1",
+      "fingerprint": "b9ad2d72dd1f5094a0a916c297e342afd9a6264df22b9b4fbffd3306bccca7d9",
       "snapshot": {
-        "packages/core/src/backend/executor/run-body.ts": "165900df33a05c33c6ad4ae9029ddf03cb2cdabcbdd9524d629a3fdf7e6430fe"
+        "packages/core/src/backend/executor/run-body.ts": "f98f44b276df2c31c45516d9d31c36d037d5039ad719b46d45200281509dfc56"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
-      "outcome": "no-change",
-      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/services/executions/end-runs.test.ts": {
-      "fingerprint": "10853556128af2e059d878a3607aa61c40b29cfa39c50b8d0c1be54b0dec1917",
+      "fingerprint": "db4c919391f739c024e3fc43ffbcbc2c92f17805d75bbb91158504c4f002f8a3",
       "snapshot": {
-        "packages/core/src/backend/services/executions/end-runs.test.ts": "76c5cb2f2f90e6fa8a787ba9dfae6c1c2480678290eafcbf3f22756f6e5d0c5a"
+        "packages/core/src/backend/services/executions/end-runs.test.ts": "70c24168e56f83cb56364065bc1512a98a6f619b0cb5552e09bdadbfc3f48b70"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml"]
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
     },
     "source:packages/core/src/backend/services/executions/end-runs.ts": {
-      "fingerprint": "c8092a0b72c5448ef355f37d18ad3a29523232bda4e98a439b263f440ddd3028",
+      "fingerprint": "d88a602f106fa6e140f6eb0b90d47ecf9e4f633595d293dbadf9aafe4aad046b",
       "snapshot": {
-        "packages/core/src/backend/services/executions/end-runs.ts": "c2fe320a471e23cae1e56ed16d1d2eb2e786fceb857e12123360bcdcd344de2a"
+        "packages/core/src/backend/services/executions/end-runs.ts": "dfbb3256807826ef69091e2d714f9a0866409290c0b459f140e4f1fd8d82ed20"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
-      "outcome": "no-change",
-      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/contracts.ts": {
-      "fingerprint": "fc06b446b41a1748955b7d6e5ed495635b7370336aa41a6ba8ebc155cf5fc02e",
+      "fingerprint": "408c6b2835b695d2ca7bf1c0be496cd5c8e4ff26503e91267486876ce413a0ae",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/contracts.ts": "1cad48075282733063d70f7ca2d5cb1f817095e61ac0c2e3e94aef9c39bf03db"
+        "packages/core/src/backend/services/executions/repo/contracts.ts": "f1749f279d076820ac36a9f84346b6e6e0d17b4c9102d8c44e7b9c7e5e3abc2e"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
-      "outcome": "no-change",
-      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/services/workflows/lifecycle/concurrency.test.ts": {
-      "fingerprint": "0fd5dbf43c5a3fe8613284e202d122bb7ef3d84984e9a4963a14d12d76780fe9",
+      "fingerprint": "c0734e57132d97a7a876d52a60cdee7d95cafdb529f11258c2543946b3f0bcc6",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/lifecycle/concurrency.test.ts": "82fe69a037dcceaa26b34ab31cf5ce6b1b329d867d6ee51f292c1c427c6520fa"
+        "packages/core/src/backend/services/workflows/lifecycle/concurrency.test.ts": "b9d47e17a233e3595f97d16e2241422887abb1f05def79042be70cdb9123b217"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml"]
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
     },
     "source:packages/core/src/backend/services/workflows/lifecycle/concurrency.ts": {
-      "fingerprint": "3d4cd095d527bfec3efafde70c5d99f1b305becb47e128f5bb929206a0bc9d96",
+      "fingerprint": "4a1790a1675c055d89edc3d510d4c80ffd28c30be66eb2fcaf12b88a0e9d9eb5",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/lifecycle/concurrency.ts": "9f7544e88febe4c219e8170b98bf685f4a3122a23333ea86d337d7ebe0fec002"
+        "packages/core/src/backend/services/workflows/lifecycle/concurrency.ts": "b916a94dbb0471d151f8d1ac6515f7b00987f1e2b91909c53560dde1e8a184a8"
       },
-      "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
-      "outcome": "no-change",
-      "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     },
     "source:packages/core/src/backend/services/workflows/lifecycle/deliver-event.admission.test.ts": {
@@ -2059,6 +2069,440 @@
       "reason": "Every run-ending path now commits its timeline entry in its own transaction, and failedToSupersede is removed; no published skill names a timeline entry type, failedToSupersede or the cancel entry.",
       "evidence": [
         "grep of packages/core/skills and packages/plugins/skills for run_superseded, run_cancelled, failedToSupersede and timeline: only retention mentions in wfgraph-core/SKILL.md."
+      ]
+    },
+    "source:.claude/skills/verify-durable-executor/SKILL.md": {
+      "fingerprint": "93a2cb1e9db6f8b12f30555d8e093bd648eeefab0f43181847d608238a2f2982",
+      "snapshot": {
+        ".claude/skills/verify-durable-executor/SKILL.md": "7156d2011733bb9e736ad3492b60e9f5dba7f314b97b94968eaf8b4e5263a3b5"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Repository working notes and the executor model check, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no .claude or docs/internal sources."
+      ]
+    },
+    "source:.claude/skills/verify-durable-executor/model/DurableExecutor.tla": {
+      "fingerprint": "c475a8e7ebe8a0a0bdf1f8a5d3a8bb03f6468ad1399c12e4ce8eb3e51913626a",
+      "snapshot": {
+        ".claude/skills/verify-durable-executor/model/DurableExecutor.tla": "6c0081f9a1dc5f80693e7e65b62b2113c1a977fd36648be184a3428d2e9bddfb"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Repository working notes and the executor model check, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no .claude or docs/internal sources."
+      ]
+    },
+    "source:docs/internal/plans/separate-event-intake-from-durable-execution.md": {
+      "fingerprint": "a3bde5af3d852f89e4ef1cd455131b138007c04b0f44627c55401c4f6b950c37",
+      "snapshot": {
+        "docs/internal/plans/separate-event-intake-from-durable-execution.md": "610ed0c2fbd4826d6c32e87bc9c0730db667518c0f731c5d0998fbc2e247e052"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Repository working notes and the executor model check, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no .claude or docs/internal sources."
+      ]
+    },
+    "source:packages/agent/CHANGELOG.md": {
+      "fingerprint": "aacc9c9b5b3dd83ef093136725f41cb7efa22933c8424e55525ae3cb2667ac79",
+      "snapshot": {
+        "packages/agent/CHANGELOG.md": "5bd1fc8788c33b470ba4539e4fb7066247c15c29645742abc3f847a132670873"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Generated release notes that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+    },
+    "source:packages/client/CHANGELOG.md": {
+      "fingerprint": "d22e3f835880f80b38975641b06e35e85821e6202db33f116b5ed26322b525cc",
+      "snapshot": {
+        "packages/client/CHANGELOG.md": "410e644b945a836641b78ab53c50606c2ed9e3735c64c9ae61943f9dc88fa7bb"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Generated release notes that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+    },
+    "source:packages/core/CHANGELOG.md": {
+      "fingerprint": "ba7f5437ef115d1a8e92614e7270069d2babc10bccc6f162e743b973798b6f38",
+      "snapshot": {
+        "packages/core/CHANGELOG.md": "08b917b8bfbd008493c83aef8425ceda0d3fb436344717114f48aa4c48e76e80"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Generated release notes that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+    },
+    "source:packages/core/src/backend/engine/core-replay.test.ts": {
+      "fingerprint": "91308610f2160403888b959a6ba40a72785921a266764622b6ddaeb41c6a1b86",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-replay.test.ts": "805742c4404b075aff211c825f554fc3964bad1a1514de19617f518b3d79e95f"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/engine/traversal.test.ts": {
+      "fingerprint": "617b535eefa2f22e10ad5c54facb268768a37eb311a603d262c67a064f491cc6",
+      "snapshot": {
+        "packages/core/src/backend/engine/traversal.test.ts": "f2c54b8e7292dded34005bdc8e5c6688fcec2e1634d964c18b5f68a186d078a2"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/engine/traversal.ts": {
+      "fingerprint": "0b0106139c17e22ea2e83681814579317cb1e60def8ee9d8ed489365f3f90ade",
+      "snapshot": {
+        "packages/core/src/backend/engine/traversal.ts": "0b538ab2385ad644186d96e0b96a77a99b2ae6e8514b41c1bf0686a01cf7f396"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/executor/runtime.ts": {
+      "fingerprint": "f3bcc70190253f53be320716afbce979959bd14f2cdf0f25e568d713d2826253",
+      "snapshot": {
+        "packages/core/src/backend/executor/runtime.ts": "ef4fe783897e1a0d7bc0cf1e59de6e752c735c68e71fae83e0f89d8d624584a2"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/executor/testing/database-replay-backend.ts": {
+      "fingerprint": "bfc6e7801331dc42bc339b0e607b23c93a8f6cd8bc0210f263990efcc570f383",
+      "snapshot": {
+        "packages/core/src/backend/executor/testing/database-replay-backend.ts": "516c254c4e5440eca22f7180361ec592032dda39225a67293924f25fd476da19"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/lib/effect/test-layers.ts": {
+      "fingerprint": "7ab081749ae40d092fafa6f9b653c4e17d8c70d43fe761385bc7a49e58e2ca12",
+      "snapshot": {
+        "packages/core/src/backend/lib/effect/test-layers.ts": "4691cb504857dee625c00ff340dab6f43eaf517cd5d6daa56b94c898ea47a62b"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/draft-snapshots.ts": {
+      "fingerprint": "d6c250ac4a13e4fc1bf579ad15752d01efb294939ac30d9dc7af668900490b34",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/draft-snapshots.ts": "0579debf77368d7594d08e2a1e29016198573ba89374ab1549a46efc211d967b"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/execution-executor-state.ts": {
+      "fingerprint": "600294b3bb513a4fc2dcfa4c5b57b2bd9529c74586309c1b82f43df0eedac586",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/execution-executor-state.ts": "5e8b30de579395a1b44d2a7d4c46dac8890ab17097d16bc578f2abd988d1286e"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/execution-retention.ts": {
+      "fingerprint": "9244bc7ec842fa194ce6bea9113990d84d543fd3925cc1c0b4070b457ddc05a7",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/execution-retention.ts": "33edb7265e085dedde156897ef9e4231889456c267c09995c0ce7b0397391658"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/execution-run-endings.ts": {
+      "fingerprint": "fb18005637ad41ddb8b4e804b8c54932d7b8dcbcc855c16bd07aff987a19768d",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/execution-run-endings.ts": "237bd7ab017e22260a828d8c85852925bf2fffa6df204065c13eccf6ddafb4e6"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/support.ts": {
+      "fingerprint": "93aba1c54d1d7a309a28c686079d9f23534044cd51fca9729c5c36347c7c82cf",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/support.ts": "3bfd2cabb02d1b6dbf4093b0af998c01d87a535793d06a07e8d5a4356400cc1a"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/persistence-conformance-test-support.ts": {
+      "fingerprint": "6a4a0447368b5a9b57d1b5dda38b6b93299c328d90b98d2d1be11359f028509e",
+      "snapshot": {
+        "packages/core/src/backend/persistence/persistence-conformance-test-support.ts": "e034ba10044dd434d624aeb0d4e0c16fb6dd25ec0a42b9fd89147eb7a794e241"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/executions/fenced-writes.ts": {
+      "fingerprint": "a59da4f0664a01877b4f4bd6be26d08d36a81f9511414e2a02ebe7ca24d404e0",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/executions/fenced-writes.ts": "99827ed5be071288ffbaf1c3bdad0a98ca7c5e4c880a4e205782eed6d9c4f510"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/executions/schedule.ts": {
+      "fingerprint": "d48a4fa7acfb7960796d70aa2e8f7483d4082db64f38d660429c4b8cd6a58aad",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/executions/schedule.ts": "ee43d9e1bd7842ae83e7a2d8bcd9968fd790899a0ad6d755046be0dc82aada02"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/cancel.test.ts": {
+      "fingerprint": "f104640ce30662bee5e0b4effb1e641f29a2c65f185abacbf3db9f8c4ef05f2a",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/cancel.test.ts": "b02663005a2deda6643bdd7387e9c321886596a6e2cdb776a01e5772f2ad9ec2"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/cancel.ts": {
+      "fingerprint": "aa236996d1991ed953011ee21448c03e11f0b346da14fe13ac741bb4013a721b",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/cancel.ts": "ebd1c7cfcec044bd7903e3cfd01042dae9a729f0ffe83ff10cd076f714bc798f"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/execution-spans.test.ts": {
+      "fingerprint": "469a6db57a66c0c917a0aa89c0ecf042e6a39afbce90824f382b6436ebe3bc3c",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/execution-spans.test.ts": "6409e5ca7c1ebd322d4d337c9d6e557ef4b153f69f7b7b6681d910a909f176d1"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/fenced-writes.ts": {
+      "fingerprint": "44d5bd67a869f8ec5fd9e796e6cea6056181e0dc671b772944e33aa5e1b35627",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/fenced-writes.ts": "0796aa9a44010e26a2d227d34d42db3f21d6ccbcd95cc3963f4fc9cf3214542f"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/fencing.ts": {
+      "fingerprint": "41374025c0b86caf359f352dd759e442ea3d9b6d9730130d49b7bea7ade75c04",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/fencing.ts": "6e38c9e4670a27cc44e3298363a0550f6dd2c01e08dcc8e8f862d1f7d68f4530"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/index.test.ts": {
+      "fingerprint": "14ae7b513e6764c24e0bf9b0d390ae221d4895df03b62498cc4c060181cee0ad",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/index.test.ts": "e3fc7dd34e7bcdbd5e9d35c992fec77b0759cf3e2fa06b862b3313b430bf076b"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/runs.test.ts": {
+      "fingerprint": "373b07d223d5ba00de4205bf8624cfddd24b7d1b7e086833aa59d192390efccf",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/runs.test.ts": "9eac6be89cd5e32f5ce6560149a607d7bb9e06b5cb7eda97a4e4210c3852e7cb"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/schedule.ts": {
+      "fingerprint": "3d2a0add3bee1714acdfe0f2adc81ef83cd995bbc2866cab8678c5ba83e35359",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/schedule.ts": "ab0619b0c57641dc41b8b4f9f4a22aab8b0e897da88463fd9b9ee5c604413831"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/run-rows.test.ts": {
+      "fingerprint": "21a72aff805a570c92c43019aa4698974dfc236e08393b8b329f4d4f1bb1d6fc",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/run-rows.test.ts": "b6c06b51bf10b4168747877ff61603c9f834011e8511806d0a7e7b16e99fdbb8"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/run-rows.ts": {
+      "fingerprint": "8e2a9eb6682948fef683955c1b409d7acb943b3721030d6e61af099d530d6e31",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/run-rows.ts": "4300bf18cb7ce23b0b1a22f0e85779751adc75b6468d997a26ff17c8b1524cef"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/deliver-event.wait-retry.test.ts": {
+      "fingerprint": "c0fcf1a700aaad1fbac00f9d9723457b96e75343c6d3d9674415d717393e80a8",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/deliver-event.wait-retry.test.ts": "01bb6a13207fbc1dddc8fb998d6f6ae3b067bb32f1acaeea7ff5b5604d749910"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/manual-start.test.ts": {
+      "fingerprint": "451411c5c3097b5a3e0af2c3c30e9fdcdd8915aa8d78d54e84efc6eeea24d304",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/manual-start.test.ts": "64eb46030f87d535e6134fb7947e891992c394c7b4ebc3e628609b6471af1a97"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/core/src/backend/testing/reliability/host.ts": {
+      "fingerprint": "acdfec85e5cbc8a16e16fbbd054f729e9be97466b135eb606866099bafb74bfe",
+      "snapshot": {
+        "packages/core/src/backend/testing/reliability/host.ts": "f4385db03f0930a5ddfb7b4c7db9357ef978b73ea94615de0b69786bf6e989e9"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/plugins/CHANGELOG.md": {
+      "fingerprint": "69541d2229c1606afaf0389ebfe91319b8a75435ee26d694627b9be36a558947",
+      "snapshot": {
+        "packages/plugins/CHANGELOG.md": "89ccab71eab530ddec14fa3afa71e3b2c781b2dcc868e0a4d17b3bf386525eea"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Generated release notes that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+    },
+    "source:packages/shared/CHANGELOG.md": {
+      "fingerprint": "226dbd5fa65bc1b71aba862b8afd1c845ec7e4486e366f3950da8fe6b276c13f",
+      "snapshot": {
+        "packages/shared/CHANGELOG.md": "3142a7abd2fbc5fc93aa357745fc1af13597de99610e32cbea492d7709c0415c"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Generated release notes that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+    },
+    "source:packages/shared/src/lifecycle/run-ending.test.ts": {
+      "fingerprint": "a6a4d52e43e21d9a894d7fc1502aba1fe6af4a72440c3f77ced6779a6218bbfb",
+      "snapshot": {
+        "packages/shared/src/lifecycle/run-ending.test.ts": "5fa00474aceef4db680291e65d4ad4a367a9c86670fc83d30221f322230ce83c"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/shared/src/lifecycle/run-ending.ts": {
+      "fingerprint": "d4f620db8263952d99414ca5c1557764084395ccca7a8cc3ffe13ce231d79391",
+      "snapshot": {
+        "packages/shared/src/lifecycle/run-ending.ts": "1cf36c45c30aac056b873046c0c10c653f6153f048d4914f6666d81e241cef17"
+      },
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "outcome": "out-of-scope",
+      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
       ]
     }
   }
