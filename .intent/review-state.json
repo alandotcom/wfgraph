@@ -2603,16 +2603,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/core-migration-snapshot.replay-cases.ts": {
-      "fingerprint": "c40ee9bc2274e9e2a9b854320523ae7a4d2c58798edfcdc2cf631e5387c1d6a1",
+      "fingerprint": "b5e7d42118c3960a36c9b4c62e228afc5284cb395eb562cd3b8ddfb6d72d1184",
       "snapshot": {
-        "packages/core/src/backend/engine/core-migration-snapshot.replay-cases.ts": "57a1f9f01881edea88e0c71b6513ee1512924b8509c5ed280bc5a5dd1905f610"
+        "packages/core/src/backend/engine/core-migration-snapshot.replay-cases.ts": "6cf07c5040ef0ed977cde9131ea85fa8fd08e2b4f240c55e8a6f64c40aff559a"
       },
-      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
-        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/engine/durable.ts": {
@@ -2795,6 +2795,188 @@
       "evidence": [
         "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
         "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
+      ]
+    },
+    "source:CONTEXT.md": {
+      "fingerprint": "f8b97ca31e5fae684951e85a170c22cd00ec05bd528b2eb36b3094f1a157d0c9",
+      "snapshot": {
+        "CONTEXT.md": "2bc3bd0df9fcfcb4c2179138e043fa62367b56673dedbc062aa8d7ee63f5d681"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/agent/src/prompt.ts": {
+      "fingerprint": "a886497621a109269a572b0479781ca9c20b478040d610b8910778aef0277c73",
+      "snapshot": {
+        "packages/agent/src/prompt.ts": "ca552ffbe90b95417540b2fd23039f3bce4a8981ac17875ce30d91f55c3e06e2"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/client/src/components/workflow/canvas-reveal/changes-summary.ts": {
+      "fingerprint": "2335cc5ae72e38b705007368dc0ceeeb247677f3e33ed606adbf64eda429ecf7",
+      "snapshot": {
+        "packages/client/src/components/workflow/canvas-reveal/changes-summary.ts": "c3647498a1d667ae6242d3c5c52ed03361666fffd7c7b29fadc081be759d4ce7"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/agent/publication-validation.test.ts": {
+      "fingerprint": "853b37425ee381d0fb508aa005794b4591ec3533372edef965014130ecbfc7ea",
+      "snapshot": {
+        "packages/core/src/backend/agent/publication-validation.test.ts": "2b6a6f1388302a84b551f98453f6506f88160f03a97942e9fff29ab485091fc0"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/agent/publication-validation.ts": {
+      "fingerprint": "63442cbd2b5b09b1bb5b2d83beaa3e5126f50810ad32a4d94eda59b3cb618e4a",
+      "snapshot": {
+        "packages/core/src/backend/agent/publication-validation.ts": "2f293e02e9f5582ee01002eb482ccaf141235bef123f7427b0c46eed16477341"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core-migration-snapshot.test.ts": {
+      "fingerprint": "3ec08e9acaad4c0826d15aeda07b5c840a558e44f0cf68fe6d51a6afdf099d3d",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-migration-snapshot.test.ts": "cd5307378826a4ce88c7da30f1dfd11d4f2fdc59433da438e550903f4c9bba1e"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/preflight.test.ts": {
+      "fingerprint": "91935eddcc390f336bac3fbef4aff48ff402ce849989db3b09063f9b221eef8f",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/preflight.test.ts": "8d53604d23bbaaf3824c7b595608eb1f3c0436ef325eb9ea713e1a9e46dc9b66"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/preflight.ts": {
+      "fingerprint": "7e5de2d4cf2dbf9c2b14b16fa46bcce0879dbc36a6f882fd8540ada4e37165d3",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/preflight.ts": "e0375418e135d8b03fe778454e923dd0e88bcd7dbe34191269677c9c8918fb81"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/publish-checks.test.ts": {
+      "fingerprint": "5f57c2ca0564a63fda9068b4576cbc5e3ffddfbfee40434d4192e28f23ef4fac",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/publish-checks.test.ts": "89d9634ee66319eaeffe20a5f25cb51d08c18af1a3d7fc5f7f6bd5436cb97b37"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/publish-checks.ts": {
+      "fingerprint": "7983876d4a629473798b7a23498f6d4f04cd4fb920803c7c78ea81be644a1998",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/publish-checks.ts": "03f1dc38ef28418e83dad63f01092a706520442c8d41bb33c2c4d376dae9899f"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/validation/workflow-template-validation.test.ts": {
+      "fingerprint": "e7b6ecfbee82d27e7016b4da0923becf3b8ed245d45c4624c0aa35f800acaaf5",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/validation/workflow-template-validation.test.ts": "4b2458c3b84c2548a32d79d952ac175ab4beae0f36c7b499d6a0e217d01619e3"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts": {
+      "fingerprint": "4e36a0cdc7c6934666d02af0746c11f7f9f95a5c25c35c71d88a40c7b83ff33e",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts": "ec83a0c5299bd022c2d158174eda365c2bc89d19fdb4471352badd2740bc2cc2"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/shared/src/graph/workflow-issues.test.ts": {
+      "fingerprint": "a8f40604fdd288395dd81a5a3be8232b2ed82828fc3b6c6f8339eb698f8c6bf2",
+      "snapshot": {
+        "packages/shared/src/graph/workflow-issues.test.ts": "413609b2aa7755d13194de150b60144c824cf7e28d10b6c2ea8bc7506846c0fe"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+      ]
+    },
+    "source:packages/shared/src/graph/workflow-issues.ts": {
+      "fingerprint": "52614e3c953591bc4a0120064453aded901a5b55e4e1507024e64d606b8269b2",
+      "snapshot": {
+        "packages/shared/src/graph/workflow-issues.ts": "ee98a9b5c48dc17dc1e1f0fd1ce74ba16e4df901202cf0a4a5dc9c9a43adbe15"
+      },
+      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "outcome": "out-of-scope",
+      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
+        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
       ]
     }
   }
