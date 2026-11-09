@@ -196,9 +196,9 @@ export function admitWithConcurrency(
       executionIds: inFlight.map((row) => row.id),
       ending: { kind: "supersede", startEventName: execution.startEventName },
     });
-    const supersededExecutionIds = superseded
-      .filter(({ answer }) => answer.kind === "ended")
-      .map((run) => run.executionId);
+    const supersededExecutionIds = superseded.ended.map(
+      (run) => run.executionId
+    );
 
     return {
       status: "started" as const,

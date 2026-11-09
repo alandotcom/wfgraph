@@ -13,7 +13,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
-import { readJsonObject, type JsonValue } from "@wfgraph/shared/types/json";
+import type { JsonValue } from "@wfgraph/shared/types/json";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   isoTerminationClaim,
@@ -23,13 +23,14 @@ import {
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs";
 import {
-  decideRunEnd,
+  answerForOneRun,
+  planRunEnds,
   type RunEndAnswer,
+  type RunEndPlan,
   type RunEnding,
 } from "@wfgraph/shared/lifecycle/run-ending";
 import type {
   ExecutionSummary,
-  ExecutionTerminationState,
   GlobalExecutionRow,
   InFlightExecutionRow,
   NewExecution,
@@ -47,9 +48,13 @@ import {
   workflowWaitStates,
 } from "#src/backend/persistence/sqlite/schema";
 import {
+  optionalJsonObject,
   sqliteExecution,
   sqliteExecutionListRow,
   sqliteExecutionStatus,
+  sqliteRunMode,
+  sqliteTerminationColumns,
+  sqliteTerminationState,
   sqliteVersionKind,
   type SqliteExecutionListRow,
 } from "#src/backend/persistence/sqlite/executions/rows";
@@ -93,62 +98,6 @@ function stillParked(): SQL {
     where ${workflowWaitStates.executionId} = ${workflowExecutions.id}
       and ${workflowWaitStates.status} = 'waiting'
   )`;
-}
-
-function optionalJsonObject(value: string | null) {
-  if (value === null) return null;
-  const json = readJsonObject(JSON.parse(value));
-  if (json === null) throw new Error("Invalid SQLite cancel_payload");
-  return json;
-}
-
-function terminationState(
-  row: typeof workflowExecutions.$inferSelect,
-  didWrite = false
-): ExecutionTerminationState {
-  const execution = sqliteExecution(row);
-  if (execution.terminationKind === null) {
-    return {
-      executionId: execution.id,
-      status: execution.status,
-      claim: null,
-      didWrite,
-    };
-  }
-  const requestedAt = execution.terminationRequestedAt;
-  if (requestedAt === null) {
-    throw new Error("SQLite execution termination claim has no timestamp");
-  }
-  if (execution.terminationKind === "cancel") {
-    return {
-      executionId: execution.id,
-      status: execution.status,
-      claim: {
-        kind: "cancel",
-        requestedAt,
-        eventName: execution.cancelEventName,
-        payload: execution.cancelPayload,
-      },
-      didWrite,
-    };
-  }
-  if (
-    execution.terminationReason === null ||
-    execution.terminationNodeId === null
-  ) {
-    throw new Error("SQLite execution exit claim is incomplete");
-  }
-  return {
-    executionId: execution.id,
-    status: execution.status,
-    claim: {
-      kind: "exit",
-      requestedAt,
-      reason: execution.terminationReason,
-      nodeId: execution.terminationNodeId,
-    },
-    didWrite,
-  };
 }
 
 export function insertExecution(
@@ -526,11 +475,11 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
     findTerminationState: (executionId) =>
       store.read((database) =>
         database
-          .select()
+          .select(sqliteTerminationColumns)
           .from(workflowExecutions)
           .where(eq(workflowExecutions.id, executionId))
           .get()
-          .pipe(Effect.map((row) => (row ? terminationState(row) : null)))
+          .pipe(Effect.map((row) => (row ? sqliteTerminationState(row) : null)))
       ),
     findPendingCancel: (executionId) =>
       store.read((database) =>
@@ -548,7 +497,10 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
               if (!row || row.terminationKind !== "cancel") return null;
               return {
                 eventName: row.cancelEventName,
-                payload: optionalJsonObject(row.cancelPayload),
+                payload: optionalJsonObject(
+                  row.cancelPayload,
+                  "cancel_payload"
+                ),
               };
             })
           )
@@ -572,15 +524,15 @@ type EndRunInput = Parameters<RunsRepoMethods["endRun"]>[0];
 function writtenOrStored(
   database: SqliteExecutor,
   executionId: string,
-  written: typeof workflowExecutions.$inferSelect | undefined
+  written: Parameters<typeof sqliteTerminationState>[0] | undefined
 ) {
-  if (written) return Effect.succeed(terminationState(written, true));
+  if (written) return Effect.succeed(sqliteTerminationState(written, true));
   return database
-    .select()
+    .select(sqliteTerminationColumns)
     .from(workflowExecutions)
     .where(eq(workflowExecutions.id, executionId))
     .get()
-    .pipe(Effect.map((row) => (row ? terminationState(row) : null)));
+    .pipe(Effect.map((row) => (row ? sqliteTerminationState(row) : null)));
 }
 
 /** The update behind `markRunning`, inside the caller's write transaction. */
@@ -638,7 +590,7 @@ export function requestExitWrite(input: RequestExitInput) {
             isNull(workflowExecutions.terminationKind)
           )
         )
-        .returning();
+        .returning(sqliteTerminationColumns);
       return yield* writtenOrStored(database, input.executionId, written);
     });
 }
@@ -667,8 +619,8 @@ export function endRunWrite(input: EndRunInput) {
 /**
  * The one write that ends runs, inside the caller's write transaction, as the
  * PostgreSQL backend's `endRunsWrite` describes. The transaction holds the one
- * writer from its first statement, so the read each decision stands on cannot
- * change before its write.
+ * writer from its first statement, so the read the plan stands on cannot
+ * change before its writes.
  */
 export function endRunsWrite(
   database: SqliteExecutor,
@@ -677,83 +629,55 @@ export function endRunsWrite(
     ending: RunEnding;
     output?: JsonValue | undefined;
   }
-): Effect.Effect<{ executionId: string; answer: RunEndAnswer }[], unknown> {
+): Effect.Effect<RunEndPlan, unknown> {
   const ids = [...input.executionIds];
-  if (ids.length === 0) return Effect.succeed([]);
+  if (ids.length === 0) return Effect.succeed(planRunEnds([], input.ending));
   return Effect.gen(function* () {
-    const runs = yield* database
-      .select()
+    const rows = yield* database
+      .select({
+        ...sqliteTerminationColumns,
+        workflowId: workflowExecutions.workflowId,
+        runMode: workflowExecutions.runMode,
+      })
       .from(workflowExecutions)
       .where(inArray(workflowExecutions.id, ids))
       .orderBy(asc(workflowExecutions.id));
-    const decided = runs.map((run) => {
-      const stored = terminationState(run);
-      return {
-        run,
-        stored,
-        decision: decideRunEnd(input.ending, {
-          status: stored.status,
-          claim: stored.claim && isoTerminationClaim(stored.claim),
-          runMode: sqliteExecution(run).runMode,
-        }),
-      };
-    });
-    const ended = decided.flatMap(({ run, decision }) =>
-      decision.kind === "write" ? [{ run, decision }] : []
+    const plan = planRunEnds(
+      rows.map((row) => {
+        const { status, claim } = sqliteTerminationState(row);
+        return {
+          executionId: row.id,
+          workflowId: row.workflowId,
+          status,
+          claim: claim && isoTerminationClaim(claim),
+          runMode: sqliteRunMode(row.runMode),
+        };
+      }),
+      input.ending
     );
     yield* Effect.forEach(
-      ended,
-      ({ run, decision }) =>
+      plan.ended,
+      (run) =>
         database
           .update(workflowExecutions)
           .set({
-            ...endedRunColumns(decision.status),
+            ...endedRunColumns(run.status),
             output: encodeJson(input.output),
-            error: decision.error ?? null,
+            error: run.error ?? null,
           })
-          .where(
-            and(
-              eq(workflowExecutions.id, run.id),
-              eq(workflowExecutions.status, run.status),
-              run.terminationKind === null
-                ? isNull(workflowExecutions.terminationKind)
-                : eq(workflowExecutions.terminationKind, run.terminationKind)
-            )
-          )
-          .returning({ id: workflowExecutions.id })
-          .pipe(
-            Effect.flatMap(([written]) =>
-              written
-                ? Effect.void
-                : Effect.die(
-                    new Error("A run changed under the write its ending holds")
-                  )
-            )
-          ),
+          .where(eq(workflowExecutions.id, run.executionId)),
       { discard: true }
     );
-    yield* recordAuditEventsWrite(
-      ended.map(({ run, decision }) => ({
-        ...decision.entry,
-        workflowId: run.workflowId,
-        executionId: run.id,
-      }))
-    )(database);
+    yield* recordAuditEventsWrite(plan.ended.map((run) => run.entry))(database);
     yield* settleEndedExecutions(
       database,
-      ended.map(({ run }) => run.id)
+      plan.ended.map((run) => run.executionId)
     );
-    return decided.map(({ run, decision }) => ({
-      executionId: run.id,
-      answer:
-        decision.kind === "write"
-          ? ({ kind: "ended", status: decision.status } as const)
-          : decision,
-    }));
+    return plan;
   });
 }
 
-/** `endRunsWrite` for one run, answering `missing` when no row holds its id. */
+/** `endRunsWrite` for one run. */
 function endOneRunWrite(
   database: SqliteExecutor,
   input: {
@@ -766,7 +690,5 @@ function endOneRunWrite(
     executionIds: [input.executionId],
     ending: input.ending,
     output: input.output,
-  }).pipe(
-    Effect.map(([run]): RunEndAnswer => run?.answer ?? { kind: "missing" })
-  );
+  }).pipe(Effect.map(answerForOneRun));
 }

@@ -105,7 +105,7 @@ describe("cancelInFlightRuns", () => {
     })
   );
 
-  // The compare-and-set race: the run finished between the caller's in-flight
+  // The race the lock decides: the run finished between the caller's in-flight
   // query and this write, so the row keeps its terminal status. A run another
   // cancel ended first is the same race.
   it.effect(

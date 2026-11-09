@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   decideRunEnd,
+  planRunEnds,
   type RunEndDecision,
   type RunEndRow,
   type RunEnding,
@@ -304,4 +305,40 @@ describe("decideRunEnd", () => {
       expect(decideRunEnd(ending, row)).toEqual(decision);
     });
   }
+});
+
+describe("planRunEnds", () => {
+  it("ends the runs the ending reaches and answers every run it read", () => {
+    const plan = planRunEnds(
+      [
+        { ...unclaimed, executionId: "exec_open", workflowId: "wf_1" },
+        { ...exitClaimed, executionId: "exec_exiting", workflowId: "wf_1" },
+      ],
+      { kind: "supersede" }
+    );
+
+    expect(plan).toEqual({
+      ended: [
+        {
+          executionId: "exec_open",
+          status: "superseded",
+          error: "Superseded by a newer start",
+          entry: {
+            workflowId: "wf_1",
+            executionId: "exec_open",
+            eventType: "run_superseded",
+            message: "Superseded by a newer start",
+            metadata: { eventName: undefined },
+          },
+        },
+      ],
+      answers: [
+        {
+          executionId: "exec_open",
+          answer: { kind: "ended", status: "superseded" },
+        },
+        { executionId: "exec_exiting", answer: { kind: "exit_claimed" } },
+      ],
+    });
+  });
 });

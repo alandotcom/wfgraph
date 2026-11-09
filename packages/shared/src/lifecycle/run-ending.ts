@@ -217,6 +217,72 @@ export function decideRunEnd(
   }
 }
 
+/** A run an ending names, as the write that locked it read it. */
+export type RunEndTarget = RunEndRow & {
+  executionId: string;
+  workflowId: string;
+};
+
+/**
+ * What one ending writes across the runs it names: each run to end, with its
+ * terminal status, the row's error and its timeline entry, and the answer for
+ * every run named.
+ */
+export type RunEndPlan = {
+  ended: {
+    executionId: string;
+    status: TerminalExecutionStatus;
+    error: string | undefined;
+    entry: RunEndEntry & { workflowId: string; executionId: string };
+  }[];
+  answers: { executionId: string; answer: RunEndAnswer }[];
+};
+
+/**
+ * Plans one ending against runs a backend read under its lock. The backend
+ * writes `ended` (each run's terminal columns, its entry, and the settling of
+ * its wait rows, schedule row and step memo) and returns `answers`.
+ */
+export function planRunEnds(
+  runs: readonly RunEndTarget[],
+  ending: RunEnding
+): RunEndPlan {
+  const decided = runs.map((run) => ({
+    run,
+    decision: decideRunEnd(ending, run),
+  }));
+  return {
+    ended: decided.flatMap(({ run, decision }) =>
+      decision.kind === "write"
+        ? [
+            {
+              executionId: run.executionId,
+              status: decision.status,
+              error: decision.error,
+              entry: {
+                ...decision.entry,
+                workflowId: run.workflowId,
+                executionId: run.executionId,
+              },
+            },
+          ]
+        : []
+    ),
+    answers: decided.map(({ run, decision }) => ({
+      executionId: run.executionId,
+      answer:
+        decision.kind === "write"
+          ? { kind: "ended", status: decision.status }
+          : decision,
+    })),
+  };
+}
+
+/** The answer for the one run an ending named, `missing` when none was read. */
+export function answerForOneRun(plan: RunEndPlan): RunEndAnswer {
+  return plan.answers[0]?.answer ?? { kind: "missing" };
+}
+
 function isEnded(
   status: WorkflowExecutionStatus
 ): status is TerminalExecutionStatus {

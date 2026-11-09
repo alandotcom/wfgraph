@@ -59,9 +59,9 @@ export const postExecutionCancel = Effect.fn("wfgraph.execution.cancel")(
 
     const waitingStates = yield* repo.listWaitingStates(executionId);
 
-    // The one run-ender a person reaches: the row behind its compare-and-set,
-    // which also cancels the run's wait rows and deletes its schedule row, and
-    // the timeline entry. A Cancel Event takes the other path, flagging the run
+    // The one run-ender a person reaches: the write that ends the row under its
+    // lock, which also cancels the run's wait rows, deletes its schedule row,
+    // and writes the timeline entry. A Cancel Event takes the other path, flagging the run
     // for its Canceled outlet rather than ending it (`lifecycle/cancel.ts`).
     const ended = yield* cancelInFlightRuns({
       workflowId,

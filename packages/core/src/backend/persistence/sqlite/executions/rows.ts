@@ -12,6 +12,7 @@ import { BARE_PARK_WAKE_KINDS } from "@wfgraph/shared/lifecycle/execution-schedu
 import { readAs } from "@wfgraph/shared/types/schema";
 import type {
   ExecutionSchedule,
+  ExecutionTerminationState,
   ParkState,
   ParkWake,
   WorkflowExecution,
@@ -108,7 +109,7 @@ function startSource(value: string): WorkflowExecution["startSource"] {
   return value;
 }
 
-function runMode(value: string): WorkflowExecution["runMode"] {
+export function sqliteRunMode(value: string): WorkflowExecution["runMode"] {
   if (value !== "live" && value !== "test") {
     throw new Error("Invalid SQLite execution run mode");
   }
@@ -137,7 +138,7 @@ function executionListColumns(
     workflowId: row.workflowId,
     status: sqliteExecutionStatus(row.status),
     startSource: startSource(row.startSource),
-    runMode: runMode(row.runMode),
+    runMode: sqliteRunMode(row.runMode),
     startEventName: row.startEventName,
     entityValue: row.entityValue,
     error: row.error,
@@ -181,6 +182,61 @@ export function sqliteExecution(row: SqliteExecutionRow): WorkflowExecution {
     terminationNodeId: row.terminationNodeId,
     cancelEventName: row.cancelEventName,
     cancelPayload: optionalJsonObject(row.cancelPayload, "cancel_payload"),
+  };
+}
+
+/** The columns a run's status and termination claim are read from. */
+export const sqliteTerminationColumns = {
+  id: workflowExecutions.id,
+  status: workflowExecutions.status,
+  terminationKind: workflowExecutions.terminationKind,
+  terminationRequestedAt: workflowExecutions.terminationRequestedAt,
+  terminationReason: workflowExecutions.terminationReason,
+  terminationNodeId: workflowExecutions.terminationNodeId,
+  cancelEventName: workflowExecutions.cancelEventName,
+  cancelPayload: workflowExecutions.cancelPayload,
+} as const;
+
+type SqliteTerminationRow = Pick<
+  SqliteExecutionRow,
+  keyof typeof sqliteTerminationColumns
+>;
+
+export function sqliteTerminationState(
+  row: SqliteTerminationRow,
+  didWrite = false
+): ExecutionTerminationState {
+  const status = sqliteExecutionStatus(row.status);
+  const kind = terminationKind(row.terminationKind);
+  if (kind === null) {
+    return { executionId: row.id, status, claim: null, didWrite };
+  }
+  if (row.terminationRequestedAt === null) {
+    throw new Error("SQLite execution termination claim has no timestamp");
+  }
+  const requestedAt = new Date(row.terminationRequestedAt);
+  if (kind === "cancel") {
+    return {
+      executionId: row.id,
+      status,
+      claim: {
+        kind: "cancel",
+        requestedAt,
+        eventName: row.cancelEventName,
+        payload: optionalJsonObject(row.cancelPayload, "cancel_payload"),
+      },
+      didWrite,
+    };
+  }
+  const reason = terminationReason(row.terminationReason);
+  if (reason === null || row.terminationNodeId === null) {
+    throw new Error("SQLite execution exit claim is incomplete");
+  }
+  return {
+    executionId: row.id,
+    status,
+    claim: { kind: "exit", requestedAt, reason, nodeId: row.terminationNodeId },
+    didWrite,
   };
 }
 

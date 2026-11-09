@@ -95,12 +95,12 @@ const recordEndingFailure = Effect.fn("recordEndingFailure")(function* (input: {
 });
 
 /**
- * Cancels every in-flight execution named, each behind a compare-and-set on
- * its row that writes the run's `run_cancelled` entry with it.
+ * Cancels every in-flight execution named, each in a write that reads its row
+ * under a lock and writes the run's `run_cancelled` entry with it.
  *
  * An execution that completed between the caller's candidate query and this
- * write loses nothing: the CAS fails, the row keeps its terminal status, no
- * entry is written, and the run is not counted as ended. An in-flight Cancel
+ * write loses nothing: the write leaves it, the row keeps its terminal
+ * status, no entry is written, and the run is not counted as ended. An in-flight Cancel
  * or Exit claim remains owned by its run, which ends itself.
  *
  * Every failure is contained per execution, so one of them never discards the

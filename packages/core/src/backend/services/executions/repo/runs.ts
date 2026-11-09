@@ -57,9 +57,11 @@ import {
   recordAuditEventWrite,
 } from "#src/backend/services/executions/repo/audit";
 import {
-  decideRunEnd,
+  answerForOneRun,
+  planRunEnds,
   type OutsideGraphEnding,
   type RunEndAnswer,
+  type RunEndPlan,
   type RunEnding,
   type RunVerdict,
 } from "@wfgraph/shared/lifecycle/run-ending";
@@ -141,8 +143,8 @@ export function claimAdmits(side: ExecutionSide): SQL {
 export const notExitClaimed: SQL = sql`(${claimAdmits("started")} or ${claimAdmits("canceled")})`;
 
 /**
- * The compare-and-set every write that ends or parks a run from outside it
- * carries: the run has not reached a verdict, and its claim admits this side.
+ * The guard a write that admits, parks or claims a run carries: the run has
+ * not reached a verdict, and its claim admits this side.
  *
  * Shared with `waits.ts`, whose `startWait` parks a run behind the same guard.
  */
@@ -805,10 +807,8 @@ export function endRunWrite(input: EndRunInput) {
  * The one write that ends runs. In one transaction, a savepoint of a fenced
  * one, it locks the runs' schedule rows and then their execution rows, in the
  * order every fenced write takes them, so no claim lands between the read and
- * the write. `decideRunEnd` decides each run from what was read. Each run it
- * ends gets its terminal columns, written compare-and-set against that read,
- * and one timeline entry, and has its wait rows, schedule row and step memo
- * settled. Answers every named run that exists.
+ * the write. It writes what `planRunEnds` plans from that read, and answers
+ * the plan.
  */
 export function endRunsWrite(
   db: Executor,
@@ -817,12 +817,12 @@ export function endRunsWrite(
     ending: RunEnding;
     output?: JsonValue | undefined;
   }
-): Promise<{ executionId: string; answer: RunEndAnswer }[]> {
+): Promise<RunEndPlan> {
   const ids = [...input.executionIds];
-  if (ids.length === 0) return Promise.resolve([]);
+  if (ids.length === 0) return Promise.resolve(planRunEnds([], input.ending));
   return db.transaction(async (tx) => {
     await lockSchedules(tx, ids);
-    const runs = await tx
+    const rows = await tx
       .select({
         ...TERMINATION_COLUMNS,
         workflowId: workflowExecutions.workflowId,
@@ -832,67 +832,40 @@ export function endRunsWrite(
       .where(inArray(workflowExecutions.id, ids))
       .orderBy(asc(workflowExecutions.id))
       .for("update");
-    const decided = runs.map((run) => {
-      const stored = executionTerminationState(run);
-      return {
-        run,
-        stored,
-        decision: decideRunEnd(input.ending, {
-          status: run.status,
-          claim: stored.claim && isoTerminationClaim(stored.claim),
-          runMode: run.runMode,
-        }),
-      };
-    });
-    for (const { run, decision } of decided) {
-      if (decision.kind !== "write") continue;
+    const plan = planRunEnds(
+      rows.map((row) => {
+        const { claim } = executionTerminationState(row);
+        return {
+          executionId: row.executionId,
+          workflowId: row.workflowId,
+          status: row.status,
+          claim: claim && isoTerminationClaim(claim),
+          runMode: row.runMode,
+        };
+      }),
+      input.ending
+    );
+    for (const run of plan.ended) {
       // eslint-disable-next-line eslint/no-await-in-loop -- one transaction runs one statement at a time
-      const [written] = await tx
+      await tx
         .update(workflowExecutions)
         .set({
-          ...endedRunColumns(decision.status),
+          ...endedRunColumns(run.status),
           output: input.output,
-          error: decision.error,
+          error: run.error,
         })
-        .where(
-          and(
-            eq(workflowExecutions.id, run.executionId),
-            eq(workflowExecutions.status, run.status),
-            run.kind === null
-              ? isNull(workflowExecutions.terminationKind)
-              : eq(workflowExecutions.terminationKind, run.kind)
-          )
-        )
-        .returning({ id: workflowExecutions.id });
-      if (!written) {
-        throw new Error("A run changed under the lock its ending holds");
-      }
+        .where(eq(workflowExecutions.id, run.executionId));
     }
-    const ended = decided.flatMap(({ run, decision }) =>
-      decision.kind === "write" ? [{ run, decision }] : []
-    );
-    await recordAuditEventsWrite(
-      ended.map(({ run, decision }) => ({
-        ...decision.entry,
-        workflowId: run.workflowId,
-        executionId: run.executionId,
-      }))
-    )(tx);
+    await recordAuditEventsWrite(plan.ended.map((run) => run.entry))(tx);
     await settleEndedExecutions(
       tx,
-      ended.map(({ run }) => run.executionId)
+      plan.ended.map((run) => run.executionId)
     );
-    return decided.map(({ run, decision }) => ({
-      executionId: run.executionId,
-      answer:
-        decision.kind === "write"
-          ? { kind: "ended", status: decision.status }
-          : decision,
-    }));
+    return plan;
   });
 }
 
-/** `endRunsWrite` for one run, answering `missing` when no row holds its id. */
+/** `endRunsWrite` for one run. */
 function endOneRunWrite(
   db: Executor,
   input: {
@@ -905,7 +878,7 @@ function endOneRunWrite(
     executionIds: [input.executionId],
     ending: input.ending,
     output: input.output,
-  }).then(([run]) => run?.answer ?? { kind: "missing" });
+  }).then(answerForOneRun);
 }
 
 /**
