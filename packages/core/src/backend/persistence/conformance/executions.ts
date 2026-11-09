@@ -11,6 +11,7 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { SilentAppLoggerLayer } from "#src/backend/lib/effect/test-layers";
 import { makeExecutionDriverLayer } from "#src/backend/services/executions/driver";
 import { cancelInFlightRuns } from "#src/backend/services/executions/end-runs";
+import { recordPausedRunIgnored } from "#src/backend/services/executions/run-rows";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
@@ -39,7 +40,11 @@ const EVENT_ARRIVAL = {
 const NOW = new Date("2026-01-01T00:00:00.000Z");
 
 /** A timeline entry a case has the database refuse. */
-type RefusedEntry = "run_completed" | "run_cancelled" | "run_superseded";
+type RefusedEntry =
+  | "run_completed"
+  | "run_cancelled"
+  | "run_superseded"
+  | "run_ignored";
 
 /**
  * A trigger refusing every timeline entry of `eventType`, which is how an
@@ -748,6 +753,47 @@ export function describeExecutionConformance({
           },
         ],
       });
+    });
+
+    it("never leaves a paused workflow's ignored run without its run_ignored entry, even when the database refuses that entry", async () => {
+      const store = await openDatabase();
+      const database = await store.open();
+      await seedPublishedWorkflow(database);
+      const ignore = recordPausedRunIgnored({
+        workflowId: "wf_1",
+        workflowVersionId: "ver_1",
+        startSource: "manual",
+        runMode: "live",
+        payload: {},
+      });
+
+      await store.execute(refuseEntry("run_ignored"));
+      try {
+        await database.run(Effect.ignore(ignore));
+      } finally {
+        await store.execute(acceptEntry("run_ignored"));
+      }
+
+      const runs = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const rows = yield* executions.listByWorkflow({
+            workflowId: "wf_1",
+            includeSuperseded: true,
+          });
+          return yield* Effect.forEach(rows, (row) =>
+            executions.listEvents(row.id).pipe(
+              Effect.map((events) => ({
+                status: row.status,
+                ignoredEntries: events.filter(
+                  (event) => event.eventType === "run_ignored"
+                ).length,
+              }))
+            )
+          );
+        })
+      );
+      expect(runs.filter((run) => run.ignoredEntries !== 1)).toEqual([]);
     });
 
     it("writes a terminal write's announcement only from the write that ends the run", async () => {
