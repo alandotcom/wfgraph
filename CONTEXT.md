@@ -164,6 +164,15 @@ declare is nullable, because a run can arrive without it; a path they type
 differently has no type at all, and needs an Event Split above the node before
 anything can read it.
 
+**Template Reference**:
+A `{{@nodeId:Label.path}}` token in a node's config, which the engine replaces
+with that path of the named node's output just before the node holding it runs.
+It may name any node upstream of the node holding it, the Lifecycle Node
+included, and a node behind the Canceled outlet may also name a node behind the
+Started outlet. Publish, a draft run and the editor refuse a reference to any
+other node of the graph, such as one on a parallel branch, because that node may
+or may not have run by then.
+
 **Cancel Event**:
 An Event the Lifecycle Rules list as canceling runs. When one arrives and its
 Cancel Filter accepts it, every matching in-flight Execution jumps to the Canceled
