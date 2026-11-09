@@ -291,9 +291,9 @@ export function watchStoreWrites(input: {
     ...store,
     endRun: (write) =>
       store.endRun(write).pipe(
-        Effect.tap((written) =>
+        Effect.tap((answer) =>
           Effect.sync(() => {
-            if (written?.didWrite === true) state.ended();
+            if (answer.kind === "ended") state.ended();
           })
         )
       ),

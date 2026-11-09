@@ -1,10 +1,12 @@
 /**
- * The repository answers `completeRun` with a claimed row, a lost race, or a
- * `DatabaseError`. The adapter preserves all three for terminal-record policy.
+ * The adapter hands a verdict to the repository's `endRun` and preserves its
+ * answer and its `DatabaseError` for `recordVerdict`.
  */
 
 import { Effect } from "effect";
 import { describe, expect, layer } from "@effect/vitest";
+// The mocks API has to be the one vitest itself exports.
+import { vi } from "vitest";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { stubExecutionRepo } from "#src/backend/lib/effect/test-layers";
@@ -21,18 +23,12 @@ const terminalWrite = {
 } as const;
 
 describe("completeRun", () => {
-  layer(
-    stubExecutionRepo({
-      endRun: () =>
-        Effect.succeed({
-          executionId: "exec_1",
-          status: "completed",
-          claim: null,
-          didWrite: true,
-        }),
-    })
-  )((it) => {
-    it.effect("answers the claimed terminal state", () =>
+  const endRun = vi.fn<ExecutionRepo["Service"]["endRun"]>(() =>
+    Effect.succeed({ kind: "ended", status: "completed" } as const)
+  );
+
+  layer(stubExecutionRepo({ endRun }))((it) => {
+    it.effect("hands the verdict and output to the repository's endRun", () =>
       Effect.gen(function* () {
         const repo = yield* ExecutionRepo;
         const result = yield* createDbWorkflowStore({
@@ -40,42 +36,13 @@ describe("completeRun", () => {
           writes: repo,
         }).completeRun(terminalWrite);
 
-        expect(result).toEqual({
-          status: "completed",
-          claim: null,
-          didWrite: true,
+        expect(result).toEqual({ kind: "ended", status: "completed" });
+        expect(endRun).toHaveBeenCalledWith({
+          executionId: "exec_1",
+          ending: terminalWrite.verdict,
+          output: { ok: true },
         });
       })
-    );
-  });
-
-  layer(
-    stubExecutionRepo({
-      endRun: () =>
-        Effect.succeed({
-          executionId: "exec_1",
-          status: "canceled",
-          claim: null,
-          didWrite: false,
-        }),
-    })
-  )((it) => {
-    it.effect(
-      "answers the authoritative state when another terminal status won",
-      () =>
-        Effect.gen(function* () {
-          const repo = yield* ExecutionRepo;
-          const result = yield* createDbWorkflowStore({
-            reads: repo,
-            writes: repo,
-          }).completeRun(terminalWrite);
-
-          expect(result).toEqual({
-            status: "canceled",
-            claim: null,
-            didWrite: false,
-          });
-        })
     );
   });
 

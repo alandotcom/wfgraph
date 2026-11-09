@@ -132,7 +132,7 @@ describe("recordVerdict", () => {
 
         const retried = yield* recordVerdict({ ...terminalInput, store });
 
-        expect(retried).toEqual({ status: "completed" });
+        expect(retried).toEqual({ kind: "ended", status: "completed" });
         expect(recording.terminationState?.status).toBe("completed");
         expect(recording.timeline.map((call) => call.eventType)).toEqual([
           "run_completed",
@@ -171,16 +171,7 @@ describe("recordVerdict", () => {
 
         const retried = yield* recordVerdict(exitInput);
 
-        expect(retried).toEqual({
-          status: "exited",
-          exit: {
-            reason: "entity_condition_not_met",
-            entityType: "appointment",
-            conditionId: "condition_1",
-            nodeId: "send-reminder",
-            checkedAt: "2026-10-19T15:00:00.000Z",
-          },
-        });
+        expect(retried).toEqual({ kind: "ended", status: "exited" });
         expect(recording.terminationState?.status).toBe("exited");
         expect(recording.timeline.map((call) => call.eventType)).toEqual([
           "run_exited",
@@ -205,8 +196,8 @@ describe("recordVerdict", () => {
         });
 
         expect(result).toEqual({
-          status: "running",
-          cancelClaim: {
+          kind: "cancel_claimed",
+          cancel: {
             eventName: "billing/subscription.canceled",
             payload: { reason: "customer left" },
           },
@@ -238,8 +229,8 @@ describe("recordVerdict", () => {
           });
 
           expect(result).toEqual({
-            status: "running",
-            cancelClaim: {
+            kind: "cancel_claimed",
+            cancel: {
               eventName: "billing/subscription.canceled",
               payload: { reason: "customer left" },
             },
@@ -250,52 +241,32 @@ describe("recordVerdict", () => {
       })
   );
 
-  it.effect(
-    "returns Exit details but skips the audit when another writer won",
-    () =>
-      Effect.gen(function* () {
-        const recording = createRecordingWorkflowStore();
-        const store: WorkflowStore = {
-          ...recording,
-          completeRun: () =>
-            Effect.succeed({
-              status: "exited",
-              claim: {
-                kind: "exit",
-                requestedAt: "2026-10-19T15:00:00.000Z",
-                reason: "entity_not_found",
-                nodeId: "send-reminder",
-              },
-              didWrite: false,
-            }),
-        };
-        const recordingLoggerLayer = recordingLogger();
+  it.effect("says another writer ended the run, and writes no entry", () =>
+    Effect.gen(function* () {
+      const recording = createRecordingWorkflowStore();
+      const store: WorkflowStore = {
+        ...recording,
+        completeRun: () =>
+          Effect.succeed({ kind: "already_ended", status: "exited" } as const),
+      };
+      const recordingLoggerLayer = recordingLogger();
 
-        const result = yield* recordVerdict({
-          ...terminalInput,
-          verdict: { ...terminalInput.verdict, exitContext },
-          store,
-        }).pipe(Effect.provide(recordingLoggerLayer.layer));
+      const result = yield* recordVerdict({ ...terminalInput, store }).pipe(
+        Effect.provide(recordingLoggerLayer.layer)
+      );
 
-        expect(result).toEqual({
-          status: "exited",
-          exit: {
-            reason: "entity_not_found",
-            entityType: "appointment",
-            conditionId: "condition_1",
-            nodeId: "send-reminder",
-            checkedAt: "2026-10-19T15:00:00.000Z",
+      expect(result).toEqual({ kind: "already_ended", status: "exited" });
+      expect(recordingLoggerLayer.lines).toEqual([
+        {
+          level: "Info",
+          message: "Run did not claim the terminal record",
+          properties: {
+            outcome: { verdict: "completed", left: "already_ended" },
           },
-        });
-        expect(recordingLoggerLayer.lines).toEqual([
-          {
-            level: "Info",
-            message: "Run did not claim the terminal record",
-            properties: { outcome: { verdict: "completed", status: "exited" } },
-          },
-        ]);
-        expect(recording.timeline).toHaveLength(0);
-      })
+        },
+      ]);
+      expect(recording.timeline).toHaveLength(0);
+    })
   );
 
   it.effect("redacts the output before it reaches the store", () =>

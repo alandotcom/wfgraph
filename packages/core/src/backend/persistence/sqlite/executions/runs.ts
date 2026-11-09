@@ -24,6 +24,7 @@ import {
 import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs";
 import {
   decideRunEnd,
+  type RunEndAnswer,
   type RunEnding,
 } from "@wfgraph/shared/lifecycle/run-ending";
 import type {
@@ -501,10 +502,10 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
       store.write(markWaitingIfParkedWrite(input)),
     cancelRun: ({ executionId, ...cancel }) =>
       store.write((database) =>
-        endRunsWrite(database, {
-          executionIds: [executionId],
+        endOneRunWrite(database, {
+          executionId,
           ending: { kind: "cancel", ...cancel },
-        }).pipe(Effect.map(([state]) => state ?? null))
+        })
       ),
     requestExit: (input) => store.write(requestExitWrite(input)),
     canAdmitNode: (executionId) =>
@@ -660,12 +661,7 @@ function endedRunColumns(status: TerminalExecutionStatus) {
 }
 
 export function endRunWrite(input: EndRunInput) {
-  return (database: SqliteExecutor) =>
-    endRunsWrite(database, {
-      executionIds: [input.executionId],
-      ending: input.ending,
-      output: input.output,
-    }).pipe(Effect.map(([state]) => state ?? null));
+  return (database: SqliteExecutor) => endOneRunWrite(database, input);
 }
 
 /**
@@ -681,7 +677,7 @@ export function endRunsWrite(
     ending: RunEnding;
     output?: JsonValue | undefined;
   }
-): Effect.Effect<ExecutionTerminationState[], unknown> {
+): Effect.Effect<{ executionId: string; answer: RunEndAnswer }[], unknown> {
   const ids = [...input.executionIds];
   if (ids.length === 0) return Effect.succeed([]);
   return Effect.gen(function* () {
@@ -747,10 +743,30 @@ export function endRunsWrite(
       database,
       ended.map(({ run }) => run.id)
     );
-    return decided.map(({ stored, decision }) =>
-      decision.kind === "write"
-        ? { ...stored, status: decision.status, didWrite: true }
-        : stored
-    );
+    return decided.map(({ run, decision }) => ({
+      executionId: run.id,
+      answer:
+        decision.kind === "write"
+          ? ({ kind: "ended", status: decision.status } as const)
+          : decision,
+    }));
   });
+}
+
+/** `endRunsWrite` for one run, answering `missing` when no row holds its id. */
+function endOneRunWrite(
+  database: SqliteExecutor,
+  input: {
+    executionId: string;
+    ending: RunEnding;
+    output?: JsonValue | undefined;
+  }
+): Effect.Effect<RunEndAnswer, unknown> {
+  return endRunsWrite(database, {
+    executionIds: [input.executionId],
+    ending: input.ending,
+    output: input.output,
+  }).pipe(
+    Effect.map(([run]): RunEndAnswer => run?.answer ?? { kind: "missing" })
+  );
 }

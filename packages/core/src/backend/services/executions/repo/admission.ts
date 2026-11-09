@@ -236,8 +236,8 @@ export async function admitWithConcurrency(
     ending: { kind: "supersede", startEventName: execution.startEventName },
   });
   const supersededExecutionIds = superseded
-    .filter((state) => state.didWrite)
-    .map((state) => state.executionId);
+    .filter(({ answer }) => answer.kind === "ended")
+    .map((run) => run.executionId);
 
   const opened = await openRun(tx, input);
   return opened.status === "started"

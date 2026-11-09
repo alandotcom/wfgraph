@@ -19,7 +19,10 @@ import type {
   WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
-import type { RunVerdict } from "@wfgraph/shared/lifecycle/run-ending";
+import type {
+  RunEndAnswer,
+  RunVerdict,
+} from "@wfgraph/shared/lifecycle/run-ending";
 import type { WaitWake } from "#src/backend/engine/runtime";
 import type {
   DatabaseError,
@@ -323,15 +326,14 @@ export type WorkflowStore = {
   ): Effect.Effect<PendingCancel | null, StoreFailure>;
   /**
    * Ends the run as `decideRunEnd` decides from the verdict and the claim the
-   * run holds, and returns the authoritative stored outcome. `didWrite` says
-   * this call ended the run and wrote its timeline entry, and `null` means no
-   * execution row exists. A database refusal, of the row or of its entry,
-   * writes neither and remains in the error channel; terminal-record policy
+   * run holds, answering whether this call ended the run, with its timeline
+   * entry, or why it left the run. A database refusal, of the row or of its
+   * entry, writes neither and remains in the error channel; `recordVerdict`
    * logs it and fails the durable step, so the executor retries the write.
    */
   completeRun(
     input: CompleteRunInput
-  ): Effect.Effect<ExecutionTerminationState | null, StoreFailure>;
+  ): Effect.Effect<RunEndAnswer, StoreFailure>;
 };
 
 /**
@@ -354,9 +356,5 @@ export const noopWorkflowStore: WorkflowStore = {
   readTerminationState: () => Effect.succeed(null),
   readPendingCancel: () => Effect.succeed(null),
   completeRun: (input) =>
-    Effect.succeed({
-      status: input.verdict.status,
-      claim: null,
-      didWrite: true,
-    }),
+    Effect.succeed({ kind: "ended", status: input.verdict.status }),
 };

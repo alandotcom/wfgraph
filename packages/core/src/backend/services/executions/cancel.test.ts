@@ -27,12 +27,7 @@ const listWaitingStates = vi.fn<Repo["listWaitingStates"]>(() =>
 );
 const recordAuditEvent = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 const cancelRun = vi.fn<Repo["cancelRun"]>(() =>
-  Effect.succeed({
-    executionId: "exec_1",
-    status: "canceled",
-    claim: null,
-    didWrite: true,
-  })
+  Effect.succeed({ kind: "ended", status: "canceled" } as const)
 );
 
 /** A run parked on a wait, as `listWaitingStates` hands one over. */
@@ -67,12 +62,7 @@ beforeEach(() => {
   listWaitingStates.mockImplementation(() => Effect.succeed([]));
   recordAuditEvent.mockImplementation(() => Effect.void);
   cancelRun.mockImplementation(() =>
-    Effect.succeed({
-      executionId: "exec_1",
-      status: "canceled",
-      claim: null,
-      didWrite: true,
-    })
+    Effect.succeed({ kind: "ended", status: "canceled" } as const)
   );
 });
 
@@ -201,16 +191,12 @@ describe("postExecutionCancel", () => {
     Effect.gen(function* () {
       cancelRun.mockImplementation(() =>
         Effect.succeed({
-          executionId: "exec_1",
-          status: "running",
-          claim: {
-            kind: "cancel",
-            requestedAt: new Date("2026-10-19T15:00:00.000Z"),
+          kind: "cancel_claimed",
+          cancel: {
             eventName: "app/appointment.canceled",
             payload: { reason: "customer left" },
           },
-          didWrite: false,
-        })
+        } as const)
       );
 
       const failure = yield* postExecutionCancel("exec_1").pipe(

@@ -59,6 +59,7 @@ import {
 import {
   decideRunEnd,
   type OutsideGraphEnding,
+  type RunEndAnswer,
   type RunEnding,
   type RunVerdict,
 } from "@wfgraph/shared/lifecycle/run-ending";
@@ -378,8 +379,7 @@ export type RunsRepoMethods = {
   readonly markWaitingIfParked: StoreWrite<{ executionId: string }, boolean>;
   /**
    * Stops a run from outside it: an operator, a Cancel Event or a Lifecycle
-   * Rule. Answers the run's state, `didWrite` saying whether this write ended
-   * it, or null when the row is absent.
+   * Rule, answering whether this write ended the run or why it left it.
    *
    * A run that already ended, or that holds a Cancel or Exit claim its own pass
    * will finalize, is left as it was (`decideRunEnd`). The write that ends the
@@ -391,7 +391,7 @@ export type RunsRepoMethods = {
     executionId: string;
     reason: string;
     eventName?: string | undefined;
-  }) => Effect.Effect<ExecutionTerminationState | null, DatabaseError>;
+  }) => Effect.Effect<RunEndAnswer, DatabaseError>;
   /**
    * Atomically claims an execution-wide Entity Eligibility exit and returns the
    * authoritative stored boundary, including an earlier competing outcome.
@@ -423,8 +423,8 @@ export type RunsRepoMethods = {
   ) => Effect.Effect<PendingCancel | null, DatabaseError>;
   /**
    * Ends the run from inside it: the engine's verdict, or the executor ending
-   * a run it could not walk. Answers the run's state, `didWrite` saying
-   * whether this write ended it, or null when the row is absent.
+   * a run it could not walk, answering whether this write ended the run or
+   * why it left it.
    *
    * `decideRunEnd` picks the status from the run's claim, read under the
    * write's lock, so a claim cannot land between the decision and the write.
@@ -439,7 +439,7 @@ export type RunsRepoMethods = {
       /** What the run answers with, which a verdict that ends it writes. */
       output?: JsonValue | undefined;
     },
-    ExecutionTerminationState | null
+    RunEndAnswer
   >;
 };
 
@@ -645,13 +645,12 @@ export function makeRunsMethods(
       database.query(markWaitingIfParkedWrite(input)),
 
     cancelRun: ({ executionId, ...cancel }) =>
-      database.query(async (db) => {
-        const [state] = await endRunsWrite(db, {
-          executionIds: [executionId],
+      database.query((db) =>
+        endOneRunWrite(db, {
+          executionId,
           ending: { kind: "cancel", ...cancel },
-        });
-        return state ?? null;
-      }),
+        })
+      ),
 
     requestExit: (input) => database.query(requestExitWrite(input)),
 
@@ -799,14 +798,7 @@ function endedRunColumns(status: TerminalExecutionStatus) {
  * deletes it.
  */
 export function endRunWrite(input: EndRunInput) {
-  return async (db: Executor): Promise<ExecutionTerminationState | null> => {
-    const [state] = await endRunsWrite(db, {
-      executionIds: [input.executionId],
-      ending: input.ending,
-      output: input.output,
-    });
-    return state ?? null;
-  };
+  return (db: Executor): Promise<RunEndAnswer> => endOneRunWrite(db, input);
 }
 
 /**
@@ -816,7 +808,7 @@ export function endRunWrite(input: EndRunInput) {
  * the write. `decideRunEnd` decides each run from what was read. Each run it
  * ends gets its terminal columns, written compare-and-set against that read,
  * and one timeline entry, and has its wait rows, schedule row and step memo
- * settled. Answers the state of every named run that exists.
+ * settled. Answers every named run that exists.
  */
 export function endRunsWrite(
   db: Executor,
@@ -825,7 +817,7 @@ export function endRunsWrite(
     ending: RunEnding;
     output?: JsonValue | undefined;
   }
-): Promise<ExecutionTerminationState[]> {
+): Promise<{ executionId: string; answer: RunEndAnswer }[]> {
   const ids = [...input.executionIds];
   if (ids.length === 0) return Promise.resolve([]);
   return db.transaction(async (tx) => {
@@ -853,7 +845,7 @@ export function endRunsWrite(
       };
     });
     for (const { run, decision } of decided) {
-      if (decision.kind === "leave") continue;
+      if (decision.kind !== "write") continue;
       // eslint-disable-next-line eslint/no-await-in-loop -- one transaction runs one statement at a time
       const [written] = await tx
         .update(workflowExecutions)
@@ -890,12 +882,30 @@ export function endRunsWrite(
       tx,
       ended.map(({ run }) => run.executionId)
     );
-    return decided.map(({ stored, decision }) =>
-      decision.kind === "write"
-        ? { ...stored, status: decision.status, didWrite: true }
-        : stored
-    );
+    return decided.map(({ run, decision }) => ({
+      executionId: run.executionId,
+      answer:
+        decision.kind === "write"
+          ? { kind: "ended", status: decision.status }
+          : decision,
+    }));
   });
+}
+
+/** `endRunsWrite` for one run, answering `missing` when no row holds its id. */
+function endOneRunWrite(
+  db: Executor,
+  input: {
+    executionId: string;
+    ending: RunEnding;
+    output?: JsonValue | undefined;
+  }
+): Promise<RunEndAnswer> {
+  return endRunsWrite(db, {
+    executionIds: [input.executionId],
+    ending: input.ending,
+    output: input.output,
+  }).then(([run]) => run?.answer ?? { kind: "missing" });
 }
 
 /**

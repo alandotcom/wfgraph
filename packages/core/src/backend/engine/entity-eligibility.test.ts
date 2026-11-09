@@ -585,16 +585,7 @@ describe("per-node Entity Eligibility", () => {
       entities
     );
 
-    expect(result).toMatchObject({
-      status: "exited",
-      success: true,
-      exit: {
-        reason: "entity_condition_not_met",
-        entityType: "appointment",
-        nodeId: "second",
-        checkedAt: "2026-10-19T15:00:00.000Z",
-      },
-    });
+    expect(result).toMatchObject({ status: "exited", success: true });
     expect(runAction).toHaveBeenCalledTimes(1);
     expect(store.callsOf("requestExit")).toEqual([
       {
@@ -690,13 +681,10 @@ describe("per-node Entity Eligibility", () => {
       entities
     );
 
-    expect(result).toMatchObject({
-      status: "exited",
-      exit: {
-        reason: "entity_not_found",
-        nodeId: "other_branch",
-      },
-    });
+    expect(result).toMatchObject({ status: "exited" });
+    expect(
+      store.timeline.find((event) => event.eventType === "run_exited")?.metadata
+    ).toMatchObject({ reason: "entity_not_found", nodeId: "other_branch" });
   });
 
   it("does not resolve for a disabled node", async () => {

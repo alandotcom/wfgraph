@@ -233,12 +233,7 @@ describe("execution start and cancel spans", () => {
         listWaitingStates: () => Effect.succeed([]),
         recordAuditEvent: () => Effect.void,
         cancelRun: () =>
-          Effect.succeed({
-            executionId: "exec_1",
-            status: "canceled",
-            claim: null,
-            didWrite: true,
-          }),
+          Effect.succeed({ kind: "ended", status: "canceled" } as const),
       })
     );
 

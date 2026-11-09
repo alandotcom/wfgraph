@@ -10,7 +10,6 @@
 
 import { Effect } from "effect";
 import { groupBy, uniq } from "es-toolkit/array";
-import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
@@ -144,7 +143,7 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
   const repo = yield* ExecutionRepo;
   const logger = yield* loggerFor(workflowId);
 
-  const termination = yield* repo
+  const answer = yield* repo
     .cancelRun({
       executionId,
       reason: input.reason,
@@ -167,30 +166,26 @@ const endOneRun = Effect.fn("endOneRun")(function* (input: {
         })
       )
     );
+  if (answer === null) return runEndOutcome("unreachable", executionId);
 
-  if (termination === null) {
-    return runEndOutcome("unreachable", executionId);
-  }
-
-  if (!termination.didWrite) {
-    if (
-      termination.claim &&
-      IN_FLIGHT_EXECUTION_STATUSES.some(
-        (status) => status === termination.status
-      )
-    ) {
+  switch (answer.kind) {
+    case "ended":
+      return runEndOutcome("ended", executionId);
+    case "cancel_claimed":
+    case "exit_claimed":
       yield* logger.info("Execution already has a termination claim", {
-        run: { execution: executionId, claim: termination.claim.kind },
+        run: { execution: executionId, claim: answer.kind },
       });
       return runEndOutcome("claim-pending", executionId);
-    }
-
-    yield* logger.info(
-      "Execution reached a terminal status before it could be ended",
-      { run: { execution: executionId } }
-    );
-    return runEndOutcome("lost-race", executionId);
+    case "already_ended":
+      yield* logger.info(
+        "Execution reached a terminal status before it could be ended",
+        { run: { execution: executionId } }
+      );
+      return runEndOutcome("lost-race", executionId);
+    default:
+      // `missing`: no row holds the id. A cancel ends every in-flight run
+      // holding no claim, so `unclaimed` is never its answer.
+      return runEndOutcome("unreachable", executionId);
   }
-
-  return runEndOutcome("ended", executionId);
 });

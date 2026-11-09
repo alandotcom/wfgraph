@@ -15,12 +15,10 @@ import { recordPausedRunIgnored } from "#src/backend/services/executions/run-row
 import { OPEN_PARK_STATUSES } from "#src/backend/services/executions/repo/release-policy";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import {
-  ExecutionRepo,
-  type ExecutionTerminationState,
-} from "#src/backend/services/executions/repo";
+import { ExecutionRepo } from "#src/backend/services/executions/repo";
 import type {
   OutsideGraphEnding,
+  RunEndAnswer,
   RunVerdict,
 } from "@wfgraph/shared/lifecycle/run-ending";
 import type {
@@ -314,13 +312,16 @@ function runBeforeEnding(state: RunBeforeEnding) {
   });
 }
 
-function answered(state: ExecutionTerminationState | null) {
-  return {
-    didWrite: state?.didWrite,
-    status: state?.status,
-    claim: state?.claim?.kind ?? null,
-  };
-}
+/** What an ending that leaves the run answers, by the state it found. */
+const LEFT_ANSWER = {
+  unclaimed: { kind: "unclaimed" },
+  "cancel-claimed": {
+    kind: "cancel_claimed",
+    cancel: { eventName: "appointment/cancelled", payload: {} },
+  },
+  "exit-claimed": { kind: "exit_claimed" },
+  ended: { kind: "already_ended", status: "completed" },
+} as const satisfies Record<RunBeforeEnding, RunEndAnswer>;
 
 function sendEnding(ending: TableEnding, executionId: string) {
   return Effect.gen(function* () {
@@ -341,15 +342,16 @@ function sendEnding(ending: TableEnding, executionId: string) {
         });
         if (start.status !== "started") throw new Error("Start was refused");
         return {
-          didWrite: start.supersededExecutionIds.includes(executionId),
+          superseded: start.supersededExecutionIds.includes(executionId),
         };
       }
       case "cancel":
-        return answered(
-          yield* executions.cancelRun({ executionId, reason: CANCEL_REASON })
-        );
+        return yield* executions.cancelRun({
+          executionId,
+          reason: CANCEL_REASON,
+        });
       default:
-        return answered(yield* executions.endRun({ executionId, ending }));
+        return yield* executions.endRun({ executionId, ending });
     }
   });
 }
@@ -760,11 +762,7 @@ export function describeExecutionConformance({
         didWrite: false,
       });
       expect(result.cancel).toEqual([]);
-      expect(result.exited).toMatchObject({
-        status: "exited",
-        claim: expectedClaim,
-        didWrite: true,
-      });
+      expect(result.exited).toEqual({ kind: "ended", status: "exited" });
       expect(result.afterTerminal).toMatchObject({
         status: "exited",
         claim: expectedClaim,
@@ -1371,12 +1369,7 @@ export function describeExecutionConformance({
         eventName: "appointment/cancelled",
         payload: { reason: "host request" },
       });
-      expect(result.finished).toMatchObject({
-        executionId: result.executionId,
-        status: "canceled",
-        claim: { kind: "cancel", eventName: "appointment/cancelled" },
-        didWrite: true,
-      });
+      expect(result.finished).toEqual({ kind: "ended", status: "canceled" });
       expect(result.summary).toMatchObject({
         status: "canceled",
         output: null,
@@ -1798,12 +1791,8 @@ export function describeExecutionConformance({
           if (outcome === null) {
             expect(answer).toEqual(
               ending.kind === "supersede"
-                ? { didWrite: false }
-                : {
-                    didWrite: false,
-                    status: before.status,
-                    claim: before.claim,
-                  }
+                ? { superseded: false }
+                : LEFT_ANSWER[against]
             );
             expect(after).toEqual(before);
             return;
@@ -1811,8 +1800,8 @@ export function describeExecutionConformance({
           const { status } = outcome;
           expect(answer).toEqual(
             ending.kind === "supersede"
-              ? { didWrite: true }
-              : { didWrite: true, status, claim: before.claim }
+              ? { superseded: true }
+              : { kind: "ended", status }
           );
           expect(added).toEqual([
             {

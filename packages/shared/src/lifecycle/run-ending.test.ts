@@ -40,7 +40,11 @@ const unclaimed: RunEndRow = {
 };
 const cancelClaimed: RunEndRow = {
   status: "running",
-  claim: { kind: "cancel" },
+  claim: {
+    kind: "cancel",
+    eventName: "billing/subscription.canceled",
+    payload: { reason: "customer left" },
+  },
   runMode: "live",
 };
 const exitClaimed: RunEndRow = {
@@ -228,7 +232,35 @@ const CASES: ReadonlyArray<{
       reached: { kind: "walked", resultCount: 1 },
     },
     row: cancelClaimed,
-    decision: { kind: "leave" },
+    decision: {
+      kind: "cancel_claimed",
+      cancel: {
+        eventName: "billing/subscription.canceled",
+        payload: { reason: "customer left" },
+      },
+    },
+  },
+  {
+    name: "leaves a canceled verdict that meets a run holding no claim",
+    ending: {
+      kind: "verdict",
+      status: "canceled",
+      reached: { kind: "walked", resultCount: 1 },
+    },
+    row: unclaimed,
+    decision: { kind: "unclaimed" },
+  },
+  {
+    name: "leaves a run that already ended, saying how it ended",
+    ending: { kind: "outsideGraph", error: "version gone" },
+    row: { status: "superseded", claim: null, runMode: "live" },
+    decision: { kind: "already_ended", status: "superseded" },
+  },
+  {
+    name: "leaves a run an Exit claim holds to its own pass when a cancel arrives",
+    ending: { kind: "cancel", reason: "Canceled from the Runs view" },
+    row: exitClaimed,
+    decision: { kind: "exit_claimed" },
   },
   {
     name: "names the test recipients of a test run ended outside its graph",

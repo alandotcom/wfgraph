@@ -352,9 +352,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
           claim: current?.claim ?? null,
           runMode: store.run.runMode,
         });
-        if (decision.kind === "leave") {
-          return current ? { ...current, didWrite: false } : null;
-        }
+        if (decision.kind !== "write") return decision;
 
         store.terminationState = {
           status: decision.status,
@@ -366,7 +364,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
           workflowId: store.run.workflowId,
           executionId: input.executionId,
         });
-        return store.terminationState;
+        return { kind: "ended", status: decision.status };
       });
     },
   };

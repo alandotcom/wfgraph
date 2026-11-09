@@ -164,10 +164,6 @@ export function createDbWorkflowStore(bound: {
     readPendingCancel: (executionId) => reads.findPendingCancel(executionId),
 
     completeRun: ({ executionId, verdict, output }) =>
-      writes
-        .endRun({ executionId, ending: verdict, output })
-        .pipe(
-          Effect.map((state) => (state ? engineTerminationState(state) : null))
-        ),
+      writes.endRun({ executionId, ending: verdict, output }),
   };
 }

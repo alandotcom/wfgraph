@@ -497,10 +497,7 @@ export function describeExecutionScheduleConformance({
         })
       );
 
-      expect(result.finished).toMatchObject({
-        status: "completed",
-        didWrite: true,
-      });
+      expect(result.finished).toEqual({ kind: "ended", status: "completed" });
       expect(result.afterEnd._tag).toBe("LeaseLost");
       expect(result.schedule).toBeNull();
       expect(result.memo).toEqual([]);

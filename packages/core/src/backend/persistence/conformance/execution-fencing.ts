@@ -280,10 +280,7 @@ export function describeExecutionFencingConformance({
         })
       );
 
-      expect(result.cancelled).toMatchObject({
-        status: "canceled",
-        didWrite: true,
-      });
+      expect(result.cancelled).toEqual({ kind: "ended", status: "canceled" });
       expect(result.staleMemo).toBe("LeaseLost");
       expect(result.staleFinish).toBe("LeaseLost");
       expect(result.staleRelease).toBe("LeaseLost");

@@ -14,24 +14,14 @@ import { cancelInFlightRuns } from "#src/backend/services/executions/end-runs";
 type Repo = ExecutionRepo["Service"];
 
 const cancelRun = vi.fn<Repo["cancelRun"]>(() =>
-  Effect.succeed({
-    executionId: "exec_1",
-    status: "canceled",
-    claim: null,
-    didWrite: true,
-  })
+  Effect.succeed({ kind: "ended", status: "canceled" } as const)
 );
 const recordAuditEvent = vi.fn<Repo["recordAuditEvent"]>(() => Effect.void);
 
 /** Every write lands, unless a case says otherwise. */
 beforeEach(() => {
   cancelRun.mockImplementation(() =>
-    Effect.succeed({
-      executionId: "exec_1",
-      status: "canceled",
-      claim: null,
-      didWrite: true,
-    })
+    Effect.succeed({ kind: "ended", status: "canceled" } as const)
   );
   recordAuditEvent.mockImplementation(() => Effect.void);
 });
@@ -49,12 +39,7 @@ describe("cancelInFlightRuns", () => {
     Effect.gen(function* () {
       cancelRun
         .mockImplementationOnce(() =>
-          Effect.succeed({
-            executionId: "exec_success",
-            status: "canceled",
-            claim: null,
-            didWrite: true,
-          })
+          Effect.succeed({ kind: "ended", status: "canceled" } as const)
         )
         .mockImplementationOnce(refusedWrite);
 
@@ -87,17 +72,7 @@ describe("cancelInFlightRuns", () => {
     () =>
       Effect.gen(function* () {
         cancelRun.mockImplementationOnce(() =>
-          Effect.succeed({
-            executionId: "exec_claimed",
-            status: "running",
-            claim: {
-              kind: "exit",
-              requestedAt: new Date("2026-10-19T15:00:00.000Z"),
-              reason: "entity_condition_not_met",
-              nodeId: "send-reminder",
-            },
-            didWrite: false,
-          })
+          Effect.succeed({ kind: "exit_claimed" } as const)
         );
 
         const summary = yield* cancelInFlightRuns({
@@ -140,27 +115,18 @@ describe("cancelInFlightRuns", () => {
         cancelRun
           .mockImplementationOnce(() =>
             Effect.succeed({
-              executionId: "exec_completed",
+              kind: "already_ended",
               status: "completed",
-              claim: null,
-              didWrite: false,
-            })
+            } as const)
           )
           .mockImplementationOnce(() =>
             Effect.succeed({
-              executionId: "exec_already_canceled",
+              kind: "already_ended",
               status: "canceled",
-              claim: null,
-              didWrite: false,
-            })
+            } as const)
           )
           .mockImplementationOnce(() =>
-            Effect.succeed({
-              executionId: "exec_still_waiting",
-              status: "canceled",
-              claim: null,
-              didWrite: true,
-            })
+            Effect.succeed({ kind: "ended", status: "canceled" } as const)
           );
 
         const summary = yield* cancelInFlightRuns({

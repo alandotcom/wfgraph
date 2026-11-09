@@ -7,12 +7,12 @@
 
 import type { RunScopedAuditEventType } from "#src/lifecycle/audit-event-types";
 import {
-  IN_FLIGHT_EXECUTION_STATUSES,
+  TERMINAL_EXECUTION_STATUSES,
   type EntityEligibilityReason,
   type TerminalExecutionStatus,
   type WorkflowExecutionStatus,
 } from "#src/lifecycle/execution-contracts";
-import type { JsonObjectDraft } from "#src/types/json";
+import type { JsonObject, JsonObjectDraft } from "#src/types/json";
 import { omitUndefined } from "#src/utils/omit-undefined";
 
 /**
@@ -26,7 +26,7 @@ export type CanceledOutletOutcome = "entered" | "ran" | "failed";
 
 export type RunExitContext = { entityType: string; conditionId: string };
 
-export type RunExitOutcome = RunExitContext & {
+type RunExitOutcome = RunExitContext & {
   reason: EntityEligibilityReason;
   nodeId: string;
   checkedAt: string;
@@ -92,7 +92,7 @@ export type RunEnding =
 
 /** The part of a run's termination claim an ending reads. */
 export type RunEndClaim =
-  | { kind: "cancel" }
+  | { kind: "cancel"; eventName: string | null; payload: JsonObject | null }
   | {
       kind: "exit";
       reason: EntityEligibilityReason;
@@ -121,6 +121,21 @@ export type RunEndEntry = {
   metadata: JsonObjectDraft;
 };
 
+/**
+ * Why an ending left a run as it was. `cancel_claimed` carries the Event the
+ * Cancel claim recorded, which the engine runs the Canceled outlet with.
+ * `unclaimed` is a `canceled` verdict meeting a run that holds no Cancel
+ * claim; a claim is never removed once written, so no real run reaches it.
+ */
+export type RunLeft =
+  | { kind: "already_ended"; status: TerminalExecutionStatus }
+  | {
+      kind: "cancel_claimed";
+      cancel: { eventName: string | null; payload: JsonObject | null };
+    }
+  | { kind: "exit_claimed" }
+  | { kind: "unclaimed" };
+
 export type RunEndDecision =
   | {
       kind: "write";
@@ -128,12 +143,20 @@ export type RunEndDecision =
       error: string | undefined;
       entry: RunEndEntry;
     }
-  | { kind: "leave" };
-
-const LEAVE = { kind: "leave" } as const satisfies RunEndDecision;
+  | RunLeft;
 
 /**
- * Decides one ending against one run. An ended run is always left. Otherwise:
+ * What a write that names one run answers: it ended the run in `status`, it
+ * left the run and why, or no row holds that id.
+ */
+export type RunEndAnswer =
+  | { kind: "ended"; status: TerminalExecutionStatus }
+  | RunLeft
+  | { kind: "missing" };
+
+/**
+ * Decides one ending against one run, or says why the run is left as it was.
+ * An ended run is always left. Otherwise:
  *
  * - A verdict under an Exit claim ends the run `exited`. Under a Cancel claim
  *   only a `canceled` verdict ends it, so the engine runs the Canceled outlet
@@ -147,7 +170,7 @@ export function decideRunEnd(
   ending: RunEnding,
   row: RunEndRow
 ): RunEndDecision {
-  if (!isInFlight(row.status)) return LEAVE;
+  if (isEnded(row.status)) return { kind: "already_ended", status: row.status };
   switch (ending.kind) {
     case "verdict":
       if (row.claim?.kind === "exit") {
@@ -161,7 +184,7 @@ export function decideRunEnd(
         };
       }
       if ((row.claim?.kind === "cancel") !== (ending.status === "canceled")) {
-        return LEAVE;
+        return leftFor(row.claim);
       }
       return {
         kind: "write",
@@ -188,12 +211,27 @@ export function decideRunEnd(
       };
     }
     default:
-      return row.claim === null ? stoppedFromOutside(ending) : LEAVE;
+      return row.claim === null
+        ? stoppedFromOutside(ending)
+        : leftFor(row.claim);
   }
 }
 
-function isInFlight(status: WorkflowExecutionStatus): boolean {
-  return IN_FLIGHT_EXECUTION_STATUSES.some((candidate) => candidate === status);
+function isEnded(
+  status: WorkflowExecutionStatus
+): status is TerminalExecutionStatus {
+  return TERMINAL_EXECUTION_STATUSES.some((ended) => ended === status);
+}
+
+/** Why an in-flight run holding `claim` is left as it was. */
+function leftFor(claim: RunEndClaim | null): RunLeft {
+  if (claim === null) return { kind: "unclaimed" };
+  return claim.kind === "cancel"
+    ? {
+        kind: "cancel_claimed",
+        cancel: { eventName: claim.eventName, payload: claim.payload },
+      }
+    : { kind: "exit_claimed" };
 }
 
 const CLAIMED_STATUS = {
@@ -331,7 +369,7 @@ function exitedMetadata(
     : { error: reached.error, failureKind: reached.failureKind, runMode };
 }
 
-export function exitOutcome(
+function exitOutcome(
   claim: RunEndClaim | null | undefined,
   context: RunExitContext | undefined
 ): RunExitOutcome | undefined {

@@ -572,14 +572,7 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
       { store, storeForPass: exitWakesOpenParks, entities, guarded: true }
     );
 
-    expect(run.value).toMatchObject({
-      status: "exited",
-      success: true,
-      exit: {
-        reason: "entity_condition_not_met",
-        nodeId: "after_short",
-      },
-    });
+    expect(run.value).toMatchObject({ status: "exited", success: true });
     // The delay derives its remaining time from Date.now(), so the replay
     // clock can land a millisecond early.
     expect(run.elapsedMs).toBeGreaterThan(29_000);
@@ -600,9 +593,12 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
         .callsOf("markWaitStateStatus")
         .filter((call) => call.status === "cancelled")
     ).toHaveLength(1);
-    expect(store.timeline.map((event) => event.eventType)).toContain(
-      "run_exited"
-    );
+    expect(
+      store.timeline.find((event) => event.eventType === "run_exited")?.metadata
+    ).toMatchObject({
+      reason: "entity_condition_not_met",
+      nodeId: "after_short",
+    });
     expect(store.callsOf("completeRun")).toHaveLength(1);
   });
 

@@ -32,10 +32,15 @@ import {
   type NodeSchedulerInput,
   type PassParked,
 } from "#src/backend/engine/scheduler";
-import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
+import type {
+  PendingCancel,
+  StoreFailure,
+  WorkflowStore,
+} from "#src/backend/engine/store";
 import { recordVerdict } from "#src/backend/engine/terminal-record";
 import type {
   CanceledOutletOutcome,
+  RunEndAnswer,
   RunExitContext,
   RunVerdict,
 } from "@wfgraph/shared/lifecycle/run-ending";
@@ -50,10 +55,7 @@ import { runDurable } from "#src/backend/engine/durable";
 import { withAppLogCategory } from "#src/backend/lib/effect/app-logger";
 import { entityEligibilityConditionId } from "#src/backend/lib/entity-eligibility";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import type {
-  EntityEligibilityReason,
-  WorkflowExecutionStatus,
-} from "@wfgraph/shared/lifecycle/execution-contracts";
+import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 
 export type { WorkflowActions } from "#src/backend/engine/actions";
 export type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
@@ -151,15 +153,6 @@ type EndedWorkflowExecution = RunProgress & {
   success: boolean;
   error?: string | undefined;
   cancelled?: boolean | undefined;
-  exit?:
-    | {
-        reason: EntityEligibilityReason;
-        entityType: string;
-        conditionId: string;
-        nodeId: string;
-        checkedAt: string;
-      }
-    | undefined;
 };
 
 /**
@@ -426,7 +419,7 @@ function executeWorkflowInner(
         const cancelled = cancelBoundary.hasLeftStartedBranch();
 
         const recordFailure = (canceledOutlet?: CanceledOutletOutcome) =>
-          recordVerdict({
+          recordAndReport({
             store,
             executionId,
             verdict: fatalVerdict(failure, exitContext, canceledOutlet),
@@ -446,16 +439,15 @@ function executeWorkflowInner(
         // claim. Every claimed Execution jumps to the Canceled outlet
         // (ADR-0007), so the outlet runs for that claim and a step of its own
         // records canceled after it.
-        const claim = failedRecord.cancelClaim;
         const recorded =
-          claim === undefined
-            ? failedRecord
-            : yield* runCanceledOutletThenRecord({
+          failedRecord.answer.kind === "cancel_claimed"
+            ? yield* runCanceledOutletThenRecord({
                 runtime,
                 scheduler,
-                claim,
+                claim: failedRecord.answer.cancel,
                 record: recordFailure,
-              });
+              })
+            : failedRecord;
 
         return {
           kind: "ended" as const,
@@ -465,7 +457,6 @@ function executeWorkflowInner(
           outputs: traversal.outputs,
           error: recorded.status === "failed" ? failure.message : undefined,
           cancelled: recorded.status === "canceled" || cancelled,
-          exit: recorded.exit,
         };
       }
 
@@ -475,7 +466,7 @@ function executeWorkflowInner(
         canceled: boolean,
         canceledOutlet?: "ran" | "failed"
       ) =>
-        recordVerdict({
+        recordAndReport({
           store,
           executionId,
           verdict: walkedVerdict({
@@ -501,16 +492,15 @@ function executeWorkflowInner(
       // takes the Canceled outlet for that claim and records canceled in a step
       // of its own, so the outlet's nodes run before the terminal row ends the
       // run.
-      const claim = completed.cancelClaim;
       const recorded =
-        claim === undefined
-          ? completed
-          : yield* runCanceledOutletThenRecord({
+        completed.answer.kind === "cancel_claimed"
+          ? yield* runCanceledOutletThenRecord({
               runtime,
               scheduler,
-              claim,
+              claim: completed.answer.cancel,
               record: (outlet) => recordCompletion(true, outlet),
-            });
+            })
+          : completed;
 
       const attemptMs = Date.now() - attemptStartTime;
       yield* Effect.logInfo(`Run ${recorded.status} in ${attemptMs}ms`).pipe(
@@ -530,7 +520,6 @@ function executeWorkflowInner(
         success: recorded.status !== "failed",
         results: traversal.results,
         outputs: traversal.outputs,
-        exit: recorded.exit,
       };
     }).pipe(
       // The one exit of a pass that parked. A walk settled with a Wait parked,
@@ -635,6 +624,31 @@ function runCanceledOutletThenRecord<A, E>(input: {
       input.record(outlet)
     );
   });
+}
+
+/**
+ * Records `verdict` and pairs the store's answer with the status the pass
+ * reports: the stored status once the run has ended, and the verdict's while
+ * a claim holds the run.
+ */
+function recordAndReport(input: {
+  store: WorkflowStore;
+  executionId: string;
+  verdict: RunVerdict;
+  output?: unknown;
+}): Effect.Effect<
+  { answer: RunEndAnswer; status: WorkflowExecutionStatus },
+  StoreFailure
+> {
+  return recordVerdict(input).pipe(
+    Effect.map((answer) => ({
+      answer,
+      status:
+        answer.kind === "ended" || answer.kind === "already_ended"
+          ? answer.status
+          : input.verdict.status,
+    }))
+  );
 }
 
 /**
