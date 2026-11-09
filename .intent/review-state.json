@@ -1110,15 +1110,15 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/runs.ts": {
-      "fingerprint": "7581c0777156a4ce4f4313d80574c4f6fafbf7461711d11d0a67f0f84ce29a45",
+      "fingerprint": "183b690df2586ee128db3efb703387a0927ec95163628f3f2c2b47afaf5ac36c",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/runs.ts": "0f9ccd0bfc3a0a35e348e8cb8e907a03cc21397abaf08964340c8cf25e49e081"
+        "packages/core/src/backend/services/executions/repo/runs.ts": "e0b0777621b63d04ed376768a045e523d9576cd96c0842361032243fff70f71b"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
-      "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "head": "7d840012b90c21bd2edf1e35d51f425ce855ed00",
+      "outcome": "no-change",
+      "reason": "Run-ending internals that no published skill teaches; _artifacts/skill_tree.yaml lists no executions repository sources.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "Changed: packages/core/src/backend/services/executions/repo/runs.ts at 7d840012b90c21bd2edf1e35d51f425ce855ed00"
       ]
     },
     "source:packages/core/src/backend/services/executions/status.test.ts": {
