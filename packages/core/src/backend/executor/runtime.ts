@@ -4,10 +4,11 @@
  *
  * A step whose memo row `succeeded` answers its value, a step whose row is
  * `failed` fails, and any other step runs and records its value, except a
- * step run through `runIdempotent`, which records nothing. A run's pass
- * runs the engine over `createExecutorRuntime`, whose `waitForEvent` answers
- * the wake on the park's wait row and otherwise records the parking step and
- * answers `parked`, which ends the branch for this pass. A delivery's pass
+ * step run through `runIdempotent`, which records only a success over its own
+ * `failing` row. A run's pass runs the engine over `createExecutorRuntime`,
+ * whose `waitForEvent` answers the wake on the park's wait row and otherwise
+ * records the parking step and answers `parked`, which ends the branch for
+ * this pass. A delivery's pass
  * runs its steps through `createPassSteps`, which parks nothing. Every write
  * is fenced on the pass's owner token until the pass ends its row's subject.
  * Once the pass stops, because a step threw or the lease was lost, it starts
@@ -560,16 +561,31 @@ export function createExecutorRuntime(
       );
     },
 
-    // A `failing` row an earlier pass left runs the step, as it does for
-    // `run`, and stays as it is when the step succeeds: the node's log row
-    // reads its count of failures until the run ends.
+    // An idempotent step is a store write of a few milliseconds, so it is
+    // never the step the heartbeat records as running: a lease that expires
+    // or a budget that runs out during it counts as the run's own failure, as
+    // one between steps does. A failure `fn` throws still counts against the
+    // step's id. A success over a `failing` row an earlier pass left marks the
+    // row `succeeded`, keeping its failure count for the node log's
+    // `retries`, so the node no longer reads as retrying.
     runIdempotent: async <T>(
       step: DurableStepRef,
       fn: () => Promise<T>
     ): Promise<T> => {
       const failure = book.refusal(step.id);
       if (failure !== undefined) throw failure;
-      return await runStep(passStepOf(step), fn, () => Promise.resolve());
+      const passStep = passStepOf(step);
+      let value: T;
+      try {
+        value = await fn();
+      } catch (error) {
+        state.stepThrew(passStep, error);
+        throw error;
+      }
+      if (book.memo.get(step.id)?.status === "failing") {
+        await runEffect(book.remember(passStep, null));
+      }
+      return value;
     },
 
     waitForEvent: async (

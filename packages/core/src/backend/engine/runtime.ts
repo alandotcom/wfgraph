@@ -102,9 +102,11 @@ export type WorkflowExecutionRuntime = {
   run: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
   /**
    * Runs `fn` on every pass, which is safe only because `fn` is idempotent. It
-   * stores nothing when `fn` succeeds. A failure counts against `step.id` and
-   * stops the pass exactly as a failure inside `run` does, and a step whose
-   * retries are spent is refused before `fn` is called.
+   * stores no value. A failure counts against `step.id` and stops the pass
+   * exactly as a failure inside `run` does, and a step whose retries are spent
+   * is refused before `fn` is called. A success after counted failures is
+   * recorded, so the step no longer reads as retrying. The step is never the
+   * one the runtime reports as running, since `fn` is a short store write.
    */
   runIdempotent: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
 };

@@ -1069,6 +1069,127 @@ function describeCases(
     expect((await readRun(harness)).status).toBe("failed");
   });
 
+  // A log open that failed once and then succeeded marks its memo row
+  // `succeeded`, so the Runs view stops reading the node as retrying while
+  // the run waits, and the failure count stays on the row for `retries`.
+  it("clears a log open's failure from the run's failing nodes once the open succeeds", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode(),
+          actionNode("send", "test/send"),
+          waitNode("pause", delay("10s")),
+        ],
+        edges: [edge("entry", "send", "started"), edge("send", "pause")],
+      })
+    );
+    let refused = 0;
+    const refuseSendOpenOnce = wrapFenced((writes) => ({
+      ...writes,
+      openNodeLog: (input) =>
+        input.nodeId === "send" && refused === 0
+          ? Effect.suspend(() => {
+              refused += 1;
+              return Effect.fail(
+                new DatabaseError({ cause: new Error("connection reset") })
+              );
+            })
+          : writes.openNodeLog(input),
+    }));
+
+    expect(await harness.pass({ wrap: refuseSendOpenOnce })).toMatchObject({
+      kind: "retry",
+    });
+    expect(await harness.pass({ wrap: refuseSendOpenOnce })).toMatchObject({
+      kind: "parked",
+    });
+
+    const parked = await readRun(harness);
+    expect(
+      parked.memo.find((entry) => entry.stepId === "node:send:log-open")
+    ).toEqual({
+      stepId: "node:send:log-open",
+      nodeId: "send",
+      status: "succeeded",
+      failures: 1,
+      value: null,
+    });
+    expect(await logsOf(harness, "send")).toMatchObject([
+      { status: "success", retries: 1 },
+    ]);
+    const failing = await harness.connection.run(
+      Effect.gen(function* () {
+        const executions = yield* ExecutionRepo;
+        return yield* executions.listFailingNodeIds(harness.executionId);
+      })
+    );
+    expect(failing).toEqual([]);
+  });
+
+  // A log write takes milliseconds and is never the step the heartbeat
+  // records, so a worker that dies just after one leaves no step to blame:
+  // the claim that sweeps its lease counts the run's own attempt.
+  it("charges no log step when the worker dies right after a log open", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(), actionNode("send", "test/send")],
+        edges: [edge("entry", "send", "started")],
+      })
+    );
+
+    // The step each heartbeat recorded as running.
+    const beats: Array<string | null> = [];
+    let opened = false;
+    const beatAfterOpen = Promise.withResolvers<void>();
+    const death = createGate();
+    const dieAfterSendOpen = wrapFenced((writes) => ({
+      ...writes,
+      // Once the worker is dead its heartbeat reaches the database no more.
+      renewLease: (input) =>
+        death.calls() > 0
+          ? Effect.fail(new DatabaseError({ cause: new Error("worker gone") }))
+          : writes.renewLease(input).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  beats.push(input.runningStepId);
+                  if (opened) beatAfterOpen.resolve();
+                })
+              )
+            ),
+      openNodeLog: (input) =>
+        writes.openNodeLog(input).pipe(
+          Effect.tap(() =>
+            input.nodeId === "send"
+              ? Effect.promise(async () => {
+                  opened = true;
+                  await beatAfterOpen.promise;
+                  await death.pass();
+                })
+              : Effect.void
+          )
+        ),
+    }));
+
+    const stale = harness.pass({
+      workerId: "worker_stale",
+      wrap: dieAfterSendOpen,
+      heartbeatMs: 5,
+    });
+    await death.entered;
+
+    offsetMs += LEASE_MS + 1_000;
+    expect(await harness.pass({ workerId: "worker_live" })).toEqual({
+      kind: "ended",
+    });
+    death.release();
+    expect(await stale).toEqual({ kind: "fence_refused", fence: "owner" });
+
+    expect(beats.filter((step) => step?.includes(":log-"))).toEqual([]);
+    expect(await logsOf(harness, "send")).toMatchObject([
+      { status: "success", retries: 0 },
+    ]);
+  });
+
   // SQLite has one writer per database: a write transaction holds the
   // connection from `BEGIN IMMEDIATE` to its commit, and every other statement
   // on that connection waits for it. A read and a write answering while the

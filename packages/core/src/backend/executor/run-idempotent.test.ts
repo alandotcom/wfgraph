@@ -1,7 +1,8 @@
 /**
  * `runIdempotent` on the database executor's runtime, over a stubbed
- * repository: a step that stores nothing, whose failures the release counts
- * and backs off from as it does for a memoized step.
+ * repository: a step that stores no value, whose failures the release counts
+ * and backs off from as it does for a memoized step, and which the heartbeat
+ * never records as running.
  */
 
 import { describe, expect, it } from "vitest";
@@ -56,22 +57,32 @@ function unclaimed<P>(): PassBody<P, never> {
 
 /**
  * Runs one leased pass over `CLAIMED` whose body runs `fn` as the idempotent
- * step `STEP`, over the memo rows `memo`. The body ends the run when the step
- * answers, and records the error it threw otherwise. Every memo write, and
- * every store write, dies: an idempotent step makes none of them.
+ * step `STEP`, over the memo rows `memo`, with a heartbeat every
+ * `heartbeatMs` when given. The body ends the run when the step answers, and
+ * records the error it threw otherwise. The pass records each memo write and
+ * the running step of each lease renewal; every store write dies.
  */
 async function runPass(input: {
   memo: StepMemoEntry[];
-  fn: () => Promise<string>;
+  fn: (beats: Array<string | null>) => Promise<string>;
+  heartbeatMs?: number | undefined;
 }) {
   const releases: PassOutcome[] = [];
   const thrown: unknown[] = [];
+  const memoWrites: Array<{ stepId: string; value: unknown }> = [];
+  const beats: Array<string | null> = [];
   const unexpected = (name: string) => () =>
     Effect.die(new Error(`The pass's ${name} was not expected`));
   const writes: FencedExecutionWrites = {
     ...buildStoreWrites((name) => unexpected(name)),
-    renewLease: unexpected("renewLease"),
-    writeStepMemo: unexpected("writeStepMemo"),
+    renewLease: (renewal) =>
+      Effect.sync(() => {
+        beats.push(renewal.runningStepId);
+      }),
+    writeStepMemo: (memo) =>
+      Effect.sync(() => {
+        memoWrites.push({ stepId: memo.stepId, value: memo.value });
+      }),
     dropSchedule: unexpected("dropSchedule"),
     recordParkStep: unexpected("recordParkStep"),
     releasePass: (release) =>
@@ -100,9 +111,11 @@ async function runPass(input: {
               kind: "ready",
               run: (runtime) =>
                 Effect.promise(() =>
-                  runtime.runIdempotent(STEP, input.fn).catch((error) => {
-                    thrown.push(error);
-                  })
+                  runtime
+                    .runIdempotent(STEP, () => input.fn(beats))
+                    .catch((error) => {
+                      thrown.push(error);
+                    })
                 ).pipe(Effect.as({ kind: "ended" } as const)),
             } as const),
           fail: () => Effect.die(new Error("No run was failed")),
@@ -110,10 +123,23 @@ async function runPass(input: {
         delivery: unclaimed<DeliveryPass>(),
         cron: unclaimed<CronPass>(),
       },
-      { workerId: "worker_1", now: () => NOW, leaseMs: 60_000 }
+      {
+        workerId: "worker_1",
+        now: () => NOW,
+        leaseMs: 60_000,
+        heartbeatMs: input.heartbeatMs,
+      }
     ).pipe(Effect.provide(services))
   );
-  return { result, releases, thrown };
+  return { result, releases, thrown, memoWrites, beats };
+}
+
+/** Waits until `beats` holds at least `count` lease renewals. */
+async function untilBeats(beats: Array<string | null>, count: number) {
+  while (beats.length < count) {
+    // eslint-disable-next-line eslint/no-await-in-loop -- polls the heartbeat the pass runs beside this step
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
 }
 
 describe("runIdempotent on the database executor", () => {
@@ -132,8 +158,43 @@ describe("runIdempotent on the database executor", () => {
       result: { kind: "ended" },
       releases: [],
       thrown: [],
+      memoWrites: [],
+      beats: [],
     });
     expect(second).toEqual(first);
+  });
+
+  it("marks a failing memo row succeeded when the step succeeds", async () => {
+    const pass = await runPass({
+      memo: [
+        {
+          stepId: STEP.id,
+          nodeId: "send",
+          status: "failing",
+          failures: 1,
+          error: "connection reset",
+        },
+      ],
+      fn: () => Promise.resolve("opened"),
+    });
+
+    expect(pass.memoWrites).toEqual([{ stepId: STEP.id, value: null }]);
+    expect(pass.releases).toEqual([]);
+    expect(pass.thrown).toEqual([]);
+  });
+
+  it("is never the step the heartbeat records as running", async () => {
+    const pass = await runPass({
+      memo: [],
+      heartbeatMs: 1,
+      fn: async (beats) => {
+        await untilBeats(beats, 2);
+        return "opened";
+      },
+    });
+
+    expect(pass.beats.length).toBeGreaterThanOrEqual(2);
+    expect(pass.beats.filter((step) => step !== null)).toEqual([]);
   });
 
   it("counts a failure against the step and backs off by the failures its memo row already holds", async () => {
