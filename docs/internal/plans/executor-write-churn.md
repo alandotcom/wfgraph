@@ -69,103 +69,117 @@ Work:
 
 ### The design
 
-`runWithStepLog` (`engine/step-log.ts`) stops running the open and the close through
-`runtime.run`. The writes are already idempotent:
+The node log open and close stop running through `runtime.run`, so neither writes a
+memo row. Both writes are idempotent:
 
 - The open inserts under `nodeLogId(executionId, nodeId)` with `ON CONFLICT DO
   NOTHING` (`openNodeLogWrite` in `repo/node-logs.ts`), backed by
-  `workflow_execution_logs_execution_node_uidx`. The memoized handle's `logId` is
-  that same id, and its `startTime` is read by nobody on this path, since each
-  attempt times its own work.
-- The fenced close changes a row only while it is `running` or `error`
-  (`nodeLogCloseSet` in `repo/release-policy.ts`). It does that with a `CASE` inside
-  `SET`, so a close that changes nothing still writes a row version. The guard moves
-  into `WHERE`: the fenced close applies when `status = 'running'`, or when
-  `status = 'error'` and the close reports `success`. That is the rule the per-verdict
-  memo ids implement today: a later success corrects an error, a second error leaves
-  the first, and a success is never overwritten. The unfenced close is unchanged.
+  `workflow_execution_logs_execution_node_uidx`, so a second open answers the first
+  row.
+- Every close, fenced or not, carries its guard in `WHERE` (`nodeLogCloseGuard` in
+  `repo/node-log-close.ts`): it applies when `status = 'running'`, or when
+  `status = 'error'` and the close reports `success`. A later success corrects an
+  error, a second error leaves the first, and a success is never overwritten. A
+  close the guard refuses writes no row version.
 
-Two pieces keep the existing retry and replay behaviour.
+`WorkflowStore.startStepLog` and `completeStepLog` (`engine/store.ts`) state those
+two guarantees, which are what make it safe for the engine to open and close a
+node's row on every pass that reaches it.
 
-**A runtime method for idempotent writes.** A store write outside a durable step that
-fails becomes an `EngineFailure` of kind `failure`, which `endsPass` does not end the
-pass on, so the node would fail on a transient database error. `WorkflowExecutionRuntime`
-(`engine/runtime.ts`) gains a third method beside `run` and `waitForEvent`:
+**The open is an idempotent runtime step.** `WorkflowExecutionRuntime`
+(`engine/runtime.ts`) has a third method beside `run` and `waitForEvent`,
+`runIdempotent`, which runs `fn` on every pass and stores no value. A failure counts
+against the step's id and stops the pass as a failure inside `run` does, so
+`step_failed`, its backoff and `STEP_RETRY_LIMIT` apply to a failed open, and a step
+whose retries are spent is refused before `fn` runs. Action nodes open through it
+under `node:<id>:log-open` (`runWithStepLog` in `engine/step-log.ts`), and so does
+the Wait (`engine/wait.ts`), which used to memoize its open only to keep the
+handle's `startTime`.
 
-```ts
-/**
- * Runs `fn` on every pass, which is safe only because `fn` is idempotent. It
- * stores nothing when `fn` succeeds. A failure counts against `step.id` and
- * stops the pass exactly as a failure inside `run` does, and a step whose
- * retries are spent is refused before `fn` is called.
- */
-runIdempotent: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
-```
+The database executor's implementation (`executor/runtime.ts`) adds two rules:
 
-The database executor's implementation (`executor/runtime.ts`) shares `stepMemoBook`'s
-answer for a `failed` row and its failure counting, and skips `remember`. A step that
-failed and later succeeded keeps its `failing` row until the run ends, which the node
-log's `retries` column already reads. The test runtimes implement it by calling `fn`.
+- A success over a `failing` memo row writes the row `succeeded` through the
+  existing memo write, which keeps the failure count for the node log's `retries`
+  and clears the schedule row's running step in the same transaction. Without it, a
+  finished node kept reading as retrying for the rest of the run, and failures
+  added to its count on later passes until it was refused. This write happens only
+  on that recovery path.
+- An idempotent step is never the step the heartbeat records as running. A lease
+  expiry or a budget cut during a millisecond log write counts as the run's own
+  failure, as a failure between steps does, rather than against a log step that may
+  already have finished.
 
-**A pass-start read of the run's log rows.** A pass loads the memo in one query
-(`loadMemo` in `executor/pass.ts`), so a replayed log step costs no query today.
-Without a read, every pass would re-issue an open and a close for every node it
-replays. The store `engine/db-store.ts` builds for a pass reads the run's log rows
-once, on its first log write, into a map of node id to status, and updates the map
-with its own writes. `startStepLog` skips the insert for a node with a row.
-`completeStepLog` skips a close the `WHERE` guard would refuse. One query per pass
-replaces one fenced transaction per replayed log step. The map is exact for the
-pass: only the lease holder writes log rows, and the pass holds the lease.
+**The close is a direct store write.** `runWithStepLog` closes the row through
+`closeStepLogQuietly`, which logs and swallows a failure. The close counts no
+failure, so it has no reason to be a step, and a refusal of a step can neither fail
+a node that did its work nor replace the work's own failure. The close is fenced
+like every store write of the pass, so a close after the pass stopped or lost its
+lease is refused by the store.
 
-The Wait is unchanged. Its open sits inside its own memoized step
-(`wait-start-log-<node>`), whose `startTime` measures the park, and its closes are
-already direct store writes guarded by the conditional close.
+**The pass reads the run's log rows when it opens.** `runBody.open`
+(`executor/run-body.ts`) reads each row's id, status and `started_at` through
+`listNodeLogStates`, beside the run input and before any step runs, so a failed
+read fails the pass rather than a step. It hands the rows to
+`createDbWorkflowStore` (`engine/db-store.ts`) as data. The store skips an open
+for a node with a row, answering that row's `started_at` as the handle's
+`startTime`, which is how a Wait's close on a later pass measures the whole park.
+It skips a close `nodeLogCloseApplies` refuses, and keeps the map current with its
+own writes. The map is a hint for skipping writes; the SQL guard is the authority,
+and a close for a row the map does not hold falls through to the write. One read
+per pass replaces two fenced transactions per replayed node.
 
 ### What it saves
 
 Per action node: memo rows 3 to 1, schedule updates 3 to 1, fenced transactions
-5 to 3. For the measured workflow: memo rows 29 to 15 per run, schedule updates 33
-to about 19.
+5 to 3. Per Wait, one memo row and one schedule update fewer.
+
+Measured on the branch with the harness, 3,000 runs:
+
+| Measure                                 | Before | After  |
+| --------------------------------------- | ------ | ------ |
+| Memo rows per run                       | 29     | 15     |
+| Schedule updates per run                | 33     | 19     |
+| Schedule updates applied as HOT         | 0%     | 79%    |
+| `workflow_execution_schedule` peak dead | 57,846 | 10,279 |
+| `workflow_execution_steps` peak dead    | 52,083 | 25,212 |
+
+The measurement predates the Wait's open moving off its memoized step, so the Wait's
+open memo row and the schedule update its memo write made are still in the "After"
+column; each run of the harness passes one Wait.
 
 ### What changes in behaviour
 
-- A failed log write is counted on its step id as today, so `step_failed`, its
-  backoff and `STEP_RETRY_LIMIT` apply unchanged.
-- `running_step_id` names a log step while its write runs, as today, and the Runs view
-  reads it the same way.
-- A node whose log row is open when its handler step fails, and whose retries are
-  spent, closes as `error` exactly as now.
+- A failed log open counts on its own step id, and a later success marks that step
+  `succeeded`, so the node stops reading as retrying.
+- `running_step_id` never names a log step.
+- A failed close never fails a node and never hides the work's failure.
+- A second `error` close keeps the first error's message and duration, on every
+  close path.
 
 ### The model
 
-`.claude/skills/verify-durable-executor/model/Handler.tla` checks this already, with
-two edits: `Claim` reads the log row (`seenOpen` is "the row exists", `seenClose` is
-"the row is closed"), and `OpenMemo` and `CloseMemo` write no memo. Run on a copy on
-2026-11-08, every `Handler` rule held and every `REACH` state was reached, about
-15,900 states.
-
-With the read in place, the two existing mutations `log-id-random` and
-`log-close-unconditional` no longer break their rules, because a fenced pass that
-reads the row never opens or closes it twice. Each guard still carries its rule when
-the read is absent: with no read and no memo, the guards alone held both rules, and
-removing either one broke its rule. So the model gets a `PassReadsLogRows` switch,
-and those two mutations flip it off together with their guard. `mutations.sh` takes
-one replacement per line, so the switch and the guard share one constant per
-mutation, or the script learns to take two.
-
-The `Handler` section of the skill's `SKILL.md` and its code-mapping row change with
-it: the log steps are idempotent writes, and the pass reads the log rows.
+`.claude/skills/verify-durable-executor/model/Handler.tla` models the open as an
+idempotent step whose insert can throw a retriable error counted against its own
+step, the recovery write (`SuccessReconcilesFailures`), a heartbeat that records the
+holder's running step and never the open (`IdempotentStepIsNeverRunning`), an
+expired or swept lease that counts against the step the schedule row names, and the
+read at claim (`PassReadsLogRows`). The rule `FinishedNodeNeverRefused` says a node
+whose log row is closed as a success is never failed or refused afterwards and none
+of its steps reads as retrying. Mutations `success-leaves-failures` and
+`log-open-is-running-step` each break it. With `PassReadsLogRows` off, a pass runs
+the insert of an open that already succeeded again, and a failure there is counted
+by nobody, so `NodeEnds` breaks (mutation `pass-reads-no-log-rows`).
 
 ### Work
 
 1. `runIdempotent` on the runtime port, the database executor's runtime and the test
-   runtimes, with executor tests for a failing idempotent step: counted, backed off,
-   refused once spent.
-2. The `WHERE` guard on the fenced close, PostgreSQL and SQLite (`sqlite/logs.ts`),
-   with conformance cases for each of the three close transitions.
-3. The pass-start read in `engine/db-store.ts`, with a repository read on both
-   backends and a conformance case.
-4. `runWithStepLog` on `runIdempotent`; engine and replay tests updated for the step
-   ids that no longer appear in the memo.
+   runtimes, with the recovery write and no running step.
+2. The `WHERE` guard on every close, PostgreSQL and SQLite, in
+   `repo/node-log-close.ts`, with conformance cases for each of the six close
+   transitions.
+3. The pass-open read, `listNodeLogStates` on both backends, and the store over the
+   rows it is handed.
+4. `runWithStepLog` and the Wait on `runIdempotent`, and the close as a quiet store
+   write.
 5. The model, `mutations.sh` and `SKILL.md`; `check.sh` and `mutations.sh` pass.
 6. The harness again, reporting memo rows and schedule updates per run.
