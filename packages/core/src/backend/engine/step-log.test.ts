@@ -11,7 +11,10 @@ import { afterEach, describe, expect, it } from "@effect/vitest";
 import { vi } from "vitest";
 import { Effect, Layer, Logger, References } from "effect";
 import { createRecordingWorkflowStore } from "#src/backend/engine/recording-store";
-import { createInMemoryWorkflowRuntime } from "#src/backend/engine/runtime";
+import {
+  createInMemoryWorkflowRuntime,
+  type WorkflowExecutionRuntime,
+} from "#src/backend/engine/runtime";
 import { runWithStepLog } from "#src/backend/engine/step-log";
 import {
   noopWorkflowStore,
@@ -88,6 +91,65 @@ describe("runWithStepLog", () => {
           }),
         ])
       );
+    })
+  );
+});
+
+/**
+ * A runtime like a pass that stopped after the node's log open: the open
+ * runs, and every later step is refused before its function is called.
+ */
+function runtimeStoppedAfterOpen(): WorkflowExecutionRuntime {
+  const inner = createInMemoryWorkflowRuntime();
+  let calls = 0;
+  const refuseAfterOpen = <T>(fn: () => Promise<T>): Promise<T> => {
+    calls += 1;
+    return calls === 1
+      ? fn()
+      : Promise.reject(new Error("This pass has stopped"));
+  };
+  return {
+    ...inner,
+    run: (_step, fn) => refuseAfterOpen(fn),
+    runIdempotent: (_step, fn) => refuseAfterOpen(fn),
+  };
+}
+
+// The close is the store's own quiet write, so neither a refused close nor a
+// refused step after the open can stand in for what the work answered.
+describe("a close that cannot be written", () => {
+  it.effect("keeps the work's own failure", () =>
+    Effect.gen(function* () {
+      const vendorDown = new Error("The vendor is down");
+      const error = yield* Effect.flip(
+        runWithStepLog(
+          {
+            store: storeRefusingTheClose(),
+            context,
+            runtime: runtimeStoppedAfterOpen(),
+            input: {},
+          },
+          () => Effect.fail(vendorDown)
+        )
+      );
+
+      expect(error).toBe(vendorDown);
+    })
+  );
+
+  it.effect("answers the work's success", () =>
+    Effect.gen(function* () {
+      const result = yield* runWithStepLog(
+        {
+          store: storeRefusingTheClose(),
+          context,
+          runtime: runtimeStoppedAfterOpen(),
+          input: {},
+        },
+        () => Effect.succeed({ success: true, data: { sid: "SM1" } } as const)
+      );
+
+      expect(result).toEqual({ success: true, data: { sid: "SM1" } });
     })
   );
 });

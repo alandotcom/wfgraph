@@ -299,13 +299,10 @@ describe("workflow engine replay safety", () => {
     // that node's id. Nothing wraps the handler body.
     expect(memo.has("node:email_1:work")).toBe(true);
     expect(memo.has("node:followup_1:work")).toBe(true);
-    // The run-log open and close are idempotent writes, which run on every
-    // pass and store no memo row.
+    // The run-log open is an idempotent step and the close a direct store
+    // write, so neither stores a memo row.
     expect(
-      [...memo.keys()].filter(
-        (stepId) =>
-          stepId.includes(":log-open") || stepId.includes(":log-close")
-      )
+      [...memo.keys()].filter((stepId) => stepId.includes(":log-"))
     ).toEqual([]);
     // A Wait node suspends the run, so a step cannot contain it. Its own
     // persistence segments are memoized around the suspension instead.

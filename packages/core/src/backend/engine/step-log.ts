@@ -127,27 +127,25 @@ function closeStepLogQuietly(
 /**
  * Opens a run-log row, runs the work, and closes the row with what it answered.
  *
- * Both halves run on every pass through `runtime.runIdempotent`, which stores
- * no memo row. The handler between them is replayed from the top on every
- * pass, and writing both rows again is safe: the open inserts under an id
- * derived from the run and the node and keeps the first row, and the fenced
- * close applies only where `nodeLogCloseApplies` admits it. The pass's store
- * skips either write when the run's log rows show it would change nothing.
+ * The open runs on every pass through `runtime.runIdempotent`, which stores
+ * no memo row, under the step id `node:<id>:log-open`. The handler after it is
+ * replayed from the top on every pass, and the open may run again because the
+ * store answers a second open of the same node with the first row
+ * (`WorkflowStore.startStepLog`).
  *
- * The close carries its own status in its step id (`log-close:success` or
- * `log-close:error`), which is the step the Runs view names while that write
- * runs, and the step a failure of that write is counted against.
+ * The close is a direct store write, made on every pass that reaches it and
+ * timed from the open to the close, so it measures this attempt's own work.
+ * The store refuses a close that would overwrite a success, or a second error
+ * (`WorkflowStore.completeStepLog`), which leaves a replay's near-zero
+ * duration off a row an earlier attempt closed.
  *
- * Each attempt times its own work, from the open to the close. A replay reads
- * its work back out of the memo, so the duration it measures is near zero, and
- * the store skips its close unless the row is still `running` because an
- * earlier pass stopped before closing it.
- *
- * The two have opposite failure policies. A refused open fails the node,
- * because nothing has happened yet and the executor's retry of it costs one wasted
- * call. A refused close is swallowed inside its own step, because a run that
- * did its work has not failed because a row could not be closed. The price is a
- * row left open, which the Runs view shows.
+ * The two have opposite failure policies. A refused open fails the node, and
+ * counts against the open's step id, because nothing has happened yet and the
+ * executor's retry of it costs one wasted call. A refused close is logged and
+ * swallowed, and counts against no step, because a run that did its work has
+ * not failed because a row could not be closed. The price is a row left open,
+ * which the Runs view shows. A work failure is re-raised with its own cause
+ * whatever the close did.
  */
 export function runWithStepLog<T extends StepResult, E, R>(
   target: {
@@ -172,17 +170,13 @@ export function runWithStepLog<T extends StepResult, E, R>(
       openStepLog(target)
     );
     const startedAt = Date.now();
-    const elapsed = () => Date.now() - startedAt;
-
     const closeRow = (close: StepLogClose) =>
-      runIdempotentDurable(
-        runtime,
-        {
-          id: `node:${context.nodeId}:log-close:${close.status}`,
-          nodeId: context.nodeId,
-          name: `${context.nodeName} (close)`,
-        },
-        closeStepLogQuietly(store, context, handle, close, elapsed())
+      closeStepLogQuietly(
+        store,
+        context,
+        handle,
+        close,
+        Date.now() - startedAt
       );
 
     const result = yield* Effect.matchCauseEffect(Effect.suspend(work), {
