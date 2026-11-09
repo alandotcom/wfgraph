@@ -19,6 +19,10 @@
 (* crash or a lost lease between the store write and the memo write runs   *)
 (* fn again on the next pass, and a slow worker whose lease expired can    *)
 (* still reach a store write or a vendor call.                             *)
+(*                                                                         *)
+(* The two log steps write no memo row (runIdempotent): they run on every *)
+(* pass, and the pass reads the node's log row when it claims the run and *)
+(* skips a log write that would change nothing.                            *)
 (***************************************************************************)
 EXTENDS Naturals
 
@@ -32,19 +36,17 @@ VARIABLES
   holder,       \* owner_token, 0 for none
   attempt,      \* failures and expired leases of the whole run, saturating past MaxAttempts
   faults,
-  pc,           \* each worker: "idle" | "open" | "openMemo" | "read" | "readMemo" | "send"
-                \*   | "sendMemo" | "close" | "closeMemo" | "release"
-  seenOpen,     \* each worker: whether its pass loaded the log-open memo
+  pc,           \* each worker: "idle" | "open" | "read" | "readMemo" | "send"
+                \*   | "sendMemo" | "close" | "release"
+  seenOpen,     \* each worker: whether its pass's read found the node's log row
   seenRead,     \* each worker: the read memo its pass loaded, "none" if absent
   seenSend,     \* each worker: the send memo its pass loaded: "none" | "ok" | "refused"
-  seenClose,    \* each worker: whether its pass loaded the log-close memo
+  seenClose,    \* each worker: whether its pass's read found the log row closed
   readVal,      \* each worker: the value this pass read
   readOut,      \* each worker: whether this pass's read step "ok" or "threw"
   sendOut,      \* each worker: what this pass's send came back with: "ok" | "refused" | "threw"
-  memoOpen,     \* the log-open step's memo row exists
   memoRead,     \* the read step's memo row: "none" or the value
   memoSend,     \* the send step's memo row: "none" | "ok" | "refused"
-  memoClose,    \* the log-close step's memo row exists
   logRows,      \* log rows the node has, saturating at 2
   openRows,     \* of those, rows still running
   logCloses,    \* close writes applied to a log row, saturating at 2
@@ -58,7 +60,7 @@ VARIABLES
   failures      \* each step: its retriable failures and the expired leases it was running under
 
 vars == <<sched, holder, attempt, faults, pc, seenOpen, seenRead, seenSend, seenClose,
-          readVal, readOut, sendOut, memoOpen, memoRead, memoSend, memoClose, logRows, openRows,
+          readVal, readOut, sendOut, memoRead, memoSend, logRows, openRows,
           logCloses, node, applied, applies, output, refusalRetried, sentAfterRefusal,
           outcomeChanged, failures>>
 
@@ -68,8 +70,9 @@ Sat2(n) == IF n > 2 THEN 2 ELSE n
 \* The guards the design depends on.
 LeaseHeldBy(w) == holder = w                 \* the memo write checks owner_token
 StoreWriteIsFenced == TRUE                   \* every store write checks owner_token
-LogIdIsTheStepId == TRUE                     \* log-open inserts a row id derived from the step id, on conflict do nothing
+LogIdIsTheStepId == TRUE                     \* log-open inserts a row id derived from the execution and node, on conflict do nothing
 CloseIsConditional == TRUE                   \* log-close updates only a row still running or closed as error
+PassReadsLogRows == TRUE                     \* the pass reads the node's log row on its first log write
 SendCarriesAKey == TRUE                      \* callExternal passes an idempotency key
 ReadIsMemoized == TRUE                       \* the handler wraps the read in step.run
 RefusalIsAValue == TRUE                      \* a StepFailure is stored, not thrown
@@ -85,7 +88,7 @@ Init ==
   /\ seenOpen = [w \in Workers |-> FALSE] /\ seenClose = [w \in Workers |-> FALSE]
   /\ seenRead = [w \in Workers |-> "none"] /\ seenSend = [w \in Workers |-> "none"]
   /\ readVal = [w \in Workers |-> "x"] /\ sendOut = [w \in Workers |-> "ok"]
-  /\ memoOpen = FALSE /\ memoRead = "none" /\ memoSend = "none" /\ memoClose = FALSE
+  /\ memoRead = "none" /\ memoSend = "none"
   /\ logRows = 0 /\ openRows = 0 /\ logCloses = 0 /\ node = "running"
   /\ applied = "none" /\ applies = 0 /\ output = "none" /\ refusalRetried = FALSE
   /\ sentAfterRefusal = FALSE /\ outcomeChanged = FALSE
@@ -93,7 +96,7 @@ Init ==
 
 seenVars == <<seenOpen, seenRead, seenSend, seenClose>>
 workerVars == <<pc, seenVars, readVal, readOut, sendOut>>
-memoVars == <<memoOpen, memoRead, memoSend, memoClose>>
+memoVars == <<memoRead, memoSend>>
 logVars == <<logRows, openRows, logCloses>>
 nodeVars == <<node, output, refusalRetried, outcomeChanged, failures>>
 vendorVars == <<applied, applies, sentAfterRefusal>>
@@ -106,35 +109,33 @@ Go(w, s) == pc' = [pc EXCEPT ![w] = s]
 Claim(w) ==
   /\ sched = "queued" /\ pc[w] = "idle"
   /\ sched' = "leased" /\ holder' = w
-  /\ seenOpen' = [seenOpen EXCEPT ![w] = memoOpen]
+  \* The pass reads the node's log row. The code reads it on the pass's first
+  \* log write, and only the lease holder writes the row before then. The read
+  \* finds the row by the id the open derives from the node, and skips only a
+  \* close the conditional close would refuse.
+  /\ seenOpen' = [seenOpen EXCEPT ![w] = PassReadsLogRows /\ LogIdIsTheStepId /\ logRows > 0]
   /\ seenRead' = [seenRead EXCEPT ![w] = IF ReadIsMemoized THEN memoRead ELSE "none"]
   /\ seenSend' = [seenSend EXCEPT ![w] = memoSend]
-  /\ seenClose' = [seenClose EXCEPT ![w] = memoClose]
+  /\ seenClose' = [seenClose EXCEPT ![w] =
+                     PassReadsLogRows /\ CloseIsConditional /\ logRows > 0 /\ openRows = 0]
   /\ readOut' = [readOut EXCEPT ![w] = "ok"] /\ sendOut' = [sendOut EXCEPT ![w] = "ok"]
   /\ Go(w, "open")
   /\ UNCHANGED <<attempt, faults, readVal, memoVars, logVars, nodeVars, vendorVars>>
 
-\* The log-open step: a memo hit skips it; otherwise insert the node's log row.
+\* The log-open step: a row the pass's read found skips it; otherwise insert
+\* the node's log row. It writes no memo row.
 Open(w) ==
   /\ pc[w] = "open"
   /\ IF seenOpen[w]
        THEN Go(w, "read") /\ UNCHANGED logVars
        ELSE IF ~MayWrite(w)
        THEN Go(w, "idle") /\ UNCHANGED logVars
-       ELSE /\ Go(w, "openMemo")
+       ELSE /\ Go(w, "read")
             /\ IF LogIdIsTheStepId /\ logRows > 0
                  THEN UNCHANGED logVars
                  ELSE /\ logRows' = Sat2(logRows + 1) /\ openRows' = Sat2(openRows + 1)
                       /\ UNCHANGED logCloses
   /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoVars, nodeVars, vendorVars>>
-
-OpenMemo(w) ==
-  /\ pc[w] = "openMemo"
-  /\ IF LeaseHeldBy(w)
-       THEN memoOpen' = TRUE /\ Go(w, "read")
-       ELSE Go(w, "idle") /\ UNCHANGED memoOpen
-  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoRead, memoSend, memoClose,
-                 logVars, nodeVars, vendorVars>>
 
 \* The read step: a memo hit returns the recorded value; otherwise ask vendor A,
 \* which may answer either value or throw a retriable error that ends the pass.
@@ -158,7 +159,7 @@ ReadMemo(w) ==
        ELSE IF ~ReadIsMemoized /\ LeaseHeldBy(w)
        THEN /\ Go(w, "send") /\ UNCHANGED memoRead
        ELSE /\ Go(w, "idle") /\ UNCHANGED memoRead
-  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoOpen, memoSend, memoClose,
+  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoSend,
                  logVars, nodeVars, vendorVars>>
 
 \* The send step: a memo hit returns the recorded outcome; otherwise call vendor B.
@@ -182,30 +183,23 @@ SendMemo(w) ==
   /\ IF LeaseHeldBy(w)
        THEN /\ memoSend' = WriteMemo(memoSend, sendOut[w]) /\ Go(w, "close")
        ELSE /\ Go(w, "idle") /\ UNCHANGED memoSend
-  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoOpen, memoRead, memoClose,
+  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoRead,
                  logVars, nodeVars, vendorVars>>
 
-\* The log-close step: a memo hit skips it; otherwise close the log row.
+\* The log-close step: a closed row the pass's read found skips it; otherwise
+\* close the log row. It writes no memo row.
 Close(w) ==
   /\ pc[w] = "close"
   /\ IF seenClose[w]
        THEN Go(w, "release") /\ UNCHANGED logVars
        ELSE IF ~MayWrite(w)
        THEN Go(w, "idle") /\ UNCHANGED logVars
-       ELSE /\ Go(w, "closeMemo") /\ UNCHANGED logRows
+       ELSE /\ Go(w, "release") /\ UNCHANGED logRows
             /\ IF CloseIsConditional /\ openRows = 0
                  THEN UNCHANGED <<openRows, logCloses>>
                  ELSE /\ openRows' = IF openRows > 0 THEN openRows - 1 ELSE 0
                       /\ logCloses' = Sat2(logCloses + 1)
   /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoVars, nodeVars, vendorVars>>
-
-CloseMemo(w) ==
-  /\ pc[w] = "closeMemo"
-  /\ IF LeaseHeldBy(w)
-       THEN memoClose' = TRUE /\ Go(w, "release")
-       ELSE Go(w, "idle") /\ UNCHANGED memoClose
-  /\ UNCHANGED <<leaseVars, seenVars, readVal, readOut, sendOut, memoOpen, memoRead, memoSend,
-                 logVars, nodeVars, vendorVars>>
 
 \* The node's output is the value the send carried, as the memo records it.
 RecordedBy(w) == IF ReadIsMemoized THEN memoRead ELSE readVal[w]
@@ -302,8 +296,8 @@ SweepDeadLease ==
 Ended == sched = "gone" /\ \A w \in Workers : pc[w] = "idle" /\ UNCHANGED vars
 
 WorkerStep(w) ==
-  \/ Claim(w) \/ Open(w) \/ OpenMemo(w) \/ Read(w) \/ ReadMemo(w) \/ Send(w)
-  \/ SendMemo(w) \/ Close(w) \/ CloseMemo(w) \/ Release(w)
+  \/ Claim(w) \/ Open(w) \/ Read(w) \/ ReadMemo(w) \/ Send(w)
+  \/ SendMemo(w) \/ Close(w) \/ Release(w)
 
 Next ==
   \/ \E w \in Workers : WorkerStep(w) \/ Crash(w)
@@ -351,7 +345,7 @@ ReachRefused        == node = "failed" /\ memoSend = "refused"
 ReachRetriedThenOk  == node = "succeeded" /\ failures["send"] >= 1
 ReachReadRetried    == node = "succeeded" /\ failures["read"] >= 1 /\ memoRead # "none"
 ReachStaleRead      == \E w \in Workers : pc[w] = "readMemo" /\ holder # w /\ memoRead # "none"
-ReachOpenedTwice    == logRows = 1 /\ ~memoOpen /\ \E w \in Workers : pc[w] = "open" /\ LeaseHeldBy(w)
-ReachClosedTwice    == logCloses = 1 /\ ~memoClose /\ \E w \in Workers : pc[w] = "close" /\ LeaseHeldBy(w)
+ReachOpenedTwice    == logRows = 1 /\ \E w \in Workers : pc[w] = "open" /\ LeaseHeldBy(w)
+ReachClosedTwice    == logCloses = 1 /\ \E w \in Workers : pc[w] = "close" /\ LeaseHeldBy(w)
 ReachStaleRelease   == node # "running" /\ \E w \in Workers : pc[w] = "release" /\ ~LeaseHeldBy(w)
 =============================================================================
