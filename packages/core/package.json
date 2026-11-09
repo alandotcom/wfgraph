@@ -106,7 +106,7 @@
     "@wfgraph/shared": "workspace:*",
     "arktype": "catalog:",
     "express": "^5.3.0",
-    "fast-check": "4.10.2",
+    "fast-check": "catalog:",
     "fastify": "^5.12.8",
     "hono": "catalog:",
     "inngest": "catalog:",
