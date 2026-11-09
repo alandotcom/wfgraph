@@ -12,8 +12,9 @@
  * The log writes are also idempotent across a re-run of the step that made
  * them: the log open inserts a derived id and keeps the first row, and the log
  * close applies only where `nodeLogCloseGuard` admits it, so a re-run of a
- * close that already applied changes nothing. The timeline entry is a plain insert, so a crash between a
- * store write and its memo row can leave a duplicate entry.
+ * close that already applied changes nothing. The timeline entry is a plain
+ * insert, so a crash between a store write and its memo row can leave a
+ * duplicate entry.
  */
 
 import type { Database } from "#src/backend/lib/effect/database";

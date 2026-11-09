@@ -113,9 +113,10 @@ export type ReplayDatabaseBackend = {
    * The runtime one pass of the body runs against. Its `waitForEvent` answers
    * the wake `wakePark` recorded for that step id, or `parked` while none is
    * recorded. `now` is the virtual clock in milliseconds, which a backend
-   * over a real database hands its claim. `parkDeadline` answers the deadline the drive
-   * fixed for a park, by its step id, on the virtual clock; it is known by the
-   * time the harness calls the runtime's `waitForEvent` for that step.
+   * over a real database hands its claim. `parkDeadline` answers the deadline
+   * the drive fixed for a park, by its step id, on the virtual clock; it is
+   * known by the time the harness calls the runtime's `waitForEvent` for that
+   * step.
    */
   runtimeForPass: (pass: {
     invocation: number;
@@ -354,13 +355,22 @@ export async function driveWithReplay<T>(
       parkDeadline,
     });
     let stepFailure: { error: unknown } | undefined;
+    /** Runs a step's `fn`, keeping the first error a step throws in the pass. */
+    const keepingFailure = async <V>(fn: () => Promise<V>): Promise<V> => {
+      try {
+        return await fn();
+      } catch (error) {
+        stepFailure ??= { error };
+        throw error;
+      }
+    };
 
     const runtime: WorkflowExecutionRuntime = {
       // The wrapper sees only a memo miss, because the backend calls `fn` for
       // a step it has no stored value for and for nothing else.
       run: (step, fn) =>
-        inner.run(step, async () => {
-          try {
+        inner.run(step, () =>
+          keepingFailure(async () => {
             const value = await fn();
             executed.push({
               run: RUN_ID,
@@ -369,22 +379,12 @@ export async function driveWithReplay<T>(
               stepId: step.id,
             });
             return value;
-          } catch (error) {
-            stepFailure ??= { error };
-            throw error;
-          }
-        }),
+          })
+        ),
       // An idempotent step stores nothing, so it is not one of the memoized
       // steps `executed` lists. Its failure still ends the drive.
       runIdempotent: (step, fn) =>
-        inner.runIdempotent(step, async () => {
-          try {
-            return await fn();
-          } catch (error) {
-            stepFailure ??= { error };
-            throw error;
-          }
-        }),
+        inner.runIdempotent(step, () => keepingFailure(fn)),
       waitForEvent: async (step, waitOptions) => {
         fixDeadline(step.id, waitOptions.waitStateId);
         const answer = await inner.waitForEvent(step, waitOptions);

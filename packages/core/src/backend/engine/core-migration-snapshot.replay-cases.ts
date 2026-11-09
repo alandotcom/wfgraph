@@ -34,10 +34,11 @@ import type { WorkflowActions } from "#src/backend/engine/actions";
  */
 export function migrationGraph(migrated: boolean, returnToOriginal: boolean) {
   const source = { ...createAfterWaitNode(), id: "source" };
+  const padBase = createAfterWaitNode();
   const pad = {
-    ...createAfterWaitNode(),
+    ...padBase,
     id: "pad",
-    data: { ...createAfterWaitNode().data, label: "Pad" },
+    data: { ...padBase.data, label: "Pad" },
   };
   const after: WorkflowNode = {
     ...createAfterWaitNode(),

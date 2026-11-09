@@ -131,10 +131,8 @@ function closeStepLogQuietly(
  * no memo row. The handler between them is replayed from the top on every
  * pass, and writing both rows again is safe: the open inserts under an id
  * derived from the run and the node and keeps the first row, and the fenced
- * close applies only where `nodeLogCloseApplies` admits it. A later attempt
- * that succeeds corrects an `error` an earlier attempt wrote, a second error
- * leaves the first, and nothing overwrites a success. The pass's store skips
- * either write when the run's log rows show it would change nothing.
+ * close applies only where `nodeLogCloseApplies` admits it. The pass's store
+ * skips either write when the run's log rows show it would change nothing.
  *
  * The close carries its own status in its step id (`log-close:success` or
  * `log-close:error`), which is the step the Runs view names while that write

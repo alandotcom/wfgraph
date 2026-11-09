@@ -14,7 +14,10 @@ import {
   ExecutionRepo,
   type FencedExecutionWrites,
 } from "#src/backend/services/executions/repo";
-import { nodeLogId } from "#src/backend/services/executions/repo/node-logs";
+import {
+  type CloseNodeLogInput,
+  nodeLogId,
+} from "#src/backend/services/executions/repo/node-logs";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import { nodeLogCloseApplies } from "#src/backend/services/executions/repo/release-policy";
 import {
@@ -52,6 +55,22 @@ const CLOSE_TRANSITIONS: readonly {
   { nodeId: "success_to_error", first: "success", second: "error" },
   { nodeId: "success_to_success", first: "success", second: "success" },
 ];
+
+/** The close of the row `logId` with `status` that attempt `attempt` makes. */
+function closeInput(input: {
+  logId: string;
+  status: CloseStatus;
+  attempt: number;
+}): CloseNodeLogInput {
+  const { logId, status, attempt } = input;
+  return {
+    logId,
+    status,
+    output: status === "success" ? { attempt } : undefined,
+    error: status === "error" ? `attempt ${attempt}` : undefined,
+    durationMs: attempt,
+  };
+}
 
 /** The outcome columns a close with `status` from attempt `attempt` writes. */
 function closeOf(status: CloseStatus, attempt: number) {
@@ -226,13 +245,13 @@ export function describeExecutionFencingConformance({
             status: CloseStatus,
             attempt: number
           ) =>
-            writes.closeNodeLog({
-              logId: nodeLogId(executionId, nodeId),
-              status,
-              output: status === "success" ? { attempt } : undefined,
-              error: status === "error" ? `attempt ${attempt}` : undefined,
-              durationMs: attempt,
-            });
+            writes.closeNodeLog(
+              closeInput({
+                logId: nodeLogId(executionId, nodeId),
+                status,
+                attempt,
+              })
+            );
 
           let current = yield* pass;
           for (const { nodeId, first } of CLOSE_TRANSITIONS) {
@@ -313,18 +332,20 @@ export function describeExecutionFencingConformance({
           for (const nodeId of ["succeeded", "failed", "running"]) {
             yield* pass.openNodeLog(open(nodeId));
           }
-          yield* pass.closeNodeLog({
-            logId: logIdOf("succeeded"),
-            status: "success",
-            output: { attempt: 1 },
-            durationMs: 1,
-          });
-          yield* pass.closeNodeLog({
-            logId: logIdOf("failed"),
-            status: "error",
-            error: "attempt 1",
-            durationMs: 1,
-          });
+          yield* pass.closeNodeLog(
+            closeInput({
+              logId: logIdOf("succeeded"),
+              status: "success",
+              attempt: 1,
+            })
+          );
+          yield* pass.closeNodeLog(
+            closeInput({
+              logId: logIdOf("failed"),
+              status: "error",
+              attempt: 1,
+            })
+          );
 
           const reads: string[] = [];
           const opens: string[] = [];
@@ -353,14 +374,10 @@ export function describeExecutionFencingConformance({
                 }),
             },
           });
-          const closeWith = (nodeId: string, status: "success" | "error") =>
-            store.completeStepLog({
-              logId: logIdOf(nodeId),
-              status,
-              output: status === "success" ? { attempt: 2 } : undefined,
-              error: status === "error" ? "attempt 2" : undefined,
-              durationMs: 2,
-            });
+          const closeWith = (nodeId: string, status: CloseStatus) =>
+            store.completeStepLog(
+              closeInput({ logId: logIdOf(nodeId), status, attempt: 2 })
+            );
 
           // Parallel branches log side by side, and their first writes share
           // the store's one read.
