@@ -6,23 +6,15 @@
  * writes back, which runs a producer's wake re-queues, which parks an Event, a
  * re-park or a terminal write may take, which wake the winner of an Exit claim
  * gives the run's other parks, which runs a Cancel claims and what it records
- * on their timelines, what each producer answers, and what a node-log close
- * writes. A decision a statement makes is a Drizzle `sql` builder over the
- * columns each backend passes in. Each backend runs the statements inside its
- * own transaction, holding the schedule row first.
+ * on their timelines, and what each producer answers. A decision a statement
+ * makes is a Drizzle `sql` builder over the columns each backend passes in.
+ * Each backend runs the statements inside its own transaction, holding the
+ * schedule row first.
  */
 
 import { countBy, sortBy } from "es-toolkit/array";
 import { Effect } from "effect";
-import {
-  and,
-  type Column,
-  eq,
-  inArray,
-  type SQL,
-  sql,
-  type Table,
-} from "drizzle-orm";
+import { and, type Column, eq, type SQL, sql } from "drizzle-orm";
 import type {
   ExecutionScheduleKind,
   ParkWake,
@@ -167,99 +159,6 @@ export function nodeRetries(columns: RetryColumns): SQL<number | null> {
   return sql<
     number | null
   >`cast(sum(${columns.failures} - case when ${columns.status} = 'failed' then 1 else 0 end) as integer)`;
-}
-
-/** The tables a node-log close writes and reads, as each backend declares them. */
-type NodeLogCloseTables = {
-  logs: {
-    executionId: Column;
-    nodeId: Column;
-    status: Column;
-    output: Column;
-    error: Column;
-    completedAt: Column;
-    duration: Column;
-    retries: Column;
-  };
-  schedule: Table & { id: Column; executionId: Column };
-  steps: Table & RetryColumns & { scheduleId: Column; nodeId: Column };
-};
-
-/** A node-log close's outcome, encoded as the backend stores it. */
-type NodeLogCloseValues = {
-  status: string;
-  output: unknown;
-  error: string | null;
-  completedAt: unknown;
-  duration: string;
-};
-
-/** `value` bound as a parameter through `column`, in that column's encoding. */
-function boundTo(column: Column, value: unknown): SQL {
-  return sql`${sql.param(value, column)}`;
-}
-
-/** The status a node-log close writes. */
-type NodeLogCloseStatus = "success" | "error";
-
-/**
- * The row statuses a fenced node-log close applies to, by the status the close
- * writes: a `success` corrects an `error` an earlier attempt wrote, a second
- * `error` leaves the first, and nothing overwrites a success.
- */
-const NODE_LOG_CLOSABLE: Record<NodeLogCloseStatus, readonly string[]> = {
-  success: ["running", "error"],
-  error: ["running"],
-};
-
-/**
- * Whether a fenced close writing `close` applies to a row whose status is
- * `row`. `nodeLogCloseGuard` is the same rule as a WHERE condition.
- */
-export function nodeLogCloseApplies(
-  row: string,
-  close: NodeLogCloseStatus
-): boolean {
-  return NODE_LOG_CLOSABLE[close].includes(row);
-}
-
-/**
- * The condition a node-log close adds to its WHERE: `nodeLogCloseApplies` for
- * a fenced close, and none for an unfenced one, which closes the row whatever
- * it holds. A close the condition refuses changes no column and writes no row
- * version.
- */
-export function nodeLogCloseGuard(input: {
-  logs: { status: Column };
-  close: NodeLogCloseStatus;
-  fenced: boolean;
-}): SQL | undefined {
-  return input.fenced
-    ? inArray(input.logs.status, [...NODE_LOG_CLOSABLE[input.close]])
-    : undefined;
-}
-
-/**
- * The SET of a node-log close, one statement for both backends, which writes
- * `values` and `retries`. `retries` is `nodeRetries` over the memo rows of the
- * row's run that carry the row's node id, and keeps the count the row holds
- * when the run has none, as after the run ended. A close `nodeLogCloseGuard`
- * refuses writes neither, so the count stays what the close that set the
- * row's outcome read.
- */
-export function nodeLogCloseSet(input: {
-  tables: NodeLogCloseTables;
-  values: NodeLogCloseValues;
-}): Record<keyof NodeLogCloseValues | "retries", SQL> {
-  const { logs, schedule, steps } = input.tables;
-  return {
-    status: boundTo(logs.status, input.values.status),
-    output: boundTo(logs.output, input.values.output),
-    error: boundTo(logs.error, input.values.error),
-    completedAt: boundTo(logs.completedAt, input.values.completedAt),
-    duration: boundTo(logs.duration, input.values.duration),
-    retries: sql`coalesce((select ${nodeRetries(steps)} from ${steps} inner join ${schedule} on ${schedule.id} = ${steps.scheduleId} where ${schedule.executionId} = ${logs.executionId} and ${steps.nodeId} = ${logs.nodeId}), ${logs.retries})`,
-  };
 }
 
 /**

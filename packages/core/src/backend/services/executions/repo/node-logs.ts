@@ -17,8 +17,8 @@ import type {
 } from "#src/backend/services/executions/repo/contracts";
 import {
   nodeLogCloseGuard,
-  nodeLogCloseSet,
-} from "#src/backend/services/executions/repo/release-policy";
+  nodeLogCloseRetries,
+} from "#src/backend/services/executions/repo/node-log-close";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
@@ -75,11 +75,11 @@ export type NodeLogsRepoMethods = {
     input: OpenNodeLogInput
   ) => Effect.Effect<string, DatabaseError>;
   /**
-   * Close a row `openNodeLog` opened, whatever it holds. The fenced close
-   * (`ExecutionRepo.fenced`) applies only where `nodeLogCloseApplies` says,
-   * which is how a retry corrects an `error` an earlier attempt wrote. A
-   * close that applies writes the row's `retries` from the step memo rows of
-   * its run that carry its node id, as `nodeLogCloseSet` describes.
+   * Close a row `openNodeLog` opened. The close applies only where
+   * `nodeLogCloseApplies` says, fenced or not, which is how a retry corrects
+   * an `error` an earlier attempt wrote and why nothing overwrites a success.
+   * A close that applies writes the row's `retries` as `nodeLogCloseRetries`
+   * describes; a refused one writes nothing.
    */
   readonly closeNodeLog: (
     input: CloseNodeLogInput
@@ -154,33 +154,28 @@ export function openNodeLogWrite(input: OpenNodeLogInput) {
 }
 
 /**
- * The update behind `closeNodeLog`, one statement whose SET is
- * `nodeLogCloseSet`. Given a fence, it updates only a row of the fenced
- * Execution that `nodeLogCloseGuard` admits, so a later attempt of the node
- * can correct an `error` verdict and a success keeps its own.
+ * The update behind `closeNodeLog`: one statement that applies only to a row
+ * `nodeLogCloseGuard` admits, and given a fence, only to a row of the fenced
+ * Execution.
  */
 export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
   return async (db: Executor): Promise<void> => {
     await db
       .update(workflowExecutionLogs)
-      .set(
-        nodeLogCloseSet({
-          tables: {
-            logs: workflowExecutionLogs,
-            schedule: workflowExecutionSchedule,
-            steps: workflowExecutionSteps,
-          },
-          values: {
-            status: input.status,
-            // An absent payload is written as null to clear what an earlier
-            // close wrote.
-            output: input.output ?? null,
-            error: input.error ?? null,
-            completedAt: new Date(),
-            duration: input.durationMs.toString(),
-          },
-        })
-      )
+      .set({
+        status: input.status,
+        // An absent payload is written as null to clear what an earlier
+        // close wrote.
+        output: input.output ?? null,
+        error: input.error ?? null,
+        completedAt: new Date(),
+        duration: input.durationMs.toString(),
+        retries: nodeLogCloseRetries({
+          logs: workflowExecutionLogs,
+          schedule: workflowExecutionSchedule,
+          steps: workflowExecutionSteps,
+        }),
+      })
       .where(
         and(
           eq(workflowExecutionLogs.id, input.logId),
@@ -190,7 +185,6 @@ export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
           nodeLogCloseGuard({
             logs: workflowExecutionLogs,
             close: input.status,
-            fenced: fence !== undefined,
           })
         )
       );

@@ -24,8 +24,8 @@ import {
 } from "#src/backend/persistence/sqlite/schema";
 import {
   nodeLogCloseGuard,
-  nodeLogCloseSet,
-} from "#src/backend/services/executions/repo/release-policy";
+  nodeLogCloseRetries,
+} from "#src/backend/services/executions/repo/node-log-close";
 
 /** The insert behind `openNodeLog`; see its comment for the derived id. */
 export function openNodeLogWrite(input: OpenNodeLogInput) {
@@ -52,29 +52,25 @@ export function openNodeLogWrite(input: OpenNodeLogInput) {
 
 /**
  * The update behind `closeNodeLog`, the statement the PostgreSQL write runs:
- * its SET is `nodeLogCloseSet`, and a fence holds it to the fenced
- * Execution's row and to `nodeLogCloseGuard`.
+ * it applies only to a row `nodeLogCloseGuard` admits, and given a fence, only
+ * to a row of the fenced Execution.
  */
 export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
   return (database: SqliteExecutor) =>
     database
       .update(workflowExecutionLogs)
-      .set(
-        nodeLogCloseSet({
-          tables: {
-            logs: workflowExecutionLogs,
-            schedule: workflowExecutionSchedule,
-            steps: workflowExecutionSteps,
-          },
-          values: {
-            status: input.status,
-            output: encodeJson(input.output),
-            error: input.error ?? null,
-            completedAt: Date.now(),
-            duration: String(input.durationMs),
-          },
-        })
-      )
+      .set({
+        status: input.status,
+        output: encodeJson(input.output),
+        error: input.error ?? null,
+        completedAt: Date.now(),
+        duration: String(input.durationMs),
+        retries: nodeLogCloseRetries({
+          logs: workflowExecutionLogs,
+          schedule: workflowExecutionSchedule,
+          steps: workflowExecutionSteps,
+        }),
+      })
       .where(
         and(
           eq(workflowExecutionLogs.id, input.logId),
@@ -84,7 +80,6 @@ export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
           nodeLogCloseGuard({
             logs: workflowExecutionLogs,
             close: input.status,
-            fenced: fence !== undefined,
           })
         )
       );

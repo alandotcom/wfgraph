@@ -18,7 +18,7 @@ import {
   type CloseNodeLogInput,
   nodeLogId,
 } from "#src/backend/services/executions/repo/node-logs";
-import { nodeLogCloseApplies } from "#src/backend/services/executions/repo/release-policy";
+import { nodeLogCloseApplies } from "#src/backend/services/executions/repo/node-log-close";
 import {
   type PersistenceTestRegistry,
   terminalEntry,

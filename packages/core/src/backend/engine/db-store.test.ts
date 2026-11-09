@@ -137,12 +137,16 @@ describe("the log writes", () => {
           // The store's own close made `fresh` an error, so a second error
           // close is skipped as well.
           yield* closeWith("fresh", "error");
+          // A row the store neither read nor opened is left to the guard the
+          // close carries in SQL.
+          yield* closeWith("elsewhere", "error");
 
           expect(opens).toEqual(["fresh"]);
           expect(closes).toEqual([
             `${logIdOf("failed")}:success`,
             `${logIdOf("running")}:success`,
             `${logIdOf("fresh")}:error`,
+            `${logIdOf("elsewhere")}:error`,
           ]);
           expect(handles.map((handle) => handle.logId)).toEqual(
             ["succeeded", "running", "fresh"].map(logIdOf)

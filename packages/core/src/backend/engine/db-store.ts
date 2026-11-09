@@ -24,7 +24,7 @@ import {
   type NodeLogState,
   nodeLogId,
 } from "#src/backend/services/executions/repo/node-logs";
-import { nodeLogCloseApplies } from "#src/backend/services/executions/repo/release-policy";
+import { nodeLogCloseApplies } from "#src/backend/services/executions/repo/node-log-close";
 import type { WaitWake } from "#src/backend/engine/runtime";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import { isoTerminationClaim } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -133,9 +133,11 @@ export function createDbWorkflowStore(bound: {
 
     completeStepLog: (input) =>
       Effect.gen(function* () {
+        // A row the pass did not read or open falls through to the write,
+        // whose guard decides.
         const row = logRows.get(input.logId);
         if (
-          row === undefined ||
+          row !== undefined &&
           !nodeLogCloseApplies(row.status, input.status)
         ) {
           return;
@@ -147,7 +149,9 @@ export function createDbWorkflowStore(bound: {
           error: input.error,
           durationMs: input.durationMs,
         });
-        logRows.set(input.logId, { ...row, status: input.status });
+        if (row !== undefined) {
+          logRows.set(input.logId, { ...row, status: input.status });
+        }
       }),
 
     recordAuditEvent: (input) => writes.recordAuditEvent(input),

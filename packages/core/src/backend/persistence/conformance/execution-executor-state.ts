@@ -497,6 +497,9 @@ export function describeExecutionExecutorStateConformance({
           const send = yield* openLog(executionId, "send", "send");
           const spent = yield* openLog(executionId, "spent", "spent");
           const quiet = yield* openLog(executionId, "quiet", "quiet");
+          // A row the run leaves running, as a pass that stopped before its
+          // close does.
+          const late = yield* openLog(executionId, "late", "late");
 
           // `send` fails twice on one step and then succeeds; its node's other
           // step never fails. `spent` fails five times, the last of them
@@ -532,13 +535,16 @@ export function describeExecutionExecutorStateConformance({
           const whileOpen = yield* executions.listLogs(executionId);
 
           // Once the run ends its memo is deleted, and a close made after
-          // that keeps the count the row already holds.
+          // that keeps the count the row already holds: `spent` holds the
+          // count its error close wrote, and `late`, never closed, holds none.
           yield* live.endRun({ executionId, ending: verdict("completed") });
-          yield* executions.closeNodeLog({
-            logId: send,
-            status: "success",
-            durationMs: 2,
-          });
+          for (const logId of [spent, late]) {
+            yield* executions.closeNodeLog({
+              logId,
+              status: "success",
+              durationMs: 2,
+            });
+          }
           return {
             whileOpen,
             afterEnd: yield* executions.listLogs(executionId),
@@ -550,11 +556,23 @@ export function describeExecutionExecutorStateConformance({
         send: 2,
         spent: 4,
         quiet: 0,
+        late: 0,
       });
       expect(retriesOf(result.afterEnd)).toEqual({
         send: 2,
         spent: 4,
         quiet: 0,
+        late: 0,
+      });
+      expect(
+        Object.fromEntries(
+          result.afterEnd.map((log) => [log.nodeId, log.status])
+        )
+      ).toEqual({
+        send: "success",
+        spent: "success",
+        quiet: "success",
+        late: "success",
       });
     });
   });
