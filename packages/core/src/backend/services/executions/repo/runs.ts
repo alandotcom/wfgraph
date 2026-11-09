@@ -828,8 +828,8 @@ export function endRunsWrite(
         .update(workflowExecutions)
         .set({
           ...endedRunColumns(run.status),
-          output: input.output,
-          error: run.error,
+          output: input.output ?? null,
+          error: run.error ?? null,
         })
         .where(eq(workflowExecutions.id, run.executionId));
     }
