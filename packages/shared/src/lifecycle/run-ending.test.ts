@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  decideRunEnd,
-  type RunVerdict,
-} from "#src/backend/services/executions/repo/run-end-policy";
+import { decideRunEnd, type RunVerdict } from "#src/lifecycle/run-ending";
 
 const exitClaim = {
   kind: "exit",

@@ -22,7 +22,7 @@ import {
 import type {
   OutsideGraphEnding,
   RunVerdict,
-} from "#src/backend/services/executions/repo/run-end-policy";
+} from "@wfgraph/shared/lifecycle/run-ending";
 import type {
   ConformanceConnection,
   PersistenceTestRegistry,

@@ -39,7 +39,7 @@ import {
   type RunFailureOutcome,
   type TraversalTerminalStatus,
 } from "#src/backend/engine/terminal-record";
-import type { CanceledOutletOutcome } from "#src/backend/services/executions/repo/run-end-policy";
+import type { CanceledOutletOutcome } from "@wfgraph/shared/lifecycle/run-ending";
 import { Traversal } from "#src/backend/engine/traversal";
 import {
   endsPass,

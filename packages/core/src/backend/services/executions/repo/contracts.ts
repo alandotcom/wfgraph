@@ -12,6 +12,7 @@ import type {
 } from "@wfgraph/shared/lifecycle/audit-event-types";
 import type {
   EntityEligibilityReason,
+  TerminationClaim,
   WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type {
@@ -729,19 +730,7 @@ export type EntityStartOutcome =
       reason: EntityEligibilityReason;
     };
 
-export type ExecutionTerminationClaim =
-  | {
-      kind: "cancel";
-      requestedAt: Date;
-      eventName: string | null;
-      payload: JsonObject | null;
-    }
-  | {
-      kind: "exit";
-      requestedAt: Date;
-      reason: EntityEligibilityReason;
-      nodeId: string;
-    };
+export type ExecutionTerminationClaim = TerminationClaim<Date>;
 
 /**
  * The authoritative execution boundary after a claim or terminal write.

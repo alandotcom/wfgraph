@@ -41,6 +41,7 @@ import {
 import type { RunScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
+  isoTerminationClaim,
   type EntityEligibilityReason,
   type ExecutionSide,
   type TerminalExecutionStatus,
@@ -54,16 +55,14 @@ import {
 import {
   decideRunEnd,
   type OutsideGraphEnding,
-  type RunEndClaim,
   type RunEnding,
   type RunVerdict,
-} from "#src/backend/services/executions/repo/run-end-policy";
+} from "@wfgraph/shared/lifecycle/run-ending";
 import type {
   StoreWrite,
   ExecutionPageQuery,
   ExecutionStatusRow,
   ExecutionSummary,
-  ExecutionTerminationClaim,
   ExecutionTerminationState,
   GlobalExecutionRow,
   InFlightExecutionRow,
@@ -800,20 +799,6 @@ export function endRunWrite(input: EndRunInput) {
   };
 }
 
-export function runEndClaim(
-  claim: ExecutionTerminationClaim | null
-): RunEndClaim | null {
-  if (claim === null) return null;
-  return claim.kind === "cancel"
-    ? { kind: "cancel" }
-    : {
-        kind: "exit",
-        reason: claim.reason,
-        nodeId: claim.nodeId,
-        requestedAt: claim.requestedAt.toISOString(),
-      };
-}
-
 /**
  * The one write that ends runs. In one transaction, a savepoint of a fenced
  * one, it locks the runs' schedule rows and then their execution rows, in the
@@ -848,7 +833,7 @@ export function endRunsWrite(
         stored,
         decision: decideRunEnd(input.ending, {
           status: run.status,
-          claim: runEndClaim(stored.claim),
+          claim: stored.claim && isoTerminationClaim(stored.claim),
           runMode: run.runMode,
         }),
       };

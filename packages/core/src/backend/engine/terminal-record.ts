@@ -19,7 +19,7 @@ import {
   type CanceledOutletOutcome,
   type RunExitContext,
   type RunExitOutcome,
-} from "#src/backend/services/executions/repo/run-end-policy";
+} from "@wfgraph/shared/lifecycle/run-ending";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
 

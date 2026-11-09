@@ -5,15 +5,15 @@
  * engine's recording store decide with it, and none imports a database.
  */
 
-import type { RunScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
+import type { RunScopedAuditEventType } from "#src/lifecycle/audit-event-types";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   type EntityEligibilityReason,
   type TerminalExecutionStatus,
   type WorkflowExecutionStatus,
-} from "@wfgraph/shared/lifecycle/execution-contracts";
-import type { JsonObjectDraft, JsonValue } from "@wfgraph/shared/types/json";
-import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+} from "#src/lifecycle/execution-contracts";
+import type { JsonObjectDraft, JsonValue } from "#src/types/json";
+import { omitUndefined } from "#src/utils/omit-undefined";
 
 /**
  * What became of the Canceled outlet for a run whose verdict is `canceled`.

@@ -17,7 +17,7 @@ import {
 } from "#src/backend/services/integrations/cipher";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
-import type { RunVerdict } from "#src/backend/services/executions/repo/run-end-policy";
+import type { RunVerdict } from "@wfgraph/shared/lifecycle/run-ending";
 import type {
   WfGraphPersistenceInstance,
   WfGraphRunCapabilities,

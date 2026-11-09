@@ -1,4 +1,5 @@
 import { difference } from "es-toolkit/array";
+import type { JsonObject } from "#src/types/json";
 
 /**
  * Every status an Execution can hold, and the one place the vocabulary is
@@ -103,6 +104,30 @@ export function isEntityEligibilityReason(
   value: unknown
 ): value is EntityEligibilityReason {
   return ENTITY_ELIGIBILITY_REASONS.some((reason) => reason === value);
+}
+
+/**
+ * A run's termination claim, with `requestedAt` as a `Date` where a repository
+ * reads it and as an ISO string where it crosses a JSON boundary.
+ */
+export type TerminationClaim<Instant extends Date | string> =
+  | {
+      kind: "cancel";
+      requestedAt: Instant;
+      eventName: string | null;
+      payload: JsonObject | null;
+    }
+  | {
+      kind: "exit";
+      requestedAt: Instant;
+      reason: EntityEligibilityReason;
+      nodeId: string;
+    };
+
+export function isoTerminationClaim(
+  claim: TerminationClaim<Date>
+): TerminationClaim<string> {
+  return { ...claim, requestedAt: claim.requestedAt.toISOString() };
 }
 
 /**

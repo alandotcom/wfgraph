@@ -16,18 +16,16 @@ import { generateId } from "@wfgraph/shared/utils/id";
 import { readJsonObject, type JsonValue } from "@wfgraph/shared/types/json";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
+  isoTerminationClaim,
   TERMINAL_EXECUTION_STATUSES,
   type ExecutionSide,
   type TerminalExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import {
-  runEndClaim,
-  type RunsRepoMethods,
-} from "#src/backend/services/executions/repo/runs";
+import type { RunsRepoMethods } from "#src/backend/services/executions/repo/runs";
 import {
   decideRunEnd,
   type RunEnding,
-} from "#src/backend/services/executions/repo/run-end-policy";
+} from "@wfgraph/shared/lifecycle/run-ending";
 import type {
   ExecutionSummary,
   ExecutionTerminationState,
@@ -694,7 +692,7 @@ export function endRunsWrite(
         stored,
         decision: decideRunEnd(input.ending, {
           status: stored.status,
-          claim: runEndClaim(stored.claim),
+          claim: stored.claim && isoTerminationClaim(stored.claim),
           runMode: sqliteExecution(run).runMode,
         }),
       };

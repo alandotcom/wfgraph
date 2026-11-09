@@ -11,7 +11,7 @@ import {
   claimKindAdmits,
   type ExecutionSide,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import { decideRunEnd } from "#src/backend/services/executions/repo/run-end-policy";
+import { decideRunEnd } from "@wfgraph/shared/lifecycle/run-ending";
 import { Effect } from "effect";
 import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {

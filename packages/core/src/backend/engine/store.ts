@@ -11,10 +11,11 @@ import type { WaitArrival } from "@wfgraph/shared/lifecycle/wait-signal";
 import type {
   EntityEligibilityReason,
   ExecutionSide,
+  TerminationClaim,
   WorkflowExecutionStatus,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { Effect } from "effect";
-import type { RunVerdict } from "#src/backend/services/executions/repo/run-end-policy";
+import type { RunVerdict } from "@wfgraph/shared/lifecycle/run-ending";
 import type { WaitWake } from "#src/backend/engine/runtime";
 import type {
   DatabaseError,
@@ -192,20 +193,7 @@ export type PendingCancel = {
 
 export type ExecutionTerminationState = {
   status: WorkflowExecutionStatus;
-  claim:
-    | {
-        kind: "cancel";
-        requestedAt: string;
-        eventName: string | null;
-        payload: JsonObject | null;
-      }
-    | {
-        kind: "exit";
-        requestedAt: string;
-        reason: EntityEligibilityReason;
-        nodeId: string;
-      }
-    | null;
+  claim: TerminationClaim<string> | null;
   didWrite: boolean;
 };
 

@@ -21,6 +21,7 @@ import type {
 } from "#src/backend/services/executions/repo";
 import type { WaitWake } from "#src/backend/engine/runtime";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
+import { isoTerminationClaim } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type {
   CompleteRunInput,
   ExecutionTerminationState,
@@ -48,25 +49,9 @@ function readWaitUntil(
 function engineTerminationState(
   state: StoredTerminationState
 ): ExecutionTerminationState {
-  const claim = state.claim;
   return {
     status: state.status,
-    claim:
-      claim?.kind === "cancel"
-        ? {
-            kind: "cancel",
-            requestedAt: claim.requestedAt.toISOString(),
-            eventName: claim.eventName,
-            payload: claim.payload,
-          }
-        : claim?.kind === "exit"
-          ? {
-              kind: "exit",
-              requestedAt: claim.requestedAt.toISOString(),
-              reason: claim.reason,
-              nodeId: claim.nodeId,
-            }
-          : null,
+    claim: state.claim && isoTerminationClaim(state.claim),
     didWrite: state.didWrite,
   };
 }
