@@ -216,16 +216,15 @@
       ]
     },
     "source:pnpm-workspace.yaml": {
-      "fingerprint": "7b1017f6e3d133f68c022160477329a8a89dd1359811d380bcb0176d00650ad6",
+      "fingerprint": "2cdfcd36b243c440918a19bea0682ed480cf5477f5736b504dd56548afdffe33",
       "snapshot": {
-        "pnpm-workspace.yaml": "6765d43491473fde3563924eaae2136805caa989b10b14385feca75d6ebfc12a"
+        "pnpm-workspace.yaml": "58bd2877cfd0c214b5d5efb2cbf186882cdca8f670b7e93514a67cdefa12663f"
       },
-      "head": "807145b543fe5563175a5e6d0975b3ec8c862c81",
+      "head": "351946805972aaae575db53129894f3e413af0ea",
       "outcome": "out-of-scope",
-      "reason": "The catalog gained @opentelemetry/api and @opentelemetry/sdk-trace-base because core and the evals task checks both declare them. No skill teaches workspace dependency versions.",
+      "reason": "A test dependency in the workspace catalog, which no published skill teaches.",
       "evidence": [
-        "pnpm-workspace.yaml",
-        "npm view @opentelemetry/api version: 1.10.0; npm view @opentelemetry/sdk-trace-base version: 2.12.0 with peer @opentelemetry/api >=1.3.0 <1.10.0"
+        "_artifacts/skill_tree.yaml lists no packages/shared/src/graph or workspace config sources."
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
@@ -2503,6 +2502,54 @@
       "reason": "Run-ending internals and their tests, which no published skill teaches.",
       "evidence": [
         "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+      ]
+    },
+    "source:packages/shared/src/graph/and-join.laws.test.ts": {
+      "fingerprint": "1e5dbd1be1dd88ee1541ff1b2190284ff5eec7b46f74e8160338265756bf0c92",
+      "snapshot": {
+        "packages/shared/src/graph/and-join.laws.test.ts": "ef3f64bcde61adb96e0a1c729b20b3233c99a435e671d2d9db78a17db87a41ad"
+      },
+      "head": "351946805972aaae575db53129894f3e413af0ea",
+      "outcome": "out-of-scope",
+      "reason": "Graph property tests and their generators, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no packages/shared/src/graph or workspace config sources."
+      ]
+    },
+    "source:packages/shared/src/graph/change-classification.laws.test.ts": {
+      "fingerprint": "e484ece9fe91997d7a2a37a6da3328fb74a48b00b3ca083ab8f08a8e79dc4229",
+      "snapshot": {
+        "packages/shared/src/graph/change-classification.laws.test.ts": "aec5f08b905d9b0bbaeb5189f1a20bda99e2e391a133173e2fe2899ce4aa7ed8"
+      },
+      "head": "351946805972aaae575db53129894f3e413af0ea",
+      "outcome": "out-of-scope",
+      "reason": "Graph property tests and their generators, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no packages/shared/src/graph or workspace config sources."
+      ]
+    },
+    "source:packages/shared/src/graph/graph-arbitraries-test-support.ts": {
+      "fingerprint": "e8a2ea82028711cbd9d2feea02c2a88ebcc06428e3feb91c67ef58c3b79ebe22",
+      "snapshot": {
+        "packages/shared/src/graph/graph-arbitraries-test-support.ts": "9ef57417f0f60d4f3c8b1c0c83e63dbc446a9de08e5f738a101f86036791b760"
+      },
+      "head": "351946805972aaae575db53129894f3e413af0ea",
+      "outcome": "out-of-scope",
+      "reason": "Graph property tests and their generators, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no packages/shared/src/graph or workspace config sources."
+      ]
+    },
+    "source:packages/shared/src/graph/group-dissolution.laws.test.ts": {
+      "fingerprint": "c6413efb9a807baf88db3e074b2ab9260b71bcdbd8b180abdfb47d76169a65f7",
+      "snapshot": {
+        "packages/shared/src/graph/group-dissolution.laws.test.ts": "e81dca4d165993f21091b80b826994a9d081ae1c13ac5ca54ad5da6732c02a4c"
+      },
+      "head": "351946805972aaae575db53129894f3e413af0ea",
+      "outcome": "out-of-scope",
+      "reason": "Graph property tests and their generators, which no published skill teaches.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no packages/shared/src/graph or workspace config sources."
       ]
     }
   }
