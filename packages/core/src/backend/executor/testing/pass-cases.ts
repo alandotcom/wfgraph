@@ -200,6 +200,13 @@ const missingVersion: RepoWrap = (repo) => ({
       ),
 });
 
+/** Fails every read of a run's log rows, which a run pass makes when it opens. */
+const refuseLogRead: RepoWrap = (repo) => ({
+  ...repo,
+  listNodeLogStates: () =>
+    Effect.fail(new DatabaseError({ cause: new Error("connection reset") })),
+});
+
 /**
  * Settles with `work`, or rejects once `ms` pass first. A case that expects
  * the database to answer at once uses it, so a call stuck behind a held write
@@ -1188,6 +1195,63 @@ function describeCases(
     expect(await logsOf(harness, "send")).toMatchObject([
       { status: "success", retries: 0 },
     ]);
+  });
+
+  // The pass reads the run's log rows when it opens, before any step runs,
+  // so a failed read is the pass's own failure. Its row is swept once its
+  // lease expires, and the next pass that parks resets the run's count.
+  it("never spends a finished node's step on log row reads that fail on scattered passes", async () => {
+    const pauses = Array.from(
+      { length: STEP_RETRY_LIMIT + 1 },
+      (_, index) => `pause_${index + 1}`
+    );
+    const chain = ["send", ...pauses, "after"];
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode(),
+          actionNode("send", "test/send"),
+          ...pauses.map((id) => waitNode(id, delay("10s"))),
+          actionNode("after", "test/send"),
+        ],
+        edges: [
+          edge("entry", "send", "started"),
+          ...chain.slice(1).map((id, index) => edge(chain[index] ?? "", id)),
+        ],
+      })
+    );
+
+    const failingNodes = () =>
+      harness.connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.listFailingNodeIds(harness.executionId);
+        })
+      );
+
+    expect(await harness.pass()).toMatchObject({ kind: "parked" });
+    const blamed: string[][] = [];
+    const settled: Array<string | undefined> = [];
+    for (let round = 0; round < pauses.length; round += 1) {
+      offsetMs += 11_000;
+      // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
+      await harness.pass({ wrap: refuseLogRead }).catch(() => null);
+      // eslint-disable-next-line eslint/no-await-in-loop -- each read follows the pass before it
+      blamed.push(await failingNodes());
+      offsetMs += LEASE_MS + 1_000;
+      // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
+      settled.push((await harness.pass())?.kind);
+    }
+
+    expect(blamed).toEqual(pauses.map(() => []));
+    expect(settled).toEqual([...pauses.slice(1).map(() => "parked"), "ended"]);
+    const ended = await readRun(harness);
+    expect(ended.status).toBe("completed");
+    expect(
+      ended.logs
+        .filter((log) => log.status !== "success")
+        .map((log) => log.nodeId)
+    ).toEqual([]);
   });
 
   // SQLite has one writer per database: a write transaction holds the

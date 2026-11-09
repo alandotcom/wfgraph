@@ -240,7 +240,10 @@ export function sqliteTerminationState(
   };
 }
 
-function logStatus(value: string): WorkflowExecutionLog["status"] {
+/** A log row's status as SQLite stores it, refusing a value no build writes. */
+export function sqliteNodeLogStatus(
+  value: string
+): WorkflowExecutionLog["status"] {
   if (
     value !== "pending" &&
     value !== "running" &&
@@ -262,7 +265,7 @@ export function sqliteExecutionLog(
     nodeId: row.nodeId,
     nodeName: row.nodeName,
     nodeType: row.nodeType,
-    status: logStatus(row.status),
+    status: sqliteNodeLogStatus(row.status),
     input: optionalJsonValue(row.input, "input"),
     output: optionalJsonValue(row.output, "output"),
     error: row.error,

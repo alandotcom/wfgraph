@@ -60,10 +60,14 @@ export function runBody(input: {
             settle: endUnavailableRun(writes, executionId, loaded),
           } as const;
         }
+        // Read here, before any step runs, so a failed read is the pass's
+        // own failure and no step is charged with it.
+        const logRows = yield* executions.listNodeLogStates(executionId);
         const store = createDbWorkflowStore({
           executionId,
           reads: executions,
           writes,
+          logRows,
         });
         const actions = input.actions();
         return {

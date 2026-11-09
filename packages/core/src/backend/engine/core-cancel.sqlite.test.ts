@@ -187,6 +187,7 @@ describe("a Canceled-side Wait over native SQLite", () => {
         executionId,
         reads: repo,
         writes: repo,
+        logRows: [],
       });
 
       const result = await executeWorkflow(

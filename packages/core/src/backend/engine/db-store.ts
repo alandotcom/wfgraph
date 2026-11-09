@@ -12,7 +12,7 @@
  * interpret.
  */
 
-import { Effect, Semaphore } from "effect";
+import { Effect } from "effect";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import type {
@@ -20,7 +20,10 @@ import type {
   ParkWake,
   StoreWrites,
 } from "#src/backend/services/executions/repo";
-import { nodeLogId } from "#src/backend/services/executions/repo/node-logs";
+import {
+  type NodeLogState,
+  nodeLogId,
+} from "#src/backend/services/executions/repo/node-logs";
 import { nodeLogCloseApplies } from "#src/backend/services/executions/repo/release-policy";
 import type { WaitWake } from "#src/backend/engine/runtime";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
@@ -80,57 +83,33 @@ export type StoreReads = Pick<
   | "canAdmitNode"
   | "findTerminationState"
   | "findPendingCancel"
-  | "listNodeStatuses"
 >;
 
 /**
- * The status of each of the run's log rows, keyed by log id, read on the
- * first call and kept by the caller's own log writes after it. A log id is
- * derived from the run and the node (`nodeLogId`), so the key names one node.
- * Concurrent first calls share the one read, and a read that fails is tried
- * again on the next call.
- */
-function logRowStatuses(input: {
-  executionId: string;
-  reads: StoreReads;
-}): Effect.Effect<Map<string, string>, DatabaseError> {
-  let statuses: Map<string, string> | undefined;
-  const lock = Semaphore.makeUnsafe(1);
-  return lock.withPermit(
-    Effect.suspend(() =>
-      statuses === undefined
-        ? input.reads.listNodeStatuses(input.executionId).pipe(
-            Effect.map((rows) => {
-              statuses = new Map(
-                rows.map((row) => [
-                  nodeLogId(input.executionId, row.nodeId),
-                  row.status,
-                ])
-              );
-              return statuses;
-            })
-          )
-        : Effect.succeed(statuses)
-    )
-  );
-}
-
-/**
  * The store of one run, `executionId`, which a pass builds afresh. Its log
- * writes read the run's log rows once, on the first of them, and skip what
- * would change nothing: an open for a node that has a row, and a close
- * `nodeLogCloseApplies` refuses. Only the pass holding the run's lease writes
- * its log rows, so what the store read stays exact while the pass runs. The
- * fenced close's rule applies to every close the store makes, a close the
- * pass makes unfenced after it ended the run included.
+ * writes skip what would change nothing, judged from `logRows`: an open for a
+ * node that has a row, and a close `nodeLogCloseApplies` refuses. A skipped
+ * open answers the row's own `startedAt`, so a Wait's close measures the park
+ * from when its row was first opened.
  */
 export function createDbWorkflowStore(bound: {
   executionId: string;
   reads: StoreReads;
   writes: StoreWrites;
+  /** The run's log rows, as the pass read them when it opened. */
+  logRows: readonly NodeLogState[];
 }): WorkflowStore {
   const { reads, writes } = bound;
-  const logRows = logRowStatuses(bound);
+  // Each log row's status and opening time by row id, kept current by the
+  // store's own log writes. Only the pass holding the run's lease writes its
+  // log rows, so it stays exact while the pass runs, but it is a hint for
+  // skipping writes: the guard each write carries in SQL is the authority.
+  const logRows = new Map(
+    bound.logRows.map(({ id, status, startedAt }) => [
+      id,
+      { status, startedAt },
+    ])
+  );
 
   return {
     // Step payloads can carry secrets pulled in through templates, so they are
@@ -138,25 +117,26 @@ export function createDbWorkflowStore(bound: {
     // they reach a table.
     startStepLog: (input) =>
       Effect.gen(function* () {
-        const rows = yield* logRows;
-        const logId = nodeLogId(input.executionId, input.nodeId);
-        if (!rows.has(logId)) {
-          yield* writes.openNodeLog({
-            ...input,
-            input: redactSensitiveData(input.input),
-          });
-          rows.set(logId, "running");
+        const logId = nodeLogId(bound.executionId, input.nodeId);
+        const row = logRows.get(logId);
+        if (row !== undefined) {
+          return { logId, startTime: row.startedAt.getTime() };
         }
-        return { logId, startTime: Date.now() };
+        yield* writes.openNodeLog({
+          ...input,
+          input: redactSensitiveData(input.input),
+        });
+        const startedAt = new Date();
+        logRows.set(logId, { status: "running", startedAt });
+        return { logId, startTime: startedAt.getTime() };
       }),
 
     completeStepLog: (input) =>
       Effect.gen(function* () {
-        const rows = yield* logRows;
-        const status = rows.get(input.logId);
+        const row = logRows.get(input.logId);
         if (
-          status === undefined ||
-          !nodeLogCloseApplies(status, input.status)
+          row === undefined ||
+          !nodeLogCloseApplies(row.status, input.status)
         ) {
           return;
         }
@@ -167,7 +147,7 @@ export function createDbWorkflowStore(bound: {
           error: input.error,
           durationMs: input.durationMs,
         });
-        rows.set(input.logId, input.status);
+        logRows.set(input.logId, { ...row, status: input.status });
       }),
 
     recordAuditEvent: (input) => writes.recordAuditEvent(input),

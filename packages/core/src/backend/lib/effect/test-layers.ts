@@ -383,6 +383,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   listLoggedNodeIdsForExecutions: refuse("listLoggedNodeIdsForExecutions"),
   listLogs: refuse("listLogs"),
   listNodeStatuses: refuse("listNodeStatuses"),
+  listNodeLogStates: refuse("listNodeLogStates"),
   listEvents: refuse("listEvents"),
   listWorkflowEvents: refuse("listWorkflowEvents"),
   deleteAllForWorkflow: refuse("deleteAllForWorkflow"),

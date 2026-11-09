@@ -46,6 +46,15 @@ export type OpenNodeLogInput = {
   input?: JsonValue | undefined;
 };
 
+/**
+ * One of a run's log rows as a pass reads it when it opens: the row's id, its
+ * status, and when the row was opened.
+ */
+export type NodeLogState = Pick<
+  WorkflowExecutionLog,
+  "id" | "status" | "startedAt"
+>;
+
 export type CloseNodeLogInput = {
   logId: string;
   status: "success" | "error";
@@ -113,6 +122,14 @@ export type NodeLogsRepoMethods = {
     Array<Pick<WorkflowExecutionLog, "nodeId" | "status">>,
     DatabaseError
   >;
+  /**
+   * Each of one run's log rows as `NodeLogState`. A run pass reads this once
+   * when it opens, so its store can skip a log write that would change
+   * nothing (`createDbWorkflowStore`).
+   */
+  readonly listNodeLogStates: (
+    executionId: string
+  ) => Effect.Effect<NodeLogState[], DatabaseError>;
 };
 
 /** The insert behind `openNodeLog`, on whichever handle the caller holds. */
@@ -249,6 +266,14 @@ export function makeNodeLogsMethods(
         db.query.workflowExecutionLogs.findMany({
           where: { executionId },
           columns: { nodeId: true, status: true },
+        })
+      ),
+
+    listNodeLogStates: (executionId) =>
+      database.query((db) =>
+        db.query.workflowExecutionLogs.findMany({
+          where: { executionId },
+          columns: { id: true, status: true, startedAt: true },
         })
       ),
   };

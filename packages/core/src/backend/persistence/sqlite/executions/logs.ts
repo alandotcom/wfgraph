@@ -13,7 +13,10 @@ import type {
   SqliteExecutor,
 } from "#src/backend/persistence/sqlite/database";
 import { encodeJson } from "#src/backend/persistence/sqlite/database";
-import { sqliteExecutionLog } from "#src/backend/persistence/sqlite/executions/rows";
+import {
+  sqliteExecutionLog,
+  sqliteNodeLogStatus,
+} from "#src/backend/persistence/sqlite/executions/rows";
 import {
   workflowExecutionLogs,
   workflowExecutionSchedule,
@@ -160,19 +163,30 @@ export function makeSqliteNodeLogsMethods(
           .where(eq(workflowExecutionLogs.executionId, executionId))
           .pipe(
             Effect.map((rows) =>
-              rows.map((row) => {
-                const { nodeId, status } = row;
-                if (
-                  status !== "pending" &&
-                  status !== "running" &&
-                  status !== "success" &&
-                  status !== "error" &&
-                  status !== "cancelled"
-                ) {
-                  throw new Error("Invalid SQLite node log status");
-                }
-                return { nodeId, status };
-              })
+              rows.map((row) => ({
+                nodeId: row.nodeId,
+                status: sqliteNodeLogStatus(row.status),
+              }))
+            )
+          )
+      ),
+    listNodeLogStates: (executionId) =>
+      store.read((database) =>
+        database
+          .select({
+            id: workflowExecutionLogs.id,
+            status: workflowExecutionLogs.status,
+            startedAt: workflowExecutionLogs.startedAt,
+          })
+          .from(workflowExecutionLogs)
+          .where(eq(workflowExecutionLogs.executionId, executionId))
+          .pipe(
+            Effect.map((rows) =>
+              rows.map((row) => ({
+                id: row.id,
+                status: sqliteNodeLogStatus(row.status),
+                startedAt: new Date(row.startedAt),
+              }))
             )
           )
       ),

@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Effect, Layer } from "effect";
+import { sortBy } from "es-toolkit/array";
 import { createDbWorkflowStore } from "#src/backend/engine/db-store";
 import { recordVerdict } from "#src/backend/engine/terminal-record";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
@@ -582,6 +583,7 @@ export function describeExecutionConformance({
             executionId,
             reads: executions,
             writes: executions,
+            logRows: [],
           }),
           executionId,
           verdict: verdict("completed"),
@@ -882,6 +884,81 @@ export function describeExecutionConformance({
           })
         )
       ).rejects.toBeDefined();
+    });
+
+    it("reads each of a run's log rows with its id, status and opening time", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const start = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              startEventName: "appointment/created",
+              entityValue: "appointment_1",
+              deliveryId: "delivery_1",
+              runMode: "live",
+              input: { appointmentId: "appointment_1" },
+            },
+            concurrency: "first-wins",
+            ...notYetDue,
+          });
+          if (start.status !== "started") throw new Error("Start was refused");
+          const executionId = start.execution.id;
+          const before = Date.now();
+          const open = (nodeId: string) =>
+            executions.openNodeLog({
+              executionId,
+              nodeId,
+              nodeName: nodeId,
+              nodeType: "action",
+            });
+          const sent = yield* open("send");
+          const waiting = yield* open("pause");
+          yield* executions.closeNodeLog({
+            logId: sent,
+            status: "success",
+            durationMs: 3,
+          });
+          return {
+            before,
+            after: Date.now(),
+            sent,
+            waiting,
+            states: yield* executions.listNodeLogStates(executionId),
+            none: yield* executions.listNodeLogStates("exec_unknown"),
+          };
+        })
+      );
+
+      expect(
+        sortBy(result.states, [(state) => state.id]).map(({ id, status }) => ({
+          id,
+          status,
+        }))
+      ).toEqual(
+        sortBy(
+          [
+            { id: result.sent, status: "success" },
+            { id: result.waiting, status: "running" },
+          ],
+          [(state) => state.id]
+        )
+      );
+      for (const state of result.states) {
+        expect(state.startedAt).toBeInstanceOf(Date);
+        expect(state.startedAt.getTime()).toBeGreaterThanOrEqual(
+          result.before - 1_000
+        );
+        expect(state.startedAt.getTime()).toBeLessThanOrEqual(
+          result.after + 1_000
+        );
+      }
+      expect(result.none).toEqual([]);
     });
 
     it("lets a later close of a node log replace an earlier attempt's error", async () => {
