@@ -857,28 +857,29 @@
       ]
     },
     "source:packages/core/src/backend/engine/core-cancel.sqlite.test.ts": {
-      "fingerprint": "12f858b28305d332a8529e588d5c48027514a27636ddd51271c4166fff11d32e",
+      "fingerprint": "67ee82a4a6d6cd328fb1e21389dc765cbce0ef0980acbae7d29dae886d9eedd4",
       "snapshot": {
-        "packages/core/src/backend/engine/core-cancel.sqlite.test.ts": "e895c1ae022fd4409c048fe3d54f0e8218709ae56f1c34754853627d941b2687"
+        "packages/core/src/backend/engine/core-cancel.sqlite.test.ts": "b81fcb85eb56785e4d4e9a64cec5522a3302c130f09cb8de0a1cedb99413bf52"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/core-wait-delay.test.ts": {
-      "fingerprint": "7fad2b4e834fa2e4217331cc3c2e9240c70437486abd903468e15e483507c368",
+      "fingerprint": "6785ac32616cb75b50622b89036878edefec601d398cf935e6ec51417fa3cb73",
       "snapshot": {
-        "packages/core/src/backend/engine/core-wait-delay.test.ts": "57f384b67921a8af6d123e8a351746173a738a07d5b3d145789d95543263d5a8"
+        "packages/core/src/backend/engine/core-wait-delay.test.ts": "f1533f5d6402597ff30398878018579d1216b4dd7f709393e13a687ddcee15b5"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/core-wait-migrate.replay-cases.ts": {
@@ -894,16 +895,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/store.ts": {
-      "fingerprint": "6456c8c2fe9646491c4d6f3e837e72d77ce83656e09d79c710da50fda9e1778c",
+      "fingerprint": "69a3efee6e065b07e1c1b36ab4b0ae2663debbe6cc88658a659a9c645df26cee",
       "snapshot": {
-        "packages/core/src/backend/engine/store.ts": "d6cc96c7cc6c8d3259ad591bec013e22fb6a5803db77a25b2384d9edfacae355"
+        "packages/core/src/backend/engine/store.ts": "a8d282dd880588d79e649d613801f0c4f4ec96fefe97e8c92b483b997f64fec8"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/wait-delay.ts": {
@@ -919,28 +920,29 @@
       ]
     },
     "source:packages/core/src/backend/engine/wait.ts": {
-      "fingerprint": "bc300309fab8f2e7b4da2c3bd87812794ee4fb7bc808f2ce9a63893ced1dcee2",
+      "fingerprint": "47ab9bf438c0bf26b1aafadf0ab820c6a2efe44b2caf38dd88a1c3c5677cc8ba",
       "snapshot": {
-        "packages/core/src/backend/engine/wait.ts": "2363f639f50fbda1f4bd4d462673b095df94272822f1fc8311e555c38cb8c5d2"
+        "packages/core/src/backend/engine/wait.ts": "862894dc6f6f6b974fc7d1ebc1811fac231fc61f8d6c375167c8dfdb08af470f"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
-      "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/executor/testing/pass-cases.ts": {
-      "fingerprint": "03c1e3bff8f2d176a2ea6d4067a7ac003673257edfd6ab1fbdc84aedc0f35512",
+      "fingerprint": "f8b000afb6d4af609826c5f5db6eb45597fc4048af7591a24fb990166b71ba8e",
       "snapshot": {
-        "packages/core/src/backend/executor/testing/pass-cases.ts": "70c01ab8005c893d2d2202047fd3613c2601a1b9437bc84ceac5714e9588b0cf"
+        "packages/core/src/backend/executor/testing/pass-cases.ts": "5bdbef4c9ea5fd126940bb6b1a83eb904d266593e5ed548a78fc8cd4f5981bd3"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/executor/testing/run-fixtures.ts": {
@@ -956,28 +958,29 @@
       ]
     },
     "source:packages/core/src/backend/lib/db/schema.ts": {
-      "fingerprint": "cd20c25d34c3d4510b22c53ad43fceeacd243de7d5b43fb4c2d2a28709d13f31",
+      "fingerprint": "9acc13f42c2782844a9fecc2710cfdb33f5e44b2bb17c10f1577d6d7a590a82f",
       "snapshot": {
-        "packages/core/src/backend/lib/db/schema.ts": "d396845fe864120325c843f5af954acf07f011a0b4d7bab09b1608f96cdbb890"
+        "packages/core/src/backend/lib/db/schema.ts": "3d60c417bcefe2cffe2f37f1b82b930a841f372a3ec3da0b2fd9b326a11302b6"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
-      "outcome": "no-change",
-      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "outcome": "out-of-scope",
+      "reason": "The PostgreSQL migration replaces the schedule table's lease index with one on the id of leased rows. Hosts run it as any other Workflow Graph migration, and no published skill teaches the executor's indexes.",
       "evidence": [
-        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+        "_artifacts/skill_tree.yaml lists no schema or drizzle migration sources.",
+        "packages/core/skills mention migrations only as the step a host runs, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-fencing.ts": {
-      "fingerprint": "910bb0cbc2f0c8d6b489e190f88ceee0b127187cfa820168325fd7b0072c631b",
+      "fingerprint": "18897c7b18d236023a607ff41d98905e6ba0bdfb2961d39a8d5909656bdd49b9",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-fencing.ts": "09c71ac62b3d3190fd3eee30be196b416a0301b763a14c110c422a79736f8145"
+        "packages/core/src/backend/persistence/conformance/execution-fencing.ts": "a1ff61fc8f82fc9fa5e704c9db2e13743e7db4e6973ad3b475be5127dd07d48e"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-producers.ts": {
@@ -1005,16 +1008,16 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/executions.ts": {
-      "fingerprint": "9709dc2010c1254b456f20749abdd75fb9a1991546890cbf3deaba927261e437",
+      "fingerprint": "5bcb1a33b7094d5883847da9b77344a288bb77fd66a5f739ab439971199332e4",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/executions.ts": "3b45d5e281e8d3e3a4fcee783407f2809458d8a881aaf366eb84bf3e6a39ff62"
+        "packages/core/src/backend/persistence/conformance/executions.ts": "2ff361927425c15190d059de579630c2a9e5651785eef214b743bda43869ca16"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/integrations.ts": {
@@ -1102,16 +1105,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/release-policy.ts": {
-      "fingerprint": "8479f23b5ea94e1b26ddbf214d702b77b3ed5bde301e7176b5e87c56788791b1",
+      "fingerprint": "dfe74b8648309ce1a111c61069920a338adb9992ae54e4369bf4c4fcd470a7e9",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/release-policy.ts": "3b0435c21a2746b3217740a6cb5fdcb1dc028ac3910ca631301006a66de02129"
+        "packages/core/src/backend/services/executions/repo/release-policy.ts": "61d18dd7a3750012c97c909a0aceae0754466b0e245938f9b2b3a2478660a2f1"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/runs.ts": {
@@ -1581,16 +1584,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/recording-store.ts": {
-      "fingerprint": "b6c39b548d39d59b3d80bd1f5d236cfe862eb2a5ca861f409053d0d0aff8b1e2",
+      "fingerprint": "e589d83bf3a4cbd39139316305f6ab89d9f223185024fb3313678212eacfa05b",
       "snapshot": {
-        "packages/core/src/backend/engine/recording-store.ts": "2debe89589a68bf64f0a4198bedb69fe3bb158b8e53abb4000f667297cac562e"
+        "packages/core/src/backend/engine/recording-store.ts": "64609147005f6db0d01cfde9133e31bc4aa4d48f9b6ddc5a0832d8db00e1f43f"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/lib/db/migrations-sql.test.ts": {
@@ -1690,15 +1693,16 @@
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/rows.ts": {
-      "fingerprint": "8d21a7c95fff878c6e8e1a04503ff680817c7855c7185583180ee8761ccce4df",
+      "fingerprint": "ab99dda7d287d5e929ba79c1bb2156e2185ab25da416eae6faeb1bb814805925",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/rows.ts": "6bbf1a0643060248f8f45061a02bef020fc6efb30f09361f5a3b4ea15e6e4492"
+        "packages/core/src/backend/persistence/sqlite/executions/rows.ts": "e68a082e288b981d1b9ebb04c87d4a6ae826e52ddd9f8a3d98654d080b212d9e"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/generated-migrations.ts": {
@@ -1774,16 +1778,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/core-cancel.replay-cases.ts": {
-      "fingerprint": "94e5210fae9cedc4a9bbf69f27e7570b7f6bb604dba194ebd3bc73198c175f96",
+      "fingerprint": "a0fea79a57271bc8aa7a53a0d6a8daa45e4578c9b9a6bc5b9041e73637785233",
       "snapshot": {
-        "packages/core/src/backend/engine/core-cancel.replay-cases.ts": "5ca8369669f81d471674189fb5e3983e574eb691363249e25b95280dca069827"
+        "packages/core/src/backend/engine/core-cancel.replay-cases.ts": "751e729443c0a7d4763efbe74b2aa10e777360d568a164c98d29aebecd5b0349"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/core-cancel.test.ts": {
@@ -1835,15 +1839,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/core.test.ts": {
-      "fingerprint": "4be889c70ac5cda1a622ce358e0be8d0383470f5c5957fbf1ea6f1e3904e7e87",
+      "fingerprint": "6c63e4d20252511b5c0bdbfd524206c96e59aea60308353a0876c91e13ae537e",
       "snapshot": {
-        "packages/core/src/backend/engine/core.test.ts": "331ef79b0edd10e368bb5fd84fe92156354064f4b961169ae45b3c0c40b3770b"
+        "packages/core/src/backend/engine/core.test.ts": "a4a8f8ab5b07712325044dfc5c84a4c0db439f4d2a13077bb5ffd3a0ca2b8aaf"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/core.ts": {
@@ -1859,29 +1864,29 @@
       ]
     },
     "source:packages/core/src/backend/engine/db-store.test.ts": {
-      "fingerprint": "e5f838a9eb1c716e72f73cdf49c9e1ba126200e21008f458617ba82a3f73664d",
+      "fingerprint": "97015ba85a44cd5cf1ec46a3ee3637a24323580e00ed68e9e0a73687c044795d",
       "snapshot": {
-        "packages/core/src/backend/engine/db-store.test.ts": "85241ed98db2a9fd9aa1b9fea6d373932921d4953a65264d23e50b1d5fc35890"
+        "packages/core/src/backend/engine/db-store.test.ts": "fe6ed4d2a55729fe1bfde33dfdb8923ac5c6015bf171a1c2d26c382b84908ede"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/db-store.ts": {
-      "fingerprint": "162564cf895f2127ad8589e0eb39b62729e8b4084391f7dccdc3cb6211954e3a",
+      "fingerprint": "ac66e6c364373a5b066e1218810408b9252dca49bf44109574e06fa38202e966",
       "snapshot": {
-        "packages/core/src/backend/engine/db-store.ts": "292ed02b273426d945cd3b1d8d420807a1ac25380a30fbbb2f523075910510c3"
+        "packages/core/src/backend/engine/db-store.ts": "69c5bb73dd69b5f5a979a38bcf16381daa3826627ecc58e40b64cf17b0a8dedd"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/entity-eligibility.test.ts": {
@@ -1921,15 +1926,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/testing/wait-fixtures.ts": {
-      "fingerprint": "2666c4b2e10f224d0bac05839b644fbf37d9d0c05d65e6d47c3a31c64450e0b8",
+      "fingerprint": "657951f9d2997ee8d7703605afd7a1c38baea531a7838409153681cdc9042975",
       "snapshot": {
-        "packages/core/src/backend/engine/testing/wait-fixtures.ts": "0c7eedd08646720febc9c533b265420719e16035f349d2059e6b621ec40c27bd"
+        "packages/core/src/backend/engine/testing/wait-fixtures.ts": "3e12a55dfaf35060c997a311718f23d16738ccca962d22dcdf66934c442dc79d"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "Test or conformance code that no published skill teaches.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "packages/core/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/executor/cron-body.ts": {
@@ -1955,16 +1961,16 @@
       "evidence": ["_artifacts/skill_tree.yaml"]
     },
     "source:packages/core/src/backend/executor/run-body.ts": {
-      "fingerprint": "201f0f8dd09254769570048bdb55dcd875deb515f3973caf4f2148c9ce5132b3",
+      "fingerprint": "02c77d91c5c6f4a1f539c958bc034c53af7493d7dceff7db7457662407f46405",
       "snapshot": {
-        "packages/core/src/backend/executor/run-body.ts": "ffcd1c424afe89ead91965e11e267d7a5b038a533ac9fdfd9c81a4b712e60daf"
+        "packages/core/src/backend/executor/run-body.ts": "b6f447ae6defbc73d31ea51791182dc461510b941c5c05d059c5cabf9b64a38e"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/services/executions/end-runs.test.ts": {
@@ -2082,15 +2088,16 @@
       ]
     },
     "source:.claude/skills/verify-durable-executor/SKILL.md": {
-      "fingerprint": "8cf6f22c75bfccc8895102a271abd197aa2f954d104a04bc070dac9439ad29a0",
+      "fingerprint": "54fe7ce94431dcee4eb9ebbc754440f75046f7186063d06b2f214c7c3790ffda",
       "snapshot": {
-        ".claude/skills/verify-durable-executor/SKILL.md": "e1ce97ee8fcc33ce002ce025b6b78f0357df4a362c183cb4f68505f48c04cfc0"
+        ".claude/skills/verify-durable-executor/SKILL.md": "e014f2d5322e6965d458d8834476749a3122a2b1c575c6d4c97c99b6a798f56c"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The repository's own verify-durable-executor skill and its TLA+ model, updated in the same change; no published skill teaches the executor's model.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no .claude/skills sources."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:.claude/skills/verify-durable-executor/model/DurableExecutor.tla": {
@@ -2148,16 +2155,16 @@
       "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/core/src/backend/engine/core-replay.test.ts": {
-      "fingerprint": "29995aeb2d9025da065b77e7463efc8cba27faf958990a2e3c3167ca8adcf764",
+      "fingerprint": "0fb4f4371dd6fcbe68383ee0d409a269922932d297c0fa8ab5efe3f954fff279",
       "snapshot": {
-        "packages/core/src/backend/engine/core-replay.test.ts": "02f2ce874f1e40909661de9d6a98b77e22bbb67a71fb40bfaa245393665f2da1"
+        "packages/core/src/backend/engine/core-replay.test.ts": "c65ac77ace1d54ef3e20ba3c1d3461cbfcede2bbda6d6302d732164b1639729c"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/traversal.test.ts": {
@@ -2185,16 +2192,16 @@
       ]
     },
     "source:packages/core/src/backend/executor/runtime.ts": {
-      "fingerprint": "a2f08c8aa8760f5ffbcf6d84000d07b0464b520a0d33644ffe98cb74c62a3de0",
+      "fingerprint": "17fd5cbe9585fcba464c4dbd97147f03088dff4befe0f5095cd60f577aea81ce",
       "snapshot": {
-        "packages/core/src/backend/executor/runtime.ts": "1d8a36cd5f1921d2bf5e60e3ad21f48e848d3e9d642e9b83f3e6b09581885fb4"
+        "packages/core/src/backend/executor/runtime.ts": "3a8d55c03b12d4d97d212ebb49f7d772061ec244b421ebc13490c8e669b31b1a"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/executor/testing/database-replay-backend.ts": {
@@ -2211,15 +2218,16 @@
       ]
     },
     "source:packages/core/src/backend/lib/effect/test-layers.ts": {
-      "fingerprint": "7ab081749ae40d092fafa6f9b653c4e17d8c70d43fe761385bc7a49e58e2ca12",
+      "fingerprint": "0a554ff5efafe9d5e97471f9d8b9abcaf5813e3c7bd086ea3ac133e1e2096aaf",
       "snapshot": {
-        "packages/core/src/backend/lib/effect/test-layers.ts": "4691cb504857dee625c00ff340dab6f43eaf517cd5d6daa56b94c898ea47a62b"
+        "packages/core/src/backend/lib/effect/test-layers.ts": "73031ab07fa3821824692c41de2bbf81fcaa51df4ce6b81849984d49b92dc7da"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/draft-snapshots.ts": {
@@ -2235,15 +2243,16 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-executor-state.ts": {
-      "fingerprint": "600294b3bb513a4fc2dcfa4c5b57b2bd9529c74586309c1b82f43df0eedac586",
+      "fingerprint": "e5a022416926c0b29710b1ecf3d14138f500318a86ca6f8db1c5c1ab2129b2f5",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-executor-state.ts": "5e8b30de579395a1b44d2a7d4c46dac8890ab17097d16bc578f2abd988d1286e"
+        "packages/core/src/backend/persistence/conformance/execution-executor-state.ts": "35ae8d63d0dcf73b2ffc8c235b419c8354be164e5056fe7f70235b5c81b220f9"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-retention.ts": {
@@ -2355,16 +2364,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/fenced-writes.ts": {
-      "fingerprint": "5448705c2c5b1ed14b6cafb0f0bd534f383558a083fea322c182025604e92cfb",
+      "fingerprint": "5eb95aeb6d8dda137c542fef54ab0ac005e4b0638c106e73e79e0d40c564efed",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/fenced-writes.ts": "4e612ba9856e4fb2027aa4540ae85fdd481e23d76dbab0174af7772a72630e55"
+        "packages/core/src/backend/services/executions/repo/fenced-writes.ts": "7676d8b0e9424de09952a2a45163670e8121dd389b40a21798394b3e2e56cc44"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/fencing.ts": {
@@ -2568,144 +2577,224 @@
       ]
     },
     "source:.claude/skills/verify-durable-executor/model/Handler.tla": {
-      "fingerprint": "b1f923955aaa40a32b63ccd5c3ac057a8cd4a885180c8f0b57158ac683288f84",
+      "fingerprint": "403f74bc8c4faccf2cfccf5d122232a56967f3f06fe753605aa5dfd947f708b5",
       "snapshot": {
-        ".claude/skills/verify-durable-executor/model/Handler.tla": "804656aae843bfa294d29b3ed5ce9e1d29e5aaa1d5488f1799ae548f1b151caa"
+        ".claude/skills/verify-durable-executor/model/Handler.tla": "2e4e2b0e31926d3b1b245b9cfbce7b096a60b4527bcbac9abd8a1c1e5f3f26ca"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The repository's own verify-durable-executor skill and its TLA+ model, updated in the same change; no published skill teaches the executor's model.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no .claude/skills sources."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:docs/internal/plans/executor-write-churn.md": {
-      "fingerprint": "f0dbe9f3e3bdf04eb12714629d7d0fd2fb3980853b764b451798870599ae2f61",
+      "fingerprint": "7b19ae6408a47e395cb1996dc8ce1f2cd832390048096891f9db4d38e831c059",
       "snapshot": {
-        "docs/internal/plans/executor-write-churn.md": "830a744673226b2a1320f8aafd2a7ed0aaf229ee5e123ae383b0189a2db6e0c5"
+        "docs/internal/plans/executor-write-churn.md": "83100745b937a960459ab607ede025a2074d46558f65e888ce747d8608c820a5"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "An internal working plan, formatted only; docs/internal is not adopter documentation.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "AGENTS.md: docs/internal/ is working notes for this repository."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/core-migration-snapshot.replay-cases.ts": {
-      "fingerprint": "02ea2bdd460430a6eca7a71a639c176f0b38e5038d2f26355c8ae1be3e810073",
+      "fingerprint": "c40ee9bc2274e9e2a9b854320523ae7a4d2c58798edfcdc2cf631e5387c1d6a1",
       "snapshot": {
-        "packages/core/src/backend/engine/core-migration-snapshot.replay-cases.ts": "3df7ae45feb779636016446b98e0206a486a2ba6eb7160ad70ed53573308a3e6"
+        "packages/core/src/backend/engine/core-migration-snapshot.replay-cases.ts": "57a1f9f01881edea88e0c71b6513ee1512924b8509c5ed280bc5a5dd1905f610"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/durable.ts": {
-      "fingerprint": "b8bfe14e23ba6f0204a749d1316c2ba773687239c519e842be3cc8a99608d843",
+      "fingerprint": "18e6fa5af073576841740049a37fda9be8085ccce8403fe5fed08da40f21ecb7",
       "snapshot": {
-        "packages/core/src/backend/engine/durable.ts": "7807cc6458e246d6c25c5d79d40534b7c1b8dd4a5e44006277e90d456b67eb8b"
+        "packages/core/src/backend/engine/durable.ts": "85635f44f25190c948ec6de17dca3aedff0dc796d11f6c89901fcf4c69bb603c"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/runtime.ts": {
-      "fingerprint": "b2eecc06b6d80e9ec2e0a67326ac985c6965f7bce1d25218849602e1a5cd8822",
+      "fingerprint": "2055f3216ff408a01dd3588aab523dcd867a167ad3bf04513f7843e1e33e5ba6",
       "snapshot": {
-        "packages/core/src/backend/engine/runtime.ts": "81b555ae363fec98aa0a6015a989dd9904f2a25ca6bee1719126ddcb8aa5aa25"
+        "packages/core/src/backend/engine/runtime.ts": "81d4becc794d51fbd600292866b9e0157de062b9bace771b03dbb6be39af6309"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/step-log.test.ts": {
-      "fingerprint": "3ffabf7dfdc246cfcc57df5940ff0b793254c218408c35d43b9cfc645d526cba",
+      "fingerprint": "efd722a823d281569a1dac69a3d78701b0b6b2ba63fdac62dd16be11d1cb00ae",
       "snapshot": {
-        "packages/core/src/backend/engine/step-log.test.ts": "7c4df62a96c03cfbd2f69b6e56199517ec10d3588857a2a4465d39b82f3e5ea7"
+        "packages/core/src/backend/engine/step-log.test.ts": "354d0347e685f61243adb2d04d11922d040062d886b35f6ed498dce553be4957"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/step-log.ts": {
-      "fingerprint": "9b46681c2b8392dbeb65778bda508584f2239756497cc1ece81d32c31664a485",
+      "fingerprint": "9604e6958e5bf19e78193cf9a941af241646cdcf17243aeeec8c7e62be1c946f",
       "snapshot": {
-        "packages/core/src/backend/engine/step-log.ts": "3faefc198b62afc9c840d2ade7285eb14257a8e8c9ac48f6df2d0d11bf133f84"
+        "packages/core/src/backend/engine/step-log.ts": "d4828cfd4b2a2c9f56c8cb1c3b5423978b2f1de17c27fd5820d6799eabfa30ea"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/engine/testing/replay-runtime.ts": {
-      "fingerprint": "7b268d9ed903712c9eeee765c1a5a56ed5582abcad5b0a793bd9c42ab84f72a1",
+      "fingerprint": "c1e5dc3f62a51ab4ac379f83b13839f1bd1182b64b6a9777ec3d87fb081947fc",
       "snapshot": {
-        "packages/core/src/backend/engine/testing/replay-runtime.ts": "2a11d1473536641cd2ce896e7bb3991795f78e951b0ce2f0ad1681a3d890a510"
+        "packages/core/src/backend/engine/testing/replay-runtime.ts": "bb64e3697885f2402f0955a2143b19b759525c37d5af015297489050180834f2"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/executor/run-idempotent.test.ts": {
-      "fingerprint": "884741c1f5738bef50b37da055262ca5fdc8d483d2f39f76d193e04a49a038e3",
+      "fingerprint": "ec10a825e3cf3f2031465bfb315a9d2ce35c5cddf3c101bf2c55fd0a453586f5",
       "snapshot": {
-        "packages/core/src/backend/executor/run-idempotent.test.ts": "e3b25f14859dc168f39f6c901b562d9cb36716c2a202ca592f8162388baa2734"
+        "packages/core/src/backend/executor/run-idempotent.test.ts": "35e82f7fd0e423179cc0051b27533c137b09218f1868e2623e698902cd5fe766"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/logs.ts": {
-      "fingerprint": "09cd04d268a392b429e4aba742b82071b798f905120d81ce88620af7bb664f44",
+      "fingerprint": "81ba34d4acc49d6ca6190ae7548ce7bc242e32eaf32e4656d0b143de2c1faa61",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/logs.ts": "b24031d0667db71aae8cc17a84d6e883aee8fc63242236d1d8c801c649c90c96"
+        "packages/core/src/backend/persistence/sqlite/executions/logs.ts": "16d1cbd71afb8fc9ce5b7c5ee1fe30539d77eaa8eb56219c695ff43942bd29e5"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/node-logs.ts": {
-      "fingerprint": "128a2d055e95f361c194648b7ce2b92bc2573af2ef651f2f8f7bb253d7467008",
+      "fingerprint": "fcc2ab67e04278ae3ccabc9609ff21f1708e7e5bffbf319bca34f25b1614fdb2",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/node-logs.ts": "942d413caadfb2f7c4d110b096e274c2d23c4bfd9e94988cb7bde96fd6fff572"
+        "packages/core/src/backend/services/executions/repo/node-logs.ts": "ce6343ed632fe1c8bd2755ba20443e98124a6034dfafab4bc335ed6138d65de7"
       },
-      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
-        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
+      ]
+    },
+    "source:.claude/skills/verify-durable-executor/model/Handler.cfg": {
+      "fingerprint": "f2df433fd1ae64f91c41e719dd0a0adc84106a6706a57749289d04426687d362",
+      "snapshot": {
+        ".claude/skills/verify-durable-executor/model/Handler.cfg": "78b169bd2a43d7b80ec083f1d4b0ecab1f78d5d398303e5ebfc4c71af3aaa7e2"
+      },
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
+      ]
+    },
+    "source:.claude/skills/verify-durable-executor/mutations.sh": {
+      "fingerprint": "43ed2b577c719443dd436a27de8434f82f824c9e3746b390ae74b3390fbafc32",
+      "snapshot": {
+        ".claude/skills/verify-durable-executor/mutations.sh": "33f4ff63c6f6e8a8177a4bba47272881e7e6d55460a98ea6f2ef5f5b8e34e11d"
+      },
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
+      ]
+    },
+    "source:packages/core/drizzle/20261109062647_schedule_leased_index/migration.sql": {
+      "fingerprint": "8abe02414d7c6102db98bb03e383e02dcaf12cd476bb964b46ca6005d928edeb",
+      "snapshot": {
+        "packages/core/drizzle/20261109062647_schedule_leased_index/migration.sql": "3139c48e6fc5789fcca587dbbf34151d8f1d647e8896eb8122b2480360307b98"
+      },
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "outcome": "out-of-scope",
+      "reason": "The PostgreSQL migration replaces the schedule table's lease index with one on the id of leased rows. Hosts run it as any other Workflow Graph migration, and no published skill teaches the executor's indexes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no schema or drizzle migration sources.",
+        "packages/core/skills mention migrations only as the step a host runs, which is unchanged."
+      ]
+    },
+    "source:packages/core/drizzle/20261109062647_schedule_leased_index/snapshot.json": {
+      "fingerprint": "2cadcdaa4aeb1f1846a9d80a0285464bf43b1d5af9606d6b229a6cf378c8e360",
+      "snapshot": {
+        "packages/core/drizzle/20261109062647_schedule_leased_index/snapshot.json": "d3f2adaca64368fe26484a8295737aabc638071cfc063be406328592e9546366"
+      },
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "outcome": "out-of-scope",
+      "reason": "The PostgreSQL migration replaces the schedule table's lease index with one on the id of leased rows. Hosts run it as any other Workflow Graph migration, and no published skill teaches the executor's indexes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no schema or drizzle migration sources.",
+        "packages/core/skills mention migrations only as the step a host runs, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/engine/wait-shared.ts": {
+      "fingerprint": "879bcdc7c4c0886a876635a2db4d1be96ee0d489db8652e0609eac7186ea8ff5",
+      "snapshot": {
+        "packages/core/src/backend/engine/wait-shared.ts": "9edea7bd12933f071dd81e982dea2be552083d34590fa279ce574c2effbba68e"
+      },
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/node-log-close.ts": {
+      "fingerprint": "dea57ba8ad6655fc987cb81d880eb820f851f2a9cde8abfd6a13a58d65dfb78f",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/node-log-close.ts": "4d2fec41a8509f42db715f8b67bc8232d86c32d1fa81585fd73d8cd8e84c83d3"
+      },
+      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
       ]
     }
   }
