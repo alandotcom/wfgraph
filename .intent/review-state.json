@@ -857,15 +857,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/core-cancel.sqlite.test.ts": {
-      "fingerprint": "1e79039f9da8a0a53821ca22d581294d53cd8ca1cdbc44705ee682844a40b7e8",
+      "fingerprint": "12f858b28305d332a8529e588d5c48027514a27636ddd51271c4166fff11d32e",
       "snapshot": {
-        "packages/core/src/backend/engine/core-cancel.sqlite.test.ts": "6dbe43955aeee495a627517dcac7a58bd0459719f83e9a382543f13a24ece439"
+        "packages/core/src/backend/engine/core-cancel.sqlite.test.ts": "e895c1ae022fd4409c048fe3d54f0e8218709ae56f1c34754853627d941b2687"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/engine/core-wait-delay.test.ts": {
@@ -893,15 +894,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/store.ts": {
-      "fingerprint": "e5bfcac01fbf789f088eacd82d5f8d4011072ce46b7a94bd460bf31a44ca4665",
+      "fingerprint": "6456c8c2fe9646491c4d6f3e837e72d77ce83656e09d79c710da50fda9e1778c",
       "snapshot": {
-        "packages/core/src/backend/engine/store.ts": "fb10b20e7db506c29573ae8c846f0b5ba9fe1a5b7059ca3e3674cab0069b6b37"
+        "packages/core/src/backend/engine/store.ts": "d6cc96c7cc6c8d3259ad591bec013e22fb6a5803db77a25b2384d9edfacae355"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/engine/wait-delay.ts": {
@@ -929,15 +931,16 @@
       ]
     },
     "source:packages/core/src/backend/executor/testing/pass-cases.ts": {
-      "fingerprint": "bd26f2033e020d6cac668747681777c7e8602382f747332e50e39fc53f46c957",
+      "fingerprint": "03c1e3bff8f2d176a2ea6d4067a7ac003673257edfd6ab1fbdc84aedc0f35512",
       "snapshot": {
-        "packages/core/src/backend/executor/testing/pass-cases.ts": "22f8e3c9e082592d69cf63e366dc671da0b06cb8d3486ca6be42df7af0dcd778"
+        "packages/core/src/backend/executor/testing/pass-cases.ts": "70c01ab8005c893d2d2202047fd3613c2601a1b9437bc84ceac5714e9588b0cf"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/executor/testing/run-fixtures.ts": {
@@ -965,15 +968,16 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-fencing.ts": {
-      "fingerprint": "9266c38af55718778c8bce4228fd4b0291fc593b93e2bda0d248c28a38e21cb9",
+      "fingerprint": "910bb0cbc2f0c8d6b489e190f88ceee0b127187cfa820168325fd7b0072c631b",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/execution-fencing.ts": "7429252711e5efa3252a51121146897ba5d3a07a722e69adc43ef6df6b0ce8c1"
+        "packages/core/src/backend/persistence/conformance/execution-fencing.ts": "09c71ac62b3d3190fd3eee30be196b416a0301b763a14c110c422a79736f8145"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-producers.ts": {
@@ -1001,15 +1005,16 @@
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/executions.ts": {
-      "fingerprint": "b85b3cbe2b3098bbe4b7cd84f787a138042170a48be9d2ff550fe06f790520ba",
+      "fingerprint": "9709dc2010c1254b456f20749abdd75fb9a1991546890cbf3deaba927261e437",
       "snapshot": {
-        "packages/core/src/backend/persistence/conformance/executions.ts": "1926363d4424b29e5aeec72151d16b1bfc5179a3998dfaed2ab1aed6604a33e2"
+        "packages/core/src/backend/persistence/conformance/executions.ts": "3b45d5e281e8d3e3a4fcee783407f2809458d8a881aaf366eb84bf3e6a39ff62"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/integrations.ts": {
@@ -1097,15 +1102,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/release-policy.ts": {
-      "fingerprint": "ca260573d8c594aa6e07b2078fad7750ecbbcc5e64d86cb5212cb370c663b34a",
+      "fingerprint": "8479f23b5ea94e1b26ddbf214d702b77b3ed5bde301e7176b5e87c56788791b1",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/release-policy.ts": "a3044d43f55ef99877b0ee46db619af9dd4fe038086dea664efdd817a8eb1625"
+        "packages/core/src/backend/services/executions/repo/release-policy.ts": "3b0435c21a2746b3217740a6cb5fdcb1dc028ac3910ca631301006a66de02129"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
-      "outcome": "no-change",
-      "reason": "Internal state-machine fix; the published skills do not describe this behavior, and what they state (core serializes OAuth refresh, Cancel Events route by Entity) still holds.",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "grep of packages/core/skills and packages/plugins/skills for cancel, run mode, refresh, duration and waitDelayTiming: only integrations/SKILL.md lines 97-157 (refresh claim owned by core) and events/SKILL.md lines 87-204 (Cancel Event by Entity), both unchanged in meaning."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/runs.ts": {
@@ -1575,15 +1581,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/recording-store.ts": {
-      "fingerprint": "7eb9287a7f38f7bbd5eda49fd8d4a6153c4ec03041695afef5d6b2627d44b9a3",
+      "fingerprint": "b6c39b548d39d59b3d80bd1f5d236cfe862eb2a5ca861f409053d0d0aff8b1e2",
       "snapshot": {
-        "packages/core/src/backend/engine/recording-store.ts": "75bf5b1f28553048a5581c025a27225a7fa1f0d506d3505f4b17825acbd9eb16"
+        "packages/core/src/backend/engine/recording-store.ts": "2debe89589a68bf64f0a4198bedb69fe3bb158b8e53abb4000f667297cac562e"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/lib/db/migrations-sql.test.ts": {
@@ -1767,15 +1774,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/core-cancel.replay-cases.ts": {
-      "fingerprint": "26f4ef4485925a38bd916b9258a2927199f89cc698c14577f8cd7a3c92e1b598",
+      "fingerprint": "94e5210fae9cedc4a9bbf69f27e7570b7f6bb604dba194ebd3bc73198c175f96",
       "snapshot": {
-        "packages/core/src/backend/engine/core-cancel.replay-cases.ts": "4e2a7ff9e3ca261875336f526e3155279a89358bdcadc9e8e442e979354f9349"
+        "packages/core/src/backend/engine/core-cancel.replay-cases.ts": "5ca8369669f81d471674189fb5e3983e574eb691363249e25b95280dca069827"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/engine/core-cancel.test.ts": {
@@ -1851,27 +1859,29 @@
       ]
     },
     "source:packages/core/src/backend/engine/db-store.test.ts": {
-      "fingerprint": "d9a0db8108204e0de3fd44384e1f828be8845f42899c8654e7f55a75896fe4c0",
+      "fingerprint": "e5f838a9eb1c716e72f73cdf49c9e1ba126200e21008f458617ba82a3f73664d",
       "snapshot": {
-        "packages/core/src/backend/engine/db-store.test.ts": "d9c840b9fddb5c43f1473b518b27d871f6f83de9a278759bb468b69b15ed659e"
+        "packages/core/src/backend/engine/db-store.test.ts": "85241ed98db2a9fd9aa1b9fea6d373932921d4953a65264d23e50b1d5fc35890"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/engine/db-store.ts": {
-      "fingerprint": "c5a698e902a4b8c867e23a78b1e353bb1ab796b511f7355d1e7558ff36f0d34f",
+      "fingerprint": "162564cf895f2127ad8589e0eb39b62729e8b4084391f7dccdc3cb6211954e3a",
       "snapshot": {
-        "packages/core/src/backend/engine/db-store.ts": "4cd6243b27008eb09d3f7371f9d2648dbf9405847872cb9e2b139254472b569a"
+        "packages/core/src/backend/engine/db-store.ts": "292ed02b273426d945cd3b1d8d420807a1ac25380a30fbbb2f523075910510c3"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/engine/entity-eligibility.test.ts": {
@@ -1945,15 +1955,16 @@
       "evidence": ["_artifacts/skill_tree.yaml"]
     },
     "source:packages/core/src/backend/executor/run-body.ts": {
-      "fingerprint": "b9ad2d72dd1f5094a0a916c297e342afd9a6264df22b9b4fbffd3306bccca7d9",
+      "fingerprint": "201f0f8dd09254769570048bdb55dcd875deb515f3973caf4f2148c9ce5132b3",
       "snapshot": {
-        "packages/core/src/backend/executor/run-body.ts": "f98f44b276df2c31c45516d9d31c36d037d5039ad719b46d45200281509dfc56"
+        "packages/core/src/backend/executor/run-body.ts": "ffcd1c424afe89ead91965e11e267d7a5b038a533ac9fdfd9c81a4b712e60daf"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/services/executions/end-runs.test.ts": {
@@ -2071,15 +2082,15 @@
       ]
     },
     "source:.claude/skills/verify-durable-executor/SKILL.md": {
-      "fingerprint": "93a2cb1e9db6f8b12f30555d8e093bd648eeefab0f43181847d608238a2f2982",
+      "fingerprint": "8cf6f22c75bfccc8895102a271abd197aa2f954d104a04bc070dac9439ad29a0",
       "snapshot": {
-        ".claude/skills/verify-durable-executor/SKILL.md": "7156d2011733bb9e736ad3492b60e9f5dba7f314b97b94968eaf8b4e5263a3b5"
+        ".claude/skills/verify-durable-executor/SKILL.md": "e1ce97ee8fcc33ce002ce025b6b78f0357df4a362c183cb4f68505f48c04cfc0"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Repository working notes and the executor model check, which no published skill teaches.",
+      "reason": "The repository's own verify-durable-executor skill and its TLA+ model, updated in the same change; no published skill teaches the executor's model.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no .claude or docs/internal sources."
+        "_artifacts/skill_tree.yaml lists no .claude/skills sources."
       ]
     },
     "source:.claude/skills/verify-durable-executor/model/DurableExecutor.tla": {
@@ -2137,15 +2148,16 @@
       "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/core/src/backend/engine/core-replay.test.ts": {
-      "fingerprint": "91308610f2160403888b959a6ba40a72785921a266764622b6ddaeb41c6a1b86",
+      "fingerprint": "29995aeb2d9025da065b77e7463efc8cba27faf958990a2e3c3167ca8adcf764",
       "snapshot": {
-        "packages/core/src/backend/engine/core-replay.test.ts": "805742c4404b075aff211c825f554fc3964bad1a1514de19617f518b3d79e95f"
+        "packages/core/src/backend/engine/core-replay.test.ts": "02f2ce874f1e40909661de9d6a98b77e22bbb67a71fb40bfaa245393665f2da1"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/engine/traversal.test.ts": {
@@ -2173,27 +2185,29 @@
       ]
     },
     "source:packages/core/src/backend/executor/runtime.ts": {
-      "fingerprint": "f3bcc70190253f53be320716afbce979959bd14f2cdf0f25e568d713d2826253",
+      "fingerprint": "a2f08c8aa8760f5ffbcf6d84000d07b0464b520a0d33644ffe98cb74c62a3de0",
       "snapshot": {
-        "packages/core/src/backend/executor/runtime.ts": "ef4fe783897e1a0d7bc0cf1e59de6e752c735c68e71fae83e0f89d8d624584a2"
+        "packages/core/src/backend/executor/runtime.ts": "1d8a36cd5f1921d2bf5e60e3ad21f48e848d3e9d642e9b83f3e6b09581885fb4"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/executor/testing/database-replay-backend.ts": {
-      "fingerprint": "bfc6e7801331dc42bc339b0e607b23c93a8f6cd8bc0210f263990efcc570f383",
+      "fingerprint": "9e194d5ea7bf457a84ecc93a357c55989b38f5c0140c9bd4a34f869017d6ee9c",
       "snapshot": {
-        "packages/core/src/backend/executor/testing/database-replay-backend.ts": "516c254c4e5440eca22f7180361ec592032dda39225a67293924f25fd476da19"
+        "packages/core/src/backend/executor/testing/database-replay-backend.ts": "3d884d17a3fe3c0968d915ec050daac7d04690cb346cef2fdde14c1a28add2bc"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/lib/effect/test-layers.ts": {
@@ -2341,15 +2355,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/fenced-writes.ts": {
-      "fingerprint": "44d5bd67a869f8ec5fd9e796e6cea6056181e0dc671b772944e33aa5e1b35627",
+      "fingerprint": "5448705c2c5b1ed14b6cafb0f0bd534f383558a083fea322c182025604e92cfb",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/fenced-writes.ts": "0796aa9a44010e26a2d227d34d42db3f21d6ccbcd95cc3963f4fc9cf3214542f"
+        "packages/core/src/backend/services/executions/repo/fenced-writes.ts": "4e612ba9856e4fb2027aa4540ae85fdd481e23d76dbab0174af7772a72630e55"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/fencing.ts": {
@@ -2550,6 +2565,147 @@
       "reason": "Graph property tests and their generators, which no published skill teaches.",
       "evidence": [
         "_artifacts/skill_tree.yaml lists no packages/shared/src/graph or workspace config sources."
+      ]
+    },
+    "source:.claude/skills/verify-durable-executor/model/Handler.tla": {
+      "fingerprint": "b1f923955aaa40a32b63ccd5c3ac057a8cd4a885180c8f0b57158ac683288f84",
+      "snapshot": {
+        ".claude/skills/verify-durable-executor/model/Handler.tla": "804656aae843bfa294d29b3ed5ce9e1d29e5aaa1d5488f1799ae548f1b151caa"
+      },
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "The repository's own verify-durable-executor skill and its TLA+ model, updated in the same change; no published skill teaches the executor's model.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no .claude/skills sources."
+      ]
+    },
+    "source:docs/internal/plans/executor-write-churn.md": {
+      "fingerprint": "f0dbe9f3e3bdf04eb12714629d7d0fd2fb3980853b764b451798870599ae2f61",
+      "snapshot": {
+        "docs/internal/plans/executor-write-churn.md": "830a744673226b2a1320f8aafd2a7ed0aaf229ee5e123ae383b0189a2db6e0c5"
+      },
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "An internal working plan, formatted only; docs/internal is not adopter documentation.",
+      "evidence": [
+        "AGENTS.md: docs/internal/ is working notes for this repository."
+      ]
+    },
+    "source:packages/core/src/backend/engine/core-migration-snapshot.replay-cases.ts": {
+      "fingerprint": "02ea2bdd460430a6eca7a71a639c176f0b38e5038d2f26355c8ae1be3e810073",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-migration-snapshot.replay-cases.ts": "3df7ae45feb779636016446b98e0206a486a2ba6eb7160ad70ed53573308a3e6"
+      },
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/engine/durable.ts": {
+      "fingerprint": "b8bfe14e23ba6f0204a749d1316c2ba773687239c519e842be3cc8a99608d843",
+      "snapshot": {
+        "packages/core/src/backend/engine/durable.ts": "7807cc6458e246d6c25c5d79d40534b7c1b8dd4a5e44006277e90d456b67eb8b"
+      },
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/engine/runtime.ts": {
+      "fingerprint": "b2eecc06b6d80e9ec2e0a67326ac985c6965f7bce1d25218849602e1a5cd8822",
+      "snapshot": {
+        "packages/core/src/backend/engine/runtime.ts": "81b555ae363fec98aa0a6015a989dd9904f2a25ca6bee1719126ddcb8aa5aa25"
+      },
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/engine/step-log.test.ts": {
+      "fingerprint": "3ffabf7dfdc246cfcc57df5940ff0b793254c218408c35d43b9cfc645d526cba",
+      "snapshot": {
+        "packages/core/src/backend/engine/step-log.test.ts": "7c4df62a96c03cfbd2f69b6e56199517ec10d3588857a2a4465d39b82f3e5ea7"
+      },
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/engine/step-log.ts": {
+      "fingerprint": "9b46681c2b8392dbeb65778bda508584f2239756497cc1ece81d32c31664a485",
+      "snapshot": {
+        "packages/core/src/backend/engine/step-log.ts": "3faefc198b62afc9c840d2ade7285eb14257a8e8c9ac48f6df2d0d11bf133f84"
+      },
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/engine/testing/replay-runtime.ts": {
+      "fingerprint": "7b268d9ed903712c9eeee765c1a5a56ed5582abcad5b0a793bd9c42ab84f72a1",
+      "snapshot": {
+        "packages/core/src/backend/engine/testing/replay-runtime.ts": "2a11d1473536641cd2ce896e7bb3991795f78e951b0ce2f0ad1681a3d890a510"
+      },
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/executor/run-idempotent.test.ts": {
+      "fingerprint": "884741c1f5738bef50b37da055262ca5fdc8d483d2f39f76d193e04a49a038e3",
+      "snapshot": {
+        "packages/core/src/backend/executor/run-idempotent.test.ts": "e3b25f14859dc168f39f6c901b562d9cb36716c2a202ca592f8162388baa2734"
+      },
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/executions/logs.ts": {
+      "fingerprint": "09cd04d268a392b429e4aba742b82071b798f905120d81ce88620af7bb664f44",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/executions/logs.ts": "b24031d0667db71aae8cc17a84d6e883aee8fc63242236d1d8c801c649c90c96"
+      },
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/node-logs.ts": {
+      "fingerprint": "128a2d055e95f361c194648b7ce2b92bc2573af2ef651f2f8f7bb253d7467008",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/node-logs.ts": "942d413caadfb2f7c4d110b096e274c2d23c4bfd9e94988cb7bde96fd6fff572"
+      },
+      "head": "e1cef5daab0ed00580c66e2b0c70961522807778",
+      "outcome": "out-of-scope",
+      "reason": "The executor's node log writes stop storing memo rows and the fenced log close moves its guard into WHERE. Hosts see fewer writes and nothing they configure or call changes, and no published skill teaches the step memo's internal step ids or the log row writes.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository or persistence log sources.",
+        "packages/core/skills/wfgraph-core/SKILL.md and integrations/SKILL.md mention the step memo only as what answers step.run, which is unchanged."
       ]
     }
   }
