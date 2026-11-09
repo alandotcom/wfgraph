@@ -358,7 +358,7 @@ describe("wait node - delay mode", () => {
     }
   );
 
-  it("reuses the memoized wait state and step log across a replay", async () => {
+  it("reuses the memoized wait state and opens the same step log across a replay", async () => {
     const memo = new Map<string, unknown>();
     const config = { waitMode: "delay", waitDuration: "1h" };
 
@@ -366,7 +366,11 @@ describe("wait node - delay mode", () => {
     await runWait({ config, store, memo }).execution;
 
     expect(store.callsOf("createWaitState")).toHaveLength(1);
-    expect(waitStepLogs(store).opened).toHaveLength(1);
+    // The open stores no memo row, so the replay opens again and reaches the
+    // row the first pass opened.
+    const { opened } = waitStepLogs(store);
+    expect(opened).toHaveLength(2);
+    expect(new Set(opened.map((call) => call.nodeId)).size).toBe(1);
     expect(store.callsOf("completeRun")).toHaveLength(1);
   });
 });

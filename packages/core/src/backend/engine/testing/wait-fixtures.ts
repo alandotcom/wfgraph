@@ -137,13 +137,7 @@ export function waitStepLogs(store: RecordingWorkflowStore) {
   const opened = store
     .callsOf("startStepLog")
     .filter((call) => call.nodeType === "Wait");
-  const waitLogIds = new Set(
-    store
-      .callsOf("startStepLog")
-      .map((call, index) => ({ call, logId: `log_${index + 1}` }))
-      .filter(({ call }) => call.nodeType === "Wait")
-      .map(({ logId }) => logId)
-  );
+  const waitLogIds = new Set(opened.map((call) => store.logIdOf(call.nodeId)));
 
   return {
     opened,

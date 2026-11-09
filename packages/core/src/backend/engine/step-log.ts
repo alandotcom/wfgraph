@@ -5,8 +5,8 @@
  * plugin's action, a host's action, the engine's own two, the Condition node and
  * the Wait node all leave the same trace and a step author writes none of it.
  * `runWithStepLog` covers the nodes whose work begins and ends in one call. The
- * Wait opens its row inside a memoized step and closes it from one of many
- * branches on the far side of a suspension, so it uses the two halves directly.
+ * Wait closes its row from one of many branches on the far side of a
+ * suspension, so it uses the two halves directly.
  */
 
 import type { StepContext } from "#src/backend/extensions/steps/step-handler";

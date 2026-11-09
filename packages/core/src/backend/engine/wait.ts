@@ -13,7 +13,11 @@ import { WAIT_ANCHOR_METADATA_KEY } from "@wfgraph/shared/lifecycle/wait-signal"
 import type { JsonObjectDraft } from "@wfgraph/shared/types/json";
 import { decodeIsoTimestampOrThrow } from "@wfgraph/shared/types/timestamp";
 import { closeStepLog, openStepLog } from "#src/backend/engine/step-log";
-import { fromUnknownPromise, runDurable } from "#src/backend/engine/durable";
+import {
+  fromUnknownPromise,
+  runDurable,
+  runIdempotentDurable,
+} from "#src/backend/engine/durable";
 import {
   engineFailure,
   type EngineFailure,
@@ -133,12 +137,14 @@ function executeWaitActionInner(
 
     const config = read.config;
 
-    // The "step started" row is written once and its id is replayed from the
-    // memoized step return, so every attempt below closes the same row.
-    const startLog = yield* runDurable(
+    // The open runs on every pass and stores no memo row. Every pass reaches
+    // the same row, whose id derives from the run and the node, and the store
+    // answers a row an earlier pass opened with that row's own opening time,
+    // so a close on a later pass measures the whole park.
+    const startLog = yield* runIdempotentDurable(
       runtime,
       {
-        id: `wait-start-log-${context.nodeId}`,
+        id: `node:${context.nodeId}:log-open`,
         nodeId: context.nodeId,
         name: `${context.nodeName} (open)`,
       },

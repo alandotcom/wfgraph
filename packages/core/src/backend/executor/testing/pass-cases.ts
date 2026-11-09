@@ -1112,6 +1112,13 @@ function describeCases(
     });
 
     const parked = await readRun(harness);
+    // The only log step with a memo row is the open whose failure it counts;
+    // the Wait's open, like every other, stores none.
+    expect(
+      parked.memo
+        .map((entry) => entry.stepId)
+        .filter((stepId) => stepId.includes("log"))
+    ).toEqual(["node:send:log-open"]);
     expect(
       parked.memo.find((entry) => entry.stepId === "node:send:log-open")
     ).toEqual({

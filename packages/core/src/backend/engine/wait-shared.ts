@@ -6,9 +6,9 @@
  * woke; a `version-migrate` wake sends the Wait around again against the
  * Workflow Version the execution row now names. The step ids for an attempt's
  * prepare, park and resume carry the attempt index, so a park that replaces an
- * earlier one is fresh work rather than a replay of it. The row the Wait opens
- * is memoized under `wait-start-log-<nodeId>`, which carries no index because
- * one row covers every attempt.
+ * earlier one is fresh work rather than a replay of it. The Wait opens its log
+ * row on every pass as the idempotent step `node:<nodeId>:log-open`, which
+ * carries no index because one row covers every attempt.
  */
 
 import { Effect } from "effect";
@@ -76,7 +76,10 @@ export type WaitBranchContext = {
    * values, and a match sits one level down inside `waitFor`.
    */
   resolveTemplates: ResolveTemplates;
-  /** Memoized "step started" log row reused by every attempt below. */
+  /**
+   * The Wait's log row, which every attempt closes. Its `startTime` is when
+   * the row was first opened, so a close measures the whole park.
+   */
   startLog: WorkflowStepLogHandle;
 };
 
