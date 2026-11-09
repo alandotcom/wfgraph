@@ -1391,6 +1391,41 @@ function describeCases(
     ]);
   });
 
+  it("ends a run whose version is gone canceled, with its timeline entry, when it holds a Cancel claim", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(CANCELABLE), actionNode("send", "test/send")],
+        edges: [edge("entry", "send", "started")],
+      })
+    );
+    await harness.connection.run(
+      cancelEntity({ workflowId: "wf_1", entityValue: ENTITY, now: now() })
+    );
+
+    expect(await harness.pass({ wrap: missingVersion })).toEqual({
+      kind: "unavailable",
+      reason: "missing_version",
+      ending: "written",
+      severity: "info",
+    });
+    const run = await readRun(harness);
+    expect(run.status).toBe("canceled");
+    expect(run.schedule).toBeNull();
+    expect(await endingOf(harness)).toEqual([
+      {
+        eventType: "run_cancelled",
+        message:
+          "Run canceled after a fatal error; the Canceled outlet did not run",
+        metadata: {
+          error: "The requested workflow version does not exist",
+          failureKind: "failure",
+          runMode: "live",
+        },
+      },
+      expect.objectContaining({ eventType: "run_cancel_requested" }),
+    ]);
+  });
+
   it("releases a run it has nothing to run for when deleting its row fails, and deletes the row on the next pass", async () => {
     const harness = await startRun(
       createSerializedWorkflowGraph({

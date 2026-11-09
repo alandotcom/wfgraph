@@ -77,8 +77,9 @@ export function runBody(input: {
 
 /**
  * The write that ends the row of a run that cannot be loaded. A run whose
- * version is missing can never run, so it ends failed. Nothing will run an
- * ended run again, so its schedule row and memo go. A run whose row is gone
+ * version is missing can never run, so it ends failed, or in the status a
+ * Cancel or Exit claim it holds selects. Nothing will run an ended run again,
+ * so its schedule row and memo go. A run whose row is gone
  * took its schedule and memo rows with it.
  */
 function endUnavailableRun(
@@ -87,14 +88,7 @@ function endUnavailableRun(
   unavailable: RunInputUnavailable
 ): Effect.Effect<void, DatabaseError | LeaseLost, ExecutionRepo> {
   if (unavailable.reason === "missing_version") {
-    return Effect.gen(function* () {
-      const end = yield* endingOutsideGraph(
-        writes,
-        executionId,
-        unavailable.message
-      );
-      if (end !== null) yield* end("failed");
-    });
+    return failRun(writes, executionId, unavailable.message);
   }
   if (unavailable.reason === "not_in_flight") {
     return writes.dropSchedule();
