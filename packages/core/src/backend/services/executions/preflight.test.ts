@@ -18,6 +18,7 @@ import {
 import { loadDraftForRun } from "#src/backend/services/executions/preflight";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 
 type SnapshotInput = Parameters<
   WorkflowRepo["Service"]["freezeDraftSnapshot"]
@@ -135,5 +136,71 @@ describe("loadDraftForRun", () => {
       expect(snapshots).toHaveLength(1);
       expect(loaded.preflight.workflowVersionId).toBe(snapshots[0]?.versionId);
     })
+  );
+
+  // Publish refuses this graph too, but a draft run reaches no Publish.
+  it.effect(
+    "refuses a draft whose template reads a node on a parallel branch",
+    () =>
+      Effect.gen(function* () {
+        const waitNode = (
+          id: string,
+          label: string,
+          config: Record<string, unknown>
+        ) => ({
+          id,
+          type: "action" as const,
+          position: { x: 0, y: 100 },
+          data: {
+            label,
+            type: "action" as const,
+            config: { actionType: "Wait", ...config },
+          },
+        });
+        const draftGraph = createSerializedWorkflowGraph({
+          nodes: [
+            {
+              id: "lifecycle-1",
+              type: "lifecycle",
+              position: { x: 0, y: 0 },
+              data: { label: "Appointment", type: "lifecycle", config: {} },
+            },
+            waitNode("pause", "Pause", {
+              waitMode: "delay",
+              waitDuration: "1h",
+            }),
+            waitNode("follow", "Follow", {
+              waitMode: "delay",
+              waitDelayTimingMode: "until",
+              waitUntil: "{{@pause:Pause.resumedAt}}",
+            }),
+          ],
+          edges: ["pause", "follow"].map((target) => ({
+            id: `started-${target}`,
+            source: "lifecycle-1",
+            sourceHandle: LIFECYCLE_STARTED_HANDLE,
+            target,
+          })),
+        });
+
+        const failure = yield* loadDraftForRun(workflow.id).pipe(
+          Effect.flip,
+          Effect.provide(
+            Layer.mergeAll(
+              SilentAppLoggerLayer,
+              stubExtensionCatalog(),
+              stubIntegrationRepo(),
+              draftRepoLayer(draftGraph, [])
+            )
+          )
+        );
+
+        expect(failure).toMatchObject({
+          _tag: "InvalidInput",
+          error: expect.stringContaining(
+            'Node "Follow" reads "Pause" in waitUntil, but no path leads from "Pause" to "Follow".'
+          ),
+        });
+      })
   );
 });

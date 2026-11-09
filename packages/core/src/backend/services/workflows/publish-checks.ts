@@ -20,7 +20,10 @@ import {
 } from "#src/backend/lib/effect/failures";
 import { validateWorkflowActionConfigs } from "#src/backend/services/workflows/validation/workflow-action-validation";
 import { validateWorkflowIntegrations } from "#src/backend/services/workflows/validation/workflow-integration-validation";
-import { validateWorkflowTemplates } from "#src/backend/services/workflows/validation/workflow-template-validation";
+import {
+  validateUpstreamTemplateReferences,
+  validateWorkflowTemplates,
+} from "#src/backend/services/workflows/validation/workflow-template-validation";
 import {
   validateCancelFilters,
   validateEntityEligibility,
@@ -54,6 +57,7 @@ export type SynchronousPublicationFailure = {
     | "invalid_schedule"
     | "invalid_event_split"
     | "invalid_group"
+    | "reference_not_upstream"
     | "invalid_template"
     | "unreachable_node";
   error: string;
@@ -96,6 +100,10 @@ function synchronousPublicationChecks(input: {
       () => validateEventSplitOutlets(nodes, edges, catalog),
     ],
     ["invalid_group", () => checkGroupContract({ nodes, edges })],
+    [
+      "reference_not_upstream",
+      () => validateUpstreamTemplateReferences({ nodes, edges, catalog }),
+    ],
     [
       "invalid_template",
       () => validateWorkflowTemplates({ nodes, edges, catalog }),

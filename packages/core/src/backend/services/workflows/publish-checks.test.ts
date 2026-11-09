@@ -186,6 +186,38 @@ describe("publish-checks", () => {
     ).toEqual(["missing_required_field", "invalid_event", "unreachable_node"]);
   });
 
+  it("refuses a reference to a node that is not upstream under its own kind", () => {
+    const source = actionNode("source", "Source");
+    source.data.config = { actionType: "custom/send", to: "a" };
+    const reader = actionNode("reader", "Reader");
+    reader.data.config = {
+      actionType: "custom/send",
+      to: "{{@source:Source.messageId}}",
+    };
+
+    expect(
+      collectSynchronousPublicationFailures({
+        nodes: [lifecycle, source, reader],
+        edges: ["source", "reader"].map((target) => ({
+          id: `started-${target}`,
+          source: "lifecycle-1",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          target,
+        })),
+        catalog: catalogOf({
+          actions: [anAction("custom/send")],
+          events: [anEvent("app/appointment.created")],
+        }),
+      })
+    ).toEqual([
+      {
+        kind: "reference_not_upstream",
+        error:
+          'Node "Reader" reads "Source" in to, but no path leads from "Source" to "Reader". Reference only a node upstream of "Reader", or move "Reader" below "Source".',
+      },
+    ]);
+  });
+
   it("classifies guarded lifecycle failures separately from Event failures", () => {
     const guarded: WorkflowNode = lifecycleNode();
     guarded.data.config = {

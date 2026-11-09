@@ -779,7 +779,10 @@ export function issueIdentity(issue: WorkflowIssue): string {
   ) {
     return `${issue.kind}|${issue.fieldKey}`;
   }
-  if (issue.kind === "broken_reference") {
+  if (
+    issue.kind === "broken_reference" ||
+    issue.kind === "reference_not_upstream"
+  ) {
     return `${issue.kind}|${issue.fieldKey}|${issue.referencedNodeId}|${issue.displayText}`;
   }
   if (issue.kind === "missing_integration") {

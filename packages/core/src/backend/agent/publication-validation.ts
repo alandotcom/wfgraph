@@ -97,11 +97,13 @@ export function validateAgentPublication(input: {
     edges,
     catalog: input.catalog,
   })) {
-    // The publication check reports its first problem of these two kinds as one
-    // sentence, and the agent reads one blocker per node and rule instead.
+    // The publication check reports its first problem of these kinds as one
+    // sentence, and the agent reads one blocker per node and rule or reference
+    // instead, each naming the node to change.
     if (
       failure.kind === "missing_required_field" ||
-      failure.kind === "invalid_group"
+      failure.kind === "invalid_group" ||
+      failure.kind === "reference_not_upstream"
     ) {
       const detailedFailures = blockingWorkflowIssues
         .filter((issue) => issue.kind === failure.kind)

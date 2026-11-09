@@ -6,7 +6,7 @@ import {
 } from "#src/conditions/conditions";
 import type { ExtensionCatalog } from "#src/extensions/catalog";
 import { groupContractMatrix } from "#src/graph/group-contract-test-support";
-import type { WorkflowNode } from "#src/graph/types";
+import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
 import {
   collectWorkflowIssues,
   findUnconfiguredIntegrationNodes,
@@ -14,6 +14,10 @@ import {
   hasBlockingWorkflowIssues,
   hasDraftRunBlockingIssues,
 } from "#src/graph/workflow-issues";
+import {
+  LIFECYCLE_CANCELED_HANDLE,
+  LIFECYCLE_STARTED_HANDLE,
+} from "#src/lifecycle/lifecycle-outlets";
 
 const catalog: ExtensionCatalog = {
   entities: [],
@@ -459,6 +463,251 @@ describe("collectWorkflowIssues", () => {
     expect(grouped.missingRequiredFields).toEqual([
       expect.objectContaining({ nodeId: "__proto__", nodeLabel: "Prototype" }),
     ]);
+  });
+});
+
+describe("collectWorkflowIssues references to a node that is not upstream", () => {
+  const entry: WorkflowNode = {
+    id: "life",
+    type: "lifecycle",
+    position: { x: 0, y: 0 },
+    data: { type: "lifecycle", label: "Lifecycle", config: {} },
+  };
+
+  /** A configured Send Message node whose Message field holds `message`. */
+  function sender(id: string, label: string, message = "Hello"): WorkflowNode {
+    return actionNode(
+      id,
+      {
+        actionType: "custom/send",
+        channel: "#general",
+        integrationId: "int_1",
+        message,
+      },
+      label
+    );
+  }
+
+  const wait = actionNode(
+    "wait",
+    {
+      actionType: BUILT_IN_ACTION_IDS.wait,
+      waitMode: "delay",
+      waitDuration: "1h",
+    },
+    "Wait"
+  );
+
+  function fromEntry(
+    target: string,
+    outlet: string = LIFECYCLE_STARTED_HANDLE
+  ): WorkflowEdge {
+    return {
+      id: `life-${target}`,
+      source: "life",
+      target,
+      sourceHandle: outlet,
+    };
+  }
+
+  function edge(source: string, target: string): WorkflowEdge {
+    return { id: `${source}-${target}`, source, target };
+  }
+
+  function issuesFor(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
+    return collectWorkflowIssues({
+      nodes,
+      edges,
+      catalog,
+      integrations: [{ id: "int_1", type: "slack" }],
+    });
+  }
+
+  function notUpstream(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
+    return issuesFor(nodes, edges).filter(
+      (issue) => issue.kind === "reference_not_upstream"
+    );
+  }
+
+  // Both branches leave the entry node together, so whether Lookup has run
+  // when Notify resolves its Message depends on which branch finishes first.
+  it("blocks a reference to a node on a parallel branch", () => {
+    const issues = issuesFor(
+      [
+        entry,
+        sender("lookup", "Lookup"),
+        sender("notify", "Notify", "Hi {{@lookup:Lookup.name}}"),
+      ],
+      [fromEntry("lookup"), fromEntry("notify")]
+    );
+
+    expect(issues).toEqual([
+      {
+        kind: "reference_not_upstream",
+        severity: "blocking",
+        nodeId: "notify",
+        nodeLabel: "Notify",
+        fieldKey: "message",
+        fieldLabel: "Message",
+        referencedNodeId: "lookup",
+        displayText: "Lookup.name",
+        message:
+          'Node "Notify" reads "Lookup" in Message, but no path leads from "Lookup" to "Notify". Reference only a node upstream of "Notify", or move "Notify" below "Lookup".',
+      },
+    ]);
+    expect(hasBlockingWorkflowIssues(issues)).toBe(true);
+    expect(hasDraftRunBlockingIssues(issues)).toBe(true);
+    expect(groupWorkflowIssuesForOverlay(issues).brokenReferences).toEqual([
+      {
+        nodeId: "notify",
+        nodeLabel: "Notify",
+        brokenReferences: [
+          {
+            fieldKey: "message",
+            fieldLabel: "Message",
+            referencedNodeId: "lookup",
+            displayText: "Lookup.name",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("blocks a reference to a node below the reader", () => {
+    expect(
+      notUpstream(
+        [
+          entry,
+          sender("notify", "Notify", "Hi {{@lookup:Lookup.name}}"),
+          sender("lookup", "Lookup"),
+        ],
+        [fromEntry("notify"), edge("notify", "lookup")]
+      )
+    ).toEqual([
+      expect.objectContaining({ nodeId: "notify", referencedNodeId: "lookup" }),
+    ]);
+  });
+
+  it("accepts a reference to an upstream node across a Wait", () => {
+    expect(
+      notUpstream(
+        [
+          entry,
+          sender("lookup", "Lookup"),
+          wait,
+          sender("notify", "Notify", "Hi {{@lookup:Lookup.name}}"),
+        ],
+        [fromEntry("lookup"), edge("lookup", "wait"), edge("wait", "notify")]
+      )
+    ).toEqual([]);
+  });
+
+  it("accepts a reference to the entry node from anywhere below it", () => {
+    expect(
+      notUpstream(
+        [
+          entry,
+          sender("lookup", "Lookup"),
+          wait,
+          sender("notify", "Notify", "Hi {{@life:Lifecycle.name}}"),
+        ],
+        [fromEntry("lookup"), edge("lookup", "wait"), edge("wait", "notify")]
+      )
+    ).toEqual([]);
+  });
+
+  // No node is upstream of itself, but the broken-reference check owns a node
+  // naming itself and accepts it, and this rule leaves that verdict alone.
+  it("leaves a node that names itself to the broken-reference check", () => {
+    const issues = issuesFor(
+      [entry, sender("notify", "Notify", "Hi {{@notify:Notify.name}}")],
+      [fromEntry("notify")]
+    );
+
+    expect(issues).toEqual([]);
+  });
+
+  it("keeps a missing node's warning and adds nothing beside it", () => {
+    const issues = issuesFor(
+      [entry, sender("notify", "Notify", "Hi {{@gone:Gone.name}}")],
+      [fromEntry("notify")]
+    );
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        kind: "broken_reference",
+        severity: "warning",
+        referencedNodeId: "gone",
+      }),
+    ]);
+  });
+
+  // The Canceled Branch runs once the Started side has stopped, and reads the
+  // outputs the run produced before then.
+  it("accepts a Canceled-side node reading a Started-side node", () => {
+    expect(
+      notUpstream(
+        [
+          entry,
+          sender("lookup", "Lookup"),
+          sender("cleanup", "Cleanup", "Undo {{@lookup:Lookup.name}}"),
+        ],
+        [fromEntry("lookup"), fromEntry("cleanup", LIFECYCLE_CANCELED_HANDLE)]
+      )
+    ).toEqual([]);
+  });
+
+  it("blocks a Canceled-side node reading a parallel Canceled-side node", () => {
+    expect(
+      notUpstream(
+        [
+          entry,
+          sender("first", "First"),
+          sender("cleanup", "Cleanup", "Undo {{@first:First.name}}"),
+        ],
+        [
+          fromEntry("first", LIFECYCLE_CANCELED_HANDLE),
+          fromEntry("cleanup", LIFECYCLE_CANCELED_HANDLE),
+        ]
+      )
+    ).toEqual([
+      expect.objectContaining({ nodeId: "cleanup", referencedNodeId: "first" }),
+    ]);
+  });
+
+  it("reads a Wait's timing tokens", () => {
+    const timed = actionNode(
+      "timed",
+      {
+        actionType: BUILT_IN_ACTION_IDS.wait,
+        waitMode: "delay",
+        waitDelayTimingMode: "until",
+        waitUntil: "{{@lookup:Lookup.startsAt}}",
+      },
+      "Timed Wait"
+    );
+
+    expect(
+      notUpstream(
+        [entry, sender("lookup", "Lookup"), timed],
+        [fromEntry("lookup"), fromEntry("timed")]
+      )
+    ).toEqual([
+      expect.objectContaining({ nodeId: "timed", referencedNodeId: "lookup" }),
+    ]);
+  });
+
+  // A disabled node never runs, so its templates never resolve.
+  it("skips a disabled node", () => {
+    const disabled = sender("notify", "Notify", "Hi {{@lookup:Lookup.name}}");
+    disabled.data.enabled = false;
+
+    expect(
+      notUpstream(
+        [entry, sender("lookup", "Lookup"), disabled],
+        [fromEntry("lookup"), fromEntry("notify")]
+      )
+    ).toEqual([]);
   });
 });
 

@@ -11,6 +11,7 @@ import { validateWorkflowConditionConfigs } from "#src/backend/services/workflow
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/services/workflows/validation/workflow-integration-validation";
 import { validateWorkflowEvents } from "#src/backend/services/workflows/validation/workflow-lifecycle-validation";
+import { validateUpstreamTemplateReferences } from "#src/backend/services/workflows/validation/workflow-template-validation";
 import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import {
   WorkflowRepo,
@@ -138,8 +139,9 @@ function writeMemo(catalog: object, key: string, check: GraphCheck): void {
 
 /**
  * Everything about a graph that a delivery can settle without a query: it
- * parses, its actions and conditions are configured, and every Event it names --
- * as a lifecycle role or as a Wait node's subscription -- is one this app defines.
+ * parses, its actions and conditions are configured, every template names a
+ * node upstream of the node holding it, and every Event it names -- as a
+ * lifecycle role or as a Wait node's subscription -- is one this app defines.
  *
  * All of them are pure over the graph and the catalog, so the answer is memoized on
  * the pair. That is what takes the fan-out's cost off the arrival: the decode is
@@ -170,6 +172,17 @@ function checkGraphAndCatalog(input: {
   );
   if (!conditionValidation.valid) {
     return { valid: false, error: conditionValidation.error };
+  }
+
+  // Publish refuses the same references. This catches a draft run, which no
+  // Publish preceded, before its result comes to depend on scheduler order.
+  const referenceValidation = validateUpstreamTemplateReferences({
+    nodes: graphValidation.nodes,
+    edges: graphValidation.edges,
+    catalog: input.catalog,
+  });
+  if (!referenceValidation.valid) {
+    return { valid: false, error: referenceValidation.error };
   }
 
   const eventValidation = validateWorkflowEvents(

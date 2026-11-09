@@ -48,6 +48,7 @@ import {
 import { findTrackedEntityStateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { readJsonObjectLeniently } from "@wfgraph/shared/types/json";
+import { collectReferenceNotUpstreamIssues } from "@wfgraph/shared/graph/workflow-issues";
 import { getNodeLabel } from "#src/backend/services/workflows/validation/workflow-graph";
 
 export type WorkflowTemplateValidationResult =
@@ -107,6 +108,31 @@ function valueTargets(
   }
 
   return targets;
+}
+
+/**
+ * Refuse a template naming another node of the graph that is not upstream of
+ * the node holding it. Such a node may not have run when the template resolves,
+ * and on a parallel branch whether it has depends on scheduler order. The
+ * error is the first reference's sentence with a count of the rest, and
+ * `collectReferenceNotUpstreamIssues` returns the full list.
+ */
+export function validateUpstreamTemplateReferences(input: {
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  catalog: ExtensionCatalog;
+}): WorkflowTemplateValidationResult {
+  const [first, ...rest] = collectReferenceNotUpstreamIssues(input);
+  if (!first) {
+    return { valid: true };
+  }
+  return {
+    valid: false,
+    error:
+      rest.length === 0
+        ? first.message
+        : `${first.message} (${rest.length} more ${rest.length === 1 ? "reference" : "references"} to a node that is not upstream)`,
+  };
 }
 
 export function validateWorkflowTemplates(input: {

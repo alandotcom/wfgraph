@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { errorOf } from "#src/backend/services/workflows/validation/validation-test-support";
-import { validateWorkflowTemplates } from "#src/backend/services/workflows/validation/workflow-template-validation";
+import {
+  validateUpstreamTemplateReferences,
+  validateWorkflowTemplates,
+} from "#src/backend/services/workflows/validation/workflow-template-validation";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
   entityStateConditionPath,
@@ -201,6 +204,88 @@ const entityCatalog: ExtensionCatalog = {
 function entityToken(path: string): string {
   return `{{@$entity:patient|Patient.${path}}}`;
 }
+
+describe("validateUpstreamTemplateReferences", () => {
+  function reader(id: string, label: string, reads: string): WorkflowNode {
+    return {
+      id,
+      type: "action",
+      position: { x: 0, y: 100 },
+      data: {
+        label,
+        type: "action",
+        config: { actionType: "app/record", subject: reads },
+      },
+    };
+  }
+
+  const source = reader("source", "Source", "first");
+  const startedTo = (target: string): WorkflowEdge => ({
+    id: `started-${target}`,
+    source: "lifecycle-1",
+    sourceHandle: LIFECYCLE_STARTED_HANDLE,
+    target,
+  });
+
+  // The racy graph: Source and After leave the entry node together, so
+  // whether Source has run when After resolves its subject depends on which
+  // branch the scheduler finishes first.
+  it("refuses a reference to a node on a sibling branch", () => {
+    const result = validateUpstreamTemplateReferences({
+      nodes: [
+        entryNode([CREATED]),
+        source,
+        reader("after", "After", "{{@source:Source.condition}}"),
+      ],
+      edges: [startedTo("source"), startedTo("after")],
+      catalog,
+    });
+
+    expect(errorOf(result)).toBe(
+      'Node "After" reads "Source" in subject, but no path leads from "Source" to "After". Reference only a node upstream of "After", or move "After" below "Source".'
+    );
+  });
+
+  it("counts the references past the first", () => {
+    const result = validateUpstreamTemplateReferences({
+      nodes: [
+        entryNode([CREATED]),
+        source,
+        reader("after", "After", "{{@source:Source.a}} {{@source:Source.b}}"),
+        reader("later", "Later", "{{@source:Source.a}}"),
+      ],
+      edges: [startedTo("source"), startedTo("after"), startedTo("later")],
+      catalog,
+    });
+
+    expect(errorOf(result)).toMatch(
+      /^Node "After" reads "Source" in subject, .* \(2 more references to a node that is not upstream\)$/
+    );
+  });
+
+  it("accepts references to the entry node and to nodes above a Wait", () => {
+    const result = validateUpstreamTemplateReferences({
+      nodes: [
+        entryNode([CREATED]),
+        source,
+        waitNode({ waitMode: "delay", waitDuration: "1h" }),
+        reader(
+          "after",
+          "After",
+          `{{@source:Source.condition}} ${token("appointmentId")}`
+        ),
+      ],
+      edges: [
+        startedTo("source"),
+        { id: "source-wait", source: "source", target: "wait-1" },
+        { id: "wait-after", source: "wait-1", target: "after" },
+      ],
+      catalog,
+    });
+
+    expect(result).toEqual({ valid: true });
+  });
+});
 
 describe("validateWorkflowTemplates Entity State", () => {
   it("accepts a Condition field from a tracked Entity without Eligibility", () => {

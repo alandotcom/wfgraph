@@ -162,6 +162,72 @@ afterEach(() => {
 });
 
 describe("validateAgentPublication", () => {
+  // The agent reads one blocker per reference, each naming the node it has to
+  // change, where Publish itself answers with the first reference's sentence.
+  it("reports each reference to a node that is not upstream", () => {
+    const slackStep = (id: string, label: string, text: string) =>
+      ({
+        id,
+        type: "action",
+        position: { x: 200, y: 0 },
+        data: {
+          label,
+          type: "action",
+          config: {
+            actionType: "slack/send-message",
+            integrationId: "slack-1",
+            channel: "#recruiting",
+            text,
+          },
+        },
+      }) satisfies WorkflowNode;
+    const fromEntry = (target: string): WorkflowEdge => ({
+      id: `entry-${target}`,
+      source: "entry",
+      target,
+      sourceHandle: LIFECYCLE_STARTED_HANDLE,
+    });
+
+    const result = validateAgentPublication({
+      document: {
+        nodes: [
+          manualLifecycle,
+          slackStep("announce", "Announce", "Opening"),
+          slackStep("follow-up", "Follow up", "Re {{@announce:Announce.ts}}"),
+          slackStep("recap", "Recap", "Re {{@announce:Announce.ts}}"),
+        ],
+        edges: [
+          fromEntry("announce"),
+          fromEntry("follow-up"),
+          fromEntry("recap"),
+        ],
+      },
+      catalog: fixtureCatalog,
+      integrations: [{ id: "slack-1", type: "slack" }],
+    });
+
+    expect(
+      result.publishBlockers.filter(
+        (issue) => issue.kind === "reference_not_upstream"
+      )
+    ).toEqual([
+      {
+        kind: "reference_not_upstream",
+        nodeId: "follow-up",
+        nodeLabel: "Follow up",
+        message:
+          'Node "Follow up" reads "Announce" in Text, but no path leads from "Announce" to "Follow up". Reference only a node upstream of "Follow up", or move "Follow up" below "Announce".',
+      },
+      {
+        kind: "reference_not_upstream",
+        nodeId: "recap",
+        nodeLabel: "Recap",
+        message:
+          'Node "Recap" reads "Announce" in Text, but no path leads from "Announce" to "Recap". Reference only a node upstream of "Recap", or move "Recap" below "Announce".',
+      },
+    ]);
+  });
+
   it("accepts a configured manual workflow", () => {
     expect(
       validateAgentPublication({

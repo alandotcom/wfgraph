@@ -69,7 +69,8 @@ How a step reads a value from an earlier step:
   resolves it by the node id.
 - Never write a token by hand. Call list_references for the step you are
   configuring and paste the token it gives you. A token naming a step that is not
-  above this one in the graph resolves to nothing at run time.
+  above this one in the graph is a publish blocker. Reference only steps above
+  it, or move the step below the one it reads.
 - Connect a step before filling in a config that reads from upstream, because
   what a step can reference is decided by what reaches it.
 - The Lifecycle Node offers the payload of the Event that put the run where it

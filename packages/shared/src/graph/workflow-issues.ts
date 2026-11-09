@@ -17,6 +17,7 @@ import {
 } from "#src/conditions/conditions";
 import { conditionTypeOf } from "#src/conditions/condition-field-type";
 import {
+  type ActionMetadata,
   type ExtensionCatalog,
   findAction,
   findIntegration,
@@ -27,6 +28,11 @@ import {
 } from "#src/graph/group-contract";
 import { isWaitNode, readConfigTrimmedString } from "#src/graph/node-config";
 import { checkCancelFilters } from "#src/lifecycle/cancel-filters";
+import {
+  LIFECYCLE_CANCELED_HANDLE,
+  LIFECYCLE_STARTED_HANDLE,
+  nodesBehindOutlet,
+} from "#src/lifecycle/lifecycle-outlets";
 import {
   checkEntityEligibility,
   findTrackedEntityStateSource,
@@ -44,17 +50,19 @@ import {
   waitTemplateKeysIn,
 } from "#src/lifecycle/wait-subscription";
 import {
+  type ConfigTemplateReference,
   isEntityStateSourceId,
   referenceFieldForPath,
 } from "#src/graph/node-references";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
+import { upstreamNodeIdsOver } from "#src/graph/upstream-nodes";
 import {
   flattenConfigFields,
   literalFieldKeys,
   templateJsonFieldShapes,
 } from "#src/plugins/action-fields";
 import { extractConsumedTemplateReferences } from "#src/plugins/template-config";
-import { readJsonObjectLeniently } from "#src/types/json";
+import { type JsonObject, readJsonObjectLeniently } from "#src/types/json";
 import { asNonEmptyString } from "#src/types/string";
 
 export type MissingRequiredFieldIssue = {
@@ -98,6 +106,34 @@ export type UnverifiedProviderFieldIssue = {
 export type BrokenReferenceIssue = {
   kind: "broken_reference";
   severity: "warning" | "blocking";
+  nodeId: string;
+  nodeLabel: string;
+  fieldKey: string;
+  fieldLabel: string;
+  referencedNodeId: string;
+  displayText: string;
+  message: string;
+};
+
+/**
+ * A template naming a node that has no path forward to the node holding it,
+ * such as a node on a parallel branch.
+ *
+ * The engine resolves a node's templates from the outputs the run holds when
+ * that node starts. Every upstream node has finished by then. Any other node
+ * may or may not have run, depending on which branch the scheduler finishes
+ * first, and when it has not, the action receives the template text in place
+ * of the value. So this blocks Publish and a draft run alike. A reference to a
+ * node missing from the graph is a `broken_reference`, and a node naming
+ * itself is left to that same check, which accepts it.
+ *
+ * A node behind the Canceled outlet may read a node behind the Started outlet.
+ * The Canceled Branch runs once the Started side has stopped at a boundary,
+ * and it reads whatever outputs the run had produced by then.
+ */
+export type ReferenceNotUpstreamIssue = {
+  kind: "reference_not_upstream";
+  severity: "blocking";
   nodeId: string;
   nodeLabel: string;
   fieldKey: string;
@@ -154,7 +190,8 @@ export type WorkflowIssue =
   | InvalidLifecycleRulesIssue
   | MissingIntegrationIssue
   | UnverifiedProviderFieldIssue
-  | BrokenReferenceIssue;
+  | BrokenReferenceIssue
+  | ReferenceNotUpstreamIssue;
 
 export type CollectWorkflowIssuesInput = {
   nodes: WorkflowNode[];
@@ -407,6 +444,43 @@ function collectMissingIntegrationIssues(input: {
   return issues;
 }
 
+/**
+ * The template references in a node's config that the engine resolves. A key
+ * the action declares literal is handed over as authored, and a Wait's key its
+ * current shape does not read is never consulted, so neither is included.
+ */
+function consumedReferencesOf(input: {
+  node: WorkflowNode;
+  config: JsonObject;
+  action: ActionMetadata | undefined;
+}): ConfigTemplateReference[] {
+  const waitNode = isWaitNode(input.node);
+  const configFields = input.action?.configFields ?? [];
+  return extractConsumedTemplateReferences(
+    input.config,
+    {
+      literalKeys: new Set(literalFieldKeys(configFields)),
+      jsonShapes: new Map(templateJsonFieldShapes(configFields)),
+      activeKeys: waitNode
+        ? new Set<string>(waitTemplateKeysIn(input.config))
+        : undefined,
+    },
+    waitNode ? waitMatchTemplateStringsIn(input.config) : []
+  );
+}
+
+/** The label of the config field a reference sits in, or its dotted key. */
+function referenceFieldLabelOf(
+  reference: ConfigTemplateReference,
+  action: ActionMetadata | undefined
+): string {
+  return (
+    flattenConfigFields(action?.configFields ?? []).find(
+      (field) => field.key === reference.configKey
+    )?.label ?? reference.field
+  );
+}
+
 function collectBrokenReferenceIssues(input: {
   nodes: WorkflowNode[];
   catalog: ExtensionCatalog;
@@ -438,12 +512,6 @@ function collectBrokenReferenceIssues(input: {
     const action = actionType
       ? findAction(input.catalog, actionType)
       : undefined;
-    const flatFields = action ? flattenConfigFields(action.configFields) : [];
-    const waitNode = isWaitNode(node);
-    const activeWaitKeys = waitNode
-      ? new Set<string>(waitTemplateKeysIn(config))
-      : undefined;
-    const literalKeys = new Set(literalFieldKeys(action?.configFields ?? []));
     const parsedCondition =
       actionType === BUILT_IN_ACTION_IDS.condition
         ? parseConditionModel(config.conditionModel)
@@ -463,27 +531,19 @@ function collectBrokenReferenceIssues(input: {
             }
           )
         : [];
-    const brokenRefs = extractConsumedTemplateReferences(
-      config,
-      {
-        literalKeys,
-        jsonShapes: new Map(
-          templateJsonFieldShapes(action?.configFields ?? [])
-        ),
-        activeKeys: activeWaitKeys,
-      },
-      waitNode ? waitMatchTemplateStringsIn(config) : []
-    ).filter((ref) => {
-      if (isEntityStateSourceId(ref.nodeId)) {
-        return !(
-          entitySource &&
-          ref.sourceType === entitySource.type &&
-          ref.fieldPath &&
-          referenceFieldForPath(entitySource.stateFields, ref.fieldPath)
-        );
+    const brokenRefs = consumedReferencesOf({ node, config, action }).filter(
+      (ref) => {
+        if (isEntityStateSourceId(ref.nodeId)) {
+          return !(
+            entitySource &&
+            ref.sourceType === entitySource.type &&
+            ref.fieldPath &&
+            referenceFieldForPath(entitySource.stateFields, ref.fieldPath)
+          );
+        }
+        return !nodeIds.has(ref.nodeId);
       }
-      return !nodeIds.has(ref.nodeId);
-    });
+    );
     if (brokenRefs.length === 0 && brokenEntityConditionRefs.length === 0) {
       continue;
     }
@@ -509,9 +569,7 @@ function collectBrokenReferenceIssues(input: {
     }
 
     for (const ref of brokenRefs) {
-      const fieldLabel =
-        flatFields.find((field) => field.key === ref.configKey)?.label ??
-        ref.field;
+      const fieldLabel = referenceFieldLabelOf(ref, action);
       const entityReference = isEntityStateSourceId(ref.nodeId);
       issues.push({
         kind: "broken_reference",
@@ -530,6 +588,102 @@ function collectBrokenReferenceIssues(input: {
   }
 
   return issues;
+}
+
+/**
+ * Every template that names another node of the graph which is not upstream of
+ * the node holding it, leaving out a Canceled-side node reading a Started-side
+ * one. Only an enabled action node resolves its templates, so only those are
+ * read. Publish and the run preflight report the same list through
+ * `validateUpstreamTemplateReferences`, so the editor, the build agent and the
+ * server refuse one set of references.
+ */
+export function collectReferenceNotUpstreamIssues(input: {
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  catalog: ExtensionCatalog;
+}): ReferenceNotUpstreamIssue[] {
+  // A Map, because node ids are chosen by the builder.
+  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+  const upstreamOf = upstreamNodeIdsOver(input.edges);
+  const entryNodeIds = new Set(
+    input.nodes
+      .filter((node) => node.data.type === "lifecycle")
+      .map((node) => node.id)
+  );
+  const startedSide = nodesBehindOutlet({
+    entryNodeIds,
+    outlet: LIFECYCLE_STARTED_HANDLE,
+    edges: input.edges,
+  });
+  const canceledSide = nodesBehindOutlet({
+    entryNodeIds,
+    outlet: LIFECYCLE_CANCELED_HANDLE,
+    edges: input.edges,
+  });
+  const labelOf = (node: WorkflowNode): string => {
+    const actionType = readConfigTrimmedString(node.data.config, "actionType");
+    return workflowNodeLabel({
+      node,
+      actionLabel: actionType
+        ? findAction(input.catalog, actionType)?.label
+        : undefined,
+      actionType,
+    });
+  };
+
+  return input.nodes.flatMap((node) => {
+    if (node.data.type !== "action" || node.data.enabled === false) {
+      return [];
+    }
+    const config = readJsonObjectLeniently(node.data.config);
+    if (!config) {
+      return [];
+    }
+
+    const actionType = readConfigTrimmedString(config, "actionType");
+    const action = actionType
+      ? findAction(input.catalog, actionType)
+      : undefined;
+    // A missing node and the node itself are judged by the broken-reference
+    // check, so only a reference to another node of this graph is held here.
+    const crossNode = consumedReferencesOf({ node, config, action }).filter(
+      (reference) =>
+        reference.nodeId !== node.id && nodeById.has(reference.nodeId)
+    );
+    if (crossNode.length === 0) {
+      return [];
+    }
+
+    const upstream = upstreamOf(node.id);
+    const readsStartedSide = canceledSide.has(node.id);
+    const nodeLabel = labelOf(node);
+    return crossNode.flatMap((reference) => {
+      const referenced = nodeById.get(reference.nodeId);
+      if (
+        !referenced ||
+        upstream.has(referenced.id) ||
+        (readsStartedSide && startedSide.has(referenced.id))
+      ) {
+        return [];
+      }
+      const referencedLabel = labelOf(referenced);
+      const fieldLabel = referenceFieldLabelOf(reference, action);
+      return [
+        {
+          kind: "reference_not_upstream" as const,
+          severity: "blocking" as const,
+          nodeId: node.id,
+          nodeLabel,
+          fieldKey: reference.field,
+          fieldLabel,
+          referencedNodeId: referenced.id,
+          displayText: reference.displayText,
+          message: `Node "${nodeLabel}" reads "${referencedLabel}" in ${fieldLabel}, but no path leads from "${referencedLabel}" to "${nodeLabel}". Reference only a node upstream of "${nodeLabel}", or move "${nodeLabel}" below "${referencedLabel}".`,
+        },
+      ];
+    });
+  });
 }
 
 function collectInvalidGroupIssues(input: {
@@ -607,6 +761,7 @@ export function collectWorkflowIssues(
     ...collectMissingRequiredFieldIssues(input),
     ...collectMissingIntegrationIssues(input),
     ...collectBrokenReferenceIssues(input),
+    ...collectReferenceNotUpstreamIssues(input),
     ...collectInvalidGroupIssues(input),
     ...collectInvalidLifecycleRulesIssues(input),
   ];
@@ -674,6 +829,7 @@ function issuesByKind(issues: readonly WorkflowIssue[]): IssuesByKind {
     invalid_group: issuesOfKind(issues, "invalid_group"),
     invalid_lifecycle_rules: issuesOfKind(issues, "invalid_lifecycle_rules"),
     broken_reference: issuesOfKind(issues, "broken_reference"),
+    reference_not_upstream: issuesOfKind(issues, "reference_not_upstream"),
     unverified_provider_field: issuesOfKind(
       issues,
       "unverified_provider_field"
@@ -780,8 +936,10 @@ export function groupWorkflowIssuesForOverlay(
       // each node once.
       nodeNames: uniq(typeIssues.map((issue) => issue.nodeLabel)),
     })),
+    // A reference to a node that is not upstream is listed with the broken
+    // ones: both are repaired by editing the same field.
     brokenReferences: groupIssuesByNode(
-      byKind.broken_reference,
+      [...byKind.broken_reference, ...byKind.reference_not_upstream],
       (node, nodeIssues) => ({
         ...node,
         brokenReferences: nodeIssues.map((issue) => ({
