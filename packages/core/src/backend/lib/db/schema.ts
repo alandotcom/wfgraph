@@ -879,8 +879,13 @@ export const workflowExecutionSchedule = pgTable(
       .on(table.wakeAt, table.id)
       .where(sql`${table.state} in ('queued', 'waiting')`),
     // The claim's other question: the leases a dead worker left to expire.
-    index("workflow_execution_schedule_lease_idx")
-      .on(table.leaseExpiresAt)
+    // `expiredLease` (repo/release-policy.ts) reads every leased row and
+    // filters on lease_expires_at, and leased rows number at most the loops'
+    // total concurrency, so the key is `id`. No index covers lease_expires_at,
+    // so a lease renewal (`renewLease`, `writeStepMemo` in repo/schedule.ts)
+    // is a HOT update.
+    index("workflow_execution_schedule_leased_idx")
+      .on(table.id)
       .where(sql`${table.state} = 'leased'`),
   ]
 );
