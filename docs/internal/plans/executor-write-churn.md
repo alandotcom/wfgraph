@@ -11,10 +11,10 @@ memo.
 runner's defaults. Each run is four action steps, a 2 s delay Wait and two more
 steps, so it takes two passes. The harness samples `pg_stat_user_tables` every 5 s.
 
-| Table | Per run | HOT | Peak dead tuples |
-|---|---|---|---|
-| `workflow_execution_schedule` | 33 updates, 2 inserts, 2 deletes | 0% | 57,846 beside about 50 live rows |
-| `workflow_execution_steps` | 29 inserts, 29 deletes | n/a | 52,083 |
+| Table                         | Per run                          | HOT | Peak dead tuples                 |
+| ----------------------------- | -------------------------------- | --- | -------------------------------- |
+| `workflow_execution_schedule` | 33 updates, 2 inserts, 2 deletes | 0%  | 57,846 beside about 50 live rows |
+| `workflow_execution_steps`    | 29 inserts, 29 deletes           | n/a | 52,083                           |
 
 Autovacuum ran once a minute on both tables. Neither table can be vacuumed sooner
 by a per-table setting: each is past its trigger threshold within seconds, so the
@@ -45,11 +45,11 @@ predicates read, and stay non-HOT.
 
 Measured as DDL on the harness schema, one run each:
 
-| Variant | HOT updates | Peak dead tuples | Peak heap | Peak indexes |
-|---|---|---|---|---|
-| Baseline | 0 of 99,000 | 57,846 | 1,800 KB | 2,552 KB |
-| Leased index, fillfactor 70 | 86,983 of 99,000 | 10,961 | 1,320 KB | 1,472 KB |
-| Leased index, default fillfactor | 86,791 of 99,000 | 11,230 | 416 KB | 1,352 KB |
+| Variant                          | HOT updates      | Peak dead tuples | Peak heap | Peak indexes |
+| -------------------------------- | ---------------- | ---------------- | --------- | ------------ |
+| Baseline                         | 0 of 99,000      | 57,846           | 1,800 KB  | 2,552 KB     |
+| Leased index, fillfactor 70      | 86,983 of 99,000 | 10,961           | 1,320 KB  | 1,472 KB     |
+| Leased index, default fillfactor | 86,791 of 99,000 | 11,230           | 416 KB    | 1,352 KB     |
 
 The default fillfactor gives the same HOT rate with a smaller heap, since the
 schedule's own deletes leave room on each page. Drizzle 1.0.0-rc.5 declares no table
@@ -123,9 +123,9 @@ already direct store writes guarded by the conditional close.
 
 ### What it saves
 
-Per action node: memo rows 3 to 1, schedule updates 3 to 1, fenced transactions 5 to
-3. For the measured workflow: memo rows 29 to 15 per run, schedule updates 33 to
-about 19.
+Per action node: memo rows 3 to 1, schedule updates 3 to 1, fenced transactions
+5 to 3. For the measured workflow: memo rows 29 to 15 per run, schedule updates 33
+to about 19.
 
 ### What changes in behaviour
 
