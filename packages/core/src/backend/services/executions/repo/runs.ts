@@ -787,8 +787,8 @@ function endedRunColumns(status: TerminalExecutionStatus) {
 }
 
 /**
- * The terminal write behind `endRun`. A fenced caller holds the schedule row
- * `for update`, because the write deletes it.
+ * A fenced caller holds the schedule row `for update`, because the write
+ * deletes it.
  */
 export function endRunWrite(input: EndRunInput) {
   return async (db: Executor): Promise<ExecutionTerminationState | null> => {
@@ -800,7 +800,6 @@ export function endRunWrite(input: EndRunInput) {
   };
 }
 
-/** A stored claim in the facts `decideRunEnd` reads of it. */
 export function runEndClaim(
   claim: ExecutionTerminationClaim | null
 ): RunEndClaim | null {

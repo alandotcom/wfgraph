@@ -125,18 +125,12 @@ const startFirstWins = (
   deliveryId: string
 ) => attemptStart(connection, { deliveryId, concurrency: "first-wins" });
 
-/**
- * One run-ending cause as the table sends it. `endRun` takes a verdict or an
- * outside-graph ending, `cancelRun` a cancel, and a newest-wins start
- * supersedes.
- */
 type TableEnding =
   | RunVerdict
   | OutsideGraphEnding
   | { kind: "cancel" }
   | { kind: "supersede" };
 
-/** The states a run can be in when a run-ending write reaches it. */
 const RUN_STATES = [
   "unclaimed",
   "cancel-claimed",
@@ -145,7 +139,6 @@ const RUN_STATES = [
 ] as const;
 type RunBeforeEnding = (typeof RUN_STATES)[number];
 
-/** The timeline entry each ending status is announced with. */
 const ENDING_ENTRY = {
   completed: "run_completed",
   failed: "run_failed",
@@ -154,16 +147,13 @@ const ENDING_ENTRY = {
   superseded: "run_superseded",
 } as const;
 
-/** The one Entity every run in the run-ending cases is about. */
 const ENDING_ENTITY = {
   entityType: "appointment",
   entityId: "appointment_1",
 } as const;
 
-/** The reason the table's cancel stops a run with, which its entry reads. */
 const CANCEL_REASON = "Canceled from the Runs view";
 
-/** The Exit claim the table's exit-claimed run holds. */
 const EXIT_CLAIM = {
   reason: "entity_condition_not_met",
   nodeId: "node_check",
@@ -178,10 +168,6 @@ const verdictOf = (status: RunVerdict["status"]): RunVerdict => ({
 
 const EXITED_MESSAGE = "Run exited because the Entity was ineligible";
 
-/**
- * The entry a verdict that an Exit claim ends carries, built from the claim
- * and the condition the verdict names.
- */
 const EXIT_ENTRY_METADATA = {
   ...EXIT_CLAIM,
   entityType: "appointment",
@@ -189,7 +175,6 @@ const EXIT_ENTRY_METADATA = {
   checkpoint: "before-node",
 } as const;
 
-/** How one ending leaves a run: ended in a status with an entry, or left. */
 type EndingOutcome = {
   status: keyof typeof ENDING_ENTRY;
   message: string;
@@ -204,15 +189,7 @@ const endsAs = (
 
 const VERDICT_EXITED = endsAs("exited", EXITED_MESSAGE, EXIT_ENTRY_METADATA);
 
-/**
- * Every run-ending cause against every state a run can be in, and the status
- * and entry it ends the run with, or null when it leaves the run alone.
- *
- * A verdict under an Exit claim ends the run `exited`; under a Cancel claim
- * only a `canceled` verdict ends it. An outside-graph ending writes `failed`,
- * or the status its claim selects. A cancel or a supersede ends only a run
- * holding no claim. Nothing ends a run that has already ended.
- */
+/** A null outcome is a run the ending leaves alone. */
 const RUN_ENDINGS: ReadonlyArray<{
   ending: TableEnding;
   outcomes: Record<RunBeforeEnding, EndingOutcome>;
@@ -295,9 +272,8 @@ function endingLabel(ending: TableEnding): string {
 }
 
 /**
- * Opens a run of `wf_1` about {@link ENDING_ENTITY}, leases it, writes one
- * step memo row, parks it on one Wait, and then puts it in `state`. Answers
- * the run's id and its wait row's id.
+ * Opens a leased run holding one step memo row and one parked Wait, so an
+ * ending that settles those rows is told apart from one that leaves them.
  */
 function runBeforeEnding(state: RunBeforeEnding) {
   return Effect.gen(function* () {
@@ -349,7 +325,6 @@ function runBeforeEnding(state: RunBeforeEnding) {
   });
 }
 
-/** What a caller of `endRun` or `cancelRun` reads off its answer. */
 function answered(state: ExecutionTerminationState | null) {
   return {
     didWrite: state?.didWrite,
@@ -358,11 +333,6 @@ function answered(state: ExecutionTerminationState | null) {
   };
 }
 
-/**
- * Sends one ending to `executionId` and answers what its caller reads: the
- * termination state for `endRun` and `cancelRun`, and for a supersede whether
- * the start displaced the run.
- */
 function sendEnding(ending: TableEnding, executionId: string) {
   return Effect.gen(function* () {
     const executions = yield* ExecutionRepo;
@@ -395,7 +365,6 @@ function sendEnding(ending: TableEnding, executionId: string) {
   });
 }
 
-/** Everything a later reader can see of one run and the rows it holds. */
 function observeRun(executionId: string, waitStateId: string) {
   return Effect.gen(function* () {
     const executions = yield* ExecutionRepo;
@@ -760,7 +729,6 @@ export function describeExecutionConformance({
             payload: {},
             deliveryId: yield* cancelArrival(),
           });
-          // The run's own verdict meets the Exit claim, which selects exited.
           const exited = yield* executions.endRun({
             executionId: started.execution.id,
             ending: verdict("completed"),

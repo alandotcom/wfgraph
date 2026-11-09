@@ -40,7 +40,6 @@ export type RunFailureOutcome =
   | { kind: "failed" }
   | { kind: "canceled"; outlet: CanceledOutletOutcome };
 
-/** What the engine reads off its terminal record. */
 type RecordedEnding = {
   status: WorkflowExecutionStatus;
   exit?: RunExitOutcome | undefined;

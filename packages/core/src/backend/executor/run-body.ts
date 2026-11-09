@@ -75,9 +75,8 @@ export function runBody(input: {
 
 /**
  * The write that ends the row of a run that cannot be loaded. A run whose
- * version is missing can never run, so it ends as `endRun` decides for a run
- * ended outside its graph: failed, or the status a claim it holds selects.
- * Nothing will run an ended run again, so its schedule row and memo go. A run
+ * version is missing can never run, so it ends outside its graph. Nothing will
+ * run an ended run again, so its schedule row and memo go. A run
  * whose row is gone took its schedule and memo rows with it.
  */
 function endUnavailableRun(
@@ -94,10 +93,7 @@ function endUnavailableRun(
   return Effect.void;
 }
 
-/**
- * Ends the run with `error` without walking its graph: failed, or canceled or
- * exited when it holds a Cancel or Exit claim.
- */
+/** Ends the run outside its graph, which is canceled or exited when it holds a claim. */
 function failRun(writes: RunPassWrites, executionId: string, error: string) {
   return writes
     .endRun({ executionId, ending: { kind: "outsideGraph", error } })

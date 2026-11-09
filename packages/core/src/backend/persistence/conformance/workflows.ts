@@ -198,8 +198,6 @@ export function describeWorkflowConformance({
               announcement: terminalEntry,
             });
           }
-          // A newest-wins start supersedes the first run, and the newer run
-          // then completes, which leaves both of them ended.
           const startOnCurrent = executions.startForEntity({
             execution: {
               workflowId: "wf_1",

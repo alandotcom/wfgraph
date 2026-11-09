@@ -227,8 +227,6 @@ describe("terminal record completion policy", () => {
       })
   );
 
-  // The Exit claim is read under the terminal write's own lock, so a claim
-  // that raced the traversal still ends the run in that one write.
   it.effect(
     "ends exited, with the Exit entry, a completed verdict that meets an Exit claim",
     () =>
@@ -479,8 +477,6 @@ describe("terminal record completion policy", () => {
     () =>
       Effect.gen(function* () {
         const recording = createRecordingWorkflowStore();
-        // No graph outlet answers an Exit, so the claim selects `exited` for
-        // the run's `failed` verdict in the same write.
         recording.terminationState = {
           status: "running",
           claim: exitClaim,

@@ -661,7 +661,6 @@ function endedRunColumns(status: TerminalExecutionStatus) {
   };
 }
 
-/** The terminal write behind `endRun`. */
 export function endRunWrite(input: EndRunInput) {
   return (database: SqliteExecutor) =>
     endRunsWrite(database, {

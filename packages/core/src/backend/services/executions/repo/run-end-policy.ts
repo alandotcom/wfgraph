@@ -24,10 +24,8 @@ import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
  */
 export type CanceledOutletOutcome = "entered" | "ran" | "failed";
 
-/** The Entity Eligibility condition a run checked, which a `run_exited` entry names. */
 export type RunExitContext = { entityType: string; conditionId: string };
 
-/** What a `run_exited` entry and the engine's result report about an Exit claim. */
 export type RunExitOutcome = RunExitContext & {
   reason: EntityEligibilityReason;
   nodeId: string;
@@ -86,7 +84,6 @@ export type RunEnding =
   | CancelEnding
   | SupersedeEnding;
 
-/** The claim a run holds, in the facts an ending reads of it. */
 export type RunEndClaim =
   | { kind: "cancel" }
   | {
@@ -103,7 +100,6 @@ export type RunEndRow = {
   runMode: "live" | "test";
 };
 
-/** The timeline entry that says a run ended in each status. */
 const ENTRY_TYPE = {
   completed: "run_completed",
   failed: "run_failed",
@@ -243,17 +239,12 @@ function supersededReason(eventName: string | undefined): string {
     : "Superseded by a newer start";
 }
 
-/** Appends the recipients a test run sent to. */
 function withRecipients(message: string, runMode: "live" | "test"): string {
   return runMode === "test" ? `${message} (test recipients)` : message;
 }
 
 const EXITED_MESSAGE = "Run exited because the Entity was ineligible";
 
-/**
- * A run the executor ends without walking its graph is worded as a run a fatal
- * error ended, except that a canceled run says its Canceled outlet never ran.
- */
 const OUTSIDE_GRAPH_MESSAGE = {
   failed: "Run failed with fatal error",
   canceled: "Run canceled after a fatal error; the Canceled outlet did not run",
@@ -267,7 +258,6 @@ const WALKED_MESSAGE = {
   exited: EXITED_MESSAGE,
 } as const satisfies Record<VerdictStatus, string>;
 
-/** The `run_cancelled` message a fatal error's verdict takes, by outlet outcome. */
 const CANCELED_FATAL_MESSAGE = {
   entered: "Run canceled at the Canceled outlet, then ended on a fatal error",
   ran: "Run canceled at the Canceled outlet after a fatal error",
@@ -327,11 +317,6 @@ function verdictEntry(
   };
 }
 
-/**
- * The Exit claim a run ended under, with the condition the engine checked, or
- * undefined when the run holds no Exit claim or the engine checked no
- * condition.
- */
 export function exitOutcome(
   claim: RunEndClaim | null | undefined,
   context: RunExitContext | undefined
