@@ -110,11 +110,13 @@ The database executor's implementation (`executor/runtime.ts`) adds two rules:
   already have finished.
 
 **The close is a direct store write.** `runWithStepLog` closes the row through
-`closeStepLogQuietly`, which logs and swallows a failure. The close counts no
+`closeStepLogQuietly`, which swallows a failure. The close counts no
 failure, so it has no reason to be a step, and a refusal of a step can neither fail
 a node that did its work nor replace the work's own failure. The close is fenced
 like every store write of the pass, so a close after the pass stopped or lost its
-lease is refused by the store.
+lease is refused by the store with `LeaseLost`. That refusal follows every step that
+throws, once for each node the pass was running, so it logs nothing; any other
+refusal logs one warning naming the run and the node.
 
 **The pass reads the run's log rows when it opens.** `runBody.open`
 (`executor/run-body.ts`) reads each row's id, status and `started_at` through

@@ -92,7 +92,8 @@ export function closeStepLog(
 }
 
 /**
- * Closes a row without letting the write's own failure reach the caller.
+ * Closes a row without letting the write's own failure reach the caller, and
+ * logs a warning when the database refused the write.
  *
  * See `runWithStepLog` for why a closing write may not fail a node.
  */
@@ -105,12 +106,20 @@ function closeStepLogQuietly(
 ): Effect.Effect<void> {
   return Effect.catchCause(
     writeStepLogClose(store, handle, close, durationMs),
-    (cause) =>
-      // The row is now stuck at `running` and the usual cause is the database
-      // itself, so the line names the run rather than only the row: in an outage
-      // this is a burst, and a row id can only be resolved against the table that
-      // just refused a write.
-      Effect.logWarning("Could not close a run-log row").pipe(
+    (cause) => {
+      // The usual refusal is `LeaseLost` from a pass that has stopped: a step
+      // that throws stops the pass, and the store then refuses the error close
+      // of that node and of every node running beside it. The pass that runs
+      // the node again writes the close, so this refusal logs nothing; the
+      // step's failure is already recorded on its memo row.
+      if (failureFromCause(cause).kind === "lease_lost") {
+        return Effect.void;
+      }
+      // Any other refusal leaves the row at `running`, and its cause is usually
+      // the database, so the line names the run along with the row: in an
+      // outage this is a burst, and a row id can only be resolved against the
+      // table that just refused a write.
+      return Effect.logWarning("Could not close a run-log row").pipe(
         Effect.annotateLogs({
           logId: handle.logId,
           executionId: context.executionId,
@@ -119,7 +128,8 @@ function closeStepLogQuietly(
           status: close.status,
           error: Cause.squash(cause),
         })
-      )
+      );
+    }
   );
 }
 
@@ -140,11 +150,12 @@ function closeStepLogQuietly(
  *
  * The two have opposite failure policies. A refused open fails the node, and
  * counts against the open's step id, because nothing has happened yet and the
- * executor's retry of it costs one wasted call. A refused close is logged and
- * swallowed, and counts against no step, because a run that did its work has
- * not failed because a row could not be closed. The price is a row left open,
- * which the Runs view shows. A work failure is re-raised with its own cause
- * whatever the close did.
+ * executor's retry of it costs one wasted call. A refused close is swallowed,
+ * logged unless the pass had stopped (`closeStepLogQuietly`), and counts
+ * against no step, because a run that did its work has not failed because a
+ * row could not be closed. The price is a row left open, which the Runs view
+ * shows. A work failure is re-raised with its own cause whatever the close
+ * did.
  */
 export function runWithStepLog<T extends StepResult, E, R>(
   target: {

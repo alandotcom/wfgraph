@@ -16,11 +16,12 @@ import {
   type WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
 import { runWithStepLog } from "#src/backend/engine/step-log";
+import { engineFailure } from "#src/backend/engine/engine-failure";
 import {
   noopWorkflowStore,
   type WorkflowStore,
 } from "#src/backend/engine/store";
-import { DatabaseError } from "#src/backend/lib/effect/database";
+import { DatabaseError, LeaseLost } from "#src/backend/lib/effect/database";
 
 const context = {
   executionId: "exec_1",
@@ -30,14 +31,15 @@ const context = {
   runMode: "live" as const,
 };
 
-function storeRefusingTheClose(): WorkflowStore {
+function storeRefusingTheClose(
+  refusal: DatabaseError | LeaseLost = new DatabaseError({
+    cause: new Error("run log unreachable"),
+  })
+): WorkflowStore {
   return {
     ...noopWorkflowStore,
     startStepLog: () => Effect.succeed({ logId: "log_1", startTime: 0 }),
-    completeStepLog: () =>
-      Effect.fail(
-        new DatabaseError({ cause: new Error("run log unreachable") })
-      ),
+    completeStepLog: () => Effect.fail(refusal),
   };
 }
 
@@ -64,10 +66,15 @@ function recordingLogger() {
 /** What the two writes are wrapped in. This file is about the writes, not replay. */
 const runtime = createInMemoryWorkflowRuntime();
 
+const closeWarning = "Could not close a run-log row";
+
+/** The failure a node's step answers when the vendor it calls throws. */
+const vendorThrew = engineFailure("failure", "The vendor is down");
+
 describe("runWithStepLog", () => {
-  // The row is now stuck at `running`, and the usual cause is the database
-  // itself: a row id alone can only be resolved against the table that just
-  // refused a write, and an outage produces a burst of them.
+  // A row the database refused to close is stuck at `running`: a row id alone
+  // can only be resolved against the table that just refused a write, and an
+  // outage produces a burst of them.
   it.effect("names the run and the node when the closing write fails", () =>
     Effect.gen(function* () {
       const captured = recordingLogger();
@@ -80,7 +87,7 @@ describe("runWithStepLog", () => {
       expect(captured.lines).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            message: "Could not close a run-log row",
+            message: closeWarning,
             properties: expect.objectContaining({
               logId: "log_1",
               executionId: "exec_1",
@@ -92,6 +99,57 @@ describe("runWithStepLog", () => {
         ])
       );
     })
+  );
+
+  // A step that throws stops the pass, and the store then refuses the error
+  // close of every node the pass was running with `LeaseLost`. That refusal is
+  // part of every retriable step failure, so it writes no log line.
+  it.effect(
+    "logs nothing when the close is refused because the pass stopped",
+    () =>
+      Effect.gen(function* () {
+        const captured = recordingLogger();
+        const store = storeRefusingTheClose(
+          new LeaseLost({
+            message: "This pass has stopped and writes nothing more",
+          })
+        );
+        yield* Effect.flip(
+          runWithStepLog({ store, context, runtime, input: {} }, () =>
+            Effect.fail(vendorThrew)
+          ).pipe(Effect.provide(captured.layer))
+        );
+
+        expect(
+          captured.lines.filter((line) => line.message === closeWarning)
+        ).toEqual([]);
+      })
+  );
+
+  it.effect(
+    "logs once when the database refuses the close of a failed step",
+    () =>
+      Effect.gen(function* () {
+        const captured = recordingLogger();
+        yield* Effect.flip(
+          runWithStepLog(
+            { store: storeRefusingTheClose(), context, runtime, input: {} },
+            () => Effect.fail(vendorThrew)
+          ).pipe(Effect.provide(captured.layer))
+        );
+
+        expect(
+          captured.lines.filter((line) => line.message === closeWarning)
+        ).toEqual([
+          expect.objectContaining({
+            properties: expect.objectContaining({
+              logId: "log_1",
+              nodeId: "node_1",
+              status: "error",
+            }),
+          }),
+        ]);
+      })
   );
 });
 
