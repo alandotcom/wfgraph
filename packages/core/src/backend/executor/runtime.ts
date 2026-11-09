@@ -3,7 +3,8 @@
  * memo it loaded when it claimed its schedule row.
  *
  * A step whose memo row `succeeded` answers its value, a step whose row is
- * `failed` fails, and any other step runs and records its value. A run's pass
+ * `failed` fails, and any other step runs and records its value, except a
+ * step run through `runIdempotent`, which records nothing. A run's pass
  * runs the engine over `createExecutorRuntime`, whose `waitForEvent` answers
  * the wake on the park's wait row and otherwise records the parking step and
  * answers `parked`, which ends the branch for this pass. A delivery's pass
@@ -378,20 +379,28 @@ type MemoAnswer =
 function stepMemoBook(input: StepMemoInput) {
   const { state } = input;
   const memo = new Map(input.memo);
+  /**
+   * The failure a step is refused with before it runs: its retries are spent,
+   * or the pass has stopped. Undefined when the step may run.
+   */
+  const refusal = (stepId: string): EngineFailure | LeaseLost | undefined => {
+    const stored = memo.get(stepId);
+    if (stored?.status === "failed") {
+      return state.spentStep(stepId, stored.error);
+    }
+    if (isStopped(state)) return passStopped();
+    return undefined;
+  };
   return {
     memo,
+    refusal,
     answer: (stepId: string): MemoAnswer => {
       const stored = memo.get(stepId);
       if (stored?.status === "succeeded") {
         return { kind: "value", value: stored.value };
       }
-      if (stored?.status === "failed") {
-        return {
-          kind: "refused",
-          failure: state.spentStep(stepId, stored.error),
-        };
-      }
-      if (isStopped(state)) return { kind: "refused", failure: passStopped() };
+      const failure = refusal(stepId);
+      if (failure !== undefined) return { kind: "refused", failure };
       return { kind: "run" };
     },
     /**
@@ -507,6 +516,33 @@ export function createExecutorRuntime(
     }
   }
 
+  /**
+   * Runs the body of `passStep`, which the heartbeat records as running
+   * meanwhile, and then `after` with the body's value. A body that throws
+   * stops the pass as a failure of that step, which the release counts
+   * against the step.
+   */
+  async function runStep<T>(
+    passStep: PassStep,
+    fn: () => Promise<T>,
+    after: (value: T) => Promise<void>
+  ): Promise<T> {
+    state.stepStarted(passStep);
+    try {
+      let value: T;
+      try {
+        value = await fn();
+      } catch (error) {
+        state.stepThrew(passStep, error);
+        throw error;
+      }
+      await after(value);
+      return value;
+    } finally {
+      state.stepFinished(passStep);
+    }
+  }
+
   return {
     run: async <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> => {
       const answer = book.answer(step.id);
@@ -517,22 +553,23 @@ export function createExecutorRuntime(
       if (answer.kind === "refused") throw answer.failure;
 
       const passStep = passStepOf(step);
-      state.stepStarted(passStep);
-      try {
-        let value: T;
-        try {
-          value = await fn();
-        } catch (error) {
-          state.stepThrew(passStep, error);
-          throw error;
-        }
-        // The attempt that ran the step gets the value it returned and every
-        // replay gets the stored JSON.
-        await runEffect(book.remember(passStep, memoValue(value)));
-        return value;
-      } finally {
-        state.stepFinished(passStep);
-      }
+      // The attempt that ran the step gets the value it returned and every
+      // replay gets the stored JSON.
+      return await runStep(passStep, fn, (value) =>
+        runEffect(book.remember(passStep, memoValue(value)))
+      );
+    },
+
+    // A `failing` row an earlier pass left runs the step, as it does for
+    // `run`, and stays as it is when the step succeeds: the node's log row
+    // reads its count of failures until the run ends.
+    runIdempotent: async <T>(
+      step: DurableStepRef,
+      fn: () => Promise<T>
+    ): Promise<T> => {
+      const failure = book.refusal(step.id);
+      if (failure !== undefined) throw failure;
+      return await runStep(passStepOf(step), fn, () => Promise.resolve());
     },
 
     waitForEvent: async (

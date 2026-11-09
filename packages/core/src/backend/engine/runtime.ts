@@ -100,6 +100,13 @@ export type WorkflowExecutionRuntime = {
    * check to a value that already passed it.
    */
   run: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
+  /**
+   * Runs `fn` on every pass, which is safe only because `fn` is idempotent. It
+   * stores nothing when `fn` succeeds. A failure counts against `step.id` and
+   * stops the pass exactly as a failure inside `run` does, and a step whose
+   * retries are spent is refused before `fn` is called.
+   */
+  runIdempotent: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
 };
 
 export type InMemoryRuntimeOptions = {
@@ -164,5 +171,8 @@ export function createInMemoryWorkflowRuntime(
 
       return value;
     },
+
+    // Nothing here counts failures, so an idempotent step only runs.
+    runIdempotent: <T>(_step: DurableStepRef, fn: () => Promise<T>) => fn(),
   };
 }

@@ -319,6 +319,10 @@ describe("workflow engine replay safety", () => {
         refs.push(step);
         return runtime.run(step, fn);
       },
+      runIdempotent: (step, fn) => {
+        refs.push(step);
+        return runtime.runIdempotent(step, fn);
+      },
       waitForEvent: (step, options) => {
         refs.push(step);
         return runtime.waitForEvent(step, options);

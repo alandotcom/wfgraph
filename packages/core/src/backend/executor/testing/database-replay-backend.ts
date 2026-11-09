@@ -227,6 +227,7 @@ export function openDatabaseReplayBackend(
 
         const passRuntime: WorkflowExecutionRuntime = {
           run: runtime.run,
+          runIdempotent: runtime.runIdempotent,
           waitForEvent: async (step, options) => {
             const waitStateId = await mirrorPark(
               step,

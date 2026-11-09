@@ -112,9 +112,8 @@ export type ReplayDatabaseBackend = {
   /**
    * The runtime one pass of the body runs against. Its `waitForEvent` answers
    * the wake `wakePark` recorded for that step id, or `parked` while none is
-   * recorded. The harness reads only `run`, `waitForEvent` and `attempt` from
-   * it. `now` is the virtual clock in milliseconds, which a backend over a real
-   * database hands its claim. `parkDeadline` answers the deadline the drive
+   * recorded. `now` is the virtual clock in milliseconds, which a backend
+   * over a real database hands its claim. `parkDeadline` answers the deadline the drive
    * fixed for a park, by its step id, on the virtual clock; it is known by the
    * time the harness calls the runtime's `waitForEvent` for that step.
    */
@@ -192,9 +191,10 @@ export function createInMemoryReplayBackend(): ReplayDatabaseBackend {
 
   return {
     runtimeForPass: () => {
-      const { run } = createInMemoryWorkflowRuntime({ memo });
+      const { run, runIdempotent } = createInMemoryWorkflowRuntime({ memo });
       return {
         run,
+        runIdempotent,
         waitForEvent: ({ id: stepId }) => {
           const wake = wakes.get(stepId);
           return Promise.resolve<WaitAnswer>(
@@ -369,6 +369,17 @@ export async function driveWithReplay<T>(
               stepId: step.id,
             });
             return value;
+          } catch (error) {
+            stepFailure ??= { error };
+            throw error;
+          }
+        }),
+      // An idempotent step stores nothing, so it is not one of the memoized
+      // steps `executed` lists. Its failure still ends the drive.
+      runIdempotent: (step, fn) =>
+        inner.runIdempotent(step, async () => {
+          try {
+            return await fn();
           } catch (error) {
             stepFailure ??= { error };
             throw error;
