@@ -19,7 +19,10 @@ import {
   workflowExecutionSchedule,
   workflowExecutionSteps,
 } from "#src/backend/persistence/sqlite/schema";
-import { nodeLogCloseSet } from "#src/backend/services/executions/repo/release-policy";
+import {
+  nodeLogCloseGuard,
+  nodeLogCloseSet,
+} from "#src/backend/services/executions/repo/release-policy";
 
 /** The insert behind `openNodeLog`; see its comment for the derived id. */
 export function openNodeLogWrite(input: OpenNodeLogInput) {
@@ -47,7 +50,7 @@ export function openNodeLogWrite(input: OpenNodeLogInput) {
 /**
  * The update behind `closeNodeLog`, the statement the PostgreSQL write runs:
  * its SET is `nodeLogCloseSet`, and a fence holds it to the fenced
- * Execution's row.
+ * Execution's row and to `nodeLogCloseGuard`.
  */
 export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
   return (database: SqliteExecutor) =>
@@ -67,7 +70,6 @@ export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
             completedAt: Date.now(),
             duration: String(input.durationMs),
           },
-          fenced: fence !== undefined,
         })
       )
       .where(
@@ -75,7 +77,12 @@ export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
           eq(workflowExecutionLogs.id, input.logId),
           fence === undefined
             ? undefined
-            : eq(workflowExecutionLogs.executionId, fence.executionId)
+            : eq(workflowExecutionLogs.executionId, fence.executionId),
+          nodeLogCloseGuard({
+            logs: workflowExecutionLogs,
+            close: input.status,
+            fenced: fence !== undefined,
+          })
         )
       );
 }

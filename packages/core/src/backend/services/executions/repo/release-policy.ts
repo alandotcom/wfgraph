@@ -14,7 +14,15 @@
 
 import { countBy, sortBy } from "es-toolkit/array";
 import { Effect } from "effect";
-import { and, type Column, eq, type SQL, sql, type Table } from "drizzle-orm";
+import {
+  and,
+  type Column,
+  eq,
+  inArray,
+  type SQL,
+  sql,
+  type Table,
+} from "drizzle-orm";
 import type {
   ExecutionScheduleKind,
   ParkWake,
@@ -186,35 +194,70 @@ type NodeLogCloseValues = {
   duration: string;
 };
 
+/** `value` bound as a parameter through `column`, in that column's encoding. */
+function boundTo(column: Column, value: unknown): SQL {
+  return sql`${sql.param(value, column)}`;
+}
+
+/** The status a node-log close writes. */
+type NodeLogCloseStatus = "success" | "error";
+
 /**
- * The SET of a node-log close, one statement for both backends.
- *
- * `retries` is written on every close, fenced or not, from `nodeRetries` over
- * the memo rows of the row's run that carry the row's node id, and keeps the
- * count the row holds when the run has none, as after the run ended. A close
- * whose memo write failed runs again on the next pass, and that close's own
- * failure is then counted although the row already holds its outcome.
- *
- * The outcome columns are written as `values` when `fenced` is false. A fenced
- * close writes them only while the row is still `running` or `error`, so a
- * later attempt can correct an `error` and nothing overwrites a success.
+ * The row statuses a fenced node-log close applies to, by the status the close
+ * writes: a `success` corrects an `error` an earlier attempt wrote, a second
+ * `error` leaves the first, and nothing overwrites a success.
+ */
+const NODE_LOG_CLOSABLE: Record<NodeLogCloseStatus, readonly string[]> = {
+  success: ["running", "error"],
+  error: ["running"],
+};
+
+/**
+ * Whether a fenced close writing `close` applies to a row whose status is
+ * `row`. `nodeLogCloseGuard` is the same rule as a WHERE condition.
+ */
+export function nodeLogCloseApplies(
+  row: string,
+  close: NodeLogCloseStatus
+): boolean {
+  return NODE_LOG_CLOSABLE[close].includes(row);
+}
+
+/**
+ * The condition a node-log close adds to its WHERE: `nodeLogCloseApplies` for
+ * a fenced close, and none for an unfenced one, which closes the row whatever
+ * it holds. A close the condition refuses changes no column and writes no row
+ * version.
+ */
+export function nodeLogCloseGuard(input: {
+  logs: { status: Column };
+  close: NodeLogCloseStatus;
+  fenced: boolean;
+}): SQL | undefined {
+  return input.fenced
+    ? inArray(input.logs.status, [...NODE_LOG_CLOSABLE[input.close]])
+    : undefined;
+}
+
+/**
+ * The SET of a node-log close, one statement for both backends, which writes
+ * `values` and `retries`. `retries` is `nodeRetries` over the memo rows of the
+ * row's run that carry the row's node id, and keeps the count the row holds
+ * when the run has none, as after the run ended. A close `nodeLogCloseGuard`
+ * refuses writes neither, so the count stays what the close that set the
+ * row's outcome read.
  */
 export function nodeLogCloseSet(input: {
   tables: NodeLogCloseTables;
   values: NodeLogCloseValues;
-  fenced: boolean;
 }): Record<keyof NodeLogCloseValues | "retries", SQL> {
   const { logs, schedule, steps } = input.tables;
-  const outcome = (column: Column, value: unknown): SQL =>
-    input.fenced
-      ? sql`case when ${logs.status} in ('running', 'error') then ${sql.param(value, column)} else ${column} end`
-      : sql`${sql.param(value, column)}`;
   return {
-    status: outcome(logs.status, input.values.status),
-    output: outcome(logs.output, input.values.output),
-    error: outcome(logs.error, input.values.error),
-    completedAt: outcome(logs.completedAt, input.values.completedAt),
-    duration: outcome(logs.duration, input.values.duration),
+    status: boundTo(logs.status, input.values.status),
+    output: boundTo(logs.output, input.values.output),
+    error: boundTo(logs.error, input.values.error),
+    completedAt: boundTo(logs.completedAt, input.values.completedAt),
+    duration: boundTo(logs.duration, input.values.duration),
     retries: sql`coalesce((select ${nodeRetries(steps)} from ${steps} inner join ${schedule} on ${schedule.id} = ${steps.scheduleId} where ${schedule.executionId} = ${logs.executionId} and ${steps.nodeId} = ${logs.nodeId}), ${logs.retries})`,
   };
 }

@@ -9,7 +9,13 @@
 
 import { describe, expect, it } from "vitest";
 import { Effect } from "effect";
-import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { sortBy } from "es-toolkit/array";
+import {
+  ExecutionRepo,
+  type FencedExecutionWrites,
+} from "#src/backend/services/executions/repo";
+import { nodeLogId } from "#src/backend/services/executions/repo/node-logs";
+import { nodeLogCloseApplies } from "#src/backend/services/executions/repo/release-policy";
 import {
   type PersistenceTestRegistry,
   terminalEntry,
@@ -25,6 +31,36 @@ import {
   refusalOf,
   seeded,
 } from "#src/backend/persistence/conformance/schedule-support";
+
+type CloseStatus = "success" | "error";
+
+/**
+ * The fenced close transitions, one node each: the close the row gets first,
+ * if any, and the close that follows it. Only `running` to either status and
+ * `error` to `success` apply.
+ */
+const CLOSE_TRANSITIONS: readonly {
+  nodeId: string;
+  first?: CloseStatus | undefined;
+  second: CloseStatus;
+}[] = [
+  { nodeId: "running_to_success", second: "success" },
+  { nodeId: "running_to_error", second: "error" },
+  { nodeId: "error_to_success", first: "error", second: "success" },
+  { nodeId: "error_to_error", first: "error", second: "error" },
+  { nodeId: "success_to_error", first: "success", second: "error" },
+  { nodeId: "success_to_success", first: "success", second: "success" },
+];
+
+/** The outcome columns a close with `status` from attempt `attempt` writes. */
+function closeOf(status: CloseStatus, attempt: number) {
+  return {
+    status,
+    output: status === "success" ? { attempt } : null,
+    error: status === "error" ? `attempt ${attempt}` : null,
+    duration: String(attempt),
+  };
+}
 
 export function describeExecutionFencingConformance({
   openConnection,
@@ -168,73 +204,86 @@ export function describeExecutionFencingConformance({
       ]);
     });
 
-    it("lets a later fenced close correct an error verdict and keeps a success", async () => {
+    // Each row is opened and given its first close, then the node's step
+    // fails once, then the row's second close runs. A close that applies
+    // writes the row's outcome and reads the failure into `retries`; a close
+    // the fence's guard refuses leaves the row as the first close wrote it.
+    it("applies a fenced close to a running row, and to an error row only when it reports success", async () => {
       const connection = await seeded(await openConnection());
       const result = await connection.run(
         Effect.gen(function* () {
           const executions = yield* ExecutionRepo;
           const executionId = yield* scheduledRun(T0);
-          const { fence } = yield* claimRun(executionId, T0);
-          const pass = executions.fenced(fence);
-          const openLog = (nodeId: string) =>
-            pass.openNodeLog({
+          let clock = 0;
+          const pass = Effect.gen(function* () {
+            const { fence } = yield* claimRun(executionId, at(clock));
+            return executions.fenced(fence);
+          });
+          const close = (
+            writes: FencedExecutionWrites,
+            nodeId: string,
+            status: CloseStatus,
+            attempt: number
+          ) =>
+            writes.closeNodeLog({
+              logId: nodeLogId(executionId, nodeId),
+              status,
+              output: status === "success" ? { attempt } : undefined,
+              error: status === "error" ? `attempt ${attempt}` : undefined,
+              durationMs: attempt,
+            });
+
+          let current = yield* pass;
+          for (const { nodeId, first } of CLOSE_TRANSITIONS) {
+            yield* current.openNodeLog({
               executionId,
               nodeId,
               nodeName: nodeId,
               nodeType: "action",
             });
-
-          // An attempt closes its row as an error and rethrows; the retry
-          // that follows succeeds.
-          const retried = yield* openLog("retried");
-          yield* pass.closeNodeLog({
-            logId: retried,
-            status: "error",
-            error: "vendor timed out",
-            durationMs: 5,
-          });
-          yield* pass.closeNodeLog({
-            logId: retried,
-            status: "success",
-            output: { sid: "SM1" },
-            durationMs: 12,
-          });
-
-          // A row closed as a success keeps that verdict.
-          const succeeded = yield* openLog("succeeded");
-          yield* pass.closeNodeLog({
-            logId: succeeded,
-            status: "success",
-            output: { sid: "SM2" },
-            durationMs: 7,
-          });
-          yield* pass.closeNodeLog({
-            logId: succeeded,
-            status: "error",
-            error: "second answer",
-            durationMs: 3,
-          });
-
+            if (first !== undefined) {
+              yield* close(current, nodeId, first, 1);
+            }
+          }
+          for (const { nodeId } of CLOSE_TRANSITIONS) {
+            const released = yield* current.releasePass({
+              outcome: {
+                kind: "step_failed",
+                stepId: `node:${nodeId}:dispatch`,
+                nodeId,
+                error: "vendor timed out",
+                backoffMs: 0,
+              },
+              now: at(clock),
+            });
+            clock = released.schedule.wakeAt.getTime() - T0.getTime() + 1;
+            current = yield* pass;
+          }
+          for (const { nodeId, second } of CLOSE_TRANSITIONS) {
+            yield* close(current, nodeId, second, 2);
+          }
           const logs = yield* executions.listLogs(executionId);
-          return {
-            retried: logs.find((log) => log.id === retried),
-            succeeded: logs.find((log) => log.id === succeeded),
-          };
+          return logs.map((log) => ({
+            nodeId: log.nodeId,
+            status: log.status,
+            output: log.output,
+            error: log.error,
+            duration: log.duration,
+            retries: log.retries,
+          }));
         })
       );
 
-      expect(result.retried).toMatchObject({
-        status: "success",
-        output: { sid: "SM1" },
-        error: null,
-        duration: "12",
-      });
-      expect(result.succeeded).toMatchObject({
-        status: "success",
-        output: { sid: "SM2" },
-        error: null,
-        duration: "7",
-      });
+      expect(sortBy(result, [(log) => log.nodeId])).toEqual(
+        sortBy(
+          CLOSE_TRANSITIONS.map(({ nodeId, first, second }) =>
+            first === undefined || nodeLogCloseApplies(first, second)
+              ? { nodeId, ...closeOf(second, 2), retries: 1 }
+              : { nodeId, ...closeOf(first, 1), retries: 0 }
+          ),
+          [(log) => log.nodeId]
+        )
+      );
     });
 
     it("refuses a leased pass's next write once a policy cancel ends its run", async () => {

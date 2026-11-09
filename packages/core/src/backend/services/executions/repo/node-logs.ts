@@ -15,7 +15,10 @@ import type {
   RunFence,
   WorkflowExecutionLog,
 } from "#src/backend/services/executions/repo/contracts";
-import { nodeLogCloseSet } from "#src/backend/services/executions/repo/release-policy";
+import {
+  nodeLogCloseGuard,
+  nodeLogCloseSet,
+} from "#src/backend/services/executions/repo/release-policy";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
@@ -65,12 +68,11 @@ export type NodeLogsRepoMethods = {
     input: OpenNodeLogInput
   ) => Effect.Effect<string, DatabaseError>;
   /**
-   * Close a row `openNodeLog` opened, whatever it holds, which is how a retry
-   * corrects the verdict an earlier attempt wrote. The fenced close
-   * (`ExecutionRepo.fenced`) changes the outcome of a row only while it is
-   * `running` or `error`. Every close writes the row's `retries` from the
-   * step memo rows of its run that carry its node id, as `nodeLogCloseSet`
-   * describes.
+   * Close a row `openNodeLog` opened, whatever it holds. The fenced close
+   * (`ExecutionRepo.fenced`) applies only where `nodeLogCloseApplies` says,
+   * which is how a retry corrects an `error` an earlier attempt wrote. A
+   * close that applies writes the row's `retries` from the step memo rows of
+   * its run that carry its node id, as `nodeLogCloseSet` describes.
    */
   readonly closeNodeLog: (
     input: CloseNodeLogInput
@@ -139,10 +141,8 @@ export function openNodeLogWrite(input: OpenNodeLogInput) {
 /**
  * The update behind `closeNodeLog`, one statement whose SET is
  * `nodeLogCloseSet`. Given a fence, it updates only a row of the fenced
- * Execution, and its outcome columns change only while the row is `running`
- * or `error`. `runWithStepLog` closes a row as `error` before it rethrows a
- * retriable error, so a later attempt of the node can still correct that
- * verdict, while a row closed with any other status keeps it.
+ * Execution that `nodeLogCloseGuard` admits, so a later attempt of the node
+ * can correct an `error` verdict and a success keeps its own.
  */
 export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
   return async (db: Executor): Promise<void> => {
@@ -164,7 +164,6 @@ export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
             completedAt: new Date(),
             duration: input.durationMs.toString(),
           },
-          fenced: fence !== undefined,
         })
       )
       .where(
@@ -172,7 +171,12 @@ export function closeNodeLogWrite(input: CloseNodeLogInput, fence?: RunFence) {
           eq(workflowExecutionLogs.id, input.logId),
           fence === undefined
             ? undefined
-            : eq(workflowExecutionLogs.executionId, fence.executionId)
+            : eq(workflowExecutionLogs.executionId, fence.executionId),
+          nodeLogCloseGuard({
+            logs: workflowExecutionLogs,
+            close: input.status,
+            fenced: fence !== undefined,
+          })
         )
       );
   };
