@@ -2192,16 +2192,16 @@
       ]
     },
     "source:packages/core/src/backend/executor/runtime.ts": {
-      "fingerprint": "17fd5cbe9585fcba464c4dbd97147f03088dff4befe0f5095cd60f577aea81ce",
+      "fingerprint": "0baaca74c6ac942e997b9acc96cbd9c2b2a160ad97a4824e59cc34662f38e6ba",
       "snapshot": {
-        "packages/core/src/backend/executor/runtime.ts": "3a8d55c03b12d4d97d212ebb49f7d772061ec244b421ebc13490c8e669b31b1a"
+        "packages/core/src/backend/executor/runtime.ts": "bd432a75aca903c4d5be83224dab499dd998f3f04e299de4ae84f1771e3d8006"
       },
-      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "head": "8f07b5e05dea611a66fba5966f5e9d96b31ee5a6",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
+      "reason": "The executor's node log close and its comments: closeStepLogQuietly logs nothing when a stopped pass refuses the close with LeaseLost and still warns on a database refusal, with its tests; the runIdempotent comment in executor/runtime.ts and the internal plan doc now state that a budget cut with no recorded step counts nothing and a lease expiry with no recorded step adds one to attempt at claim, describe the recovery write accurately, and carry the new measurement. Nothing a host configures, registers or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
-        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
+        "_artifacts/skill_tree.yaml lists no engine, executor, internal plan or step-log sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the run-log close, its warning, closeStepLogQuietly or runIdempotent; cloudflare-worker/SKILL.md describes a budget cut of a pass with a running step, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/executor/testing/database-replay-backend.ts": {
@@ -2590,16 +2590,16 @@
       ]
     },
     "source:docs/internal/plans/executor-write-churn.md": {
-      "fingerprint": "7b19ae6408a47e395cb1996dc8ce1f2cd832390048096891f9db4d38e831c059",
+      "fingerprint": "c94602a9b9e9836a2eaacce8ac6949e1a6efd92ad5c8c0adb70a5834a17f1d41",
       "snapshot": {
-        "docs/internal/plans/executor-write-churn.md": "83100745b937a960459ab607ede025a2074d46558f65e888ce747d8608c820a5"
+        "docs/internal/plans/executor-write-churn.md": "83b26d23e2d600ae9e529fa18134544e191cc03226503b7ed57f8e055d422fd8"
       },
-      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "head": "8f07b5e05dea611a66fba5966f5e9d96b31ee5a6",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
+      "reason": "The executor's node log close and its comments: closeStepLogQuietly logs nothing when a stopped pass refuses the close with LeaseLost and still warns on a database refusal, with its tests; the runIdempotent comment in executor/runtime.ts and the internal plan doc now state that a budget cut with no recorded step counts nothing and a lease expiry with no recorded step adds one to attempt at claim, describe the recovery write accurately, and carry the new measurement. Nothing a host configures, registers or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
-        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
+        "_artifacts/skill_tree.yaml lists no engine, executor, internal plan or step-log sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the run-log close, its warning, closeStepLogQuietly or runIdempotent; cloudflare-worker/SKILL.md describes a budget cut of a pass with a running step, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/engine/core-migration-snapshot.replay-cases.ts": {
@@ -2642,29 +2642,29 @@
       ]
     },
     "source:packages/core/src/backend/engine/step-log.test.ts": {
-      "fingerprint": "efd722a823d281569a1dac69a3d78701b0b6b2ba63fdac62dd16be11d1cb00ae",
+      "fingerprint": "5fe571e363632fc96b1d10b9b0e2c7da99dab1bac4991ebd19a3af58598b4cfd",
       "snapshot": {
-        "packages/core/src/backend/engine/step-log.test.ts": "354d0347e685f61243adb2d04d11922d040062d886b35f6ed498dce553be4957"
+        "packages/core/src/backend/engine/step-log.test.ts": "2b4855c81fe362422aac73b5755327573ed9a0895870d64be15b029c9e516bfd"
       },
-      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "head": "8f07b5e05dea611a66fba5966f5e9d96b31ee5a6",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
+      "reason": "The executor's node log close and its comments: closeStepLogQuietly logs nothing when a stopped pass refuses the close with LeaseLost and still warns on a database refusal, with its tests; the runIdempotent comment in executor/runtime.ts and the internal plan doc now state that a budget cut with no recorded step counts nothing and a lease expiry with no recorded step adds one to attempt at claim, describe the recovery write accurately, and carry the new measurement. Nothing a host configures, registers or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
-        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
+        "_artifacts/skill_tree.yaml lists no engine, executor, internal plan or step-log sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the run-log close, its warning, closeStepLogQuietly or runIdempotent; cloudflare-worker/SKILL.md describes a budget cut of a pass with a running step, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/engine/step-log.ts": {
-      "fingerprint": "9604e6958e5bf19e78193cf9a941af241646cdcf17243aeeec8c7e62be1c946f",
+      "fingerprint": "ef22c578108c2b5bbb8593852dd2d18dbd8dd40bdc0f32d05a0c9fb64ad7f36e",
       "snapshot": {
-        "packages/core/src/backend/engine/step-log.ts": "d4828cfd4b2a2c9f56c8cb1c3b5423978b2f1de17c27fd5820d6799eabfa30ea"
+        "packages/core/src/backend/engine/step-log.ts": "2f6d21adb7fdd70d89145c91a5d07fc16a410cf42a7af04e25c4fc2127ac4b02"
       },
-      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "head": "8f07b5e05dea611a66fba5966f5e9d96b31ee5a6",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
+      "reason": "The executor's node log close and its comments: closeStepLogQuietly logs nothing when a stopped pass refuses the close with LeaseLost and still warns on a database refusal, with its tests; the runIdempotent comment in executor/runtime.ts and the internal plan doc now state that a budget cut with no recorded step counts nothing and a lease expiry with no recorded step adds one to attempt at claim, describe the recovery write accurately, and carry the new measurement. Nothing a host configures, registers or calls changes.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
-        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
+        "_artifacts/skill_tree.yaml lists no engine, executor, internal plan or step-log sources.",
+        "No file under packages/core/skills or packages/plugins/skills mentions the run-log close, its warning, closeStepLogQuietly or runIdempotent; cloudflare-worker/SKILL.md describes a budget cut of a pass with a running step, which is unchanged."
       ]
     },
     "source:packages/core/src/backend/engine/testing/replay-runtime.ts": {
