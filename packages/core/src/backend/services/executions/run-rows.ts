@@ -2,13 +2,13 @@ import { createHash } from "node:crypto";
 import { Effect } from "effect";
 import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
 import { InternalFailure } from "#src/backend/lib/effect/failures";
-import type { RunScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
 import {
   ExecutionRepo,
+  type IgnoredRunEntry,
   type NewExecution,
 } from "#src/backend/services/executions/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import type { JsonObject, JsonObjectDraft } from "@wfgraph/shared/types/json";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import type {
   EntityEligibilityReason,
   WorkflowExecutionIgnoredReason,
@@ -114,16 +114,7 @@ export type RecordTerminalWorkflowRunInput = {
   status: "completed" | "failed" | "canceled";
   error?: string | undefined;
   output?: JsonObject | undefined;
-  audit: {
-    // Run-scoped only: this path always inserts the terminal Execution the row
-    // hangs off, and a refusal opens no run to hang one off at all.
-    eventType: Extract<
-      RunScopedAuditEventType,
-      "run_cancelled" | "run_ignored" | "run_completed"
-    >;
-    message: string;
-    metadata?: JsonObjectDraft | undefined;
-  };
+  audit: IgnoredRunEntry;
 };
 
 /** How each start source names itself in a "run started" timeline entry. */

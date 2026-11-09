@@ -596,6 +596,17 @@ export type NewTerminalExecution = NewExecution & {
 };
 
 /**
+ * The entry a run recorded already ended carries on its timeline, written for
+ * the inserted row's workflow. A manual Run on a paused workflow is the one
+ * such run.
+ */
+export type IgnoredRunEntry = {
+  eventType: "run_ignored";
+  message: string;
+  metadata?: JsonObjectDraft | undefined;
+};
+
+/**
  * The logs payload's run row: where it got to, plus the fields that distinguish
  * how it was started (mode, source, event, entity). Omits the rest of the
  * routing columns the panel does not paint from this thinner shape.

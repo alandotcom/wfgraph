@@ -38,7 +38,6 @@ import {
   lockSchedules,
   settleEndedExecutions,
 } from "#src/backend/services/executions/repo/schedule";
-import type { RunScopedAuditEventType } from "@wfgraph/shared/lifecycle/audit-event-types";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   isoTerminationClaim,
@@ -47,11 +46,7 @@ import {
   type TerminalExecutionStatus,
   type TerminationKind,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
-import type {
-  JsonObject,
-  JsonObjectDraft,
-  JsonValue,
-} from "@wfgraph/shared/types/json";
+import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
 import {
   recordAuditEventsWrite,
   recordAuditEventWrite,
@@ -72,6 +67,7 @@ import type {
   ExecutionSummary,
   ExecutionTerminationState,
   GlobalExecutionRow,
+  IgnoredRunEntry,
   InFlightExecutionRow,
   NewTerminalExecution,
   PendingCancel,
@@ -254,17 +250,6 @@ function buildPageFilters(query: ExecutionPageQuery): SQL[] {
   return filters;
 }
 
-/**
- * The timeline entry saying how a run ended, which the write that ends it
- * inserts with its row.
- */
-type RunEndingAnnouncement<EventType extends RunScopedAuditEventType> = {
-  workflowId: string;
-  eventType: EventType;
-  message: string;
-  metadata?: JsonObjectDraft | undefined;
-};
-
 /** The `workflow_executions` slice of `ExecutionRepo`. */
 export type RunsRepoMethods = {
   /**
@@ -332,18 +317,10 @@ export type RunsRepoMethods = {
   }) => Effect.Effect<WorkflowExecution | null, DatabaseError>;
   /**
    * Record a run that never started, already in its terminal status, with
-   * `announcement` on its timeline in the same transaction. The entry is
-   * written for the inserted row's workflow.
+   * `announcement` on its timeline in the same transaction.
    */
   readonly insertTerminal: (
-    input: NewTerminalExecution & {
-      announcement: Omit<
-        RunEndingAnnouncement<
-          "run_completed" | "run_failed" | "run_cancelled" | "run_ignored"
-        >,
-        "workflowId"
-      >;
-    }
+    input: NewTerminalExecution & { announcement: IgnoredRunEntry }
   ) => Effect.Effect<WorkflowExecution, DatabaseError>;
   /**
    * Move a run back from "waiting" to "running" under the version the caller
