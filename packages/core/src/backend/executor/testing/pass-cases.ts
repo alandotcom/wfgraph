@@ -52,6 +52,8 @@ import {
   type StoreWrites,
 } from "#src/backend/services/executions/repo";
 import { buildStoreWrites } from "#src/backend/services/executions/repo/fencing";
+import { nodeLogId } from "#src/backend/services/executions/repo/node-logs";
+import { STEP_RETRY_LIMIT } from "#src/backend/services/executions/repo/release-policy";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 const LEASE_MS = 60_000;
@@ -69,7 +71,7 @@ let flakyCalls = 0;
 let throwsOnceCalls = 0;
 /** How many times the `test/fails-twice` step has run in the current case. */
 let failsTwiceCalls = 0;
-/** Settles once the `flaky` node's log close is memoized. */
+/** Settles once the `flaky` node's log row is closed. */
 let flakyClosed = Promise.withResolvers<void>();
 
 const actions = createWorkflowActions(
@@ -113,7 +115,7 @@ const actions = createWorkflowActions(
         id: "test/throws-once",
         label: "Throws once",
         description:
-          "Runs one durable step that throws on its first call, once the flaky node's log close is memoized",
+          "Runs one durable step that throws on its first call, once the flaky node's log row is closed",
         input: Schema.Struct({}),
         handler: async ({ step }) => {
           await step.run("dispatch", async () => {
@@ -871,9 +873,8 @@ function describeCases(
     expect(await readRun(harness)).toEqual(afterLive);
   });
 
-  // A node's log close is memoized per verdict. The run's own failure count is
-  // reset by every release, so a close keyed on it would find the first pass's
-  // `error` close on a later pass that succeeds, and the row would keep `error`.
+  // A node's log close runs on every pass, and the fenced close lets a later
+  // `success` correct the `error` an earlier pass wrote.
   it("closes a node's log row as success when it succeeds on a later pass after failing with no step thrown", async () => {
     const harness = await startRun(
       createSerializedWorkflowGraph({
@@ -888,15 +889,14 @@ function describeCases(
         ],
       })
     );
+    const flakyLogId = nodeLogId(harness.executionId, "flaky");
     const signalFlakyClosed = wrapFenced((writes) => ({
       ...writes,
-      writeStepMemo: (input) =>
-        writes.writeStepMemo(input).pipe(
+      closeNodeLog: (input) =>
+        writes.closeNodeLog(input).pipe(
           Effect.tap(() =>
             Effect.sync(() => {
-              if (input.stepId.startsWith("node:flaky:log-close")) {
-                flakyClosed.resolve();
-              }
+              if (input.logId === flakyLogId) flakyClosed.resolve();
             })
           )
         ),
@@ -977,7 +977,7 @@ function describeCases(
     ]);
   });
 
-  it("keeps one log row when the lease is lost between a log open and its memo row", async () => {
+  it("keeps one log row when the lease is lost right after a log open", async () => {
     const harness = await startRun(
       createSerializedWorkflowGraph({
         nodes: [lifecycleNode(), actionNode("send", "test/send")],
@@ -985,36 +985,88 @@ function describeCases(
       })
     );
 
-    const memoGate = createGate();
-    const holdLogOpenMemo = wrapFenced((writes) => ({
+    const openGate = createGate();
+    const sendLogId = nodeLogId(harness.executionId, "send");
+    const holdAfterSendOpen = wrapFenced((writes) => ({
       ...writes,
-      writeStepMemo: (input) =>
-        input.stepId === "node:send:log-open"
-          ? Effect.promise(() => memoGate.pass()).pipe(
-              Effect.andThen(writes.writeStepMemo(input))
+      openNodeLog: (input) =>
+        writes
+          .openNodeLog(input)
+          .pipe(
+            Effect.tap(() =>
+              input.nodeId === "send"
+                ? Effect.promise(() => openGate.pass())
+                : Effect.void
             )
-          : writes.writeStepMemo(input),
+          ),
     }));
 
     const stale = harness.pass({
       workerId: "worker_stale",
-      wrap: holdLogOpenMemo,
+      wrap: holdAfterSendOpen,
     });
-    await memoGate.entered;
+    await openGate.entered;
     expect(await logsOf(harness, "send")).toMatchObject([
-      { status: "running" },
+      { id: sendLogId, status: "running" },
     ]);
 
+    // The live pass finds the row the stale one opened and writes no second.
     offsetMs += LEASE_MS + 1_000;
     expect(await harness.pass({ workerId: "worker_live" })).toEqual({
       kind: "ended",
     });
 
-    memoGate.release();
+    openGate.release();
     expect(await stale).toEqual({ kind: "fence_refused", fence: "owner" });
     expect(await logsOf(harness, "send")).toMatchObject([
-      { status: "success" },
+      { id: sendLogId, status: "success" },
     ]);
+  });
+
+  // The log open stores no memo row, so its failure is counted on a memo row
+  // the release creates for the open's own step id.
+  it("counts a failed log open against its step, retries it, and fails the node once its retries are spent", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(), actionNode("send", "test/send")],
+        edges: [edge("entry", "send", "started")],
+      })
+    );
+    const refuseSendOpen = wrapFenced((writes) => ({
+      ...writes,
+      openNodeLog: (input) =>
+        input.nodeId === "send"
+          ? Effect.fail(
+              new DatabaseError({ cause: new Error("connection reset") })
+            )
+          : writes.openNodeLog(input),
+    }));
+
+    const results: Array<PassResult | null> = [];
+    for (let pass = 0; pass <= STEP_RETRY_LIMIT; pass += 1) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
+      results.push(await harness.pass({ wrap: refuseSendOpen }));
+    }
+    expect(results.map((result) => result?.kind)).toEqual([
+      ...Array.from({ length: STEP_RETRY_LIMIT }, () => "retry"),
+      "retries_spent",
+    ]);
+    const spent = await readRun(harness);
+    expect(
+      spent.memo.find((entry) => entry.stepId === "node:send:log-open")
+    ).toMatchObject({
+      nodeId: "send",
+      status: "failed",
+      failures: STEP_RETRY_LIMIT + 1,
+    });
+    expect(spent.logs.filter((log) => log.nodeId === "send")).toEqual([]);
+
+    // The next pass refuses the open before writing it, which fails the node
+    // and with it the run.
+    expect(await harness.pass({ wrap: refuseSendOpen })).toEqual({
+      kind: "ended",
+    });
+    expect((await readRun(harness)).status).toBe("failed");
   });
 
   // SQLite has one writer per database: a write transaction holds the
@@ -1420,7 +1472,7 @@ function describeCases(
     expect((await readRun(harness)).schedule).toBeNull();
   });
 
-  it("writes at most five memo rows per node of a 50-node run, and none survive the terminal write", async () => {
+  it("writes one memo row per action node of a 50-node run, and none survive the terminal write", async () => {
     const ids = Array.from(
       { length: 50 },
       (_, index) => `n_${String(index + 1).padStart(2, "0")}`
@@ -1450,9 +1502,9 @@ function describeCases(
       (nodeId) => nodeId
     );
     expect(perNode.size).toBe(50);
-    expect(
-      Math.max(...[...perNode.values()].map((steps) => steps.length))
-    ).toBeLessThanOrEqual(5);
+    expect(new Set([...perNode.values()].map((steps) => steps.length))).toEqual(
+      new Set([1])
+    );
 
     offsetMs += 61 * 60 * 1000;
     expect(await harness.pass()).toEqual({ kind: "ended" });

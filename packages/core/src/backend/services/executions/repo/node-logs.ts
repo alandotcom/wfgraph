@@ -26,11 +26,10 @@ type Executor = WfGraphDatabase | WfGraphTransaction;
 /**
  * The id of a node's run-log row.
  *
- * A node opens its row at most once per Execution, in one durable step whose id
- * is built from the node id (`node:<id>:log-open`, or `wait-start-log-<id>` for
- * a Wait), so the Execution and the node name the step that opens the row. A
- * re-run of that step therefore inserts the same id, and the insert's conflict
- * leaves the first row in place.
+ * Every pass that reaches a node opens its row again (`runWithStepLog`), and a
+ * Wait's memoized open (`wait-start-log-<id>`) runs again when its memo write
+ * fails. The id derives from the Execution and the node, so each of those opens
+ * inserts the same id, and the insert's conflict leaves the first row in place.
  */
 export function nodeLogId(executionId: string, nodeId: string): string {
   const digest = createHash("sha256")
@@ -62,7 +61,6 @@ export type NodeLogsRepoMethods = {
    *
    * The id derives from the Execution and the node (`nodeLogId`), and a second
    * open of the same node answers the row the first one inserted, untouched.
-   * A re-run of the step that opens the row therefore writes nothing new.
    */
   readonly openNodeLog: (
     input: OpenNodeLogInput

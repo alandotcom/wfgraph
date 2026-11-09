@@ -26,9 +26,19 @@ import type { WorkflowActions } from "#src/backend/engine/actions";
  * one-second Wait beside a ten-second `wait_1`. After it, `source` sits above
  * `wait_1`, and `after` addresses its output. With `returnToOriginal` the
  * version before the Migration already addresses it the same way.
+ *
+ * `pad` sits between `wait_1` and `after` in both versions. Under the version
+ * before the Migration, `after` reads a node of a sibling branch, which a pass
+ * that replays both branches runs side by side, and `pad` lets `source` finish
+ * before `after` resolves its input.
  */
 export function migrationGraph(migrated: boolean, returnToOriginal: boolean) {
   const source = { ...createAfterWaitNode(), id: "source" };
+  const pad = {
+    ...createAfterWaitNode(),
+    id: "pad",
+    data: { ...createAfterWaitNode().data, label: "Pad" },
+  };
   const after: WorkflowNode = {
     ...createAfterWaitNode(),
     id: "after",
@@ -45,6 +55,7 @@ export function migrationGraph(migrated: boolean, returnToOriginal: boolean) {
     nodes: [
       createLifecycleNode("life"),
       source,
+      pad,
       createWaitNode("wait_1", { waitMode: "delay", waitDuration: "10s" }),
       ...(migrated
         ? []
@@ -78,7 +89,8 @@ export function migrationGraph(migrated: boolean, returnToOriginal: boolean) {
             target: "wait_1",
             sourceHandle: "true",
           },
-          { id: "wa", source: "wait_1", target: "after" },
+          { id: "wp", source: "wait_1", target: "pad" },
+          { id: "pa", source: "pad", target: "after", sourceHandle: "true" },
         ]
       : [
           {
@@ -94,7 +106,8 @@ export function migrationGraph(migrated: boolean, returnToOriginal: boolean) {
             target: "wait_1",
             sourceHandle: "started",
           },
-          { id: "wa", source: "wait_1", target: "after" },
+          { id: "wp", source: "wait_1", target: "pad" },
+          { id: "pa", source: "pad", target: "after", sourceHandle: "true" },
         ],
   });
 }
@@ -113,14 +126,10 @@ const actions: WorkflowActions = {
 
 /** Whether the `source` node's run-log row has been opened and closed. */
 function sourceDone(store: ReturnType<typeof createRecordingWorkflowStore>) {
-  const index = store
-    .callsOf("startStepLog")
-    .findIndex((call) => call.nodeId === "source");
+  const logId = store.logIdOf("source");
   return (
-    index >= 0 &&
-    store
-      .callsOf("completeStepLog")
-      .some((call) => call.logId === `log_${index + 1}`)
+    logId !== undefined &&
+    store.callsOf("completeStepLog").some((call) => call.logId === logId)
   );
 }
 
@@ -160,9 +169,6 @@ export function defineMigrationSnapshotReplayCases(
         success: true,
         data: { success: true, data: { subject: "true" } },
       });
-      expect(
-        store.callsOf("startStepLog").filter((call) => call.nodeId === "source")
-      ).toHaveLength(1);
       expect(store.callsOf("reparkWaitState").length).toBeGreaterThan(0);
     }
   );

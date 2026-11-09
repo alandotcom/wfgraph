@@ -3,8 +3,8 @@
  *
  * A durable callback is Promise-shaped, so an Effect that must run inside one
  * has to cross without losing its cause or the invocation context that owns
- * logging and tracing. Every engine site that calls `runtime.run` with an
- * Effect goes through here.
+ * logging and tracing. Every engine site that calls `runtime.run` or
+ * `runtime.runIdempotent` with an Effect goes through here.
  */
 
 import { Effect } from "effect";
@@ -34,12 +34,31 @@ export function runDurable<A, E>(
   step: DurableStepRef,
   effect: Effect.Effect<A, E>
 ): Effect.Effect<A, EngineFailure> {
+  return crossInto(runtime.run, step, effect);
+}
+
+/**
+ * `runDurable` for an idempotent Effect, through `runtime.runIdempotent`: it
+ * runs on every pass and its value is never stored.
+ */
+export function runIdempotentDurable<A, E>(
+  runtime: WorkflowExecutionRuntime,
+  step: DurableStepRef,
+  effect: Effect.Effect<A, E>
+): Effect.Effect<A, EngineFailure> {
+  return crossInto(runtime.runIdempotent, step, effect);
+}
+
+/** Runs `effect` as the step `step` of one of the runtime's two step methods. */
+function crossInto<A, E>(
+  method: WorkflowExecutionRuntime["run"],
+  step: DurableStepRef,
+  effect: Effect.Effect<A, E>
+): Effect.Effect<A, EngineFailure> {
   return Effect.gen(function* () {
     const effectContext = yield* Effect.context();
     return yield* fromUnknownPromise(() =>
-      runtime.run(step, () =>
-        runPromiseWithEngineFailure(effectContext)(effect)
-      )
+      method(step, () => runPromiseWithEngineFailure(effectContext)(effect))
     );
   });
 }

@@ -230,14 +230,19 @@ export function cancelledAudits(store: RecordingWorkflowStore) {
 }
 
 /**
- * How many run-log rows the run opened for one node. The row opens inside a
- * memoized step, so it counts how often the node ran across every replay. A
+ * How many run-log rows the run opened for one node: none until the run
+ * reaches the node, and one after. A row's id is the run's and the node's, so
+ * every pass that replays the node reaches the row the first one opened. A
  * handler body is not a step (ADR-0009) and runs again on each replay, so the
- * handler's own calls cannot tell a replay from a second run.
+ * handler's own calls cannot tell a replay from a second run either.
  */
 export function rowsOpenedFor(store: RecordingWorkflowStore, nodeId: string) {
-  return store.callsOf("startStepLog").filter((row) => row.nodeId === nodeId)
-    .length;
+  return new Set(
+    store
+      .callsOf("startStepLog")
+      .filter((row) => row.nodeId === nodeId)
+      .map((row) => row.executionId)
+  ).size;
 }
 
 /** The Canceled outlet, opening with one Wait and one Recorder behind it. */

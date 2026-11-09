@@ -93,12 +93,12 @@ describe("runWithStepLog", () => {
 });
 
 /**
- * A row's duration is the work one attempt did.
+ * A row's duration is the work one attempt did, timed around that work.
  *
- * The open is memoized, so the handle a replay reads back carries the clock of
- * whichever attempt inserted the row. A duration taken from it would count the
- * wait the run sat through as well, and an early node's row would grow toward
- * the whole run's elapsed time.
+ * The open and the close run on every pass. A replay reads its work back out
+ * of the memo, so the close a replay makes carries the replay's own near-zero
+ * duration, and the pass's store (`createDbWorkflowStore`) skips that close
+ * for a row an earlier attempt already closed.
  */
 describe("the duration a closed row carries", () => {
   const answer = () =>
@@ -109,7 +109,7 @@ describe("the duration a closed row carries", () => {
   });
 
   it.effect(
-    "leaves the row alone when the body replays inside one attempt",
+    "times a replay's close from the replay's own work, on the same row",
     () =>
       Effect.gen(function* () {
         vi.useFakeTimers();
@@ -127,17 +127,16 @@ describe("the duration a closed row carries", () => {
           return answer();
         });
 
-        // The run parks on a Wait downstream, and an hour later the whole body is
-        // replayed: same memo, so the open is a hit and the row is the same one.
-        // The work comes back out of the memo, so a second close would record the
-        // near-zero elapsed of a replay over the 200 the attempt really took.
+        // The run parks on a Wait downstream, and an hour later the whole body
+        // is replayed against the same memo. The open reaches the same row, and
+        // the work comes back out of the memo in no time at all.
         vi.advanceTimersByTime(3_600_000);
 
         yield* runWithStepLog(target, answer);
 
         const closes = store.callsOf("completeStepLog");
-        expect(closes.map((close) => close.logId)).toEqual(["log_1"]);
-        expect(closes.map((close) => close.durationMs)).toEqual([200]);
+        expect(closes.map((close) => close.logId)).toEqual(["log_1", "log_1"]);
+        expect(closes.map((close) => close.durationMs)).toEqual([200, 0]);
       })
   );
 

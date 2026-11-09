@@ -121,6 +121,11 @@ export type RecordingWorkflowStore = WorkflowStore & {
    * deadline here (`ReplayWaitRows`).
    */
   waitUntilOf(waitStateId: string): Date | undefined;
+  /**
+   * The log id `startStepLog` answered for a node's row, or undefined before
+   * the node's first open.
+   */
+  logIdOf(nodeId: string): string | undefined;
   reset(): void;
 };
 
@@ -157,6 +162,8 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
   };
 
   const waitUntilById = new Map<string, Date>();
+  /** The row `startStepLog` answers, by run and node. */
+  const logRows = new Map<string, { nodeId: string; logId: string }>();
   const recordWaitUntil = (
     waitStateId: string,
     waitUntilIso: string | null | undefined
@@ -186,20 +193,29 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
 
     waitUntilOf: (waitStateId) => waitUntilById.get(waitStateId),
 
+    logIdOf: (nodeId) =>
+      [...logRows.values()].find((row) => row.nodeId === nodeId)?.logId,
+
     reset() {
       calls.length = 0;
       timeline.length = 0;
       waitUntilById.clear();
+      logRows.clear();
       for (const recordedInputs of Object.values(byMethod)) {
         recordedInputs.length = 0;
       }
     },
 
+    // One id per run and node, numbered in the order the nodes first open,
+    // so an open that runs again answers the row it opened before, as the
+    // derived id of the database store does.
     startStepLog(input) {
       return Effect.sync(() => {
         calls.push({ method: "startStepLog", input });
         byMethod.startStepLog.push(input);
-        const logId = `log_${byMethod.startStepLog.length}`;
+        const key = `${input.executionId}\0${input.nodeId}`;
+        const logId = logRows.get(key)?.logId ?? `log_${logRows.size + 1}`;
+        logRows.set(key, { nodeId: input.nodeId, logId });
         return { logId, startTime: Date.now() };
       });
     },

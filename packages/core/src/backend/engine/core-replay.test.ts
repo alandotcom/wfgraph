@@ -285,7 +285,7 @@ describe("workflow engine replay safety", () => {
     expect(emailAction).toHaveBeenCalledTimes(2);
   });
 
-  it("memoizes each node under its own node id", async () => {
+  it("memoizes what each node's handler puts in a step under the node's id, and none of its run-log writes", async () => {
     const memo = new Map<string, unknown>();
 
     await executeWorkflow(
@@ -295,18 +295,20 @@ describe("workflow engine replay safety", () => {
       actions
     );
 
-    // What a node memoizes is its own run-log rows and whatever its handler put
-    // in `step.run`, each under that node's id. Nothing wraps the handler body.
-    expect(memo.has("node:email_1:log-open")).toBe(true);
-    // The close is deliberately not memoized: it is an UPDATE by id, so the row
-    // carries the latest attempt's verdict rather than the first one's.
-    expect(memo.has("node:email_1:log-close")).toBe(false);
+    // What a node memoizes is whatever its handler put in `step.run`, under
+    // that node's id. Nothing wraps the handler body.
     expect(memo.has("node:email_1:work")).toBe(true);
     expect(memo.has("node:followup_1:work")).toBe(true);
-    expect(memo.has("node:lifecycle_1:log-open")).toBe(true);
+    // The run-log open and close are idempotent writes, which run on every
+    // pass and store no memo row.
+    expect(
+      [...memo.keys()].filter(
+        (stepId) =>
+          stepId.includes(":log-open") || stepId.includes(":log-close")
+      )
+    ).toEqual([]);
     // A Wait node suspends the run, so a step cannot contain it. Its own
     // persistence segments are memoized around the suspension instead.
-    expect(memo.has("node:wait_1:log-open")).toBe(false);
     expect(memo.has("wait-prepare-wait_1-0")).toBe(true);
     expect(memo.has("wait-resume-wait_1-0")).toBe(true);
   });
@@ -348,7 +350,7 @@ describe("workflow engine replay safety", () => {
 
   // The other half of the contract, and the trap worth knowing: Workflow Graph wraps no
   // handler body, so work left outside `step.run` happens again on every attempt
-  // while the node's log rows stay memoized. The Runs view then shows one row for
+  // while the node keeps its one log row. The Runs view then shows one row for
   // however many times the work ran.
   it("repeats an unwrapped handler on a replay, under one log row", async () => {
     const unwrapped = vi.fn<() => Record<string, unknown>>(() => ({
@@ -380,8 +382,17 @@ describe("workflow engine replay safety", () => {
 
     expect(unwrapped).toHaveBeenCalledTimes(2);
     expect(memo.has("node:email_1:work")).toBe(false);
-    // One row all the same, because the two writes around the handler are steps.
-    expect(memo.has("node:email_1:log-open")).toBe(true);
+    // One row all the same: the open runs on both passes, and its row id is
+    // the run's and the node's, so both closes name the row the first opened.
+    const emailRowId = store.logIdOf("email_1");
+    expect(
+      store.callsOf("startStepLog").filter((open) => open.nodeId === "email_1")
+    ).toHaveLength(2);
+    expect(
+      store
+        .callsOf("completeStepLog")
+        .filter((close) => close.logId === emailRowId)
+    ).toHaveLength(2);
   });
 
   /**
@@ -432,12 +443,7 @@ describe("workflow engine replay safety", () => {
     expect(second).toMatchObject({ kind: "ended", success: false });
     expect(second.status).toBe("failed");
 
-    // Handles are handed out in order, so the row opened for the email node is
-    // the one its two closes name.
-    const emailRowIndex = store
-      .callsOf("startStepLog")
-      .findIndex((open) => open.nodeId === "email_1");
-    const emailRowId = `log_${emailRowIndex + 1}`;
+    const emailRowId = store.logIdOf("email_1");
     const emailCloses = store
       .callsOf("completeStepLog")
       .filter((close) => close.logId === emailRowId);

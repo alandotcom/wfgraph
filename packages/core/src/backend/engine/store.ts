@@ -70,9 +70,10 @@ export type StartStepLogInput = {
 export type CompleteStepLogInput = {
   logId: string;
   /**
-   * Milliseconds the work this row covers took, measured by the caller. The row
-   * cannot be timed from its own open here: that write is a memoized step, so
-   * its clock belongs to whichever attempt inserted the row.
+   * Milliseconds the work this row covers took, measured by the caller, which
+   * knows where that work began. The row's own open cannot tell: a Wait opens
+   * its row on the far side of a suspension, and a pass opens an action's row
+   * again whenever it replays the node.
    */
   durationMs: number;
   status: "success" | "error";

@@ -22,7 +22,7 @@ import {
   failureFromCause,
   failureFromUnknown,
 } from "#src/backend/engine/engine-failure";
-import { runDurable } from "#src/backend/engine/durable";
+import { runIdempotentDurable } from "#src/backend/engine/durable";
 
 /**
  * A `StepContext` as the engine builds one, where the run id is always set.
@@ -127,23 +127,23 @@ function closeStepLogQuietly(
 /**
  * Opens a run-log row, runs the work, and closes the row with what it answered.
  *
- * Both halves are memoized steps, which is the difference between an INSERT and
- * an UPDATE by id. The handler between them is replayed from the top on every
- * attempt, so an unmemoized open would insert a second row per attempt rather
- * than close the first.
+ * Both halves run on every pass through `runtime.runIdempotent`, which stores
+ * no memo row. The handler between them is replayed from the top on every
+ * pass, and writing both rows again is safe: the open inserts under an id
+ * derived from the run and the node and keeps the first row, and the fenced
+ * close applies only where `nodeLogCloseApplies` admits it. A later attempt
+ * that succeeds corrects an `error` an earlier attempt wrote, a second error
+ * leaves the first, and nothing overwrites a success. The pass's store skips
+ * either write when the run's log rows show it would change nothing.
  *
  * The close carries its own status in its step id (`log-close:success` or
- * `log-close:error`), which is what lets a later attempt that succeeds correct
- * an `error` an earlier attempt wrote while a plain replay leaves the row
- * alone. The fenced close updates only a row still `running` or `error`, so a
- * success is never overwritten by an error. A close memoized under one fixed
- * id would freeze the first verdict; an unmemoized close would rewrite the row
- * on every replay, and each replay reads its work back out of the memo, so the
- * duration it records is near zero.
+ * `log-close:error`), which is the step the Runs view names while that write
+ * runs, and the step a failure of that write is counted against.
  *
- * Each attempt times its own work. The handle's start time came out of the memo
- * with the row's id, so a duration taken from it would grow with everything that
- * happened between the two attempts, a wait included.
+ * Each attempt times its own work, from the open to the close. A replay reads
+ * its work back out of the memo, so the duration it measures is near zero, and
+ * the store skips its close unless the row is still `running` because an
+ * earlier pass stopped before closing it.
  *
  * The two have opposite failure policies. A refused open fails the node,
  * because nothing has happened yet and the executor's retry of it costs one wasted
@@ -164,7 +164,7 @@ export function runWithStepLog<T extends StepResult, E, R>(
     const { store, context, runtime } = target;
     // The id carries the node's own id so it survives a rename; the name carries
     // the label, so the trace reads as the graph does.
-    const handle = yield* runDurable(
+    const handle = yield* runIdempotentDurable(
       runtime,
       {
         id: `node:${context.nodeId}:log-open`,
@@ -176,28 +176,22 @@ export function runWithStepLog<T extends StepResult, E, R>(
     const startedAt = Date.now();
     const elapsed = () => Date.now() - startedAt;
 
-    // A close is memoized once per verdict, so the callers below closing with
-    // the same status share an id. The step answers null because a memoized
-    // value has to be JSON-safe.
-    const closeOnce = (close: StepLogClose) =>
-      runDurable(
+    const closeRow = (close: StepLogClose) =>
+      runIdempotentDurable(
         runtime,
         {
           id: `node:${context.nodeId}:log-close:${close.status}`,
           nodeId: context.nodeId,
           name: `${context.nodeName} (close)`,
         },
-        Effect.as(
-          closeStepLogQuietly(store, context, handle, close, elapsed()),
-          null
-        )
+        closeStepLogQuietly(store, context, handle, close, elapsed())
       );
 
     const result = yield* Effect.matchCauseEffect(Effect.suspend(work), {
       onFailure: (cause) =>
         Effect.gen(function* () {
           const failure = failureFromCause(cause);
-          yield* closeOnce({ status: "error", error: failure.message });
+          yield* closeRow({ status: "error", error: failure.message });
           return yield* Effect.failCause(cause);
         }),
       onSuccess: Effect.succeed,
@@ -206,9 +200,9 @@ export function runWithStepLog<T extends StepResult, E, R>(
     if (result.success) {
       // A success logs its payload. A step reporting success without one has
       // nothing but the envelope to show.
-      yield* closeOnce({ status: "success", output: result.data ?? result });
+      yield* closeRow({ status: "success", output: result.data ?? result });
     } else {
-      yield* closeOnce({
+      yield* closeRow({
         status: "error",
         output: result.error,
         error: result.error.message,
