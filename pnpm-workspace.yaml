@@ -22,10 +22,10 @@ packages:
 catalog:
   # The build agent's model provider. The AI runtime itself is inside `effect`,
   # at `effect/ai`; this package is the OpenAI half alone.
-  "@effect/ai-openai": 4.1.2
-  "@effect/opentelemetry": 4.1.2
-  "@effect/sql-sqlite-node": 4.1.2
-  "@effect/vitest": 4.1.2
+  "@effect/ai-openai": 4.1.3
+  "@effect/opentelemetry": 4.1.3
+  "@effect/sql-sqlite-node": 4.1.3
+  "@effect/vitest": 4.1.3
   # The backend and the editor both log through logtape.
   "@logtape/logtape": ^2.4.2
   "@marcbachmann/cel-js": ^8.0.0
@@ -52,7 +52,7 @@ catalog:
   # The second foreign Standard Schema library the schema tests are written
   # against, beside zod below.
   arktype: ^2.2.9
-  effect: 4.1.2
+  effect: 4.1.3
   es-toolkit: ^1.53.1
   # The property-based testing library. Core's reliability campaign and the
   # graph laws in packages/shared generate their inputs with it.
@@ -170,11 +170,11 @@ allowBuilds:
 # Version-specific exceptions to pnpm 11's 1440-minute minimumReleaseAge default.
 # Security fixes and explicitly approved fresh releases can be installed normally.
 minimumReleaseAgeExclude:
-  - "effect@4.1.0"
-  - "@effect/ai-openai@4.1.0"
-  - "@effect/opentelemetry@4.1.0"
-  - "@effect/sql-sqlite-node@4.1.0"
-  - "@effect/vitest@4.1.0"
+  - "effect@4.1.3"
+  - "@effect/ai-openai@4.1.3"
+  - "@effect/opentelemetry@4.1.3"
+  - "@effect/sql-sqlite-node@4.1.3"
+  - "@effect/vitest@4.1.3"
   - "oxlint@1.92.0"
   - "@oxlint/binding-android-arm-eabi@1.92.0"
   - "@oxlint/binding-android-arm64@1.92.0"

@@ -7,17 +7,17 @@ settings:
 catalogs:
   default:
     '@effect/ai-openai':
-      specifier: 4.1.2
-      version: 4.1.2
+      specifier: 4.1.3
+      version: 4.1.3
     '@effect/opentelemetry':
-      specifier: 4.1.2
-      version: 4.1.2
+      specifier: 4.1.3
+      version: 4.1.3
     '@effect/sql-sqlite-node':
-      specifier: 4.1.2
-      version: 4.1.2
+      specifier: 4.1.3
+      version: 4.1.3
     '@effect/vitest':
-      specifier: 4.1.2
-      version: 4.1.2
+      specifier: 4.1.3
+      version: 4.1.3
     '@logtape/logtape':
       specifier: ^2.4.2
       version: 2.4.2
@@ -64,8 +64,8 @@ catalogs:
       specifier: ^11.0.0
       version: 11.0.0
     effect:
-      specifier: 4.1.2
-      version: 4.1.2
+      specifier: 4.1.3
+      version: 4.1.3
     es-toolkit:
       specifier: ^1.53.1
       version: 1.53.1
@@ -133,7 +133,7 @@ importers:
         version: 0.67.4
       '@effect/vitest':
         specifier: 'catalog:'
-        version: 4.1.2(effect@4.1.2)(vitest@5.1.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(vite@8.3.6(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
+        version: 4.1.3(effect@4.1.3)(vitest@5.1.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(vite@8.3.6(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
       '@oxlint/plugins':
         specifier: ^1.91.0
         version: 1.91.0
@@ -163,7 +163,7 @@ importers:
         version: 10.0.6
       drizzle-kit:
         specifier: 1.0.0-rc.5
-        version: 1.0.0-rc.5(drizzle-orm@1.0.0-rc.5(@effect/sql-sqlite-node@4.1.2(effect@4.1.2))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.9)(bun-types@1.3.14)(effect@4.1.2)(postgres@4.1.0)(zod@4.6.7))
+        version: 1.0.0-rc.5(drizzle-orm@1.0.0-rc.5(@effect/sql-sqlite-node@4.1.3(effect@4.1.3))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.9)(bun-types@1.3.14)(effect@4.1.3)(postgres@4.1.0)(zod@4.6.7))
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -233,7 +233,7 @@ importers:
     dependencies:
       effect:
         specifier: 'catalog:'
-        version: 4.1.2
+        version: 4.1.3
     devDependencies:
       '@wfgraph/shared':
         specifier: workspace:*
@@ -315,7 +315,7 @@ importers:
         version: 0.7.1
       effect:
         specifier: 'catalog:'
-        version: 4.1.2
+        version: 4.1.3
       es-toolkit:
         specifier: 'catalog:'
         version: 1.53.1
@@ -363,13 +363,13 @@ importers:
     dependencies:
       '@effect/ai-openai':
         specifier: 'catalog:'
-        version: 4.1.2(effect@4.1.2)
+        version: 4.1.3(effect@4.1.3)
       '@effect/opentelemetry':
         specifier: 'catalog:'
-        version: 4.1.2(@opentelemetry/api-logs@0.223.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.44.0)(effect@4.1.2)
+        version: 4.1.3(@opentelemetry/api-logs@0.223.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.44.0)(effect@4.1.3)
       '@effect/sql-sqlite-node':
         specifier: 'catalog:'
-        version: 4.1.2(effect@4.1.2)
+        version: 4.1.3(effect@4.1.3)
       '@hono/node-server':
         specifier: ^2.1.6
         version: 2.1.6(hono@4.13.16)
@@ -396,7 +396,7 @@ importers:
         version: 2.0.0-beta.48
       '@orpc/effect':
         specifier: 'catalog:'
-        version: 2.0.0-beta.48(effect@4.1.2)(fastify@5.12.8)
+        version: 2.0.0-beta.48(effect@4.1.3)(fastify@5.12.8)
       '@orpc/openapi':
         specifier: 'catalog:'
         version: 2.0.0-beta.48(fastify@5.12.8)
@@ -411,10 +411,10 @@ importers:
         version: 11.0.0
       drizzle-orm:
         specifier: 1.0.0-rc.5
-        version: 1.0.0-rc.5(@effect/sql-sqlite-node@4.1.2(effect@4.1.2))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.9)(bun-types@1.3.14)(effect@4.1.2)(postgres@4.1.0)(zod@4.6.7)
+        version: 1.0.0-rc.5(@effect/sql-sqlite-node@4.1.3(effect@4.1.3))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.9)(bun-types@1.3.14)(effect@4.1.3)(postgres@4.1.0)(zod@4.6.7)
       effect:
         specifier: 'catalog:'
-        version: 4.1.2
+        version: 4.1.3
       es-toolkit:
         specifier: 'catalog:'
         version: 1.53.1
@@ -493,7 +493,7 @@ importers:
         version: link:../shared
       effect:
         specifier: 'catalog:'
-        version: 4.1.2
+        version: 4.1.3
       es-toolkit:
         specifier: 'catalog:'
         version: 1.53.1
@@ -511,7 +511,7 @@ importers:
         version: 101.1.0(graphql@17.0.2)
       effect:
         specifier: 'catalog:'
-        version: 4.1.2
+        version: 4.1.3
       es-toolkit:
         specifier: 'catalog:'
         version: 1.53.1
@@ -554,7 +554,7 @@ importers:
         version: 3.1.3
       effect:
         specifier: 'catalog:'
-        version: 4.1.2
+        version: 4.1.3
       es-toolkit:
         specifier: 'catalog:'
         version: 1.53.1
@@ -986,13 +986,13 @@ packages:
   '@dotenvx/primitives@0.8.0':
     resolution: {integrity: sha512-VYJy0uhFm9zTJ1TxBaW/pA8bjbOM/OttaNMwZ1RHG4JKyRG7DhSdiqD1ipQoAyoD22olUtxbP78W9xY3Wd11bg==}
 
-  '@effect/ai-openai@4.1.2':
-    resolution: {integrity: sha512-u2RkBOj718eQQmZan3mJh0PJDLzhbZ4qFmMc/uSJhS0jmUoiaQI8SsCzENpNk0TRkt8lxEK4urohpeV5/xDWBQ==}
+  '@effect/ai-openai@4.1.3':
+    resolution: {integrity: sha512-8xzE9mOXJ0Z2hvMvMYVZHHP1AYjTwgw6AW0IMUn1E/Gr0W80KdUL/8wRm0jkFf7zhI6iZSey17iZFiD1HfXiWQ==}
     peerDependencies:
-      effect: ^4.1.2
+      effect: ^4.1.3
 
-  '@effect/opentelemetry@4.1.2':
-    resolution: {integrity: sha512-FhxQy4I0nKLX0Dh9l6rZ5S/fRAMt7dKdekHtoxgx7N/XBtPP/IFhcJnGPenceuuSeVbcLp1vpZa43wC05qdxng==}
+  '@effect/opentelemetry@4.1.3':
+    resolution: {integrity: sha512-gGr3Qj5FL3rrUmxXcVfZV5vMVq9K4ARPHpFVKUYfDl8r47oSilKwtwDg5zJQvPRZeo1hgBwhEy8bZbSwseUoJQ==}
     engines: {node: '>=22.19.0'}
     peerDependencies:
       '@opentelemetry/api': ~1.9.1
@@ -1004,7 +1004,7 @@ packages:
       '@opentelemetry/sdk-trace-node': '>=2.0.0 <3.0.0'
       '@opentelemetry/sdk-trace-web': '>=2.0.0 <3.0.0'
       '@opentelemetry/semantic-conventions': '>=1.33.0 <2.0.0'
-      effect: ^4.1.2
+      effect: ^4.1.3
     peerDependenciesMeta:
       '@opentelemetry/api':
         optional: true
@@ -1023,10 +1023,10 @@ packages:
       '@opentelemetry/sdk-trace-web':
         optional: true
 
-  '@effect/sql-sqlite-node@4.1.2':
-    resolution: {integrity: sha512-fTmI8Ol1Lf8rGITtdIW285nuT9G46ETOPZ48CxlZ7vkfWDYgipYnH0dILxPGcZ6f/BMLeybmLRKKBcRWStShfQ==}
+  '@effect/sql-sqlite-node@4.1.3':
+    resolution: {integrity: sha512-JFRfEbzlkSXarL9B1GnRPpQIaEwIyLReLcIASnrV3OkmRNBVbTbe3UCbKFaE/hUrlvmKIXqxsO/5xqxL9N6hog==}
     peerDependencies:
-      effect: ^4.1.2
+      effect: ^4.1.3
 
   '@effect/tsgo-darwin-arm64@0.67.4':
     resolution: {integrity: sha512-DI1/t3HQ2utqAWVH9KviuZc85t3yBiuNK4oKE2kMDBfjSlYLz67pcACUjKODH0nhD0I268PPyFphsKrNvyd0zg==}
@@ -1067,10 +1067,10 @@ packages:
     resolution: {integrity: sha512-p3TjL/46B8eLq2h5KpX0JgL8iREyb5CU9D+bMk+Y+YKAxlQDn2ebqDqMrB3Q6aHSm91QTQIdbrd5q+mf5p2vwQ==}
     hasBin: true
 
-  '@effect/vitest@4.1.2':
-    resolution: {integrity: sha512-JJPwAHkJHxvM/woW9mMW/khjasAHcmwWdOMAgMy16rfqsxcVhFDnrRsvN9VI2+kMv8zDCCyBE2q1n5hzZlfE0w==}
+  '@effect/vitest@4.1.3':
+    resolution: {integrity: sha512-HgwaaL0BqPX1/tXWQxa1+AfWjcWdJs/+sgxkOTXVDOJuqYpgqDkvZfVdwh1CJ9iNAS7Xx370ranRcNC4X+3v+A==}
     peerDependencies:
-      effect: ^4.1.2
+      effect: ^4.1.3
       vitest: '>=5.0.0 <6.0.0'
 
   '@emnapi/core@1.11.2':
@@ -4659,8 +4659,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@4.1.2:
-    resolution: {integrity: sha512-d3Oah1WyKxFLFh19yWheS5IXIVaITzxZ71JkE1rkUozq/6EcJSU5nPk5bF2QrSygZ3SQoiNQB8TsxFriyMeMaQ==}
+  effect@4.1.3:
+    resolution: {integrity: sha512-QWNEu35groH/78Ejq01lZGt8U0sF1P4nrhbcAZz5WffcS27bUUK9C/db+xWWUwNYUvFD5SrSLE0mFGtwyP0PCQ==}
 
   electron-to-chromium@1.5.465:
     resolution: {integrity: sha512-zg4iUpbeGw7YNZsswc2xKr2uiBex2d8dELAXo92Icw3but1ULbrvK8USe6wVLaWjgJnKBARv0pchx9Owktx6wQ==}
@@ -7552,14 +7552,14 @@ snapshots:
 
   '@dotenvx/primitives@0.8.0': {}
 
-  '@effect/ai-openai@4.1.2(effect@4.1.2)':
+  '@effect/ai-openai@4.1.3(effect@4.1.3)':
     dependencies:
-      effect: 4.1.2
+      effect: 4.1.3
 
-  '@effect/opentelemetry@4.1.2(@opentelemetry/api-logs@0.223.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.44.0)(effect@4.1.2)':
+  '@effect/opentelemetry@4.1.3(@opentelemetry/api-logs@0.223.0)(@opentelemetry/api@1.9.1)(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.223.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.11.0(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.44.0)(effect@4.1.3)':
     dependencies:
       '@opentelemetry/semantic-conventions': 1.44.0
-      effect: 4.1.2
+      effect: 4.1.3
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/api-logs': 0.223.0
@@ -7569,9 +7569,9 @@ snapshots:
       '@opentelemetry/sdk-trace-base': 2.12.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-trace-node': 2.11.0(@opentelemetry/api@1.9.1)
 
-  '@effect/sql-sqlite-node@4.1.2(effect@4.1.2)':
+  '@effect/sql-sqlite-node@4.1.3(effect@4.1.3)':
     dependencies:
-      effect: 4.1.2
+      effect: 4.1.3
 
   '@effect/tsgo-darwin-arm64@0.67.4':
     optional: true
@@ -7604,9 +7604,9 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.67.4
       '@effect/tsgo-win32-x64': 0.67.4
 
-  '@effect/vitest@4.1.2(effect@4.1.2)(vitest@5.1.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(vite@8.3.6(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))':
+  '@effect/vitest@4.1.3(effect@4.1.3)(vitest@5.1.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(vite@8.3.6(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))':
     dependencies:
-      effect: 4.1.2
+      effect: 4.1.3
       vitest: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(happy-dom@21.0.4)(vite@8.3.6(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   '@emnapi/core@1.11.2':
@@ -8717,14 +8717,14 @@ snapshots:
       '@orpc/shared': 2.0.0-beta.48
       '@standard-schema/spec': 1.1.0
 
-  '@orpc/effect@2.0.0-beta.48(effect@4.1.2)(fastify@5.12.8)':
+  '@orpc/effect@2.0.0-beta.48(effect@4.1.3)(fastify@5.12.8)':
     dependencies:
       '@orpc/client': 2.0.0-beta.48
       '@orpc/contract': 2.0.0-beta.48
       '@orpc/json-schema': 2.0.0-beta.48(fastify@5.12.8)
       '@orpc/server': 2.0.0-beta.48(fastify@5.12.8)
       '@orpc/shared': 2.0.0-beta.48
-      effect: 4.1.2
+      effect: 4.1.3
     transitivePeerDependencies:
       - crossws
       - fastify
@@ -10815,18 +10815,18 @@ snapshots:
 
   dotenv@18.0.9: {}
 
-  drizzle-kit@1.0.0-rc.5(drizzle-orm@1.0.0-rc.5(@effect/sql-sqlite-node@4.1.2(effect@4.1.2))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.9)(bun-types@1.3.14)(effect@4.1.2)(postgres@4.1.0)(zod@4.6.7)):
+  drizzle-kit@1.0.0-rc.5(drizzle-orm@1.0.0-rc.5(@effect/sql-sqlite-node@4.1.3(effect@4.1.3))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.9)(bun-types@1.3.14)(effect@4.1.3)(postgres@4.1.0)(zod@4.6.7)):
     optionalDependencies:
-      drizzle-orm: 1.0.0-rc.5(@effect/sql-sqlite-node@4.1.2(effect@4.1.2))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.9)(bun-types@1.3.14)(effect@4.1.2)(postgres@4.1.0)(zod@4.6.7)
+      drizzle-orm: 1.0.0-rc.5(@effect/sql-sqlite-node@4.1.3(effect@4.1.3))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.9)(bun-types@1.3.14)(effect@4.1.3)(postgres@4.1.0)(zod@4.6.7)
 
-  drizzle-orm@1.0.0-rc.5(@effect/sql-sqlite-node@4.1.2(effect@4.1.2))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.9)(bun-types@1.3.14)(effect@4.1.2)(postgres@4.1.0)(zod@4.6.7):
+  drizzle-orm@1.0.0-rc.5(@effect/sql-sqlite-node@4.1.3(effect@4.1.3))(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(arktype@2.2.9)(bun-types@1.3.14)(effect@4.1.3)(postgres@4.1.0)(zod@4.6.7):
     optionalDependencies:
-      '@effect/sql-sqlite-node': 4.1.2(effect@4.1.2)
+      '@effect/sql-sqlite-node': 4.1.3(effect@4.1.3)
       '@opentelemetry/api': 1.9.1
       '@types/pg': 8.23.1
       arktype: 2.2.9
       bun-types: 1.3.14
-      effect: 4.1.2
+      effect: 4.1.3
       postgres: 4.1.0
       zod: 4.6.7
 
@@ -10842,7 +10842,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@4.1.2: {}
+  effect@4.1.3: {}
 
   electron-to-chromium@1.5.465: {}
 
