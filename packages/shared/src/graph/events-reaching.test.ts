@@ -4,6 +4,7 @@ import {
   type ConditionModel,
   type ConditionRule,
   compileConditionModel,
+  nodeOutputConditionPath,
   EVENT_NAME_FIELD_PATH,
   serializeConditionModel,
 } from "#src/conditions/conditions";
@@ -487,6 +488,48 @@ describe("eventsReaching", () => {
         edge("e3", "which-1", "on-true", "true"),
       ])
     ).toEqual([CANCELED, RESCHEDULED]);
+  });
+
+  // A rule naming the step it reads says nothing about which Event arrived,
+  // however the Events' payloads are declared.
+  it("narrows nothing on a rule naming a step other than the Lifecycle Node", () => {
+    const nodes = [
+      entryNode({ cancelEvents: [CANCELED, RESCHEDULED] }),
+      actionNode("lookup-1", "custom/lookup"),
+      conditionNode("which-1", [
+        fieldRule(nodeOutputConditionPath("lookup-1", "movedBy") ?? ""),
+      ]),
+      actionNode("on-true"),
+    ];
+
+    expect(
+      namesReaching("on-true", nodes, [
+        edge("e1", "lifecycle-1", "lookup-1", LIFECYCLE_CANCELED_HANDLE),
+        edge("e2", "lookup-1", "which-1"),
+        edge("e3", "which-1", "on-true", "true"),
+      ])
+    ).toEqual([CANCELED, RESCHEDULED]);
+  });
+
+  // A rule naming the Lifecycle Node reads the payload alone, so a path an
+  // upstream action also declares no longer hides which Event it came from.
+  it("narrows on a rule naming the Lifecycle Node, even on a path an action shares", () => {
+    const nodes = [
+      entryNode({ cancelEvents: [CANCELED, RESCHEDULED] }),
+      actionNode("lookup-1", "custom/lookup"),
+      conditionNode("which-1", [
+        fieldRule(nodeOutputConditionPath("lifecycle-1", "reason") ?? ""),
+      ]),
+      actionNode("on-true"),
+    ];
+
+    expect(
+      namesReaching("on-true", nodes, [
+        edge("e1", "lifecycle-1", "lookup-1", LIFECYCLE_CANCELED_HANDLE),
+        edge("e2", "lookup-1", "which-1"),
+        edge("e3", "which-1", "on-true", "true"),
+      ])
+    ).toEqual([CANCELED]);
   });
 
   it("keeps every Event either arm of an OR group admits", () => {

@@ -202,6 +202,76 @@ describe("brokenReferencesIn on a Condition rule naming its step", () => {
     ]);
   });
 
+  // The applicant triage build: a Condition testing the scoring step's score
+  // gates a step reading the Start Event's email.
+  it("keeps the Start Event readable below a rule naming a step", () => {
+    const score: WorkflowNode = {
+      id: "score",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Score applicant",
+        type: "action",
+        config: { actionType: "score-applicant" },
+      },
+    };
+    // A comparison, because a presence check could hold for any Event and so
+    // would never narrow the Events below the Condition.
+    const base = gate("$node:score.score");
+    const gated: WorkflowNode = {
+      ...base,
+      data: {
+        ...base.data,
+        config: {
+          ...base.data.config,
+          conditionModel: serializeConditionModel({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              {
+                id: "group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "rule",
+                    field: "$node:score.score",
+                    fieldType: "number",
+                    operator: "greater_or_equal",
+                    value: 80,
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    };
+
+    expect(
+      brokenReferencesIn({
+        document: {
+          nodes: [entry, score, gated, notify],
+          edges: [
+            {
+              id: "e1",
+              source: "entry",
+              target: "score",
+              sourceHandle: LIFECYCLE_STARTED_HANDLE,
+            },
+            { id: "e2", source: "score", target: "gate" },
+            {
+              id: "e3",
+              source: "gate",
+              target: "notify",
+              sourceHandle: "true",
+            },
+          ],
+        },
+        catalog,
+      })
+    ).toEqual([]);
+  });
+
   it("leaves a rule naming no step alone", () => {
     expect(
       brokenReferencesIn({

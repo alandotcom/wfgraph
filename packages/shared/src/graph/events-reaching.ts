@@ -18,6 +18,7 @@ import {
   isNullCheckConditionRule,
   isStringSetConditionRule,
   parseConditionModel,
+  parseNodeOutputConditionPath,
 } from "#src/conditions/conditions";
 import {
   type EventMetadata,
@@ -51,30 +52,60 @@ import {
 } from "#src/lifecycle/lifecycle-rules";
 import { readWaitSubscriptions } from "#src/lifecycle/wait-subscription";
 
+/** What a Condition rule reads, for the walk below, and the nodes it can name. */
+type RuleQuestion = {
+  rule: ConditionRule;
+  event: EventMetadata | null;
+  declaredElsewhere: ReadonlySet<string>;
+  /** The Lifecycle Nodes, whose output a rule reads as the Arriving Event's payload. */
+  entryNodeIds: ReadonlySet<string>;
+};
+
+/**
+ * The path a rule reads, and whether that value can belong to something other
+ * than the Arriving Event's payload.
+ *
+ * A rule naming no node reads the run's outputs merged flat, so a path an
+ * action upstream also produces (`declaredElsewhere`) may be that action's. A
+ * rule naming the Lifecycle Node reads the payload alone. A rule naming any
+ * other node reads a value that is never the payload.
+ */
+function ruleSubject(input: RuleQuestion): {
+  path: string;
+  notPayload: boolean;
+} {
+  const field = input.rule.field.trim();
+  const named = parseNodeOutputConditionPath(field);
+  if (named) {
+    return {
+      path: named.fieldPath,
+      notPayload: !input.entryNodeIds.has(named.nodeId),
+    };
+  }
+  return {
+    path: field,
+    notPayload: input.declaredElsewhere.has(field),
+  };
+}
+
 /**
  * Whether one rule could hold for a run that arrived on this Event.
  *
  * Two rules say something about which Event arrived. One names it. The other
  * names a payload field, which only an Event declaring that field can satisfy,
- * because a rule about a field the payload lacks reads false.
- *
- * `declaredElsewhere` are the paths the actions upstream also produce. A
- * condition reads the run's outputs merged flat, so such a path may be an
- * action's rather than the payload's, and it then says nothing about the Event.
+ * because a rule about a field the payload lacks reads false. A rule reading a
+ * value that may not be the payload's (`ruleSubject`) says nothing about the
+ * Event.
  */
-function ruleCouldHold(input: {
-  rule: ConditionRule;
-  event: EventMetadata | null;
-  declaredElsewhere: ReadonlySet<string>;
-}): boolean {
+function ruleCouldHold(input: RuleQuestion): boolean {
   const { rule, event } = input;
-  const path = rule.field.trim();
+  const { path, notPayload } = ruleSubject(input);
 
   if (event === null) {
     if (path === EVENT_NAME_FIELD_PATH) {
       return ruleAnswerWithoutEvent(rule) ?? true;
     }
-    if (input.declaredElsewhere.has(path)) {
+    if (notPayload) {
       return true;
     }
     return isNullCheckConditionRule(rule)
@@ -106,7 +137,7 @@ function ruleCouldHold(input: {
     return true;
   }
 
-  if (input.declaredElsewhere.has(path)) {
+  if (notPayload) {
     return true;
   }
 
@@ -120,20 +151,16 @@ function ruleCouldHold(input: {
  * field the Event never declares fails on every one. A rule naming the Event
  * itself is the exception, because for a given Event it has only one answer.
  */
-function ruleCouldFail(input: {
-  rule: ConditionRule;
-  event: EventMetadata | null;
-  declaredElsewhere: ReadonlySet<string>;
-}): boolean {
+function ruleCouldFail(input: RuleQuestion): boolean {
   const { rule, event } = input;
-  const path = rule.field.trim();
+  const { path, notPayload } = ruleSubject(input);
 
   if (event === null) {
     if (path === EVENT_NAME_FIELD_PATH) {
       const answer = ruleAnswerWithoutEvent(rule);
       return answer === undefined || !answer;
     }
-    if (input.declaredElsewhere.has(path)) {
+    if (notPayload) {
       return true;
     }
     return isNullCheckConditionRule(rule) ? rule.operator === "is_set" : true;
@@ -163,11 +190,7 @@ function ruleCouldFail(input: {
   return true;
 }
 
-type ModelQuestion = {
-  model: ConditionModel;
-  event: EventMetadata | null;
-  declaredElsewhere: ReadonlySet<string>;
-};
+type ModelQuestion = Omit<RuleQuestion, "rule"> & { model: ConditionModel };
 
 /**
  * Whether the model could hold for one Event.
@@ -238,12 +261,14 @@ function narrowThroughCondition(input: {
   model: ConditionModel;
   branch: ConditionBranch;
   declaredElsewhere: ReadonlySet<string>;
+  entryNodeIds: ReadonlySet<string>;
 }): EventMetadata[] {
   return input.events.filter((event) => {
     const question = {
       model: input.model,
       event,
       declaredElsewhere: input.declaredElsewhere,
+      entryNodeIds: input.entryNodeIds,
     };
 
     return input.branch === "true"
@@ -359,6 +384,9 @@ function walkEventsReaching(input: {
 }): Reaching {
   const { catalog } = input;
   const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+  const entryNodeIds = new Set(
+    input.nodes.filter(isLifecycleNode).map((node) => node.id)
+  );
   const incomingByTarget = new Map<string, WorkflowEdge[]>();
   for (const edge of input.edges) {
     const list = incomingByTarget.get(edge.target);
@@ -420,6 +448,7 @@ function walkEventsReaching(input: {
         catalog,
         above: reachingAt(parent.id, nextSeen),
         declaredElsewhere: outputPathsAt(parent.id),
+        entryNodeIds,
       });
 
       acc =
@@ -507,6 +536,7 @@ function reachingFromParent(input: {
   catalog: ExtensionCatalog;
   above: Reaching;
   declaredElsewhere: ReadonlySet<string>;
+  entryNodeIds: ReadonlySet<string>;
 }): Reaching {
   const { parent, catalog } = input;
 
@@ -545,6 +575,7 @@ function reachingFromParent(input: {
     handle: input.handle,
     above: input.above,
     declaredElsewhere: input.declaredElsewhere,
+    entryNodeIds: input.entryNodeIds,
   });
 }
 
@@ -553,6 +584,7 @@ function narrowLeaving(input: {
   handle: unknown;
   above: Reaching;
   declaredElsewhere: ReadonlySet<string>;
+  entryNodeIds: ReadonlySet<string>;
 }): Reaching {
   const { parent, handle, above } = input;
 
@@ -580,12 +612,14 @@ function narrowLeaving(input: {
     model: parsed.model,
     branch,
     declaredElsewhere: input.declaredElsewhere,
+    entryNodeIds: input.entryNodeIds,
   });
   const compiled = compileConditionModel(parsed.model);
   const question = {
     model: parsed.model,
     event: null,
     declaredElsewhere: input.declaredElsewhere,
+    entryNodeIds: input.entryNodeIds,
   };
   const eventCanBeAbsent =
     above.eventCanBeAbsent &&
