@@ -85,6 +85,7 @@ export {
   type WfGraphOpenRouterAgentConfig,
   type WfGraphRunnerAgentConfig,
   type WfGraphAgentRunner,
+  type WfGraphAgentSelectedNode,
   type WfGraphAgentToolkit,
   type WfGraphAgentTurn,
   type WfGraphAgentMessage,

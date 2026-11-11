@@ -32,9 +32,21 @@ const graph = createSerializedWorkflowGraph({
 });
 
 describe("agentChatInputSchema", () => {
+  it("accepts a request carrying the canvas selection", () => {
+    const result = decode({
+      workflowId: "workflow_1",
+      selectedNodeIds: ["lifecycle"],
+      messages: [{ role: "user", content: "Rename this step" }],
+      graph,
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+  });
+
   it("bounds the conversation length", () => {
     const result = decode({
       workflowId: "workflow_1",
+      selectedNodeIds: [],
       messages: Array.from({ length: MAX_AGENT_MESSAGES + 1 }, () => ({
         role: "user",
         content: "Build it",
@@ -48,6 +60,7 @@ describe("agentChatInputSchema", () => {
   it("bounds each conversation message", () => {
     const result = decode({
       workflowId: "workflow_1",
+      selectedNodeIds: [],
       messages: [
         { role: "user", content: "x".repeat(MAX_AGENT_MESSAGE_CHARS + 1) },
       ],
@@ -75,6 +88,7 @@ describe("agentChatInputSchema", () => {
       Result.isFailure(
         decode({
           workflowId: "workflow_1",
+          selectedNodeIds: [],
           messages: [],
           graph: createSerializedWorkflowGraph({ nodes, edges: [] }),
         })
@@ -84,6 +98,7 @@ describe("agentChatInputSchema", () => {
       Result.isFailure(
         decode({
           workflowId: "workflow_1",
+          selectedNodeIds: [],
           messages: [],
           graph: { ...graph, edges },
         })
@@ -101,6 +116,7 @@ describe("agentChatInputSchema", () => {
       Result.isFailure(
         decode({
           workflowId: "workflow_1",
+          selectedNodeIds: [],
           messages: [],
           graph: oversizedGraph,
         })

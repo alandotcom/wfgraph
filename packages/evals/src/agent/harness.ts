@@ -130,6 +130,7 @@ export function createWorkflowAgentHarness(
         Effect.succeed(
           runAgentRunner(runner, {
             workflowId: "eval-workflow",
+            selectedNodes: [],
             messages: input.messages,
             session,
             observeTrace: (event) => trace.push(event),

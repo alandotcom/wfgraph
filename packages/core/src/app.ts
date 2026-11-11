@@ -72,6 +72,7 @@ export type {
 } from "#src/backend/agent/config";
 export type {
   WfGraphAgentRunner,
+  WfGraphAgentSelectedNode,
   WfGraphAgentToolkit,
   WfGraphAgentTurn,
 } from "#src/backend/agent/runner";

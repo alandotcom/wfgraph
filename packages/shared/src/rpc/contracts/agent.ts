@@ -47,6 +47,13 @@ const boundedAgentGraphSchema = serializedWorkflowGraphSchema.check(
 
 export const agentChatInputSchema = Schema.Struct({
   workflowId: idSchema,
+  /**
+   * The nodes selected on the canvas when the message was sent, so "change
+   * this step" names one. An id the graph does not hold is ignored.
+   */
+  selectedNodeIds: listOf(Schema.String).check(
+    Schema.isMaxLength(MAX_AGENT_GRAPH_NODES)
+  ),
   messages: listOf(boundedAgentMessageSchema).check(
     Schema.isMaxLength(MAX_AGENT_MESSAGES)
   ),

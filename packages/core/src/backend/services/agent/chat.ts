@@ -21,7 +21,11 @@ import {
   AgentConfig,
   agentDisabledMessage,
 } from "#src/backend/agent/config";
-import { AgentRunnerService, runAgentRunner } from "#src/backend/agent/runner";
+import {
+  AgentRunnerService,
+  runAgentRunner,
+  type WfGraphAgentSelectedNode,
+} from "#src/backend/agent/runner";
 import {
   makeAgentToolSession,
   withRefusedTools,
@@ -195,7 +199,22 @@ export type PostAgentChatInput = {
   readonly auth: Pick<AuthContext, "allows">;
   readonly messages: readonly AgentMessage[];
   readonly graph: SerializedWorkflowGraph;
+  readonly selectedNodeIds: readonly string[];
 };
+
+/**
+ * The selected nodes the graph holds, in graph order, each with its label.
+ * An id the graph does not hold is dropped rather than named to the model.
+ */
+export function selectedNodesOf(
+  document: AgentDocument,
+  selectedNodeIds: readonly string[]
+): WfGraphAgentSelectedNode[] {
+  const selected = new Set(selectedNodeIds);
+  return document.nodes
+    .filter((node) => selected.has(node.id))
+    .map((node) => ({ id: node.id, label: node.data.label }));
+}
 
 /**
  * The graph the editor sent, in the node-and-edge shape the tools edit.
@@ -234,10 +253,11 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
 
   const startedAt = Date.now();
   const trace = makeAgentTraceAccumulator();
+  const opened = toDocument(input.graph);
   const draftSession = yield* makeAgentToolSession({
     catalog,
     integrations,
-    document: toDocument(input.graph),
+    document: opened,
     validateDraft: (document) =>
       validateAgentDraft({
         document,
@@ -254,6 +274,7 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
   );
   const stream = runAgentRunner(runner, {
     workflowId: input.workflowId,
+    selectedNodes: selectedNodesOf(opened, input.selectedNodeIds),
     messages: input.messages,
     session,
     observeTrace: trace.observe,

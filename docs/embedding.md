@@ -573,7 +573,9 @@ const wfgraph = await createWfGraphApp({
 `provider` and a `model` for the turn's log record, and its `run` receives a
 `WfGraphAgentTurn` and answers an Effect `Stream` of `WfGraphAgentStreamPart`s, the parts the
 panel renders. The turn carries the `workflowId`, the `messages` as the browser sent them,
-the same conversation as an Effect AI `prompt` under the built-in system prompt, the
+the `selectedNodes` (id and label) selected on the canvas when the message was sent, the
+same conversation as an Effect AI `prompt` under the built-in system prompt with that
+selection named under the newest message, the
 authoring `toolkit` bound to this turn's draft, and the `signal` that aborts when the editor
 stops the turn.
 

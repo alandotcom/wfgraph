@@ -28,6 +28,7 @@ import type {
   AgentRunner,
   AgentRunnerInput,
   WfGraphAgentRunner,
+  WfGraphAgentSelectedNode,
   WfGraphAgentTurn,
 } from "#src/backend/agent/runner";
 import type { AgentToolSession } from "#src/backend/agent/tool-session";
@@ -54,13 +55,39 @@ type AgentStreamPartIn = Parameters<typeof toAgentStreamPart>[0];
  */
 export function agentPrompt(input: {
   readonly messages: readonly AgentMessage[];
+  readonly selectedNodes: readonly WfGraphAgentSelectedNode[];
 }): Prompt.Prompt {
+  const newest = input.messages.length - 1;
   return Prompt.make(
-    input.messages.map((message) => ({
+    input.messages.map((message, index) => ({
       role: message.role,
-      content: message.content,
+      content:
+        index === newest && message.role === "user"
+          ? withSelectionNote(message.content, input.selectedNodes)
+          : message.content,
     }))
   ).pipe(Prompt.setSystem(buildSystemPrompt()));
+}
+
+/**
+ * The newest message with the canvas selection named under it.
+ *
+ * The selection belongs to the moment the message was sent, so it rides on
+ * that message alone: an older message's "this step" meant whatever was
+ * selected then, which the browser no longer knows. Labels are quoted as JSON
+ * strings, because they are text a person typed.
+ */
+export function withSelectionNote(
+  content: string,
+  selectedNodes: readonly WfGraphAgentSelectedNode[]
+): string {
+  if (selectedNodes.length === 0) {
+    return content;
+  }
+  const named = selectedNodes
+    .map((node) => `${JSON.stringify(node.label)} (id ${node.id})`)
+    .join(", ");
+  return `${content}\n\n[Selected on the canvas when this was sent: ${named}. "This", "this step" or "these" refers to them.]`;
 }
 
 /** The draft as the editor reads a graph, for a `graph` part. */
@@ -87,7 +114,10 @@ function runBuiltInAgentTurn(
   const model = agentModelLayer(settings, { workflowId: input.workflowId });
   return Effect.gen(function* () {
     const session = yield* Chat.fromPrompt(
-      agentPrompt({ messages: input.messages })
+      agentPrompt({
+        messages: input.messages,
+        selectedNodes: input.selectedNodes,
+      })
     ).pipe(Effect.provide(model));
 
     const parts = agenticSteps({
@@ -265,8 +295,12 @@ export function hostAgentRunner(runner: WfGraphAgentRunner): AgentRunner {
         withHostGraphParts(
           runner.run({
             workflowId: input.workflowId,
+            selectedNodes: input.selectedNodes,
             messages: input.messages,
-            prompt: agentPrompt({ messages: input.messages }),
+            prompt: agentPrompt({
+              messages: input.messages,
+              selectedNodes: input.selectedNodes,
+            }),
             toolkit: input.session.toolkit,
             signal: input.signal,
           }),

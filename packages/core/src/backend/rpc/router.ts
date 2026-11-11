@@ -445,6 +445,7 @@ export const rpcRouter = rpc.router({
           auth: context.auth,
           messages: input.messages,
           graph: input.graph,
+          selectedNodeIds: input.selectedNodeIds,
         })
       )
     ),

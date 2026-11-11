@@ -31,6 +31,7 @@ import {
   observeAgentStream,
   observeAgentTurn,
   postAgentChat,
+  selectedNodesOf,
 } from "#src/backend/services/agent/chat";
 
 const reply: AgentStreamPart = {
@@ -91,6 +92,7 @@ describe("postAgentChat", () => {
 
       const parts = yield* postAgentChat({
         workflowId: "workflow-1",
+        selectedNodeIds: [],
         auth: { allows: async () => true },
         messages: [{ role: "user", content: "Build it" }],
         graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
@@ -165,6 +167,7 @@ describe("postAgentChat tool grants", () => {
 
         yield* postAgentChat({
           workflowId: "workflow-1",
+          selectedNodeIds: [],
           auth: {
             allows: async (operation) =>
               operation.id !== WfGraphOperations.integrationGetAll.id,
@@ -207,6 +210,27 @@ describe("postAgentChat tool grants", () => {
         });
       })
   );
+});
+
+describe("selectedNodesOf", () => {
+  it("names the selected nodes the graph holds, in graph order", () => {
+    const node = (id: string, label: string) => ({
+      id,
+      type: "action" as const,
+      position: { x: 0, y: 0 },
+      data: { label, type: "action" as const, config: {} },
+    });
+
+    expect(
+      selectedNodesOf(
+        { nodes: [node("a", "First"), node("b", "Second")], edges: [] },
+        ["b", "missing", "a"]
+      )
+    ).toEqual([
+      { id: "a", label: "First" },
+      { id: "b", label: "Second" },
+    ]);
+  });
 });
 
 describe("agentTurnStatus", () => {

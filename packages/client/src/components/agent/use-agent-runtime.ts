@@ -32,6 +32,7 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
 import { activeAgentTurnIdAtom } from "#src/lib/workflow-ui-store";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 
 /**
@@ -188,7 +189,13 @@ export function useAgentRuntime(workflowId: string) {
 
         try {
           const stream = await rpc.agent.chat(
-            { workflowId, messages: toAgentMessages(messages), graph },
+            {
+              workflowId,
+              messages: toAgentMessages(messages),
+              graph,
+              // What "this step" means in the message being sent.
+              selectedNodeIds: [...appStore.get(activeSelectionAtom).nodeIds],
+            },
             { signal: abortSignal }
           );
 

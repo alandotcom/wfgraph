@@ -24,10 +24,21 @@ export type WfGraphAgentToolkit = Toolkit.WithHandler<
   Toolkit.Tools<typeof agentToolkit>
 >;
 
+/** A node selected on the canvas when the message was sent. */
+export type WfGraphAgentSelectedNode = {
+  readonly id: string;
+  readonly label: string;
+};
+
 /** One turn, as a host's runner receives it. */
 export type WfGraphAgentTurn = {
   /** The workflow the editor has open. */
   readonly workflowId: string;
+  /**
+   * The nodes selected on the canvas, in graph order. The `prompt` already
+   * names them under the newest message.
+   */
+  readonly selectedNodes: readonly WfGraphAgentSelectedNode[];
   /** The conversation as the browser sent it, the newest message last. */
   readonly messages: readonly AgentMessage[];
   /**
@@ -72,6 +83,7 @@ export type AgentRunnerMetadata = {
 
 export type AgentRunnerInput = {
   readonly workflowId: string;
+  readonly selectedNodes: readonly WfGraphAgentSelectedNode[];
   readonly messages: readonly AgentMessage[];
   readonly session: AgentToolSession;
   readonly signal: AbortSignal;

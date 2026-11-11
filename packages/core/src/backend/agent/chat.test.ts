@@ -557,6 +557,7 @@ describe("hostAgentRunner", () => {
         const parts = yield* Stream.runCollect(
           runAgentRunner(runner, {
             workflowId: "workflow-1",
+            selectedNodes: [],
             messages: [{ role: "user", content: "Add a step" }],
             session,
             observeTrace: (event) => trace.push(event),
@@ -620,9 +621,11 @@ describe("streamAgentTurn", () => {
         streamAgentTurn(
           {
             workflowId: "workflow-1",
+            selectedNodes: [],
             messages: [{ role: "user", content: "Hello" }],
             prompt: agentPrompt({
               messages: [{ role: "user", content: "Hello" }],
+              selectedNodes: [],
             }),
             toolkit: session.toolkit,
             signal: yield* Effect.abortSignal,
@@ -636,4 +639,29 @@ describe("streamAgentTurn", () => {
       ]);
     })
   );
+});
+
+describe("agentPrompt", () => {
+  it("names the canvas selection under the newest message alone", () => {
+    const prompt = agentPrompt({
+      messages: [
+        { role: "user", content: "Add a Slack step" },
+        { role: "assistant", content: "Added it." },
+        { role: "user", content: "Rename this step" },
+      ],
+      selectedNodes: [{ id: "n3", label: 'Notify "ops"' }],
+    });
+
+    const texts = prompt.content.map((message) =>
+      message.role === "system"
+        ? message.content
+        : message.content.flatMap((content) =>
+            content.type === "text" ? [content.text] : []
+          )
+    );
+    expect(texts[1]).toEqual(["Add a Slack step"]);
+    expect(texts[3]).toEqual([
+      'Rename this step\n\n[Selected on the canvas when this was sent: "Notify \\"ops\\"" (id n3). "This", "this step" or "these" refers to them.]',
+    ]);
+  });
 });
