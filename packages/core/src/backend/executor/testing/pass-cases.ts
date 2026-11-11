@@ -1005,7 +1005,7 @@ function describeCases(
     const first = await harness.pass({ maxStepValueBytes: 1_024 });
     expect(first).toMatchObject({
       kind: "retries_spent",
-      stepId: "node:large:dispatch",
+      stepId: "node:large:step:dispatch",
     });
     expect(await harness.pass({ maxStepValueBytes: 1_024 })).toEqual({
       kind: "ended",
@@ -1016,7 +1016,7 @@ function describeCases(
     expect(run.status).toBe("failed");
     const [log] = await logsOf(harness, "large");
     expect(log).toMatchObject({ status: "error" });
-    expect(log?.error).toContain("node:large:dispatch");
+    expect(log?.error).toContain("node:large:step:dispatch");
     expect(log?.error).toContain("more than the 1024");
     expect(log?.error).not.toContain("secret");
   });
@@ -1066,8 +1066,8 @@ function describeCases(
       afterFirst.memo.map(({ stepId, status }) => ({ stepId, status }))
     ).toEqual(
       expect.arrayContaining([
-        { stepId: "node:held:dispatch", status: "succeeded" },
-        { stepId: "node:fails:dispatch", status: "failing" },
+        { stepId: "node:held:step:dispatch", status: "succeeded" },
+        { stepId: "node:fails:step:dispatch", status: "failing" },
       ])
     );
 

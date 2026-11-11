@@ -232,7 +232,7 @@ export async function runHostAction(
         return stored[stepId] as Awaited<ReturnType<typeof work>>;
       }
       try {
-        const value = await work();
+        const value = await work(new AbortController().signal);
         steps.push({ id: stepId, replayed: false, ok: true, value });
         stored[stepId] = asStored(value);
         return value;
@@ -246,13 +246,15 @@ export async function runHostAction(
         throw error;
       }
     },
-    runHandler: async <T>(work: () => Promise<T>): Promise<T> => {
+    runHandler: async <T>(
+      work: (signal: AbortSignal) => Promise<T>
+    ): Promise<T> => {
       if (handler !== undefined) {
         // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the stored answer is what this step returned on the pass that ran it
         return handler as unknown as T;
       }
       handlerRan = true;
-      const value = await work();
+      const value = await work(new AbortController().signal);
       // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the answer is opaque to a case, which only hands it on
       handler = asStored(value) as unknown as StoredHandlerAnswer;
       return value;

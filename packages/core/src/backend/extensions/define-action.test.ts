@@ -806,12 +806,15 @@ describe("defineAction with Arktype schemas", () => {
  */
 function memoSteps(memo: Map<string, unknown>) {
   const ids: string[] = [];
-  const remember = async <T>(id: string, work: () => Promise<T>) => {
+  const remember = async <T>(
+    id: string,
+    work: (signal: AbortSignal) => Promise<T>
+  ) => {
     if (memo.has(id)) {
       return memo.get(id) as T;
     }
     ids.push(id);
-    const value = await work();
+    const value = await work(new AbortController().signal);
     memo.set(id, JSON.parse(JSON.stringify(value ?? null)));
     return value;
   };
