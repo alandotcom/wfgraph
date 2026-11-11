@@ -73,6 +73,7 @@ export {
   type WfGraphInboxInsert,
   type WfGraphExtensions,
   type WfGraphHealth,
+  type WfGraphQueueHealth,
   type WfGraphAgentConfig,
   type WfGraphLogger,
   type WfGraphMcpOptions,

@@ -1037,16 +1037,19 @@ describe("createWfGraphApp health", () => {
 
     const response = await get(app, "/api/health");
     expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({
+    expect(await response.json()).toEqual({
       ok: false,
+      checkedAt: expect.any(String),
       database: false,
       runner: null,
     });
+    expect((await app.health()).queue).toBeNull();
   });
 
   // A loop that stopped turning, here one that never does, falls behind its
-  // poll interval and makes the app unready, though the database answers.
-  it("reads a loop that stopped turning as not ok", async () => {
+  // poll interval and makes the app unready, though the database answers,
+  // and the Event it never delivered shows as the due backlog's lag.
+  it("reads a loop that stopped turning as not ok, and the backlog it left", async () => {
     vi.spyOn(workerLoopModule, "runWorkerLoop").mockImplementation(
       ({ signal }) =>
         Effect.promise(
@@ -1058,11 +1061,20 @@ describe("createWfGraphApp health", () => {
             })
         )
     );
+    const pinged = defineEvent({
+      name: "app/pinged",
+      schema: Schema.Struct({ id: Schema.String }),
+    });
     await using app = await createWfGraphApp({
       ...BASE_OPTIONS,
       persistence: wfSqlite(),
+      extensions: { events: [pinged] },
     });
-    expect((await app.health()).ok).toBe(true);
+    expect(await app.health()).toMatchObject({
+      ok: true,
+      queue: { due: 0, oldestDueAt: null, lagMs: 0 },
+    });
+    await app.events.send(pinged, { id: "p1" });
 
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.now() + 2 * 60_000);
@@ -1071,6 +1083,8 @@ describe("createWfGraphApp health", () => {
       ok: false,
       database: true,
       runner: { ok: false, lastTurnAt: null },
+      queue: { due: 1, oldestDueAt: expect.any(String) },
     });
+    expect(health.queue?.lagMs).toBeGreaterThanOrEqual(2 * 60_000);
   });
 });

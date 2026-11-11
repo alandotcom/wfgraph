@@ -1,9 +1,10 @@
 /**
  * `health` on what `createWfGraphApp` answers, and the readiness route built
- * on it. A check reads one row by id through `ExecutionRepo`, bounded by
- * `HEALTH_DATABASE_TIMEOUT_MS`, and reads the time of the worker loop's last
- * turn in this process. It writes nothing and never rejects: a database that
- * fails or does not answer in time is `database: false`.
+ * on it. A check reads one row by id and the due backlog through
+ * `ExecutionRepo`, each bounded by `HEALTH_DATABASE_TIMEOUT_MS`, and reads the
+ * time of the worker loop's last turn in this process. It writes nothing and
+ * never rejects: a database that fails or does not answer in time is
+ * `database: false`, and a backlog it could not read is `queue: null`.
  */
 
 import { Effect } from "effect";
@@ -30,6 +31,16 @@ export type WfGraphRunnerHealth = {
   readonly lastTurnAt: string | null;
 };
 
+/** The schedule rows due now across every process's loops, for a metric. */
+export type WfGraphQueueHealth = {
+  /** How many runs, Event deliveries and cron fires a claim would lease now. */
+  readonly due: number;
+  /** The earliest wake time among them, as an ISO string, or null when none is due. */
+  readonly oldestDueAt: string | null;
+  /** How long the oldest due row has waited, in milliseconds, or 0 when none is due. */
+  readonly lagMs: number;
+};
+
 /** What `app.health()` answers. */
 export type WfGraphHealth = {
   /** Whether the database answered and, when this process runs a loop, the loop is turning. */
@@ -40,6 +51,8 @@ export type WfGraphHealth = {
   readonly database: boolean;
   /** The worker loop in this process, or null when this process runs none. */
   readonly runner: WfGraphRunnerHealth | null;
+  /** The due backlog, or null when the database did not answer its read. */
+  readonly queue: WfGraphQueueHealth | null;
 };
 
 /**
@@ -56,16 +69,35 @@ export function createHealthCheck(input: {
   const probe = Effect.flatMap(ExecutionRepo, (executions) =>
     executions.existsById(PROBE_EXECUTION_ID)
   ).pipe(Effect.timeout(HEALTH_DATABASE_TIMEOUT_MS), Effect.isSuccess);
+  const backlog = (now: Date) =>
+    Effect.flatMap(ExecutionRepo, (executions) =>
+      executions.readDueBacklog(now)
+    ).pipe(
+      Effect.timeout(HEALTH_DATABASE_TIMEOUT_MS),
+      Effect.map((read): WfGraphQueueHealth => ({
+        due: read.due,
+        oldestDueAt: read.oldestWakeAt?.toISOString() ?? null,
+        lagMs:
+          read.oldestWakeAt === null
+            ? 0
+            : Math.max(0, now.getTime() - read.oldestWakeAt.getTime()),
+      })),
+      Effect.orElseSucceed(() => null)
+    );
 
   return async () => {
-    const database = await runtime.runPromise(probe).catch(() => false);
     const now = new Date();
+    const [database, queue] = await Promise.all([
+      runtime.runPromise(probe).catch(() => false),
+      runtime.runPromise(backlog(now)).catch(() => null),
+    ]);
     const runner = runsLoop ? runnerHealth(input.runner(), now) : null;
     return {
       ok: database && (runner?.ok ?? true),
       checkedAt: now.toISOString(),
       database,
       runner,
+      queue,
     };
   };
 }

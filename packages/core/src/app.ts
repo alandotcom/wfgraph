@@ -72,6 +72,7 @@ export {
 export type { WfGraphRunsOptions } from "#src/backend/host-runs";
 export type {
   WfGraphHealth,
+  WfGraphQueueHealth,
   WfGraphRunnerHealth,
 } from "#src/backend/host-health";
 

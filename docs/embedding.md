@@ -1470,3 +1470,14 @@ holds booleans and a timestamp alone:
 
 `app.health()` answers the same check with the time of the loop's last turn, for a host
 that serves a health endpoint of its own. It never rejects. The route is off by default.
+
+`app.health()` also answers `queue`, the work due across every process's loops, which the
+route leaves out because it answers without authentication. A host exports it as a metric
+with its own library:
+
+- `due` is how many runs, Event deliveries and cron fires a claim would lease now.
+- `oldestDueAt` is the earliest wake time among them, or `null` when none is due.
+- `lagMs` is how long that oldest row has waited, or 0. A lag that keeps growing means the
+  loops are not keeping up, or none is running.
+
+`queue` is `null` when the database did not answer its read.

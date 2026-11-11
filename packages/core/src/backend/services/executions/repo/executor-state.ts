@@ -4,9 +4,18 @@
  * page. Both read the schedule row and its `failing` memo rows, which exist
  * only while the run is open, so a run that ended answers nothing. Neither
  * takes a lock or decides anything: `executorActivityOf` classifies the facts.
+ * `readDueBacklog` counts the rows a claim would lease, for a health check.
  */
 
-import { eq, inArray } from "drizzle-orm";
+import {
+  type Column,
+  count,
+  eq,
+  inArray,
+  min,
+  or,
+  type SQL,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Effect } from "effect";
 import { compact } from "es-toolkit/array";
@@ -17,6 +26,11 @@ import {
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import type { WfGraphDatabase } from "#src/backend/lib/db/index";
+import {
+  type BoundInstant,
+  dueSchedule,
+} from "#src/backend/services/executions/repo/release-policy";
+import { EXECUTION_SCHEDULE_KINDS } from "@wfgraph/shared/lifecycle/execution-schedule";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import type {
   ExecutorHold,
@@ -58,7 +72,38 @@ export type ExecutorStateRepoMethods = {
   readonly listFailingNodeIds: (
     executionId: string
   ) => Effect.Effect<string[], DatabaseError>;
+  /**
+   * How many schedule rows of every kind a claim would lease at `now`, and
+   * the earliest `wake_at` among them, or null when none is due. One
+   * aggregate query that takes no lock, which a health check runs per probe.
+   */
+  readonly readDueBacklog: (
+    now: Date
+  ) => Effect.Effect<DueBacklog, DatabaseError>;
 };
+
+/** The schedule rows due at one moment, as `readDueBacklog` counts them. */
+export type DueBacklog = {
+  readonly due: number;
+  readonly oldestWakeAt: Date | null;
+};
+
+/** Whether a claim lane of any kind leases this row at `now`. */
+export function dueOfAnyKind(
+  columns: {
+    kind: Column;
+    state: Column;
+    wakeAt: Column;
+    leaseExpiresAt: Column;
+  },
+  now: BoundInstant
+): SQL | undefined {
+  return or(
+    ...EXECUTION_SCHEDULE_KINDS.map((kind) =>
+      dueSchedule(columns, { kind, now })
+    )
+  );
+}
 
 /** The log rows that name the node a pass is running. */
 const runningLog = alias(workflowExecutionLogs, "running_log");
@@ -154,6 +199,18 @@ export function makeExecutorStateMethods(
             )
           );
         return compact(rows.map((row) => row.nodeId));
+      }),
+
+    readDueBacklog: (now) =>
+      database.query(async (db): Promise<DueBacklog> => {
+        const [row] = await db
+          .select({
+            due: count(),
+            oldestWakeAt: min(workflowExecutionSchedule.wakeAt),
+          })
+          .from(workflowExecutionSchedule)
+          .where(dueOfAnyKind(workflowExecutionSchedule, now));
+        return { due: row?.due ?? 0, oldestWakeAt: row?.oldestWakeAt ?? null };
       }),
   };
 }

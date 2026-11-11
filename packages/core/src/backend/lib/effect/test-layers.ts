@@ -396,6 +396,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   findExecutorState: refuse("findExecutorState"),
   listExecutorHolds: refuse("listExecutorHolds"),
   listFailingNodeIds: refuse("listFailingNodeIds"),
+  readDueBacklog: refuse("readDueBacklog"),
   insertInboxEvent: refuse("insertInboxEvent"),
   scheduleUnscheduledInbox: refuse("scheduleUnscheduledInbox"),
   finishDelivery: refuse("finishDelivery"),

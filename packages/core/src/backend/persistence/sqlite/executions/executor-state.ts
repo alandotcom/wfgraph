@@ -6,10 +6,13 @@
  */
 
 import { Effect } from "effect";
-import { eq, inArray } from "drizzle-orm";
+import { count, eq, inArray, min } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { compact } from "es-toolkit/array";
-import type { ExecutorStateRepoMethods } from "#src/backend/services/executions/repo/executor-state";
+import {
+  dueOfAnyKind,
+  type ExecutorStateRepoMethods,
+} from "#src/backend/services/executions/repo/executor-state";
 import {
   executorHolds,
   failingStepFields,
@@ -138,6 +141,27 @@ export function makeSqliteExecutorStateMethods(
             )
           )
           .pipe(Effect.map((rows) => compact(rows.map((row) => row.nodeId))))
+      ),
+
+    readDueBacklog: (now) =>
+      store.read((database) =>
+        database
+          .select({
+            due: count(),
+            oldestWakeAt: min(workflowExecutionSchedule.wakeAt),
+          })
+          .from(workflowExecutionSchedule)
+          .where(dueOfAnyKind(workflowExecutionSchedule, now.getTime()))
+          .pipe(
+            Effect.map(([row]) => ({
+              due: row?.due ?? 0,
+              // SQLite stores an instant as epoch milliseconds.
+              oldestWakeAt:
+                row?.oldestWakeAt === null || row?.oldestWakeAt === undefined
+                  ? null
+                  : new Date(row.oldestWakeAt),
+            }))
+          )
       ),
   };
 }

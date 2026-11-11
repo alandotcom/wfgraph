@@ -277,6 +277,30 @@ export function describeExecutionExecutorStateConformance({
       });
     });
 
+    // A health check reads this per probe: the rows a claim would lease now,
+    // whatever their kind, and the earliest of their wake times.
+    it("counts the rows a claim would lease and names the earliest wake", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const empty = yield* executions.readDueBacklog(T0);
+          yield* scheduledRun(at(1_000));
+          yield* scheduledRun(at(2_000));
+          yield* scheduledRun(at(60_000));
+          return {
+            empty,
+            beforeAny: yield* executions.readDueBacklog(T0),
+            twoDue: yield* executions.readDueBacklog(at(5_000)),
+          };
+        })
+      );
+
+      expect(result.empty).toEqual({ due: 0, oldestWakeAt: null });
+      expect(result.beforeAny).toEqual({ due: 0, oldestWakeAt: null });
+      expect(result.twoDue).toEqual({ due: 2, oldestWakeAt: at(1_000) });
+    });
+
     it("names each node of one run with a failing step once, and none once the run ends", async () => {
       const connection = await seeded(await openConnection());
       const result = await connection.run(
