@@ -42,6 +42,7 @@ import {
   brokenReferenceWarning,
   referencesBrokenBetween,
 } from "#src/tools/reference-diagnosis";
+import { nodeName } from "#src/tools/node-name";
 import { referencesForNode } from "#src/tools/reference-tools";
 import { writeHints } from "#src/tools/tool-hints";
 /**
@@ -343,7 +344,7 @@ function outletRefusal(input: {
     }).some((event) => event.name === eventName);
     return reachesSplit
       ? undefined
-      : `Event ${eventName} does not reach ${source.data.label || source.id}.`;
+      : `Event ${eventName} does not reach ${nodeName(source)}.`;
   }
 
   return sourceHandle === undefined
@@ -602,7 +603,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           })),
           (result) => ({
             nodeId,
-            summary: `Added ${input.label} (${input.actionId}) as ${nodeId}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+            summary: `Added "${input.label}" (${nodeId}), a ${input.actionId} step.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
           })
         );
       }),
@@ -695,7 +696,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
             ),
           })),
           (result) => ({
-            summary: `Updated ${updated.data.label || input.nodeId}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+            summary: `Updated ${nodeName(updated)}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
           })
         );
       }),
@@ -730,7 +731,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
             ),
           })),
           (result) => ({
-            summary: `Removed ${node.data.label || input.nodeId} and ${removedEdges} edge(s).${dissolvedGroupsSentence(result.dissolvedGroups)}${brokenReferencesSentence(
+            summary: `Removed ${nodeName(node)} and ${removedEdges} edge(s).${dissolvedGroupsSentence(result.dissolvedGroups)}${brokenReferencesSentence(
               { before: document, after: result.document }
             )}`,
           })
@@ -779,13 +780,13 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
         );
         if (duplicate) {
           return Effect.fail({
-            reason: `${input.source} already flows into ${input.target}.`,
+            reason: `${nodeName(source)} already flows into ${nodeName(target)}.`,
           });
         }
 
         if (wouldCycle(document.edges, input.source, input.target)) {
           return Effect.fail({
-            reason: `${input.target} already leads to ${input.source}, so this edge would make a loop. A workflow has to run forwards.`,
+            reason: `${nodeName(target)} already leads to ${nodeName(source)}, so this edge would make a loop. A workflow has to run forwards.`,
           });
         }
 
@@ -802,7 +803,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
             edges: [...current.edges, edge],
           })),
           (result) => ({
-            summary: `Connected ${source.data.label || input.source} to ${target.data.label || input.target}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+            summary: `Connected ${nodeName(source)} to ${nodeName(target)}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
           })
         );
       }),
@@ -818,6 +819,11 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           });
         }
 
+        const endName = (nodeId: string) => {
+          const end = findNode(document, nodeId);
+          return end ? nodeName(end) : nodeId;
+        };
+
         return Effect.map(
           draft.update((current) => ({
             ...current,
@@ -826,7 +832,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
             ),
           })),
           (result) => ({
-            summary: `Disconnected ${edge.source} from ${edge.target}.${dissolvedGroupsSentence(result.dissolvedGroups)}${brokenReferencesSentence(
+            summary: `Disconnected ${endName(edge.source)} from ${endName(edge.target)}.${dissolvedGroupsSentence(result.dissolvedGroups)}${brokenReferencesSentence(
               { before: document, after: result.document }
             )}`,
           })
@@ -904,13 +910,19 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           return Effect.fail({ reason: configRefusal });
         }
 
+        const ends = [edge.source, edge.target].map((nodeId) => {
+          const end = findNode(document, nodeId);
+          return end ? nodeName(end) : nodeId;
+        });
+        const edgeEnds = ends.join(" and ");
+
         return Effect.map(
           draft.update(() => candidate),
           (result) => ({
             nodeId,
             incomingEdgeId: incoming.id,
             outgoingEdgeId: outgoing.id,
-            summary: `Inserted ${input.label} (${input.actionId}) on edge ${input.edgeId}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+            summary: `Inserted "${input.label}" (${nodeId}), a ${input.actionId} step, between ${edgeEnds}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
           })
         );
       }),

@@ -50,6 +50,7 @@ import {
   explainArrivingEventChange,
   referencesBrokenBetween,
 } from "#src/tools/reference-diagnosis";
+import { nodeName } from "#src/tools/node-name";
 import { writeHints } from "#src/tools/tool-hints";
 
 const failureSchema = Schema.Struct({ reason: Schema.String });
@@ -753,7 +754,7 @@ export const waitToolHandlers = Effect.gen(function* () {
         return Effect.as(
           draft.update(applyEdit),
           omitUndefined({
-            summary: `Set ${node.data.label || node.id} to wait by ${wait.mode}.`,
+            summary: `Set ${nodeName(node)} to wait by ${wait.mode}.`,
             warning,
           })
         );

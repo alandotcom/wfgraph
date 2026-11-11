@@ -802,6 +802,7 @@ describe("connect_nodes", () => {
       );
 
       expect(failure.reason).toContain("loop");
+      expect(failure.reason).toContain('"first" (first) already leads to');
       expect((yield* draft.current).edges).toHaveLength(1);
     })
   );

@@ -61,6 +61,7 @@ import {
   brokenReferenceWarning,
   referencesBrokenBetween,
 } from "#src/tools/reference-diagnosis";
+import { nodeName } from "#src/tools/node-name";
 import { writeHints } from "#src/tools/tool-hints";
 
 const failureSchema = Schema.Struct({ reason: Schema.String });
@@ -1016,7 +1017,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
               candidate.id === input.nodeId ? updated : candidate
             ),
           })),
-          { summary: `Set the test on ${node.data.label || input.nodeId}.` }
+          { summary: `Set the test on ${nodeName(node)}.` }
         );
       }),
   };
