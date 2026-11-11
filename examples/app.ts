@@ -266,6 +266,7 @@ const wfgraph = await createWfGraphApp({
   // The build agent is off without a key, and the editor then shows no chat
   // panel, so an adopter who wants no AI in their editor writes nothing here.
   agent: {
+    model: "gpt-6-luna",
     apiKey: process.env.OPENAI_API_KEY,
   },
   // The example exposes the authoring tools to local MCP clients. A tool
