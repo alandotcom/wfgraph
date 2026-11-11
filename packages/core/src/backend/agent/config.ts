@@ -26,11 +26,18 @@ const API_KEY_ENV = "OPENAI_API_KEY";
  * exercised against the real tool schemas: the agent's parameters are strict
  * function schemas, and which of them a model will accept is a fact about the
  * model, not about the schema.
+ *
+ * Chosen by the eval suite in `packages/evals`, where it passed as many cases
+ * as `gpt-6.1-sol` at half the price. `gpt-6-luna` costs a tenth as much and
+ * passed fewer, so a host that prefers the lower bill names it in `model`.
  */
-export const DEFAULT_AGENT_MODEL = "gpt-5.6-luna";
+export const DEFAULT_AGENT_MODEL = "gpt-6.1-terra";
 
 /**
- * How hard the model thinks before it answers, every value the provider takes.
+ * How hard the model thinks before it answers, every value the GPT-6 models
+ * take. Which of them one model accepts is the model's own rule: `gpt-6.1-sol`
+ * and `gpt-6-astra` refuse `none`, and the provider answers a refused value
+ * with a message naming the ones that model takes.
  *
  * Hand-mirrored from `OpenAiLanguageModel.Config`, because `config.ts` names no
  * provider and `agent/model.ts` is the one file that does. Nothing checks the
@@ -44,7 +51,6 @@ export const DEFAULT_AGENT_MODEL = "gpt-5.6-luna";
  */
 export const AGENT_REASONING_EFFORTS = [
   "none",
-  "minimal",
   "low",
   "medium",
   "high",
@@ -65,8 +71,7 @@ export type AgentReasoningEffort = (typeof AGENT_REASONING_EFFORTS)[number];
  * Separating an effect that size would take roughly a hundred trials per arm.
  *
  * It is named rather than left unset so a provider changing its own default
- * cannot change how the agent behaves. `medium` is what `gpt-5.6` defaults to
- * today, so this pins current behaviour rather than altering it.
+ * cannot change how the agent behaves.
  */
 export const DEFAULT_AGENT_REASONING_EFFORT: AgentReasoningEffort = "medium";
 
