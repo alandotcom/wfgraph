@@ -723,9 +723,11 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       })
     );
     // The step the action was running when the budget ran out, and no other.
+    // A host action's handler step encloses its `step.run` calls, and the
+    // heartbeat records the earliest started of the steps still running.
     expect(memo.filter((entry) => entry.status !== "succeeded")).toEqual([
       {
-        stepId: "node:work:step:dispatch",
+        stepId: "node:work:handler",
         nodeId: "work",
         status: "failing",
         failures: 1,

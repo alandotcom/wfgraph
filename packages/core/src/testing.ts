@@ -206,6 +206,7 @@ export async function runHostAction(
         throw error;
       }
     },
+    runHandler: (work) => work(),
   };
 
   const step = action.implement({

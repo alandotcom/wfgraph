@@ -102,10 +102,7 @@ const followupAction = vi.fn<() => Record<string, unknown>>(() => ({
 }));
 const branchAction = vi.fn<() => Record<string, unknown>>(() => ({ ok: true }));
 
-/**
- * A host action whose work is inside `step.run`, which is the whole of what
- * makes it happen once across a replay. Workflow Graph wraps no handler body.
- */
+/** A host action whose work is inside `step.run`. */
 function aHostAction(
   id: string,
   label: string,
@@ -120,7 +117,7 @@ function aHostAction(
   });
 }
 
-/** The same action with its work left unwrapped, which a replay repeats. */
+/** The same action with its work left outside `step.run`. */
 function anUnwrappedHostAction(
   id: string,
   label: string,
@@ -321,7 +318,7 @@ describe("workflow engine replay safety", () => {
     expect(emailAction).toHaveBeenCalledTimes(2);
   });
 
-  it("memoizes what each node's handler puts in a step under the node's id, and none of its run-log writes", async () => {
+  it("memoizes each host handler's answer and what it puts in a step under the node's id, and none of its run-log writes", async () => {
     const memo = new Map<string, unknown>();
 
     await executeWorkflow(
@@ -331,9 +328,11 @@ describe("workflow engine replay safety", () => {
       actions
     );
 
-    // What a node memoizes is whatever its handler put in `step.run`, under
-    // that node's id. Nothing wraps the handler body.
+    // A host action's node memoizes its handler's answer and whatever the
+    // handler put in `step.run`, under that node's id.
+    expect(memo.has("node:email_1:handler")).toBe(true);
     expect(memo.has("node:email_1:step:work")).toBe(true);
+    expect(memo.has("node:followup_1:handler")).toBe(true);
     expect(memo.has("node:followup_1:step:work")).toBe(true);
     // The run-log open is an idempotent step and the close a direct store
     // write, so neither stores a memo row.
@@ -432,11 +431,9 @@ describe("workflow engine replay safety", () => {
     ).toEqual(["execution-termination-final", "workflow-run-completed"]);
   });
 
-  // The other half of the contract, and the trap worth knowing: Workflow Graph wraps no
-  // handler body, so work left outside `step.run` happens again on every attempt
-  // while the node keeps its one log row. The Runs view then shows one row for
-  // however many times the work ran.
-  it("repeats an unwrapped handler on a replay, under one log row", async () => {
+  // A host action's handler runs inside one step of its node, so work left
+  // outside `step.run` runs once across a replay, under the node's one log row.
+  it("runs an unwrapped host handler once across a replay, under one log row", async () => {
     const unwrapped = vi.fn<() => Record<string, unknown>>(() => ({
       sent: true,
     }));
@@ -464,10 +461,13 @@ describe("workflow engine replay safety", () => {
       bare
     );
 
-    expect(unwrapped).toHaveBeenCalledTimes(2);
-    expect(memo.has("node:email_1:step:work")).toBe(false);
-    // One row all the same: the open runs on both passes, and its row id is
-    // the run's and the node's, so both closes name the row the first opened.
+    expect(unwrapped).toHaveBeenCalledTimes(1);
+    expect(memo.get("node:email_1:handler")).toEqual({
+      ok: true,
+      value: { sent: true },
+    });
+    // The open runs on both passes, and its row id is the run's and the
+    // node's, so both closes name the row the first opened.
     const emailRowId = store.logIdOf("email_1");
     expect(
       store.callsOf("startStepLog").filter((open) => open.nodeId === "email_1")

@@ -19,6 +19,7 @@ import {
   defineAction,
 } from "#src/backend/extensions/define-action";
 import { StepFailure } from "#src/backend/extensions/steps/define-step";
+import { CredentialsUnavailable } from "#src/backend/extensions/credential-fetcher";
 
 const stepContext = {
   executionId: "exec_1",
@@ -794,5 +795,232 @@ describe("defineAction with Arktype schemas", () => {
 
     expect((await call(action, { text: "hello" })).success).toBe(true);
     expect((await call(action, { text: "" })).success).toBe(false);
+  });
+});
+
+/**
+ * A memo over a map, as the in-memory runtime keeps one: a step whose work
+ * answered is stored as JSON under its id and answered from there afterwards,
+ * and a step whose work threw stores nothing. `ids` lists every step a pass
+ * ran, so a case can see that the handler's own step nests the author's.
+ */
+function memoSteps(memo: Map<string, unknown>) {
+  const ids: string[] = [];
+  const remember = async <T>(id: string, work: () => Promise<T>) => {
+    if (memo.has(id)) {
+      return memo.get(id) as T;
+    }
+    ids.push(id);
+    const value = await work();
+    memo.set(id, JSON.parse(JSON.stringify(value ?? null)));
+    return value;
+  };
+  const steps: NodeSteps = {
+    run: (stepId, work) => remember(`step:${stepId}`, work),
+    runHandler: (work) => remember("handler", work),
+  };
+  return { steps, ids };
+}
+
+/**
+ * A host action's handler runs inside one durable step of its node, so a
+ * handler that answered once is not called again for that node of that run,
+ * whether or not it put anything in `step.run`.
+ */
+describe("defineAction across passes", () => {
+  it("calls a handler that answered once on no later pass, and answers what it stored", async () => {
+    let calls = 0;
+    const action = defineAction({
+      id: "billing/refund",
+      label: "Refund",
+      description: "Refunds outside any step",
+      input: Schema.Struct({}),
+      output: Schema.Struct({ refundId: Schema.String }),
+      handler: () => {
+        calls += 1;
+        return { refundId: `re_${calls}` };
+      },
+    });
+    const memo = new Map<string, unknown>();
+
+    const first = await run(action)(
+      { _context: stepContext },
+      memoSteps(memo).steps
+    );
+    const second = await run(action)(
+      { _context: stepContext },
+      memoSteps(memo).steps
+    );
+
+    expect(first).toEqual({ success: true, data: { refundId: "re_1" } });
+    expect(second).toEqual(first);
+    expect(calls).toBe(1);
+    expect(memo.get("handler")).toEqual({
+      ok: true,
+      value: { refundId: "re_1" },
+    });
+  });
+
+  it("nests the author's steps inside the handler's step", async () => {
+    const action = defineAction({
+      id: "billing/refund",
+      label: "Refund",
+      description: "Refunds in a step",
+      input: Schema.Struct({}),
+      handler: async ({ step }) => ({
+        refundId: await step.run("refund", async () => "re_1"),
+      }),
+    });
+    const { steps, ids } = memoSteps(new Map());
+
+    await run(action)({ _context: stepContext }, steps);
+
+    expect(ids).toEqual(["handler", "step:refund"]);
+  });
+
+  // A throw outside any step is an answer the node settles on, so it is
+  // stored and raised again rather than retried as a step.
+  it("fails the node once for a throw outside any step, and calls the handler on no later pass", async () => {
+    let calls = 0;
+    const action = defineAction({
+      id: "billing/refund",
+      label: "Refund",
+      description: "Refuses outside any step",
+      input: Schema.Struct({}),
+      handler: () => {
+        calls += 1;
+        throw new Error("The charge is already refunded");
+      },
+    });
+    const memo = new Map<string, unknown>();
+
+    const first = await run(action)(
+      { _context: stepContext },
+      memoSteps(memo).steps
+    );
+    const second = await run(action)(
+      { _context: stepContext },
+      memoSteps(memo).steps
+    );
+
+    expect(first).toEqual({
+      success: false,
+      error: { message: "The charge is already refunded" },
+    });
+    expect(second).toEqual(first);
+    expect(calls).toBe(1);
+  });
+
+  it("stores an Effect handler's StepFailure as the node's failure", async () => {
+    let calls = 0;
+    const action = defineAction({
+      id: "billing/refund",
+      label: "Refund",
+      description: "Refuses with a StepFailure",
+      input: Schema.Struct({}),
+      handler: () =>
+        Effect.suspend(() => {
+          calls += 1;
+          return Effect.fail(new StepFailure({ message: "Refused" }));
+        }),
+    });
+    const memo = new Map<string, unknown>();
+
+    await run(action)({ _context: stepContext }, memoSteps(memo).steps);
+    const second = await run(action)(
+      { _context: stepContext },
+      memoSteps(memo).steps
+    );
+
+    expect(second).toEqual({ success: false, error: { message: "Refused" } });
+    expect(calls).toBe(1);
+  });
+
+  // A throw inside `step.run` is a step the runtime retries. The handler's
+  // step stores nothing on that pass, and the next pass calls the handler
+  // again with the steps that finished answered from the memo.
+  it("stores nothing when a step's work threw, and resumes past the steps that finished", async () => {
+    const work = { charge: 0, receipt: 0, handler: 0 };
+    const action = defineAction({
+      id: "billing/charge",
+      label: "Charge",
+      description: "Charges, then sends a receipt that fails once",
+      input: Schema.Struct({}),
+      handler: async ({ step }) => {
+        work.handler += 1;
+        const chargeId = await step.run("charge", async () => {
+          work.charge += 1;
+          return "ch_1";
+        });
+        await step.run("receipt", async () => {
+          work.receipt += 1;
+          if (work.receipt === 1) throw new Error("The mailer timed out");
+          return null;
+        });
+        return { chargeId };
+      },
+    });
+    const memo = new Map<string, unknown>();
+    const pass = () =>
+      run(action)({ _context: stepContext }, memoSteps(memo).steps);
+
+    await expect(pass()).rejects.toThrow("The mailer timed out");
+    expect(memo.has("handler")).toBe(false);
+
+    expect(await pass()).toEqual({
+      success: true,
+      data: { chargeId: "ch_1" },
+    });
+    expect(await pass()).toEqual({
+      success: true,
+      data: { chargeId: "ch_1" },
+    });
+    expect(work).toEqual({ charge: 1, receipt: 2, handler: 2 });
+  });
+
+  // A refused credential read stays the store's failure on every pass, which
+  // the dispatch port turns into an engine failure naming the store.
+  it("raises a refused credential read again as the store's failure", async () => {
+    let calls = 0;
+    const action = defineAction({
+      id: "billing/refund",
+      label: "Refund",
+      description: "Reads a Connection",
+      input: Schema.Struct({}),
+      handler: async ({ readCredentials }) => {
+        calls += 1;
+        await readCredentials();
+        return {};
+      },
+    });
+    const refusing = action.implement(
+      stubStepEnvironment({
+        credentialsFor: (integrationId) =>
+          Effect.fail(
+            new CredentialsUnavailable({
+              integrationId,
+              message: "The credential store is unreachable",
+            })
+          ),
+      })
+    );
+    const memo = new Map<string, unknown>();
+    const pass = () =>
+      Effect.runPromise(
+        Effect.flip(
+          refusing(
+            { _context: stepContext, integrationId: "int_1" },
+            memoSteps(memo).steps
+          )
+        )
+      );
+
+    const first = await pass();
+    const second = await pass();
+
+    expect(first).toBeInstanceOf(CredentialsUnavailable);
+    expect(second).toBeInstanceOf(CredentialsUnavailable);
+    expect(second.message).toBe("The credential store is unreachable");
+    expect(calls).toBe(1);
   });
 });

@@ -321,6 +321,8 @@ describe("Promise step.run adapter", () => {
         remembered.set(stepId, value);
         return value;
       },
+      // An integration's step remembers only its own `step.run` calls.
+      runHandler: () => Promise.reject(new Error("not a host action")),
     };
 
     const run = runStep(step.implement("demo/promise-run")(runner));
@@ -362,6 +364,8 @@ describe("Promise step.run adapter", () => {
         remembered.set(stepId, value);
         return value;
       },
+      // An integration's step remembers only its own `step.run` calls.
+      runHandler: () => Promise.reject(new Error("not a host action")),
     };
 
     const run = runStep(step.implement("demo/promise-retry")(runner));

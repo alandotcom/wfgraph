@@ -82,10 +82,11 @@ export class StepFailure extends Schema.TaggedError<
 /**
  * How a handler remembers work across a replay.
  *
- * The database executor replays the whole workflow body on every pass of a run,
- * so anything with a side effect goes inside `run` or it happens again on every
- * pass. Workflow Graph wraps no handler body for you (ADR-0009), and an author
- * who reaches a system twice is an author who did not say so here.
+ * The database executor replays the whole workflow body on every pass of a run.
+ * An integration's handler runs again on each pass, so its work with a side
+ * effect goes inside `run` or it happens again (ADR-0009). A host action's
+ * handler runs inside one step of its node and is not called again once it
+ * answered, so `run` is where it marks the parts a retry resumes past.
  *
  * The Effect overload is the internal shape: integrations yield it and memoize
  * through a `RememberedStep` envelope so a `StepFailure` fails once. The Promise
@@ -167,6 +168,32 @@ function stepNameRefusal(subject: string, name: string): string | undefined {
 }
 
 /**
+ * The first error the work of a `step.run` threw during one call of a
+ * handler, which `rememberHandlerAnswer` reads: a durable runtime retries such
+ * a step, so the handler's answer on that call is not the node's to keep.
+ */
+type WorkThrows = { first: { error: unknown } | undefined };
+
+/**
+ * `work`, recording into `throws` what it throws before rethrowing it. Only
+ * the work's own throw is recorded; a step the runtime refuses before or after
+ * the work (retries spent, a stopped pass) is not.
+ */
+function recordingThrows<T>(
+  throws: WorkThrows,
+  work: (signal: AbortSignal) => Promise<T>
+): (signal: AbortSignal) => Promise<T> {
+  return async (signal) => {
+    try {
+      return await work(signal);
+    } catch (error) {
+      throws.first ??= { error };
+      throw error;
+    }
+  };
+}
+
+/**
  * The author's `step`, over the node's durable runtime.
  *
  * Effect is the primary execution shape: work runs to a `RememberedStep`
@@ -183,7 +210,8 @@ function stepNameRefusal(subject: string, name: string): string | undefined {
 export function nodeStepApi(
   steps: NodeSteps | undefined,
   subject: string,
-  context: StepContext
+  context: StepContext,
+  throws: WorkThrows = { first: undefined }
 ): NodeStepApi {
   const idempotencyKey = (stepName: string) =>
     idempotencyKeyFor(context, stepName);
@@ -217,19 +245,22 @@ export function nodeStepApi(
         // action rather than starting another managed-runtime fiber.
         // The runtime's signal interrupts the work when the runtime stops the
         // step, so a call in flight is abandoned with it.
-        remember(stepId, (signal) =>
-          Effect.runPromiseWith(effectContext)(
-            // A plain shape rather than the `Result` itself: what the runtime
-            // stores round-trips through JSON, and an Effect data type does not
-            // survive that.
-            Effect.map(
-              Effect.result(Effect.provide(work, ExternalTransport)),
-              (result): RememberedStep<A> =>
-                Result.isFailure(result)
-                  ? { ok: false, message: result.failure.message }
-                  : { ok: true, value: result.success }
-            ),
-            { signal }
+        remember(
+          stepId,
+          recordingThrows(throws, (signal) =>
+            Effect.runPromiseWith(effectContext)(
+              // A plain shape rather than the `Result` itself: what the runtime
+              // stores round-trips through JSON, and an Effect data type does not
+              // survive that.
+              Effect.map(
+                Effect.result(Effect.provide(work, ExternalTransport)),
+                (result): RememberedStep<A> =>
+                  Result.isFailure(result)
+                    ? { ok: false, message: result.failure.message }
+                    : { ok: true, value: result.success }
+              ),
+              { signal }
+            )
           )
         )
       );
@@ -266,7 +297,10 @@ export function nodeStepApi(
       // executor's retry would replay the failure instead of running the step
       // again.
       const call: StepRunCall = { idempotencyKey: idempotencyKey(stepId) };
-      return remember(stepId, () => work(call));
+      return remember(
+        stepId,
+        recordingThrows(throws, () => work(call))
+      );
     }
 
     return runEffect(stepId, work);
@@ -334,8 +368,9 @@ export type StepBag<
   readonly readCredentials: () => Promise<TCredentials>;
   /**
    * Where work with a side effect goes, so a replay reuses it rather than doing
-   * it again. Nothing outside it is remembered. Integrations pass an Effect;
-   * a host `defineAction` may pass a Promise factory.
+   * it again. Integrations pass an Effect, and nothing outside it is
+   * remembered. A host `defineAction` may pass a Promise factory, and its
+   * handler's answer is remembered as a whole besides.
    */
   readonly step: NodeStepApi;
 };
@@ -578,12 +613,19 @@ function toHandlerEffect<TOutput>(
  * "appointments/cancel"` where a host writes one. `output` is optional here for
  * `defineAction`, whose actions may be addressable by node alone; a definition
  * that omits it passes the handler's answer on unencoded.
+ *
+ * `options.rememberHandler` is what `defineAction` sets: the config decode, the
+ * handler and the output encode then run inside the node's handler step
+ * (`rememberHandlerAnswer`), so a host's handler that answered once is not
+ * called again for that node of that run. An integration's step leaves it off
+ * and remembers only what its handler puts in `step.run` (ADR-0009).
  */
 export function buildStep<TInput, TOutput>(
   definition: Pick<ActionStepInput<TInput, TOutput>, "handler" | "input"> & {
     readonly output?: OutputSchema<TOutput> | undefined;
   },
-  subject: string
+  subject: string,
+  options: { readonly rememberHandler: boolean } = { rememberHandler: false }
 ): StepFactory {
   const readConfig = buildConfigReader(definition.input);
   const toFailure = stepFailureFrom(subject);
@@ -626,45 +668,58 @@ export function buildStep<TInput, TOutput>(
       const credentials = yield* Effect.cached(
         readCredentials(app, integrationId)
       );
+      const throws: WorkThrows = { first: undefined };
+      // The config decode, the handler and the output encode, answering the
+      // encoded output: the value the node keeps, and the value a host
+      // action's handler step stores.
+      const answer: Effect.Effect<
+        unknown,
+        StepFailure | CredentialsUnavailable,
+        HttpClient.HttpClient
+      > = Effect.gen(function* () {
+        const parsed = readConfig(rawInput);
+        if (Result.isFailure(parsed)) {
+          return yield* new StepFailure({
+            message: invalidConfigMessage(subject, parsed.failure),
+          });
+        }
+        const input = parsed.success;
 
-      const parsed = readConfig(rawInput);
-      if (Result.isFailure(parsed)) {
-        return yield* new StepFailure({
-          message: invalidConfigMessage(subject, parsed.failure),
-        });
-      }
-      const input = parsed.success;
+        // The call is wrapped too, because a plain function may throw before it
+        // answers anything. An `Effect.fn` handler cannot, so this changes nothing
+        // for one. `toHandlerEffect` runs inside the same thunk so that a handler
+        // answering a Promise hands one Effect back here rather than parking the
+        // Promise in a success channel for the next statement to unwrap.
+        const data = yield* Effect.try({
+          try: () =>
+            toHandlerEffect(
+              definition.handler({
+                ...toHandlerBag(input, context, integrationId),
+                credentials,
+                readCredentials: () => runToPromise(credentials),
+                step: nodeStepApi(steps, subject, context, throws),
+              }),
+              toFailure
+            ),
+          catch: toFailure,
+        }).pipe(Effect.flatten);
 
-      // The call is wrapped too, because a plain function may throw before it
-      // answers anything. An `Effect.fn` handler cannot, so this changes nothing
-      // for one. `toHandlerEffect` runs inside the same thunk so that a handler
-      // answering a Promise hands one Effect back here rather than parking the
-      // Promise in a success channel for the next statement to unwrap.
-      const data = yield* Effect.try({
-        try: () =>
-          toHandlerEffect(
-            definition.handler({
-              ...toHandlerBag(input, context, integrationId),
-              credentials,
-              readCredentials: () => runToPromise(credentials),
-              step: nodeStepApi(steps, subject, context),
-            }),
-            toFailure
-          ),
-        catch: toFailure,
-      }).pipe(Effect.flatten);
+        // A handler that answered with something its output schema cannot encode
+        // will answer with it again on every attempt, so this fails the node once
+        // rather than spending the retry budget on a certainty. The path is narrow:
+        // the handler's return type is the decoded type, so reaching here takes an
+        // `as`, an `any`, or a widened external type.
+        const encoded = encodeOutput(data);
+        if (Result.isFailure(encoded)) {
+          return yield* new StepFailure({ message: encoded.failure });
+        }
 
-      // A handler that answered with something its output schema cannot encode
-      // will answer with it again on every attempt, so this fails the node once
-      // rather than spending the retry budget on a certainty. The path is narrow:
-      // the handler's return type is the decoded type, so reaching here takes an
-      // `as`, an `any`, or a widened external type.
-      const encoded = encodeOutput(data);
-      if (Result.isFailure(encoded)) {
-        return yield* new StepFailure({ message: encoded.failure });
-      }
+        return encoded.success;
+      });
 
-      return encoded.success;
+      return options.rememberHandler && steps !== undefined
+        ? yield* rememberHandlerAnswer(steps, answer, throws)
+        : yield* answer;
     }).pipe(
       Effect.map((data): StepResult => ({ success: true, data })),
       // Only the failure this step can answer for becomes the envelope. A
@@ -680,6 +735,84 @@ export function buildStep<TInput, TOutput>(
 
   return (app) => (rawInput, node) =>
     runStep(app, rawInput, readStepContext(rawInput._context), node);
+}
+
+/**
+ * What a host action's handler step stores: the encoded output, or the
+ * failure the node settled on, which a replay raises again rather than
+ * calling the handler. A refused credential read keeps its integration, so
+ * the failure raised again is the store's and not the step's.
+ */
+type SettledAnswer =
+  | { ok: true; value: unknown }
+  | { ok: false; message: string; refusedIntegrationId?: string | undefined };
+
+/**
+ * Runs `answer` once per node of a run, inside the node's handler step.
+ *
+ * Every failure the node settles on is stored as a value, so a handler that
+ * threw outside any `step.run` fails the node once and is not retried as a
+ * step. The steps the handler runs through `step.run` nest inside the handler
+ * step and keep their own ids. When the work of one of them threw on this
+ * call (`throws`), the handler step rejects with that error whatever the
+ * handler answered, so nothing is stored: the runtime retries the inner step,
+ * and the next pass calls the handler again, answering the steps that
+ * finished from the memo. A defect, or the handler step itself being refused
+ * (a lost lease, retries spent), rejects too and is not stored.
+ */
+function rememberHandlerAnswer(
+  steps: NodeSteps,
+  answer: Effect.Effect<
+    unknown,
+    StepFailure | CredentialsUnavailable,
+    HttpClient.HttpClient
+  >,
+  throws: WorkThrows
+): Effect.Effect<
+  unknown,
+  StepFailure | CredentialsUnavailable,
+  HttpClient.HttpClient
+> {
+  return Effect.gen(function* () {
+    const effectContext = yield* Effect.context<HttpClient.HttpClient>();
+    const settled = yield* Effect.promise(() =>
+      // The runtime's signal interrupts the handler when the runtime stops
+      // its step, which rejects here and so stores nothing.
+      steps.runHandler(async (signal) => {
+        const answered = await Effect.runPromiseWith(effectContext)(
+          Effect.match(answer, {
+            onSuccess: (value): SettledAnswer => ({ ok: true, value }),
+            onFailure: (failure): SettledAnswer =>
+              failure._tag === "CredentialsUnavailable"
+                ? {
+                    ok: false,
+                    message: failure.message,
+                    refusedIntegrationId: failure.integrationId,
+                  }
+                : { ok: false, message: failure.message },
+          }),
+          { signal }
+        );
+        if (throws.first !== undefined) {
+          throw throws.first.error;
+        }
+        return answered;
+      })
+    );
+
+    if (settled.ok) {
+      return settled.value;
+    }
+    // Rebuilt rather than passed on: the value crossed JSON, so what arrives on
+    // a replay is the message and not the class.
+    if (settled.refusedIntegrationId !== undefined) {
+      return yield* new CredentialsUnavailable({
+        integrationId: settled.refusedIntegrationId,
+        message: settled.message,
+      });
+    }
+    return yield* new StepFailure({ message: settled.message });
+  });
 }
 
 /**

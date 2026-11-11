@@ -290,11 +290,18 @@ function normalizeActionIdentity(
  * or `async` function fails the node by throwing; one written as an `Effect`
  * fails it with a `StepFailure`. Either message becomes the run log's sentence.
  *
+ * The handler runs inside one durable step of its node, so once it answered
+ * or failed it is not called again for that node of that run. `step.run`
+ * inside it marks the parts a retry resumes past: a throw inside one is
+ * retried, and the next pass calls the handler again with the finished steps
+ * answered from the memo. Hand `idempotencyKey`, or a step's own key, to a
+ * vendor, because a step whose process died mid-call runs again.
+ *
  * An `output` written in a foreign Standard Schema library derives the field
  * list and validates the handler's answer through `~standard.validate` on the
  * way out. Only an Effect schema carries an encoder, so a `Date` in a Zod
- * result still survives to JSONB by accident and comes back a string on the
- * replay: answer with JSON there.
+ * result reaches the handler's step as a `Date` and comes back from it a string
+ * on a later pass: answer with JSON there.
  *
  * @example
  * ```ts
@@ -373,7 +380,8 @@ export function defineAction<TInput extends Record<string, unknown>>(
         output: outputSchema,
         handler: definition.handler,
       },
-      `Action "${normalized.id}"`
+      `Action "${normalized.id}"`,
+      { rememberHandler: true }
     ),
     __wfgraphActionBrand: true,
   };

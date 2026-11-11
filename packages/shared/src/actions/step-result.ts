@@ -40,16 +40,18 @@ export type StepResult<TData = unknown> =
 /**
  * What a node's work is remembered by, so a replay reuses it.
  *
- * The engine hands one of these to every node. Nothing outside `run` is
- * remembered: a replay executes the handler again from the top and reaches each
- * `run` already answered, which is Inngest's contract and now an author's.
- *
- * `stepId` is the author's own name for the work, which the engine prefixes with
- * the node it belongs to, so two nodes running the same action do not collide.
+ * The engine hands one of these to every node. `run` is an author's
+ * `step.run`: `stepId` is the author's own name for the work, which the engine
+ * places under the node it belongs to, so two nodes running the same action do
+ * not collide. `runHandler` is the node's whole answer as one step, which a
+ * host action's handler runs inside, so a handler that answered once is not
+ * called again for that node of that run. An integration's handler does not use
+ * it, and nothing outside its own `run` calls is remembered.
  *
  * `JsonSafe` is what holds the round trip to values that survive it. The answer
  * is stored as JSON and read back on the next attempt, so a `Date` in it would
- * arrive as a string with its type still claiming otherwise.
+ * arrive as a string with its type still claiming otherwise. `runHandler`'s
+ * value is the envelope the boundary builds, which carries no author type.
  *
  * `work` is handed the signal the runtime aborts when it stops the step while
  * it runs; work that passes it on ends early.
@@ -59,4 +61,5 @@ export type NodeSteps = {
     stepId: string,
     work: (signal: AbortSignal) => Promise<T & JsonSafe<T>>
   ) => Promise<T>;
+  runHandler: <T>(work: (signal: AbortSignal) => Promise<T>) => Promise<T>;
 };

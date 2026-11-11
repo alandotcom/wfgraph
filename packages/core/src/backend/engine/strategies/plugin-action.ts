@@ -26,7 +26,7 @@ const CATALOG_CHANGED: StepResult = {
  * The durable step id an author's `step.run(name)` is memoized under.
  *
  * The engine's own steps for a node sit directly under `node:<id>:`
- * (`log-open`, `route`), and every name an author chooses sits under
+ * (`log-open`, `route`, `handler`), and every name an author chooses sits under
  * `node:<id>:step:`, so no name an author picks can answer from, or overwrite,
  * a value the engine stored.
  */
@@ -67,6 +67,18 @@ export function runPluginActionStep(input: ActionStepInput) {
             id: authorStepId(context.nodeId, stepName),
             nodeId: context.nodeId,
             name: `${context.nodeName}: ${stepName}`,
+          },
+          work
+        ),
+      // A host action's handler runs inside this step, and the author's steps
+      // above run nested in it. The executor answers the step from its memo
+      // on a later pass, so the handler is not called again.
+      runHandler: (work) =>
+        runtime.run(
+          {
+            id: `node:${context.nodeId}:handler`,
+            nodeId: context.nodeId,
+            name: `${context.nodeName} (handler)`,
           },
           work
         ),

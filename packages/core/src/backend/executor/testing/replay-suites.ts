@@ -1,5 +1,5 @@
 /**
- * The nine replay suites' cases, with every drive run through one persistence
+ * The ten replay suites' cases, with every drive run through one persistence
  * backend: each pass is claimed with `claimDue`, replayed over the memo rows,
  * woken through `wakePark`, and released with `releasePass`, all at the
  * harness's virtual clock.
@@ -19,6 +19,7 @@ import { defineParallelWaitReplayCases } from "#src/backend/engine/core-parallel
 import { defineWaitMigrateReplayCases } from "#src/backend/engine/core-wait-migrate.replay-cases";
 import { defineWaitSplitReplayCases } from "#src/backend/engine/core-wait-split.replay-cases";
 import { defineEntityEligibilityReplayCases } from "#src/backend/engine/entity-eligibility.replay-cases";
+import { defineHostActionMemoReplayCases } from "#src/backend/engine/host-action-memo.replay-cases";
 import type { ReplayCases } from "#src/backend/engine/testing/replay-runtime";
 import { defineReplayRuntimeCases } from "#src/backend/engine/testing/replay-runtime.replay-cases";
 import { openDatabaseReplayBackend } from "#src/backend/executor/testing/database-replay-backend";
@@ -55,6 +56,10 @@ const SUITES: ReadonlyArray<{ suite: string; cases: ReplayCases }> = [
   {
     suite: "engine/entity-eligibility.test.ts",
     cases: defineEntityEligibilityReplayCases,
+  },
+  {
+    suite: "engine/host-action-memo.test.ts",
+    cases: defineHostActionMemoReplayCases,
   },
   {
     suite: "engine/testing/replay-runtime.test.ts",

@@ -17,6 +17,8 @@ import { Effect, Schema } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { defineAction } from "#src/backend/extensions/define-action";
+import { defineIntegration } from "#src/backend/extensions/define-integration";
+import { StepFailure } from "#src/backend/extensions/steps/define-step";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import { createWorkflowActions } from "#src/backend/extensions/workflow-actions";
 import { DatabaseError } from "#src/backend/lib/effect/database";
@@ -62,7 +64,7 @@ const ENTITY = "appointment_1";
 let heldStep = createGate();
 
 /**
- * How many times the `test/flaky` handler has run in the current case. Its
+ * How many times the `flaky-vendor/send` handler has run in the current case. Its
  * first call throws outside any step, which fails its node with no step having
  * thrown; every later call succeeds.
  */
@@ -71,6 +73,8 @@ let flakyCalls = 0;
 let throwsOnceCalls = 0;
 /** How many times the `test/fails-twice` step has run in the current case. */
 let failsTwiceCalls = 0;
+/** What the `test/charge` handler and its two steps have run in the current case. */
+let chargeRuns = { handler: 0, charge: 0, receipt: 0 };
 /** Settles once the `flaky` node's log row is closed. */
 let flakyClosed = Promise.withResolvers<void>();
 /** How many times the `test/large` step has run in the current case. */
@@ -105,18 +109,6 @@ const actions = createWorkflowActions(
             Promise.reject(new Error("The vendor is down"))
           );
           return {};
-        },
-      }),
-      defineAction({
-        id: "test/flaky",
-        label: "Flaky",
-        description: "Fails its node outside any step on its first call",
-        input: Schema.Struct({}),
-        handler: async ({ step }) => {
-          flakyCalls += 1;
-          if (flakyCalls === 1) throw new Error("The vendor answered nonsense");
-          await step.run("dispatch", () => Promise.resolve(null));
-          return { sent: true };
         },
       }),
       defineAction({
@@ -195,6 +187,59 @@ const actions = createWorkflowActions(
             return null;
           });
           return { held: true };
+        },
+      }),
+      defineAction({
+        id: "test/charge",
+        label: "Charge",
+        description:
+          "Charges in one step, then sends a receipt in a step that throws on its first call",
+        input: Schema.Struct({}),
+        handler: async ({ step }) => {
+          chargeRuns.handler += 1;
+          const chargeId = await step.run("charge", async () => {
+            chargeRuns.charge += 1;
+            return "ch_1";
+          });
+          await step.run("receipt", async () => {
+            chargeRuns.receipt += 1;
+            if (chargeRuns.receipt === 1) {
+              throw new Error("The mailer timed out");
+            }
+            return null;
+          });
+          return { chargeId };
+        },
+      }),
+    ],
+    integrations: [
+      // An integration, because its handler is not a step: a failure outside
+      // any `step.run` is not stored, so a later pass calls the handler again.
+      // A host action's handler runs inside a step of its node and is not.
+      defineIntegration({
+        type: "flaky-vendor",
+        label: "Flaky vendor",
+        description: "A vendor whose first answer is nonsense",
+        credentials: {},
+        actions: {
+          send: {
+            label: "Flaky",
+            description: "Fails its node outside any step on its first call",
+            input: Schema.Struct({}),
+            output: Schema.Struct({
+              sent: Schema.Boolean.annotate({ description: "Sent" }),
+            }),
+            handler: Effect.fn(function* (bag) {
+              flakyCalls += 1;
+              if (flakyCalls === 1) {
+                return yield* new StepFailure({
+                  message: "The vendor answered nonsense",
+                });
+              }
+              yield* bag.step.run("dispatch", Effect.succeed(null));
+              return { sent: true };
+            }),
+          },
         },
       }),
     ],
@@ -341,6 +386,7 @@ function describeCases(
     flakyCalls = 0;
     throwsOnceCalls = 0;
     failsTwiceCalls = 0;
+    chargeRuns = { handler: 0, charge: 0, receipt: 0 };
     flakyClosed = Promise.withResolvers<void>();
     throwsWhenHeldCalls = 0;
     throwsWhenHeldThrew = Promise.withResolvers<void>();
@@ -1038,7 +1084,7 @@ function describeCases(
       createSerializedWorkflowGraph({
         nodes: [
           lifecycleNode(),
-          actionNode("flaky", "test/flaky"),
+          actionNode("flaky", "flaky-vendor/send"),
           actionNode("throws_once", "test/throws-once"),
         ],
         edges: [
@@ -1076,6 +1122,46 @@ function describeCases(
     ]);
     expect(await logsOf(harness, "throws_once")).toMatchObject([
       { status: "success" },
+    ]);
+  });
+
+  // A host action's handler runs inside its node's handler step. A throw in
+  // one of its `step.run` calls stores no handler answer, so the retry calls
+  // the handler again, answers the step that finished from the memo, and
+  // stores the handler's answer once it completes.
+  it("resumes a host handler past its finished steps after one of them threw, and stores its answer once", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode(),
+          actionNode("charge", "test/charge"),
+          waitNode("hold", delay("1h")),
+        ],
+        edges: [edge("entry", "charge", "started"), edge("charge", "hold")],
+      })
+    );
+
+    expect(await harness.pass()).toMatchObject({ kind: "retry" });
+    const retrying = await readRun(harness);
+    expect(
+      retrying.memo.map(({ stepId, status }) => ({ stepId, status }))
+    ).toEqual(
+      expect.arrayContaining([
+        { stepId: "node:charge:step:charge", status: "succeeded" },
+        { stepId: "node:charge:step:receipt", status: "failing" },
+      ])
+    );
+    expect(
+      retrying.memo.some((entry) => entry.stepId === "node:charge:handler")
+    ).toBe(false);
+
+    expect(await harness.pass()).toMatchObject({ kind: "parked" });
+    offsetMs += 61 * 60 * 1000;
+    expect(await harness.pass()).toEqual({ kind: "ended" });
+
+    expect(chargeRuns).toEqual({ handler: 2, charge: 1, receipt: 2 });
+    expect(await logsOf(harness, "charge")).toMatchObject([
+      { status: "success", output: { chargeId: "ch_1" } },
     ]);
   });
 
@@ -1506,7 +1592,7 @@ function describeCases(
         for (;;) {
           // eslint-disable-next-line eslint/no-await-in-loop -- polls until the heartbeat lands
           const schedule = await readSchedule();
-          if (schedule?.runningStepId === "node:held:step:dispatch") {
+          if (schedule?.runningStepId === "node:held:handler") {
             return {
               stepId: schedule.runningStepId,
               nodeId: schedule.runningNodeId,
@@ -1561,15 +1647,17 @@ function describeCases(
       })()
     ).finally(() => heldStep.release());
     expect(await stale).toEqual({ kind: "fence_refused", fence: "owner" });
+    // A host action's handler step encloses its `step.run` calls, and the
+    // heartbeat records the earliest started of the steps still running.
     expect(recorded).toEqual({
-      stepId: "node:held:step:dispatch",
+      stepId: "node:held:handler",
       nodeId: "held",
     });
     expect(swept.claimed?.attempt).toBe(0);
     // The step never wrote a memo row of its own, so the node id on the row
     // the claim created is the one the heartbeat recorded.
     expect(
-      swept.memo.find((entry) => entry.stepId === "node:held:step:dispatch")
+      swept.memo.find((entry) => entry.stepId === "node:held:handler")
     ).toMatchObject({ nodeId: "held", status: "failing", failures: 1 });
   });
 
@@ -1923,7 +2011,7 @@ function describeCases(
     expect((await readRun(harness)).schedule).toBeNull();
   });
 
-  it("writes one memo row per action node of a 50-node run, and none survive the terminal write", async () => {
+  it("writes two memo rows per host action node of a 50-node run, and none survive the terminal write", async () => {
     const ids = Array.from(
       { length: 50 },
       (_, index) => `n_${String(index + 1).padStart(2, "0")}`
@@ -1953,8 +2041,9 @@ function describeCases(
       (nodeId) => nodeId
     );
     expect(perNode.size).toBe(50);
+    // The handler's own step, and the one `step.run` inside it.
     expect(new Set([...perNode.values()].map((steps) => steps.length))).toEqual(
-      new Set([1])
+      new Set([2])
     );
 
     offsetMs += 61 * 60 * 1000;
