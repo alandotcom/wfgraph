@@ -166,6 +166,7 @@ const successCases: readonly ConformanceCase[] = [
           rules: [
             {
               field: "score",
+              sourceNodeId: "score",
               fieldType: "number",
               operator: "greater_or_equal",
               value: "70",
