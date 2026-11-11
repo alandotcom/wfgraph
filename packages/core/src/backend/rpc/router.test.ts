@@ -210,6 +210,39 @@ describe("rpcEffectHandler", () => {
     assert.deepStrictEqual(logLines, []);
   });
 
+  // A resume token is a bearer credential for its Wait: whoever holds it can
+  // resume the run. A refused resume must not print it in the request record.
+  it("masks a token-like input in the failure summary", async () => {
+    await using runtime = createStubRuntime();
+    const requestEvent = createRequestEvent();
+    const handler = rpcEffectHandler(() =>
+      Effect.fail(new NotFound({ error: "Wait not found" }))
+    );
+    const token = "wait-resume-token-0123456789abcdef";
+
+    const handlerArgs = {
+      context: {
+        auth: { allows: () => Promise.resolve(true) },
+        headers: new Headers(),
+        runtime,
+        requestEvent,
+      },
+      input: { token, payload: { approved: true } },
+    };
+
+    await handler(handlerArgs).catch(() => undefined);
+
+    const recorded = JSON.stringify(requestEvent.fields());
+    assert.notInclude(recorded, token);
+    assert.deepStrictEqual(requestEvent.fields(), {
+      error: {
+        kind: "not_found",
+        message: "Wait not found",
+        input: { token: "********cdef", payload: "{approved}" },
+      },
+    });
+  });
+
   it("interrupts the procedure when the request is aborted", async () => {
     await using runtime = createStubRuntime();
     const started = Promise.withResolvers<void>();

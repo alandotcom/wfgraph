@@ -66,6 +66,7 @@ import {
 import { FORBIDDEN_BODY } from "#src/backend/lib/http/authorize";
 import { readAs } from "@wfgraph/shared/types/schema";
 import { getErrorMessage } from "@wfgraph/shared/utils";
+import { redactSensitiveData } from "#src/backend/lib/utils/redact";
 import type { RpcContext } from "#src/backend/rpc/context";
 import { toOrpcError } from "#src/backend/rpc/errors";
 
@@ -108,7 +109,9 @@ function summarizeRpcInput(handlerArgs: unknown[]): unknown {
       summary[key] = value;
     }
   }
-  return summary;
+  // A top-level primitive can itself be a credential, such as the token that
+  // resumes a Wait, so the summary is masked by key as stored payloads are.
+  return redactSensitiveData(summary);
 }
 
 /**
