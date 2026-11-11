@@ -11,7 +11,6 @@ import {
   PROTOCOL_VERSION_META_KEY,
   fromJsonSchema,
   getOAuthProtectedResourceMetadataUrl,
-  type JsonSchemaType,
   type McpHttpHandler,
   type OAuthProtectedResourceMetadata,
   type StandardSchemaWithJSON,
@@ -520,15 +519,15 @@ function outputSchemaFor(name: AgentToolName): JsonObject {
   };
 }
 
+const SCOPE_GUIDANCE = {
+  catalog: "Needs no workflowId.",
+  read: "Pass workflowId to select the persisted draft.",
+  write:
+    "Pass workflowId and the expectedDraftRevision from the latest read or write.",
+} satisfies Record<ToolScope, string>;
+
 function toolDescription(name: AgentToolName, description: string): string {
-  switch (scopeOf(name)) {
-    case "catalog":
-      return `${description} Needs no workflowId.`;
-    case "read":
-      return `${description} Pass workflowId to select the persisted draft.`;
-    case "write":
-      return `${description} Pass workflowId and the expectedDraftRevision from the latest read or write.`;
-  }
+  return `${description} ${SCOPE_GUIDANCE[scopeOf(name)]}`;
 }
 
 /**
@@ -894,7 +893,7 @@ export function createAgentMcpServer(
         } = argumentsObject;
         const outcome = await input.execute(
           {
-            ...(workflowId === undefined ? {} : { workflowId }),
+            ...omitUndefined({ workflowId }),
             name,
             arguments: toolArguments,
             toolCallId: String(context.mcpReq.id),

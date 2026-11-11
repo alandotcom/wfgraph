@@ -8,6 +8,7 @@
  */
 
 import { Schema } from "effect";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type { AgentDraftValidation, AgentValidationIssue } from "#src/document";
 
 const newIssueSchema = Schema.Struct({
@@ -32,13 +33,13 @@ function fromIssue(
   issue: AgentValidationIssue,
   blocksPublish: boolean
 ): NewIssue {
-  return {
+  return omitUndefined({
     blocksPublish,
     kind: issue.kind,
-    ...(issue.nodeId === undefined ? {} : { nodeId: issue.nodeId }),
-    ...(issue.nodeLabel === undefined ? {} : { nodeLabel: issue.nodeLabel }),
+    nodeId: issue.nodeId,
+    nodeLabel: issue.nodeLabel,
     message: issue.message,
-  };
+  });
 }
 
 /** Every issue a validation reports, as one list. */

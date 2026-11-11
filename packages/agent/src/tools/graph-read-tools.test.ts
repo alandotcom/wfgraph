@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Exit } from "effect";
+import { Effect } from "effect";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";

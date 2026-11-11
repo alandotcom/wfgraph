@@ -1006,9 +1006,9 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           return Effect.fail({ reason: configRefusal });
         }
 
-        const ends = [edge.source, edge.target].map((nodeId) => {
-          const end = findNode(document, nodeId);
-          return end ? nodeName(end) : nodeId;
+        const ends = [edge.source, edge.target].map((endId) => {
+          const end = findNode(document, endId);
+          return end ? nodeName(end) : endId;
         });
         const edgeEnds = ends.join(" and ");
 

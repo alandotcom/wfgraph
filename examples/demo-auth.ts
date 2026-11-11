@@ -88,8 +88,11 @@ function bearerTokenMatches(request: Request, expected: string): boolean {
   const header = request.headers.get("authorization");
   const match = header ? /^Bearer\s+(\S+)$/i.exec(header) : null;
   if (!match?.[1]) return false;
-  const digest = (value: string) => createHash("sha256").update(value).digest();
-  return timingSafeEqual(digest(match[1]), digest(expected));
+  return timingSafeEqual(sha256(match[1]), sha256(expected));
+}
+
+function sha256(value: string): Buffer {
+  return createHash("sha256").update(value).digest();
 }
 
 /**

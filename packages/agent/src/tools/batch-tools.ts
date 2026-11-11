@@ -14,6 +14,7 @@
 
 import { Effect, Result, Schema } from "effect";
 import { Tool } from "effect/ai";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   isJsonObject,
   type JsonValue,
@@ -132,6 +133,7 @@ function withKeysResolved(
     return value.map((item) => withKeysResolved(item, ids));
   }
   if (isJsonObject(value)) {
+    // oxlint-disable-next-line wfgraph/no-entries-round-trip -- the operation is JSON a model wrote, so it can carry an own __proto__ key. Object.fromEntries defines that key as an own property; mapValues would reach the prototype setter and lose it.
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
@@ -172,7 +174,7 @@ function runOperation(
       const { tool, key, ...input } = operation;
       return Effect.map(handlers.add_node(input), (result) => ({
         tool,
-        ...(key === undefined ? {} : { key }),
+        ...omitUndefined({ key }),
         summary: result.summary,
         nodeId: result.nodeId,
       }));
@@ -205,11 +207,14 @@ function runOperation(
         summary: result.summary,
       }));
     }
-    case "insert_node_on_edge": {
+    // The last kind carries the `default` label because
+    // `typescript(consistent-return)` reads a switch over named cases as a
+    // function that can fall out of the end.
+    default: {
       const { tool, key, ...input } = operation;
       return Effect.map(handlers.insert_node_on_edge(input), (result) => ({
         tool,
-        ...(key === undefined ? {} : { key }),
+        ...omitUndefined({ key }),
         summary: result.summary,
         nodeId: result.nodeId,
         incomingEdgeId: result.incomingEdgeId,
@@ -228,14 +233,14 @@ export function applyEditsHandler(input: {
   const restore = (snapshot: AgentDocument) =>
     Effect.orDie(draft.update(() => snapshot));
 
-  return (args: { readonly operations: readonly Operation[] }) =>
+  return (batch: { readonly operations: readonly Operation[] }) =>
     Effect.gen(function* () {
-      if (args.operations.length === 0) {
+      if (batch.operations.length === 0) {
         return yield* Effect.fail({
           reason: "apply_edits needs at least one operation.",
         });
       }
-      if (args.operations.length > MAX_BATCH_OPERATIONS) {
+      if (batch.operations.length > MAX_BATCH_OPERATIONS) {
         return yield* Effect.fail({
           reason: `apply_edits takes at most ${MAX_BATCH_OPERATIONS} operations; split the batch.`,
         });
@@ -244,7 +249,7 @@ export function applyEditsHandler(input: {
       const snapshot = yield* draft.current;
       const ids = new Map<string, string>();
       const results: OperationResult[] = [];
-      for (const [index, raw] of args.operations.entries()) {
+      for (const [index, raw] of batch.operations.entries()) {
         const operation = resolveOperation(raw, ids);
         const outcome = yield* Effect.result(runOperation(handlers, operation));
         if (Result.isFailure(outcome)) {

@@ -160,7 +160,7 @@ describe("the toolkit", () => {
 describe("the issues a write introduced", () => {
   it.effect("answers what the write added and leaves out what was there", () =>
     Effect.gen(function* () {
-      const { tools } = yield* agentToolsFor({
+      const { tools: handlers } = yield* agentToolsFor({
         catalog: fixtureCatalog,
         nodes: [
           {
@@ -196,11 +196,11 @@ describe("the issues a write introduced", () => {
         }),
       });
 
-      const added = yield* tools.add_node({
+      const added = yield* handlers.add_node({
         actionId: "slack/send-message",
         label: "Notify",
       });
-      const renamed = yield* tools.update_node({
+      const renamed = yield* handlers.update_node({
         nodeId: "old",
         description: "Still missing its channel.",
       });
