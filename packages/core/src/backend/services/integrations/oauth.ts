@@ -597,10 +597,15 @@ export const completeIntegrationOAuth = Effect.fn("completeIntegrationOAuth")(
       return yield* prelude.failure;
     }
     const { oauth, routeUrls } = prelude.success;
+    // The claim fences on the revision this callback read. Background
+    // refreshes advance the revision while the operator is on the consent
+    // page, so the revision recorded at start would refuse a consent given
+    // across any refresh. The completion below writes over the config read
+    // here, so nothing written since start is lost.
     const claimInput = {
       integrationId: integration.id,
       claimId: stateHash,
-      expectedRevision: attempt.payload.configRevision,
+      expectedRevision: integration.configRevision,
       from: claimableFrom(integration.refreshState),
     };
     const claimed = yield* Effect.result(repo.claimRefresh(claimInput));
@@ -681,7 +686,7 @@ export const completeIntegrationOAuth = Effect.fn("completeIntegrationOAuth")(
       repo.completeOAuthReconnectAttempt({
         stateHash,
         integrationId: integration.id,
-        expectedRevision: attempt.payload.configRevision,
+        expectedRevision: claimInput.expectedRevision,
         expiresAt: terminalExpiry(),
         config: {
           ...integration.config,

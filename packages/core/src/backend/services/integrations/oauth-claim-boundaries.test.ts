@@ -67,6 +67,52 @@ describe("OAuth claim failure boundaries", () => {
     );
   }
 
+  // Background refreshes advance the revision while the operator is on the
+  // provider's consent page. The callback fences on the revision it reads, so
+  // a consent given across a refresh still lands.
+  it("completes a reconnect whose revision a refresh advanced after start", async () => {
+    const atCallback = integrationWithGrant("refreshed-access", 5);
+    const fences: Array<{ step: string; expectedRevision: number }> = [];
+    const repo = callbackRepo(atCallback, {
+      claimOAuthAuthorizationAttempt: () =>
+        Effect.succeed({
+          integrationId: atCallback.id,
+          payload: {
+            kind: "reconnect",
+            redirectUri:
+              "https://workflows.example.com/api/integrations/oauth/callback",
+            configRevision: 3,
+          },
+        }),
+      claimRefresh: ({ expectedRevision }) =>
+        Effect.sync(() => {
+          fences.push({ step: "claim", expectedRevision });
+          return expectedRevision === atCallback.configRevision
+            ? { status: "acquired" as const }
+            : { status: "lost" as const };
+        }),
+      completeOAuthReconnectAttempt: ({ expectedRevision }) =>
+        Effect.sync(() => {
+          fences.push({ step: "complete", expectedRevision });
+          return expectedRevision === atCallback.configRevision;
+        }),
+    });
+
+    const outcome = await Effect.runPromise(
+      Effect.result(completeIntegrationOAuth(callbackInput)).pipe(
+        Effect.provide(
+          oauthLayer(repo, oauthExtensions({ revoke: async () => undefined }))
+        )
+      )
+    );
+
+    expect(Result.isSuccess(outcome)).toBe(true);
+    expect(fences).toEqual([
+      { step: "claim", expectedRevision: 5 },
+      { step: "complete", expectedRevision: 5 },
+    ]);
+  });
+
   it("releases a callback claim when client registration fails before exchange", async () => {
     const integration = integrationWithGrant("old-access", 0);
     let released = 0;

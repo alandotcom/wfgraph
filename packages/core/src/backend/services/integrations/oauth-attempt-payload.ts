@@ -17,6 +17,10 @@ type OAuthAuthorizationAttemptBase = {
 export type OAuthReconnectAuthorizationAttemptPayload =
   OAuthAuthorizationAttemptBase & {
     kind: "reconnect";
+    /**
+     * The connection's revision when the attempt started. The callback fences
+     * on the revision it reads itself, so this is a record of the start only.
+     */
     configRevision: number;
   };
 

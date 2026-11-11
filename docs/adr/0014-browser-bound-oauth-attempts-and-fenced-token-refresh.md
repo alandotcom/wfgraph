@@ -119,3 +119,18 @@ completion inserted the reserved connection and recorded success in one
 transaction. Reconnect completion fenced the configuration revision and recorded
 success in the same transaction. Expired processing reconnects required
 reauthorization before cleanup because their provider outcome was unknown.
+
+## Amendment: Reconnect completion fenced the revision the callback read
+
+Date: 2026-11-11
+
+Reconnect attempts recorded the connection's configuration revision at start, and the
+callback claimed and completed against that revision. Every background refresh
+advanced the revision, so a refresh that ran while the operator was on the provider's
+consent page made the callback fail with a configuration conflict after consent.
+
+The callback instead read the connection, claimed it at the revision it read, and
+completed against the same revision. The claim and the fenced completion still excluded
+a concurrent refresh, disconnect, or second callback between the read and the write.
+The completion wrote the grant over the configuration the callback read, so a manual edit
+made after start was kept.
