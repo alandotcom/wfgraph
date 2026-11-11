@@ -26,6 +26,7 @@ import {
   emptyGraph,
   notYetDue,
   seedPublishedWorkflow,
+  setTimestamp,
   verdict,
 } from "#src/backend/persistence/conformance/support";
 
@@ -1535,6 +1536,58 @@ export function describeExecutionConformance({
           `update workflow_execution_logs set status = 'success' where ${log}`
         )
       ).resolves.toBeUndefined();
+    });
+
+    // The cross-workflow list resumes after its last row by comparing that
+    // row's start time, as the page answered it, with the stored one. Two runs
+    // that started in the same instant are told apart by id, so neither may
+    // fall between two pages.
+    it("pages one run at a time across runs that started in the same instant", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      await seedPublishedWorkflow(connection);
+      const opened: string[] = [];
+      for (const deliveryId of ["delivery_1", "delivery_2", "delivery_3"]) {
+        // eslint-disable-next-line eslint/no-await-in-loop -- each run opens after the one before it
+        const started = await attemptStart(connection, { deliveryId });
+        if (started.status !== "started") throw new Error("Start was refused");
+        opened.push(started.execution.id);
+      }
+      const [first, second, third] = opened;
+      // The second run takes the first run's stored start time as it stands,
+      // whatever precision the column holds it at.
+      await database.execute(
+        `update workflow_executions set started_at = (select started_at from workflow_executions where id = '${first}') where id = '${second}'`
+      );
+      await setTimestamp(database, {
+        table: "workflow_executions",
+        column: "started_at",
+        where: `id = '${third}'`,
+        at: new Date("2000-01-01T00:00:00.000Z"),
+      });
+
+      const { paged, listed } = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const ids: string[] = [];
+          let cursor: { startedAt: Date; id: string } | undefined;
+          for (;;) {
+            const [row] = yield* executions.listPage({ limit: 1, cursor });
+            if (!row) break;
+            ids.push(row.id);
+            cursor = { startedAt: row.startedAt, id: row.id };
+          }
+          const rows = yield* executions.listByWorkflow({
+            workflowId: "wf_1",
+            includeSuperseded: false,
+          });
+          return { paged: ids, listed: rows.map((row) => row.id) };
+        })
+      );
+
+      const tied = [first, second].toSorted().toReversed();
+      expect(paged).toEqual([...tied, third]);
+      expect(listed).toEqual([...tied, third]);
     });
   });
 }

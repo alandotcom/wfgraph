@@ -433,8 +433,9 @@ export const workflowExecutions = pgTable(
       .where(sql`${table.status} = 'superseded'`),
     // The same poll's default run list, which hides superseded rows. Without
     // this, a newest-wins workflow walks a long discarded prefix to fill 50.
+    // `id` is the list's tiebreak, so the order needs no sort.
     index("workflow_executions_live_by_workflow_idx")
-      .on(table.workflowId, table.startedAt)
+      .on(table.workflowId, table.startedAt, table.id)
       .where(sql`${table.status} <> 'superseded'`),
     // Partial index for Concurrency's candidate query: the live set per entity
     // stays tiny while terminal rows accrete without bound, so the index tracks

@@ -119,6 +119,11 @@ export async function openRun(
       entityType: execution.entityType,
       entityId: execution.entityId,
       deliveryId: execution.deliveryId,
+      // From the process clock rather than the column's default, which
+      // stores microseconds: a `Date` read back holds milliseconds, and the
+      // run list's cursor compares that value with the stored one for
+      // equality.
+      startedAt: new Date(),
       scheduledFor: execution.scheduled?.slot,
       scheduleCron: execution.scheduled?.schedule.cron,
       scheduleTimeZone: execution.scheduled?.schedule.timeZone,

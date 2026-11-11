@@ -38,6 +38,7 @@ import {
   lockSchedules,
   settleEndedExecutions,
 } from "#src/backend/services/executions/repo/schedule";
+import { instantOf } from "#src/backend/services/executions/repo/release-policy";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   isoTerminationClaim,
@@ -441,7 +442,10 @@ export function makeRunsMethods(
                 : ne(workflowExecutions.status, "superseded")
             )
           )
-          .orderBy(desc(workflowExecutions.startedAt))
+          .orderBy(
+            desc(workflowExecutions.startedAt),
+            desc(workflowExecutions.id)
+          )
           .limit(WORKFLOW_EXECUTIONS_LIMIT)
       ),
 
@@ -766,9 +770,9 @@ function endedRunColumns(status: TerminalExecutionStatus) {
     completedAt: now,
     // Derived here rather than passed in, because the caller's clock can be
     // the workflow function body, which a durable runtime re-runs on every
-    // attempt and after every wait. The row holds when it started, so both
-    // ends of the elapsed come from the same place.
-    duration: sql<string>`round(extract(epoch from ((now() at time zone 'utc') - ${workflowExecutions.startedAt})) * 1000)::text`,
+    // attempt and after every wait. `started_at` was written from this
+    // process's clock too, so both ends of the elapsed come from one clock.
+    duration: sql<string>`round(extract(epoch from (${instantOf(workflowExecutions.completedAt, now)}::timestamp - ${workflowExecutions.startedAt})) * 1000)::text`,
   };
 }
 
