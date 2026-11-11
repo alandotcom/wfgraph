@@ -5,16 +5,16 @@ description: >
   createWfGraphApp on Node, Express, Fastify or Bun, serving the editor with
   clientBundle, setting auth, the encryption key, publicUrl or basePath,
   choosing PostgreSQL or SQLite persistence, running PostgreSQL migrations,
-  tuning or moving the worker loop that runs workflows, enabling MCP authoring,
-  or keeping inngest.send. Also use for requests such as "add a workflow engine
-  to our app", "set up the workflow database", "workflows start but never
-  advance" or "the editor loads its assets from the wrong path". For the access
-  policy use wfgraph-core/auth; for logs and traces use
-  wfgraph-core/observability; for a Cloudflare Worker use
-  wfgraph-core/cloudflare-worker; for declaring Events or Entities use
-  wfgraph-core/events; for a host's own workflow step use
-  wfgraph-core/host-actions; for writing a vendor integration use
-  wfgraph-core/integrations; for the six built-in integrations use
+  tuning or moving the worker loop that runs workflows, adding a readiness
+  probe, or keeping inngest.send. Also use for requests such as "add a
+  workflow engine to our app", "workflows start but never advance" or "the
+  editor loads its assets from the wrong path". Other tasks have their own
+  skill: the access policy is wfgraph-core/auth, logs and traces
+  wfgraph-core/observability, MCP clients wfgraph-core/mcp, the editor's chat
+  agent wfgraph-core/build-agent, a Cloudflare Worker
+  wfgraph-core/cloudflare-worker, Events and Entities wfgraph-core/events, a
+  host's own step wfgraph-core/host-actions, a vendor integration
+  wfgraph-core/integrations, and the six built-in integrations
   wfgraph-plugins.
 metadata:
   purpose: >
@@ -60,6 +60,8 @@ its own `serve` or `connect`: see wfgraph-core/events.
 | ---------------------------------------- | ------------------------------ |
 | Write the `auth` access policy           | wfgraph-core/auth              |
 | Route logs and traces                    | wfgraph-core/observability     |
+| Let an MCP client author workflows       | wfgraph-core/mcp               |
+| Turn on or host the editor's chat agent  | wfgraph-core/build-agent       |
 | Deploy on a Cloudflare Worker            | wfgraph-core/cloudflare-worker |
 | `defineEvent`, `defineEntity`, Lifecycle | wfgraph-core/events            |
 | `defineAction` (Promise host actions)    | wfgraph-core/host-actions      |
@@ -68,13 +70,25 @@ its own `serve` or `connect`: see wfgraph-core/events.
 
 ## Embedding pitfalls
 
-- `createWfGraphApp` returns `{ fetch, basePath, events, dispose, [Symbol.asyncDispose] }`. `fetch`
-  is `(request: Request) => Promise<Response>`. Use `await using` for a lexical lifetime;
-  call `dispose()` from a long-running host's shutdown handler.
-- `auth` is required: a callback that returns an access policy for the
-  request's session, or `null` for a request with none. Roles, custom grants,
-  `trustWfGraphUpstream()` and the 401, 403 and 500 answers: wfgraph-core/auth.
-- `INTEGRATION_ENCRYPTION_KEY` is 64-character hex (`openssl rand -hex 32`).
+- `createWfGraphApp` returns `{ fetch, basePath, events, health, dispose, [Symbol.asyncDispose] }`.
+  `fetch` is `(request: Request) => Promise<Response>`. Use `await using` for a lexical
+  lifetime; call `dispose()` from a long-running host's shutdown handler.
+- `auth` is required: a function of the request that returns an access policy
+  for its session, or `null` or `undefined` for a request with none, or an
+  object holding that function as `authenticate`. `createWfGraphApp` refuses
+  anything else at startup. Roles, custom grants, `trustWfGraphUpstream()` and
+  the 401, 403 and 500 answers: wfgraph-core/auth.
+- `encryption.key` is 64-character hex (`openssl rand -hex 32`), conventionally
+  read from `INTEGRATION_ENCRYPTION_KEY`. It is required once
+  `extensions.integrations` declares an integration, since it seals Connection
+  credentials and OAuth grants; an app with no integration may leave
+  `encryption` out. A key that is passed must be valid either way.
+- `health: true` mounts `GET {basePath}/api/health` for a readiness probe. It
+  answers outside `auth` with booleans alone: 200 when the database answers
+  and this process's loop, if it runs one, turned recently, and 503 otherwise.
+  `app.health()` is the same check for a host's own endpoint, never rejects,
+  and also answers `queue`, the work due across every loop, which the route
+  leaves out. Copy the shapes from `docs/embedding.md` ("Readiness").
 - Mount `createRequestListener(wfgraph)` **before** any body parser, at the
   same path as `basePath`. Express strips the matched path; the adapter reads
   `req.originalUrl`. A drained body makes webhook signature verification fail.
@@ -85,19 +99,9 @@ its own `serve` or `connect`: see wfgraph-core/events.
 - OAuth needs `publicUrl` (HTTPS except loopback). The callback stays behind
   `auth`, so the session must ride on a cookie: wfgraph-core/auth. Slack/Resend
   on/off: wfgraph-plugins.
-- `mcp: true` enables the authenticated stateless MCP endpoint for localhost.
-  For a deployed host, set `mcp.allowedHostnames` and
-  `mcp.allowedOriginHostnames`. `create_workflow` creates a draft containing the
-  default Lifecycle Node. It takes a required `name` and optional `description`,
-  requires `workflow.create`, and returns `workflowId` and `draftRevision`.
-  Creation is not idempotent; do not automatically retry after an unknown result.
-  Every caller granted `workflow.getAll` can use `list_workflows` to discover
-  available workflow IDs. Existing-draft authoring calls take a `workflowId`;
-  writes also take the latest `expectedDraftRevision`. After a
-  `workflow_draft_stale` result, read the workflow again before editing.
-- MCP tools and the build agent keep existing Groups valid and cannot create a
-  Group or ungroup one. A write that leaves a Group with
-  fewer than two steps ungroups it, and the tool result names that Group.
+- `mcp` turns on the MCP authoring endpoint, and `agent` turns on the editor's
+  chat agent. Both are off by default: wfgraph-core/mcp and
+  wfgraph-core/build-agent.
 - Grouping never changes what a run executes. A draft save refuses Group
   membership errors and edges that touch a Group frame. The remaining Group rules block Publish, and a draft run
   ignores them.
@@ -131,8 +135,19 @@ Loop defaults and the `runner` fields: `docs/embedding.md` ("Workflow runs").
   some process on the same database must run one, such as a
   `createWfGraphRunner` process ("Run the loop in its own process"). SQLite
   refuses `runner: false`, and `createWfGraphRunner` refuses SQLite.
+- `createWfGraphRunner` takes the options object `createWfGraphApp` takes.
+  Build it once in a module both processes import, pass
+  `{ ...options, runner: false }` to the app and `options` to the runner. The
+  runner ignores `auth` (optional for it), `client`, `mcp`, `agent`,
+  `events.key` and `runner: false`, and always runs a loop.
 - SQLite runs every pass on the host's main thread (`node:sqlite` is
-  synchronous). Concurrency defaults to 1 there.
+  synchronous). Concurrency defaults to 1 there. On PostgreSQL it defaults to
+  `min(10, max(1, floor(maxConnections / 2)))`, 5 for the default pool of 10,
+  so the delivery and cron lanes and the app's HTTP requests keep the other
+  half of the pool. A `runner.concurrency` you set is used as it is.
+- `runner.maxStepValueBytes` (1 MiB of JSON by default) caps what one durable
+  step may answer. A step answering more fails its node at once with no retry,
+  and the node's error names the step and the size.
 - `runner.heartbeatMs` must be shorter than `runner.leaseMs`; startup refuses
   otherwise.
 - Event deliveries take slots of their own (`runner.deliveryConcurrency`,
@@ -141,7 +156,7 @@ Loop defaults and the `runner` fields: `docs/embedding.md` ("Workflow runs").
 - The loop deletes settled inbox rows older than `events.retentionMs` (default
   seven days, a positive integer of at most 100 years or startup refuses).
   It never deletes a pending row. Every process running a loop sweeps with its
-  own `events.retentionMs`, so set the same window in the app and every runner.
+  own `events.retentionMs`, which the shared options object keeps equal.
 - Run history is kept forever unless `runs.retentionMs` is set. With it, the
   loop deletes ended Executions older than the window, with their logs and
   timelines, workflow audit rows naming no run, and draft snapshots no run
@@ -149,8 +164,12 @@ Loop defaults and the `runner` fields: `docs/embedding.md` ("Workflow runs").
   Published versions stay. A run, or a Refused Start, recorded for an Event's
   delivery is kept while that delivery's inbox row exists, because a
   redelivery is answered from it. Startup refuses a value outside one hour to
-  100 years. Set the same window in the app and every runner.
+  100 years. Every process running a loop sweeps with its own window, as for
+  `events.retentionMs`.
 - `dispose()` stops the loop and waits up to ten seconds for passes in flight.
+  A pass still running then has its steps stopped; a step written as a plain
+  Promise cannot be stopped, so its run is held back one lease before another
+  loop claims it.
 - Runs that an earlier release left in Inngest have no schedule row and never
   advance. Drain them before upgrading.
 
@@ -160,13 +179,14 @@ Loop defaults and the `runner` fields: `docs/embedding.md` ("Workflow runs").
 
 Wrong: `createWfGraphApp({ persistence, encryption, extensions })` with no `auth`.
 
-Correct: `auth: defineWfGraphAuth((request) => accessForSession(request))`,
-with the policy written as wfgraph-core/auth describes.
+Correct: `auth: (request) => accessForSession(request)`, with the policy
+written as wfgraph-core/auth describes.
 
-`auth` is a required option, so the call fails to type-check without it. A
-JavaScript host that omits it still starts, and every operator request answers
-`500`. The failure to avoid is an editor the internet can open that decrypts
-integration secrets.
+`auth` is a required option, so the call fails to type-check without it, and
+`createWfGraphApp` refuses a missing or malformed value at startup with a
+message naming the option. The failure to avoid is a policy that answers every
+request with access, which `auth` accepts: an editor the internet can open that
+decrypts integration secrets.
 
 Source: alandotcom/wfgraph:docs/embedding.md (createWfGraphApp options)
 
@@ -228,6 +248,21 @@ Runs open and never advance: nothing claims their schedule rows.
 
 Source: alandotcom/wfgraph:docs/embedding.md (Workflow runs)
 
+### HIGH Separate options for the app and the runner
+
+Wrong: `createWfGraphRunner({ persistence, encryption: { key: otherKey } })`
+written beside a `createWfGraphApp` call that builds its own options.
+
+Correct: one options object in a shared module, passed as
+`{ ...options, runner: false }` to the app and `options` to the runner.
+
+A runner given another key, extension list or retention window starts without
+a complaint. Its loop then cannot read the Connections the app stored, refuses
+nodes whose actions it does not declare, or deletes history on a window the
+app never set.
+
+Source: alandotcom/wfgraph:docs/embedding.md (Run the loop in its own process)
+
 ### HIGH Upgrade with legacy Group config keys
 
 Wrong: Upgrade while a stored draft or published version has keys in a Group's
@@ -237,15 +272,3 @@ Correct: Before upgrading, empty each stored Group config. Graph decoding
 refuses every Group config key, and no migration ships for the removed keys.
 
 Source: alandotcom/wfgraph:docs/embedding.md (Groups)
-
-### HIGH Repeat a stale MCP write
-
-Wrong: Repeat the same MCP write after a `workflow_draft_stale` result.
-
-Correct: Call `read_workflow`, evaluate the change against the updated draft,
-and send the write with the returned `draftRevision`.
-
-A stale write can refer to graph state that another editor changed. Workflow
-Graph does not replay the mutation automatically.
-
-Source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
