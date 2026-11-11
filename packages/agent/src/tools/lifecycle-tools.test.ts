@@ -1352,35 +1352,151 @@ describe("set_condition", () => {
   );
 
   it.effect(
-    "names the step a Condition reads a path from when two steps above it offer that path",
+    "refuses a path two steps above offer until the rule names its step",
     () =>
       Effect.gen(function* () {
         // The Start Event and the scoring step both carry a `score`.
-        const { tools } = yield* agentToolsFor({
+        const { tools, draft } = yield* agentToolsFor({
           nodes: [conditionLifecycle, score, condition],
           edges: conditionEdges,
           catalog,
         });
-        const result = yield* tools.set_condition({
+        const rule = {
+          field: "score",
+          fieldType: "number" as const,
+          operator: "greater_or_equal",
+          value: "80",
+        };
+
+        const failure = yield* Effect.flip(
+          tools.set_condition({ nodeId: "branch", groups: [{ rules: [rule] }] })
+        );
+        expect(failure.reason).toBe(
+          'score is offered by "Lifecycle" (sourceNodeId entry) and "Score applicant" (sourceNodeId score). Give the rule the sourceNodeId of the step whose value it tests.'
+        );
+        expect(
+          readConfigString(
+            (yield* draft.current).nodes.find((node) => node.id === "branch")
+              ?.data.config,
+            "conditionModel"
+          )
+        ).toBeUndefined();
+
+        yield* tools.set_condition({
+          nodeId: "branch",
+          groups: [{ rules: [{ ...rule, sourceNodeId: "entry" }] }],
+        });
+        const config = (yield* draft.current).nodes.find(
+          (node) => node.id === "branch"
+        )?.data.config;
+        const parsed = parseConditionModel(
+          readConfigString(config, "conditionModel") ?? ""
+        );
+        expect(
+          parsed.valid && parsed.model.groups[0]?.conditions[0]
+        ).toMatchObject({ field: "$node:entry.score", fieldType: "number" });
+        expect(readConfigString(config, "condition")).toContain(
+          'node["entry"]["score"] >= 80'
+        );
+      })
+  );
+
+  it.effect("names the one step offering a path when the rule names none", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [conditionLifecycle, score, condition],
+        edges: conditionEdges,
+        catalog,
+      });
+
+      yield* tools.set_condition({
+        nodeId: "branch",
+        groups: [
+          {
+            rules: [
+              { field: "email", fieldType: "string", operator: "is_set" },
+            ],
+          },
+        ],
+      });
+
+      const parsed = parseConditionModel(
+        readConfigString(
+          (yield* draft.current).nodes.find((node) => node.id === "branch")
+            ?.data.config,
+          "conditionModel"
+        ) ?? ""
+      );
+      expect(
+        parsed.valid && parsed.model.groups[0]?.conditions[0]
+      ).toMatchObject({ field: "$node:entry.email" });
+    })
+  );
+
+  it.effect("refuses a sourceNodeId that does not offer the path", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [conditionLifecycle, score, condition],
+        edges: conditionEdges,
+        catalog,
+      });
+
+      const failure = yield* Effect.flip(
+        tools.set_condition({
           nodeId: "branch",
           groups: [
             {
               rules: [
                 {
-                  field: "score",
+                  field: "email",
+                  sourceNodeId: "score",
+                  fieldType: "string",
+                  operator: "is_set",
+                },
+              ],
+            },
+          ],
+        })
+      );
+      expect(failure.reason).toBe(
+        'Step score does not offer email to this Condition. It is offered by "Lifecycle" (sourceNodeId entry).'
+      );
+    })
+  );
+
+  it.effect(
+    "accepts a field already naming its step, as read_nodes shows it",
+    () =>
+      Effect.gen(function* () {
+        const { tools, draft } = yield* agentToolsFor({
+          nodes: [conditionLifecycle, score, condition],
+          edges: conditionEdges,
+          catalog,
+        });
+
+        yield* tools.set_condition({
+          nodeId: "branch",
+          groups: [
+            {
+              rules: [
+                {
+                  field: "$node:score.score",
                   fieldType: "number",
-                  operator: "greater_or_equal",
-                  value: "80",
+                  operator: "less_than",
+                  value: "10",
                 },
               ],
             },
           ],
         });
 
-        expect(result.summary).toContain(
-          'this Condition reads the value from "Score applicant"'
-        );
-        expect(result.summary).toContain('offered by "Lifecycle"');
+        expect(
+          readConfigString(
+            (yield* draft.current).nodes.find((node) => node.id === "branch")
+              ?.data.config,
+            "condition"
+          )
+        ).toContain('node["score"]["score"] < 10');
       })
   );
 
@@ -1508,6 +1624,7 @@ describe("set_condition", () => {
             rules: [
               {
                 field: "score",
+                sourceNodeId: "score",
                 fieldType: "number",
                 operator: "greater_or_equal",
                 value: "80",
@@ -1674,7 +1791,7 @@ describe("set_condition", () => {
       expect(parsed.valid).toBe(true);
       if (parsed.valid) {
         expect(parsed.model.groups[0]?.conditions[0]).toMatchObject({
-          field: "metadata",
+          field: "$node:score.metadata",
           recordKey: "priority",
           fieldType: "string",
         });
@@ -1728,6 +1845,7 @@ describe("set_condition", () => {
             rules: [
               {
                 field: "score",
+                sourceNodeId: "score",
                 fieldType: "number",
                 operator: "greater_than",
                 value: "50",
@@ -1837,7 +1955,12 @@ describe("set_condition", () => {
           groups: [
             {
               rules: [
-                { field: "score", fieldType: "number", operator: "contains" },
+                {
+                  field: "score",
+                  sourceNodeId: "score",
+                  fieldType: "number",
+                  operator: "contains",
+                },
               ],
             },
           ],
@@ -1851,7 +1974,12 @@ describe("set_condition", () => {
           groups: [
             {
               rules: [
-                { field: "score", fieldType: "number", operator: "equals" },
+                {
+                  field: "score",
+                  sourceNodeId: "score",
+                  fieldType: "number",
+                  operator: "equals",
+                },
               ],
             },
           ],
@@ -1867,6 +1995,7 @@ describe("set_condition", () => {
               rules: [
                 {
                   field: "score",
+                  sourceNodeId: "score",
                   fieldType: "number",
                   operator: "equals",
                   value: "   ",

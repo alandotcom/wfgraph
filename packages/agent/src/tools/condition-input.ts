@@ -71,6 +71,30 @@ export const conditionGroupsSchema = Schema.Array(
   description: "At least one group, each holding at least one rule.",
 });
 
+/**
+ * A Condition step's rules, each able to name the step its field comes from.
+ * Wait matches and Lifecycle filters read one Event payload and take
+ * `conditionGroupsSchema`, which has no source to name.
+ */
+export const conditionSourceGroupsSchema = Schema.Array(
+  Schema.Struct({
+    logic: Schema.optionalKey(Schema.Literals(["and", "or"])).annotate({
+      description: "How this group's rules combine. Defaults to and.",
+    }),
+    rules: Schema.Array(
+      Schema.Struct({
+        ...conditionRuleSchema.fields,
+        sourceNodeId: Schema.optionalKey(Schema.String).annotate({
+          description:
+            "The sourceNodeId list_references gives for this field: the step whose value the rule tests. Required when more than one step above the Condition offers the path.",
+        }),
+      })
+    ),
+  })
+).annotate({
+  description: "At least one group, each holding at least one rule.",
+});
+
 export type ConditionRuleInput = {
   readonly field: string;
   readonly recordKey?: string | undefined;

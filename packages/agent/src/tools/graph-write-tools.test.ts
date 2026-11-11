@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { formatTemplateToken } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
@@ -811,6 +812,60 @@ describe("delete_node", () => {
         const result = yield* tools.disconnect_nodes({ edgeId: "e1" });
 
         expect(result.summary).toContain("Notify team.text");
+      })
+  );
+
+  it.effect(
+    "names a Condition whose rule tests the step a deletion removed",
+    () =>
+      Effect.gen(function* () {
+        const gate: WorkflowNode = {
+          ...condition,
+          data: {
+            ...condition.data,
+            label: "Gate",
+            config: {
+              actionType: "Condition",
+              conditionModel: serializeConditionModel({
+                version: 2,
+                groupLogic: "and",
+                groups: [
+                  {
+                    id: "group",
+                    logic: "and",
+                    conditions: [
+                      {
+                        id: "rule",
+                        field: "$node:first.score",
+                        fieldType: "number",
+                        operator: "greater_or_equal",
+                        value: 80,
+                      },
+                    ],
+                  },
+                ],
+              }),
+            },
+          },
+        };
+        const { tools } = yield* agentToolsFor({
+          nodes: [entry, first, gate],
+          edges: [
+            {
+              id: "started",
+              source: "entry",
+              target: "first",
+              sourceHandle: LIFECYCLE_STARTED_HANDLE,
+            },
+            { id: "e-gate", source: "first", target: "branch" },
+          ],
+          catalog,
+        });
+
+        const result = yield* tools.disconnect_nodes({ edgeId: "e-gate" });
+
+        expect(result.summary).toContain("Gate.conditionModel");
+        expect(result.summary).toContain("call set_condition");
       })
   );
 

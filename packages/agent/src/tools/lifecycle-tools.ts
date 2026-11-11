@@ -12,13 +12,13 @@ import { Array as Arr, Effect, Schema } from "effect";
 import { Tool } from "effect/ai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
-// The barrel keeps a historical import path and leaves these two types out, so
-// the types come from the module that owns them and the functions from theirs.
-import type {
-  ConditionFieldType,
-  GroupLogic,
+import {
+  EVENT_NAME_FIELD_PATH,
+  type GroupLogic,
+  nodeOutputConditionPath,
+  parseEntityStateConditionPath,
+  parseNodeOutputConditionPath,
 } from "@wfgraph/shared/conditions/condition-model";
-import { EVENT_NAME_FIELD_PATH } from "@wfgraph/shared/conditions/condition-model";
 import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
@@ -54,6 +54,7 @@ import {
   conditionGroupsSchema,
   type ConditionGroupsInput,
   type ConditionRuleInput,
+  conditionSourceGroupsSchema,
   readConditionModelInput,
 } from "#src/tools/condition-input";
 import { referencesForNode } from "#src/tools/reference-tools";
@@ -405,7 +406,7 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
 
 export const SetCondition = Tool.make("set_condition", {
   description:
-    "Write the test a Condition step branches on. Groups are joined by groupLogic and the rules inside a group by that group's logic. Call list_references first so every field path is one the step can actually read.",
+    "Write the test a Condition step branches on. Groups are joined by groupLogic and the rules inside a group by that group's logic. Call list_references first so every field path is one the step can actually read, and give each rule the sourceNodeId of the step its field comes from. A rule without sourceNodeId is refused when more than one step above the Condition offers its path.",
   parameters: Schema.Struct({
     nodeId: Schema.String.annotate({
       description: "The Condition node to write, from read_workflow.",
@@ -413,7 +414,7 @@ export const SetCondition = Tool.make("set_condition", {
     groupLogic: Schema.optionalKey(Schema.Literals(["and", "or"])).annotate({
       description: "How the groups combine. Defaults to and.",
     }),
-    groups: conditionGroupsSchema,
+    groups: conditionSourceGroupsSchema,
   }),
   success: writeResultSchema,
   failure: failureSchema,
@@ -895,7 +896,7 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
       readonly groupLogic?: GroupLogic | undefined;
       readonly groups: readonly {
         readonly logic?: GroupLogic | undefined;
-        readonly rules: readonly ConditionRuleInput[];
+        readonly rules: readonly ConditionSourceRuleInput[];
       }[];
     }) =>
       Effect.flatMap(draft.current, (document) => {
@@ -922,10 +923,9 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
             document,
             catalog: draft.catalog,
           }) ?? [];
-        const availablePaths = new Set(
-          availableReferences.map((reference) => reference.path)
-        );
 
+        const groups: { logic?: GroupLogic; rules: ConditionRuleInput[] }[] =
+          [];
         for (const group of input.groups) {
           if (group.rules.length === 0) {
             return Effect.fail({
@@ -933,68 +933,24 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
             });
           }
 
+          const rules: ConditionRuleInput[] = [];
           for (const rule of group.rules) {
-            if (
-              rule.field !== EVENT_NAME_FIELD_PATH &&
-              availablePaths.size === 0
-            ) {
-              return Effect.fail({
-                reason:
-                  "This Condition has no available references. Connect its inputs, then call list_references.",
-              });
+            const resolved = resolveConditionRuleField({
+              rule,
+              references: availableReferences,
+            });
+            if (!resolved.ok) {
+              return Effect.fail({ reason: resolved.reason });
             }
-            if (
-              rule.field !== EVENT_NAME_FIELD_PATH &&
-              !availablePaths.has(rule.field)
-            ) {
-              return Effect.fail({
-                reason: `That condition field is unavailable. Use the path property from list_references: ${[...availablePaths].join(", ")}.`,
-              });
-            }
-            const expectedTypes = new Set<ConditionFieldType>(
-              rule.field === EVENT_NAME_FIELD_PATH
-                ? ["string"]
-                : availableReferences
-                    .filter((reference) => reference.path === rule.field)
-                    .flatMap((reference) => reference.conditionFieldType ?? [])
-            );
-            if (expectedTypes.size !== 1) {
-              return Effect.fail({
-                reason:
-                  "That reference does not have one condition-compatible type.",
-              });
-            }
-            const [expectedType] = expectedTypes;
-            if (rule.fieldType !== expectedType) {
-              return Effect.fail({
-                reason: `Use fieldType ${expectedType} for ${rule.field}, as list_references reports.`,
-              });
-            }
-            const matchingReferences = availableReferences.filter(
-              (reference) => reference.path === rule.field
-            );
-            const openRecord =
-              matchingReferences.length > 0 &&
-              matchingReferences.every(
-                (reference) => reference.openRecord === true
-              );
-            if (openRecord && !rule.recordKey?.trim()) {
-              return Effect.fail({
-                reason: `${rule.field} is an open record. Supply recordKey for the value to compare.`,
-              });
-            }
-            if (!openRecord && rule.recordKey !== undefined) {
-              return Effect.fail({
-                reason: `${rule.field} is not an open record and does not take recordKey.`,
-              });
-            }
+            rules.push(resolved.rule);
           }
+          groups.push(omitUndefined({ logic: group.logic, rules }));
         }
 
         const reading = readConditionModelInput({
           subject: "A condition",
           groupLogic: input.groupLogic,
-          groups: input.groups,
+          groups,
         });
         if (!reading.ok) {
           return Effect.fail({ reason: reading.reason });
@@ -1022,61 +978,143 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
               candidate.id === input.nodeId ? updated : candidate
             ),
           })),
-          {
-            summary: [
-              `Set the test on ${nodeName(node)}.`,
-              ...sharedPathNotes({
-                fields: input.groups.flatMap((group) =>
-                  group.rules.map((rule) => rule.field)
-                ),
-                references: availableReferences,
-                nodeOrder: document.nodes.map((candidate) => candidate.id),
-              }),
-            ].join(" "),
-          }
+          { summary: `Set the test on ${nodeName(node)}.` }
         );
       }),
   };
 });
 
+type ConditionSourceRuleInput = ConditionRuleInput & {
+  readonly sourceNodeId?: string | undefined;
+};
+
+type AvailableReference = NonNullable<
+  ReturnType<typeof referencesForNode>
+>[number];
+
 /**
- * One sentence per tested path that more than one step above the Condition
- * offers, naming the step whose value the Condition reads. A Condition names
- * a value by its path alone, and the engine folds every finished step's
- * output into one namespace in the graph's node order, so the step latest in
- * that order supplies a shared path.
+ * A rule's field as the model stores it, held to what the Condition can read.
+ *
+ * A field from a step or the Lifecycle Node is written naming that node, so
+ * the engine reads its value even where another node above offers the same
+ * path. The node is the rule's `sourceNodeId`, or the one node offering the
+ * path when the rule names none; a path several nodes offer has no default.
+ * The Arriving Event's name and Entity State name no node and pass through.
  */
-function sharedPathNotes(input: {
-  readonly fields: readonly string[];
-  readonly references: readonly {
-    readonly path: string;
-    readonly sourceNodeId: string;
-    readonly sourceNodeLabel: string;
-  }[];
-  readonly nodeOrder: readonly string[];
-}): string[] {
-  return Arr.dedupe(input.fields).flatMap((field) => {
-    const sources = input.references
-      .filter(
-        (reference) =>
-          reference.path === field &&
-          input.nodeOrder.includes(reference.sourceNodeId)
-      )
-      .toSorted(
-        (a, b) =>
-          input.nodeOrder.indexOf(a.sourceNodeId) -
-          input.nodeOrder.indexOf(b.sourceNodeId)
-      );
-    const read = sources.at(-1);
-    if (sources.length < 2 || read === undefined) {
-      return [];
-    }
-    const others = sources
-      .slice(0, -1)
-      .map((source) => `"${source.sourceNodeLabel}"`)
-      .join(" and ");
-    return [
-      `The path ${field} is offered by ${others} and "${read.sourceNodeLabel}"; this Condition reads the value from "${read.sourceNodeLabel}", the later step, which is what the engine does with a shared path.`,
-    ];
-  });
+function resolveConditionRuleField(input: {
+  readonly rule: ConditionSourceRuleInput;
+  readonly references: readonly AvailableReference[];
+}):
+  | { readonly ok: true; readonly rule: ConditionRuleInput }
+  | { readonly ok: false; readonly reason: string } {
+  const { sourceNodeId: named, ...rule } = input.rule;
+  if (rule.field === EVENT_NAME_FIELD_PATH) {
+    return rule.fieldType === "string"
+      ? { ok: true, rule }
+      : {
+          ok: false,
+          reason: `Use fieldType string for ${rule.field}, as list_references reports.`,
+        };
+  }
+
+  if (input.references.length === 0) {
+    return {
+      ok: false,
+      reason:
+        "This Condition has no available references. Connect its inputs, then call list_references.",
+    };
+  }
+
+  // A field already naming its node, as read_nodes shows a stored rule, is
+  // taken apart into the same two halves a rule from list_references carries.
+  const qualified = parseNodeOutputConditionPath(rule.field);
+  if (qualified && named !== undefined && named !== qualified.nodeId) {
+    return {
+      ok: false,
+      reason: `${rule.field} names step ${qualified.nodeId}, but sourceNodeId is ${named}. Pass the path alone in field.`,
+    };
+  }
+  const path = qualified?.fieldPath ?? rule.field;
+  const sourceNodeId = qualified?.nodeId ?? named;
+  const offering = input.references.filter(
+    (reference) => reference.path === path
+  );
+  if (offering.length === 0) {
+    return {
+      ok: false,
+      reason: `That condition field is unavailable. Use the path property from list_references: ${Arr.dedupe(input.references.map((reference) => reference.path)).join(", ")}.`,
+    };
+  }
+
+  const sources = Arr.dedupeWith(
+    offering,
+    (a, b) => a.sourceNodeId === b.sourceNodeId
+  );
+  const describeSources = sources
+    .map(
+      (source) =>
+        `"${source.sourceNodeLabel}" (sourceNodeId ${source.sourceNodeId})`
+    )
+    .join(" and ");
+  const entityState = parseEntityStateConditionPath(path) !== null;
+  const chosen =
+    sourceNodeId === undefined
+      ? sources.length === 1 || entityState
+        ? sources[0]?.sourceNodeId
+        : undefined
+      : sourceNodeId;
+  if (chosen === undefined) {
+    return {
+      ok: false,
+      reason: `${path} is offered by ${describeSources}. Give the rule the sourceNodeId of the step whose value it tests.`,
+    };
+  }
+  const matching = offering.filter(
+    (reference) => reference.sourceNodeId === chosen
+  );
+  if (matching.length === 0) {
+    return {
+      ok: false,
+      reason: `Step ${chosen} does not offer ${path} to this Condition. It is offered by ${describeSources}.`,
+    };
+  }
+
+  const expectedTypes = Arr.dedupe(
+    matching.flatMap((reference) => reference.conditionFieldType ?? [])
+  );
+  const [expectedType] = expectedTypes;
+  if (expectedTypes.length !== 1 || expectedType === undefined) {
+    return {
+      ok: false,
+      reason: "That reference does not have one condition-compatible type.",
+    };
+  }
+  if (rule.fieldType !== expectedType) {
+    return {
+      ok: false,
+      reason: `Use fieldType ${expectedType} for ${path}, as list_references reports.`,
+    };
+  }
+
+  const openRecord = matching.every(
+    (reference) => reference.openRecord === true
+  );
+  if (openRecord && !rule.recordKey?.trim()) {
+    return {
+      ok: false,
+      reason: `${path} is an open record. Supply recordKey for the value to compare.`,
+    };
+  }
+  if (!openRecord && rule.recordKey !== undefined) {
+    return {
+      ok: false,
+      reason: `${path} is not an open record and does not take recordKey.`,
+    };
+  }
+
+  // Entity State already carries its source in the path list_references gives.
+  const field = entityState ? path : nodeOutputConditionPath(chosen, path);
+  return field === null
+    ? { ok: false, reason: `${path} is not a field path.` }
+    : { ok: true, rule: { ...rule, field } };
 }

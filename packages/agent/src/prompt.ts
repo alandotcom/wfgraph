@@ -165,11 +165,11 @@ How a step reads a value from an earlier step:
   once that step is connected. Name every step you are about to configure in
   one list_references call. A reference with no readableBy is readable by every
   step you named, and one with readableBy only by the steps it lists.
-- A Condition names a value by its path alone. When two steps above it offer
-  the same path, such as a score on the Start Event and a score from a scoring
-  step, the Condition reads the later step's value, and set_condition says
-  which step that is. That is the intended reading when the request tests the
-  later step's result, so keep the Condition and go on.
+- A Condition rule tests the value of one named step. Give each rule in
+  set_condition the sourceNodeId list_references gives for its path. When two
+  steps above the Condition offer the same path, such as a score on the Start
+  Event and a score from a scoring step, set_condition refuses a rule without
+  sourceNodeId, so name the step whose value the request tests.
 - A reference marked nullable can be absent at run time. Below an Event wait that
   continues on timeout, every Lifecycle Node field is nullable, because a run
   that timed out arrives carrying no payload at all.

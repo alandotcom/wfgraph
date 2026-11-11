@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
@@ -126,6 +127,91 @@ describe("brokenReferencesIn", () => {
     };
 
     expect(brokenReferencesIn({ document: wholeOutput, catalog })).toEqual([]);
+  });
+});
+
+describe("brokenReferencesIn on a Condition rule naming its step", () => {
+  function gate(field: string): WorkflowNode {
+    return {
+      id: "gate",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: {
+        label: "Gate",
+        type: "action",
+        config: {
+          actionType: BUILT_IN_ACTION_IDS.condition,
+          conditionModel: serializeConditionModel({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              {
+                id: "group",
+                logic: "and",
+                conditions: [
+                  {
+                    id: "rule",
+                    field,
+                    fieldType: "string",
+                    operator: "is_set",
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      },
+    };
+  }
+
+  const gateEdges = [
+    {
+      id: "e1",
+      source: "entry",
+      target: "wait",
+      sourceHandle: LIFECYCLE_STARTED_HANDLE,
+    },
+    { id: "e2", source: "wait", target: "gate" },
+  ];
+
+  it("reports a rule whose step stopped offering its path", () => {
+    expect(
+      brokenReferencesIn({
+        document: {
+          nodes: [entry, delayWait, gate("$node:entry.email")],
+          edges: gateEdges,
+        },
+        catalog,
+      })
+    ).toEqual([]);
+    expect(
+      brokenReferencesIn({
+        document: {
+          nodes: [entry, eventWait, gate("$node:entry.email")],
+          edges: gateEdges,
+        },
+        catalog,
+      })
+    ).toEqual([
+      {
+        nodeId: "gate",
+        nodeLabel: "Gate",
+        configKey: "conditionModel",
+        token: "$node:entry.email",
+      },
+    ]);
+  });
+
+  it("leaves a rule naming no step alone", () => {
+    expect(
+      brokenReferencesIn({
+        document: {
+          nodes: [entry, eventWait, gate("email")],
+          edges: gateEdges,
+        },
+        catalog,
+      })
+    ).toEqual([]);
   });
 });
 
