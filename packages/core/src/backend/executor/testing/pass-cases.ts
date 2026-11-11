@@ -200,11 +200,32 @@ const missingVersion: RepoWrap = (repo) => ({
       ),
 });
 
+/**
+ * Reads every run as ended, as `endedRun` does, and fails every deletion of
+ * the pass's schedule row.
+ */
+const refuseDrop: RepoWrap = (repo) =>
+  wrapFenced((writes) => ({
+    ...writes,
+    dropSchedule: () =>
+      Effect.fail(new DatabaseError({ cause: new Error("connection reset") })),
+  }))(endedRun(repo));
+
 /** Fails every read of a run's log rows, which a run pass makes when it opens. */
 const refuseLogRead: RepoWrap = (repo) => ({
   ...repo,
   listNodeLogStates: () =>
     Effect.fail(new DatabaseError({ cause: new Error("connection reset") })),
+});
+
+/**
+ * Raises a defect from every read of a run's log rows, as a stored graph the
+ * strict parser refuses does when a run pass opens.
+ */
+const dieOnLogRead: RepoWrap = (repo) => ({
+  ...repo,
+  listNodeLogStates: () =>
+    Effect.die(new Error("The stored graph does not parse")),
 });
 
 /**
@@ -1205,8 +1226,8 @@ function describeCases(
   });
 
   // The pass reads the run's log rows when it opens, before any step runs,
-  // so a failed read is the pass's own failure. Its row is swept once its
-  // lease expires, and the next pass that parks resets the run's count.
+  // so a failed read is the pass's own failure. Its row is released for a
+  // retry, and the next pass that parks resets the run's count.
   it("never spends a finished node's step on log row reads that fail on scattered passes", async () => {
     const pauses = Array.from(
       { length: STEP_RETRY_LIMIT + 1 },
@@ -1242,7 +1263,7 @@ function describeCases(
     for (let round = 0; round < pauses.length; round += 1) {
       offsetMs += 11_000;
       // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
-      await harness.pass({ wrap: refuseLogRead }).catch(() => null);
+      await harness.pass({ wrap: refuseLogRead });
       // eslint-disable-next-line eslint/no-await-in-loop -- each read follows the pass before it
       blamed.push(await failingNodes());
       offsetMs += LEASE_MS + 1_000;
@@ -1631,6 +1652,123 @@ function describeCases(
     ]);
   });
 
+  // `open` runs before any step, so a failure there is counted against the
+  // row's own count, and the row is released with a backoff rather than left
+  // leased until its lease runs out.
+  for (const { label, wrap, message } of [
+    {
+      label: "the database fails a read",
+      wrap: refuseLogRead,
+      message: "connection reset",
+    },
+    {
+      label: "a defect is raised",
+      wrap: dieOnLogRead,
+      message: "The stored graph does not parse",
+    },
+  ]) {
+    it(`ends the run failed once its open fails on every pass because ${label}`, async () => {
+      const harness = await startRun(
+        createSerializedWorkflowGraph({
+          nodes: [lifecycleNode(), actionNode("send", "test/send")],
+          edges: [edge("entry", "send", "started")],
+        })
+      );
+
+      const results: Array<PassResult | null> = [];
+      for (let pass = 1; pass <= STEP_RETRY_LIMIT + 1; pass += 1) {
+        // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
+        results.push(await harness.pass({ wrap }));
+      }
+
+      expect(results.map((result) => result?.kind)).toEqual([
+        ...Array.from({ length: STEP_RETRY_LIMIT }, () => "retry"),
+        "subject_failed",
+      ]);
+      expect(
+        results
+          .slice(0, STEP_RETRY_LIMIT)
+          .map((result) =>
+            result !== null && "schedule" in result
+              ? result.schedule.attempt
+              : null
+          )
+      ).toEqual([1, 2, 3, 4]);
+      const run = await readRun(harness);
+      expect(run.status).toBe("failed");
+      expect(run.error).toContain(message);
+      expect(run.schedule).toBeNull();
+      expect(await logsOf(harness, "send")).toEqual([]);
+    });
+  }
+
+  it("ends the run failed once its retries are spent without opening its body", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(), actionNode("send", "test/send")],
+        edges: [edge("entry", "send", "started")],
+      })
+    );
+    // Each worker claims the run and dies before it records a step, so each
+    // expired lease adds one to the run's own count.
+    for (let claim = 1; claim <= STEP_RETRY_LIMIT + 1; claim += 1) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- each claim follows the one before it
+      await harness.connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          yield* executions.claimDue({
+            lanes: [{ kind: "run", limit: 1 }],
+            workerId: `worker_dead_${claim}`,
+            leaseMs: LEASE_MS,
+            now: now(),
+          });
+        })
+      );
+      offsetMs += LEASE_MS + 1_000;
+    }
+    let opened = false;
+    const watchOpen: RepoWrap = (repo) => ({
+      ...repo,
+      findSummaryById: (executionId) =>
+        Effect.suspend(() => {
+          opened = true;
+          return repo.findSummaryById(executionId);
+        }),
+    });
+
+    expect(await harness.pass({ wrap: watchOpen })).toMatchObject({
+      kind: "subject_failed",
+    });
+    expect(opened).toBe(false);
+    expect((await readRun(harness)).status).toBe("failed");
+  });
+
+  it("ends the run failed once deleting the row of a run it has nothing to run for fails on every pass", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(), actionNode("send", "test/send")],
+        edges: [edge("entry", "send", "started")],
+      })
+    );
+
+    const results: Array<string | undefined> = [];
+    for (let pass = 1; pass <= STEP_RETRY_LIMIT + 1; pass += 1) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- each pass follows the one before it
+      const result = await harness.pass({ wrap: refuseDrop });
+      results.push(
+        result?.kind === "unavailable"
+          ? `${result.kind}:${result.ending}`
+          : result?.kind
+      );
+    }
+
+    expect(results).toEqual([
+      ...Array.from({ length: STEP_RETRY_LIMIT }, () => "unavailable:failed"),
+      "subject_failed",
+    ]);
+    expect((await readRun(harness)).schedule).toBeNull();
+  });
+
   it("releases a run it has nothing to run for when deleting its row fails, and deletes the row on the next pass", async () => {
     const harness = await startRun(
       createSerializedWorkflowGraph({
@@ -1640,15 +1778,6 @@ function describeCases(
     );
     // The run reads as ended, as it would once a policy cancel ended it after
     // the claim, so the pass has nothing to run and deletes its schedule row.
-    const refuseDrop: RepoWrap = (repo) =>
-      wrapFenced((writes) => ({
-        ...writes,
-        dropSchedule: () =>
-          Effect.fail(
-            new DatabaseError({ cause: new Error("connection reset") })
-          ),
-      }))(endedRun(repo));
-
     expect(await harness.pass({ wrap: refuseDrop })).toMatchObject({
       kind: "unavailable",
       reason: "not_in_flight",

@@ -89,16 +89,16 @@ export type UnavailableSeverity = "info" | "warn";
  * - `parked`: the body ended with Waits parked. The release re-queued the run
  *   when a park holds a wake the pass did not read, and otherwise put it to
  *   sleep until its earliest park deadline.
- * - `retry`: a step threw, the body failed outside any step, or the write that
- *   ends a row with nothing to run failed. The release counted the failure
- *   against that step's memo row, or against the row's own count, and
- *   re-queued the row after a backoff.
+ * - `retry`: a step threw, the body failed outside any step or while it
+ *   opened, or the write that ends a row with nothing to run failed. The
+ *   release counted the failure against that step's memo row, or against the
+ *   row's own count, and re-queued the row after a backoff.
  * - `retries_spent`: a step threw past its retries. The release made that
  *   step's memo row `failed`, so the next pass fails the step's node and the
  *   rest of the run goes on, or fails the delivery.
  * - `subject_failed`: the row's subject has no retries left: the row's own
- *   failure count passed the limit, or a step outside any node failed past
- *   its retries. The pass ended the subject failed, a run's terminal record or
+ *   failure count passed the limit, which the pass checks before the body
+ *   opens, or a step outside any node failed past its retries. The pass ended the subject failed, a run's terminal record or
  *   a delivery's `failed` inbox row, which deleted the schedule row. A cron
  *   timer has no subject to fail, so it skips the slot it was firing instead.
  * - `fence_refused` on `version`: the engine reported a version fence refused
@@ -749,11 +749,35 @@ const settlePass = Effect.fnUntraced(function* <
       Effect.catchTag("LeaseLost", () => Effect.succeed(OWNER_REFUSED))
     );
 
-  const opened = yield* body.open(pass);
+  // Checked before the body opens, so a row whose `open` fails on every pass
+  // still ends: each `fail` writes through the pass's own writes alone.
+  if (retriesSpent(claimed.attempt)) {
+    return yield* endFailed(
+      "It failed outside any step too many times, or the workers running it stopped renewing their lease"
+    );
+  }
+
+  // A failure of `open`, a database error or a defect such as a stored graph
+  // that does not parse, is counted against the row and released after a
+  // backoff, so the row does not wait out its lease.
+  const openExit = yield* Effect.exit(body.open(pass));
+  if (Exit.isFailure(openExit)) {
+    const error = failureFromCause(openExit.cause).message;
+    if (retriesSpent(claimed.attempt + 1)) return yield* endFailed(error);
+    return yield* releaseFailed({
+      kind: "body_failed",
+      error,
+      backoffMs: backoffMs(claimed.attempt),
+    });
+  }
+  const opened = openExit.value;
   if (opened.kind === "unavailable") {
     const { reason, severity, detail } = opened;
+    const settleFailed =
+      "The pass could not write the end of a row it cannot run";
     // A row whose ending write failed is released for a retry, so the row is
-    // not left leased until its lease runs out.
+    // not left leased until its lease runs out, and ended failed once that
+    // failure has spent the row's retries.
     return yield* opened.settle.pipe(
       Effect.as<PassResult>({
         kind: "unavailable",
@@ -765,32 +789,28 @@ const settlePass = Effect.fnUntraced(function* <
       Effect.catchTags({
         LeaseLost: () => Effect.succeed(OWNER_REFUSED),
         DatabaseError: (error) =>
-          pass
-            .release({
-              kind: "body_failed",
-              error: "The pass could not write the end of a row it cannot run",
-              backoffMs: backoffMs(claimed.attempt),
-            })
-            .pipe(
-              Effect.map((release): PassResult =>
-                release.owned
-                  ? {
-                      kind: "unavailable",
-                      reason,
-                      ending: "failed",
-                      error,
-                      schedule: release.released.schedule,
-                    }
-                  : OWNER_REFUSED
-              )
-            ),
+          retriesSpent(claimed.attempt + 1)
+            ? endFailed(settleFailed)
+            : pass
+                .release({
+                  kind: "body_failed",
+                  error: settleFailed,
+                  backoffMs: backoffMs(claimed.attempt),
+                })
+                .pipe(
+                  Effect.map((release): PassResult =>
+                    release.owned
+                      ? {
+                          kind: "unavailable",
+                          reason,
+                          ending: "failed",
+                          error,
+                          schedule: release.released.schedule,
+                        }
+                      : OWNER_REFUSED
+                  )
+                ),
       })
-    );
-  }
-
-  if (retriesSpent(claimed.attempt)) {
-    return yield* endFailed(
-      "The workers running it stopped renewing their lease too many times"
     );
   }
 

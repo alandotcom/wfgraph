@@ -101,9 +101,22 @@ function endUnavailableRun(
   return Effect.void;
 }
 
-/** Ends the run outside its graph, which is canceled or exited when it holds a claim. */
-function failRun(writes: RunPassWrites, executionId: string, error: string) {
+/**
+ * Ends the run outside its graph, which is canceled or exited when it holds a
+ * claim. An outside-graph ending leaves only a run that already ended or is
+ * gone, and nothing will run either again, so the pass then deletes the
+ * schedule row it holds.
+ */
+function failRun(
+  writes: RunPassWrites,
+  executionId: string,
+  error: string
+): Effect.Effect<void, DatabaseError | LeaseLost> {
   return writes
     .endRun({ executionId, ending: { kind: "outsideGraph", error } })
-    .pipe(Effect.asVoid);
+    .pipe(
+      Effect.flatMap((answer) =>
+        answer.kind === "ended" ? Effect.void : writes.dropSchedule()
+      )
+    );
 }
