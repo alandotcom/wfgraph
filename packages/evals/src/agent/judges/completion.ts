@@ -19,7 +19,9 @@ function answerRequirementFailure(
   },
   finalText: string
 ): string | undefined {
-  const normalized = finalText.toLocaleLowerCase();
+  // A model writes "hasn’t" with a typographic apostrophe as often as with a
+  // straight one, and a scenario's terms are written with the straight one.
+  const normalized = finalText.toLocaleLowerCase().replaceAll("’", "'");
   const missing = (expected.answerMustMention ?? []).filter(
     (term) => !normalized.includes(term.toLocaleLowerCase())
   );

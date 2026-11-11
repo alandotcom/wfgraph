@@ -69,6 +69,17 @@ describe("assessExpectedCompletion", () => {
     });
   });
 
+  it("matches a required term written with a typographic apostrophe", () => {
+    expect(
+      assess({
+        expected: { outcome: "ready", answerMustMentionOneOf: ["hasn't run"] },
+        finalText:
+          "This workflow hasn’t run yet, so there is no failure to read.",
+        facts: readyFacts,
+      })
+    ).toMatchObject({ score: 1 });
+  });
+
   it("accepts production warnings on a ready graph", () => {
     expect(
       assess({
