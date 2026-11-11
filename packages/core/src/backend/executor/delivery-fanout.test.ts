@@ -1,4 +1,4 @@
-import { Effect, Layer, Schema, SchemaTransformation } from "effect";
+import { Deferred, Effect, Layer, Schema, SchemaTransformation } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import {
@@ -649,6 +649,38 @@ describe("fanOutDelivery", () => {
       failures: [],
     });
     expect(deliver.recordFailure).not.toHaveBeenCalled();
+  });
+
+  // Each workflow answers to its own resolver and its own rows, so one slow
+  // workflow does not hold the next one's lifecycle step back.
+  it("delivers to the workflows side by side", async () => {
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
+      Effect.succeed([
+        subscriber({ id: "wf_a", roles: ["start"] }),
+        subscriber({ id: "wf_b", roles: ["start"] }),
+      ])
+    );
+    const bStarted = Deferred.makeUnsafe<void>();
+    deliver.applyLifecycle.mockImplementation(
+      ({ subscriber: target }: { subscriber: EventSubscriber }) =>
+        Effect.gen(function* () {
+          // A finishes only once B has started, which a fan-out delivering
+          // one workflow after another would never reach.
+          if (target.id === "wf_a") yield* Deferred.await(bStarted);
+          else yield* Deferred.succeed(bStarted, undefined);
+          return { kind: "waits_only", workflowId: target.id };
+        })
+    );
+
+    const result = await runFanOut({
+      arrival: created,
+      inboxId: "inbox_1",
+      steps: recordingStep().steps,
+      ports: deliver,
+    });
+
+    expect(result.workflows).toBe(2);
   });
 
   // The release would end the whole delivery failed on its next body failure,

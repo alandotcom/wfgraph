@@ -1,16 +1,17 @@
 /**
  * The fan-out of one inbox row's delivery: which workflows the Event
  * concerns, each one's Lifecycle Rules, and the parked Waits it wakes. Every
- * piece runs as a durable step on the pass's step memo, in the pass's own
- * fiber, so a step that committed is answered from its memo row when the
- * delivery runs again. A step id is the key of a stored memo row, so renaming
- * one makes a delivery in flight run that step a second time.
+ * piece runs as a durable step on the pass's step memo, in the pass's fiber or
+ * a child fiber the fan-out joins, so a step that committed is answered from
+ * its memo row when the delivery runs again. A step id is the key of a stored
+ * memo row, so renaming one makes a delivery in flight run that step a second
+ * time.
  *
- * Each workflow is its own retry unit. A step of one workflow that fails is
- * memoized as that failure, so the pass goes on to every other workflow, and
- * the next pass tries that step again under a new id. Once the delivery's
- * retries are spent the workflow is recorded as failed and the delivery
- * settles with the others delivered.
+ * Each workflow is its own retry unit, and workflows are delivered side by
+ * side. A step of one workflow that fails is memoized as that failure, so the
+ * pass goes on to every other workflow, and the next pass tries that step
+ * again under a new id. Once the delivery's retries are spent the workflow is
+ * recorded as failed and the delivery settles with the others delivered.
  */
 
 import { Cause, Data, Effect } from "effect";
@@ -19,6 +20,7 @@ import type {
   PayloadRejected,
 } from "#src/backend/extensions/define-event";
 import { failureFromCause } from "#src/backend/engine/engine-failure";
+import { DEFAULT_QUERY_CONNECTIONS } from "#src/backend/lib/db/config";
 import type { PassSteps } from "#src/backend/executor/runtime";
 import {
   retriesSpent,
@@ -256,10 +258,13 @@ export const fanOutDelivery = Effect.fn("wfgraph.delivery.fan_out")(
     );
 
     const mayRetry = !retriesSpent(input.attempt + 1);
-    const deliveries: SubscriberDelivery[] = [];
-    for (const subscriber of subscribers) {
-      deliveries.push(
-        yield* deliverToSubscriber({
+    // Workflows are independent of one another, so they are delivered side by
+    // side, as many at once as the pool has connections for. Precedence holds
+    // within each workflow, whose rules and Waits stay in order.
+    const deliveries: SubscriberDelivery[] = yield* Effect.forEach(
+      subscribers,
+      (subscriber) =>
+        deliverToSubscriber({
           subscriber,
           event: deliveredEvent,
           payload,
@@ -267,9 +272,9 @@ export const fanOutDelivery = Effect.fn("wfgraph.delivery.fan_out")(
           mayRetry,
           steps,
           ports,
-        })
-      );
-    }
+        }),
+      { concurrency: DEFAULT_QUERY_CONNECTIONS }
+    );
 
     const pending = deliveries.filter(
       (delivery) => delivery.kind === "pending"
