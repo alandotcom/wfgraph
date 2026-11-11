@@ -20,3 +20,9 @@ nothing and the whole suite runs. Every scenario title is truncated in the test
 name, so match a prefix rather than a phrase from the middle. `WFGRAPH_EVAL_LABEL`
 names the report the run writes, beside `WFGRAPH_EVAL_AGENT_MODEL` and
 `WFGRAPH_EVAL_REASONING_EFFORT`.
+
+`WFGRAPH_EVAL_AGENT_PROVIDER` selects the provider a run measures: `openai`
+(the default), `anthropic` or `openrouter`. Each reads its own key,
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`, and every
+provider but `openai` needs `WFGRAPH_EVAL_AGENT_MODEL`, such as
+`claude-sonnet-5-5`. A suite whose provider has no key is skipped.

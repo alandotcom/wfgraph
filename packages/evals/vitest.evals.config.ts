@@ -9,8 +9,9 @@ const repositoryFile = (path: string) =>
 /**
  * A file name no run overwrites, so two runs can be compared.
  *
- * `WFGRAPH_EVAL_LABEL` names what the run was measuring, matching the other two
- * knobs this suite reads from the environment, `WFGRAPH_EVAL_AGENT_MODEL` and
+ * `WFGRAPH_EVAL_LABEL` names what the run was measuring, matching the other
+ * three knobs this suite reads from the environment,
+ * `WFGRAPH_EVAL_AGENT_PROVIDER`, `WFGRAPH_EVAL_AGENT_MODEL` and
  * `WFGRAPH_EVAL_REASONING_EFFORT`. Each case's scores, transcript, usage and
  * artifacts are in its `meta.eval`.
  */

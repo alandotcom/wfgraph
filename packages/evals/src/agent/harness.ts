@@ -29,20 +29,55 @@ import { buildAgentTrajectory } from "#src/agent/trajectory";
 import type { AgentEvalInput, AgentEvalOutput } from "#src/agent/types";
 import type { Harness } from "#src/eval/types";
 
-const API_KEY_ENV = "OPENAI_API_KEY";
+const AGENT_PROVIDER_ENV = "WFGRAPH_EVAL_AGENT_PROVIDER";
 const AGENT_MODEL_ENV = "WFGRAPH_EVAL_AGENT_MODEL";
 const REASONING_EFFORT_ENV = "WFGRAPH_EVAL_REASONING_EFFORT";
 
+/** The providers a run can measure, each with the variable its key is read from. */
+const PROVIDER_KEY_ENV = {
+  openai: "OPENAI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+} as const;
+
+type EvalProvider = keyof typeof PROVIDER_KEY_ENV;
+
 /**
- * The effort this run measures, refusing an unknown one.
+ * The provider this run measures, `openai` when the variable is unset,
+ * refusing an unknown one for the reason `readReasoningEffort` gives.
+ */
+export function readEvalProvider(): EvalProvider {
+  const requested = process.env[AGENT_PROVIDER_ENV]?.trim();
+  if (!requested) {
+    return "openai";
+  }
+  const provider = Object.keys(PROVIDER_KEY_ENV).find(
+    (known): known is EvalProvider => known === requested
+  );
+  if (!provider) {
+    throw new Error(
+      `${AGENT_PROVIDER_ENV} is "${requested}". Use one of ${Object.keys(PROVIDER_KEY_ENV).join(", ")}.`
+    );
+  }
+  return provider;
+}
+
+/** Whether the measured provider's API key is set, which a suite skips without. */
+export function evalProviderKeyIsSet(): boolean {
+  return Boolean(process.env[PROVIDER_KEY_ENV[readEvalProvider()]]?.trim());
+}
+
+/**
+ * The effort this run measures, refusing an unknown one, or undefined for the
+ * provider's default.
  *
  * A typo would otherwise be silently dropped and the run would report the
  * default's numbers under the name of whatever was asked for.
  */
-function readReasoningEffort(): AgentReasoningEffort {
+function readReasoningEffort(): AgentReasoningEffort | undefined {
   const requested = process.env[REASONING_EFFORT_ENV]?.trim();
   if (!requested) {
-    return DEFAULT_AGENT_REASONING_EFFORT;
+    return undefined;
   }
 
   const effort = AGENT_REASONING_EFFORTS.find((known) => known === requested);
@@ -61,24 +96,75 @@ function readReasoningEffort(): AgentReasoningEffort {
  * change to how the application resolves its model cannot leave the evals
  * measuring the old one. What is added here is where the values come from, the
  * environment rather than an option, and that a missing key is fatal to a run
- * whose whole purpose is to call a model.
+ * whose whole purpose is to call a model. Every provider but OpenAI has no
+ * default model, so `WFGRAPH_EVAL_AGENT_MODEL` is required with one.
  */
 export function readEvalModelSettings(
   modelOverride?: string
 ): EnabledAgentSettings {
-  const settings = readAgentSettings({
-    apiKey: process.env[API_KEY_ENV],
-    model: modelOverride?.trim() || process.env[AGENT_MODEL_ENV],
-    reasoningEffort: readReasoningEffort(),
-    baseUrl: process.env.OPENAI_BASE_URL,
-  });
+  const provider = readEvalProvider();
+  const keyEnv = PROVIDER_KEY_ENV[provider];
+  const apiKey = process.env[keyEnv];
+  const model = modelOverride?.trim() || process.env[AGENT_MODEL_ENV];
+  const reasoningEffort = readReasoningEffort();
 
+  const settings = readProviderSettings({
+    provider,
+    apiKey,
+    model,
+    reasoningEffort,
+  });
   if (!settings.enabled) {
     throw new Error(
-      `Set ${API_KEY_ENV} before running the model-backed agent evals.`
+      `Set ${keyEnv} before running the model-backed agent evals on ${provider}.`
     );
   }
   return settings;
+}
+
+/** `readAgentSettings` for the measured provider, each with its own effort scale. */
+function readProviderSettings(input: {
+  provider: EvalProvider;
+  apiKey: string | undefined;
+  model: string | undefined;
+  reasoningEffort: AgentReasoningEffort | undefined;
+}) {
+  const { apiKey, reasoningEffort } = input;
+  if (input.provider === "openai") {
+    return readAgentSettings({
+      apiKey,
+      model: input.model,
+      reasoningEffort: reasoningEffort ?? DEFAULT_AGENT_REASONING_EFFORT,
+      baseUrl: process.env.OPENAI_BASE_URL,
+    });
+  }
+  const model = input.model?.trim();
+  if (!model) {
+    throw new Error(
+      `Set ${AGENT_MODEL_ENV} to run the evals on ${input.provider}, which has no default model.`
+    );
+  }
+  switch (input.provider) {
+    case "anthropic":
+      if (reasoningEffort === "none") {
+        throw new Error(
+          `${REASONING_EFFORT_ENV} is "none", which Anthropic does not take. Use low, medium, high, xhigh or max.`
+        );
+      }
+      return readAgentSettings({
+        provider: "anthropic",
+        apiKey,
+        model,
+        reasoningEffort,
+      });
+    default:
+      return readAgentSettings({
+        provider: "openrouter",
+        apiKey,
+        model,
+        reasoningEffort,
+      });
+  }
 }
 
 /** Builds one turn and collects its stream under the same interruption signal. */

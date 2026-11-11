@@ -1,6 +1,7 @@
 import { makeBuiltInAgentRunner } from "@wfgraph/core/backend/agent/chat";
 import {
   createWorkflowAgentHarness,
+  evalProviderKeyIsSet,
   readEvalModelSettings,
 } from "#src/agent/harness";
 import {
@@ -44,7 +45,7 @@ const suiteOptions = {
   harness: workflowAgentHarness,
   judges: deterministicJudges,
   advisoryJudges: [EfficiencyBudgetJudge],
-  skip: !process.env.OPENAI_API_KEY?.trim(),
+  skip: !evalProviderKeyIsSet(),
 };
 
 describeEval("workflow build agent focused behavior", suiteOptions, (it) => {

@@ -1,9 +1,11 @@
 import { Effect, Stream } from "effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRunner } from "@wfgraph/core/backend/agent/runner";
 import {
   collectAgentTurn,
   createWorkflowAgentHarness,
+  evalProviderKeyIsSet,
+  readEvalModelSettings,
 } from "#src/agent/harness";
 import type { AgentEvalInput } from "#src/agent/types";
 
@@ -90,5 +92,64 @@ describe("collectAgentTurn", () => {
       provider: "test",
       model: "custom-runner",
     });
+  });
+});
+
+describe("readEvalModelSettings", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("measures OpenAI on its default model when no provider is named", () => {
+    vi.stubEnv("WFGRAPH_EVAL_AGENT_PROVIDER", "");
+    vi.stubEnv("WFGRAPH_EVAL_AGENT_MODEL", "");
+    vi.stubEnv("WFGRAPH_EVAL_REASONING_EFFORT", "");
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+
+    expect(readEvalModelSettings()).toMatchObject({
+      provider: "openai",
+      apiKey: "sk-test",
+      reasoningEffort: "medium",
+    });
+  });
+
+  it("measures Anthropic with its own key and the model the run names", () => {
+    vi.stubEnv("WFGRAPH_EVAL_AGENT_PROVIDER", "anthropic");
+    vi.stubEnv("WFGRAPH_EVAL_AGENT_MODEL", "claude-sonnet-5-5");
+    vi.stubEnv("WFGRAPH_EVAL_REASONING_EFFORT", "low");
+    vi.stubEnv("OPENAI_API_KEY", "sk-openai");
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
+
+    expect(evalProviderKeyIsSet()).toBe(true);
+    expect(readEvalModelSettings()).toMatchObject({
+      provider: "anthropic",
+      apiKey: "sk-ant-test",
+      model: "claude-sonnet-5-5",
+      reasoningEffort: "low",
+    });
+  });
+
+  it("skips a provider whose key is unset, whatever other key is set", () => {
+    vi.stubEnv("WFGRAPH_EVAL_AGENT_PROVIDER", "anthropic");
+    vi.stubEnv("OPENAI_API_KEY", "sk-openai");
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+
+    expect(evalProviderKeyIsSet()).toBe(false);
+  });
+
+  it("refuses a provider with no default model when the run names none", () => {
+    vi.stubEnv("WFGRAPH_EVAL_AGENT_PROVIDER", "anthropic");
+    vi.stubEnv("WFGRAPH_EVAL_AGENT_MODEL", "");
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
+
+    expect(() => readEvalModelSettings()).toThrow("WFGRAPH_EVAL_AGENT_MODEL");
+  });
+
+  it("refuses a provider it does not know", () => {
+    vi.stubEnv("WFGRAPH_EVAL_AGENT_PROVIDER", "gemini");
+
+    expect(() => readEvalModelSettings()).toThrow(
+      "Use one of openai, anthropic, openrouter"
+    );
   });
 });
