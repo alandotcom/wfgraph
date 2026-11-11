@@ -37,6 +37,7 @@ import {
 } from "#src/lib/workflow-save-store";
 import { ApiError, toSerializedGraph } from "#src/lib/rpc-client";
 import {
+  DRAFT_CONFLICT_CODE,
   isPublicationConflictCode,
   PUBLICATION_CONFLICT_CODES,
   type PublicationConflictCode,
@@ -63,16 +64,20 @@ import {
 } from "#src/components/workflow/workflow-run-handlers";
 
 /**
- * Which publication conflict a refused publish is, read off the failure's code.
+ * Which conflict a refused publish is, read off the failure's code: one of the
+ * two publication conflicts, or the draft revision the review pinned no longer
+ * being the stored one.
  *
  * The message beside the code is written for a person and may be reworded, so
  * nothing here looks at it.
  */
 function publicationConflictCode(
   error: unknown
-): PublicationConflictCode | undefined {
+): PublicationConflictCode | typeof DRAFT_CONFLICT_CODE | undefined {
   const code = error instanceof ApiError ? error.code : undefined;
-  return isPublicationConflictCode(code) ? code : undefined;
+  return isPublicationConflictCode(code) || code === DRAFT_CONFLICT_CODE
+    ? code
+    : undefined;
 }
 
 /**
@@ -249,9 +254,9 @@ export function useWorkflowActions(
   // itself therefore remains a plain RPC declaration during render.
   const publishWorkflow = useMutation(
     orpcQuery.workflow.publish.mutationOptions({
-      // The two coded publication conflicts are answered below in the
-      // operator's terms, so the cache's own toast would say it a second time.
-      // Only those two are claimed: a per-mutate onError is skipped once the
+      // The three coded conflicts are answered below in the operator's terms,
+      // so the cache's own toast would say it a second time. Only those three
+      // are claimed: a per-mutate onError is skipped once the
       // component that called mutate has unmounted, and a generic failure the
       // operator has navigated away from must still reach a toast.
       meta: {
@@ -446,7 +451,7 @@ export function useWorkflowActions(
             return;
           }
 
-          // Both coded conflicts end the review this attempt was built on. The
+          // Every coded conflict ends the review this attempt was built on. The
           // epoch is what stops a late answer from closing a review the
           // operator has opened since, exactly as the success path is held.
           if (
@@ -455,6 +460,18 @@ export function useWorkflowActions(
               epoch: publishReview.epoch,
             })
           ) {
+            return;
+          }
+
+          if (conflict === DRAFT_CONFLICT_CODE) {
+            // The draft was saved elsewhere after the review pinned its
+            // revision, so retrying this review can never succeed. Ending it
+            // releases the editing lock, which lets the draft sync install the
+            // newer draft on a clean canvas or report it as a conflict beside
+            // unsaved edits.
+            toast.error(
+              "The draft changed while you were reviewing. Publish again to review the current draft."
+            );
             return;
           }
 

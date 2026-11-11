@@ -1,7 +1,7 @@
 /**
  * What the editor does with a publish the server refused.
  *
- * The two coded refusals each get their own recovery, chosen by the code on the
+ * The three coded refusals each get their own recovery, chosen by the code on the
  * failure rather than by its sentence. Everything else keeps the one behaviour
  * a failed write has always had: the mutation cache says what the server said,
  * the review stays where it is, and the operator decides.
@@ -39,7 +39,10 @@ import {
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowApiPayload } from "@wfgraph/shared/graph/api-contracts";
 import type { JsonObject } from "@wfgraph/shared/types/json";
-import { PUBLICATION_CONFLICT_CODES } from "@wfgraph/shared/rpc/error-codes";
+import {
+  DRAFT_CONFLICT_CODE,
+  PUBLICATION_CONFLICT_CODES,
+} from "@wfgraph/shared/rpc/error-codes";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
@@ -295,6 +298,39 @@ describe("useWorkflowActions publication conflicts", () => {
     expect(comparisons[1]?.input.baseVersionId).toBe("version_9");
   });
 
+  // The review pins the draft revision it compared. Another write to the draft
+  // makes every retry of that review fail the same way, so the review ends and
+  // the newer draft can reach the canvas before the operator reviews again.
+  it("ends the review once, without a second toast, when the draft changed under it", async () => {
+    const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
+    const requests = stubPublishFlow(() =>
+      conflictResponse(
+        DRAFT_CONFLICT_CODE,
+        "The workflow draft changed. Reload it before publishing again."
+      )
+    );
+    const queryClient = testQueryClient();
+    seedWorkflowEntry(queryClient);
+    const store = workflowStore();
+    store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
+    const draft = store.get(nodesAtom);
+
+    const view = renderProbe({ queryClient, store });
+    fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
+    await waitFor(() => expect(view.getByText("ready")).toBeTruthy());
+    fireEvent.click(view.getByRole("button", { name: "Confirm publish" }));
+
+    await waitFor(() => expect(view.getByText("idle")).toBeTruthy());
+    expect(store.get(nodesAtom)).toBe(draft);
+    expect(requests.filter((path) => path === "workflow/publish")).toHaveLength(
+      1
+    );
+    expect(errorToast).toHaveBeenCalledTimes(1);
+    expect(errorToast).toHaveBeenCalledWith(
+      "The draft changed while you were reviewing. Publish again to review the current draft."
+    );
+  });
+
   it("closes the review and reports nothing to publish", async () => {
     const infoToast = vi.spyOn(toast, "info").mockImplementation(() => "");
     stubPublishFlow(() =>
@@ -405,7 +441,7 @@ describe("useWorkflowActions publication conflicts", () => {
     );
   });
 
-  // A code this build has never heard of is not one of the two recoveries, so
+  // A code this build has never heard of is not one of the coded recoveries, so
   // it takes the same path as an uncoded failure.
   it("treats an unrecognised code as any other failure", async () => {
     const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
