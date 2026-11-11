@@ -156,7 +156,7 @@ describe("decideRelease", () => {
     ).toMatchObject({ state: "queued", wakeAt: NOW, attempt: 0 });
   });
 
-  it("counts a failure no step owns against the schedule row, and resets the count on every other outcome", () => {
+  it("counts a failure no step owns against the schedule row", () => {
     expect(
       decideRelease({
         outcome: { kind: "body_failed", error: "boom", backoffMs: 1_000 },
@@ -171,15 +171,23 @@ describe("decideRelease", () => {
       attempt: 3,
       lastError: "boom",
     });
+  });
+
+  it("re-queues a run whose version fence was refused after its backoff, counting nothing and keeping the row's count", () => {
     expect(
       decideRelease({
-        outcome: { kind: "fence_refused" },
+        outcome: { kind: "fence_refused", backoffMs: 1_000 },
         attempt: 2,
         now: NOW,
         parks: [],
         countedStep: null,
       })
-    ).toEqual({ state: "queued", wakeAt: NOW, attempt: 0, lastError: null });
+    ).toEqual({
+      state: "queued",
+      wakeAt: after(1_000),
+      attempt: 2,
+      lastError: null,
+    });
   });
 
   it("re-queues an interrupted pass after its wakeAfterMs, keeping the row's count, and records a budget cut's counted step", () => {

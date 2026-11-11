@@ -498,7 +498,12 @@ export function decideRelease(input: {
         lastError: outcome.error,
       };
     case "fence_refused":
-      return { state: "queued", wakeAt: now, attempt: 0, lastError: null };
+      return {
+        state: "queued",
+        wakeAt: at(outcome.backoffMs),
+        attempt: input.attempt,
+        lastError: null,
+      };
     case "interrupted":
       // A budget cut's step is retried with no backoff, since the cut says
       // nothing about the vendor the step calls.

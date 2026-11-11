@@ -109,7 +109,8 @@ export type UnavailableSeverity = "info" | "warn";
  *   timer has no subject to fail, so it skips the slot it was firing instead.
  * - `fence_refused` on `version`: the engine reported a version fence refused
  *   a write, because a Migration moved the run off the version this pass
- *   loaded. The release re-queued it and counted nothing.
+ *   loaded. The release counted nothing and re-queued it after the first
+ *   retry's backoff, so a refusal that recurs cannot run it in a hot loop.
  * - `fence_refused` on `owner`: a fenced write found the schedule row no
  *   longer names this pass. Nothing else was written, the release included.
  * - `unavailable` with `ending: "written"`: the body had nothing to run, and
@@ -1180,7 +1181,8 @@ function passResultOf(
 
 /**
  * The release a failed pass writes. A version fence the engine reports refused
- * is the run having moved, so nothing failed and nothing is counted. A step
+ * is the run having moved, so nothing failed and nothing is counted, and the
+ * run waits the first retry's backoff, the one wait that needs no count. A step
  * that threw counts against its own memo row, and its backoff grows with the
  * failures that row holds. A failure no step owns counts against the row.
  */
@@ -1196,7 +1198,7 @@ function decideFailedPass(input: {
       ? failureFromUnknown(failure.error)
       : failureFromCause(failure.cause);
   if (engineFailure.kind === "version_refused") {
-    return { kind: "fence_refused" };
+    return { kind: "fence_refused", backoffMs: input.backoffMs(0) };
   }
   if (failure.kind === "step") {
     const { stepId, nodeId } = failure.step;

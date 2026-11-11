@@ -267,7 +267,10 @@ export function describeExecutionScheduleConformance({
               error: "the body failed outside any step",
               backoffMs: 30_000,
             }),
-            fenceRefused: yield* release({ kind: "fence_refused" }),
+            fenceRefused: yield* release({
+              kind: "fence_refused",
+              backoffMs: 1_000,
+            }),
             nothingParked: yield* release({ kind: "parked" }),
             drained: yield* release({
               kind: "interrupted",
@@ -327,10 +330,11 @@ export function describeExecutionScheduleConformance({
         countedStep: null,
       });
       expect(result.runFailed.memo).toEqual([]);
+      // A refused fence counts nothing and keeps the row's own count.
       expect(result.fenceRefused.released.schedule).toEqual({
         state: "queued",
-        wakeAt: releasedAt,
-        attempt: 0,
+        wakeAt: at(LEASE_MS + 2_000),
+        attempt: 1,
       });
       // A pass that ended parked with nothing waiting has nothing to sleep on.
       expect(result.nothingParked.released.schedule).toEqual({

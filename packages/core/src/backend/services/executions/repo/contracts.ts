@@ -195,8 +195,10 @@ export type ClaimLane = { kind: ClaimedSchedule["kind"]; limit: number };
  *   failure against the row's own count and re-queues the row after
  *   `backoffMs`.
  * - `fence_refused`: a version fence refused a write because a Migration moved
- *   the run. Nothing failed, so the release re-queues the run at once and
- *   counts nothing, and the next pass loads the version the run now pins.
+ *   the run. Nothing failed, so the release counts nothing and leaves the
+ *   row's own count as it was, and re-queues the run after `backoffMs`, which
+ *   keeps a refusal that recurs on every pass from running the run in a hot
+ *   loop. The next pass loads the version the run now pins.
  * - `interrupted` with `by: "drain"`: a worker stopping gracefully interrupted
  *   the pass, as a dispose does to a pass still running when its drain ends.
  *   Nothing failed, so the release re-queues the row due `wakeAfterMs` from
@@ -224,7 +226,7 @@ export type PassOutcome =
       backoffMs: number;
     }
   | { kind: "body_failed"; error: string; backoffMs: number }
-  | { kind: "fence_refused" }
+  | { kind: "fence_refused"; backoffMs: number }
   | { kind: "interrupted"; by: "drain"; wakeAfterMs: number }
   | {
       kind: "interrupted";
