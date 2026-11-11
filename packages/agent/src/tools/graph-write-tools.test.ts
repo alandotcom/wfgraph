@@ -1362,6 +1362,22 @@ describe("revert_draft", () => {
       })
   );
 
+  it.effect("returns a turn that began on an empty graph to empty", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [],
+        edges: [],
+        catalog: fixtureCatalog,
+      });
+
+      yield* tools.set_lifecycle_rules({ startEvents: ["applicant.created"] });
+      yield* tools.add_node({ actionId: "score-applicant", label: "Score" });
+      yield* tools.revert_draft({ reason: "the request cannot be met" });
+
+      expect(yield* draft.current).toEqual({ nodes: [], edges: [] });
+    })
+  );
+
   it.effect(
     "is available again after reverting, so a turn can restart twice",
     () =>

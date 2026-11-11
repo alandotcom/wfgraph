@@ -87,7 +87,8 @@ export type WorkflowDraftService = {
    * results is then checked by `workflowTopologyRefusalReason`, whose
    * `groupStructureRefusalReason` refuses a member naming a missing parent, a
    * parent that is not a Group, a Group inside a Group, a member that is not
-   * an action step, or an edge touching a frame.
+   * an action step, or an edge touching a frame. An edit answering the
+   * opening graph itself (`revision(0)`) is stored without those checks.
    */
   readonly update: (
     edit: (document: AgentDocument) => AgentDocument
@@ -136,6 +137,18 @@ export function makeWorkflowDraft(
           state,
           (current): [DraftUpdateResult, WorkflowDraftState] => {
             const edited = edit(current.document);
+            // The opening graph is the state the turn was handed, so going
+            // back to it is accepted as it stands, even when that graph is an
+            // empty workflow with no Lifecycle Node yet.
+            if (edited === current.revisions[0]) {
+              return [
+                { ok: true as const, document: edited, dissolvedGroups: [] },
+                {
+                  document: edited,
+                  revisions: [...current.revisions, edited],
+                },
+              ];
+            }
             const dissolvedIds = new Set(undersizedGroupIds(edited.nodes));
             const dissolvedGroups: readonly DissolvedGroup[] = edited.nodes
               .filter((node) => dissolvedIds.has(node.id))
