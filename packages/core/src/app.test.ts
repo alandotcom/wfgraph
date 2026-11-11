@@ -25,7 +25,11 @@ import {
   WfGraphOperations,
 } from "#src/index";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
-import { createWfGraphApp, type WfGraphApp } from "#src/app";
+import {
+  createWfGraphApp,
+  type WfGraphApp,
+  type WfGraphAppOptions,
+} from "#src/app";
 import { createWfGraphRunner } from "#src/runner";
 import { recordedLogger } from "#src/backend/executor/testing/recorded-logger";
 import {
@@ -797,6 +801,31 @@ describe("createWfGraphApp runner", () => {
     } finally {
       await seeded.close();
     }
+  });
+
+  // One options object serves both processes. The runner ignores what only an
+  // HTTP process reads, and `runner: false`, which says the app runs no loop.
+  it("lets createWfGraphRunner take the app's options object and run its own loop", async () => {
+    const loops = vi
+      .spyOn(workerLoopModule, "runWorkerLoop")
+      .mockImplementation(() => Effect.succeed({ drained: 0, interrupted: 0 }));
+    const options: WfGraphAppOptions = {
+      ...BASE_OPTIONS,
+      client: { dir: join(dir, "no-such-bundle") },
+      mcp: true,
+      agent: { apiKey: "sk-test" },
+      events: { key: "events-key", retentionMs: 86_400_000 },
+      runner: false,
+    };
+
+    const runner = await createWfGraphRunner(options);
+    await runner.dispose();
+
+    expect(loops).toHaveBeenCalledTimes(1);
+    expect(loops.mock.calls[0]?.[0]).toMatchObject({
+      pollMs: 1_000,
+      retention: { inboxMs: 86_400_000 },
+    });
   });
 
   it("takes the backend's defaults when the host sets nothing", async () => {

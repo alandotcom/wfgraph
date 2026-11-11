@@ -793,8 +793,9 @@ row, the same key is a new arrival. The `delivery_id` of an Execution names its 
 as plain text, so a run outlives the row it started from.
 
 Every process that runs a loop sweeps with its own window: an app with its own loop, and
-each `createWfGraphRunner`. Set the same `events.retentionMs` in every one of them, or the
-process with the shortest window decides how long rows are kept.
+each `createWfGraphRunner`. Pass every one of them the same options object (see Run the
+loop in its own process), or the process with the shortest window decides how long rows
+are kept.
 
 ```ts
 const wfgraph = await createWfGraphApp({
@@ -839,9 +840,9 @@ insert of its Execution in a later one, and the sweep keeps a snapshot reused be
 only because the window is far longer than that gap. A window past 100 years would put the
 sweep's cutoff out of the range a JavaScript `Date` holds.
 
-Every process that runs a loop sweeps with its own window, as with `events.retentionMs`.
-Set the same `runs.retentionMs` in the app and in every `createWfGraphRunner`. On a
-Cloudflare Worker, the Cron Trigger's tick runs the sweep.
+Every process that runs a loop sweeps with its own window, as with `events.retentionMs`, so
+the app and every `createWfGraphRunner` take the same options object. On a Cloudflare
+Worker, the Cron Trigger's tick runs the sweep.
 
 ```ts
 const wfgraph = await createWfGraphApp({
@@ -853,40 +854,57 @@ const wfgraph = await createWfGraphApp({
 ### Run the loop in its own process
 
 `createWfGraphRunner` runs the worker loop in a process that serves no HTTP, so a host can
-scale request handling and run execution separately. Pass it the same database,
-encryption key and extensions as the app, and give the app `runner: false`.
+scale request handling and run execution separately. It takes the options object
+`createWfGraphApp` takes. Build that object once, in a module both processes import, so the
+database, the encryption key, the extensions and the retention windows cannot drift apart
+between the two:
 
 ```ts
-import { createWfGraphRunner } from "@wfgraph/core";
+// wfgraph-options.ts
+import type { WfGraphAppOptions } from "@wfgraph/core";
 import { wfPostgres } from "@wfgraph/core/postgres";
 import { builtInIntegrations } from "@wfgraph/plugins";
-// The same Event and action definitions the app passes.
+import { auth } from "./wfgraph-auth";
 import { actions, events } from "./wfgraph-extensions";
 
-const runner = await createWfGraphRunner({
+export const options: WfGraphAppOptions = {
+  auth,
   persistence: wfPostgres({ url: process.env.DATABASE_URL! }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   extensions: { integrations: builtInIntegrations(), events, actions },
-  // The app's own values, which an OAuth token refresh builds its callback URLs from.
+  // An OAuth token refresh in the runner builds its callback URLs from these.
   basePath: "/workflows",
   publicUrl: "https://app.example.com",
+  // Tunes the runner's loop. The web process below runs none.
   runner: { concurrency: 20 },
-});
+};
+```
 
+```ts
+// web.ts
+import { createServer } from "node:http";
+import { createRequestListener, createWfGraphApp } from "@wfgraph/core";
+import { options } from "./wfgraph-options";
+
+const wfgraph = await createWfGraphApp({ ...options, runner: false });
+createServer(createRequestListener(wfgraph)).listen(3000);
+```
+
+```ts
+// worker.ts
+import { createWfGraphRunner } from "@wfgraph/core";
+import { options } from "./wfgraph-options";
+
+const runner = await createWfGraphRunner(options);
 process.once("SIGTERM", () => void runner.dispose());
 ```
 
-| Option                    | Required | Description                                                                                   |
-| ------------------------- | -------- | --------------------------------------------------------------------------------------------- |
-| `persistence`             | Yes      | The app's database. SQLite is refused, because the app that owns a SQLite file runs its loop  |
-| `encryption`              | Yes      | The app's key, which decrypts the credentials a step reads                                    |
-| `extensions`              | No       | The app's extension surface. A run reaches only the actions and Entities listed here          |
-| `basePath`, `publicUrl`   | No       | The app's values. A step that refreshes an OAuth token registers the callback URLs they build |
-| `entityResolverTimeoutMs` | No       | As on `createWfGraphApp`                                                                      |
-| `logger`                  | No       | As on `createWfGraphApp`                                                                      |
-| `runner`                  | No       | The loop's settings, as in the table under Configure the runner                               |
-| `events.retentionMs`      | No       | How long this loop keeps a settled inbox row. See Keep settled Events for a window            |
-| `runs.retentionMs`        | No       | How long this loop keeps an ended run. See Delete run history after a window                  |
+The runner serves no HTTP, so it ignores `auth`, `client`, `mcp`, `agent` and `events.key`,
+and `auth` is optional for it. It always runs a loop: `runner: false` says that the app runs
+none, so the runner ignores that value and runs its loop with the defaults, and a `runner`
+object tunes the runner's loop as the table under Configure the runner describes. Every other
+option means what it means on the app. The runner refuses SQLite at startup, because the app
+that owns a SQLite file runs its loop.
 
 `createWfGraphRunner` refuses `wfHyperdrive` at startup, because a Worker runs no
 long-lived loop and advances its runs in the ticks of its `scheduled` and `queue` handlers.

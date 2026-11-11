@@ -1,54 +1,29 @@
-import type {
-  InProcessRunner,
-  WfGraphRunnerOptions,
-} from "#src/backend/executor/in-process-runner";
-import type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
+import type { WfGraphAppOptions } from "#src/app";
+import type { InProcessRunner } from "#src/backend/executor/in-process-runner";
 import { failAfterClose } from "#src/backend/lib/close-in-order";
+import type { WfGraphAuth } from "#src/backend/lib/http/authorize";
 import { normalizeBasePath } from "#src/backend/lib/http/mount-path";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
-import type { WfGraphPersistence } from "#src/backend/persistence/types";
-import {
-  assertValidEncryptionKey,
-  type EncryptionRuntimeConfig,
-} from "#src/backend/services/integrations/cipher";
-import type {
-  WfGraphEvents,
-  WfGraphEventsOptions,
-} from "#src/backend/host-events";
+import { assertValidEncryptionKey } from "#src/backend/services/integrations/cipher";
+import type { WfGraphEvents } from "#src/backend/host-events";
 import { resolveRetention } from "#src/backend/host-retention";
-import type { WfGraphRunsOptions } from "#src/backend/host-runs";
 import { openWfGraphSetup } from "#src/backend/setup";
-import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 
-export type CreateWfGraphRunnerOptions = {
-  /** The same database the app names, with its `runner: false`. */
-  persistence: WfGraphPersistence;
-  /** The app's key, which decrypts the credentials a step reads. */
-  encryption: EncryptionRuntimeConfig;
-  /** The app's extension surface: the actions and Entities its runs reach. */
-  extensions?: WfGraphExtensions | undefined;
-  /**
-   * The app's `basePath` and `publicUrl`. A step that refreshes an OAuth
-   * token registers the same callback URLs the app serves, built from these.
-   */
-  basePath?: string | undefined;
-  publicUrl?: string | undefined;
-  /** Maximum time in milliseconds for one call to an Entity resolver. */
-  entityResolverTimeoutMs?: number | undefined;
-  /** Where log lines go, as on `createWfGraphApp`. */
-  logger?: WfGraphLogger | undefined;
-  /** Tunes the loop, as `createWfGraphApp`'s `runner` option does. */
-  runner?: WfGraphRunnerOptions | undefined;
-  /**
-   * How long this loop keeps a settled inbox row, as `createWfGraphApp`'s
-   * `events.retentionMs` describes. Set the same window the app sets.
-   */
-  events?: Pick<WfGraphEventsOptions, "retentionMs"> | undefined;
-  /**
-   * How long this loop keeps run history, as `createWfGraphApp`'s
-   * `runs.retentionMs` describes. Set the same window the app sets.
-   */
-  runs?: WfGraphRunsOptions | undefined;
+/**
+ * The options `createWfGraphApp` takes, so a host builds one object in a
+ * shared module and hands it to both processes: the app with
+ * `{ ...options, runner: false }`, and the runner as it is.
+ *
+ * The runner serves no HTTP, so it ignores `auth`, `client`, `mcp`, `agent`
+ * and `events.key`, and `auth` is optional here. `runner: false` says that the
+ * app runs no loop, so the runner ignores it and runs its loop with the
+ * defaults; a `runner` object tunes the runner's loop. Everything else means
+ * what it means on the app, and `persistence`, `encryption`, `extensions`,
+ * `basePath`, `publicUrl`, `entityResolverTimeoutMs`, `events.retentionMs`
+ * and `runs.retentionMs` must match the app's.
+ */
+export type CreateWfGraphRunnerOptions = Omit<WfGraphAppOptions, "auth"> & {
+  auth?: WfGraphAuth | undefined;
 };
 
 export type WfGraphRunner = {
@@ -64,9 +39,10 @@ export type WfGraphRunner = {
 
 /**
  * Runs the worker loop that advances workflow runs, in a process that serves
- * no HTTP: the dedicated worker beside apps created with `runner: false`.
- * Refuses a backend whose database no other process can share, such as
- * SQLite, and one that runs no long-lived loop, such as Hyperdrive.
+ * no HTTP: the dedicated worker beside apps created with `runner: false`, on
+ * the same options object. Refuses a backend whose database no other process
+ * can share, such as SQLite, and one that runs no long-lived loop, such as
+ * Hyperdrive.
  */
 export async function createWfGraphRunner(
   options: CreateWfGraphRunnerOptions
@@ -89,7 +65,8 @@ export async function createWfGraphRunner(
     basePath,
     publicUrl,
     agent: { enabled: false },
-    runner: options.runner,
+    // `false` is the app's own setting; this process always runs a loop.
+    runner: options.runner === false ? undefined : options.runner,
     retention,
   });
 

@@ -8,7 +8,7 @@
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { Effect, Layer, ManagedRuntime, Schema } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import { createWfGraphApp } from "#src/app";
+import { createWfGraphApp, type WfGraphAppOptions } from "#src/app";
 import { defineAction, trustWfGraphUpstream } from "#src/index";
 import { createWfGraphRunner } from "#src/runner";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
@@ -198,26 +198,24 @@ describePostgres("createWfGraphApp runner on PostgreSQL", () => {
     };
   }
 
+  // The arrangement docs/embedding.md documents: one options object, handed
+  // to the app with `runner: false` and to the runner as it is.
   it("advances a run in createWfGraphRunner beside an app with runner: false", async () => {
     const loops = vi.spyOn(workerLoopModule, "runWorkerLoop");
-    const app = await createWfGraphApp({
+    const recorded = recordedLogger();
+    const options: WfGraphAppOptions = {
       auth: trustWfGraphUpstream(),
       persistence: wfPostgres({ url, schema }),
       encryption: ENCRYPTION,
       extensions: { actions: [markAction] },
-      runner: false,
-    });
+      logger: recorded.logger,
+    };
+    const app = await createWfGraphApp({ ...options, runner: false });
     expect(loops).not.toHaveBeenCalled();
 
     const seeded = await seedDueRun("runner_entry");
-    const recorded = recordedLogger();
     try {
-      await using runner = await createWfGraphRunner({
-        persistence: wfPostgres({ url, schema }),
-        encryption: ENCRYPTION,
-        extensions: { actions: [markAction] },
-        logger: recorded.logger,
-      });
+      await using runner = await createWfGraphRunner(options);
       await vi.waitFor(
         async () => expect(await seeded.status()).toBe("completed"),
         { timeout: 5_000 }
