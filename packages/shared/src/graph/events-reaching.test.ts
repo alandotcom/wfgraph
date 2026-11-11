@@ -4,6 +4,7 @@ import {
   type ConditionModel,
   type ConditionRule,
   compileConditionModel,
+  entityStateConditionPath,
   nodeOutputConditionPath,
   EVENT_NAME_FIELD_PATH,
   serializeConditionModel,
@@ -507,6 +508,24 @@ describe("eventsReaching", () => {
         edge("e1", "lifecycle-1", "lookup-1", LIFECYCLE_CANCELED_HANDLE),
         edge("e2", "lookup-1", "which-1"),
         edge("e3", "which-1", "on-true", "true"),
+      ])
+    ).toEqual([CANCELED, RESCHEDULED]);
+  });
+
+  // Entity State is read from the host, never from the payload.
+  it("narrows nothing on a rule reading tracked Entity State", () => {
+    const nodes = [
+      entryNode({ cancelEvents: [CANCELED, RESCHEDULED] }),
+      conditionNode("which-1", [
+        fieldRule(entityStateConditionPath("appointment", "status") ?? ""),
+      ]),
+      actionNode("on-true"),
+    ];
+
+    expect(
+      namesReaching("on-true", nodes, [
+        edge("e1", "lifecycle-1", "which-1", LIFECYCLE_CANCELED_HANDLE),
+        edge("e2", "which-1", "on-true", "true"),
       ])
     ).toEqual([CANCELED, RESCHEDULED]);
   });

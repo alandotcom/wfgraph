@@ -18,6 +18,7 @@ import {
   isNullCheckConditionRule,
   isStringSetConditionRule,
   parseConditionModel,
+  parseEntityStateConditionPath,
   parseNodeOutputConditionPath,
 } from "#src/conditions/conditions";
 import {
@@ -68,7 +69,7 @@ type RuleQuestion = {
  * A rule naming no node reads the run's outputs merged flat, so a path an
  * action upstream also produces (`declaredElsewhere`) may be that action's. A
  * rule naming the Lifecycle Node reads the payload alone. A rule naming any
- * other node reads a value that is never the payload.
+ * other node, or tracked Entity State, reads a value that is never the payload.
  */
 function ruleSubject(input: RuleQuestion): {
   path: string;
@@ -84,7 +85,9 @@ function ruleSubject(input: RuleQuestion): {
   }
   return {
     path: field,
-    notPayload: input.declaredElsewhere.has(field),
+    notPayload:
+      input.declaredElsewhere.has(field) ||
+      parseEntityStateConditionPath(field) !== null,
   };
 }
 
