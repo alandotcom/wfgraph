@@ -56,12 +56,17 @@ import { readAs } from "@wfgraph/shared/types/schema";
 /**
  * A step as a pass records it: the id it is memoized under, and the node it
  * does work for (`DurableStepRef.nodeId`), or null for a step of no node.
+ * `enclosing` is `DurableStepRef.enclosing`.
  */
-export type PassStep = { stepId: string; nodeId: string | null };
+export type PassStep = {
+  stepId: string;
+  nodeId: string | null;
+  enclosing?: boolean | undefined;
+};
 
 /** The `PassStep` the engine names with `step`. */
 function passStepOf(step: DurableStepRef): PassStep {
-  return { stepId: step.id, nodeId: step.nodeId };
+  return { stepId: step.id, nodeId: step.nodeId, enclosing: step.enclosing };
 }
 
 /**
@@ -131,13 +136,15 @@ export type PassState = {
   readonly stepsSettled: Effect.Effect<void>;
   /**
    * The step a budget cut counts a failure against: the earliest started of
-   * the reported steps still running, which has run longest, since parallel
-   * branches run steps side by side, and null between steps.
+   * the chargeable steps still running, which has run longest, since parallel
+   * branches run steps side by side, and null between steps. A chargeable
+   * step is a reported one, less an enclosing step while a step of its node
+   * runs inside it.
    */
   readonly runningStep: () => PassStep | null;
   /**
    * The step the heartbeat records as running, which an expired lease counts
-   * against: the one reported step running, and null between steps or while
+   * against: the one chargeable step running, and null between steps or while
    * several run, since nothing then says which of them a crash was due to,
    * and the claim counts such a lease against the run.
    */
@@ -163,6 +170,22 @@ export function createPassState(): PassState {
   // Called once no step body is running.
   const onSettled = new Set<() => void>();
   const spent: SpentStep[] = [];
+  // The running steps a failure of the pass can be charged to, in the order
+  // they started. An enclosing step stands aside for a step of its own node
+  // running inside it, so a host action's handler step is charged only
+  // between the handler's own `step.run` calls.
+  const chargeable = (): PassStep[] => {
+    const reported = running
+      .filter((entry) => entry.reported)
+      .map((entry) => entry.step);
+    return reported.filter(
+      (step) =>
+        step.enclosing !== true ||
+        !reported.some(
+          (other) => other !== step && other.nodeId === step.nodeId
+        )
+    );
+  };
   return {
     phase: () => phase,
     stepThrew: (step, error) => {
@@ -200,10 +223,10 @@ export function createPassState(): PassState {
             return Effect.sync(() => onSettled.delete(settled));
           })
     ),
-    runningStep: () => running.find((entry) => entry.reported)?.step ?? null,
+    runningStep: () => chargeable()[0] ?? null,
     heartbeatStep: () => {
-      const reported = running.filter((entry) => entry.reported);
-      return reported.length === 1 ? (reported[0]?.step ?? null) : null;
+      const charged = chargeable();
+      return charged.length === 1 ? (charged[0] ?? null) : null;
     },
     spentStep: (stepId, message) => {
       const failure = engineFailure("failure", message);

@@ -1592,7 +1592,7 @@ function describeCases(
         for (;;) {
           // eslint-disable-next-line eslint/no-await-in-loop -- polls until the heartbeat lands
           const schedule = await readSchedule();
-          if (schedule?.runningStepId === "node:held:handler") {
+          if (schedule?.runningStepId === "node:held:step:dispatch") {
             return {
               stepId: schedule.runningStepId,
               nodeId: schedule.runningNodeId,
@@ -1648,16 +1648,16 @@ function describeCases(
     ).finally(() => heldStep.release());
     expect(await stale).toEqual({ kind: "fence_refused", fence: "owner" });
     // A host action's handler step encloses its `step.run` calls, and the
-    // heartbeat records the earliest started of the steps still running.
+    // heartbeat records the enclosed step while one runs.
     expect(recorded).toEqual({
-      stepId: "node:held:handler",
+      stepId: "node:held:step:dispatch",
       nodeId: "held",
     });
     expect(swept.claimed?.attempt).toBe(0);
     // The step never wrote a memo row of its own, so the node id on the row
     // the claim created is the one the heartbeat recorded.
     expect(
-      swept.memo.find((entry) => entry.stepId === "node:held:handler")
+      swept.memo.find((entry) => entry.stepId === "node:held:step:dispatch")
     ).toMatchObject({ nodeId: "held", status: "failing", failures: 1 });
   });
 

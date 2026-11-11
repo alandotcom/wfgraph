@@ -189,10 +189,9 @@ the ids the engine keeps for a node (`log-open`, `route`, `handler`), after an a
 named `log-open` was found answering the `null` the engine stored for its run-log open. The
 handler bag gained `idempotencyKey`, built from the run's id and the node's id, and
 `step.run` hands each step a key of its own, because a step is still at-least-once when a
-process dies mid-call. And the executor's heartbeat records the earliest started of the
-running steps, which for a host action is now its handler step, so a lease expiry or a budget
-cut during the handler counts against the handler step rather than the inner step that was
-running.
+process dies mid-call. And the handler step was marked as enclosing its node's other steps,
+so a lease expiry or a budget cut counts against the inner step that was running, and against
+the handler step only between the handler's `step.run` calls.
 
 An integration author still declares what is remembered. The six built-ins are written
 against `@wfgraph/core/plugin` by people who read `docs/integrations.md`, and an integration's

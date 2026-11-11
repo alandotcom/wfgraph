@@ -35,11 +35,17 @@ export type WaitForEventOptions = {
  * node, such as the run's terminal record. The database executor stores it
  * beside the step's memo row, which is how the Runs view names the node of a
  * retrying step: step ids take several shapes, so no reader parses one.
+ *
+ * `enclosing` marks a step whose work starts other steps of the same node, as
+ * a host action's handler step does. A runtime that charges an interrupted
+ * pass to the step that was running charges the enclosed step while one
+ * runs, and the enclosing step between them.
  */
 export type DurableStepRef = {
   id: string;
   name?: string;
   nodeId: string | null;
+  enclosing?: boolean | undefined;
 };
 
 /**

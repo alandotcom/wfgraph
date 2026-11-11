@@ -79,6 +79,7 @@ export function runPluginActionStep(input: ActionStepInput) {
             id: `node:${context.nodeId}:handler`,
             nodeId: context.nodeId,
             name: `${context.nodeName} (handler)`,
+            enclosing: true,
           },
           work
         ),
