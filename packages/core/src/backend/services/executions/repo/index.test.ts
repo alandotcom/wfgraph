@@ -176,13 +176,25 @@ describe("startForEntity", () => {
 });
 
 /**
- * The same harness, for the other cross-table method. What is pinned is which
- * tables the deletion names: the run rows carry logs and wait states with them by
- * `ON DELETE cascade`, and naming those tables again meant first reading every
- * execution id into the application and re-sending it as one bind parameter each.
+ * The same harness, for the other cross-table method. What is pinned is the
+ * batch: how many runs one transaction takes, the order it locks them in, and
+ * which tables the deletion names. The run rows carry logs and wait states
+ * with them by `ON DELETE cascade`, so no statement names those tables.
  */
-function deleteHarness() {
-  const { layer: databaseLayer, statements } = stubDatabase();
+function deleteHarness(chosenPerBatch: readonly number[]) {
+  const batches = [...chosenPerBatch];
+  const { layer: databaseLayer, statements } = stubDatabase(
+    ({ query, params }) => {
+      if (isRunChooser(query)) {
+        const size = batches.shift() ?? 0;
+        return Array.from({ length: size }, (_, index) => [`exec_${index}`]);
+      }
+      if (query.startsWith('delete from "workflow_executions"')) {
+        return params.map((id) => [id]);
+      }
+      return [];
+    }
+  );
 
   const run = () =>
     Effect.runPromise(
@@ -197,44 +209,70 @@ function deleteHarness() {
   return { run, statements };
 }
 
+/** The statement choosing one batch's runs. */
+function isRunChooser(query: string): boolean {
+  return (
+    query.startsWith('select "id" from "workflow_executions"') &&
+    query.includes('"workflow_id" = $1') &&
+    !query.includes("for update")
+  );
+}
+
 describe("deleteAllForWorkflow", () => {
   // A pass's fenced write holds its schedule row before it writes the
-  // execution row, so the delete takes the schedule rows first too. The run
-  // sweep holds an execution row before its cascade reaches the run's audit
-  // rows, so the delete takes the execution rows before the audit rows.
-  it("locks the runs' schedule rows and then the runs, then deletes the audit rows and the runs, by workflow id, and nothing else", async () => {
-    const { run, statements } = deleteHarness();
+  // execution row, so each batch takes its runs' schedule rows first too.
+  // The run sweep holds an execution row before its cascade reaches the run's
+  // audit rows, so each batch takes its execution rows before it deletes them.
+  it("deletes runs in batches of 500, each locking its schedule rows, then its runs, before deleting them", async () => {
+    const { run, statements } = deleteHarness([500, 2]);
+
+    const deleted = await run();
+
+    expect(deleted).toBe(502);
+    const queries = statements.map((statement) => statement.query);
+    const choosers = statements.filter((statement) =>
+      isRunChooser(statement.query)
+    );
+    expect(choosers.map((statement) => statement.params)).toEqual([
+      ["wf_1", 500],
+      ["wf_1", 500],
+    ]);
+    // Each batch: choose, lock schedule rows, lock runs, delete runs.
+    const runStatements = queries.filter(
+      (query) => !query.includes("workflow_execution_events")
+    );
+    const batch = [
+      /^select "id" from "workflow_executions" where "workflow_executions"."workflow_id" = \$1 limit \$2$/,
+      /from "workflow_execution_schedule" where .* order by "workflow_execution_schedule"."id" asc for update$/,
+      /^select .* from "workflow_executions" where .* order by "workflow_executions"."id" asc for update$/,
+      /^delete from "workflow_executions" where "workflow_executions"."id" in /,
+    ];
+    expect(runStatements).toHaveLength(batch.length * 2);
+    runStatements.forEach((query, index) => {
+      expect(query).toMatch(batch[index % batch.length] ?? /^$/);
+    });
+  });
+
+  // The audit rows left once the runs are gone name no run, such as a
+  // Refused Start's, and go by workflow, also in bounded batches.
+  it("deletes the workflow's remaining audit rows after its runs, in a bounded batch", async () => {
+    const { run, statements } = deleteHarness([0]);
 
     await run();
 
-    expect(statements).toHaveLength(4);
-    expect(statements[0]?.query).toContain(
-      'from "workflow_execution_schedule"'
-    );
-    expect(statements[0]?.query).toContain("for update");
-    expect(statements[1]?.query).toMatch(
-      /^select .* from "workflow_executions" .* order by "workflow_executions"."id" asc for update$/
-    );
-    expect(statements[2]?.query).toContain(
-      'delete from "workflow_execution_events"'
-    );
-    expect(statements[3]?.query).toContain('delete from "workflow_executions"');
-    for (const statement of statements) {
-      expect(statement.query).toContain('"workflow_id" = $1');
-      expect(statement.params).toEqual(["wf_1"]);
-    }
+    const last = statements.at(-1);
+    expect(last?.query).toMatch(/^delete from "workflow_execution_events"/);
+    expect(last?.query).toContain('"workflow_id" = $1');
+    expect(last?.params).toEqual(["wf_1", 500]);
   });
 
-  // The pre-read this replaces bound one parameter per run, which stops working
-  // at the protocol's 65535 and shipped every id twice over the wire.
-  it("names no execution id and no cascading table", async () => {
-    const { run, statements } = deleteHarness();
+  it("names no cascading table", async () => {
+    const { run, statements } = deleteHarness([500, 0]);
 
     await run();
 
     const queries = statements.map((statement) => statement.query).join("\n");
     expect(queries).not.toContain("workflow_execution_logs");
     expect(queries).not.toContain("workflow_wait_states");
-    expect(queries).not.toContain('"id" in');
   });
 });

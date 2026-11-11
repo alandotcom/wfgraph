@@ -105,6 +105,18 @@ const startNewestWins = (deliveryId: string) =>
     )
   );
 
+/** 1,200 ended runs of one workflow, inserted in one statement. */
+const bulkRuns = (workflowId: string, versionId: string) => ({
+  postgresql: `insert into workflow_executions (id, workflow_id, workflow_version_id, status, start_source, started_at, completed_at, duration) select '${workflowId}_run_' || i, '${workflowId}', '${versionId}', 'completed', 'manual', now(), now(), '0' from generate_series(1, 1200) i`,
+  sqlite: `with recursive n(i) as (select 1 union all select i + 1 from n where i < 1200) insert into workflow_executions (id, workflow_id, workflow_version_id, status, start_source, started_at, completed_at, duration) select '${workflowId}_run_' || i, '${workflowId}', '${versionId}', 'completed', 'manual', 0, 0, '0' from n`,
+});
+
+/** 700 audit rows naming no run, as Refused Starts write them. */
+const bulkAudit = (workflowId: string) => ({
+  postgresql: `insert into workflow_execution_events (id, workflow_id, event_type, message) select '${workflowId}_refused_' || i, '${workflowId}', 'run_refused', 'Refused' from generate_series(1, 700) i`,
+  sqlite: `with recursive n(i) as (select 1 union all select i + 1 from n where i < 700) insert into workflow_execution_events (id, workflow_id, event_type, message, created_at) select '${workflowId}_refused_' || i, '${workflowId}', 'run_refused', 'Refused', 0 from n`,
+});
+
 /** The first-wins start that the race cases in this file make. */
 const startFirstWins = (
   connection: ConformanceConnection,
@@ -1628,6 +1640,80 @@ export function describeExecutionConformance({
       expect(counts.bounded).toBe(2);
       expect(counts.unbounded).toBe(3);
       expect(counts.listed.map((row) => row.status)).toEqual(["running"]);
+    });
+
+    // A workflow's history is cleared in bounded batches, each a transaction
+    // of its own, and the clear goes on until no batch is full. The bulk rows
+    // come from SQL, since 1,200 runs through the repository would make this
+    // case the slowest in the file.
+    it("clears a run history longer than one batch, and deletes a workflow with one", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      await seedPublishedWorkflow(connection);
+      await seedPublishedWorkflow(connection, {
+        workflowId: "wf_2",
+        name: "Reminders",
+        versionId: "ver_2",
+      });
+      await database.execute(bulkRuns("wf_1", "ver_1"));
+      await database.execute(bulkAudit("wf_1"));
+      await database.execute(bulkRuns("wf_2", "ver_2"));
+      await database.execute(bulkAudit("wf_2"));
+      // One run of each workflow holds a schedule row, which a batch locks
+      // before the run.
+      for (const workflowId of ["wf_1", "wf_2"]) {
+        // eslint-disable-next-line eslint/no-await-in-loop -- one start per workflow
+        const started = await attemptStart(connection, {
+          deliveryId: `delivery_${workflowId}`,
+          workflowId,
+          versionId: workflowId === "wf_1" ? "ver_1" : "ver_2",
+        });
+        if (started.status !== "started") throw new Error("Start was refused");
+      }
+      const remaining = (workflowId: string) =>
+        Promise.all([
+          database.selectIds(
+            `select id from workflow_executions where workflow_id = '${workflowId}'`
+          ),
+          database.selectIds(
+            `select id from workflow_execution_events where workflow_id = '${workflowId}'`
+          ),
+        ]).then(([runs, audit]) => ({
+          runs: runs.length,
+          audit: audit.length,
+        }));
+
+      const cleared = await connection.run(
+        Effect.flatMap(ExecutionRepo, (executions) =>
+          executions.deleteAllForWorkflow("wf_1")
+        )
+      );
+
+      expect(cleared).toBe(1201);
+      expect(await remaining("wf_1")).toEqual({ runs: 0, audit: 0 });
+      expect(await remaining("wf_2")).toEqual({ runs: 1201, audit: 701 });
+
+      await connection.run(
+        Effect.flatMap(WorkflowRepo, (workflows) =>
+          workflows.deleteById("wf_2")
+        )
+      );
+
+      expect(await remaining("wf_2")).toEqual({ runs: 0, audit: 0 });
+      expect(
+        await connection.run(
+          Effect.flatMap(WorkflowRepo, (workflows) =>
+            workflows.findById("wf_2")
+          )
+        )
+      ).toBeNull();
+      expect(
+        await connection.run(
+          Effect.flatMap(WorkflowRepo, (workflows) =>
+            workflows.findById("wf_1")
+          )
+        )
+      ).not.toBeNull();
     });
   });
 }

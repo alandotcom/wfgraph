@@ -1,9 +1,5 @@
-import { eq } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
-import {
-  workflowExecutionEvents,
-  workflowExecutions,
-} from "#src/backend/lib/db/schema";
+import { workflowExecutionEvents } from "#src/backend/lib/db/schema";
 import {
   Database,
   type DatabaseError,
@@ -29,7 +25,6 @@ import {
   makeNodeLogsMethods,
 } from "#src/backend/services/executions/repo/node-logs";
 import {
-  lockWorkflowRuns,
   makeRunsMethods,
   type RunsRepoMethods,
 } from "#src/backend/services/executions/repo/runs";
@@ -60,6 +55,7 @@ import {
   makeCronMethods,
 } from "#src/backend/services/executions/repo/cron";
 import { makeFencedWrites } from "#src/backend/services/executions/repo/fenced-writes";
+import { deleteWorkflowHistory } from "#src/backend/services/executions/repo/history";
 import type { FencedExecutionWrites } from "#src/backend/services/executions/repo/fencing";
 import type {
   DeliveryFence,
@@ -86,8 +82,8 @@ export type { CronPassWrites } from "#src/backend/services/executions/repo/cron"
  * reason `ExecutionRepo` is one service rather than several: `startForEntity`
  * writes `workflow_executions`, `workflow_wait_states`, the new run's schedule
  * row and its timeline entry inside one serializable transaction,
- * `deleteAllForWorkflow` deletes the runs and the workflow-scoped audit rows
- * together, and every write `fenced` answers takes the run's schedule row in
+ * `deleteAllForWorkflow` locks each batch's schedule rows and then its runs,
+ * and every write `fenced` answers takes the run's schedule row in
  * the same transaction as the rows it writes. None can be split across
  * services without splitting a transaction.
  */
@@ -132,13 +128,14 @@ type CrossTableRepoMethods = {
     metadata: JsonObject;
   }) => Effect.Effect<StartAdmissionDecision, DatabaseError>;
   /**
-   * Erase one workflow's run history, answering how many runs went. Node logs,
-   * wait states and schedule rows follow the runs by cascade; the audit rows
-   * are deleted here beside them, in the same transaction, because half a
-   * deletion leaves rows pointing at a run that is gone. The runs' schedule
-   * rows are locked first, in the order every fenced write takes them, and
-   * the runs themselves next, in the order the run-history sweep takes them,
-   * before any audit row is deleted.
+   * Erase one workflow's run history, answering how many runs this call
+   * deleted: its runs, with the node logs, wait rows, schedule rows and
+   * audit rows that follow each by cascade, and then the workflow's audit
+   * rows naming no run. It deletes `SWEEP_BATCH` rows per transaction, so a
+   * long history never holds its locks, or SQLite's one writer, for its whole
+   * length. A call that stops partway has deleted whole runs, and calling it
+   * again deletes the rest. Each batch locks its runs' schedule rows before
+   * the runs, in the order every fenced write takes them.
    */
   readonly deleteAllForWorkflow: (
     workflowId: string
@@ -268,38 +265,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
           ),
 
         deleteAllForWorkflow: (workflowId) =>
-          database.query(
-            async (db) =>
-              // One transaction, because the two deletes only make sense together:
-              // a failure between them would leave audit rows pointing at a run
-              // that is gone.
-              //
-              // The audit rows go by workflow rather than by run, which is what
-              // makes "all runs deleted" true: a Refused Start has no run to be
-              // found through, and a workflow with nothing but refusals has an
-              // empty execution list and history to clear all the same.
-              //
-              // Node logs, wait states and schedule rows are not deleted by
-              // name: their foreign keys are `ON DELETE cascade`, so Postgres
-              // takes them with the runs. The count comes off the delete rather
-              // than from a pre-read of ids, which would bind one parameter per
-              // run and stop working past the protocol's 65535.
-              await db.transaction(async (tx) => {
-                // Schedule rows, then runs, then audit rows: the runs in the
-                // order a pass's fenced write takes them, and the runs before
-                // the audit rows, the order the run sweep's cascade takes.
-                await lockWorkflowRuns(tx, workflowId);
-                await tx
-                  .delete(workflowExecutionEvents)
-                  .where(eq(workflowExecutionEvents.workflowId, workflowId));
-
-                const deleted = await tx
-                  .delete(workflowExecutions)
-                  .where(eq(workflowExecutions.workflowId, workflowId));
-
-                return deleted.count;
-              })
-          ),
+          database.query((db) => deleteWorkflowHistory(db, workflowId)),
       };
     })
   );

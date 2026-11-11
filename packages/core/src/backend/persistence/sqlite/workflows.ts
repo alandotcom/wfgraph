@@ -37,6 +37,7 @@ import {
   deleteCronTimers,
   replaceCronTimers,
 } from "#src/backend/persistence/sqlite/executions/cron";
+import { deleteWorkflowHistory } from "#src/backend/persistence/sqlite/executions/history";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 const SQLITE_IN_FLIGHT_EXECUTION_STATUSES = IN_FLIGHT_EXECUTION_STATUSES.map(
@@ -398,9 +399,16 @@ export function makeSqliteWorkflowRepo(
           return { status: "updated" as const, workflow };
         })
       ),
+    // The run history goes first, in the batches `deleteAllForWorkflow`
+    // deletes, so the write deleting the workflow cascades through only what
+    // is left and holds the one writer briefly.
     deleteById: (workflowId) =>
-      store.write((database) =>
-        database.delete(workflows).where(eq(workflows.id, workflowId))
+      deleteWorkflowHistory(store, workflowId).pipe(
+        Effect.andThen(
+          store.write((database) =>
+            database.delete(workflows).where(eq(workflows.id, workflowId))
+          )
+        )
       ),
     findCurrent: store.read((database) =>
       database

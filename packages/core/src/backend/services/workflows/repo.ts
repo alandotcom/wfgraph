@@ -32,6 +32,7 @@ import {
 } from "#src/backend/services/executions/repo/cron";
 import { timerSchedules } from "#src/backend/services/executions/repo/cron-policy";
 import { lockWorkflowRuns } from "#src/backend/services/executions/repo/runs";
+import { deleteWorkflowHistory } from "#src/backend/services/executions/repo/history";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 export { type WorkflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
@@ -237,9 +238,12 @@ export class WorkflowRepo extends Context.Service<
       updates: WorkflowUpdateData & { graph: SerializedWorkflowGraph };
     }) => Effect.Effect<WorkflowDraftWriteResult, DatabaseError>;
     /**
-     * Delete a workflow, and everything that cascades with it. The workflow
-     * row is locked first and its cron timers next, in the lock order
-     * `repo/cron.ts` states.
+     * Delete a workflow, and everything that cascades with it. Its run
+     * history goes first, in the batches `deleteAllForWorkflow` deletes, so a
+     * delete that stops partway leaves the workflow with less history and a
+     * second call finishes it. The last transaction locks the workflow row,
+     * its cron timers and any runs started meanwhile, in the lock order
+     * `repo/cron.ts` states, and deletes the workflow.
      */
     readonly deleteById: (
       workflowId: string
@@ -729,8 +733,11 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
           ),
 
         deleteById: (workflowId) =>
-          database.query((db) =>
-            db.transaction(async (tx) => {
+          database.query(async (db) => {
+            // The run history goes first, in batches of their own, so the
+            // transaction below locks and cascades through what is left.
+            await deleteWorkflowHistory(db, workflowId);
+            await db.transaction(async (tx) => {
               // Publish and pause hold the workflow row and then lock its
               // timers, so the workflow row goes first here too. A fire holds
               // its timer row and then takes a key-share lock on the workflow
@@ -747,8 +754,8 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               await lockCronTimers(tx, workflowId);
               await lockWorkflowRuns(tx, workflowId);
               await tx.delete(workflows).where(eq(workflows.id, workflowId));
-            })
-          ),
+            });
+          }),
 
         findCurrent,
 

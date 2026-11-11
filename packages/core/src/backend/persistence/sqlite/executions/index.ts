@@ -25,6 +25,7 @@ import {
   admitStart,
   findAdmissionRefusal,
 } from "#src/backend/persistence/sqlite/executions/admission";
+import { deleteWorkflowHistory } from "#src/backend/persistence/sqlite/executions/history";
 
 export function makeSqliteExecutionRepo(
   store: SqliteDatabase
@@ -90,17 +91,6 @@ export function makeSqliteExecutionRepo(
         })
       ),
     deleteAllForWorkflow: (workflowId) =>
-      store.write((database) =>
-        Effect.gen(function* () {
-          yield* database
-            .delete(workflowExecutionEvents)
-            .where(eq(workflowExecutionEvents.workflowId, workflowId));
-          const rows = yield* database
-            .delete(workflowExecutions)
-            .where(eq(workflowExecutions.workflowId, workflowId))
-            .returning({ id: workflowExecutions.id });
-          return rows.length;
-        })
-      ),
+      deleteWorkflowHistory(store, workflowId),
   };
 }

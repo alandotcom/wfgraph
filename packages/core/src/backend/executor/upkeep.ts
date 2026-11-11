@@ -9,6 +9,7 @@ import { Effect, Exit } from "effect";
 import type { RetentionWindows } from "#src/backend/host-retention";
 import type { DatabaseError } from "#src/backend/lib/effect/database";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { SWEEP_BATCH } from "#src/backend/services/executions/repo/retention-policy";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 
 /** How many host-inserted inbox rows one poll schedules at most. */
@@ -16,15 +17,6 @@ const INBOX_POLL_LIMIT = 100;
 
 /** How often the retention sweeps run when the last ones finished. */
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000;
-
-/**
- * How many rows each sweep deletes at most, in one statement, for all four
- * sweeps. A sweep that deletes this many may have left more past its window.
- * It is 500 because `node:sqlite` runs on the host's main thread and holds the
- * one writer: 500 ended runs with their logs, timelines and wait rows took
- * about 25 ms to delete on SQLite, and 1,000 took about 45 ms.
- */
-const SWEEP_BATCH = 500;
 
 /**
  * The poll for inbox rows a host inserted inside its own transaction: gives up

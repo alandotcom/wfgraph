@@ -11,6 +11,17 @@ import {
   instantOf,
 } from "#src/backend/services/executions/repo/release-policy";
 
+/**
+ * How many rows one statement of a history delete removes at most: each of
+ * the four retention sweeps, and each batch of a workflow's run history that
+ * `deleteAllForWorkflow` and a workflow delete clear. A sweep that deletes
+ * this many may have left more past its window. It is 500 because
+ * `node:sqlite` runs on the host's main thread and holds the one writer: 500
+ * ended runs with their logs, timelines and wait rows took about 25 ms to
+ * delete on SQLite, and 1,000 took about 45 ms.
+ */
+export const SWEEP_BATCH = 500;
+
 /** The event inbox table and its id column, in one backend's schema. */
 export type InboxTable = { table: Table; id: Column };
 
