@@ -666,7 +666,7 @@ describe("mobile Runs Group drill-in", () => {
     await waitFor(() => expect(title()).toBe("Run #1"));
 
     // The journey entry names a step the overview hides inside the Group.
-    press("Send welcome back, Running");
+    press("Send welcome back, Waiting");
     await waitFor(() =>
       expect(search()).toEqual({
         view: "runs",
