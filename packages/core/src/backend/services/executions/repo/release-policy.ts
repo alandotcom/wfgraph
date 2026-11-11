@@ -14,7 +14,7 @@
 
 import { countBy, sortBy } from "es-toolkit/array";
 import { Effect } from "effect";
-import { and, type Column, eq, type SQL, sql } from "drizzle-orm";
+import { and, type Column, eq, type SQL, sql, type Table } from "drizzle-orm";
 import type {
   ExecutionScheduleKind,
   ParkWake,
@@ -348,6 +348,7 @@ export function reparkablePark(
 
 /** The schedule row columns the claim's counting rule reads. */
 type ClaimColumns = {
+  id: Column;
   state: Column;
   attempt: Column;
   runningStepId: Column;
@@ -356,12 +357,52 @@ type ClaimColumns = {
 /**
  * The claim's counting rule, as the value it writes to `attempt`: a row whose
  * lease expired while no step was recorded as running counts one failure
- * against the run. A row queued by a wake or by a release spends nothing, and
- * a lease that expired under a recorded step counts against that step instead
+ * against the run, and so does one whose recorded step could not be counted
+ * (`uncounted`, the ids of rows whose step's memo row had already settled). A
+ * row queued by a wake or by a release spends nothing, and a lease that
+ * expired under any other recorded step counts against that step instead
  * (`sweptStepFailures`).
  */
-export function claimAttempt(columns: ClaimColumns): SQL {
-  return sql`case when ${columns.state} = 'leased' and ${columns.runningStepId} is null then ${columns.attempt} + 1 else ${columns.attempt} end`;
+export function claimAttempt(
+  columns: ClaimColumns,
+  uncounted: readonly string[]
+): SQL {
+  const counted =
+    uncounted.length === 0
+      ? sql`${columns.runningStepId} is null`
+      : sql`(${columns.runningStepId} is null or ${columns.id} in (${sql.join(
+          uncounted.map((id) => sql`${id}`),
+          sql`, `
+        )}))`;
+  return sql`case when ${columns.state} = 'leased' and ${counted} then ${columns.attempt} + 1 else ${columns.attempt} end`;
+}
+
+/** The step memo table and the columns `runningOnRenew` reads. */
+type MemoTable = {
+  table: Table;
+  scheduleId: Column;
+  stepId: Column;
+  status: Column;
+};
+
+/**
+ * The running-step columns a heartbeat for `running` sets on the schedule row
+ * `scheduleId`: the step and its node, unless that step's memo row has
+ * already settled, `succeeded` or `failed`, which a memo write that committed
+ * after the heartbeat read the step and before its write would leave. A step
+ * named after it finished would make an expired lease count against nothing.
+ */
+export function runningOnRenew(
+  memo: MemoTable,
+  scheduleId: string,
+  running: { stepId: string; nodeId: string | null } | null
+): { runningStepId: SQL | null; runningNodeId: SQL | null } {
+  if (running === null) return { runningStepId: null, runningNodeId: null };
+  const settled = sql`exists (select 1 from ${memo.table} where ${memo.scheduleId} = ${scheduleId} and ${memo.stepId} = ${running.stepId} and ${memo.status} <> 'failing')`;
+  return {
+    runningStepId: sql`case when ${settled} then null else ${running.stepId} end`,
+    runningNodeId: sql`case when ${settled} then null else ${running.nodeId} end`,
+  };
 }
 
 /**

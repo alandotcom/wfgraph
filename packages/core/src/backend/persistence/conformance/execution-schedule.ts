@@ -949,6 +949,109 @@ export function describeExecutionScheduleConformance({
       ]);
     });
 
+    it("names no step on a heartbeat that lands after that step's memo write, so the expired lease counts against the run", async () => {
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(executionId, T0);
+          const writes = executions.fenced(fence);
+          yield* writes.writeStepMemo({
+            nodeId: "done",
+            stepId: "step_done",
+            value: "sent",
+            leaseExpiresAt: at(LEASE_MS),
+          });
+          // The heartbeat read the step as running before its memo write
+          // committed, and its own write lands after.
+          yield* writes.renewLease({
+            leaseExpiresAt: at(LEASE_MS),
+            runningStepId: "step_done",
+            runningNodeId: "done",
+          });
+          const afterLateBeat = yield* executions.findSchedule({ executionId });
+          yield* writes.renewLease({
+            leaseExpiresAt: at(LEASE_MS),
+            runningStepId: "step_next",
+            runningNodeId: "next",
+          });
+          const afterNextBeat = yield* executions.findSchedule({ executionId });
+          yield* writes.renewLease({
+            leaseExpiresAt: at(LEASE_MS),
+            runningStepId: "step_done",
+            runningNodeId: "done",
+          });
+          const { claim } = yield* claimRun(executionId, at(LEASE_MS + 1));
+          return {
+            afterLateBeat,
+            afterNextBeat,
+            claim,
+            memo: yield* executions.listStepMemo({ executionId }),
+          };
+        })
+      );
+
+      expect(result.afterLateBeat).toMatchObject({
+        runningStepId: null,
+        runningNodeId: null,
+      });
+      expect(result.afterNextBeat).toMatchObject({
+        runningStepId: "step_next",
+        runningNodeId: "next",
+      });
+      expect(result.claim.attempt).toBe(1);
+      expect(result.memo).toEqual([
+        {
+          stepId: "step_done",
+          nodeId: "done",
+          status: "succeeded",
+          failures: 0,
+          value: "sent",
+        },
+      ]);
+    });
+
+    it("counts a lease that expires under a step whose memo row has settled against the run", async () => {
+      const database = await openDatabase();
+      const connection = await seeded(await database.open());
+      const { executionId, scheduleId } = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const run = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(run, T0);
+          yield* executions.fenced(fence).writeStepMemo({
+            nodeId: "done",
+            stepId: "step_done",
+            value: "sent",
+            leaseExpiresAt: at(LEASE_MS),
+          });
+          return { executionId: run, scheduleId: fence.scheduleId };
+        })
+      );
+      // The row names the finished step, as a heartbeat that raced its memo
+      // write left it before heartbeats checked the memo.
+      await database.execute(
+        `update workflow_execution_schedule set running_step_id = 'step_done', running_node_id = 'done' where id = '${scheduleId}'`
+      );
+
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const { claim } = yield* claimRun(executionId, at(LEASE_MS + 1));
+          return {
+            claim,
+            memo: yield* executions.listStepMemo({ executionId }),
+          };
+        })
+      );
+
+      expect(result.claim.attempt).toBe(1);
+      expect(result.memo).toMatchObject([
+        { stepId: "step_done", status: "succeeded", failures: 0 },
+      ]);
+    });
+
     it("holds a schedule row's lease columns to its leased state", async () => {
       const database = await openDatabase();
       const connection = await seeded(await database.open());

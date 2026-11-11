@@ -128,11 +128,18 @@ export type PassState = {
   /** Succeeds once no step body is running, at once when none is. */
   readonly stepsSettled: Effect.Effect<void>;
   /**
-   * The step the heartbeat records as running: the earliest started of the
-   * steps still running, since parallel branches run steps side by side, and
-   * null between steps.
+   * The step a budget cut counts a failure against: the earliest started of
+   * the reported steps still running, which has run longest, since parallel
+   * branches run steps side by side, and null between steps.
    */
   readonly runningStep: () => PassStep | null;
+  /**
+   * The step the heartbeat records as running, which an expired lease counts
+   * against: the one reported step running, and null between steps or while
+   * several run, since nothing then says which of them a crash was due to,
+   * and the claim counts such a lease against the run.
+   */
+  readonly heartbeatStep: () => PassStep | null;
   /**
    * Answers a step whose memo row is `failed` with the failure the step
    * throws, and remembers that failure, so `spentStepBehind` can tell the
@@ -192,6 +199,10 @@ export function createPassState(): PassState {
           })
     ),
     runningStep: () => running.find((entry) => entry.reported)?.step ?? null,
+    heartbeatStep: () => {
+      const reported = running.filter((entry) => entry.reported);
+      return reported.length === 1 ? (reported[0]?.step ?? null) : null;
+    },
     spentStep: (stepId, message) => {
       const failure = engineFailure("failure", message);
       spent.push({ stepId, failure });

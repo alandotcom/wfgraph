@@ -58,6 +58,7 @@ import {
   requeuedByWake,
   requeuedWakeAt,
   runningAfterMemo,
+  runningOnRenew,
   stepFailureOf,
   type StepFailure,
   stepMemoOf,
@@ -280,7 +281,8 @@ export type ScheduleRepoMethods = {
    * a new owner token and a lease ending `leaseMs` after `now`. A row queued by
    * a wake or a release spends nothing. Sweeping an expired lease counts one
    * failure against the step the row recorded as running, or against the run's
-   * own count when it recorded none (`release-policy.ts`). Every park of a
+   * own count when it recorded none or the step's memo row had already settled
+   * (`release-policy.ts`). Every park of a
    * claimed run still `waiting` with a deadline at or before `now` is resolved
    * as a timeout in the same transaction.
    *
@@ -326,7 +328,9 @@ export type ScheduleRepoMethods = {
 export type PassWrites = {
   /**
    * The worker's heartbeat: move the pass's lease to end at `leaseExpiresAt`
-   * and record which step the pass is running, null between steps.
+   * and record which step the pass is running, null between steps. A step
+   * whose memo row has already settled is recorded as null, since its memo
+   * write can commit between the heartbeat's read of the step and this write.
    */
   readonly renewLease: (input: {
     leaseExpiresAt: Date;
@@ -543,6 +547,15 @@ export function makeScheduleMethods(
               );
             if (due.length === 0) return [];
 
+            // A swept step whose memo row already settled counts against the
+            // run instead, so no expired lease goes uncounted.
+            const uncounted: string[] = [];
+            for (const swept of sweptStepFailures(due)) {
+              // eslint-disable-next-line eslint/no-await-in-loop -- one transaction runs one statement at a time
+              const counted = await countFailureOnStep(tx, swept);
+              if (counted === null) uncounted.push(swept.scheduleId);
+            }
+
             const claimed = await tx
               .update(workflowExecutionSchedule)
               .set({
@@ -550,7 +563,7 @@ export function makeScheduleMethods(
                 ownerToken: sql`gen_random_uuid()::text`,
                 leaseExpiresAt: new Date(input.now.getTime() + input.leaseMs),
                 workerId: input.workerId,
-                attempt: claimAttempt(workflowExecutionSchedule),
+                attempt: claimAttempt(workflowExecutionSchedule, uncounted),
                 runningStepId: null,
                 runningNodeId: null,
               })
@@ -562,10 +575,6 @@ export function makeScheduleMethods(
               )
               .returning();
 
-            for (const swept of sweptStepFailures(due)) {
-              // eslint-disable-next-line eslint/no-await-in-loop -- one transaction runs one statement at a time
-              await countFailureOnStep(tx, swept);
-            }
             await resolveOverdueParks(
               tx,
               claimed.flatMap((row) =>
@@ -651,8 +660,21 @@ export function makePassWrites(
             .update(workflowExecutionSchedule)
             .set({
               leaseExpiresAt: input.leaseExpiresAt,
-              runningStepId: input.runningStepId,
-              runningNodeId: input.runningNodeId,
+              ...runningOnRenew(
+                {
+                  table: workflowExecutionSteps,
+                  scheduleId: workflowExecutionSteps.scheduleId,
+                  stepId: workflowExecutionSteps.stepId,
+                  status: workflowExecutionSteps.status,
+                },
+                scheduleId,
+                input.runningStepId === null
+                  ? null
+                  : {
+                      stepId: input.runningStepId,
+                      nodeId: input.runningNodeId,
+                    }
+              ),
             })
             .where(thisSchedule);
         },

@@ -1097,8 +1097,9 @@ type Beat = "renewed" | "failed" | "refused" | "subject_ended";
 /**
  * The pass's heartbeat: every `everyMs` while the pass needs its lease, move
  * the lease to end `leaseMs` from now through the fenced `renewLease`, and
- * record the step the pass is running, so a lease that expires counts against
- * that step.
+ * record the step the pass is running (`PassState.heartbeatStep`), so a lease
+ * that expires counts against that step, or against the run when none is
+ * recorded.
  *
  * A refused renewal stops the pass as a lost lease, so the body starts no
  * further step and writes nothing more. The one exception is a refusal that
@@ -1118,7 +1119,7 @@ const renewLeaseWhileRunning = Effect.fnUntraced(function* (input: {
 }) {
   const { state, scheduleId } = input;
   const beat: Effect.Effect<Beat> = Effect.gen(function* () {
-    const running = state.runningStep();
+    const running = state.heartbeatStep();
     const renewal = yield* input
       .renewLease({
         leaseExpiresAt: input.leaseExpiresAt(),

@@ -39,6 +39,7 @@ import {
   requeuedByWake,
   requeuedWakeAt,
   runningAfterMemo,
+  runningOnRenew,
   stepFailureOf,
   type StepFailure,
   stepMemoOf,
@@ -357,6 +358,14 @@ export function makeSqliteScheduleMethods(
               );
             if (due.length === 0) return [];
 
+            // A swept step whose memo row already settled counts against the
+            // run instead, so no expired lease goes uncounted.
+            const uncounted: string[] = [];
+            for (const swept of sweptStepFailures(due)) {
+              const counted = yield* countFailureOnStep(database, swept);
+              if (counted === null) uncounted.push(swept.scheduleId);
+            }
+
             const claimed = yield* database
               .update(workflowExecutionSchedule)
               .set({
@@ -364,7 +373,7 @@ export function makeSqliteScheduleMethods(
                 ownerToken: sql`lower(hex(randomblob(16)))`,
                 leaseExpiresAt: now + input.leaseMs,
                 workerId: input.workerId,
-                attempt: claimAttempt(workflowExecutionSchedule),
+                attempt: claimAttempt(workflowExecutionSchedule, uncounted),
                 runningStepId: null,
                 runningNodeId: null,
               })
@@ -376,9 +385,6 @@ export function makeSqliteScheduleMethods(
               )
               .returning();
 
-            for (const swept of sweptStepFailures(due)) {
-              yield* countFailureOnStep(database, swept);
-            }
             const claimedRuns = claimed.flatMap((row) =>
               row.executionId === null ? [] : [row.executionId]
             );
@@ -462,8 +468,18 @@ export function makeSqlitePassWrites(
           .update(workflowExecutionSchedule)
           .set({
             leaseExpiresAt: input.leaseExpiresAt.getTime(),
-            runningStepId: input.runningStepId,
-            runningNodeId: input.runningNodeId,
+            ...runningOnRenew(
+              {
+                table: workflowExecutionSteps,
+                scheduleId: workflowExecutionSteps.scheduleId,
+                stepId: workflowExecutionSteps.stepId,
+                status: workflowExecutionSteps.status,
+              },
+              scheduleId,
+              input.runningStepId === null
+                ? null
+                : { stepId: input.runningStepId, nodeId: input.runningNodeId }
+            ),
           })
           .where(thisSchedule)
       ).pipe(Effect.asVoid),
