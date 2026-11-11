@@ -674,10 +674,21 @@ persistence: wfSqlite(); // ephemeral
 persistence: wfSqlite({ filename: "./wfgraph.db" }); // persistent
 ```
 
-SQLite creates and migrates its own normalized tables when it opens. Every write
-takes `BEGIN IMMEDIATE`, so concurrency decisions and wait claims remain atomic
-across processes sharing the file. It is the embedded option; PostgreSQL remains
-the option for horizontally scaled hosts.
+SQLite creates and migrates its own normalized tables when it opens. One Workflow
+Graph process owns a SQLite file, and its app runs the only worker loop on it, so
+`runner: false` and `createWfGraphRunner` are refused on SQLite. Other connections
+may still write to the file, such as your own transaction inserting into the event
+inbox, or a backup tool. Every Workflow Graph write takes `BEGIN IMMEDIATE`, so its
+concurrency decisions and wait claims stay atomic beside those writers, and a write
+that finds the file locked waits `busyTimeoutMs` before it fails:
+
+```ts
+persistence: wfSqlite({ filename: "./wfgraph.db", busyTimeoutMs: 10_000 });
+```
+
+`busyTimeoutMs` defaults to 5,000 and must be a non-negative integer. SQLite is the
+embedded option; PostgreSQL is the option for a host that runs Workflow Graph in
+more than one process.
 
 Workflow Graph adopts SQLite schema versions 6 and 7 into its Drizzle migration
 journal without rewriting application tables. To retain data from a version 1–5
@@ -721,7 +732,8 @@ The `runner` option controls the loop:
 - To run no loop in a process, pass `false`. Use it for a process that only serves requests,
   beside processes that run `createWfGraphRunner` (see Run the loop in its own process). At
   least one process connected to the same database must run a loop, or runs open and never
-  advance. SQLite refuses `false` at startup, because no other process can share its file.
+  advance. SQLite refuses `false` at startup, because the app that owns a SQLite file runs
+  the only loop on it (see Persistence).
 
 | Field                 | PostgreSQL default | SQLite default | Description                                                                                 |
 | --------------------- | ------------------ | -------------- | ------------------------------------------------------------------------------------------- |
@@ -849,7 +861,7 @@ process.once("SIGTERM", () => void runner.dispose());
 
 | Option                    | Required | Description                                                                                   |
 | ------------------------- | -------- | --------------------------------------------------------------------------------------------- |
-| `persistence`             | Yes      | The app's database. SQLite is refused, because no other process can share its file            |
+| `persistence`             | Yes      | The app's database. SQLite is refused, because the app that owns a SQLite file runs its loop  |
 | `encryption`              | Yes      | The app's key, which decrypts the credentials a step reads                                    |
 | `extensions`              | No       | The app's extension surface. A run reaches only the actions and Entities listed here          |
 | `basePath`, `publicUrl`   | No       | The app's values. A step that refreshes an OAuth token registers the callback URLs they build |
