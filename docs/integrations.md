@@ -198,7 +198,8 @@ what proves the credential valid. `packages/plugins/src/resend/test.ts` is the w
 **Host `defineAction` stays Promise-first.** An adopter needs no Effect. An `async` handler
 fails by a throw, and the message becomes the sentence in the run log. Durable work is
 `step.run(id, () => promise)`. A connection test is also a Promise seam and uses
-`callExternalAsync`.
+`callExternalAsync`. A host action imports `callExternal` and `callExternalAsync` from
+`@wfgraph/core`; an integration imports them from `@wfgraph/core/plugin`.
 
 ```ts
 // Host defineAction — Promise-first, no Effect required.

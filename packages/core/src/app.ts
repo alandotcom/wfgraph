@@ -53,6 +53,7 @@ export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
 export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
+export type { WfGraphAgentConfig } from "#src/backend/agent/config";
 export type { WfGraphRunnerOptions } from "#src/backend/executor/in-process-runner";
 export {
   WfGraphEventRefused,

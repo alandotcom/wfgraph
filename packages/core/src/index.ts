@@ -38,6 +38,19 @@ export type { ActionConfigFieldFor } from "#src/backend/extensions/steps/define-
  * log shows. A handler written as a plain function throws instead.
  */
 export { StepFailure } from "#src/backend/extensions/steps/define-step";
+/**
+ * An HTTP call to an external system with its timeout, retry schedule and
+ * repeat-safety rule. A host action written as a plain `async` function builds
+ * the call with `callExternal` and runs it with `callExternalAsync`, which
+ * provides the transport and answers a result object instead of an Effect.
+ */
+export {
+  callExternal,
+  callExternalAsync,
+  type ExternalCallResult,
+  type ExternalError,
+  type ExternalRequest,
+} from "#src/backend/extensions/steps/external-http";
 
 export {
   createWfGraphApp,
@@ -56,7 +69,9 @@ export {
   type WfGraphEvents,
   type WfGraphEventsOptions,
   type WfGraphExtensions,
+  type WfGraphAgentConfig,
   type WfGraphLogger,
+  type WfGraphMcpOptions,
   type WfGraphPersistence,
   type WfGraphRunnerOptions,
   type WfGraphRunsOptions,
