@@ -180,7 +180,10 @@ outlet at its next step boundary. Tracked workflows match immutable Entity type 
 ID; untracked workflows match the Correlation Path's Entity Value. A run an older
 published version started under the other of those two forms is matched in its own
 form, read from that version's Lifecycle Rules, and Concurrency compares it the same
-way. Stopping a
+way. A Cancel
+Event reaches a run whose Start Event was received no later than it, whichever of
+the two is delivered first, and never a run whose Start Event was received after
+it. Stopping a
 sequence mid-graph is an unwired Condition False, not a Cancel Event.
 
 **Cancel Filter**:

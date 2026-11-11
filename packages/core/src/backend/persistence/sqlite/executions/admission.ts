@@ -33,6 +33,7 @@ import {
 } from "#src/backend/persistence/sqlite/executions/runs";
 import { recordAuditEventWrite } from "#src/backend/persistence/sqlite/executions/audit";
 import { insertRunSchedule } from "#src/backend/persistence/sqlite/executions/schedule";
+import { claimForCancelDeliveredFirst } from "#src/backend/persistence/sqlite/executions/cancel-order";
 import {
   optionalJsonObject,
   sqliteExecution,
@@ -140,6 +141,7 @@ function openRun(
       message: input.startedEntry.message,
       metadata: input.startedEntry.metadata,
     })(database);
+    yield* claimForCancelDeliveredFirst(database, execution, input.now);
     return execution;
   });
 }

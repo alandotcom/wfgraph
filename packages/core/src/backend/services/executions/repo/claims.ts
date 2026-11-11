@@ -20,10 +20,19 @@ import {
 import type { Effect } from "effect";
 import {
   workflowCancelDecisions,
+  workflowEventInbox,
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import { recordAuditEventsWrite } from "#src/backend/services/executions/repo/audit";
+import {
+  lockCancelScope,
+  receivedAtOf,
+} from "#src/backend/services/executions/repo/cancel-order";
+import {
+  cancelScopeLockKeys,
+  startedNoLaterThan,
+} from "#src/backend/services/executions/repo/cancel-order-policy";
 import type { WfGraphDatabase } from "#src/backend/lib/db/index";
 import type { Database, DatabaseError } from "#src/backend/lib/effect/database";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -313,25 +322,49 @@ async function repinVersionWrite(
 }
 
 /**
- * The Cancel producer behind `requestCancelForEntity`. The decision row is
- * inserted before anything else the claim decides, so a second attempt of the
- * same delivery waits on the first attempt's transaction and then reads every
- * run it flagged.
+ * The Cancel producer behind `requestCancelForEntity`. The Entity's advisory
+ * locks are taken first, so an Event start of the same Entity either commits
+ * before the run scan or reads this decision once it commits. The decision row
+ * is inserted before anything else the claim decides, so a second attempt of
+ * the same delivery waits on the first attempt's transaction and then reads
+ * every run it flagged. A run whose start Event was received after this
+ * Cancel's is left alone (`startedNoLaterThan`).
  */
 async function requestCancelForEntityWrite(
   db: WfGraphDatabase,
   input: CancelInput
 ): Promise<CanceledOutletClaim[]> {
   const claimable = cancelClaimable(workflowExecutions, input);
+  let receivedAt: Date | null = null;
   const produced = await wakeExecutions(
     db,
     {
       now: input.now,
       candidates: async (tx) => {
+        await lockCancelScope(
+          tx,
+          cancelScopeLockKeys(input.workflowId, input, "every")
+        );
+        receivedAt = await receivedAtOf(tx, input.deliveryId);
         const candidates = await tx
           .select({ id: workflowExecutions.id })
           .from(workflowExecutions)
-          .where(claimable);
+          .where(
+            and(
+              claimable,
+              receivedAt === null
+                ? undefined
+                : startedNoLaterThan(
+                    workflowExecutions,
+                    {
+                      table: workflowEventInbox,
+                      id: workflowEventInbox.id,
+                      receivedAt: workflowEventInbox.receivedAt,
+                    },
+                    receivedAt
+                  )
+            )
+          );
         return candidates.map((row) => row.id);
       },
     },
@@ -342,6 +375,11 @@ async function requestCancelForEntityWrite(
           deliveryId: input.deliveryId,
           workflowId: input.workflowId,
           decidedAt: input.now,
+          eventName: input.eventName,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          entityValue: input.entityValue,
+          receivedAt,
         })
         .onConflictDoNothing()
         .returning({ deliveryId: workflowCancelDecisions.deliveryId });

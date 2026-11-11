@@ -461,4 +461,19 @@ export const sqliteMigrations = [
     hash: "6fe6b5bab16a5ccd8e2ebd571d018450d1201a37018f05e66208bcaf812f5ae7",
     name: "20261111170718_delivery_settled_state",
   },
+  {
+    sql: [
+      "ALTER TABLE `workflow_cancel_decisions` ADD `event_name` text;",
+      "\nALTER TABLE `workflow_cancel_decisions` ADD `entity_type` text;",
+      "\nALTER TABLE `workflow_cancel_decisions` ADD `entity_id` text;",
+      "\nALTER TABLE `workflow_cancel_decisions` ADD `entity_value` text;",
+      "\nALTER TABLE `workflow_cancel_decisions` ADD `received_at` integer;",
+      "\nCREATE INDEX `cancel_decisions_entity_idx` ON `workflow_cancel_decisions` (`workflow_id`,`entity_type`,`entity_id`,`received_at`) WHERE \"workflow_cancel_decisions\".\"entity_type\" is not null;",
+      "\nCREATE INDEX `cancel_decisions_entity_value_idx` ON `workflow_cancel_decisions` (`workflow_id`,`entity_value`,`received_at`) WHERE \"workflow_cancel_decisions\".\"entity_value\" is not null;",
+    ],
+    bps: true,
+    folderMillis: 1794417588000,
+    hash: "37bfe06cc2cd3d14353a59865a1fd92a074d3493d304bb676de68cda26af477f",
+    name: "20261111171948_cancel_decision_arrival",
+  },
 ] satisfies readonly MigrationMeta[];

@@ -439,6 +439,13 @@ A Workflow Builder declares the Lifecycle Rules on the Lifecycle Node:
 - optional Entity Eligibility over current host state and its checkpoints;
 - the concurrency policy that applies to each typed Entity identity or legacy Entity Value.
 
+A Cancel Event follows the order Events were received in, by the inbox row's
+`received_at`, whatever order the worker loop delivers them in. It reaches a run whose start
+Event was received no later than it: when the start is delivered after the Cancel, its run
+opens already claimed for the Canceled outlet. It never reaches a run whose start Event was
+received after it. A run a person or a schedule started has no arrival to compare, and a
+Cancel reaches it as before.
+
 `CONTEXT.md` defines Lifecycle Node, Start Event, Start Filter, Cancel Event, Cancel Filter,
 Arriving Event, Concurrency, Precedence, Refused Start, and Execution status in full.
 `docs/adr/0007` says why the model has this shape. An Event Author designs against that shape.

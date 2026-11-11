@@ -451,6 +451,81 @@ describePostgres("PostgreSQL concurrency", () => {
     expect(rows).toHaveLength(1);
   });
 
+  // A start and a Cancel of one Entity delivered at the same moment by two
+  // processes. The start was received first, so the run it opens is claimed
+  // whichever transaction commits first: by the Cancel's scan when the start
+  // commits first, and by the start's decision lookup otherwise. Unlimited
+  // starts in READ COMMITTED and newest-wins in SERIALIZABLE, whose snapshot
+  // the Entity lock must precede.
+  it.each(["unlimited", "newest-wins"] as const)(
+    "claims the run of a start received before a Cancel delivered beside it (%s)",
+    async (concurrency) => {
+      const [starter, canceler] = await openRacers(2);
+      await seedPublishedWorkflow(starter);
+      const rounds = 12;
+
+      const claims = await Promise.all(
+        Array.from({ length: rounds }, async (_, round) => {
+          const entityValue = `appointment_${round}`;
+          const arrive = (name: string, at: number) =>
+            starter.run(
+              Effect.flatMap(ExecutionRepo, (executions) =>
+                executions.insertInboxEvent({
+                  name,
+                  data: {},
+                  connectionId: null,
+                  idempotencyKey: null,
+                  now: new Date(Date.UTC(2026, 0, 1, 0, 0, 0, at)),
+                })
+              )
+            );
+          const startArrival = await arrive("appointment/booked", 0);
+          const cancelArrival = await arrive("appointment/cancelled", 1);
+          const [started] = await Promise.all([
+            starter.run(
+              Effect.flatMap(ExecutionRepo, (executions) =>
+                executions.startForEntity({
+                  execution: {
+                    workflowId: "wf_1",
+                    workflowVersionId: "ver_1",
+                    startSource: "event",
+                    runMode: "live",
+                    entityValue,
+                    deliveryId: startArrival.inboxId,
+                    input: {},
+                  },
+                  concurrency,
+                  ...notYetDue,
+                })
+              )
+            ),
+            canceler.run(
+              Effect.flatMap(ExecutionRepo, (executions) =>
+                executions.requestCancelForEntity({
+                  workflowId: "wf_1",
+                  entityValue,
+                  eventName: "appointment/cancelled",
+                  payload: {},
+                  deliveryId: cancelArrival.inboxId,
+                  now: notYetDue.now,
+                })
+              )
+            ),
+          ]);
+          if (started.status !== "started") throw new Error("Start refused");
+          const termination = await starter.run(
+            Effect.flatMap(ExecutionRepo, (executions) =>
+              executions.findTerminationState(started.execution.id)
+            )
+          );
+          return termination?.claim?.kind ?? null;
+        })
+      );
+
+      expect(claims).toEqual(Array.from({ length: rounds }, () => "cancel"));
+    }
+  );
+
   // newest-wins lets every start through and displaces the runs it found, so
   // the invariant is that exactly one survives and no run is displaced twice.
   // Every racer writes the row the others read, so about one decision commits

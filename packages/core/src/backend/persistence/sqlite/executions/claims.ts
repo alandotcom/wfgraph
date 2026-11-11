@@ -35,9 +35,12 @@ import type {
 import { encodeJson } from "#src/backend/persistence/sqlite/database";
 import {
   workflowCancelDecisions,
+  workflowEventInbox,
   workflowExecutions,
   workflowWaitStates,
 } from "#src/backend/persistence/sqlite/schema";
+import { receivedAtOf } from "#src/backend/persistence/sqlite/executions/cancel-order";
+import { startedNoLaterThan } from "#src/backend/services/executions/repo/cancel-order-policy";
 import { recordAuditEventsWrite } from "#src/backend/persistence/sqlite/executions/audit";
 import { sqliteWaitState } from "#src/backend/persistence/sqlite/executions/rows";
 import { notExitClaimed } from "#src/backend/persistence/sqlite/executions/runs";
@@ -176,7 +179,8 @@ function repinVersionWrite(database: SqliteExecutor, input: RepinInput) {
 /**
  * The Cancel producer behind `requestCancelForEntity`. The write transaction
  * holds the one writer, so the decision row and every flag it guards land
- * together.
+ * together, and no start interleaves with them. A run whose start Event was
+ * received after this Cancel's is left alone (`startedNoLaterThan`).
  */
 function requestCancelForEntityWrite(
   database: SqliteExecutor,
@@ -186,12 +190,18 @@ function requestCancelForEntityWrite(
     database,
     input.now,
     Effect.gen(function* (): Effect.fn.Return<CancelClaimWrite, unknown> {
+      const receivedAt = yield* receivedAtOf(database, input.deliveryId);
       const decided = yield* database
         .insert(workflowCancelDecisions)
         .values({
           deliveryId: input.deliveryId,
           workflowId: input.workflowId,
           decidedAt: input.now.getTime(),
+          eventName: input.eventName,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          entityValue: input.entityValue,
+          receivedAt,
         })
         .onConflictDoNothing()
         .returning({ deliveryId: workflowCancelDecisions.deliveryId });
@@ -218,7 +228,22 @@ function requestCancelForEntityWrite(
           cancelPayload: encodeJson(input.payload),
           cancelDeliveryId: input.deliveryId,
         })
-        .where(cancelClaimable(workflowExecutions, input))
+        .where(
+          and(
+            cancelClaimable(workflowExecutions, input),
+            receivedAt === null
+              ? undefined
+              : startedNoLaterThan(
+                  workflowExecutions,
+                  {
+                    table: workflowEventInbox,
+                    id: workflowEventInbox.id,
+                    receivedAt: workflowEventInbox.receivedAt,
+                  },
+                  receivedAt
+                )
+          )
+        )
         .returning({ id: workflowExecutions.id });
       const flaggedIds = flagged.map((row) => row.id);
       const resolved = yield* resolveOpenParks(database, flaggedIds, {

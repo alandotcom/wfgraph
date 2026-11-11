@@ -464,8 +464,21 @@ export const workflowCancelDecisions = sqliteTable(
       .references(() => workflowEventInbox.id, { onDelete: "cascade" }),
     workflowId: text("workflow_id").notNull(),
     decidedAt: integer("decided_at").notNull(),
+    eventName: text("event_name"),
+    entityType: text("entity_type"),
+    entityId: text("entity_id"),
+    entityValue: text("entity_value"),
+    receivedAt: integer("received_at"),
   },
-  (table) => [primaryKey({ columns: [table.deliveryId, table.workflowId] })]
+  (table) => [
+    primaryKey({ columns: [table.deliveryId, table.workflowId] }),
+    index("cancel_decisions_entity_idx")
+      .on(table.workflowId, table.entityType, table.entityId, table.receivedAt)
+      .where(sql`${table.entityType} is not null`),
+    index("cancel_decisions_entity_value_idx")
+      .on(table.workflowId, table.entityValue, table.receivedAt)
+      .where(sql`${table.entityValue} is not null`),
+  ]
 );
 
 /**

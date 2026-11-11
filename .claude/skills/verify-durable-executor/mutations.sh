@@ -59,6 +59,8 @@ Intake|audit-sweep-drops-the-refusal|AuditSweepKeepsInboxRefusals == TRUE|AuditS
 Intake|schedule-row-inserted-later|ExecutionAndScheduleTogether == TRUE|ExecutionAndScheduleTogether == FALSE|EveryOpenRunIsScheduled
 Intake|supersede-keeps-schedule|SupersedeDropsSchedule == TRUE|SupersedeDropsSchedule == FALSE|SupersededRunsStop
 Intake|first-wins-ignores-live-run|ELSE IF mode = "first" /\ Live # {}|ELSE IF FALSE|OneLiveRunPerEntity
+Intake|cancel-ignores-arrival-order|CancelComparesArrivals == TRUE|CancelComparesArrivals == FALSE|CancelClaimsOnlyEarlierArrivals
+Intake|start-ignores-cancel-decisions|StartReadsCancelDecisions == TRUE|StartReadsCancelDecisions == FALSE|NoEarlierStartEscapesTheCancel
 Intake|newest-wins-keeps-old-run|ELSE IF y \in Live /\ mode = "newest" THEN "superseded"|ELSE IF FALSE THEN "superseded"|OneLiveRunPerEntity
 Intake|poll-skips-host-rows|/\ inbox[r] = "present" /\ dsched[r] = "none"|/\ inbox[r] = "present" /\ dsched[r] = "none" /\ FALSE|EveryArrivalIsDelivered
 Intake|canceled-run-never-ends|  /\ exec[x] = "claimed" /\ esched[x] = "present"|  /\ exec[x] = "claimed" /\ esched[x] = "present" /\ FALSE|EveryRunEnds

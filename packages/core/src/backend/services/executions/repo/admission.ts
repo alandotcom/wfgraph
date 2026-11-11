@@ -22,6 +22,10 @@ import {
 import { recordAuditEventWrite } from "#src/backend/services/executions/repo/audit";
 import { endRunsWrite } from "#src/backend/services/executions/repo/runs";
 import { insertRunSchedule } from "#src/backend/services/executions/repo/schedule";
+import {
+  claimForCancelDeliveredFirst,
+  lockEventStart,
+} from "#src/backend/services/executions/repo/cancel-order";
 import type {
   ConcurrencyStartOutcome,
   EntityStartOutcome,
@@ -133,10 +137,12 @@ async function findByDelivery(
 
 /**
  * Inserts the run's execution row, its schedule row due at `input.now`, and
- * its "run started" entry. A row this arrival already opened is answered in
- * its place, whatever status it is in: the run may have finished while the
- * step was being retried, and opening a second one would run the graph twice
- * for one Event.
+ * its "run started" entry, and claims a run an Event started for a Cancel of
+ * its Entity received no earlier than that Event (`claimForCancelDeliveredFirst`). A
+ * row this arrival already opened is answered in its place, whatever status it
+ * is in: the run may have finished while the step was being retried, and
+ * opening a second one would run the graph twice for one Event. An Event
+ * start has taken `lockEventStart` before this runs.
  */
 export async function openRun(
   tx: WfGraphTransaction,
@@ -187,6 +193,7 @@ export async function openRun(
     message: input.startedEntry.message,
     metadata: input.startedEntry.metadata,
   })(tx);
+  await claimForCancelDeliveredFirst(tx, row, input.now);
   return started(row, []);
 }
 
@@ -216,6 +223,10 @@ export async function admitStart(
   input: StartForEntityInput
 ): Promise<EntityStartOutcome> {
   const { admissionDecisionId, ...start } = input;
+  // An Event start takes the Entity's lock before it reads, as a Cancel
+  // claim does, so the Cancel decision `openRun` looks for is either
+  // committed or waits for this start.
+  await lockEventStart(tx, start.execution, "serializable");
   if (admissionDecisionId) {
     const refusal = await findAdmissionRefusal(tx, {
       workflowId: start.execution.workflowId,

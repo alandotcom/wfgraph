@@ -240,3 +240,37 @@ retries on the reopened delivery are bounded by the row's own failure count alon
 reopen resets, so each resend gives it a full set of retries. A delivered row still deletes its
 schedule row and memo, since a resend of its key is a duplicate. A settled row and its memo go
 with their inbox row when the retention sweep deletes it.
+
+## Amendment: A Cancel follows arrival order
+
+Date: 2026-11-11
+
+A Cancel claim took every in-flight run of its Entity when its delivery ran. A start whose
+delivery was held back, by a retry or by a second process delivering beside the first,
+opened its run after a Cancel received later had already been applied, so the run went
+uncanceled. The reverse ordering canceled a run whose start was received after the Cancel.
+On PostgreSQL the same miss happened with no delay at all when two processes delivered the
+two Events at once, since each transaction read before the other committed.
+
+The rule is now stated by arrival: a Cancel Event reaches a run whose start Event was
+received no later than it, and never one whose start Event was received after it, whichever
+is delivered first. The `workflow_cancel_decisions` row records the Cancel's Event name, the
+Entity it named in each identity form, and its inbox row's `received_at`. A start that opens
+a run looks for a decision of its workflow and Entity, in the run's own form, received no
+earlier than its own inbox row, and claims the run for the earliest such Cancel in the
+transaction that opens it, with the Cancel's payload and timeline entry. A Cancel claim
+passes over a run whose start's inbox row was received after its own. A run no Event started,
+or whose start's inbox row the retention sweep deleted, has no arrival to compare and is
+claimed as before. A tie counts as received before the Cancel, in both orders.
+
+On PostgreSQL each side takes a transaction-scoped advisory lock on the Entity before it
+reads, exclusive for a Cancel and shared for a start, so concurrent starts of one Entity do
+not wait on each other. A start that decides in a SERIALIZABLE transaction tries the lock as
+its first statement and retries with a fresh snapshot when a Cancel held it. SQLite's single
+writer serializes the two already.
+
+The alternative rule, that a Cancel reaches every run of its Entity in flight when it is
+delivered, is what the code did; it makes the outcome depend on delivery order, which a
+retry or a second process decides. First-wins Concurrency still compares runs as they stand
+when the start is delivered, so a start refused in arrival order because an earlier run was
+in flight can open, already claimed, when the Cancel of that earlier run was delivered first.

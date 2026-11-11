@@ -801,9 +801,14 @@ export const workflowEventInbox = pgTable(
  * and inbox row whose Cancel claim has committed, written in the claim's own
  * transaction whether or not it flagged a run. A retried delivery that finds
  * the row flags nothing new and answers with the runs the first attempt
- * flagged, which carry the inbox id in `cancel_delivery_id`, so one arrival
- * never cancels a run that opened after it was first applied. The rows go with
+ * flagged, which carry the inbox id in `cancel_delivery_id`. The rows go with
  * their inbox row when the retention sweep deletes it.
+ *
+ * The row also records what the Cancel was about and when it arrived, so a
+ * start delivered after it can find it: a run whose start Event was received
+ * no later than `received_at`, for an Entity the row names in the run's own
+ * identity form, is claimed by this Cancel when it opens. A row written before
+ * these columns existed holds nulls in them and claims no later run.
  */
 export const workflowCancelDecisions = pgTable(
   "workflow_cancel_decisions",
@@ -813,8 +818,27 @@ export const workflowCancelDecisions = pgTable(
       .references(() => workflowEventInbox.id, { onDelete: "cascade" }),
     workflowId: text("workflow_id").notNull(),
     decidedAt: timestamp("decided_at").notNull(),
+    /** The Cancel Event, as the delivery resolved it. */
+    eventName: text("event_name"),
+    /** The typed Entity the Cancel named, when the workflow's rules track one. */
+    entityType: text("entity_type"),
+    entityId: text("entity_id"),
+    /** The legacy Entity Value the Cancel named, when it named one. */
+    entityValue: text("entity_value"),
+    /** When the Cancel's inbox row was received. */
+    receivedAt: timestamp("received_at"),
   },
-  (table) => [primaryKey({ columns: [table.deliveryId, table.workflowId] })]
+  (table) => [
+    primaryKey({ columns: [table.deliveryId, table.workflowId] }),
+    // A start's question, in each identity form: the Cancel decisions of its
+    // workflow about its Entity received no earlier than it was.
+    index("workflow_cancel_decisions_entity_idx")
+      .on(table.workflowId, table.entityType, table.entityId, table.receivedAt)
+      .where(sql`${table.entityType} is not null`),
+    index("workflow_cancel_decisions_entity_value_idx")
+      .on(table.workflowId, table.entityValue, table.receivedAt)
+      .where(sql`${table.entityValue} is not null`),
+  ]
 );
 
 /**

@@ -27,11 +27,19 @@ function isDeliveryLookup(query: string): boolean {
   return query.startsWith("select") && query.includes('"delivery_id" = $2');
 }
 
+/** The exclusive Entity lock a Cancel claim takes. */
 function isLock(query: string): boolean {
-  return query.includes("pg_advisory_xact_lock");
+  return /pg_(try_)?advisory_xact_lock\(/.test(query);
+}
+
+/** The shared Entity lock an Event start takes, so a Cancel waits on it. */
+function isSharedLock(query: string): boolean {
+  return /pg_(try_)?advisory_xact_lock_shared\(/.test(query);
 }
 
 function harness(answers: {
+  /** What each try of the shared lock answers, in order; true once spent. */
+  locked?: boolean | boolean[] | undefined;
   ownRow?: boolean | undefined;
   inFlight?: InFlightRow[] | undefined;
   updated?: string[] | undefined;
@@ -43,6 +51,18 @@ function harness(answers: {
     transactions,
   } = stubDatabase(
     ({ query }) => {
+      if (query.includes("pg_try_advisory_xact_lock_shared")) {
+        const answer = Array.isArray(answers.locked)
+          ? (answers.locked.shift() ?? true)
+          : (answers.locked ?? true);
+        // A raw statement's rows reach the caller as the driver sent them.
+        return [{ locked: answer }];
+      }
+      if (query.startsWith("do $$")) {
+        throw Object.assign(new Error("waited for the lock"), {
+          code: "40001",
+        });
+      }
       if (isDeliveryLookup(query)) {
         return answers.ownRow ? [["exec_own"]] : [];
       }
@@ -97,7 +117,7 @@ function harness(answers: {
   const sentAny = (predicate: (query: string) => boolean) =>
     statements.some((statement) => predicate(statement.query));
 
-  return { sent, sentAny, start, transactions };
+  return { sent, sentAny, start, statements, transactions };
 }
 
 describe("startForEntity", () => {
@@ -105,12 +125,17 @@ describe("startForEntity", () => {
   // and both start. PostgreSQL's predicate locks detect that write skew at
   // SERIALIZABLE and abort one whole decision for retry.
   it("runs the entity decision in a serializable transaction", async () => {
-    const { sentAny, start, transactions } = harness({});
+    const { statements, sentAny, start, transactions } = harness({
+      locked: true,
+    });
 
     await start("newest-wins");
 
     expect(transactions).toEqual([{ isolationLevel: "serializable" }]);
     expect(sentAny(isLock)).toBe(false);
+    // The shared Entity lock is tried as the transaction's first statement,
+    // before the snapshot every later read uses is taken.
+    expect(statements[0]?.query).toMatch(/pg_try_advisory_xact_lock_shared/);
   });
 
   // What a real driver raises is nested: Drizzle wraps the failure in a
@@ -154,14 +179,27 @@ describe("startForEntity", () => {
     expect(transactions).toHaveLength(1);
   });
 
-  // Unlimited compares nothing, so a lock would only make concurrent starts of
-  // one entity queue up behind each other for no decision.
-  it("takes no lock where nothing is compared", async () => {
+  // Unlimited compares no runs, so a start takes only the shared lock a
+  // Cancel claim of its Entity waits on: concurrent starts of one entity do
+  // not queue up behind each other.
+  it("takes only the shared Entity lock where no runs are compared", async () => {
     const { sentAny, start } = harness({});
 
     await start("unlimited");
 
     expect(sentAny(isLock)).toBe(false);
+    expect(sentAny(isSharedLock)).toBe(true);
+  });
+
+  // A shared lock a Cancel claim already holds means the attempt's snapshot
+  // predates that claim, so the attempt waits for it and starts again.
+  it("starts the decision again once a Cancel claim it waited on has committed", async () => {
+    const { start, transactions } = harness({ locked: [false, true] });
+
+    const outcome = await start("newest-wins");
+
+    expect(outcome.status).toBe("started");
+    expect(transactions).toHaveLength(2);
   });
 
   // A start with nothing to serialize on cannot be replayed by a retry loop, so

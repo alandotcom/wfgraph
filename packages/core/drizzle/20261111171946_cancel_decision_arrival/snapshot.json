@@ -1,0 +1,311 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "aa6bf36c-6dd5-499b-9685-ed2e167a4bf8",
+  "prevIds": [
+    "01f2eefb-bcb2-4b22-8d95-83928d224232"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_cancel_decisions",
+        "event_name"
+      ],
+      "writes": [
+        "s|col|public.workflow_cancel_decisions.event_name",
+        "n|col|public.workflow_cancel_decisions.event_name",
+        "e|col|public.workflow_cancel_decisions.event_name"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_cancel_decisions",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_cancel_decisions",
+        "entity_type"
+      ],
+      "writes": [
+        "s|col|public.workflow_cancel_decisions.entity_type",
+        "n|col|public.workflow_cancel_decisions.entity_type",
+        "e|col|public.workflow_cancel_decisions.entity_type"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_cancel_decisions",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_cancel_decisions",
+        "entity_id"
+      ],
+      "writes": [
+        "s|col|public.workflow_cancel_decisions.entity_id",
+        "n|col|public.workflow_cancel_decisions.entity_id",
+        "e|col|public.workflow_cancel_decisions.entity_id"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_cancel_decisions",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_cancel_decisions",
+        "entity_value"
+      ],
+      "writes": [
+        "s|col|public.workflow_cancel_decisions.entity_value",
+        "n|col|public.workflow_cancel_decisions.entity_value",
+        "e|col|public.workflow_cancel_decisions.entity_value"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_cancel_decisions",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "workflow_cancel_decisions",
+        "received_at"
+      ],
+      "writes": [
+        "s|col|public.workflow_cancel_decisions.received_at",
+        "n|col|public.workflow_cancel_decisions.received_at",
+        "e|col|public.workflow_cancel_decisions.received_at"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_cancel_decisions",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_cancel_decisions",
+        "workflow_cancel_decisions_entity_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_cancel_decisions_entity_idx",
+        "n|idx|public.workflow_cancel_decisions_entity_idx",
+        "e|idx|public.workflow_cancel_decisions_entity_idx",
+        "n|rel|public.workflow_cancel_decisions_entity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_cancel_decisions",
+        "n|sch|public",
+        "n|col|public.workflow_cancel_decisions.workflow_id",
+        "n|col|public.workflow_cancel_decisions.entity_type",
+        "n|col|public.workflow_cancel_decisions.entity_id",
+        "n|col|public.workflow_cancel_decisions.received_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "workflow_cancel_decisions",
+        "workflow_cancel_decisions_entity_value_idx"
+      ],
+      "writes": [
+        "s|idx|public.workflow_cancel_decisions_entity_value_idx",
+        "n|idx|public.workflow_cancel_decisions_entity_value_idx",
+        "e|idx|public.workflow_cancel_decisions_entity_value_idx",
+        "n|rel|public.workflow_cancel_decisions_entity_value_idx"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_cancel_decisions",
+        "n|sch|public",
+        "n|col|public.workflow_cancel_decisions.workflow_id",
+        "n|col|public.workflow_cancel_decisions.entity_value",
+        "n|col|public.workflow_cancel_decisions.received_at"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "event_name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "entity_type",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "entity_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "entity_value",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "received_at",
+        "type": "timestamp",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "workflow_cancel_decisions_entity_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "workflow_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "entity_type",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "entity_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "received_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"entity_type\" is not null",
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "workflow_cancel_decisions",
+        "name": "workflow_cancel_decisions_entity_value_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "workflow_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "entity_value",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "received_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"entity_value\" is not null",
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

@@ -247,6 +247,13 @@ again on every attempt, so a re-run delivery may get a different answer. An
 Execution's own run is one step here, because `DurableExecutor` checks what
 happens inside one.
 
+Each inbox row records the order it was received in, and the arrivals are sent
+in every order, so a delivery held back can run after one received later. The
+Cancel claims a run whose start was received no later than it, and a start
+delivered after a Cancel received no earlier than it opens its run already
+claimed. Each side is one atomic step, which on PostgreSQL the Entity's
+advisory lock makes true.
+
 The retention sweeps of decisions 7 and 8 delete rows at any moment their
 guards allow, which stands for every choice of the two windows and every batch
 order. Those guards are:
@@ -263,7 +270,7 @@ An inbox row outlives a run window in three ways: `pending` through retries, a
 full inbox batch left behind. The model needs no separate case for any of them,
 because nothing forces the inbox sweep to run. The inbox sweep takes the
 once-sent Start alone, since a send after the sweep is a new arrival under a
-new id (ADR-0022) that would double the state space. About 511,000 states.
+new id (ADR-0022) that would double the state space. About 1,620,000 states.
 
 | Rule | The promise | The harm when it breaks |
 | --- | --- | --- |
@@ -276,7 +283,9 @@ new id (ADR-0022) that would double the state space. About 511,000 states.
 | `SupersededRunsStop` | A superseded run does no more work. | A rescheduled appointment gets the old reminders too. |
 | `FailedArrivalStaysSettled` | A delivery that failed for good (a refused payload or spent retries) is never scheduled again, except by a resend of its key. | The poll reads a failed row as one a host inserted and delivers it forever. |
 | `NoResendOfAFailedKeyIsLost` | A resend of a key whose delivery failed is delivered again, not answered as a duplicate. | A webhook that failed during an outage is lost when the vendor resends it. |
-| `CancelClaimsOnlyEarlierRuns` | A Cancel arrival claims only the runs live when its claim first committed, however often its delivery runs the claim. | A Cancel re-run after a crash cancels a run that opened after it arrived. |
+| `CancelClaimsOnlyEarlierRuns` | Only the Cancel arrival claims runs, by its own claim or at a start delivered after it, however often its delivery runs the claim. | A Cancel re-run after a crash cancels a run that opened after it arrived. |
+| `CancelClaimsOnlyEarlierArrivals` | The Cancel claims no run whose start was received after it, whichever is delivered first. | A held-back Cancel cancels an appointment booked after the cancellation. |
+| `NoEarlierStartEscapesTheCancel` | Once the Cancel is decided, no run whose start was received no later than it is left running, whichever is delivered first. | A booking whose delivery was retried runs its reminders after the cancellation. |
 | `EveryArrivalIsDelivered` (liveness) | Every arrival in the inbox is eventually delivered. | An Event the host sent never reaches a workflow. |
 | `EveryRunEnds` (liveness) | Every opened run eventually ends. | A claimed run never reaches its outlet. |
 
@@ -517,6 +526,7 @@ the directories of those names under `services/workflows/`.
 | `Delivery`: `FinishFailed`, `Reopen`, `KeepMemoOnReopen` | ADR-0022 | `failDelivery` in `repo/inbox.ts` and `sqlite/inbox.ts`, which keeps the schedule row `settled` with its memo; `requeueDeliverySchedule` in each, which a resend that reopens the failed inbox row (`writeArrival`) uses to queue that row again with no failure counted; `tryStep` in `executor/delivery-fanout.ts`, which answers every try the memo holds and bounds a failed workflow's new tries by the row's own count alone, so the reopened delivery tries it again with a full set of retries. The `reopen-drops-the-memo` mutation shows that deleting the row on failure breaks `NoSecondWaitFromOneArrival`. |
 | `Intake`: `StartWrite`, `DeliveryIdIsUnique`, `ExecutionAndScheduleTogether` | Section 7.1; scenario S13 | `answerFromCommittedDecision` in `lifecycle/deliver-event.ts`; `startForEntity` in `repo/index.ts` and `sqlite/executions/index.ts`, behind the driver's `startRun` (`executions/driver.ts`): the transaction that inserts the Execution also inserts its schedule row (`insertRunSchedule`) and its "run started" entry, which is `ExecutionAndScheduleTogether`; a start answered with the row its delivery already committed writes neither again. |
 | `Intake`: Concurrency in `StartWrite`, `SupersedeDropsSchedule` | CONTEXT.md "Concurrency", "Superseded" | `startWithConcurrency` in `lifecycle/concurrency.ts`; `admitWithConcurrency` in `repo/admission.ts` and `sqlite/admission.ts`, which ends each displaced run through `endRunsWrite`, deleting its schedule row in the transaction that opens the newer run |
+| `Intake`: `CancelComparesArrivals`, `StartReadsCancelDecisions`, `Receive` | CONTEXT.md "Cancel Event"; ADR-0022 | `startedNoLaterThan` and `cancelReceivedNoEarlier` in `repo/cancel-order-policy.ts`; the claim in `requestCancelForEntity` (`repo/claims.ts`, `sqlite/claims.ts`), which passes over a run whose start's inbox row was received after its own; `claimForCancelDeliveredFirst` in `repo/cancel-order.ts` and `sqlite/cancel-order.ts`, which `openRun` in `repo/admission.ts` and `sqlite/admission.ts` runs in the transaction that opens a run; `lockCancelScope` and `lockEventStart` in `repo/cancel-order.ts`, the PostgreSQL Entity locks that make each side one step; the inbox row's `received_at`, which `Receive` orders. The `cancel-ignores-arrival-order` and `start-ignores-cancel-decisions` mutations show each guard is needed. |
 | `Intake`: `CancelWrite`, `CancelDecisionIsRecorded` | "Cancellation" | `requestCancelForEntity` in `repo/claims.ts` and `sqlite/claims.ts`, which records the arrival's delivery id in `cancel_delivery_id`, its decision as a `workflow_cancel_decisions` row in the same transaction whether or not it flagged a run, and each flagged run's `run_cancel_requested` entry; a retry that finds the decision flags nothing new (`cancelClaimable` and `claimedEarlierBy` in `repo/release-policy.ts`) |
 | `Migration`: `EventWakeNeedsAnEventPark`, `EventReplacesMigrateWake` | "Resolving a park"; "Migration"; ADR-0019 | the `wait_type = 'event'` condition `claimWaitingStateByToken` and `claimWaitingStateById` pass to `claimWaitState`, in `repo/claims.ts` and `sqlite/claims.ts`; `claimablePark` in `repo/release-policy.ts`, which also takes a `resuming` row whose wake is `migrate` and replaces that wake with the Event's. |
 | `Migration`: `ReparkMode` | "Migration"; ADR-0019 | `reparkWaitWrite` in `repo/waits.ts` and `sqlite/waits.ts`, which the fenced `reparkWait` runs |

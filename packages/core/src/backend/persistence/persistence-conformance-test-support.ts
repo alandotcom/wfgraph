@@ -22,6 +22,7 @@ import { describeExecutionProducerConformance } from "#src/backend/persistence/c
 import { describeExecutionInboxConformance } from "#src/backend/persistence/conformance/execution-inbox";
 import { describeExecutionRetentionConformance } from "#src/backend/persistence/conformance/execution-retention";
 import { describeExecutionCronConformance } from "#src/backend/persistence/conformance/execution-cron";
+import { describeExecutionCancelOrderConformance } from "#src/backend/persistence/conformance/execution-cancel-order";
 import { describeDraftSnapshotConformance } from "#src/backend/persistence/conformance/draft-snapshots";
 import { describeIntegrationConformance } from "#src/backend/persistence/conformance/integrations";
 
@@ -77,6 +78,7 @@ export function describePersistenceConformance(
     describeExecutionInboxConformance(registry);
     describeExecutionRetentionConformance(registry);
     describeExecutionCronConformance(registry);
+    describeExecutionCancelOrderConformance(registry);
     describeIntegrationConformance(registry);
   });
 }

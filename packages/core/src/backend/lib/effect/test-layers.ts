@@ -212,8 +212,12 @@ export function stubStepEnvironment(
 /** One statement the query builder sent, as the driver received it. */
 export type CapturedStatement = { query: string; params: unknown[] };
 
-/** What a statement answers with: one array per row, in the order it selects. */
-export type StatementRows = unknown[][];
+/**
+ * What a statement answers with: one array per row, in the order it selects,
+ * for a query builder's select, or one object per row, keyed by column name,
+ * for a raw `execute`, which hands the driver's rows back unmapped.
+ */
+export type StatementRows = unknown[][] | Record<string, unknown>[];
 
 export type StubbedDatabase = {
   /** For a repository built from the service value, as `makeRunsMethods` is. */

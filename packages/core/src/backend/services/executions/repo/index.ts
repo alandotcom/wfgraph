@@ -16,6 +16,7 @@ import {
   findStartRefusal,
   openRun,
 } from "#src/backend/services/executions/repo/admission";
+import { lockEventStart } from "#src/backend/services/executions/repo/cancel-order";
 import {
   type ClaimsRepoMethods,
   makeClaimsMethods,
@@ -225,7 +226,10 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
           admissionReads(input)
             ? serializableTransaction(database, (tx) => admitStart(tx, input))
             : database.query((db) =>
-                db.transaction((tx) => openRun(tx, input))
+                db.transaction(async (tx) => {
+                  await lockEventStart(tx, input.execution, "read committed");
+                  return await openRun(tx, input);
+                })
               ),
 
         findAdmissionRefusal: (input) =>
