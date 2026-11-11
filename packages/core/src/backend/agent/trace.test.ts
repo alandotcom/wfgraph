@@ -145,6 +145,7 @@ describe("summarizeAgentTrace", () => {
       refusals: 1,
       graphRevisions: 1,
       inputTokens: 100,
+      cachedInputTokens: 20,
       outputTokens: 30,
       reasoningTokens: 12,
       totalTokens: 130,

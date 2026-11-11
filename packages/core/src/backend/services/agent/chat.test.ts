@@ -258,7 +258,7 @@ describe("observeAgentTurn", () => {
           step: 1,
           reason: "stop",
           usage: {
-            inputTokens: { total: 100 },
+            inputTokens: { total: 100, cacheRead: 60 },
             outputTokens: { total: 20, reasoning: 5 },
           },
         });
@@ -297,6 +297,7 @@ describe("observeAgentTurn", () => {
               tools: { calls: 1, refusals: 0, graphRevisions: 1 },
               usage: {
                 inputTokens: 100,
+                cachedInputTokens: 60,
                 outputTokens: 20,
                 reasoningTokens: 5,
                 totalTokens: 120,

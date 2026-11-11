@@ -120,6 +120,7 @@ export function observeAgentTurn(
           },
           usage: {
             inputTokens: summary.inputTokens,
+            cachedInputTokens: summary.cachedInputTokens,
             outputTokens: summary.outputTokens,
             reasoningTokens: summary.reasoningTokens,
             totalTokens: summary.totalTokens,

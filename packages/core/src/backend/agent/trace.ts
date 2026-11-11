@@ -74,6 +74,8 @@ export type AgentTraceSummary = {
   readonly refusals: number;
   readonly graphRevisions: number;
   readonly inputTokens: number;
+  /** The part of `inputTokens` the provider read from its prompt cache. */
+  readonly cachedInputTokens: number;
   readonly outputTokens: number;
   readonly reasoningTokens: number;
   readonly totalTokens: number;
@@ -182,6 +184,7 @@ export function makeAgentTraceAccumulator(): AgentTraceAccumulator {
   let refusals = 0;
   let graphRevisions = 0;
   let inputTokens = 0;
+  let cachedInputTokens = 0;
   let outputTokens = 0;
   let reasoningTokens = 0;
   const finishReasons: Response.FinishReason[] = [];
@@ -205,6 +208,7 @@ export function makeAgentTraceAccumulator(): AgentTraceAccumulator {
       case "model-step-finish":
         finishReasons.push(event.reason);
         inputTokens += event.usage.inputTokens.total ?? 0;
+        cachedInputTokens += event.usage.inputTokens.cacheRead ?? 0;
         outputTokens += event.usage.outputTokens.total ?? 0;
         reasoningTokens += event.usage.outputTokens.reasoning ?? 0;
         break;
@@ -221,6 +225,7 @@ export function makeAgentTraceAccumulator(): AgentTraceAccumulator {
       refusals,
       graphRevisions,
       inputTokens,
+      cachedInputTokens,
       outputTokens,
       reasoningTokens,
       totalTokens: inputTokens + outputTokens,
