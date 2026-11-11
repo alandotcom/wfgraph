@@ -48,6 +48,7 @@ const cancelAppointment = defineAction({
   id: "appointments/cancel",
   label: "Cancel Appointment",
   description: "Cancels an appointment and records the reason.",
+  // The heading the action selector lists it under. Defaults to "Custom".
   category: "Appointments",
   // This schema draws the config form. The editor derives readable labels from
   // property keys ("appointmentId" becomes "Appointment ID"). JSON Schema
@@ -1167,6 +1168,7 @@ Cloudflare Workers and Hyperdrive.
 | `publicUrl`               | No       | External HTTPS origin. Required for OAuth callback and client metadata URLs, and to copy a Connection webhook URL. Loopback development can use HTTP                                                                   |
 | `auth`                    | Yes      | Authentication callback returning a request-scoped access policy or `null`                                                                                                                                             |
 | `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                                                                                      |
+| `entityResolverTimeoutMs` | No       | How long one call to a `defineEntity` resolver may take, in milliseconds, as a positive integer. Defaults to 10,000. A timeout is an operational failure. See Current Entity State in `docs/events.md`                 |
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                                                                           |
 | `events.key`              | No       | Shared secret that mounts `POST /api/events`. A sender presents it as `Authorization: Bearer <key>`. Unset, the route is not mounted. A blank value, or one holding whitespace, fails at startup. See `docs/events.md` |
 | `events.retentionMs`      | No       | How long a settled inbox row is kept after its Event arrived, in milliseconds, at most 100 years. Defaults to seven days. See Keep settled Events for a window                                                         |
