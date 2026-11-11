@@ -5,7 +5,8 @@ description: >
   calling configureWfGraphLogging from @wfgraph/core/logging, passing the logger
   option to createWfGraphApp, createWfGraphRunner or wfWorker, adding a LogTape
   sink for the wfgraph category beside the host's own logging, registering an
-  OpenTelemetry tracer provider, initialising Sentry, or building dashboards
+  OpenTelemetry tracer provider, initialising Sentry, exporting the run
+  queue's depth and lag from app.health as a metric, or building dashboards
   and alerts on Workflow Graph's span names and record fields. Also use for
   requests such as "the workflow engine logs nothing", "our own logs stopped
   after we added workflows", "show workflow runs in our tracing tool" or "the
@@ -89,7 +90,21 @@ start and the end of one pass of a run. Fields are grouped by subject (`http`,
 `rpc`, `run`, `node`, `outcome`, `error`). A JSON line keeps each group as a
 nested object, so a log store queries `http.status` or `run.execution`. No
 record carries a request body, a response body, an Event payload or a step
-output.
+output. A refused RPC call's record masks an input field whose name marks it
+as a credential, such as a Wait's resume `token`, to its last four
+characters. A readiness probe's request to `GET /api/health` is recorded at
+the `trace` level, so it stays out of the logs until it fails.
+
+### Queue depth as a metric
+
+`app.health()` answers `queue` beside its readiness booleans: `due`, how many
+runs, Event deliveries and cron fires a claim would lease now across every
+process's loops; `oldestDueAt`, the earliest wake time among them; and
+`lagMs`, how long that row has waited. Workflow Graph exports no metric
+itself, so a host reads it on an interval and records it with its own
+library. A `lagMs` that keeps growing means the loops are not keeping up, or
+none is running. `queue` is `null` when the database did not answer, and the
+unauthenticated readiness route leaves it out.
 
 ### Stable span names
 
