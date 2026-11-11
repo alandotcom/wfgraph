@@ -44,6 +44,13 @@ import {
 } from "#src/tools/reference-tools";
 import { SetWait, waitToolHandlers } from "#src/tools/wait-tools";
 import { ApplyEdits, applyEditsHandler } from "#src/tools/batch-tools";
+import {
+  ListFieldOptions,
+  ListRuns,
+  ReadRun,
+  runToolHandlers,
+  StartTestRun,
+} from "#src/tools/run-tools";
 import { issuesIntroduced, type NewIssue } from "#src/tools/new-issues";
 
 export const agentToolkit = Toolkit.make(
@@ -56,6 +63,10 @@ export const agentToolkit = Toolkit.make(
   ReadNodes,
   ValidateWorkflow,
   ListReferences,
+  ListFieldOptions,
+  ListRuns,
+  ReadRun,
+  StartTestRun,
   AddNode,
   UpdateNode,
   DeleteNode,
@@ -85,6 +96,7 @@ export const agentToolHandlers = Effect.gen(function* () {
   const graphWrite = yield* graphWriteToolHandlers;
   const lifecycle = yield* lifecycleToolHandlers;
   const wait = yield* waitToolHandlers;
+  const runs = yield* runToolHandlers;
 
   /**
    * A write handler that also answers the validation issues its edit
@@ -107,6 +119,7 @@ export const agentToolHandlers = Effect.gen(function* () {
     ...catalog,
     ...graphRead,
     ...references,
+    ...runs,
     revert_draft: reportingNewIssues(graphWrite.revert_draft),
     add_node: reportingNewIssues(graphWrite.add_node),
     update_node: reportingNewIssues(graphWrite.update_node),

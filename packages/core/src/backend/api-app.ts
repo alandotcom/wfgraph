@@ -41,6 +41,7 @@ import { getWorkflows } from "#src/backend/services/workflows/list";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
 import { sendEvent } from "#src/backend/services/executions/send-event";
 import { executeDraftTool } from "#src/backend/services/agent/draft-tool";
+import { makeWorkflowOperations } from "#src/backend/services/agent/workflow-operations";
 import { postWorkflowsCreate } from "#src/backend/services/workflows/create";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import {
@@ -678,7 +679,16 @@ export function createApiApp(options: CreateApiAppOptions) {
           ),
         execute: async (input, signal) =>
           await runtime.runPromise(
-            executeDraftTool(input).pipe(
+            Effect.gen(function* () {
+              const operations =
+                input.workflowId === undefined
+                  ? undefined
+                  : yield* makeWorkflowOperations({
+                      workflowId: input.workflowId,
+                      auth: authContext,
+                    });
+              return yield* executeDraftTool({ ...input, operations });
+            }).pipe(
               Effect.match({
                 onSuccess: (result) => ({ ok: true as const, result }),
                 onFailure: (failure) => ({

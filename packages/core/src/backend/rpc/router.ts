@@ -9,6 +9,7 @@ import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { getAppLogger } from "#src/backend/lib/logger";
 import type { WfGraphServices } from "#src/backend/runtime";
 import { postAgentChat } from "#src/backend/services/agent/chat";
+import { makeWorkflowOperations } from "#src/backend/services/agent/workflow-operations";
 import { postActionConfigOptions } from "#src/backend/services/actions/config-options";
 import {
   deleteIntegration,
@@ -440,13 +441,21 @@ export const rpcRouter = rpc.router({
   agent: {
     chat: rpc.agent.chat.handler(
       rpcStreamHandler(({ input, context }) =>
-        postAgentChat({
-          workflowId: input.workflowId,
-          auth: context.auth,
-          messages: input.messages,
-          graph: input.graph,
-          selectedNodeIds: input.selectedNodeIds,
-        })
+        Effect.flatMap(
+          makeWorkflowOperations({
+            workflowId: input.workflowId,
+            auth: context.auth,
+          }),
+          (operations) =>
+            postAgentChat({
+              workflowId: input.workflowId,
+              auth: context.auth,
+              operations,
+              messages: input.messages,
+              graph: input.graph,
+              selectedNodeIds: input.selectedNodeIds,
+            })
+        )
       )
     ),
   },

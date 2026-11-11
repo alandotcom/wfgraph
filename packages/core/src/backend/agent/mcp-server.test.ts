@@ -229,9 +229,14 @@ describe("createAgentMcpServer", () => {
           readOnlyHint: expect.any(Boolean),
           destructiveHint: expect.any(Boolean),
           idempotentHint: expect.any(Boolean),
-          openWorldHint: false,
+          // A test run calls real action handlers, which reach past the store.
+          openWorldHint: tool.name === "start_test_run",
         });
       }
+      expect(hintsOf("start_test_run")).toMatchObject({
+        readOnlyHint: false,
+        idempotentHint: false,
+      });
       expect(hintsOf("read_workflow")).toMatchObject({
         readOnlyHint: true,
         destructiveHint: false,

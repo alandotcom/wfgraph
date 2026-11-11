@@ -13,6 +13,10 @@ import {
   type WorkflowDraftInput,
   type WorkflowDraftService,
 } from "@wfgraph/agent/document";
+import {
+  WorkflowOperations,
+  type WorkflowOperationsService,
+} from "@wfgraph/agent/operations";
 import { agentToolkit, agentToolkitLayer } from "@wfgraph/agent/toolkit";
 import { serializeWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import { validateGraphSaveShape } from "#src/backend/services/workflows/graph-save";
@@ -26,9 +30,15 @@ export type AgentToolSession = {
 
 /** Creates the isolated draft and handlers used for one agent turn. */
 export const makeAgentToolSession = Effect.fn("makeAgentToolSession")(
-  function* (input: Omit<WorkflowDraftInput, "validateUpdate">) {
+  function* (
+    input: Omit<WorkflowDraftInput, "validateUpdate"> & {
+      /** Runs, test runs and field choices; absent, those tools refuse. */
+      readonly operations?: WorkflowOperationsService | undefined;
+    }
+  ) {
+    const { operations, ...draftInput } = input;
     const draft = yield* makeWorkflowDraft({
-      ...input,
+      ...draftInput,
       validateUpdate: (document) => {
         const validation = validateGraphSaveShape(
           serializeWorkflowGraphData(document)
@@ -36,10 +46,15 @@ export const makeAgentToolSession = Effect.fn("makeAgentToolSession")(
         return validation.valid ? null : validation.error;
       },
     });
-    const toolkit = yield* Effect.provide(
-      agentToolkit,
-      agentToolkitLayer.pipe(Layer.provide(layerFromDraft(draft)))
+    const handlers = agentToolkitLayer.pipe(
+      Layer.provide(layerFromDraft(draft)),
+      Layer.provide(
+        operations === undefined
+          ? Layer.empty
+          : Layer.succeed(WorkflowOperations, operations)
+      )
     );
+    const toolkit = yield* Effect.provide(agentToolkit, handlers);
 
     return { draft, toolkit } satisfies AgentToolSession;
   }

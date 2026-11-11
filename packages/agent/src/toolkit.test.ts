@@ -119,16 +119,18 @@ describe("the toolkit", () => {
   });
 
   it("titles every tool and marks exactly the write tools as writes", () => {
+    // A test run writes no draft but calls real action handlers.
+    const actsOutside = new Set(["start_test_run"]);
     for (const tool of tools) {
       expect(
         Option.isSome(Context.getOption(tool.annotations, Tool.Title)),
         tool.name
       ).toBe(true);
       expect(Context.get(tool.annotations, Tool.Readonly), tool.name).toBe(
-        !WRITE_TOOL_NAMES.has(tool.name)
+        !WRITE_TOOL_NAMES.has(tool.name) && !actsOutside.has(tool.name)
       );
       expect(Context.get(tool.annotations, Tool.OpenWorld), tool.name).toBe(
-        false
+        actsOutside.has(tool.name)
       );
     }
   });

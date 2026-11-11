@@ -10,6 +10,7 @@
 import { Cause, Effect, Exit, Semaphore, Stream } from "effect";
 import type { Response } from "effect/ai";
 import type { AgentDocument } from "@wfgraph/agent/document";
+import type { WorkflowOperationsService } from "@wfgraph/agent/operations";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type {
   AgentMessage,
@@ -197,6 +198,11 @@ export type PostAgentChatInput = {
   readonly workflowId: string;
   /** The caller's grants, which decide the tools this turn may run. */
   readonly auth: Pick<AuthContext, "allows">;
+  /**
+   * Runs, test runs and field choices for this workflow, bound to the caller's
+   * grants (`makeWorkflowOperations`). Absent, those tools refuse.
+   */
+  readonly operations?: WorkflowOperationsService | undefined;
   readonly messages: readonly AgentMessage[];
   readonly graph: SerializedWorkflowGraph;
   readonly selectedNodeIds: readonly string[];
@@ -258,6 +264,7 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
     catalog,
     integrations,
     document: opened,
+    operations: input.operations,
     validateDraft: (document) =>
       validateAgentDraft({
         document,

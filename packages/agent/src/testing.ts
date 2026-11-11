@@ -23,6 +23,10 @@ import {
   makeWorkflowDraft,
   type WorkflowDraftService,
 } from "#src/document";
+import {
+  WorkflowOperations,
+  type WorkflowOperationsService,
+} from "#src/operations";
 import { agentToolHandlers } from "#src/toolkit";
 
 export type ToolTestInput = {
@@ -32,6 +36,8 @@ export type ToolTestInput = {
   readonly integrations?: readonly ConnectedIntegration[];
   readonly validateUpdate?: (document: AgentDocument) => string | null;
   readonly validateDraft?: (document: AgentDocument) => AgentDraftValidation;
+  /** The host operations the run tools ask; absent, each one refuses. */
+  readonly operations?: WorkflowOperationsService;
 };
 
 export type AgentToolHandlers = Effect.Success<typeof agentToolHandlers>;
@@ -63,10 +69,10 @@ export function agentToolsFor(
         })),
     });
 
-    const tools = yield* Effect.provide(
-      agentToolHandlers,
-      layerFromDraft(draft)
-    );
+    const handlers = Effect.provide(agentToolHandlers, layerFromDraft(draft));
+    const tools = yield* input.operations === undefined
+      ? handlers
+      : Effect.provideService(handlers, WorkflowOperations, input.operations);
 
     return { tools, draft };
   });

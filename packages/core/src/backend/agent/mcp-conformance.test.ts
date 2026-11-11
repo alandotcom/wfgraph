@@ -375,9 +375,18 @@ describe("native and MCP tool conformance", () => {
   it("covers every canonical tool the MCP surface exposes", () => {
     // revert_draft is turn-scoped and this transport does not carry a turn, so
     // it is absent here on purpose. mcp-server.ts states why where it skips it.
+    // The run and field-choice tools answer from host services rather than the
+    // graph, so mcp-server.test.ts covers them against stubbed operations.
+    const answeredByHost = new Set([
+      "revert_draft",
+      "list_runs",
+      "read_run",
+      "start_test_run",
+      "list_field_options",
+    ]);
     const exposed = Object.values(agentToolkit.tools)
       .map((tool) => tool.name)
-      .filter((name) => name !== "revert_draft");
+      .filter((name) => !answeredByHost.has(name));
 
     expect(successCases.map(({ name }) => name).toSorted()).toEqual(
       exposed.toSorted()

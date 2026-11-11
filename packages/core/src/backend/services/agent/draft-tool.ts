@@ -1,6 +1,7 @@
 /** Executes one canonical authoring tool against one persisted workflow draft. */
 
 import { Effect, Option, Stream } from "effect";
+import type { WorkflowOperationsService } from "@wfgraph/agent/operations";
 import {
   agentToolkit,
   CATALOG_TOOL_NAMES,
@@ -41,6 +42,11 @@ export type ExecuteDraftToolInput = {
   readonly arguments: JsonObject;
   readonly toolCallId: string;
   readonly expectedDraftRevision?: number | undefined;
+  /**
+   * Runs, test runs and field choices for this workflow, bound to the caller's
+   * grants (`makeWorkflowOperations`). Absent, those tools refuse.
+   */
+  readonly operations?: WorkflowOperationsService | undefined;
 };
 
 export type DraftToolResult = {
@@ -170,6 +176,7 @@ export const executeDraftTool = Effect.fn("wfgraph.agent.draft_tool")(
       document: toWorkflowGraphData(workflow.graph),
       catalog,
       integrations,
+      operations: input.operations,
       validateDraft: (document) =>
         validateAgentDraft({ document, catalog, integrations }),
     });
