@@ -18,7 +18,10 @@ import {
 } from "#src/backend/lib/http/authorize";
 import { stubWfGraphRuntime } from "#src/backend/lib/effect/test-layers";
 import { configureLoggingWithBridge } from "#src/backend/lib/log-config";
-import { MAX_REQUEST_BODY_BYTES } from "#src/backend/lib/http/capped-body";
+import {
+  MAX_REQUEST_BODY_BYTES,
+  OPERATOR_REQUEST_BODY_BYTES,
+} from "#src/backend/lib/http/capped-body";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 const basePath = "/wfgraph/api" as const;
@@ -436,6 +439,65 @@ describe("the MCP route", () => {
     expect(await response.json()).toEqual({
       error: "Request body is too large",
     });
+  });
+});
+
+/**
+ * The RPC, REST and OAuth start routes are authenticated, but an operator's
+ * session still must not decide how much memory one request allocates.
+ */
+describe("the operator request body cap", () => {
+  it.each([
+    "/rpc/workflow/update",
+    "/rest/workflows/wf_1",
+    "/integrations/oauth/start",
+  ])("refuses a body over the cap on %s", async (path) => {
+    await using runtime = stubWfGraphRuntime({});
+    const app = createApiApp({
+      basePath,
+      auth: resolveAuth(trustWfGraphUpstream()),
+      runtime,
+    });
+
+    // The request names no content-length, so the count kept while reading
+    // is what refuses it.
+    const request = new Request(`http://localhost${basePath}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: new Uint8Array(OPERATOR_REQUEST_BODY_BYTES + 1),
+    });
+    expect(request.headers.get("content-length")).toBeNull();
+    const response = await app.fetch(request);
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      error: "Request body is too large",
+    });
+  });
+
+  it("passes a body under the cap through to the procedure", async () => {
+    await using runtime = stubWfGraphRuntime({
+      workflowRepo: { findDraftRevisionById: () => Effect.succeed(null) },
+    });
+    const app = createApiApp({
+      basePath,
+      auth: resolveAuth(trustWfGraphUpstream()),
+      runtime,
+    });
+
+    const response = await app.fetch(
+      new Request(`http://localhost${basePath}/rpc/workflow/subscribeDraft`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          json: { workflowId: "wf_missing", afterDraftRevision: 0 },
+        }),
+      })
+    );
+
+    // The procedure read the input and looked the workflow up.
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("Workflow not found");
   });
 });
 

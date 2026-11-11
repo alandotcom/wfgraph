@@ -3,6 +3,10 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
+import {
+  OPERATOR_REQUEST_BODY_BYTES,
+  readCappedText,
+} from "#src/backend/lib/http/capped-body";
 import type { WfGraphRuntime, WfGraphServices } from "#src/backend/runtime";
 import {
   completeIntegrationOAuth,
@@ -156,9 +160,16 @@ export function createOAuthRoutes(options: {
             415
           );
         }
+        const text = await readCappedText(
+          c.req.raw,
+          OPERATOR_REQUEST_BODY_BYTES
+        );
+        if (!text.ok) {
+          return c.json({ error: "Request body is too large" }, 413);
+        }
         let raw: unknown;
         try {
-          raw = await c.req.raw.json();
+          raw = JSON.parse(text.text);
         } catch {
           return c.json({ error: "Request body must be valid JSON" }, 400);
         }

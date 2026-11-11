@@ -430,6 +430,10 @@ authentication. The rule covers a form posted from a sibling subdomain, which a
 `SameSite=None`. Machine routes and the MCP endpoint are outside the rule, and
 `POST /api/integrations/oauth/start` also requires `Content-Type: application/json`.
 
+A request body to the RPC, REST or OAuth start routes may be at most 8 MiB, which holds a
+500-node workflow save. A larger body answers `413` before any handler reads it. Webhook
+intake, `POST /api/events` and the MCP endpoint are held to 1 MiB.
+
 The authenticated, boot-blocking `GET /api/extensions` response contains an
 `authorization.operationIds` snapshot beside `catalog` and `agent`. Workflow Graph evaluates
 every canonical `WfGraphOperation` through `allows` concurrently to build the snapshot. A

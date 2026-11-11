@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   MAX_REQUEST_BODY_BYTES,
+  withCappedBody,
   readCappedText,
 } from "#src/backend/lib/http/capped-body";
 
@@ -82,8 +83,44 @@ describe("readCappedText", () => {
     expect(result).toEqual({ ok: false, reason: "too_large" });
   });
 
+  // A clone tees the body, and cancelling one branch of a tee settles only
+  // once the other branch is cancelled, which an unread clone never is.
+  it("refuses an oversized body whose request was cloned", async () => {
+    const request = post("x".repeat(16));
+    const unreadClone = request.clone();
+
+    const result = await readCappedText(request, 8);
+
+    expect(result).toEqual({ ok: false, reason: "too_large" });
+    expect(unreadClone.bodyUsed).toBe(false);
+  });
+
   it("accepts a body exactly at the limit", async () => {
     const result = await readCappedText(chunked(["abcde", "fgh"]), 8);
     expect(result).toEqual({ ok: true, text: "abcdefgh" });
+  });
+});
+
+describe("withCappedBody", () => {
+  it("hands back a copy carrying the method, headers, signal and body", async () => {
+    const controller = new AbortController();
+    const original = new Request("http://localhost/api/rpc/workflow/update", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: '{"json":{}}',
+      signal: controller.signal,
+    });
+
+    const copy = await withCappedBody(original, 64);
+
+    expect(copy?.method).toBe("PATCH");
+    expect(copy?.headers.get("content-type")).toBe("application/json");
+    expect(await copy?.text()).toBe('{"json":{}}');
+    controller.abort();
+    expect(copy?.signal.aborted).toBe(true);
+  });
+
+  it("answers null for a body over the limit", async () => {
+    expect(await withCappedBody(post("x".repeat(65)), 64)).toBeNull();
   });
 });

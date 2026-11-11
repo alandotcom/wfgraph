@@ -10,7 +10,11 @@ import {
 } from "#src/backend/agent/mcp-server";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
-import { readCappedText } from "#src/backend/lib/http/capped-body";
+import {
+  OPERATOR_REQUEST_BODY_BYTES,
+  readCappedText,
+  withCappedBody,
+} from "#src/backend/lib/http/capped-body";
 import { bearerKeyMatches } from "#src/backend/lib/http/bearer-key";
 import {
   CROSS_SITE_BODY,
@@ -423,7 +427,14 @@ export function createApiApp(options: CreateApiAppOptions) {
 
   const routes = app
     .use("/rpc/*", async (c, next) => {
-      const { matched, response } = await rpcHandler.handle(c.req.raw, {
+      const request = await withCappedBody(
+        c.req.raw,
+        OPERATOR_REQUEST_BODY_BYTES
+      );
+      if (!request) {
+        return c.json(TOO_LARGE_BODY, 413);
+      }
+      const { matched, response } = await rpcHandler.handle(request, {
         prefix: resolvePrefix("/rpc"),
         context: {
           headers: c.req.raw.headers,
@@ -441,7 +452,14 @@ export function createApiApp(options: CreateApiAppOptions) {
       return undefined;
     })
     .use("/rest/*", async (c, next) => {
-      const { matched, response } = await openApiRestHandler.handle(c.req.raw, {
+      const request = await withCappedBody(
+        c.req.raw,
+        OPERATOR_REQUEST_BODY_BYTES
+      );
+      if (!request) {
+        return c.json(TOO_LARGE_BODY, 413);
+      }
+      const { matched, response } = await openApiRestHandler.handle(request, {
         prefix: resolvePrefix("/rest"),
         context: {
           headers: c.req.raw.headers,
