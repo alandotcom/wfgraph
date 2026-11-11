@@ -98,6 +98,11 @@ export function agentModelLayer(
         max_tokens: MAX_AGENT_OUTPUT_TOKENS,
         thinking: { type: "adaptive", display: "summarized" },
         output_config: { effort: settings.reasoningEffort },
+        // Anthropic takes at most 20 strict tools in one request and Effect's
+        // client marks every tool strict by default. The toolkit holds more
+        // than 20, so none is strict; each tool decodes its own arguments and
+        // answers a refusal the model reads when they do not fit.
+        strictJsonSchema: false,
         // Automatic caching: Anthropic places the breakpoint on the last
         // cacheable block, so each step of a turn reads the conversation the
         // step before it wrote.

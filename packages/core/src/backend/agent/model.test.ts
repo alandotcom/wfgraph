@@ -1,7 +1,12 @@
-import { Effect, Stream } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 import { LanguageModel } from "effect/ai";
 import { FetchHttpClient } from "effect/http";
+import {
+  layerFromDraft,
+  type WorkflowDraftService,
+} from "@wfgraph/agent/document";
+import { agentToolkit, agentToolkitLayer } from "@wfgraph/agent/toolkit";
 import type { AgentModelSettings } from "#src/backend/agent/config";
 import {
   agentModelLayer,
@@ -221,6 +226,86 @@ describe("agentModelLayer", () => {
           cache_control: { type: "ephemeral" },
         });
         expect(text).toBe("Ready");
+      })
+  );
+
+  // Anthropic refuses a request that marks more than 20 tools strict, and
+  // Effect's client marks every tool strict unless told otherwise. The toolkit
+  // holds more tools than that, so a turn's first request was refused.
+  it.effect(
+    "sends Anthropic the whole toolkit with no tool marked strict",
+    () =>
+      Effect.gen(function* () {
+        const requests: Record<string, unknown>[] = [];
+        const fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+          const bodyText = await new Response(init?.body ?? "{}").text();
+          requests.push(JSON.parse(bodyText) as Record<string, unknown>);
+          return sse([
+            {
+              type: "message_start",
+              message: {
+                id: "msg_1",
+                type: "message",
+                role: "assistant",
+                model: "claude-sonnet-5-5",
+                content: [],
+                stop_reason: null,
+                stop_sequence: null,
+                usage: { input_tokens: 5, output_tokens: 0 },
+              },
+            },
+            {
+              type: "message_delta",
+              delta: { stop_reason: "end_turn", stop_sequence: null },
+              usage: { output_tokens: 1 },
+            },
+            { type: "message_stop" },
+          ]);
+        };
+        const unused = () => Effect.die("unused");
+        const empty = { nodes: [], edges: [] };
+        const draft: WorkflowDraftService = {
+          current: Effect.succeed(empty),
+          update: unused,
+          transaction: unused,
+          revision: () => Effect.succeed(empty),
+          latest: Effect.succeed({ revision: 1, document: empty }),
+          catalog: { actions: [], entities: [], events: [], integrations: [] },
+          integrations: [],
+          validateDraft: () => ({
+            draftValid: true,
+            structuralIssues: [],
+            publishBlockers: [],
+            warnings: [],
+          }),
+        };
+        const toolkit = yield* Effect.provide(
+          agentToolkit,
+          agentToolkitLayer.pipe(Layer.provide(layerFromDraft(draft)))
+        );
+
+        yield* LanguageModel.LanguageModel.pipe(
+          Effect.flatMap((model) =>
+            Stream.runCollect(model.streamText({ prompt: "Hello", toolkit }))
+          ),
+          Effect.provide(
+            agentModelLayer(
+              {
+                provider: "anthropic",
+                apiKey: "sk-ant-test",
+                model: "claude-sonnet-5-5",
+                reasoningEffort: "medium",
+              },
+              { workflowId: "workflow-1" }
+            )
+          ),
+          Effect.provideService(FetchHttpClient.Fetch, fetch)
+        );
+
+        const tools = requests[0]?.tools as { strict?: boolean }[];
+        expect(tools.length).toBe(Object.keys(agentToolkit.tools).length);
+        expect(tools.length).toBeGreaterThan(20);
+        expect(tools.filter((tool) => tool.strict === true)).toEqual([]);
       })
   );
 
