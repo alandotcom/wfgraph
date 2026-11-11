@@ -1016,4 +1016,115 @@ describe("WorkflowDraftSync", () => {
       expect(store.get(remoteDraftChangeAtom)?.draftRevision).toBe(3)
     );
   });
+
+  it("keeps one subscription open across the editor's own saves", async () => {
+    const draftStream = createDraftStreamHarness();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const procedurePath = extractRpcProcedurePath(rpcUrl(input));
+        if (procedurePath === "workflow/subscribeDraft") {
+          return draftStream.open();
+        }
+        throw new Error(`Unexpected RPC procedure: ${procedurePath}`);
+      })
+    );
+
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, WORKFLOW_ID);
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: WORKFLOW_ID,
+      draftRevision: 1,
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <JotaiProvider store={store}>
+        <QueryClientProvider client={queryClient}>
+          <WorkflowDraftSync workflowId={WORKFLOW_ID} />
+        </QueryClientProvider>
+      </JotaiProvider>
+    );
+    await waitFor(() => expect(draftStream.connectionCount).toBe(1));
+
+    // A save of this editor's lands as revision 2, and the stream reports it.
+    act(() => {
+      store.set(recordLoadedDraftRevisionAtom, {
+        workflowId: WORKFLOW_ID,
+        draftRevision: 2,
+      });
+    });
+    draftStream.emit(2);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(draftStream.connectionCount).toBe(1);
+    expect(store.get(remoteDraftChangeAtom)).toBeNull();
+  });
+
+  it("closes the subscription while the page is hidden and catches up when it shows", async () => {
+    let visibilityState: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(
+      () => visibilityState
+    );
+    const draftStream = createDraftStreamHarness();
+    const subscriptionInputs: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const procedurePath = extractRpcProcedurePath(rpcUrl(input));
+        if (procedurePath === "workflow/subscribeDraft") {
+          subscriptionInputs.push(await parseRpcRequestInput(init));
+          return draftStream.open();
+        }
+        throw new Error(`Unexpected RPC procedure: ${procedurePath}`);
+      })
+    );
+
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, WORKFLOW_ID);
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: WORKFLOW_ID,
+      draftRevision: 1,
+    });
+    store.set(hasUnsavedChangesAtom, true);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <JotaiProvider store={store}>
+        <QueryClientProvider client={queryClient}>
+          <WorkflowDraftSync workflowId={WORKFLOW_ID} />
+        </QueryClientProvider>
+      </JotaiProvider>
+    );
+    await waitFor(() => expect(draftStream.connectionCount).toBe(1));
+
+    act(() => {
+      visibilityState = "hidden";
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect(draftStream.cancelledAt(0)).resolves.toBeUndefined();
+
+    act(() => {
+      store.set(recordLoadedDraftRevisionAtom, {
+        workflowId: WORKFLOW_ID,
+        draftRevision: 3,
+      });
+    });
+    expect(draftStream.connectionCount).toBe(1);
+
+    act(() => {
+      visibilityState = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await waitFor(() => expect(draftStream.connectionCount).toBe(2));
+    expect(subscriptionInputs.at(-1)).toEqual({
+      workflowId: WORKFLOW_ID,
+      afterDraftRevision: 3,
+    });
+    vi.restoreAllMocks();
+  });
 });

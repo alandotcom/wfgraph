@@ -1,7 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { ORPCError } from "@orpc/client";
 import { useAtomValue, useSetAtom } from "jotai";
-import { useAbortableSubscription, useAbortableTask } from "#src/hooks/effects";
+import {
+  useAbortableSubscription,
+  useAbortableTask,
+  useDocumentVisibility,
+} from "#src/hooks/effects";
 import { can } from "#src/lib/authorization";
 import { getClientLogger } from "#src/lib/logger";
 import {
@@ -75,9 +79,16 @@ export function WorkflowDraftSync({ workflowId }: { workflowId: string }) {
   const markWorkflowNotFound = useSetAtom(markWorkflowNotFoundAtom);
   const queryClient = useQueryClient();
   const canReadWorkflow = can(WfGraphOperations.workflowSubscribeDraft.id);
+  const visibility = useDocumentVisibility();
+  // The server emits every revision above `afterDraftRevision` for as long as
+  // the stream is open, so a revision this editor saved arrives on the open
+  // stream and is ignored as no newer than the local one; the key leaves the
+  // local revision out so a save does not reconnect. The server polls the
+  // database per open stream, so a hidden page closes it, and showing the
+  // page opens it after the local revision then current.
   useAbortableSubscription({
-    key: `${workflowId}:${localRevision}`,
-    enabled: canReadWorkflow && localRevision > 0,
+    key: `${workflowId}:${visibility}`,
+    enabled: canReadWorkflow && localRevision > 0 && visibility === "visible",
     subscribe: (signal) =>
       rpc.workflow.subscribeDraft(
         { workflowId, afterDraftRevision: localRevision },
