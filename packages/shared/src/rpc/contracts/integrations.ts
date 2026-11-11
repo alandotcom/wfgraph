@@ -6,7 +6,6 @@ import { NonEmptyTrimmedString, listOf } from "#src/types/schema";
 import { isoTimestampString } from "#src/types/timestamp";
 import {
   contractSchema,
-  deleted,
   idSchema,
   route,
 } from "#src/rpc/contracts/contract-support";
@@ -139,7 +138,22 @@ export const integrationContract = {
     WfGraphOperations.integrationDelete
   )
     .input(contractSchema(Schema.Struct({ integrationId: idSchema })))
-    .output(deleted),
+    .output(
+      contractSchema(
+        Schema.Struct({
+          success: Schema.Literal(true),
+          /**
+           * What became of the connection's OAuth grant, present only when it
+           * held one. The connection is gone either way; `not_revoked` means
+           * the provider may still honor the grant, so an operator revokes it
+           * there.
+           */
+          oauthRevocation: Schema.optionalKey(
+            Schema.Literals(["revoked", "not_revoked"])
+          ),
+        })
+      )
+    ),
   disconnectOAuth: route(
     "DELETE",
     "/integrations/{integrationId}/oauth",

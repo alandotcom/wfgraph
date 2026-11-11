@@ -1,4 +1,4 @@
-import { Effect, Result } from "effect";
+import { DateTime, Effect, Result } from "effect";
 import { mapValues, omitBy } from "es-toolkit/object";
 import {
   AppLogger,
@@ -7,7 +7,6 @@ import {
 import { internalFailure } from "#src/backend/lib/effect/internal-failure";
 import {
   Conflict,
-  InternalFailure,
   InvalidInput,
   NotFound,
 } from "#src/backend/lib/effect/failures";
@@ -33,6 +32,7 @@ import {
 } from "#src/backend/services/integrations/integration-config-masking";
 import {
   claimableFrom,
+  type DecryptedIntegration,
   IntegrationRepo,
 } from "#src/backend/services/integrations/repo";
 import {
@@ -45,8 +45,11 @@ import {
   OAUTH_GRANT_CONFIG_KEY,
   readStoredOAuthGrant,
 } from "#src/backend/services/integrations/oauth-grant";
-import { resolveIntegrationCredentials } from "#src/backend/services/integrations/credential-resolver";
-import { deleteIntegrationOAuth } from "#src/backend/services/integrations/oauth";
+import {
+  OAUTH_REFRESH_CLAIM_STALE_MS,
+  resolveIntegrationCredentials,
+} from "#src/backend/services/integrations/credential-resolver";
+import { revokeGrantBeforeDelete } from "#src/backend/services/integrations/oauth";
 
 type IntegrationSummary = {
   id: string;
@@ -80,8 +83,14 @@ type IntegrationTestResponse = {
   message: string;
 };
 
-/** The contract answers a delete with this and nothing else. */
-type IntegrationDeleted = { success: true };
+/**
+ * The contract answers a delete with this. `oauthRevocation` is present only
+ * for a connection that held an OAuth grant.
+ */
+type IntegrationDeleted = {
+  success: true;
+  oauthRevocation?: "revoked" | "not_revoked";
+};
 
 // Reaching here means the integration is in the catalog and declares no `test`,
 // which is a definition that offers no connection test rather than a setup
@@ -418,47 +427,64 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
   return toIntegrationWithConfig(catalog, outcome.integration);
 });
 
+/**
+ * A refresh owner that stopped answering keeps its claim on the row, and a
+ * claimed row cannot be deleted. Past the staleness bound the owner's provider
+ * outcome is unknown, so the row is fenced for reauthorization, which is a
+ * state a delete can claim, exactly as a credential read fences it.
+ */
+const fenceStaleRefreshOwner = Effect.fn("fenceStaleRefreshOwner")(function* (
+  integration: DecryptedIntegration
+) {
+  if (
+    integration.refreshState !== "refreshing" ||
+    integration.refreshClaimId === null
+  ) {
+    return false;
+  }
+  const now = DateTime.toEpochMillis(yield* DateTime.now);
+  const claimedAt = integration.refreshClaimedAt?.getTime() ?? 0;
+  if (now - claimedAt < OAUTH_REFRESH_CLAIM_STALE_MS) {
+    return false;
+  }
+  const repo = yield* IntegrationRepo;
+  const fenced = yield* Effect.result(
+    repo.markReauthorizationRequired({
+      integrationId: integration.id,
+      claimId: integration.refreshClaimId,
+      expectedRevision: integration.configRevision,
+    })
+  );
+  return Result.isSuccess(fenced);
+});
+
+/**
+ * Remove a connection, revoking its OAuth grant first when that is possible.
+ *
+ * A delete always removes the row once it holds the row's claim. Revocation
+ * that cannot be attempted or that the provider refuses is logged and named in
+ * the answer as `oauthRevocation: "not_revoked"`, so the editor can tell the
+ * operator to revoke the grant at the provider.
+ */
 export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
   integrationId: string
 ) {
   const repo = yield* IntegrationRepo;
   const logger = (yield* AppLogger).get("integrations").with({ integrationId });
-
-  let integration = yield* repo
-    .findById(integrationId)
-    .pipe(
-      Effect.catchTags(onReadFailure(logger, "Failed to delete integration"))
-    );
-
-  if (!integration) {
-    yield* logger.warn("Integration not found for delete");
-    return yield* new NotFound({ error: "Integration not found" });
-  }
-
-  const storedGrant = readStoredOAuthGrant(integration.config);
-  if (hasReservedOAuthGrant(integration.config) && !storedGrant) {
-    return yield* new InternalFailure({
-      error:
-        "The stored OAuth grant is invalid. Reconnect the integration before deleting it.",
-    });
-  }
-
-  if (storedGrant) {
-    const disconnect = yield* deleteIntegrationOAuth(integrationId);
-    // Disconnecting a connection the grant wholly supplied removes the row, so
-    // there is nothing left to delete and this call is already done.
-    if (disconnect.removed) {
-      const removed: IntegrationDeleted = { success: true };
-      return removed;
-    }
-    integration = yield* repo
+  const readRow = () =>
+    repo
       .findById(integrationId)
       .pipe(
         Effect.catchTags(onReadFailure(logger, "Failed to delete integration"))
       );
-    if (!integration) {
-      return yield* new NotFound({ error: "Integration not found" });
-    }
+
+  let integration = yield* readRow();
+  if (integration && (yield* fenceStaleRefreshOwner(integration))) {
+    integration = yield* readRow();
+  }
+  if (!integration) {
+    yield* logger.warn("Integration not found for delete");
+    return yield* new NotFound({ error: "Integration not found" });
   }
 
   const claimInput = {
@@ -485,11 +511,21 @@ export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
     });
   }
 
+  const revocation = hasReservedOAuthGrant(integration.config)
+    ? yield* revokeGrantBeforeDelete(integration, logger)
+    : undefined;
+
   const deletion = yield* Effect.result(
     repo.deleteOwnedRefreshClaim(claimInput)
   );
   if (Result.isFailure(deletion)) {
-    yield* Effect.result(repo.releaseRefreshClaim(claimInput));
+    // A revoked grant must not go back into use, so the row is fenced for
+    // reauthorization. A retried delete claims it from there.
+    if (revocation?.revoked) {
+      yield* Effect.result(repo.markReauthorizationRequired(claimInput));
+    } else {
+      yield* Effect.result(repo.releaseRefreshClaim(claimInput));
+    }
     return yield* internalFailure(
       logger,
       "Failed to delete integration"
@@ -505,8 +541,21 @@ export const deleteIntegration = Effect.fn("deleteIntegration")(function* (
     });
   }
 
-  const result: IntegrationDeleted = { success: true };
-  return result;
+  if (revocation === undefined) {
+    const removed: IntegrationDeleted = { success: true };
+    return removed;
+  }
+  if (!revocation.revoked) {
+    yield* logger.warn(
+      "Deleted an OAuth connection whose grant was not revoked at the provider",
+      { oauth: { provider: integration.type, reason: revocation.reason } }
+    );
+  }
+  const removed: IntegrationDeleted = {
+    success: true,
+    oauthRevocation: revocation.revoked ? "revoked" : "not_revoked",
+  };
+  return removed;
 });
 
 export const postIntegrationsTest = Effect.fn("postIntegrationsTest")(

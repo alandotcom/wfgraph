@@ -699,7 +699,11 @@ an adapter must not retry a token write independently.
 Token exchange, refresh, and revocation requests are writes. Pass them to
 `callExternalAsync` as `POST` requests with no idempotency key and do not set
 `safeToRepeat`. Disconnect calls `revoke` before Core removes the stored grant. If
-revocation fails, Core preserves the grant so the operator can retry.
+revocation fails, Core preserves the grant so the operator can retry, or delete the
+connection. Deleting a connection also calls `revoke`, and removes the connection even
+when `revoke` throws; the delete answer then reports the grant as not revoked. Resolve
+`revoke` without throwing when the provider answers that the token is already invalid or
+revoked, since that grant is already gone.
 
 Provider errors become connection failures without exposing authorization codes,
 client secrets, access tokens, or refresh tokens. Never include those values in

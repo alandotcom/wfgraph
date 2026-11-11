@@ -1,10 +1,16 @@
 import { Effect, Layer, Result } from "effect";
 import { describe, expect, it } from "vitest";
 import {
+  makeRecordingLogger,
   SilentAppLoggerLayer,
   stubExtensions,
   stubIntegrationRepo,
 } from "#src/backend/lib/effect/test-layers";
+import {
+  makeAppContextLayer,
+  type WfGraphAppContext,
+} from "#src/backend/lib/effect/app-context";
+import { OAUTH_REFRESH_CLAIM_STALE_MS } from "#src/backend/services/integrations/credential-resolver";
 import {
   completeIntegrationOAuth,
   deleteIntegrationOAuth,
@@ -94,40 +100,9 @@ describe("OAuth config races", () => {
       )
     );
 
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, oauthRevocation: "revoked" });
     expect(operations).toEqual(["revoke", "delete"]);
     expect(current).toBeNull();
-  });
-
-  it("refuses to delete a row whose reserved OAuth grant is malformed", async () => {
-    const integration = integrationWithGrant("old-access", 0);
-    integration.config[OAUTH_GRANT_CONFIG_KEY] = "not-a-grant";
-    let deleteCalls = 0;
-    const repository = stubIntegrationRepo({
-      findById: () => Effect.succeed(integration),
-      deleteOwnedRefreshClaim: () =>
-        Effect.sync(() => {
-          deleteCalls += 1;
-          return { status: "deleted" as const };
-        }),
-    });
-
-    const failure = await Effect.runPromise(
-      deleteIntegration("int_1").pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            SilentAppLoggerLayer,
-            appContext,
-            stubExtensions(oauthExtensions({ revoke: async () => undefined })),
-            repository
-          )
-        ),
-        Effect.flip
-      )
-    );
-
-    expect(failure).toBeInstanceOf(InternalFailure);
-    expect(deleteCalls).toBe(0);
   });
 
   it("lets one concurrent callback exchange and never revokes installation-wide cleanup", async () => {
@@ -482,5 +457,241 @@ describe("deferred OAuth creation", () => {
 
     expect(Result.isSuccess(result)).toBe(true);
     expect(revoked).toEqual([]);
+  });
+});
+
+/**
+ * A delete is the exit from every OAuth state, so none of these may leave the
+ * row behind. Each case names a way revocation cannot happen.
+ */
+describe("deleting an OAuth connection the provider will not revoke", () => {
+  function deletionRepo(integration: DecryptedIntegration) {
+    const calls = { claims: [] as string[], deletes: 0, fenced: 0 };
+    const repository: Partial<IntegrationRepo["Service"]> = {
+      findById: () => Effect.succeed(integration),
+      claimRefresh: ({ from }) =>
+        Effect.sync(() => {
+          calls.claims.push(from);
+          return { status: "acquired" as const };
+        }),
+      deleteOwnedRefreshClaim: () =>
+        Effect.sync(() => {
+          calls.deletes += 1;
+          return { status: "deleted" as const };
+        }),
+      markReauthorizationRequired: () =>
+        Effect.sync(() => {
+          calls.fenced += 1;
+          return { status: "transitioned" as const };
+        }),
+    };
+    return { repository, calls };
+  }
+
+  async function deleteWith(input: {
+    integration: DecryptedIntegration;
+    revoke?: (accessToken: string) => Promise<void>;
+    oauthDeclared?: boolean;
+    context?: Layer.Layer<WfGraphAppContext>;
+    repository: Partial<IntegrationRepo["Service"]>;
+  }) {
+    const recording = makeRecordingLogger();
+    const extensions = oauthExtensions({
+      revoke: input.revoke ?? (async () => undefined),
+    });
+    const result = await Effect.runPromise(
+      deleteIntegration(input.integration.id).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            recording.layer,
+            input.context ?? appContext,
+            stubExtensions(
+              input.oauthDeclared === false
+                ? { ...extensions, oauthFor: () => undefined }
+                : extensions
+            ),
+            stubIntegrationRepo(input.repository)
+          )
+        )
+      )
+    );
+    return { result, recording };
+  }
+
+  it("deletes the row and reports the grant unrevoked when the provider refuses", async () => {
+    const integration = integrationWithGrant("uninstalled-access", 0);
+    const { repository, calls } = deletionRepo(integration);
+
+    const { result, recording } = await deleteWith({
+      integration,
+      repository,
+      revoke: async () => {
+        throw new Error("Slack OAuth request rejected: invalid_client_id");
+      },
+    });
+
+    expect(result).toEqual({ success: true, oauthRevocation: "not_revoked" });
+    expect(calls.deletes).toBe(1);
+    expect(recording.warnLines).toEqual([
+      {
+        message:
+          "Deleted an OAuth connection whose grant was not revoked at the provider",
+        properties: {
+          oauth: { provider: "example", reason: "provider_failed" },
+        },
+      },
+    ]);
+  });
+
+  it("claims a connection fenced for reauthorization and deletes it", async () => {
+    const integration: DecryptedIntegration = {
+      ...integrationWithGrant("uncertain-access", 3),
+      refreshState: "reauthorization_required",
+    };
+    const { repository, calls } = deletionRepo(integration);
+    const revoked: string[] = [];
+
+    const { result } = await deleteWith({
+      integration,
+      repository,
+      revoke: async (accessToken) => {
+        revoked.push(accessToken);
+      },
+    });
+
+    expect(result).toEqual({ success: true, oauthRevocation: "revoked" });
+    expect(calls.claims).toEqual(["reauthorization_required"]);
+    expect(revoked).toEqual(["uncertain-access"]);
+    expect(calls.deletes).toBe(1);
+  });
+
+  it("deletes the row when the integration no longer declares OAuth", async () => {
+    const integration = integrationWithGrant("orphaned-access", 0);
+    const { repository, calls } = deletionRepo(integration);
+
+    const { result, recording } = await deleteWith({
+      integration,
+      repository,
+      oauthDeclared: false,
+    });
+
+    expect(result).toEqual({ success: true, oauthRevocation: "not_revoked" });
+    expect(calls.deletes).toBe(1);
+    expect(recording.warnLines[0]?.properties).toEqual({
+      oauth: { provider: "example", reason: "oauth_unavailable" },
+    });
+  });
+
+  it("deletes the row when the host no longer configures publicUrl", async () => {
+    const integration = integrationWithGrant("stranded-access", 0);
+    const { repository, calls } = deletionRepo(integration);
+    let revokeCalls = 0;
+
+    const { result, recording } = await deleteWith({
+      integration,
+      repository,
+      context: makeAppContextLayer({ apiBasePath: "/api" }),
+      revoke: async () => {
+        revokeCalls += 1;
+      },
+    });
+
+    expect(result).toEqual({ success: true, oauthRevocation: "not_revoked" });
+    expect(revokeCalls).toBe(0);
+    expect(calls.deletes).toBe(1);
+    expect(recording.warnLines[0]?.properties).toEqual({
+      oauth: { provider: "example", reason: "public_url_missing" },
+    });
+  });
+
+  it("deletes a row whose reserved OAuth grant is malformed", async () => {
+    const integration = integrationWithGrant("old-access", 0);
+    integration.config[OAUTH_GRANT_CONFIG_KEY] = "not-a-grant";
+    const { repository, calls } = deletionRepo(integration);
+
+    const { result } = await deleteWith({ integration, repository });
+
+    expect(result).toEqual({ success: true, oauthRevocation: "not_revoked" });
+    expect(calls.deletes).toBe(1);
+  });
+
+  it("fences a refresh owner that stopped answering, then deletes", async () => {
+    let current: DecryptedIntegration = {
+      ...integrationWithGrant("abandoned-access", 2),
+      refreshState: "refreshing",
+      refreshClaimId: "dead-owner",
+      refreshClaimedAt: new Date(Date.now() - OAUTH_REFRESH_CLAIM_STALE_MS - 1),
+    };
+    const fences: string[] = [];
+    let deletes = 0;
+    const repository: Partial<IntegrationRepo["Service"]> = {
+      findById: () => Effect.sync(() => current),
+      markReauthorizationRequired: ({ claimId }) =>
+        Effect.sync(() => {
+          fences.push(claimId);
+          current = {
+            ...current,
+            refreshState: "reauthorization_required",
+            refreshClaimId: null,
+            refreshClaimedAt: null,
+          };
+          return { status: "transitioned" as const };
+        }),
+      claimRefresh: ({ from }) =>
+        Effect.succeed(
+          from === current.refreshState
+            ? { status: "acquired" as const }
+            : { status: "lost" as const }
+        ),
+      deleteOwnedRefreshClaim: () =>
+        Effect.sync(() => {
+          deletes += 1;
+          return { status: "deleted" as const };
+        }),
+    };
+
+    const { result } = await deleteWith({ integration: current, repository });
+
+    expect(fences).toEqual(["dead-owner"]);
+    expect(deletes).toBe(1);
+    expect(result).toEqual({ success: true, oauthRevocation: "revoked" });
+  });
+
+  it("fences a revoked grant when the delete loses the database", async () => {
+    const integration = integrationWithGrant("revoked-access", 0);
+    const { repository: base, calls } = deletionRepo(integration);
+    let released = 0;
+    const repository: Partial<IntegrationRepo["Service"]> = {
+      ...base,
+      deleteOwnedRefreshClaim: () =>
+        Effect.fail(
+          new DatabaseError({ cause: new Error("connection reset") })
+        ),
+      releaseRefreshClaim: () =>
+        Effect.sync(() => {
+          released += 1;
+          return true;
+        }),
+    };
+
+    const failure = await Effect.runPromise(
+      deleteIntegration("int_1").pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            SilentAppLoggerLayer,
+            appContext,
+            stubExtensions(oauthExtensions({ revoke: async () => undefined })),
+            stubIntegrationRepo(repository)
+          )
+        ),
+        Effect.flip
+      )
+    );
+
+    // The provider no longer honors the stored grant, so handing the row back
+    // to idle would offer runs a dead credential.
+    expect(failure).toBeInstanceOf(InternalFailure);
+    expect(calls.fenced).toBe(1);
+    expect(released).toBe(0);
   });
 });

@@ -23,6 +23,7 @@ import {
 } from "#src/backend/services/integrations/oauth-grant";
 import {
   claimableFrom,
+  type DecryptedIntegration,
   IntegrationRepo,
 } from "#src/backend/services/integrations/repo";
 import type { OAuthAuthorizationAttemptPayload } from "#src/backend/services/integrations/oauth-attempt-payload";
@@ -751,6 +752,70 @@ export const getOAuthClientMetadata = Effect.fn("getOAuthClientMetadata")(
   }
 );
 
+/**
+ * Why a deleted connection's grant may still be live at the provider: the
+ * host no longer configures `publicUrl`, the integration no longer declares
+ * OAuth, the stored grant cannot be read, or the provider call failed.
+ */
+export type UnrevokedGrantReason =
+  | "public_url_missing"
+  | "oauth_unavailable"
+  | "invalid_grant"
+  | "provider_failed";
+
+export type GrantRevocationOutcome =
+  | { readonly revoked: true }
+  | { readonly revoked: false; readonly reason: UnrevokedGrantReason };
+
+const unrevoked = (reason: UnrevokedGrantReason): GrantRevocationOutcome => ({
+  revoked: false,
+  reason,
+});
+
+/**
+ * Revoke the grant stored on a connection that is about to be deleted.
+ *
+ * The caller holds the row's refresh claim, so no refresh rotates the token
+ * while the provider is asked. This never fails: a delete removes the
+ * connection whatever the provider says, and the outcome tells the caller
+ * whether an operator still has to revoke the grant at the provider. An
+ * adapter answers a token the provider already considers invalid as revoked.
+ */
+export const revokeGrantBeforeDelete = Effect.fn("revokeGrantBeforeDelete")(
+  function* (integration: DecryptedIntegration, logger: EffectLogger) {
+    const grant = readStoredOAuthGrant(integration.config);
+    if (!grant) {
+      return unrevoked("invalid_grant");
+    }
+    const context = yield* WfGraphAppContext;
+    const routeUrls = oauthUrlsFor(integration.type, context);
+    if (!routeUrls) {
+      return unrevoked("public_url_missing");
+    }
+    const oauth = (yield* Extensions).oauthFor(integration.type);
+    if (!oauth) {
+      return unrevoked("oauth_unavailable");
+    }
+    const revocation = yield* Effect.result(
+      providerStep({
+        logger,
+        operation: "revocation",
+        integrationId: integration.id,
+        integrationType: integration.type,
+        run: async () => {
+          const client = oauth.registerClient(
+            oauthRegistrationContext(context, routeUrls)
+          );
+          await oauth.revoke({ client, grant });
+        },
+      })
+    );
+    return Result.isSuccess(revocation)
+      ? ({ revoked: true } satisfies GrantRevocationOutcome)
+      : unrevoked("provider_failed");
+  }
+);
+
 /** Revoke the stored grant before returning control of its credentials to manual config. */
 export const deleteIntegrationOAuth = Effect.fn("deleteIntegrationOAuth")(
   function* (integrationId: string) {
@@ -783,7 +848,7 @@ export const deleteIntegrationOAuth = Effect.fn("deleteIntegrationOAuth")(
     if (integration.refreshState === "reauthorization_required") {
       return yield* new Conflict({
         error:
-          "OAuth connection state is uncertain. Reconnect the integration.",
+          "OAuth connection state is uncertain. Reconnect or delete the integration.",
       });
     }
 

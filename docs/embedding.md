@@ -577,6 +577,13 @@ updates the existing row through its revision fence. The typed
 the encrypted connection configuration and don't enter the extension catalog or RPC
 responses.
 
+`integration.delete` always removes a connection that holds an OAuth grant, including one
+whose grant needs reauthorization. It asks the provider to revoke the grant first, and
+answers `oauthRevocation: "revoked"` or `"not_revoked"` beside `success`. `not_revoked`
+means revocation failed or could not be attempted, because `publicUrl` is unset, the
+integration no longer declares `oauth`, or the stored grant is unreadable. The server logs
+a warning naming the reason, and an operator revokes the grant at the provider.
+
 - Clerk, Linear, PostHog, Resend, and Twilio are exported as values. Slack is a factory because
   it accepts host-provided OAuth client credentials.
 - The editor shows what the server assembled. The action selector lists exactly the
