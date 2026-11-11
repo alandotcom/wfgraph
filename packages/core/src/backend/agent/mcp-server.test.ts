@@ -659,7 +659,8 @@ describe("createAgentMcpServer", () => {
     const execute: DraftToolExecutor = async () => ({
       ok: false,
       failure: new DraftConflict({
-        error: "The workflow draft changed. Read it again before editing.",
+        error:
+          "The workflow draft changed after revision 4 and is now at revision 5. Nothing was written. Call read_workflow, decide the edit again against the graph it returns, and send it with that draftRevision.",
         currentDraftRevision: 5,
       }),
     });
@@ -681,7 +682,7 @@ describe("createAgentMcpServer", () => {
           workflowId: "wf_1",
           draftRevision: 5,
           code: "workflow_draft_stale",
-          reason: expect.stringContaining("Read it again"),
+          reason: expect.stringContaining("read_workflow"),
         },
       });
     } finally {

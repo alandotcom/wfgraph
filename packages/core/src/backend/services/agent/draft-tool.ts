@@ -56,6 +56,27 @@ const loggerFor = (workflowId: string | undefined) =>
     appLogger.get("agent").with(omitUndefined({ workflowId }))
   );
 
+/**
+ * The refusal of a write sent against a revision other than the stored one.
+ * It says which way the revisions differ, because a revision ahead of the
+ * stored draft is a client bookkeeping error rather than another writer, and
+ * it names the read that recovers either case. Nothing was written.
+ */
+function staleDraft(input: {
+  readonly expected: number;
+  readonly current: number;
+}): DraftConflict {
+  const reread =
+    "Nothing was written. Call read_workflow, decide the edit again against the graph it returns, and send it with that draftRevision.";
+  return new DraftConflict({
+    error:
+      input.expected < input.current
+        ? `The workflow draft changed after revision ${input.expected} and is now at revision ${input.current}. ${reread}`
+        : `Revision ${input.expected} is ahead of the stored draft, which is at revision ${input.current}; send the draftRevision from the latest read or write. ${reread}`,
+    currentDraftRevision: input.current,
+  });
+}
+
 /** Runs one toolkit handler and requires its declared object result. */
 function runTool(session: AgentToolSession, input: ExecuteDraftToolInput) {
   return session.toolkit
@@ -133,10 +154,14 @@ export const executeDraftTool = Effect.fn("wfgraph.agent.draft_tool")(
         error: "Expected draft revision is required for a graph update",
       });
     }
-    if (writesGraph && workflow.draftRevision !== input.expectedDraftRevision) {
-      return yield* new DraftConflict({
-        error: "The workflow draft changed. Read it again before editing.",
-        currentDraftRevision: workflow.draftRevision,
+    if (
+      writesGraph &&
+      input.expectedDraftRevision !== undefined &&
+      workflow.draftRevision !== input.expectedDraftRevision
+    ) {
+      return yield* staleDraft({
+        expected: input.expectedDraftRevision,
+        current: workflow.draftRevision,
       });
     }
 
@@ -184,9 +209,9 @@ export const executeDraftTool = Effect.fn("wfgraph.agent.draft_tool")(
       },
     });
     if (write.status === "conflict") {
-      return yield* new DraftConflict({
-        error: "The workflow draft changed. Read it again before editing.",
-        currentDraftRevision: write.currentDraftRevision,
+      return yield* staleDraft({
+        expected: expectedDraftRevision,
+        current: write.currentDraftRevision,
       });
     }
     if (write.status === "not_found") {

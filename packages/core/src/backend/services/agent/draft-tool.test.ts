@@ -183,6 +183,31 @@ describe("executeDraftTool", () => {
 
         assert.instanceOf(failure, DraftConflict);
         assert.strictEqual(failure.currentDraftRevision, 2);
+        assert.include(failure.error, "changed after revision 1");
+        assert.include(failure.error, "now at revision 2");
+        assert.include(failure.error, "read_workflow");
+      })
+    );
+
+    it.effect("says when a revision is ahead of the stored draft", () =>
+      Effect.gen(function* () {
+        const failure = yield* executeDraftTool({
+          workflowId: workflow.id,
+          name: "add_node",
+          arguments: { actionId: "score-applicant", label: "Score" },
+          toolCallId: "call_ahead",
+          expectedDraftRevision: 9,
+        }).pipe(
+          Effect.provide(
+            stubWorkflowRepo({ findById: () => Effect.succeed(workflow) })
+          ),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, DraftConflict);
+        assert.strictEqual(failure.currentDraftRevision, 1);
+        assert.include(failure.error, "Revision 9 is ahead");
+        assert.include(failure.error, "at revision 1");
       })
     );
 
