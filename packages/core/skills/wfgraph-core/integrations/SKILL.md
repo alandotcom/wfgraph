@@ -3,8 +3,9 @@ name: integrations
 description: >
   Use when writing a Workflow Graph integration for a vendor or external service
   against @wfgraph/core/plugin: defineIntegration with a credential form and
-  Effect action handlers, callExternal requests inside step.run, provider-backed
-  config fields, webhook Events, an IntegrationOAuth adapter, tests with
+  Effect action handlers, callExternal requests inside step.run with
+  idempotency keys, runMode handling for test runs, provider-backed config
+  fields, webhook Events, an IntegrationOAuth adapter with revoke, tests with
   runAction and checkIntegration, or changing or retiring an action that
   published workflows already use. Also use for requests such as "connect
   workflows to our CRM's API", "add OAuth for this provider" or "rename a field
@@ -48,6 +49,12 @@ The host passes it in `extensions.integrations`. Build against
   Effect `Schema.Enum` object key becomes that title while its value stays stored.
   `configOptions` load choices from the connection; never leak exception text
   (it can hold a key in a URL).
+- Declare a credential that names where the secrets are sent, such as an API
+  host, as `type: "url"`. Workflow Graph then refuses a connection update or
+  saved-connection test that changes it without supplying every stored
+  `password` field again, so an operator who can edit the connection cannot
+  point its stored secret at another host. Validate the scheme where the
+  client builds requests from it.
 - `connectionDefaultKey` names the credential a blank field falls back to, and
   the editor draws that stored value as the placeholder. It must name a
   declared credential and never a `password` one: the browser holds a mask in
@@ -60,7 +67,11 @@ The host passes it in `extensions.integrations`. Build against
   required where the system always sends it.
 - `category` defaults to the integration `label`. `sideEffect: true` marks an
   external write. The run dialog counts those steps before a Live published
-  run; Groups ignore the field.
+  run; Groups ignore the field. It does not keep the step out of a test run.
+- A Draft run, and a run of a published version whose workflow is in Test
+  mode, call every handler with `runMode: "test"`. A handler that would reach
+  a real person or record checks `bag.runMode` and answers without doing so,
+  as the built-in Twilio and Resend actions do.
 - `events` are `defineEvent` values. Assembly stamps `EventMetadata.integration`.
   Optional `webhook`: `verify` on the raw body, `receive` on parsed JSON.
   `secret` names the Connection credential that verifies a POST. `helpText`
@@ -86,7 +97,16 @@ each completed `step.run` from the step memo. Work with a side effect goes in
 - An SDK earns its place only when it owns protocol (Clerk JWT, Linear
   GraphQL, Svix webhook signatures). Do not wrap Twilio/Slack/Resend-style HTTP
   SDKs.
-- What `step.run` answers must be JSON. Carry timestamps as ISO strings.
+- What `step.run` answers must be JSON. Carry timestamps as ISO strings. One
+  answer may hold at most `runner.maxStepValueBytes` of JSON (1 MiB by
+  default); a larger one fails the node at once with no retry.
+- A step name is 1 to 64 characters. Workflow Graph places it under its node,
+  so two nodes running the action never read each other's value and no name
+  reaches a step the engine keeps for the node.
+- A step is at-least-once. `step.idempotencyKey(name)` answers a key for that
+  step of that node of that run, the same on every pass and retry, and the
+  bag's `idempotencyKey` is one for the node. Pass the key to a vendor that
+  deduplicates by it, one key per call.
 - `StepFailure` travels as a value, so a refused call fails the node once.
   A throw is retried: each step gets its own four retries.
 - A handler that wraps nothing still opens one memoized log row.
@@ -112,13 +132,22 @@ wfgraph-plugins.
 - Token POSTs go through `callExternalAsync(callExternal(...))` with no
   idempotency key and do not set `safeToRepeat`. Core serializes refresh for
   one connection.
+- `revoke` runs on disconnect, and a throw there keeps the grant so the
+  operator can retry. Deleting a connection also calls `revoke` and removes
+  the connection even when it throws, answering
+  `oauthRevocation: "not_revoked"` and logging a warning with the reason.
+  Resolve `revoke` without throwing when the provider says the token is
+  already invalid or revoked.
 - Pin registration, the authorize URL, token HTTP, rotation, and secret-free
   error messages in `[name]/oauth.test.ts`. Core tests own attempts and fencing.
 
 ## Testing and evolving
 
 - `runAction`, `actionData`, `actionError` from `@wfgraph/core/testing`. The
-  slug is typed. `input` is the encoded side (what a builder typed).
+  slug is typed. `input` is the encoded side (what a builder typed). Pass
+  `runMode: "test"` to cover the test-run branch. A case stands in for the run
+  `execution_test` unless `node.executionId` names another, which is what the
+  idempotency keys are built from.
 - Call `checkIntegration` in the defining package's suite. Assembly runs the
   same per-integration check (actions, Events, webhook). Cross-integration
   uniqueness stays in `assembleExtensions`.
@@ -155,6 +184,19 @@ Wrong: `callExternal({ method: "POST", url: tokenUrl, safeToRepeat: true })`.
 
 Correct: POST with no idempotency key; do not set `safeToRepeat`. Core holds
 the refresh claim.
+
+Source: alandotcom/wfgraph:docs/integrations.md (Core owns the browser flow)
+
+### HIGH A revoke that throws for an already revoked token
+
+Wrong: `revoke` that throws on the provider's "token revoked" or "invalid
+token" answer.
+
+Correct: resolve, since the grant is already gone; throw only for a refusal
+the operator can act on.
+
+Disconnect keeps a grant whose revocation threw, so a workspace that already
+uninstalled the app could never disconnect.
 
 Source: alandotcom/wfgraph:docs/integrations.md (Core owns the browser flow)
 
