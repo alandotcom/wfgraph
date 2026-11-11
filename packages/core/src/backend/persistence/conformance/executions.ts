@@ -1592,7 +1592,7 @@ export function describeExecutionConformance({
       ).rejects.toThrow();
       await expect(
         database.execute(
-          `update workflow_executions set status = 'waiting' where ${run}`
+          `update workflow_executions set status = 'waiting', waiting_at = started_at where ${run}`
         )
       ).resolves.toBeUndefined();
       await expect(
@@ -1600,6 +1600,51 @@ export function describeExecutionConformance({
           `update workflow_execution_logs set status = 'success' where ${log}`
         )
       ).resolves.toBeUndefined();
+    });
+
+    // The retention sweep finds an ended run by `completed_at`, and the Runs
+    // view reads `waiting_at` and `cancelled_at` beside the status, so each
+    // timestamp is set exactly while its status holds.
+    it("holds a run's ending timestamps to its status", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      await seedPublishedWorkflow(connection);
+      const started = await attemptStart(connection, {
+        deliveryId: "delivery_1",
+      });
+      if (started.status !== "started") throw new Error("Start was refused");
+      const run = `id = '${started.execution.id}'`;
+      const refused = [
+        "set status = 'completed'",
+        "set completed_at = started_at",
+        "set status = 'waiting'",
+        "set waiting_at = started_at",
+        "set status = 'canceled', completed_at = started_at",
+        "set cancelled_at = started_at",
+        "set status = 'failed', completed_at = started_at, cancelled_at = started_at",
+      ];
+      for (const assignment of refused) {
+        // eslint-disable-next-line eslint/no-await-in-loop -- each refusal is checked against the same row as it stands
+        await expect(
+          database.execute(
+            `update workflow_executions ${assignment} where ${run}`
+          ),
+          assignment
+        ).rejects.toThrow();
+      }
+
+      await connection.run(
+        Effect.flatMap(ExecutionRepo, (executions) =>
+          executions.cancelRun({
+            executionId: started.execution.id,
+            reason: "Stopped by an operator",
+          })
+        )
+      );
+      const ended = await database.selectIds(
+        `select id from workflow_executions where ${run} and status = 'canceled' and completed_at is not null and cancelled_at is not null and waiting_at is null`
+      );
+      expect(ended).toEqual([started.execution.id]);
     });
 
     // The cross-workflow list resumes after its last row by comparing that

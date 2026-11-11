@@ -130,18 +130,24 @@ export function describeExecutionRetentionConformance({
       await seedPublishedWorkflow(connection);
       const executionId = await startedRunId(connection, "delivery_old");
 
-      // An in-flight run carries no `completed_at`. Giving this one an old
-      // value anyway leaves its status as the only thing keeping it.
-      await Promise.all(
-        ["started_at", "completed_at"].map((column) =>
-          setTimestamp(database, {
-            table: "workflow_executions",
-            column,
-            where: `id = '${executionId}'`,
-            at: new Date("2020-01-01T00:00:00.000Z"),
-          })
-        )
-      );
+      // An in-flight run carries no `completed_at`, which
+      // `workflow_executions_completed_check` holds it to, and the database
+      // refuses one written anyway. An old start leaves its status as the
+      // thing keeping it.
+      await expect(
+        setTimestamp(database, {
+          table: "workflow_executions",
+          column: "completed_at",
+          where: `id = '${executionId}'`,
+          at: new Date("2020-01-01T00:00:00.000Z"),
+        })
+      ).rejects.toThrow();
+      await setTimestamp(database, {
+        table: "workflow_executions",
+        column: "started_at",
+        where: `id = '${executionId}'`,
+        at: new Date("2020-01-01T00:00:00.000Z"),
+      });
 
       const result = await connection.run(
         Effect.gen(function* () {

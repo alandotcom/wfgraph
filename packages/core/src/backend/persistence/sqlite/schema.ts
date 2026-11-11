@@ -14,6 +14,7 @@ import {
   ENTITY_ELIGIBILITY_REASONS,
   IN_FLIGHT_EXECUTION_STATUSES,
   NODE_LOG_STATUSES,
+  TERMINAL_EXECUTION_STATUSES,
   type TerminationKind,
   WORKFLOW_EXECUTION_START_SOURCES,
   WORKFLOW_EXECUTION_STATUSES,
@@ -232,6 +233,22 @@ export const workflowExecutions = sqliteTable(
     check(
       "workflow_executions_entity_identity_pair_check",
       sql`(${table.entityType} is null and ${table.entityId} is null) or (${table.entityType} is not null and ${table.entityId} is not null)`
+    ),
+    // The timestamps that say how a run ended are set together with the
+    // status that says it, and cleared together. The retention sweep finds
+    // ended runs by `completed_at`, so an ended run without it would never be
+    // swept.
+    check(
+      "workflow_executions_completed_check",
+      sql`(${table.status} in (${literals(TERMINAL_EXECUTION_STATUSES)})) = (${table.completedAt} is not null)`
+    ),
+    check(
+      "workflow_executions_waiting_check",
+      sql`(${table.status} = 'waiting') = (${table.waitingAt} is not null)`
+    ),
+    check(
+      "workflow_executions_cancelled_check",
+      sql`(${table.status} = 'canceled') = (${table.cancelledAt} is not null)`
     ),
     check(
       "workflow_executions_schedule_check",
