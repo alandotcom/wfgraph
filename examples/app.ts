@@ -214,28 +214,19 @@ const cancelAppointmentAction = defineAction({
     reason: z.string(),
     cancelledAt: z.iso.datetime(),
   }),
-  // A Draft run in the editor calls this handler too, with `runMode` "test",
-  // so a test run answers without cancelling anything.
-  handler({ input, runMode, step }) {
-    if (runMode === "test") {
-      return {
-        appointmentId: input.appointmentId,
-        status: "skipped",
-        reason: input.reason,
-        cancelledAt: new Date().toISOString(),
-      };
-    }
-    // The cancellation goes inside `step.run`, so a retry of a later node replays
-    // this answer rather than cancelling a second time. Workflow Graph wraps no handler body:
-    // work with a side effect says so here or it happens again on every attempt.
-    return step.run("cancel", () =>
-      Promise.resolve({
-        appointmentId: input.appointmentId,
-        status: "cancelled",
-        reason: input.reason,
-        cancelledAt: new Date().toISOString(),
-      })
-    );
+  // Workflow Graph calls this handler once per node of a run: every later pass,
+  // after a Wait or a retry, answers the node from what this call returned. A
+  // Draft run in the editor calls it too, with `runMode` "test", so a test run
+  // answers without cancelling anything. A host whose cancellation reaches
+  // another system hands that system the bag's `idempotencyKey`, so a call
+  // repeated after a crash cancels once.
+  handler({ input, runMode }) {
+    return {
+      appointmentId: input.appointmentId,
+      status: runMode === "test" ? "skipped" : "cancelled",
+      reason: input.reason,
+      cancelledAt: new Date().toISOString(),
+    };
   },
 });
 

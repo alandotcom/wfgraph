@@ -115,6 +115,39 @@ await wfgraph.events.send(appointmentCreated, {
 `examples/app.ts` is the same call with four Events and one custom action. That file is
 correct. If this file disagrees with it, this file is wrong.
 
+## A handler runs once per node of a run
+
+A run executes in passes: after a Wait resumes, after a retry, and after a worker restarts,
+the executor runs the workflow again from its trigger and answers the work that already
+finished from the run's step memo. A host action's handler runs inside one durable step of its
+node, so once it has answered, or has failed outside any `step.run`, it is not called again
+for that node of that run. Its answer is what every later pass reads, and a failure stays the
+node's failure.
+
+`step.run(name, work)` inside a handler marks a part that a retry resumes past. A throw inside
+`work` is retried by the executor, up to its step retry limit, and the next pass calls the
+handler again with every `step.run` that finished answered from the memo. Use it to split a
+handler that writes to two systems, so a failed second write does not repeat the first:
+
+```ts
+handler: async ({ input, step }) => {
+  const refund = await step.run("refund", ({ idempotencyKey }) =>
+    payments.refund(input.chargeId, { idempotencyKey })
+  );
+  await step.run("notify", ({ idempotencyKey }) =>
+    mailer.send(input.email, { refundId: refund.id, idempotencyKey })
+  );
+  return { refundId: refund.id };
+},
+```
+
+A handler and a step are at-least-once. A process that dies during a call, before its answer
+is stored, leaves the call to run again on the next pass. The bag's `idempotencyKey` is the
+same on every pass and retry of a node, and differs between two nodes running the same
+action. `step.run` hands its `work` a key of its own, as does `step.idempotencyKey(name)`, so
+two calls of one handler carry two keys. Pass the key to a vendor that deduplicates requests
+by it, and a repeated call is applied once. A `step.run` name is 1 to 64 characters.
+
 ## Test runs call your handler
 
 A Draft run started from the editor runs with `runMode: "test"`, and so does a run of a
@@ -1201,44 +1234,47 @@ different migration tool puts the tables in `public`. This repository's
 
 ## Testing a host
 
-`runHostAction` from `@wfgraph/core/testing` runs one of your `defineAction` actions the way a
-workflow runs it, through the input decode, the handler, the output encode and the envelope
-the engine reads. It resolves with that envelope and with every `step.run` the handler made.
-The cases below test `cancelAppointmentAction` from `examples/app.ts`, whose handler puts its
-cancellation inside `step.run("cancel", ...)`:
+`runHostAction` from `@wfgraph/core/testing` runs one of your `defineAction` actions the way one
+pass of a run runs its node, through the input decode, the handler, the output encode and the
+envelope the engine reads. It resolves with that envelope, with every `step.run` the handler
+made, and with the memo the pass leaves. The cases below test `cancelAppointmentAction` from
+`examples/app.ts`:
 
 ```ts
 import { actionData, runHostAction } from "@wfgraph/core/testing";
 
-const run = await runHostAction(cancelAppointmentAction, {
-  input: { appointmentId: "appt_123", reason: "Patient asked" },
-  runMode: "live",
-});
+const input = { appointmentId: "appt_123", reason: "Patient asked" };
+const run = await runHostAction(cancelAppointmentAction, { input });
 expect(actionData(run.result)).toMatchObject({ status: "cancelled" });
-expect(run.steps).toMatchObject([{ id: "cancel", replayed: false }]);
+expect(run.handlerRan).toBe(true);
 
-// A retried pass answers a step that already ran from its stored value.
-const stored = {
-  appointmentId: "appt_123",
-  status: "cancelled",
-  reason: "Patient asked",
-  cancelledAt: "2026-08-10T19:00:00.000Z",
-};
-const retried = await runHostAction(cancelAppointmentAction, {
-  input: { appointmentId: "appt_123", reason: "Patient asked" },
-  replay: { cancel: stored },
+// A later pass of the same run answers the node from the memo the first left.
+const later = await runHostAction(cancelAppointmentAction, {
+  input,
+  memo: run.memo,
 });
-expect(actionData(retried.result)).toEqual(stored);
-expect(retried.steps).toMatchObject([{ id: "cancel", replayed: true }]);
+expect(later.handlerRan).toBe(false);
+expect(later.result).toEqual(run.result);
+
+// A Draft run calls the handler with runMode "test".
+const draft = await runHostAction(cancelAppointmentAction, {
+  input,
+  runMode: "test",
+});
+expect(actionData(draft.result)).toMatchObject({ status: "skipped" });
 ```
 
 - `input` is the action's config after templates resolved, on the encoded side of its schema.
 - `runMode` is `"live"` unless a case passes `"test"`. `credentials` stands in for a
-  Connection's secrets; leave it out for an action that reads none.
-- `replay` maps a `step.run` id to the value it stored, and that step answers the value
-  without running its work.
-- A handler that throws fails the node: the promise resolves, and `actionError(run.result)`
-  reads the message.
+  Connection's secrets; leave it out for an action that reads none. `node` names the run and
+  node a case stands in for, which the idempotency keys are built from.
+- `memo` is what earlier passes stored. An earlier run's `memo` holds the handler's answer, and
+  a run handed it does not call the handler. `memo: { steps: { refund: { id: "re_1" } } }`
+  answers the `step.run` named `refund` with that value without running its work, which is how
+  a case checks the pass after a later step failed.
+- A handler that throws outside any `step.run` fails the node: the promise resolves, and
+  `actionError(run.result)` reads the message. A `step.run` whose work throws is a step the
+  executor retries, so the promise rejects with that error.
 
 The test below runs a whole app in CI with nothing but the public API: an in-memory SQLite
 database, `trustWfGraphUpstream()` in place of your sessions, a workflow created and

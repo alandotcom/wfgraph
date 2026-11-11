@@ -156,3 +156,44 @@ start time. Memoizing the start in a step of its own was the alternative; puttin
 it where both timestamps already live costs no step and leaves no clock able to
 cross a replay. The body still reads its own clock for one log line, named
 `attemptMs` for what it measures.
+
+## Amendment, 2026-11-11
+
+A host action's handler runs inside one memoized step of its node again. Integrations keep
+the decision above.
+
+The decision was made for parity with Inngest, which wraps no function body, and for an
+author who arrives having written Inngest functions. Neither held for `defineAction` by this
+date. Runs had moved to the project's own executor (ADR-0021), so no runtime underneath
+asked for the parity. The audience for `defineAction` is a host developer adding one action
+to an application, who has not written an Inngest function, and the README's first example
+was a handler with no `step.run`. That handler issued its side effect again on every pass:
+after each Wait, retry and restart. The cost of the model fell on the author least likely to
+know it, and the run log hid it, since the node kept one row.
+
+`buildStep` now runs a `defineAction` handler, with its config decode and its output encode,
+inside the step `node:<nodeId>:handler`. A handler that answered is answered from the memo on
+every later pass and is not called again for that node of that run. The objection the
+decision above raised against the old wrapper does not apply: `step.run` still works inside
+the handler, nested in the handler step under its own id, so a handler can still say that a
+read is safe to repeat and a write is not, and a retry resumes past the steps that finished.
+
+Failure semantics are the ones stated above. A throw outside any `step.run`, a
+`StepFailure`, and a refused credential read are stored in the handler step as the node's
+failure, so the node fails once and a later pass raises the same failure without calling the
+handler. A throw inside a `step.run` stores nothing in the handler step, whatever the handler
+did with it: the executor retries that step, and the next pass calls the handler again.
+
+Three things came with it. Author step ids moved to `node:<nodeId>:step:<name>`, apart from
+the ids the engine keeps for a node (`log-open`, `route`, `handler`), after an author's step
+named `log-open` was found answering the `null` the engine stored for its run-log open. The
+handler bag gained `idempotencyKey`, built from the run's id and the node's id, and
+`step.run` hands each step a key of its own, because a step is still at-least-once when a
+process dies mid-call. And the executor's heartbeat records the earliest started of the
+running steps, which for a host action is now its handler step, so a lease expiry or a budget
+cut during the handler counts against the handler step rather than the inner step that was
+running.
+
+An integration author still declares what is remembered. The six built-ins are written
+against `@wfgraph/core/plugin` by people who read `docs/integrations.md`, and an integration's
+handler often makes several calls whose granularity only its author knows.

@@ -170,7 +170,14 @@ const cancelAppointment = defineAction({
     appointmentId: z.string(),
     status: z.string(),
   }),
-  handler({ input }) {
+  // Called once per node of a run, and by a Draft run with runMode "test".
+  handler: async ({ input, runMode, idempotencyKey }) => {
+    if (runMode === "test") {
+      return { appointmentId: input.appointmentId, status: "skipped" };
+    }
+    // The key repeats if this call is repeated after a crash, so the
+    // scheduling system cancels once.
+    await scheduling.cancel(input.appointmentId, { idempotencyKey });
     return { appointmentId: input.appointmentId, status: "cancelled" };
   },
 });

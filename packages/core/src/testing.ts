@@ -20,6 +20,7 @@ import type { Integration } from "#src/backend/extensions/define-integration";
 import type { ActionStep } from "#src/backend/extensions/steps/define-step";
 import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner";
 import { formatActionId } from "@wfgraph/shared/extensions/catalog";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type {
   NodeSteps,
   StepError,
@@ -143,28 +144,64 @@ export type RecordedStep = {
   | { readonly ok: false; readonly error: string }
 );
 
+declare const storedHandlerAnswer: unique symbol;
+
+/**
+ * What a host action's handler step stored, as `HostActionRun.memo` carries
+ * it. A case hands it on from an earlier run and never builds one.
+ */
+export type StoredHandlerAnswer = { readonly [storedHandlerAnswer]: true };
+
+/**
+ * A node's step memo, as the executor keeps one between passes: what the
+ * handler's own step stored, and what each `step.run` stored, by the name the
+ * handler gave it. Values are as JSON stores them.
+ */
+export type HostActionMemo = {
+  readonly handler?: StoredHandlerAnswer | undefined;
+  readonly steps?: Readonly<Record<string, unknown>> | undefined;
+};
+
 /** What `runHostAction` answers. */
 export type HostActionRun = {
   /** The envelope the engine reads: the output, or the reason the node failed. */
   readonly result: StepResult;
+  /**
+   * Whether the handler was called. False when `memo` held the handler's
+   * answer, which is how the executor answers a node on every pass after the
+   * one that ran it.
+   */
+  readonly handlerRan: boolean;
   /** Every `step.run` the handler made, in order. */
   readonly steps: readonly RecordedStep[];
+  /** The memo after this pass, to hand the next one. */
+  readonly memo: HostActionMemo;
 };
 
+/** A value as the executor's memo stores it, which is JSON. */
+function asStored<T>(value: T): T {
+  // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the executor's memo answers the JSON form of the value it was given
+  return JSON.parse(JSON.stringify(value ?? null)) as T;
+}
+
 /**
- * Run a host action built with `defineAction` and answer the envelope the
- * engine reads, beside every `step.run` its handler made.
+ * Run a host action built with `defineAction` as one pass of a run runs its
+ * node, and answer the envelope the engine reads, beside every `step.run` its
+ * handler made and the memo the pass leaves.
  *
  * `input` is the resolved config as the engine builds it, which is the
  * encoded side, as with `runAction`. `runMode` defaults to "live".
  * `credentials` stands in for the Connection a node was configured with, and
  * a case that passes none runs the action the way a node with no Connection
- * does. `replay` answers a `step.run` whose id it holds with that value
- * without running the work, which is how a case checks that a retried pass
- * does not repeat a side effect.
+ * does. `memo` is what earlier passes stored. Handed an earlier run's `memo`,
+ * a run answers from the handler's stored answer without calling the handler;
+ * handed `steps` alone, it calls the handler and answers each `step.run`
+ * whose name `steps` holds with that value without running its work.
  *
- * A handler that throws fails the node, so its message is in `result`, and
- * the promise still resolves. It rejects only for a defect in the boundary.
+ * A handler that throws outside any `step.run` fails the node, so its message
+ * is in `result`, and the promise still resolves. A `step.run` whose work
+ * throws is a step the executor retries, so the promise rejects with that
+ * error, as it does for a defect in the boundary.
  */
 export async function runHostAction(
   action: ActionDefinition,
@@ -174,27 +211,30 @@ export async function runHostAction(
     readonly credentials?:
       | Readonly<Record<string, string | undefined>>
       | undefined;
-    readonly replay?: Readonly<Record<string, unknown>> | undefined;
+    readonly memo?: HostActionMemo | undefined;
     readonly node?: NodeUnderTest | undefined;
   }
 ): Promise<HostActionRun> {
   const steps: RecordedStep[] = [];
-  const replay = run.replay ?? {};
+  const stored: Record<string, unknown> = { ...run.memo?.steps };
+  let handler = run.memo?.handler;
+  let handlerRan = false;
   const recording: NodeSteps = {
     run: async (stepId, work) => {
-      if (Object.hasOwn(replay, stepId)) {
+      if (Object.hasOwn(stored, stepId)) {
         steps.push({
           id: stepId,
           replayed: true,
           ok: true,
-          value: replay[stepId],
+          value: stored[stepId],
         });
         // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the case supplies what the step stored, as the executor's memo does
-        return replay[stepId] as Awaited<ReturnType<typeof work>>;
+        return stored[stepId] as Awaited<ReturnType<typeof work>>;
       }
       try {
         const value = await work();
         steps.push({ id: stepId, replayed: false, ok: true, value });
+        stored[stepId] = asStored(value);
         return value;
       } catch (error) {
         steps.push({
@@ -206,7 +246,17 @@ export async function runHostAction(
         throw error;
       }
     },
-    runHandler: (work) => work(),
+    runHandler: async <T>(work: () => Promise<T>): Promise<T> => {
+      if (handler !== undefined) {
+        // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the stored answer is what this step returned on the pass that ran it
+        return handler as unknown as T;
+      }
+      handlerRan = true;
+      const value = await work();
+      // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the answer is opaque to a case, which only hands it on
+      handler = asStored(value) as unknown as StoredHandlerAnswer;
+      return value;
+    },
   };
 
   const step = action.implement({
@@ -229,7 +279,12 @@ export async function runHostAction(
       recording
     )
   );
-  return { result, steps };
+  return {
+    result,
+    handlerRan,
+    steps,
+    memo: omitUndefined({ handler, steps: stored }),
+  };
 }
 
 /**

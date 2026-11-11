@@ -147,27 +147,29 @@ Connection dialog. `secret` names the Connection credential `verify` reads; the
 editor uses it to tell a filled secret from a send-only Connection.
 
 **A handler takes one bag**, holding `input` (the decoded config), the credential reads,
-`step`, and the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`,
-`integrationId`. `defineAction` calls its handler the same way. Every value is a key on that
+`step`, the run's identity: `runMode`, `executionId`, `nodeId`, `nodeName`,
+`integrationId`, and `idempotencyKey`, a key for this node of this run. `defineAction` calls its handler the same way. Every value is a key on that
 one object, so a value added later is one more key, and no argument an author wrote changes
 position.
 
 ## What is remembered across a replay
 
 The executor runs a workflow in passes, and every pass replays the run from its trigger:
-after a Wait resumes, after a retry, after a worker restarts. **Workflow Graph wraps no handler body.** Work with a side effect
-goes inside `step.run` or it happens again on every attempt:
+after a Wait resumes, after a retry, after a worker restarts. **Workflow Graph wraps no
+integration handler body.** An integration's handler runs again on every pass, so work with a
+side effect goes inside `step.run` or it happens again on every attempt:
 
 ```ts
 const posted = yield* bag.step.run("post", callSlack(apiKey, ...));
 ```
 
-You name the work; Workflow Graph prefixes the node it belongs to, so two nodes running the same
-action never read one another's stored result. Wrap the call out to the system and leave
-parsing, branching and shaping outside it: those are cheap to repeat, and keeping them out
-keeps the stored value small.
+You name the work; Workflow Graph places it under the node it belongs to, so two nodes running
+the same action never read one another's stored result, and no name you choose reaches a step
+the engine keeps for the node. Wrap the call out to the system and leave parsing, branching
+and shaping outside it: those are cheap to repeat, and keeping them out keeps the stored value
+small.
 
-Three rules:
+Four rules:
 
 - **What `step.run` answers must be JSON.** A `Date`, `Map`, `Set`, `Error` or class
   instance inside it changes shape when the run resumes. The compiler refuses one and names
@@ -177,10 +179,25 @@ Three rules:
 - **A `StepFailure` fails the node once.** It travels back as a value rather than a throw,
   so a system that refused a request does not spend the retry budget on an answer that will
   not change. Anything else that throws inside is a step the runtime retries.
+- **A step is at-least-once.** A process that dies while the work runs, before its value is
+  stored, leaves the step to run again. `step.idempotencyKey(name)` answers a key for the
+  step `name` in this node of this run, the same on every pass and retry. Pass it to a system
+  that deduplicates requests by key, and the repeat is applied once.
 - **A handler that wraps nothing still opens one memoized log row.** The Runs view then
   shows one row for however many times the work ran, so the log is not evidence it ran once.
 
-`docs/adr/0009` is why this is the author's job rather than Workflow Graph's.
+A step name is 1 to 64 characters. `docs/adr/0009` is why this is the integration author's
+job rather than Workflow Graph's.
+
+**A host action's handler runs once per node of a run.** `defineAction` runs the whole
+handler inside one durable step of its node, so a handler that answered, or failed outside any
+`step.run`, is not called again for that node of that run, and its answer is what every later
+pass reads. `step.run` inside it marks a part a retry resumes past: a throw inside it is
+retried, and the next pass calls the handler again with the steps that finished answered from
+the memo. The handler and each step are still at-least-once across a crash, so a host passes
+`idempotencyKey` from the bag, or the key `step.run` hands its work, to the system it calls.
+`docs/embedding.md` ("A handler runs once per node of a run") is the host's account, and the
+2026-11-11 amendment to ADR-0009 is why the two differ.
 
 ## Effect for integrations, Promise for host actions
 
@@ -204,20 +221,21 @@ doing so, as the built-in Twilio and Resend actions do. This holds for a host ac
 as for an integration.
 
 **Host `defineAction` stays Promise-first.** An adopter needs no Effect. An `async` handler
-fails by a throw, and the message becomes the sentence in the run log. Durable work is
-`step.run(id, () => promise)`. A connection test is also a Promise seam and uses
-`callExternalAsync`. A host action imports `callExternal` and `callExternalAsync` from
-`@wfgraph/core`; an integration imports them from `@wfgraph/core/plugin`.
+fails by a throw, and the message becomes the sentence in the run log. The handler runs once
+per node of a run, and `step.run(name, ({ idempotencyKey }) => promise)` marks a part a retry
+resumes past. A connection test is also a Promise seam and uses `callExternalAsync`. A host
+action imports `callExternal` and `callExternalAsync` from `@wfgraph/core`; an integration
+imports them from `@wfgraph/core/plugin`.
 
 ```ts
 // Host defineAction — Promise-first, no Effect required.
-handler: async ({ input, readCredentials, step }) => {
+handler: async ({ input, readCredentials, idempotencyKey }) => {
   const { MY_SERVICE_API_KEY } = await readCredentials();
   if (!MY_SERVICE_API_KEY) {
     throw new Error("MY_SERVICE_API_KEY is not configured.");
   }
 
-  return step.run("create", () => createThing(MY_SERVICE_API_KEY, input.text));
+  return createThing(MY_SERVICE_API_KEY, input.text, { idempotencyKey });
 },
 ```
 
@@ -227,6 +245,7 @@ handler: async ({ input, readCredentials, step }) => {
 | `yield* bag.credentials`             | `await bag.readCredentials()`           |
 | `callExternal`                       | `callExternalAsync`                     |
 | `yield* bag.step.run(id, effect)`    | `await bag.step.run(id, () => promise)` |
+| Handler runs on every pass           | Handler runs once per node of a run     |
 | Fails with `StepFailure`             | Fails by a throw                        |
 
 Internally both arms of `step.run` share one Effect memoization path; the Promise overload is

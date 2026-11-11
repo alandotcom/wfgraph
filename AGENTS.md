@@ -360,9 +360,11 @@ work at all.
 
 **A pass replays the run against its step memo.** The database executor memoizes each durable
 step's value as JSON and runs the body again from the top on every pass, answering a step
-that already ran from the memo. Workflow Graph wraps no handler body (ADR-0009): work with a
-side effect goes in the handler's own `step.run`, and a `StepFailure` travels back as a
-value so a refused call fails the node once rather than four times. Each step counts its own
+that already ran from the memo. Workflow Graph wraps no integration handler body (ADR-0009):
+work with a side effect goes in the handler's own `step.run`, and a `StepFailure` travels back
+as a value so a refused call fails the node once rather than four times. A `defineAction`
+handler runs inside its node's `node:<id>:handler` step instead, with its `step.run` calls
+nested under `node:<id>:step:<name>` (the ADR's 2026-11-11 amendment). Each step counts its own
 failures against `STEP_RETRY_LIMIT` (`services/executions/repo/release-policy.ts`).
 `JsonSafe` (`packages/shared/src/types/json.ts`) is the compiler holding `step.run` to JSON:
 a `Date`, `Map` or `Set` in the answer is refused at the field that holds it.

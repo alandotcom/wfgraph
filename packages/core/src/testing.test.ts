@@ -239,18 +239,82 @@ describe("runHostAction", () => {
   });
 
   // The executor answers a step that ran on an earlier pass from its memo, so
-  // a retry repeats no side effect; `replay` is that memo.
-  it("answers a replayed step without running its work", async () => {
+  // a retry repeats no side effect; `memo.steps` is that memo.
+  it("answers a stored step without running its work", async () => {
     const cancelled: string[] = [];
     const run = await runHostAction(cancelAction(cancelled), {
       input: { appointmentId: "appt_1" },
-      replay: { cancel: "cancelled" },
+      memo: { steps: { cancel: "cancelled" } },
     });
 
+    expect(run.handlerRan).toBe(true);
     expect(run.steps).toEqual([
       { id: "cancel", replayed: true, ok: true, value: "cancelled" },
     ]);
     expect(cancelled).toEqual([]);
+  });
+
+  // The handler runs inside one step of its node, so a later pass handed the
+  // memo an earlier pass left answers from it and calls no handler.
+  it("calls the handler on no later pass handed the memo of one that answered", async () => {
+    const cancelled: string[] = [];
+    const action = cancelAction(cancelled);
+
+    const first = await runHostAction(action, {
+      input: { appointmentId: "appt_1" },
+    });
+    const second = await runHostAction(action, {
+      input: { appointmentId: "appt_1" },
+      memo: first.memo,
+    });
+
+    expect(first.handlerRan).toBe(true);
+    expect(first.memo.steps).toEqual({ cancel: "cancelled" });
+    expect(second.handlerRan).toBe(false);
+    expect(second.steps).toEqual([]);
+    expect(second.result).toEqual(first.result);
+    expect(cancelled).toEqual(["appt_1"]);
+  });
+
+  // A failure outside any step is the node's answer, stored like a success.
+  it("answers a later pass with the failure an earlier one stored", async () => {
+    const cancelled: string[] = [];
+    const action = cancelAction(cancelled);
+
+    const first = await runHostAction(action, {
+      input: { appointmentId: "appt_locked" },
+    });
+    const second = await runHostAction(action, {
+      input: { appointmentId: "appt_locked" },
+      memo: first.memo,
+    });
+
+    expect(second.handlerRan).toBe(false);
+    expect(actionError(second.result).message).toBe(
+      "The appointment is locked"
+    );
+    expect(cancelled).toEqual(["appt_locked"]);
+  });
+
+  // The executor retries a step whose work threw, so there is no envelope to
+  // answer: the promise rejects with the step's error.
+  it("rejects with the error a step's work threw", async () => {
+    const action = defineAction({
+      id: "appointments/notify",
+      label: "Notify",
+      description: "Sends a reminder that fails",
+      input: z.object({}),
+      handler: async ({ step }) => {
+        await step.run("send", () =>
+          Promise.reject(new Error("The mailer timed out"))
+        );
+        return {};
+      },
+    });
+
+    await expect(runHostAction(action, { input: {} })).rejects.toThrow(
+      "The mailer timed out"
+    );
   });
 
   it("passes the run mode and resolves with the failure a throw makes", async () => {
