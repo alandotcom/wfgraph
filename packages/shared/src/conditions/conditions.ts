@@ -23,7 +23,6 @@ export {
   collectNodeOutputConditionReferences,
   collectTimestampFieldPaths,
   conditionFieldOutputPath,
-  conditionRuleReadPath,
   createDefaultConditionModel,
   createDefaultConditionRule,
   isNullCheckConditionRule,
