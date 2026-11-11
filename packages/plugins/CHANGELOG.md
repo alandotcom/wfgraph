@@ -1,5 +1,19 @@
 # @wfgraph/plugins
 
+## 4.1.0
+
+### Patch Changes
+
+- [`bce4adc`](https://github.com/alandotcom/wfgraph/commit/bce4adc2aab29c8f97348db0d06c38dd617de51f) Thanks [@alandotcom](https://github.com/alandotcom)! - `@wfgraph/core` and `@wfgraph/plugins` now depend on `effect` 4.1.3, and `@wfgraph/core` depends on `@effect/ai-openai`, `@effect/opentelemetry` and `@effect/sql-sqlite-node` 4.1.3. A host that installs its own copy of `effect` should move it to 4.1.3 so the host and Workflow Graph share one copy.
+
+- [`2337489`](https://github.com/alandotcom/wfgraph/commit/23374890ef6bf24721a79a29a4e96df143cd86d9) Thanks [@alandotcom](https://github.com/alandotcom)! - PostHog's `POSTHOG_HOST` must now be an `https:` URL with no user name or password. The Capture Event and Identify Person steps fail and the connection test answers an error for any other host, before any request carries the project key. A blank host still means US Cloud.
+
+- [`1c006e3`](https://github.com/alandotcom/wfgraph/commit/1c006e3a330ed0bf45c0a5085282a65ab983ac1d) Thanks [@alandotcom](https://github.com/alandotcom)! - Resend's Send Email sends an idempotency key that names its node within the run. Two Send Email nodes in one run used to share the run's id as their key, so Resend answered the second node with the first node's email and sent nothing.
+
+- [`0da7e00`](https://github.com/alandotcom/wfgraph/commit/0da7e007914704191e765656e35b2c9519f77128) Thanks [@alandotcom](https://github.com/alandotcom)! - The Slack actions' channel placeholder and message descriptions no longer show the `{{NodeName.field}}` form, which contradicted the `{{@nodeId:Label.path}}` token form the editor and the build agent write. The channel placeholder now shows a channel name or ID.
+
+- [`fe37170`](https://github.com/alandotcom/wfgraph/commit/fe371708a42eb47fceb078f8657528d756b65a59) Thanks [@alandotcom](https://github.com/alandotcom)! - Disconnecting or deleting a Slack OAuth connection now succeeds when Slack answers `apps.uninstall` with `invalid_auth`, `token_revoked` or `account_inactive`, which is what Slack says once a workspace has already uninstalled the app. Those answers used to fail the revocation, so the disconnect failed on every try.
+
 ## 4.0.0
 
 ### Major Changes
