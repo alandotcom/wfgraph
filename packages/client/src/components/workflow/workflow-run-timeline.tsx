@@ -18,7 +18,8 @@ const NO_NODES: readonly string[] = [];
  * A run's node journey: one entry per recorded node execution, in start order,
  * and the Entity eligibility exit when the run exited. A node among
  * `retryingNodeIds` reads "Retrying" in the warning token, whatever its log's
- * status. Choosing an entry calls
+ * status, and an unfinished entry of a node among `waitingNodeIds` reads
+ * "Waiting". Choosing an entry calls
  * `onSelect`. `focusLogId` names an entry to focus once it renders; focusing
  * keeps the scroll the journey already has, and `onFocusRestored` follows.
  */
@@ -29,6 +30,7 @@ export function WorkflowRunNodeIndex({
   onFocusRestored,
   onSelect,
   retryingNodeIds = NO_NODES,
+  waitingNodeIds = NO_NODES,
 }: {
   logs: ExecutionLog[];
   exit?: { nodeLabel: string } | undefined;
@@ -37,6 +39,8 @@ export function WorkflowRunNodeIndex({
   onSelect: (log: ExecutionLog) => void;
   /** The nodes with a step the executor will run again, read as "Retrying". */
   retryingNodeIds?: readonly string[] | undefined;
+  /** The nodes the run is parked on, whose open entries read as "Waiting". */
+  waitingNodeIds?: readonly string[] | undefined;
 }) {
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
@@ -61,12 +65,18 @@ export function WorkflowRunNodeIndex({
       <h3 className="mb-1 font-semibold text-sm">Node journey</h3>
       <ol>
         {logs.map((log, index) => {
-          const status = retryingNodeIds.includes(log.nodeId)
+          const unfinished =
+            log.status === "running" || log.status === "pending";
+          const waiting = unfinished && waitingNodeIds.includes(log.nodeId);
+          const retrying = retryingNodeIds.includes(log.nodeId);
+          const status = retrying
             ? runNodeEvidenceLabel("retrying")
-            : {
-                text: nodeStatusLabel(log.status),
-                tone: nodeStatusTone(log.status),
-              };
+            : waiting
+              ? runNodeEvidenceLabel("waiting")
+              : {
+                  text: nodeStatusLabel(log.status),
+                  tone: nodeStatusTone(log.status),
+                };
           return (
             <li className="relative pl-5" key={log.id}>
               {index < logs.length - 1 || exit ? (
@@ -80,6 +90,7 @@ export function WorkflowRunNodeIndex({
                 className={cn(
                   "absolute top-[1.125rem] left-1 size-2 rounded-full ring-2 ring-background",
                   log.status === "running" &&
+                    !waiting &&
                     "ring-info/20 motion-safe:animate-pulse",
                   statusToneDotClass(status.tone)
                 )}
@@ -107,7 +118,7 @@ export function WorkflowRunNodeIndex({
                     <span className="block truncate text-destructive text-xs">
                       {log.error}
                     </span>
-                  ) : log.status === "running" ? (
+                  ) : log.status === "running" && !waiting ? (
                     <span className="block text-info text-xs">In progress</span>
                   ) : null}
                 </span>

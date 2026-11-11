@@ -256,6 +256,8 @@ export function WorkflowRunDetail({
   const retryingNodeIds = isRunInProgress(execution.status)
     ? compact(executor?.schedule.failingSteps.map((step) => step.nodeId) ?? [])
     : [];
+  // The nodes the run is parked on, which the journey reads as waiting.
+  const waitingNodeIds = activeWaits.map((wait) => wait.nodeId);
   const primaryWait = activeWaits[0];
   const outcome =
     execution.status === "waiting" &&
@@ -398,6 +400,7 @@ export function WorkflowRunDetail({
             logs={sortedLogs}
             onFocusRestored={onFocusRestored}
             retryingNodeIds={retryingNodeIds}
+            waitingNodeIds={waitingNodeIds}
             onSelect={onSelectLog}
           />
 

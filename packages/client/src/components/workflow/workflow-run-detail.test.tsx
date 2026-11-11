@@ -424,6 +424,51 @@ describe("WorkflowRunDetail", () => {
     );
   });
 
+  // A Wait's log row stays `running` for as long as the run is parked on it,
+  // which is hours or days. The journey reads that row as waiting, as the
+  // canvas does, so a parked run does not look like one that is executing.
+  it("reads the step a run is parked on as waiting in the journey", () => {
+    const logs: WorkflowRunDetailLogs = [
+      {
+        id: "log_wait",
+        nodeId: "wait_1",
+        nodeName: "Wait for delivery",
+        nodeType: "Wait",
+        status: "running",
+        startedAt: new Date("2026-02-22T10:00:00Z"),
+        completedAt: null,
+        duration: null,
+        error: null,
+        retries: 0,
+        retryLimit: 4,
+      },
+    ];
+    const view = renderDetail(
+      { ...BASE_EXECUTION, status: "waiting" },
+      {
+        logs,
+        waits: [
+          {
+            id: "wait_1",
+            nodeId: "wait_1",
+            nodeName: "Wait for delivery",
+            resumeToken: "tok_1",
+            subscribedEvents: ["resend/email.delivered"],
+            waitUntil: null,
+          },
+        ],
+      }
+    );
+
+    const entry = view.getByRole("button", {
+      name: "Wait for delivery, Waiting",
+    });
+    expect(within(entry).getByText("Waiting").className).toContain(
+      "text-warning"
+    );
+    expect(within(entry).queryByText("In progress")).toBeNull();
+  });
+
   // Cancel paints the list row first and stops the logs poll. The journey and
   // waits can still be the last in-flight snapshot, so they follow the run
   // status rather than those leftover rows.
