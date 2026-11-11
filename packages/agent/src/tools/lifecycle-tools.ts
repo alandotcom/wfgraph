@@ -182,11 +182,24 @@ function rulesSummary(rules: LifecycleRules, created: boolean): string {
   const schedules = scheduled
     ? `; scheduled ${(rules.schedules ?? []).map(describeCronSchedule).join("; ")}`
     : "";
+  const cancels =
+    rules.cancelEvents.length > 0
+      ? `; cancels on ${rules.cancelEvents.join(", ")}`
+      : "";
+  const filters = [
+    ...Object.keys(rules.startFilters ?? {}).map(
+      (event) => `a Start Filter on ${event}`
+    ),
+    ...Object.keys(rules.cancelFilters ?? {}).map(
+      (event) => `a Cancel Filter on ${event}`
+    ),
+  ];
+  const filtered = filters.length > 0 ? `; ${filters.join(", ")}` : "";
   const tracks = rules.trackedEntity
     ? `; tracks ${rules.trackedEntity.type}`
     : "";
   const verb = created ? "Created the Lifecycle Node and set" : "Set";
-  return `${verb} the rules: starts on ${startsOn}${schedules}${tracks}.`;
+  return `${verb} the rules: starts on ${startsOn}${schedules}${cancels}${filtered}; concurrency ${rules.concurrency}${tracks}.`;
 }
 
 export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {

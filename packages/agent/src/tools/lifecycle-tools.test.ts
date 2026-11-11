@@ -300,6 +300,8 @@ describe("set_lifecycle_rules", () => {
       });
       expect(result.nodeId).toBe(node?.id);
       expect(result.summary).toContain("Created");
+      expect(result.summary).toContain("cancels on applicant.withdrawn");
+      expect(result.summary).toContain("newest-wins");
     })
   );
 
