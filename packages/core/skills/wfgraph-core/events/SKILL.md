@@ -3,8 +3,9 @@ name: events
 description: >
   Use when a host application tells Workflow Graph that something happened:
   declaring an Event with defineEvent, declaring host-owned current state with
-  defineEntity and binding it to Events, sending Events with app.events.send,
-  POST /api/events, an insert into the event inbox or inngest.send through
+  defineEntity and binding it to Events, sending Events with a typed
+  app.events.send, POST /api/events, an insert into the event inbox inside the
+  host's own transaction with events.inboxInsert, or inngest.send through
   @wfgraph/core/inngest, splitting one bus name into several Events with an
   umbrella source, or choosing between a payload rule and a current-state
   Eligibility rule. Also use for requests such as "start a workflow when an
@@ -124,16 +125,39 @@ receive either arrival.
 
 ### Intake
 
-`app.events.send({ name, data, id? })` from the host's code, `POST
-{basePath}/api/events` with `Authorization: Bearer <events.key>` from another
-process (off unless `events.key` is set), or `inngest.send({ name, data, id? })`
-through the forwarders below. Every one lands in the event inbox, and the worker loop delivers it. `id` is the
-idempotency key, and it holds only while the first send's inbox row exists: the
-loop deletes a settled row after `events.retentionMs` (seven days by default),
-and the same `id` after that is a new arrival that starts runs again. A resend
-of an `id` whose delivery failed for good delivers it again. A send that names
-no host Event (or umbrella name), names an integration-owned Event, or carries
-data the Event's schema refuses, is refused before anything is stored.
+Four ways in, and every one lands in the event inbox, which the worker loop
+delivers:
+
+- `app.events.send(appointmentCreated, data, { id })` from the host's code,
+  with the value `defineEvent` returned, which types `data` from the Event's
+  schema. A sender holding only a name passes `{ name, data, id? }`, checked
+  at runtime alone. `createWfGraphRunner`'s answer carries the same `events`.
+- `POST {basePath}/api/events` with `Authorization: Bearer <events.key>` from
+  another process, mounted only when `events.key` is set.
+- An insert into `workflow_event_inbox` inside the host's own transaction,
+  when the host shares the database. `app.events.inboxInsert(event, data, { id })`
+  checks the payload as a send does and answers `{ sql, params, namedParams }`
+  for the host to run on its own connection; it writes nothing itself. On
+  PostgreSQL the statement qualifies the table with the `persistence` schema.
+  A hand-written insert is checked only when the loop delivers it.
+- `inngest.send({ name, data, id? })` through the forwarders below.
+
+`id` is the idempotency key, and it holds only while the first send's inbox
+row exists: the loop deletes a settled row after `events.retentionMs` (seven
+days by default), and the same `id` after that is a new arrival that starts
+runs again. A resend of an `id` whose delivery failed delivers it again, and
+each workflow that already received it answers from the decision it recorded,
+so a start the first delivery refused stays refused. A send that names no host
+Event (or umbrella name), names an integration-owned Event, or carries data the
+Event's schema refuses, is refused with `WfGraphEventRefused` before anything
+is stored.
+
+A delivery retries each workflow the Event concerns on its own, so one
+workflow whose Entity resolver keeps failing does not hold the Event back from
+the rest. Once that workflow's retries are spent, it alone gets a
+`delivery_failed` audit row, and the inbox row settles `failed` with an error
+naming each workflow that failed. A paused workflow opens no new run, and a
+Cancel Event and a Wait's Event still reach its runs in flight.
 
 A host already on Inngest keeps `inngest.send` by registering
 `createWfGraphInngestFunctions({ client, app })` from
@@ -205,6 +229,20 @@ Cancel Event. `when` is for a bus that sends one name for several Events, and ev
 workflow in the app sees the split it makes.
 
 Source: alandotcom/wfgraph:docs/events.md (The umbrella source)
+
+### MEDIUM A hand-written inbox insert on the default search_path
+
+Wrong: `insert into workflow_event_inbox (name, data, idempotency_key) values ($1, $2, $3)`
+on a PostgreSQL connection whose `search_path` starts at `public`.
+
+Correct: run the statement `app.events.inboxInsert(...)` answers, which names
+the `persistence` schema and checks the payload first.
+
+The table lives in `_workflows` by default, so the insert fails to find it, and
+a payload the schema refuses is only marked failed later, when the loop
+delivers it.
+
+Source: alandotcom/wfgraph:docs/events.md (Sending an Event)
 
 ### MEDIUM Schema library without JSON Schema
 
