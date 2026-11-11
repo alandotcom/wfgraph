@@ -60,6 +60,7 @@ import type {
   StepResult,
 } from "@wfgraph/shared/actions/step-result";
 import type { JsonSafe } from "@wfgraph/shared/types/json";
+import { isBlank } from "@wfgraph/shared/types/string";
 
 /**
  * Why a step could not do its work, in the words the run log shows.
@@ -123,6 +124,28 @@ type DurableRemember = <T>(
 ) => Promise<T>;
 
 /**
+ * The longest name `step.run` takes. The name becomes part of the step's
+ * durable id and of the idempotency key a handler hands a vendor, and vendors
+ * cap the length of that key.
+ */
+const MAX_STEP_NAME_LENGTH = 64;
+
+/**
+ * Why `step.run` refused a name, or undefined for a name it takes. `subject`
+ * names the action, as every other boundary sentence does.
+ */
+function stepNameRefusal(subject: string, name: string): string | undefined {
+  const rule = `Name each step with 1 to ${MAX_STEP_NAME_LENGTH} characters.`;
+  if (isBlank(name)) {
+    return `${subject} called step.run with an empty name. ${rule}`;
+  }
+  if (name.length > MAX_STEP_NAME_LENGTH) {
+    return `${subject} called step.run with a name of ${name.length} characters. ${rule}`;
+  }
+  return undefined;
+}
+
+/**
  * The author's `step`, over the node's durable runtime.
  *
  * Effect is the primary execution shape: work runs to a `RememberedStep`
@@ -131,8 +154,15 @@ type DurableRemember = <T>(
  * it memoizes the bare value, and a throw escapes without a stored value, so
  * the executor counts a failure against the step and runs it again after a
  * backoff, the way it treats any transient error.
+ *
+ * A name `stepNameRefusal` refuses fails the node once, before any work runs:
+ * the Effect form with a `StepFailure`, the Promise form by rejecting, which
+ * the handler's own throw then carries.
  */
-export function nodeStepApi(steps: NodeSteps | undefined): NodeStepApi {
+export function nodeStepApi(
+  steps: NodeSteps | undefined,
+  subject: string
+): NodeStepApi {
   // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- JsonSafe was enforced on the author's value at `run`
   const memoize = steps?.run as DurableRemember | undefined;
 
@@ -152,6 +182,10 @@ export function nodeStepApi(steps: NodeSteps | undefined): NodeStepApi {
     work: Effect.Effect<A, StepFailure, HttpClient.HttpClient>
   ): Effect.Effect<A, StepFailure> =>
     Effect.gen(function* () {
+      const refusal = stepNameRefusal(subject, stepId);
+      if (refusal !== undefined) {
+        return yield* new StepFailure({ message: refusal });
+      }
       const effectContext = yield* Effect.context();
       const answered = yield* Effect.promise(() =>
         // The durability API is Promise-shaped. Running the work on the
@@ -197,6 +231,10 @@ export function nodeStepApi(steps: NodeSteps | undefined): NodeStepApi {
       | (() => Promise<A>)
   ): Effect.Effect<A, StepFailure, HttpClient.HttpClient> | Promise<A> {
     if (typeof work === "function") {
+      const refusal = stepNameRefusal(subject, stepId);
+      if (refusal !== undefined) {
+        return Promise.reject(new Error(refusal));
+      }
       // Bare-value memoization: a throw must not leave a stored value, or the
       // executor's retry would replay the failure instead of running the step
       // again.
@@ -581,7 +619,7 @@ export function buildStep<TInput, TOutput>(
               ...toHandlerBag(input, context, integrationId),
               credentials,
               readCredentials: () => runToPromise(credentials),
-              step: nodeStepApi(steps),
+              step: nodeStepApi(steps, subject),
             }),
             toFailure
           ),

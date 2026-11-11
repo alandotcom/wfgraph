@@ -186,7 +186,8 @@ export function dispatchClock(
   executed: ReadonlyArray<{ stepId: string; at: number }>,
   nodeId: string
 ): number | undefined {
-  return executed.find((step) => step.stepId === `node:${nodeId}:dispatch`)?.at;
+  return executed.find((step) => step.stepId === `node:${nodeId}:step:dispatch`)
+    ?.at;
 }
 
 /**

@@ -725,7 +725,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     // The step the action was running when the budget ran out, and no other.
     expect(memo.filter((entry) => entry.status !== "succeeded")).toEqual([
       {
-        stepId: "node:work:dispatch",
+        stepId: "node:work:step:dispatch",
         nodeId: "work",
         status: "failing",
         failures: 1,

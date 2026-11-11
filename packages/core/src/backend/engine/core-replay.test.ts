@@ -333,8 +333,8 @@ describe("workflow engine replay safety", () => {
 
     // What a node memoizes is whatever its handler put in `step.run`, under
     // that node's id. Nothing wraps the handler body.
-    expect(memo.has("node:email_1:work")).toBe(true);
-    expect(memo.has("node:followup_1:work")).toBe(true);
+    expect(memo.has("node:email_1:step:work")).toBe(true);
+    expect(memo.has("node:followup_1:step:work")).toBe(true);
     // The run-log open is an idempotent step and the close a direct store
     // write, so neither stores a memo row.
     expect(
@@ -344,6 +344,57 @@ describe("workflow engine replay safety", () => {
     // persistence segments are memoized around the suspension instead.
     expect(memo.has("wait-prepare-wait_1-0")).toBe(true);
     expect(memo.has("wait-resume-wait_1-0")).toBe(true);
+  });
+
+  // The executor stores `null` under the log open's id once a failed open
+  // succeeds on a later pass. An author naming a step after an engine step
+  // must still run its own work rather than read that value back.
+  it("keeps an author's step apart from an engine step of the same name", async () => {
+    const opened: string[] = [];
+    const named = createWorkflowActions(
+      assembleExtensions({
+        actions: [
+          defineAction({
+            id: EMAIL_ACTION_ID,
+            label: "Send Email",
+            description: "Names its step after the engine's log open",
+            input: Schema.Struct({}),
+            handler: (bag) =>
+              bag.step.run("log-open", () => {
+                opened.push(bag.nodeId);
+                return Promise.resolve({ sent: true });
+              }),
+          }),
+        ],
+      }),
+      stubWfGraphRuntime()
+    );
+    const graph = createSerializedWorkflowGraph({
+      nodes: [
+        createLifecycleNode("lifecycle_1"),
+        createActionNode("email_1", EMAIL_ACTION_ID, "Send Email"),
+      ],
+      edges: [
+        {
+          id: "edge_1",
+          source: "lifecycle_1",
+          sourceHandle: "started",
+          target: "email_1",
+        },
+      ],
+    });
+    const memo = new Map<string, unknown>([["node:email_1:log-open", null]]);
+
+    const result = await executeWorkflow(
+      { graph, executionId: "exec_named", workflowId: "workflow_named" },
+      createReplayRuntime(memo),
+      store,
+      named
+    );
+
+    expect(result).toMatchObject({ kind: "ended", success: true });
+    expect(opened).toEqual(["email_1"]);
+    expect(memo.get("node:email_1:step:log-open")).toEqual({ sent: true });
   });
 
   it("names the node on every step that does work for one, and on no step of the run's own", async () => {
@@ -414,7 +465,7 @@ describe("workflow engine replay safety", () => {
     );
 
     expect(unwrapped).toHaveBeenCalledTimes(2);
-    expect(memo.has("node:email_1:work")).toBe(false);
+    expect(memo.has("node:email_1:step:work")).toBe(false);
     // One row all the same: the open runs on both passes, and its row id is
     // the run's and the node's, so both closes name the row the first opened.
     const emailRowId = store.logIdOf("email_1");
@@ -544,8 +595,8 @@ describe("workflow engine replay safety", () => {
 
     expect(first).toMatchObject({ kind: "ended", success: true });
     expect(branchAction).toHaveBeenCalledTimes(3);
-    expect(memo.has("node:left_1:work")).toBe(true);
-    expect(memo.has("node:right_1:work")).toBe(true);
+    expect(memo.has("node:left_1:step:work")).toBe(true);
+    expect(memo.has("node:right_1:step:work")).toBe(true);
 
     await executeWorkflow(
       fanOutInput,

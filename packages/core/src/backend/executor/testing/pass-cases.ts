@@ -623,7 +623,7 @@ function describeCases(
     ]);
     expect(results[5]).toMatchObject({
       kind: "retries_spent",
-      stepId: "node:join:dispatch",
+      stepId: "node:join:step:dispatch",
       schedule: { state: "queued", attempt: 0 },
     });
     const run = await readRun(harness);
@@ -1110,9 +1110,9 @@ function describeCases(
     ]);
     const parked = await readRun(harness);
     expect(
-      parked.memo.find((entry) => entry.stepId === "node:retried:dispatch")
+      parked.memo.find((entry) => entry.stepId === "node:retried:step:dispatch")
     ).toEqual({
-      stepId: "node:retried:dispatch",
+      stepId: "node:retried:step:dispatch",
       nodeId: "retried",
       status: "succeeded",
       failures: 2,
@@ -1506,7 +1506,7 @@ function describeCases(
         for (;;) {
           // eslint-disable-next-line eslint/no-await-in-loop -- polls until the heartbeat lands
           const schedule = await readSchedule();
-          if (schedule?.runningStepId === "node:held:dispatch") {
+          if (schedule?.runningStepId === "node:held:step:dispatch") {
             return {
               stepId: schedule.runningStepId,
               nodeId: schedule.runningNodeId,
@@ -1562,14 +1562,14 @@ function describeCases(
     ).finally(() => heldStep.release());
     expect(await stale).toEqual({ kind: "fence_refused", fence: "owner" });
     expect(recorded).toEqual({
-      stepId: "node:held:dispatch",
+      stepId: "node:held:step:dispatch",
       nodeId: "held",
     });
     expect(swept.claimed?.attempt).toBe(0);
     // The step never wrote a memo row of its own, so the node id on the row
     // the claim created is the one the heartbeat recorded.
     expect(
-      swept.memo.find((entry) => entry.stepId === "node:held:dispatch")
+      swept.memo.find((entry) => entry.stepId === "node:held:step:dispatch")
     ).toMatchObject({ nodeId: "held", status: "failing", failures: 1 });
   });
 

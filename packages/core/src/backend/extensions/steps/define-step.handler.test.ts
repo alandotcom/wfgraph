@@ -378,3 +378,76 @@ describe("Promise step.run adapter", () => {
     expect(remembered.get("create")).toEqual({ id: "recovered" });
   });
 });
+
+/**
+ * A step's name becomes part of its durable id and of its idempotency key, so
+ * a name that cannot serve as either fails the node, naming the action, before
+ * any work runs.
+ */
+describe("step.run names", () => {
+  function namingStep(name: string, ran: string[]) {
+    return defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.null(),
+      handler: ({ step: nodeStep }) =>
+        nodeStep.run(name, async () => {
+          ran.push(name);
+          return null;
+        }),
+    });
+  }
+
+  it.each([
+    ["empty", ""],
+    ["blank", "   "],
+  ])("refuses an %s name", async (_case, name) => {
+    const ran: string[] = [];
+    const run = runStep(namingStep(name, ran).implement("demo/named")(runner));
+
+    const answer = await run({ to: "someone", _context: CONTEXT });
+
+    expect(answer).toEqual({
+      success: false,
+      error: {
+        message:
+          'Step "demo/named" called step.run with an empty name. Name each step with 1 to 64 characters.',
+      },
+    });
+    expect(ran).toEqual([]);
+  });
+
+  it("refuses a name longer than 64 characters", async () => {
+    const ran: string[] = [];
+    const name = "x".repeat(65);
+    const run = runStep(namingStep(name, ran).implement("demo/named")(runner));
+
+    const answer = await run({ to: "someone", _context: CONTEXT });
+
+    expect(answer).toEqual({
+      success: false,
+      error: {
+        message:
+          'Step "demo/named" called step.run with a name of 65 characters. Name each step with 1 to 64 characters.',
+      },
+    });
+    expect(ran).toEqual([]);
+  });
+
+  it("refuses an empty name in an Effect handler with a StepFailure", async () => {
+    const step = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.null(),
+      handler: ({ step: nodeStep }) => nodeStep.run("", Effect.succeed(null)),
+    });
+    const run = runStep(step.implement("demo/named")(runner));
+
+    const answer = await run({ to: "someone", _context: CONTEXT });
+
+    expect(answer).toMatchObject({
+      success: false,
+      error: { message: expect.stringContaining("with an empty name") },
+    });
+  });
+});

@@ -22,6 +22,18 @@ const CATALOG_CHANGED: StepResult = {
   },
 };
 
+/**
+ * The durable step id an author's `step.run(name)` is memoized under.
+ *
+ * The engine's own steps for a node sit directly under `node:<id>:`
+ * (`log-open`, `route`), and every name an author chooses sits under
+ * `node:<id>:step:`, so no name an author picks can answer from, or overwrite,
+ * a value the engine stored.
+ */
+function authorStepId(nodeId: string, name: string): string {
+  return `node:${nodeId}:step:${name}`;
+}
+
 export function runPluginActionStep(input: ActionStepInput) {
   return Effect.gen(function* () {
     const { actionType, config, context, store, actions, runtime } = input;
@@ -49,12 +61,12 @@ export function runPluginActionStep(input: ActionStepInput) {
     // the same action do not write to one another's memoized result. The name
     // pairs that author's word with the node's label, which is what a trace shows.
     const steps: NodeSteps = {
-      run: (stepId, work) =>
+      run: (stepName, work) =>
         runtime.run(
           {
-            id: `node:${context.nodeId}:${stepId}`,
+            id: authorStepId(context.nodeId, stepName),
             nodeId: context.nodeId,
-            name: `${context.nodeName}: ${stepId}`,
+            name: `${context.nodeName}: ${stepName}`,
           },
           work
         ),
