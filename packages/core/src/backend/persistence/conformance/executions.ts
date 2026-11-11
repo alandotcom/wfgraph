@@ -173,6 +173,40 @@ export function describeExecutionConformance({
       });
     });
 
+    // A delivery step that runs again writes its decision's row again, so a
+    // row with an id of its own is written once and its repeat is a no-op.
+    it("writes an audit row with a given id once", async () => {
+      const database = await openConnection();
+      const events = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          const executions = yield* ExecutionRepo;
+          yield* workflows.insert({
+            id: "wf_1",
+            name: "Appointments",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          const record = (message: string) =>
+            executions.recordAuditEvent({
+              id: "cancel_decision_1",
+              workflowId: "wf_1",
+              eventType: "cancel_not_delivered",
+              message,
+              metadata: { deliveryId: "delivery_1" },
+            });
+          yield* record("First");
+          yield* record("Second");
+          return yield* executions.listWorkflowEvents({
+            workflowId: "wf_1",
+            eventType: "cancel_not_delivered",
+          });
+        })
+      );
+
+      expect(events.map((event) => event.message)).toEqual(["First"]);
+    });
+
     it("serializes first-wins starts and makes delivery retries idempotent", async () => {
       const store = await openDatabase();
       const database = await store.open();

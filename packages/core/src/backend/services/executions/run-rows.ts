@@ -318,24 +318,30 @@ export function buildIgnoredRunAuditMessage(input: {
 }
 
 /**
- * A refusal, recorded and narrated.
+ * The id of the one audit row a delivery records for one kind of decision in
+ * one workflow. A delivery step that runs again derives the same id, so the
+ * repeat of its write is a no-op and a retry can read the decision back.
  *
- * Without the row a refusal is invisible, which is the class of problem ADR-0007
- * exists to remove: a builder reading run history should find the start that was
- * declined and why, rather than an absence.
- *
- * Both refusing call sites come through here, so a refusal's sentence, its audit
- * row and its log record are decided in one place whatever declined the start.
- * `extra` is what one reason knows and the others do not: the runs first-wins
- * found already going, or the error a Start Filter could not be read past.
+ * - `admission`: the start the arrival was refused, whatever refused it.
+ * - `cancel`: the Cancel the arrival did not deliver.
+ * - `delivery_failed`: the workflow the arrival failed to reach.
  */
+export function deliveryDecisionId(
+  kind: "admission" | "cancel" | "delivery_failed",
+  workflowId: string,
+  deliveryId: string
+): string {
+  return `${kind}_${createHash("sha256")
+    .update(`${workflowId}\0${deliveryId}`)
+    .digest("hex")}`;
+}
+
+/** The id of the row recording the start refused for one delivery in one workflow. */
 export function startAdmissionDecisionId(
   workflowId: string,
   deliveryId: string
 ): string {
-  return `admission_${createHash("sha256")
-    .update(`${workflowId}\0${deliveryId}`)
-    .digest("hex")}`;
+  return deliveryDecisionId("admission", workflowId, deliveryId);
 }
 
 type RecordStartRefusalInput = {
@@ -361,6 +367,20 @@ type RecordStartRefusalInput = {
     }
 );
 
+/**
+ * A refusal, recorded and narrated.
+ *
+ * Without the row a refusal is invisible, which is the class of problem ADR-0007
+ * exists to remove: a builder reading run history should find the start that was
+ * declined and why, rather than an absence.
+ *
+ * Every refusing call site comes through here, so a refusal's sentence, its
+ * audit row and its log record are decided in one place whatever declined the
+ * start. `extra` is what one reason knows and the others do not: the runs
+ * first-wins found already going, or the error a Start Filter could not be read
+ * past. A refusal of an arrival is written under `startAdmissionDecisionId`, so
+ * a delivery that runs again writes it once and answers from it.
+ */
 export const recordStartRefusal = Effect.fn("recordStartRefusal")(function* (
   input: RecordStartRefusalInput
 ) {
@@ -400,6 +420,10 @@ export const recordStartRefusal = Effect.fn("recordStartRefusal")(function* (
 
   if (!admissionDecision) {
     yield* repo.recordAuditEvent({
+      id:
+        input.deliveryId === undefined
+          ? undefined
+          : startAdmissionDecisionId(input.workflowId, input.deliveryId),
       workflowId: input.workflowId,
       eventType: "run_refused",
       message,

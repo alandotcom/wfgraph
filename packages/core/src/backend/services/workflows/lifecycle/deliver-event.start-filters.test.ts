@@ -3,6 +3,7 @@ import { beforeEach } from "vitest";
 import { Effect, Layer } from "effect";
 import { SilentAppLoggerLayer } from "#src/backend/lib/effect/test-layers";
 import { applyLifecycleRules } from "#src/backend/services/workflows/lifecycle/deliver-event";
+import { startAdmissionDecisionId } from "#src/backend/services/executions/run-rows";
 import {
   appointmentCreated,
   catalogLayer,
@@ -121,6 +122,12 @@ describe("applyLifecycleRules and Start Filters", () => {
 
         const audit = recordAuditEventMock.mock.calls[0]?.[0];
         assert.strictEqual(audit?.eventType, "run_refused");
+        // Under the delivery's decision id, so a step that runs again writes
+        // the row once and its retry reads the refusal back.
+        assert.strictEqual(
+          audit?.id,
+          startAdmissionDecisionId("wf_1", "evt_arrival")
+        );
         assert.include(audit?.message ?? "", "start filter");
         assert.deepInclude(audit?.metadata, {
           reason: "start_filter_not_met",

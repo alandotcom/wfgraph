@@ -33,6 +33,7 @@ import {
   deliverWaitCandidates,
   listWaitCandidatePage,
 } from "#src/backend/services/workflows/lifecycle/deliver-event";
+import { deliveryDecisionId } from "#src/backend/services/executions/run-rows";
 
 type Repo = ExecutionRepo["Service"];
 type Driver = ExecutionDriver["Service"];
@@ -850,6 +851,9 @@ describe("applyLifecycleRules", () => {
           });
           assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
           assert.deepInclude(recordAuditEventMock.mock.calls[0]?.[0], {
+            // Under the delivery's decision id, so a step that runs again
+            // writes the row once.
+            id: deliveryDecisionId("cancel", "wf_1", "evt_arrival"),
             workflowId: "wf_1",
             eventType: "cancel_not_delivered",
             metadata: {
@@ -1015,6 +1019,7 @@ describe("applyLifecycleRules", () => {
         assert.strictEqual(requestCanceledOutletMock.mock.calls.length, 0);
         assert.deepStrictEqual(recorded, [
           {
+            id: deliveryDecisionId("cancel", "wf_1", "evt_arrival"),
             workflowId: "wf_1",
             eventType: "cancel_not_delivered",
             message:

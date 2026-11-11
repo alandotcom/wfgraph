@@ -11,6 +11,7 @@ import type {
   WorkflowExecutionEvent,
 } from "#src/backend/services/executions/repo/contracts";
 import { toJsonObject } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 /** How far back the audit trail beside a single run is read. */
 const EXECUTION_EVENTS_LIMIT = 200;
@@ -56,13 +57,19 @@ export type AuditRepoMethods = {
 /** The insert behind `recordAuditEvent`, on whichever handle the caller holds. */
 export function recordAuditEventWrite(input: NewAuditEvent) {
   return async (db: WfGraphDatabase | WfGraphTransaction): Promise<void> => {
-    await db.insert(workflowExecutionEvents).values({
-      workflowId: input.workflowId,
-      executionId: input.executionId ?? null,
-      eventType: input.eventType,
-      message: input.message,
-      metadata: toJsonObject(input.metadata),
-    });
+    await db
+      .insert(workflowExecutionEvents)
+      .values(
+        omitUndefined({
+          id: input.id,
+          workflowId: input.workflowId,
+          executionId: input.executionId ?? null,
+          eventType: input.eventType,
+          message: input.message,
+          metadata: toJsonObject(input.metadata),
+        })
+      )
+      .onConflictDoNothing({ target: workflowExecutionEvents.id });
   };
 }
 

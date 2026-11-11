@@ -794,6 +794,13 @@ export type PendingCancel = {
  * written into the wrong arm would be unreadable.
  */
 export type NewAuditEvent = {
+  /**
+   * The row's id when the caller derives it from the decision the row
+   * records, such as one delivery's refusal in one workflow. A row with that
+   * id already written makes the insert a no-op. Left out, the insert mints
+   * an id.
+   */
+  id?: string | undefined;
   workflowId: string;
   message: string;
   metadata?: JsonObjectDraft | undefined;

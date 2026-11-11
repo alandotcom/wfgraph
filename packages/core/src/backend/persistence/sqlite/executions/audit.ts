@@ -26,15 +26,18 @@ const WORKFLOW_EVENTS_LIMIT = 50;
 /** The insert behind `recordAuditEvent`. */
 export function recordAuditEventWrite(input: NewAuditEvent) {
   return (database: SqliteExecutor) =>
-    database.insert(workflowExecutionEvents).values({
-      id: generateId(),
-      workflowId: input.workflowId,
-      executionId: input.executionId ?? null,
-      eventType: input.eventType,
-      message: input.message,
-      metadata: encodeJson(toJsonObject(input.metadata)),
-      createdAt: Date.now(),
-    });
+    database
+      .insert(workflowExecutionEvents)
+      .values({
+        id: input.id ?? generateId(),
+        workflowId: input.workflowId,
+        executionId: input.executionId ?? null,
+        eventType: input.eventType,
+        message: input.message,
+        metadata: encodeJson(toJsonObject(input.metadata)),
+        createdAt: Date.now(),
+      })
+      .onConflictDoNothing({ target: workflowExecutionEvents.id });
 }
 
 /** The insert of several entries at once, inside the caller's write transaction. */

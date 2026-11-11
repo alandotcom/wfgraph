@@ -47,6 +47,7 @@ import {
   WorkflowRepo,
 } from "#src/backend/services/workflows/repo";
 import {
+  deliveryDecisionId,
   recordStartRefusal,
   startAdmissionDecisionId,
   toWorkflowRunTarget,
@@ -327,6 +328,7 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
         if (!entityValue) {
           const executionRepo = yield* ExecutionRepo;
           yield* executionRepo.recordAuditEvent({
+            id: deliveryDecisionId("cancel", workflow.id, input.deliveryId),
             workflowId: workflow.id,
             eventType: "cancel_not_delivered",
             message: `Cancel from ${input.event.name} reached no run: nothing at this workflow's Correlation Path`,
@@ -630,14 +632,17 @@ export const recordDeliveryFailure = Effect.fn("recordDeliveryFailure")(
       deliveryId,
     };
     const executionRepo = yield* ExecutionRepo;
+    const id = deliveryDecisionId("delivery_failed", subscriber.id, deliveryId);
     yield* role === "cancel"
       ? executionRepo.recordAuditEvent({
+          id,
           workflowId: subscriber.id,
           eventType: "cancel_not_delivered",
           message: `Cancel from ${eventName} was not applied: its Lifecycle Rules failed on every retry`,
           metadata,
         })
       : executionRepo.recordAuditEvent({
+          id,
           workflowId: subscriber.id,
           eventType: "run_refused",
           message: `Start from ${eventName} was not applied: its Lifecycle Rules failed on every retry`,
@@ -802,6 +807,7 @@ const refuseFilteredCancel = Effect.fn("refuseFilteredCancel")(
 
     const executionRepo = yield* ExecutionRepo;
     yield* executionRepo.recordAuditEvent({
+      id: deliveryDecisionId("cancel", input.workflow.id, input.deliveryId),
       workflowId: input.workflow.id,
       eventType: "cancel_not_delivered",
       message,

@@ -276,6 +276,41 @@ export function describeDeliveryCrashCases(
     });
   });
 
+  it("records a Cancel that reached no run once across a crash between its lifecycle step and its memo row", async () => {
+    const harness = await open();
+    await harness.publish("wf_start", startsAndSends(START_EVENT));
+    // A blank Entity Value is no Entity Value, so the Cancel reaches no run.
+    const sent = await harness.send({
+      name: CANCEL_EVENT,
+      data: { appointmentId: " " },
+    });
+
+    const crashed = await harness.passOnce({
+      wrap: crashBeforeLifecycleMemo(),
+    });
+    harness.advance(LEASE_MS + 1);
+    await harness.drain();
+
+    expect(crashed).toEqual({ kind: "fence_refused", fence: "owner" });
+    expect(await harness.inbox(sent.inboxId)).toMatchObject({
+      status: "delivered",
+    });
+    const cancellations = await harness.connection.run(
+      Effect.flatMap(ExecutionRepo, (executions) =>
+        executions.listWorkflowEvents({
+          workflowId: "wf_start",
+          eventType: "cancel_not_delivered",
+        })
+      )
+    );
+    expect(cancellations.map((row) => row.metadata)).toEqual([
+      expect.objectContaining({
+        reason: "entity_value_missing",
+        deliveryId: sent.inboxId,
+      }),
+    ]);
+  });
+
   // The Canceled outlet parks a Wait on the very Event that claimed the run.
   // A delivery re-run after a crash between its claim and its memo row still
   // names the run it claimed, so that Wait is left for the next arrival.
