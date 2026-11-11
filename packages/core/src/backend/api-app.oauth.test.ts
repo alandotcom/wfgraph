@@ -695,6 +695,13 @@ describe("OAuth API routes", () => {
       )
     );
     expect(callback.status).toBe(400);
+    // The failure page is the popup's only account of what happened, so a
+    // browser must render it as HTML rather than print its markup.
+    expect(callback.headers.get("content-type")).toBe(
+      "text/html; charset=UTF-8"
+    );
+    expect(callback.headers.get("cache-control")).toBe("no-store");
+    expect(callback.headers.get("referrer-policy")).toBe("no-referrer");
     expect(callback.headers.get("set-cookie")).toBeNull();
     expect(exchangeCalls).toBe(0);
     expect(failed).toBe(true);

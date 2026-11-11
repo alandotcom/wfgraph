@@ -247,6 +247,7 @@ export function createOAuthRoutes(options: {
         }
         const response = new Response(OAUTH_FAILED_PAGE, {
           status: responseFromServiceFailure(result.failure).status,
+          headers: { "Content-Type": "text/html; charset=UTF-8" },
         });
         applyOAuthHeaders(response.headers);
         return response;
