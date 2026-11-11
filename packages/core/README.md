@@ -6,8 +6,12 @@ authoring vocabulary your code declares its domain in, and `createWfGraphApp`, w
 fetch handler you mount in a server you own.
 
 ```bash
-npm install @wfgraph/core
+npm install @wfgraph/core hono
 ```
+
+`hono` is a required peer dependency. Workflow Graph builds its routes on Hono inside
+`createWfGraphApp`, and the peer dependency makes your application install the one Hono
+copy that runs in its process, even when your own code never imports it.
 
 ```ts
 import { createServer } from "node:http";
