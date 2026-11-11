@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import { createApiApp } from "#src/backend/api-app";
 import {
-  assertValidEncryptionKey,
+  assertEncryptionFor,
   type EncryptionRuntimeConfig,
 } from "#src/backend/services/integrations/cipher";
 import {
@@ -108,7 +108,13 @@ export type WfGraphAppOptions = {
    * Defaults to 10,000. A timeout is an operational failure.
    */
   entityResolverTimeoutMs?: number | undefined;
-  encryption: EncryptionRuntimeConfig;
+  /**
+   * The key that seals integration credentials. Required when `extensions`
+   * declares an integration, and `createWfGraphApp` refuses a missing key
+   * then. An app with no integration stores no credential and may leave it
+   * out; a key it passes must still be a 64-character hex string.
+   */
+  encryption?: EncryptionRuntimeConfig | undefined;
   /** Event intake over HTTP. See `WfGraphEventsOptions`. */
   events?: WfGraphEventsOptions | undefined;
   /** How long run history is kept. See `WfGraphRunsOptions`. Off when absent. */
@@ -202,7 +208,11 @@ export async function createWfGraphApp(
   const publicUrl = resolvePublicUrl(options.publicUrl);
   const auth = resolveAuth(options.auth, "createWfGraphApp");
 
-  assertValidEncryptionKey(options.encryption.key, "createWfGraphApp");
+  assertEncryptionFor({
+    encryption: options.encryption,
+    declaresIntegrations: (options.extensions?.integrations ?? []).length > 0,
+    caller: "createWfGraphApp",
+  });
   assertValidEventsKey(options.events?.key, "createWfGraphApp");
   const retention = resolveRetention({
     events: options.events,

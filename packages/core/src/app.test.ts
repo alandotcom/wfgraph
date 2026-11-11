@@ -501,11 +501,34 @@ describe("createWfGraphApp configuration", () => {
     ).rejects.toThrow("entityResolverTimeoutMs must be a positive integer");
   });
 
+  /** An integration whose credentials the app would have to seal. */
+  const sealedIntegration = defineIntegration({
+    type: "sealed",
+    label: "Sealed",
+    description: "Holds one secret",
+    credentials: { SEALED_TOKEN: { label: "Token", type: "password" } },
+    actions: {
+      ping: {
+        label: "Ping",
+        description: "Answers at once",
+        input: Schema.Struct({}),
+        output: Schema.Struct({}),
+        handler: Effect.fn(function* () {
+          return yield* Effect.succeed({});
+        }),
+      },
+    },
+  });
+
   // Integration credentials are stored encrypted, so a missing or malformed key
   // has to stop startup rather than surface later as a failing integration read.
-  it("refuses to start without an encryption key", async () => {
+  it("refuses to start without an encryption key when it declares an integration", async () => {
     await expect(
-      createWfGraphApp({ ...BASE_OPTIONS, encryption: { key: undefined } })
+      createWfGraphApp({
+        ...BASE_OPTIONS,
+        encryption: { key: undefined },
+        extensions: { integrations: [sealedIntegration] },
+      })
     ).rejects.toThrow("encryption.key is unset");
   });
 
@@ -513,8 +536,30 @@ describe("createWfGraphApp configuration", () => {
   // has the same problem as one that never set it, and gets the same message.
   it("treats a blank encryption key as unset", async () => {
     await expect(
-      createWfGraphApp({ ...BASE_OPTIONS, encryption: { key: "  " } })
+      createWfGraphApp({
+        ...BASE_OPTIONS,
+        encryption: { key: "  " },
+        extensions: { integrations: [sealedIntegration] },
+      })
     ).rejects.toThrow("encryption.key is unset");
+  });
+
+  // An app with no integration stores no credential, so it needs no key, and
+  // its runner process needs none either.
+  it("starts with no encryption key when it declares no integration", async () => {
+    const { encryption: _unused, ...withoutKey } = BASE_OPTIONS;
+    await using app = await createWfGraphApp({
+      ...withoutKey,
+      persistence: wfSqlite(),
+    });
+    expect((await get(app, "/api/extensions")).status).toBe(200);
+    await expect(
+      createWfGraphApp({
+        ...withoutKey,
+        persistence: wfSqlite(),
+        encryption: { key: "abc123" },
+      })
+    ).rejects.toThrow("64-character hex string");
   });
 
   // The option belongs to the backend, beside the connection it applies to. A
@@ -565,7 +610,11 @@ describe("createWfGraphApp configuration", () => {
   // missing its key is not sent looking at the web process's call.
   it("names the function a host called in an encryption key refusal", async () => {
     await expect(
-      createWfGraphApp({ ...BASE_OPTIONS, encryption: { key: undefined } })
+      createWfGraphApp({
+        ...BASE_OPTIONS,
+        encryption: { key: undefined },
+        extensions: { integrations: [sealedIntegration] },
+      })
     ).rejects.toThrow("createWfGraphApp's encryption.key is unset");
     await expect(
       createWfGraphRunner({

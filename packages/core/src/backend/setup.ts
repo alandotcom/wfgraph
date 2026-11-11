@@ -45,7 +45,7 @@ import {
 } from "#src/backend/runtime";
 import { overdueAfterMs } from "#src/backend/services/executions/executor-state";
 import {
-  createIntegrationCipher,
+  integrationCipherFor,
   type EncryptionRuntimeConfig,
 } from "#src/backend/services/integrations/cipher";
 import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
@@ -53,7 +53,8 @@ import type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type WfGraphSetupOptions = {
   logger?: WfGraphLogger | undefined;
   persistence: WfGraphPersistence;
-  encryption: EncryptionRuntimeConfig;
+  /** Checked by `assertEncryptionFor` before the setup opens. */
+  encryption: EncryptionRuntimeConfig | undefined;
   extensions?: WfGraphExtensions | undefined;
   entityResolverTimeoutMs?: number | undefined;
   /** The normalized mount path, which the OAuth callback URLs are built on. */
@@ -133,7 +134,7 @@ export async function openWfGraphSetup(
     warnWhenLoggingUnconfigured();
   }
 
-  const cipher = createIntegrationCipher(options.encryption);
+  const cipher = integrationCipherFor(options.encryption);
   const extensions = assembleExtensions(options.extensions ?? {}, {
     entityResolverTimeoutMs: options.entityResolverTimeoutMs,
   });

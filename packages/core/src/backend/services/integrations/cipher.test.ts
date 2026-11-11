@@ -1,9 +1,11 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import {
+  assertEncryptionFor,
   assertValidEncryptionKey,
   createIntegrationCipher,
   EncryptionKeyMismatch,
+  integrationCipherFor,
 } from "#src/backend/services/integrations/cipher";
 
 const KEY = "a".repeat(64);
@@ -110,5 +112,55 @@ describe("opening something this key cannot read", () => {
     expect(openFailure(`${iv}:${authTag}:${altered}`)).toBeInstanceOf(
       EncryptionKeyMismatch
     );
+  });
+});
+
+// An app that declares no integration seals nothing, so its key is optional;
+// one that does needs it, and a key passed anyway must still be well formed.
+describe("assertEncryptionFor", () => {
+  it("requires a key only when the app declares an integration", () => {
+    const check =
+      (key: string | undefined, declaresIntegrations: boolean) => () =>
+        assertEncryptionFor({
+          encryption: { key },
+          declaresIntegrations,
+          caller: "createWfGraphApp",
+        });
+
+    expect(check(undefined, false)).not.toThrow();
+    expect(check(" ", false)).not.toThrow();
+    expect(check(undefined, true)).toThrow(
+      "createWfGraphApp's encryption.key is unset"
+    );
+    expect(check("abc", false)).toThrow("64-character hex string");
+    expect(() =>
+      assertEncryptionFor({
+        encryption: undefined,
+        declaresIntegrations: false,
+        caller: "createWfGraphApp",
+      })
+    ).not.toThrow();
+  });
+});
+
+describe("integrationCipherFor", () => {
+  it("seals with a key it is given", () => {
+    const keyed = integrationCipherFor({ key: KEY });
+    expect(open(keyed.seal({ TOKEN: "t" }))).toEqual({ TOKEN: "t" });
+  });
+
+  // A row an earlier configuration sealed cannot be read without its key,
+  // which is the key mismatch the integration routes already explain.
+  it("refuses to seal without a key and reads a sealed row as a key mismatch", () => {
+    const keyless = integrationCipherFor(undefined);
+    expect(() => keyless.seal({ TOKEN: "t" })).toThrow(
+      "encryption.key is unset"
+    );
+    expect(
+      Effect.runSync(
+        keyless.open(cipher.seal({ TOKEN: "t" })).pipe(Effect.flip)
+      )
+    ).toBeInstanceOf(EncryptionKeyMismatch);
+    expect(Effect.runSync(keyless.open(null))).toEqual({});
   });
 });

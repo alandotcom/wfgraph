@@ -4,7 +4,8 @@
  * A cipher is a value the app builds from its `encryption` option and hands to
  * the integration repository, so the key travels by argument rather than through
  * module state and a second app in the same process cannot read the first one's
- * secrets.
+ * secrets. Connections and OAuth attempts are the only sealed values, so an app
+ * that declares no integration may run with no key and a keyless cipher.
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
@@ -62,6 +63,58 @@ export function assertValidEncryptionKey(
     throw new Error(`${option} must be a 64-character hex string (32 bytes)`);
   }
 }
+
+/**
+ * Refuses the `encryption` option a host passed when the app needs a key it
+ * lacks, or holds one of the wrong shape. An app that declares no integration
+ * stores no credential, so a missing or blank key is refused only when
+ * `declaresIntegrations` holds. `caller` names the function the host called.
+ */
+export function assertEncryptionFor(input: {
+  encryption: EncryptionRuntimeConfig | undefined;
+  declaresIntegrations: boolean;
+  caller: string;
+}): void {
+  const key = input.encryption?.key;
+  if (!input.declaresIntegrations && isKeyAbsent(key)) return;
+  assertValidEncryptionKey(key, input.caller);
+}
+
+function isKeyAbsent(key: string | undefined): boolean {
+  return (key?.trim() ?? "") === "";
+}
+
+/**
+ * The cipher for an `encryption` option `assertEncryptionFor` accepted: a
+ * keyed one, or a keyless one for an app that declares no integration and
+ * passed no key. A keyless cipher refuses to seal, and opens any stored
+ * envelope as `EncryptionKeyMismatch`, since a row left by an earlier
+ * configuration was sealed under a key this process does not hold.
+ */
+export function integrationCipherFor(
+  encryption: EncryptionRuntimeConfig | undefined
+): IntegrationCipher {
+  if (encryption === undefined || isKeyAbsent(encryption.key)) {
+    return keylessCipher;
+  }
+  return createIntegrationCipher(encryption);
+}
+
+const keylessCipher: IntegrationCipher = {
+  seal: () => {
+    throw new Error(
+      "encryption.key is unset, so this app cannot store integration credentials. Pass a 64-character hex encryption.key to declare an integration."
+    );
+  },
+  open: (stored) =>
+    typeof stored === "string"
+      ? Effect.fail(
+          new EncryptionKeyMismatch({
+            cause: new Error("encryption.key is unset"),
+          })
+        )
+      : Effect.succeed({}),
+};
 
 /**
  * A stored envelope this key cannot authenticate.

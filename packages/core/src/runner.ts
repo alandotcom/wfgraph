@@ -4,7 +4,7 @@ import { failAfterClose } from "#src/backend/lib/close-in-order";
 import type { WfGraphAuth } from "#src/backend/lib/http/authorize";
 import { normalizeBasePath } from "#src/backend/lib/http/mount-path";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
-import { assertValidEncryptionKey } from "#src/backend/services/integrations/cipher";
+import { assertEncryptionFor } from "#src/backend/services/integrations/cipher";
 import type { WfGraphEvents } from "#src/backend/host-events";
 import { resolveRetention } from "#src/backend/host-retention";
 import { openWfGraphSetup } from "#src/backend/setup";
@@ -49,7 +49,11 @@ export async function createWfGraphRunner(
 ): Promise<WfGraphRunner> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);
-  assertValidEncryptionKey(options.encryption.key, "createWfGraphRunner");
+  assertEncryptionFor({
+    encryption: options.encryption,
+    declaresIntegrations: (options.extensions?.integrations ?? []).length > 0,
+    caller: "createWfGraphRunner",
+  });
   const retention = resolveRetention({
     events: options.events,
     runs: options.runs,
