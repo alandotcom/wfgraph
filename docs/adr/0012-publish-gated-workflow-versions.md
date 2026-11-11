@@ -202,3 +202,21 @@ handed a row a concurrent request can still release. One row per distinct draft
 graph ever run remains unbounded. A sweep would
 have to be selective, because `workflow_executions.workflow_version_id` cascades
 and deleting a snapshot would take the run history that pinned it.
+
+## Amendment, 2026-11-11: a node a run already finished is not checked again
+
+The Decision above fails an action node when the live catalog fingerprint
+differs from the pinned one "when an action node resolves". A pass replays the
+body from the top, so a plugin action above a parked Wait resolves again on
+every pass. A deploy that changed the catalog while a run was parked, by adding
+an unrelated action for instance, therefore failed every plugin action the run
+had already finished, and with it the run, although the replay answers that
+node's work from the step memo.
+
+The check now applies to a node that has not finished. A node whose run-log row
+an earlier pass closed as a success skips it. The row is the signal because the
+engine keeps no memo of a node's result, only of the `step.run` calls inside its
+handler, and the store reads the run's log rows when a pass opens. A close that
+failed to land leaves the row short of a success, so such a node is checked as
+before. A node that fails the check now opens and closes its run-log row with
+the error.

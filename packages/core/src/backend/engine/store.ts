@@ -57,6 +57,12 @@ export type WorkflowRunAuditEventType =
 export type WorkflowStepLogHandle = {
   logId: string;
   startTime: number;
+  /**
+   * Whether the row already held `success` when this open found it, which is
+   * a node an earlier pass finished. A close may have failed to land, so false
+   * also covers a node that finished without its row saying so.
+   */
+  finishedBefore: boolean;
 };
 
 /** A node's log row to open, in the run the store was built for. */
@@ -227,7 +233,8 @@ export type WorkflowStore = {
    * Opens the node's step-log row and returns the handle that closes it. The
    * engine opens a node's row again on every pass that reaches the node, so
    * a second open for the same run and node answers the first row, unchanged,
-   * with the `startTime` of the first open.
+   * with the `startTime` of the first open and whether it was closed as a
+   * success.
    */
   startStepLog(
     input: StartStepLogInput
@@ -352,7 +359,12 @@ export type WorkflowStore = {
  * trace. `executeWorkflow` requires a store, so nothing reaches this by omission.
  */
 export const noopWorkflowStore: WorkflowStore = {
-  startStepLog: () => Effect.sync(() => ({ logId: "", startTime: Date.now() })),
+  startStepLog: () =>
+    Effect.sync(() => ({
+      logId: "",
+      startTime: Date.now(),
+      finishedBefore: false,
+    })),
   completeStepLog: () => Effect.void,
   recordAuditEvent: () => Effect.void,
   createWaitState: () => Effect.succeed({ waitStateId: "" }),

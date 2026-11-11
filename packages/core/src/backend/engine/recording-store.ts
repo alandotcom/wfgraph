@@ -164,7 +164,15 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
 
   const waitUntilById = new Map<string, Date>();
   /** The handle `startStepLog` answers, by node id. */
-  const logHandles = new Map<string, WorkflowStepLogHandle>();
+  const logHandles = new Map<
+    string,
+    Omit<WorkflowStepLogHandle, "finishedBefore">
+  >();
+  /**
+   * Each row's status by log id, under the close rule both backends apply: a
+   * success is never overwritten, and a second error keeps the first.
+   */
+  const logStatuses = new Map<string, "running" | "success" | "error">();
   const recordWaitUntil = (
     waitStateId: string,
     waitUntilIso: string | null | undefined
@@ -201,6 +209,7 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       timeline.length = 0;
       waitUntilById.clear();
       logHandles.clear();
+      logStatuses.clear();
       for (const recordedInputs of Object.values(byMethod)) {
         recordedInputs.length = 0;
       }
@@ -218,7 +227,9 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
           startTime: Date.now(),
         };
         logHandles.set(input.nodeId, handle);
-        return handle;
+        const status = logStatuses.get(handle.logId);
+        if (status === undefined) logStatuses.set(handle.logId, "running");
+        return { ...handle, finishedBefore: status === "success" };
       });
     },
 
@@ -226,6 +237,14 @@ export function createRecordingWorkflowStore(): RecordingWorkflowStore {
       return Effect.sync(() => {
         calls.push({ method: "completeStepLog", input });
         byMethod.completeStepLog.push(input);
+        if (logStatuses.get(input.logId) === "running") {
+          logStatuses.set(input.logId, input.status);
+        } else if (
+          logStatuses.get(input.logId) === "error" &&
+          input.status === "success"
+        ) {
+          logStatuses.set(input.logId, "success");
+        }
       });
     },
 

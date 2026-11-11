@@ -32,6 +32,7 @@ import {
   type WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
 import { validateGraphSaveShape } from "#src/backend/services/workflows/graph-save";
+import { executionError } from "#src/backend/engine/contracts";
 
 const EMAIL_ACTION_ID = "test/replay-email";
 const FOLLOWUP_ACTION_ID = "test/replay-followup";
@@ -205,6 +206,41 @@ describe("workflow engine replay safety", () => {
     expect(second).toMatchObject({ kind: "ended", success: true });
     expect(emailAction).toHaveBeenCalledTimes(1);
     expect(followupAction).toHaveBeenCalledTimes(1);
+  });
+
+  // ADR-0012: the catalog fingerprint is checked when a node runs for the
+  // first time. A deploy that changes the catalog while the run is parked
+  // fails the node below the Wait, which has not run, and leaves the node above
+  // it, which a replay only answers from the memo, as it finished.
+  it("checks the catalog fingerprint only for a node that has not finished before", async () => {
+    const memo = new Map<string, unknown>();
+    const pinned = { ...waitGraphInput, catalogFingerprint: "catalog_v1" };
+    const beforeDeploy = { ...actions, catalogFingerprint: () => "catalog_v1" };
+    const afterDeploy = { ...actions, catalogFingerprint: () => "catalog_v2" };
+
+    const parked = await executeWorkflow(
+      pinned,
+      createInMemoryWorkflowRuntime({ memo, waitAnswer: { kind: "parked" } }),
+      store,
+      beforeDeploy
+    );
+    const resumed = await executeWorkflow(
+      pinned,
+      createReplayRuntime(memo),
+      store,
+      afterDeploy
+    );
+
+    expect(parked).toMatchObject({ kind: "parked" });
+    expect(resumed).toMatchObject({ kind: "ended", success: false });
+    if (resumed.kind !== "ended") return;
+    expect(resumed.results.email_1?.success).toBe(true);
+    expect(resumed.results.followup_1?.success).toBe(false);
+    expect(executionError(resumed.results.followup_1)).toContain(
+      "Extension catalog changed"
+    );
+    expect(emailAction).toHaveBeenCalledTimes(1);
+    expect(followupAction).not.toHaveBeenCalled();
   });
 
   it("preserves a failed __proto__ node result on a fresh run and replay", async () => {

@@ -120,7 +120,11 @@ export function createDbWorkflowStore(bound: {
         const logId = nodeLogId(bound.executionId, input.nodeId);
         const row = logRows.get(logId);
         if (row !== undefined) {
-          return { logId, startTime: row.startedAt.getTime() };
+          return {
+            logId,
+            startTime: row.startedAt.getTime(),
+            finishedBefore: row.status === "success",
+          };
         }
         yield* writes.openNodeLog({
           ...input,
@@ -129,7 +133,11 @@ export function createDbWorkflowStore(bound: {
         });
         const startedAt = new Date();
         logRows.set(logId, { status: "running", startedAt });
-        return { logId, startTime: startedAt.getTime() };
+        return {
+          logId,
+          startTime: startedAt.getTime(),
+          finishedBefore: false,
+        };
       }),
 
     completeStepLog: (input) =>

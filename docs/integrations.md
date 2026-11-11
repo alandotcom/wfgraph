@@ -733,6 +733,11 @@ catalog fingerprint that hashes action ids and config/output **keys**, not handl
 bodies or field types; a replay answers completed `step.run` calls from the stored JSON
 in the run's step memo.
 
+The fingerprint covers the whole assembled catalog, so any change to it, adding an
+unrelated action included, fails each node of a pinned run that runs for the first
+time after the deploy. A node the run already finished before the deploy is not
+checked again when a later pass replays it.
+
 **Safe under one id:**
 
 - **Add** config keys with `Schema.optionalKey` only. Never rename or remove a key:

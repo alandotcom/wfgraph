@@ -38,7 +38,8 @@ function storeRefusingTheClose(
 ): WorkflowStore {
   return {
     ...noopWorkflowStore,
-    startStepLog: () => Effect.succeed({ logId: "log_1", startTime: 0 }),
+    startStepLog: () =>
+      Effect.succeed({ logId: "log_1", startTime: 0, finishedBefore: false }),
     completeStepLog: () => Effect.fail(refusal),
   };
 }

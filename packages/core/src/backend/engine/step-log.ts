@@ -156,6 +156,9 @@ function closeStepLogQuietly(
  * row could not be closed. The price is a row left open, which the Runs view
  * shows. A work failure is re-raised with its own cause whatever the close
  * did.
+ *
+ * `work` is told whether the row already held a success when it was opened,
+ * which is a node an earlier pass finished and this pass replays.
  */
 export function runWithStepLog<T extends StepResult, E, R>(
   target: {
@@ -164,7 +167,7 @@ export function runWithStepLog<T extends StepResult, E, R>(
     runtime: WorkflowExecutionRuntime;
     input: unknown;
   },
-  work: () => Effect.Effect<T, E, R>
+  work: (row: { finishedBefore: boolean }) => Effect.Effect<T, E, R>
 ): Effect.Effect<T, E | EngineFailure, R> {
   return Effect.gen(function* () {
     const { store, context, runtime } = target;
@@ -189,15 +192,18 @@ export function runWithStepLog<T extends StepResult, E, R>(
         Date.now() - startedAt
       );
 
-    const result = yield* Effect.matchCauseEffect(Effect.suspend(work), {
-      onFailure: (cause) =>
-        Effect.gen(function* () {
-          const failure = failureFromCause(cause);
-          yield* closeRow({ status: "error", error: failure.message });
-          return yield* Effect.failCause(cause);
-        }),
-      onSuccess: Effect.succeed,
-    });
+    const result = yield* Effect.matchCauseEffect(
+      Effect.suspend(() => work({ finishedBefore: handle.finishedBefore })),
+      {
+        onFailure: (cause) =>
+          Effect.gen(function* () {
+            const failure = failureFromCause(cause);
+            yield* closeRow({ status: "error", error: failure.message });
+            return yield* Effect.failCause(cause);
+          }),
+        onSuccess: Effect.succeed,
+      }
+    );
 
     if (result.success) {
       // A success logs its payload. A step reporting success without one has

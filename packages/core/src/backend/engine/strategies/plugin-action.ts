@@ -1,7 +1,10 @@
 import { stripInternalFields } from "#src/backend/extensions/steps/step-handler";
 import { runWithStepLog } from "#src/backend/engine/step-log";
 import type { ActionStepInput } from "#src/backend/engine/strategies/types";
-import type { NodeSteps } from "@wfgraph/shared/actions/step-result";
+import type {
+  NodeSteps,
+  StepResult,
+} from "@wfgraph/shared/actions/step-result";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { Effect } from "effect";
 import {
@@ -10,20 +13,18 @@ import {
 } from "#src/backend/engine/contracts";
 import { engineFailure } from "#src/backend/engine/engine-failure";
 
+/** What a node answers when the live catalog is not the one it was pinned to. */
+const CATALOG_CHANGED: StepResult = {
+  success: false,
+  error: {
+    message:
+      "Extension catalog changed since this workflow version was published. Republish the workflow against the current catalog, or restore the previous deploy.",
+  },
+};
+
 export function runPluginActionStep(input: ActionStepInput) {
   return Effect.gen(function* () {
     const { actionType, config, context, store, actions, runtime } = input;
-
-    if (input.catalogFingerprint !== actions.catalogFingerprint()) {
-      return {
-        result: failedExecution(
-          engineFailure(
-            "failure",
-            "Extension catalog changed since this workflow version was published. Republish the workflow against the current catalog, or restore the previous deploy."
-          )
-        ),
-      };
-    }
 
     const stepInput: Record<string, unknown> = {
       ...config,
@@ -59,11 +60,21 @@ export function runPluginActionStep(input: ActionStepInput) {
         ),
     };
 
+    // ADR-0012: a node runs only against the catalog its version was published
+    // with. A node an earlier pass finished is not checked again: a replay
+    // answers its work from the memo, and failing it would fail a run parked
+    // below it for a deploy that changed nothing it still has to do.
+    const catalogMatches =
+      input.catalogFingerprint === actions.catalogFingerprint();
+
     const result = yield* runWithStepLog(
       // The rows carry the input as the node was configured, minus the three keys
       // the engine's own dispatch owns.
       { store, context, runtime, input: stripInternalFields(stepInput) },
-      () => stepFunction(stepInput, steps)
+      ({ finishedBefore }) =>
+        catalogMatches || finishedBefore
+          ? stepFunction(stepInput, steps)
+          : Effect.succeed(CATALOG_CHANGED)
     );
 
     return { result: executionResultFromStepResult(result) };
