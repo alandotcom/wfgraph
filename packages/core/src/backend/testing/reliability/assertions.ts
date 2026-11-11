@@ -164,8 +164,15 @@ export async function expectSettledExecution(
   // run that ended leaves no wait row waiting.
   expect(await host.run(host.repo.listWaitingStates(executionId))).toEqual([]);
   const logs = await host.run(host.repo.listLogs(executionId));
+  // A Wait that a Cancel or Exit claim stopped keeps its run-log row open,
+  // which the Runs view reads as cancelled. Every other row is closed, and a
+  // completed run leaves no row open at all.
   expect(
-    logs.filter((log) => log.status === "running" || log.status === "pending")
+    logs.filter(
+      (log) =>
+        (log.status === "running" || log.status === "pending") &&
+        (status === "completed" || log.nodeType !== "Wait")
+    )
   ).toEqual([]);
   const events = await host.run(host.repo.listEvents(executionId));
   if (status !== "completed")
