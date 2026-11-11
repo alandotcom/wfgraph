@@ -107,7 +107,10 @@ sets `store: false`, so the provider keeps no copy of the turn.
 `agent.reasoningEffort` defaults to `medium` for `openai` and `high` for
 `anthropic`, and is sent to `openrouter` and `openai-compatible` only when set. OpenAI takes
 `none`, `low`, `medium`, `high`, `xhigh` and `max`; `minimal` is refused by the
-type and by every GPT-6 model. Anthropic takes `low` to `max`.
+type and by every GPT-6 model. Anthropic takes `low` to `max`. Lowering the
+Anthropic effort below `high` makes the agent skip the validation and
+reference reads its rules ask for; the eval suite measured `claude-sonnet-5-5`
+at `high`.
 
 ### A runner's stream
 
@@ -132,7 +135,8 @@ the turn ends.
 
 Wrong: `agent: { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY }`.
 
-Correct: name the model, such as `model: "claude-opus-5-5"`.
+Correct: name the model, such as `model: "claude-sonnet-5-5"`, the Claude model
+the eval suite has measured.
 
 Startup fails with `agent.model is required for the "anthropic" provider, which
 has no default model.` Only `openai` has a default model.
