@@ -327,7 +327,14 @@ export const workflowWaitStates = sqliteTable(
   },
   (table) => [
     index("waits_execution_status_idx").on(table.executionId, table.status),
-    index("waits_workflow_status_idx").on(table.workflowId, table.status),
+    // A delivery pages through one workflow's waiting rows in id order, so
+    // `id` follows the equality columns and each page starts where the last
+    // one ended, with no sort.
+    index("waits_workflow_status_id_idx").on(
+      table.workflowId,
+      table.status,
+      table.id
+    ),
     uniqueIndex("waits_execution_node_uidx").on(
       table.executionId,
       table.nodeId

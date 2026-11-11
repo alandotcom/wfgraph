@@ -521,13 +521,15 @@ export function makeWaitsMethods(
           .where(
             and(
               eq(workflowWaitStates.workflowId, input.workflowId),
-              // The GIN index over this column is what the containment test
-              // rides on; the partial btree on `workflow_id` is what narrows the
-              // posting list to this workflow before the recheck.
+              // The partial btree on `(workflow_id, id)` reads this
+              // workflow's parked rows in page order from `afterId`, and the
+              // containment test is rechecked on each. The status test is a
+              // literal so a generic plan can still match it to the partial
+              // indexes' predicate.
               arrayContains(workflowWaitStates.subscribedEvents, [
                 input.eventName,
               ]),
-              eq(workflowWaitStates.status, "waiting"),
+              sql`${workflowWaitStates.status} = 'waiting'`,
               inArray(workflowExecutions.status, [
                 ...IN_FLIGHT_EXECUTION_STATUSES,
               ]),

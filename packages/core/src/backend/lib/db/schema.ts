@@ -648,10 +648,13 @@ export const workflowWaitStates = pgTable(
       .where(sql`${table.status} = 'waiting'`),
     // The other half of that question. GIN has no leading column, so the
     // containment test alone returns every waiting row subscribed to the Event
-    // across every workflow; Postgres BitmapAnds this with it and rechecks only
-    // the asking workflow's parked rows.
+    // across every workflow. The delivery pages through one workflow's parked
+    // rows in id order, and `id` here lets each page start where the last one
+    // ended and read the rows in that order, rechecking the containment test
+    // on each, where a bitmap over this workflow's rows would read and sort
+    // all of them for every page.
     index("workflow_wait_states_waiting_by_workflow_idx")
-      .on(table.workflowId)
+      .on(table.workflowId, table.id)
       .where(sql`${table.status} = 'waiting'`),
   ]
 );
