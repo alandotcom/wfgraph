@@ -170,8 +170,17 @@ export type AgentEvalExpectations = {
   }>;
   requiredConditionRules?: Array<{
     node: EvalNodeSelector;
-    /** One path, or the set of paths any of which answers the same question. */
+    /**
+     * One output path, or the set of paths any of which answers the same
+     * question. A rule naming its source node (`$node:<id>.<path>`) matches by
+     * the path it names.
+     */
     field: string | string[];
+    /**
+     * The node whose value the rule must read: the rule has to name a node
+     * this selector matches. Omit to accept a rule naming any node, or none.
+     */
+    source?: EvalNodeSelector;
     /** Omit to accept any operator, where either polarity describes the same run. */
     operator?: string;
     value?: string | number;

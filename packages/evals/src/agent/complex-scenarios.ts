@@ -148,6 +148,7 @@ export const complexScenarios: Array<{
           {
             node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
             field: "score",
+            source: { kind: "action", actionId: "score-applicant" },
             operator: "greater_or_equal",
             value: 80,
           },
@@ -226,12 +227,14 @@ export const complexScenarios: Array<{
           {
             node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
             field: "score",
+            source: { kind: "action", actionId: "score-applicant" },
             operator: "greater_than",
             value: 70,
           },
           {
             node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
             field: "department",
+            source: { kind: "action", actionId: "crm/get-applicant" },
             operator: "is_set",
           },
         ],

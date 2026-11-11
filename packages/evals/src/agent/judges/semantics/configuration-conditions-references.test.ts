@@ -523,6 +523,76 @@ describe("assessScenarioSemantics", () => {
     });
   });
 
+  // The Start Event and the scoring step both offer `score`, so the rule has to
+  // name the step the request tests.
+  it("holds a Condition rule to the node it must read from", () => {
+    function documentReading(field: string) {
+      const document = completedDocument();
+      document.nodes.push({
+        id: "condition",
+        type: "action",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Score at least 80",
+          type: "action",
+          config: {
+            actionType: "Condition",
+            conditionModel: JSON.stringify({
+              version: 2,
+              groupLogic: "and",
+              groups: [
+                {
+                  id: "group",
+                  logic: "and",
+                  conditions: [
+                    {
+                      id: "rule",
+                      field,
+                      fieldType: "number",
+                      operator: "greater_or_equal",
+                      value: 80,
+                    },
+                  ],
+                },
+              ],
+            }),
+          },
+        },
+      });
+      return document;
+    }
+    const sourcedInput: AgentEvalInput = {
+      ...input,
+      expected: {
+        requiredConditionRules: [
+          {
+            node: { kind: "action", actionId: "Condition" },
+            field: "score",
+            source: { kind: "action", actionId: "score-applicant" },
+            operator: "greater_or_equal",
+            value: 80,
+          },
+        ],
+      },
+    };
+
+    expect(
+      assessScenarioSemantics(
+        sourcedInput,
+        documentReading("$node:score.score")
+      ).score
+    ).toBe(1);
+    for (const field of ["$node:entry.score", "score"]) {
+      expect(
+        assessScenarioSemantics(sourcedInput, documentReading(field))
+      ).toEqual({
+        score: 0,
+        rationale:
+          "Condition is missing required rule on score from score-applicant greater_or_equal 80.",
+      });
+    }
+  });
+
   it("rejects the wrong Condition group logic", () => {
     const document = completedDocument();
     document.nodes.push({

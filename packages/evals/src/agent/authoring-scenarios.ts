@@ -148,6 +148,7 @@ export const authoringScenarios: Array<{
           {
             node: { kind: "action", actionId: BUILT_IN_ACTION_IDS.condition },
             field: "score",
+            source: { kind: "action", actionId: "score-applicant" },
             operator: "greater_or_equal",
             value: 80,
           },

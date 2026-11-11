@@ -4,7 +4,11 @@ import { isEqual } from "es-toolkit/predicate";
 import { enabledActionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
-import type { ConditionModel } from "@wfgraph/shared/conditions/condition-model";
+import {
+  conditionFieldOutputPath,
+  type ConditionModel,
+  parseNodeOutputConditionPath,
+} from "@wfgraph/shared/conditions/condition-model";
 import { parseConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { isBlank } from "@wfgraph/shared/types/string";
@@ -19,7 +23,7 @@ import {
   selectorName,
   type SemanticsContext,
 } from "#src/agent/judges/semantics/context";
-import type { EvalWaitMatchRule } from "#src/agent/types";
+import type { EvalNodeSelector, EvalWaitMatchRule } from "#src/agent/types";
 
 function missingConfigs(context: SemanticsContext): string[] {
   return checkEach(context.input.expected.requiredConfigs, (required) => {
@@ -176,6 +180,25 @@ function missingWaitSubscriptions(context: SemanticsContext): string[] {
   );
 }
 
+/**
+ * Whether a rule's stored field reads from a node `source` matches. Only a
+ * field naming its node states one, so a rule naming none fails any `source`.
+ */
+function readsSource(
+  context: SemanticsContext,
+  field: string,
+  source: EvalNodeSelector | undefined
+): boolean {
+  if (source === undefined) {
+    return true;
+  }
+  const named = parseNodeOutputConditionPath(field);
+  return (
+    named !== null &&
+    matchesSelector(context.nodeById.get(named.nodeId), source)
+  );
+}
+
 function missingConditionRules(context: SemanticsContext): string[] {
   return checkEach(
     context.input.expected.requiredConditionRules,
@@ -191,7 +214,8 @@ function missingConditionRules(context: SemanticsContext): string[] {
         return parsed.model.groups.some((group) =>
           group.conditions.some(
             (rule) =>
-              fields.includes(rule.field) &&
+              fields.includes(conditionFieldOutputPath(rule.field)) &&
+              readsSource(context, rule.field, required.source) &&
               // An omitted operator asks only that the rule tests this field,
               // which is what a scenario wants where two operators and swapped
               // outlets describe the same run.
@@ -204,7 +228,7 @@ function missingConditionRules(context: SemanticsContext): string[] {
       });
       return found
         ? undefined
-        : `${selectorName(required.node)} is missing required rule on ${fields.join(" or ")}${required.operator === undefined ? "" : ` ${required.operator}`}${required.value === undefined ? "" : ` ${required.value}`}`;
+        : `${selectorName(required.node)} is missing required rule on ${fields.join(" or ")}${required.source === undefined ? "" : ` from ${selectorName(required.source)}`}${required.operator === undefined ? "" : ` ${required.operator}`}${required.value === undefined ? "" : ` ${required.value}`}`;
     }
   );
 }
