@@ -11,6 +11,7 @@
 
 import {
   type ChatModelAdapter,
+  type ChatModelRunResult,
   type ThreadAssistantMessagePart,
   type ThreadMessage,
   useLocalRuntime,
@@ -20,6 +21,7 @@ import { useMemo } from "react";
 import type { AgentMessage } from "@wfgraph/shared/rpc/agent-stream";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import { isBlank } from "@wfgraph/shared/types/string";
+import type { AgentTurnMetadata } from "#src/components/agent/turn-metadata";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { appStore } from "#src/lib/app-store";
 import { rpc, toSerializedGraph } from "#src/lib/rpc-client";
@@ -139,12 +141,21 @@ function withToolResult(
   );
 }
 
-/** One tick of the turn, carrying its failure as the message status. */
-function turnResult(content: TurnContent, failure: string | undefined) {
+/**
+ * One tick of the turn, carrying its failure as the message status and what
+ * the panel keeps about the turn as the message's custom metadata.
+ */
+function turnResult(
+  content: TurnContent,
+  failure: string | undefined,
+  metadata: AgentTurnMetadata
+): ChatModelRunResult {
+  const custom = { metadata: { custom: metadata } };
   return failure === undefined
-    ? { content }
+    ? { content, ...custom }
     : {
         content,
+        ...custom,
         status: {
           type: "incomplete" as const,
           reason: "error" as const,
@@ -173,6 +184,7 @@ export function useAgentRuntime(workflowId: string) {
         let content: TurnContent = [];
         let hasAppliedGraph = false;
         let failure: string | undefined;
+        let metadata: AgentTurnMetadata = {};
 
         try {
           const stream = await rpc.agent.chat(
@@ -243,14 +255,23 @@ export function useAgentRuntime(workflowId: string) {
                 failure = part.message;
                 break;
               }
+
+              case "usage": {
+                metadata = { ...metadata, usage: part };
+                break;
+              }
             }
 
-            yield turnResult(content, failure);
+            yield turnResult(content, failure, metadata);
           }
 
           // Reasoning the turn ended on is closed here, so its panel can say
           // how long it took.
-          yield turnResult(withReasoningSettled(content, Date.now()), failure);
+          yield turnResult(
+            withReasoningSettled(content, Date.now()),
+            failure,
+            metadata
+          );
         } finally {
           if (
             appStore.get(currentWorkflowIdAtom) === workflowId &&

@@ -34,6 +34,10 @@ import {
 import { useRef, useState } from "react";
 import { AgentMarkdown } from "#src/components/agent/agent-markdown";
 import {
+  readTurnMetadata,
+  usageSummary,
+} from "#src/components/agent/turn-metadata";
+import {
   ReasoningPanel,
   type ReasoningStep,
 } from "#src/components/agent/elements/reasoning-panel";
@@ -208,6 +212,23 @@ function AgentToolCall(props: ToolCallMessagePartProps) {
   );
 }
 
+/**
+ * What a finished turn cost, in one muted line under it. A turn the user
+ * stopped ends without a usage part and shows none.
+ */
+function TurnUsage() {
+  const custom = useAuiState((state) => state.message.metadata.custom);
+  const { usage } = readTurnMetadata(custom);
+  if (!usage) {
+    return null;
+  }
+  return (
+    <p className="text-muted-foreground text-xs tabular-nums">
+      {usageSummary(usage)}
+    </p>
+  );
+}
+
 function AssistantMessage() {
   return (
     <MessagePrimitive.Root
@@ -244,6 +265,7 @@ function AssistantMessage() {
           <ErrorPrimitive.Message className="min-w-0 break-words" />
         </ErrorPrimitive.Root>
       </AuiIf>
+      <TurnUsage />
     </MessagePrimitive.Root>
   );
 }

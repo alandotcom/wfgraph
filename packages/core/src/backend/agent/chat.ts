@@ -254,7 +254,8 @@ export function streamAgentTurn(
  * The host's stream says which tool calls ran; the draft says what they
  * changed. So the `graph` part after each successful write, and the trace
  * events the turn's log record counts, are added here from the parts the host
- * emitted, and a `graph` part of the host's own is dropped.
+ * emitted. A `graph` part of the host's own is dropped, and a `usage` part of
+ * its own is folded into the trace the service's closing `usage` part sums.
  */
 export function hostAgentRunner(runner: WfGraphAgentRunner): AgentRunner {
   return {
@@ -290,6 +291,25 @@ export function withHostGraphParts(
       Effect.gen(function* () {
         switch (part.type) {
           case "graph":
+            return [];
+          case "usage":
+            // The service closes every turn with its own usage part, so the
+            // host's counts go to the trace it sums instead.
+            observeTrace({
+              type: "model-step-finish",
+              step,
+              reason: "stop",
+              usage: {
+                inputTokens: {
+                  total: part.inputTokens,
+                  cacheRead: part.cachedInputTokens,
+                },
+                outputTokens: {
+                  total: part.outputTokens,
+                  reasoning: part.reasoningTokens,
+                },
+              },
+            });
             return [];
           case "tool-call":
             observeTrace({

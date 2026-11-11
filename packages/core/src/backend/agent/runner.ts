@@ -51,7 +51,9 @@ export type WfGraphAgentTurn = {
  * `run` answers the parts the panel renders. A `tool-result` part for a write
  * tool that did not fail is followed by a `graph` part the server reads off
  * the draft, so a runner never emits one: a `graph` part it does emit is
- * dropped. A failure in the stream reaches the panel as an `error` part.
+ * dropped. A `usage` part it emits is added to the turn's counts, and the
+ * server closes the turn with one `usage` part of its own. A failure in the
+ * stream reaches the panel as an `error` part.
  */
 export type WfGraphAgentRunner = {
   /** Named in the turn's log record. */

@@ -548,6 +548,10 @@ const wfgraph = await createWfGraphApp({
   gateway in front of a provider must pass server-sent events through and accept a
   `tools` array. A `baseUrl` for `openai` must serve the Responses API: a gateway that offers
   Chat Completions alone, such as most self-hosted model servers, is `openai-compatible`.
+- **Each finished turn shows what it cost.** The stream closes with a `usage` part naming the
+  turn's model calls, tool calls, and input, cached input, output and reasoning tokens, and
+  the panel prints one line of it under the turn. The "Agent turn finished" log record
+  carries the same counts.
 - **Requests are cached per workflow and not stored.** OpenAI and OpenRouter requests carry
   `prompt_cache_key: "wfgraph-agent:<workflowId>"`, an Anthropic request asks for automatic
   prompt caching, and an OpenAI request sets `store: false`, so the Responses API keeps no

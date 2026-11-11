@@ -32,6 +32,7 @@ import {
   finishReasonFailure,
   makeAgentTraceAccumulator,
   type AgentTraceAccumulator,
+  type AgentTraceSummary,
 } from "#src/backend/agent/trace";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import {
@@ -175,6 +176,19 @@ export function limitAgentStream(
   );
 }
 
+/** The turn's closing `usage` part, from the same counts its log record has. */
+export function usagePartOf(summary: AgentTraceSummary): AgentStreamPart {
+  return {
+    type: "usage",
+    modelCalls: summary.modelCalls,
+    toolCalls: summary.toolCalls,
+    inputTokens: summary.inputTokens,
+    cachedInputTokens: summary.cachedInputTokens,
+    outputTokens: summary.outputTokens,
+    reasoningTokens: summary.reasoningTokens,
+  };
+}
+
 export type PostAgentChatInput = {
   readonly workflowId: string;
   /** The caller's grants, which decide the tools this turn may run. */
@@ -255,7 +269,7 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
       model: runner.metadata.model,
       startedAt,
       now: Date.now,
-    }),
+    }).pipe(Stream.concat(Stream.sync(() => usagePartOf(trace.summary())))),
     capacity
   );
 });

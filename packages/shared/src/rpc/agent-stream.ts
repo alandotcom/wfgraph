@@ -1,7 +1,7 @@
 /**
  * What the build agent sends back while a turn runs.
  *
- * Six cases, shaped for what the chat panel renders rather than for what the
+ * Seven cases, shaped for what the chat panel renders rather than for what the
  * model produced. The server maps Effect's richer `Response.StreamPart` onto
  * this, so a change in the AI runtime's own vocabulary stops at that mapping
  * instead of reaching the editor.
@@ -13,6 +13,7 @@
 import { Schema } from "effect";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
 import { jsonObjectSchema } from "#src/types/json";
+import { nonNegativeInteger } from "#src/types/schema";
 
 /** Prose the assistant is writing, one delta at a time. */
 const textDeltaPart = Schema.Struct({
@@ -69,6 +70,23 @@ const errorPart = Schema.Struct({
   message: Schema.String,
 });
 
+/**
+ * What the turn cost, sent once as its last part when it ends on its own (a
+ * stopped turn ends without one). Token counts are summed over the turn's
+ * model calls; a provider that reports no count answers 0.
+ */
+export const agentUsagePartSchema = Schema.Struct({
+  type: Schema.Literal("usage"),
+  modelCalls: nonNegativeInteger,
+  toolCalls: nonNegativeInteger,
+  inputTokens: nonNegativeInteger,
+  /** The part of `inputTokens` the provider read from its prompt cache. */
+  cachedInputTokens: nonNegativeInteger,
+  /** Includes `reasoningTokens`. */
+  outputTokens: nonNegativeInteger,
+  reasoningTokens: nonNegativeInteger,
+});
+
 export const agentStreamPartSchema = Schema.Union([
   textDeltaPart,
   reasoningDeltaPart,
@@ -76,7 +94,10 @@ export const agentStreamPartSchema = Schema.Union([
   toolResultPart,
   graphPart,
   errorPart,
+  agentUsagePartSchema,
 ]);
+
+export type AgentUsagePart = typeof agentUsagePartSchema.Type;
 
 export type AgentStreamPart = typeof agentStreamPartSchema.Type;
 

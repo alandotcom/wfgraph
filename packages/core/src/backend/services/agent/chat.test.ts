@@ -113,7 +113,18 @@ describe("postAgentChat", () => {
         Effect.flatMap(Stream.runCollect)
       );
 
-      expect(parts).toEqual([reply]);
+      expect(parts).toEqual([
+        reply,
+        {
+          type: "usage",
+          modelCalls: 1,
+          toolCalls: 0,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+        },
+      ]);
       expect(receivedMessage).toBe("Build it");
       expect(recording.infoLines[0]?.properties).toMatchObject({
         model: { id: "custom-runner" },

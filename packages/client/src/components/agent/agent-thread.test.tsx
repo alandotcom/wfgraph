@@ -202,4 +202,31 @@ describe("AgentThread", () => {
     expect(await screen.findByLabelText("Send")).toBeTruthy();
     expect(screen.queryByLabelText("Stop")).toBeNull();
   });
+
+  it("shows what a finished turn cost under it", async () => {
+    renderThread([
+      { role: "user", content: [{ type: "text", text: "Add a step" }] },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "Added it." }],
+        metadata: {
+          custom: {
+            usage: {
+              type: "usage",
+              modelCalls: 2,
+              toolCalls: 1,
+              inputTokens: 900,
+              cachedInputTokens: 0,
+              outputTokens: 100,
+              reasoningTokens: 20,
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(
+      await screen.findByText("2 model calls · 1 tool call · 1K tokens")
+    ).toBeTruthy();
+  });
 });
