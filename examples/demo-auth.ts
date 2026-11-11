@@ -6,7 +6,7 @@
  * not to provide an identity system an adopter should deploy.
  */
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, setCookie } from "hono/cookie";
@@ -71,7 +71,26 @@ type DemoAuthOptions = {
    * reads of its own.
    */
   demoUser?: string | undefined;
+  /**
+   * The bearer token an MCP client sends as `Authorization: Bearer <token>`
+   * to act as the demo editor on `/api/mcp`. Unset, the MCP endpoint takes
+   * the demo session cookie alone. `app.ts` reads `WFGRAPH_MCP_TOKEN`.
+   */
+  mcpToken?: string | undefined;
 };
+
+/**
+ * Whether the request carries `Authorization: Bearer <expected>`. Both sides
+ * are hashed first, so the comparison takes the same time whatever the
+ * sender's token length.
+ */
+function bearerTokenMatches(request: Request, expected: string): boolean {
+  const header = request.headers.get("authorization");
+  const match = header ? /^Bearer\s+(\S+)$/i.exec(header) : null;
+  if (!match?.[1]) return false;
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(match[1]), digest(expected));
+}
 
 /**
  * Resolves the access `options.demoUser` grants to every request, skipping
@@ -214,10 +233,15 @@ export function createDemoAuth(options: DemoAuthOptions) {
   });
 
   // A request with no session answers undefined, which Workflow Graph reads
-  // as not signed in.
+  // as not signed in. An MCP client with no browser session authenticates
+  // with the configured bearer token instead.
   const auth: WfGraphAuth = (request) => {
     if (demoAutoLoginAccess) return demoAutoLoginAccess;
-    if (!options.isProduction && new URL(request.url).pathname === "/api/mcp") {
+    if (
+      options.mcpToken &&
+      new URL(request.url).pathname === "/api/mcp" &&
+      bearerTokenMatches(request, options.mcpToken)
+    ) {
       return WfGraphRoles.editor;
     }
     return sessionForRequest(request)?.access;

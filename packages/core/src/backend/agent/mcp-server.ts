@@ -4,17 +4,19 @@ import {
   CLIENT_CAPABILITIES_META_KEY,
   CLIENT_INFO_META_KEY,
   createMcpHandler,
-  hostHeaderValidationResponse,
   INVALID_PARAMS,
   localhostAllowedHostnames,
   localhostAllowedOrigins,
   McpServer,
-  originValidationResponse,
   PROTOCOL_VERSION_META_KEY,
   fromJsonSchema,
+  getOAuthProtectedResourceMetadataUrl,
   type JsonSchemaType,
   type McpHttpHandler,
+  type OAuthProtectedResourceMetadata,
   type StandardSchemaWithJSON,
+  validateHostHeader,
+  validateOriginHeader,
 } from "@modelcontextprotocol/server";
 import { Tool } from "effect/ai";
 import { Context, Option, Result, Schema, type SchemaAST } from "effect";
@@ -79,11 +81,30 @@ export type CreateAgentMcpServerInput = {
   readonly createWorkflow: WorkflowCreateExecutor;
 };
 
+/**
+ * The OAuth 2.1 authorization servers a host names for its MCP endpoint.
+ * Workflow Graph is never an authorization server: it advertises these in
+ * the RFC 9728 protected-resource metadata, and the host's `auth` callback
+ * still verifies every bearer token it receives.
+ */
+export type WfGraphMcpAuthorization = {
+  /** Issuer URL of each authorization server that issues tokens for this endpoint. */
+  readonly authorizationServers: readonly [string, ...string[]];
+  /** Scopes the endpoint understands, sent as `scopes_supported` and in the 401 challenge. */
+  readonly scopesSupported?: readonly string[] | undefined;
+};
+
 export type WfGraphMcpOptions = {
   /** Hostnames accepted from the HTTP Host header. Ports are ignored. */
   readonly allowedHostnames: readonly string[];
   /** Hostnames accepted from browser Origin headers. Ports are ignored. */
   readonly allowedOriginHostnames: readonly string[];
+  /**
+   * The authorization servers an MCP client is sent to on a 401. Absent, a
+   * 401 carries a bare `WWW-Authenticate: Bearer` challenge and no metadata
+   * document is served.
+   */
+  readonly authorization?: WfGraphMcpAuthorization | undefined;
 };
 
 type McpHttpSecurity = true | WfGraphMcpOptions;
@@ -97,16 +118,129 @@ function resolveMcpHttpSecurity(input: McpHttpSecurity): WfGraphMcpOptions {
     : input;
 }
 
-/** Rejects untrusted HTTP routing headers before any MCP body is read. */
+/** A 403 refusal of the request's routing headers, as a JSON-RPC error. */
+function routingRefusal(message: string): Response {
+  return Response.json(
+    { jsonrpc: "2.0", error: { code: -32_000, message }, id: null },
+    { status: 403 }
+  );
+}
+
+/**
+ * Rejects untrusted HTTP routing headers before any MCP body is read. Each
+ * refusal names the option that admits the hostname and leaves the hostname
+ * itself out, since it is what the sender typed.
+ */
 export function mcpHttpValidationResponse(
   request: Request,
   input: McpHttpSecurity
 ): Response | undefined {
   const options = resolveMcpHttpSecurity(input);
-  return (
-    hostHeaderValidationResponse(request, [...options.allowedHostnames]) ??
-    originValidationResponse(request, [...options.allowedOriginHostnames])
+  const optionHint =
+    input === true
+      ? "`mcp: true` admits localhost alone; pass `mcp: { allowedHostnames, allowedOriginHostnames }` to admit another hostname"
+      : undefined;
+  const host = validateHostHeader(request.headers.get("host"), [
+    ...options.allowedHostnames,
+  ]);
+  if (!host.ok) {
+    return routingRefusal(
+      host.errorCode === "invalid_host"
+        ? `The Host header names a hostname this MCP endpoint does not accept. ${optionHint ?? "Add the hostname to mcp.allowedHostnames"}.`
+        : "The request carries no valid Host header."
+    );
+  }
+  const origin = validateOriginHeader(request.headers.get("origin"), [
+    ...options.allowedOriginHostnames,
+  ]);
+  if (!origin.ok) {
+    return routingRefusal(
+      origin.errorCode === "invalid_origin"
+        ? `The Origin header names a hostname this MCP endpoint does not accept from a browser. ${optionHint ?? "Add the hostname to mcp.allowedOriginHostnames"}.`
+        : "The request carries an Origin header that is not a valid origin."
+    );
+  }
+  return undefined;
+}
+
+/**
+ * The canonical URL of the MCP endpoint, which is the `resource` an access
+ * token is issued for. `publicUrl` is the host's configured public origin when
+ * it has one, since a proxied request URL can name an internal host.
+ */
+function mcpResourceUrl(input: {
+  readonly request: Request;
+  readonly mcpPath: string;
+  readonly publicUrl: string | undefined;
+}): URL {
+  return new URL(input.mcpPath, input.publicUrl ?? input.request.url);
+}
+
+/**
+ * The RFC 9728 path of the protected-resource metadata for an endpoint at
+ * `mcpPath`: the well-known prefix inserted ahead of the endpoint's path.
+ */
+export function mcpProtectedResourceMetadataPath(mcpPath: string): string {
+  return new URL(
+    getOAuthProtectedResourceMetadataUrl(new URL(mcpPath, "http://localhost"))
+  ).pathname;
+}
+
+/**
+ * The protected-resource metadata document, or undefined when the host named
+ * no authorization server.
+ */
+export function mcpProtectedResourceMetadataResponse(input: {
+  readonly request: Request;
+  readonly mcp: McpHttpSecurity;
+  readonly mcpPath: string;
+  readonly publicUrl: string | undefined;
+}): Response | undefined {
+  const authorization =
+    input.mcp === true ? undefined : input.mcp.authorization;
+  if (authorization === undefined) {
+    return undefined;
+  }
+  const metadata: OAuthProtectedResourceMetadata = omitUndefined({
+    resource: mcpResourceUrl(input).href,
+    authorization_servers: [...authorization.authorizationServers],
+    scopes_supported:
+      authorization.scopesSupported === undefined
+        ? undefined
+        : [...authorization.scopesSupported],
+    bearer_methods_supported: ["header"],
+  });
+  return Response.json(metadata, {
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=3600",
+    },
+  });
+}
+
+/**
+ * The `WWW-Authenticate` value a 401 on the MCP endpoint carries: the
+ * metadata URL and scopes when the host named an authorization server, and a
+ * bare Bearer challenge otherwise.
+ */
+export function mcpAuthenticationChallenge(input: {
+  readonly request: Request;
+  readonly mcp: McpHttpSecurity;
+  readonly mcpPath: string;
+  readonly publicUrl: string | undefined;
+}): string {
+  const authorization =
+    input.mcp === true ? undefined : input.mcp.authorization;
+  if (authorization === undefined) {
+    return "Bearer";
+  }
+  const metadataUrl = getOAuthProtectedResourceMetadataUrl(
+    mcpResourceUrl(input)
   );
+  const scope = authorization.scopesSupported?.join(" ");
+  return scope
+    ? `Bearer resource_metadata="${metadataUrl}", scope="${scope}"`
+    : `Bearer resource_metadata="${metadataUrl}"`;
 }
 
 type AgentToolName = keyof typeof agentToolkit.tools;

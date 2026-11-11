@@ -5,7 +5,10 @@ import { Hono } from "hono";
 import { AgentConfig } from "#src/backend/agent/config";
 import {
   createAgentMcpHandler,
+  mcpAuthenticationChallenge,
   mcpHttpValidationResponse,
+  mcpProtectedResourceMetadataPath,
+  mcpProtectedResourceMetadataResponse,
   type WfGraphMcpOptions,
 } from "#src/backend/agent/mcp-server";
 import { Extensions } from "#src/backend/lib/effect/extensions";
@@ -258,7 +261,11 @@ export function requestLogPath(path: string): string {
 
 export function createApiApp(options: CreateApiAppOptions) {
   const { basePath, auth, runtime, mcp = false, eventsKey, health } = options;
-  const app = new Hono<WfGraphHonoEnv>().basePath(basePath);
+  // The root app shares its router with `app`, which is what lets the MCP
+  // endpoint's RFC 9728 metadata answer at the origin's well-known path
+  // while every other route sits under `basePath`.
+  const root = new Hono<WfGraphHonoEnv>();
+  const app = root.basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
   const ungatedRoutes = machineRoutes({
     acceptEvents: eventsKey !== undefined,
@@ -380,6 +387,25 @@ export function createApiApp(options: CreateApiAppOptions) {
   const mcpPath = `${basePath}/mcp`;
   // The app context is fixed for the runtime's life, so it is read once.
   let publicUrlRead: Promise<string | undefined> | undefined;
+  const readPublicUrl = async () =>
+    await (publicUrlRead ??= runtime
+      .runPromise(WfGraphAppContext)
+      .then((context) => context.publicUrl));
+
+  // Public discovery data an MCP client reads before it holds a token, so it
+  // sits outside the host gate. Mounted only when the host names an
+  // authorization server.
+  if (mcp && mcp !== true && mcp.authorization !== undefined) {
+    root.get(mcpProtectedResourceMetadataPath(mcpPath), async (c) => {
+      const response = mcpProtectedResourceMetadataResponse({
+        request: c.req.raw,
+        mcp,
+        mcpPath,
+        publicUrl: await readPublicUrl(),
+      });
+      return response ?? c.json({ error: "Not found" }, 404);
+    });
+  }
   app.use("*", async (c, next) => {
     if (
       c.get("wfgraphMachineRoute") ||
@@ -389,10 +415,7 @@ export function createApiApp(options: CreateApiAppOptions) {
       await next();
       return undefined;
     }
-    publicUrlRead ??= runtime
-      .runPromise(WfGraphAppContext)
-      .then((context) => context.publicUrl);
-    const publicUrl = await publicUrlRead;
+    const publicUrl = await readPublicUrl();
     const allowedOrigins = [new URL(c.req.url).origin];
     if (publicUrl !== undefined) {
       allowedOrigins.push(publicUrl);
@@ -428,6 +451,18 @@ export function createApiApp(options: CreateApiAppOptions) {
       return undefined;
     }
 
+    // An MCP client reads the challenge to learn how to authenticate.
+    if (mcp && c.req.path === mcpPath) {
+      c.header(
+        "WWW-Authenticate",
+        mcpAuthenticationChallenge({
+          request: c.req.raw,
+          mcp,
+          mcpPath,
+          publicUrl: await readPublicUrl(),
+        })
+      );
+    }
     return c.json(UNAUTHORIZED_BODY, 401);
   });
 

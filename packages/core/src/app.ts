@@ -57,7 +57,10 @@ export {
 export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
-export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
+export type {
+  WfGraphMcpAuthorization,
+  WfGraphMcpOptions,
+} from "#src/backend/agent/mcp-server";
 export type {
   AgentReasoningEffort,
   AnthropicReasoningEffort,

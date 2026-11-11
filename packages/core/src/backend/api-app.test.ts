@@ -362,6 +362,85 @@ describe("the MCP route", () => {
 
     expect(hostResponse.status).toBe(403);
     expect(originResponse.status).toBe(403);
+    const hostMessage = (await hostResponse.json()).error.message;
+    const originMessage = (await originResponse.json()).error.message;
+    expect(hostMessage).toContain("mcp.allowedHostnames");
+    expect(originMessage).toContain("mcp.allowedOriginHostnames");
+    expect(`${hostMessage} ${originMessage}`).not.toContain("attacker");
+  });
+
+  it("challenges an unauthenticated MCP request with a Bearer scheme", async () => {
+    await using runtime = stubWfGraphRuntime({});
+    const app = createApiApp({
+      basePath,
+      auth: resolveAuth(defineWfGraphAuth(() => null)),
+      runtime,
+      mcp: true,
+    });
+
+    const [mcpResponse, rpcResponse] = await Promise.all([
+      app.fetch(
+        new Request(`http://localhost${basePath}/mcp`, { method: "POST" })
+      ),
+      app.fetch(new Request(`http://localhost${basePath}/rpc/x`)),
+    ]);
+
+    expect(mcpResponse.status).toBe(401);
+    expect(mcpResponse.headers.get("www-authenticate")).toBe("Bearer");
+    expect(rpcResponse.status).toBe(401);
+    expect(rpcResponse.headers.has("www-authenticate")).toBe(false);
+  });
+
+  it("serves protected-resource metadata and names it in the challenge", async () => {
+    await using runtime = stubWfGraphRuntime({});
+    const app = createApiApp({
+      basePath,
+      auth: resolveAuth(defineWfGraphAuth(() => null)),
+      runtime,
+      mcp: {
+        allowedHostnames: ["localhost"],
+        allowedOriginHostnames: [],
+        authorization: {
+          authorizationServers: ["https://auth.example.com"],
+          scopesSupported: ["workflows"],
+        },
+      },
+    });
+    const metadataUrl = `http://localhost/.well-known/oauth-protected-resource${basePath}/mcp`;
+
+    const challenged = await app.fetch(
+      new Request(`http://localhost${basePath}/mcp`, { method: "POST" })
+    );
+    expect(challenged.status).toBe(401);
+    expect(challenged.headers.get("www-authenticate")).toBe(
+      `Bearer resource_metadata="${metadataUrl}", scope="workflows"`
+    );
+
+    const metadata = await app.fetch(new Request(metadataUrl));
+    expect(metadata.status).toBe(200);
+    expect(await metadata.json()).toEqual({
+      resource: `http://localhost${basePath}/mcp`,
+      authorization_servers: ["https://auth.example.com"],
+      scopes_supported: ["workflows"],
+      bearer_methods_supported: ["header"],
+    });
+  });
+
+  it("serves no protected-resource metadata when no authorization server is named", async () => {
+    await using runtime = stubWfGraphRuntime({});
+    const app = createApiApp({
+      basePath,
+      auth: resolveAuth(defineWfGraphAuth(() => null)),
+      runtime,
+      mcp: true,
+    });
+
+    const response = await app.fetch(
+      new Request(
+        `http://localhost/.well-known/oauth-protected-resource${basePath}/mcp`
+      )
+    );
+    expect(response.status).toBe(404);
   });
 
   it("refuses a write before reading a workflow when its grant is missing", async () => {

@@ -55,10 +55,15 @@ const publicUrl =
 // A demo account every request signs in as during local development.
 const demoUser = process.env.WFGRAPH_DEMO_USER?.trim() || undefined;
 
+// The token a local MCP client sends as `Authorization: Bearer <token>`.
+// Unset, the MCP endpoint accepts the demo session cookie alone.
+const mcpToken = process.env.WFGRAPH_MCP_TOKEN?.trim() || undefined;
+
 const demoAuth = createDemoAuth({
   isProduction,
   publicUrl,
   demoUser,
+  mcpToken,
 });
 
 // Workflow Graph reads a schema through Standard Schema and asks nothing else of it. The
@@ -260,8 +265,9 @@ const wfgraph = await createWfGraphApp({
   agent: {
     apiKey: process.env.OPENAI_API_KEY,
   },
-  // The example exposes the authoring tools to local MCP clients. The same
-  // demo session used by the editor authenticates every tool request.
+  // The example exposes the authoring tools to local MCP clients. A tool
+  // request authenticates with the editor's demo session cookie, or with
+  // `WFGRAPH_MCP_TOKEN` as a bearer token; anything else answers 401.
   mcp: true,
   // Another process sends Events with `POST /api/events` and this key as a
   // bearer token. Without the variable the route stays off.

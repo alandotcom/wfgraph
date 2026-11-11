@@ -92,6 +92,7 @@ export {
   type WfGraphAgentStreamPart,
   streamAgentTurn,
   type WfGraphLogger,
+  type WfGraphMcpAuthorization,
   type WfGraphMcpOptions,
   type WfGraphPersistence,
   type WfGraphRunnerHealth,
