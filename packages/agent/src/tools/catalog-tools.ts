@@ -257,7 +257,7 @@ export const DescribeAction = Tool.make("describe_action", {
   parameters: Schema.Struct({
     actionId: Schema.String.annotate({
       description:
-        "An action id returned by list_actions, or a built-in step named in the system instructions.",
+        'An action id returned by list_actions, or one of the built-in steps "Condition", "Wait" and "Event Split".',
     }),
   }),
   success: Schema.Struct({

@@ -648,6 +648,12 @@ and capabilities in request `_meta`. A `tools/call` request must also set the
 `Mcp-Name` header. The endpoint doesn't support initialization, transport
 sessions, `Mcp-Session-Id`, `GET` streams, or `DELETE` session termination.
 
+The server's `instructions` carry the authoring rules the editor's build agent
+follows, such as creating the Lifecycle Node first and taking every reference
+token from `list_references`. The `build_workflow` prompt returns the same rules
+followed by an optional `request`, for a client that surfaces prompts rather
+than instructions.
+
 Call `list_workflows` to list the workflows available through the host's
 workflow list. The result contains workflow IDs and summary metadata. It omits
 workflow graphs and integration credentials.

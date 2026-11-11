@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSystemPrompt } from "#src/prompt";
+import { buildAuthoringInstructions, buildSystemPrompt } from "#src/prompt";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";
 
 /** The prompt with its reading layout removed, so an assertion can span a wrap. */
@@ -193,5 +193,34 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain(
       "When delete_node leaves a Group with fewer than two steps, the Group is removed"
     );
+  });
+});
+
+describe("buildAuthoringInstructions", () => {
+  it("carries the authoring rules without the parts only a chat turn has", () => {
+    const instructions = unwrapped(buildAuthoringInstructions());
+
+    expect(instructions).toContain(
+      "On an empty graph, call set_lifecycle_rules"
+    );
+    expect(instructions).toContain("Never write a token by hand");
+    expect(instructions).toContain(
+      "An Event wait replaces that Event for every step below it"
+    );
+    expect(instructions).toContain(
+      "Every node with multiple incoming edges is an AND-join"
+    );
+    expect(instructions).toContain("Call validate_workflow after your edits");
+    expect(instructions).not.toContain("revert_draft");
+    expect(instructions).not.toContain("watches the graph change");
+  });
+
+  it("tells a client how a stored draft is read and written", () => {
+    const instructions = unwrapped(buildAuthoringInstructions());
+
+    expect(instructions).toContain("workflowId");
+    expect(instructions).toContain("expectedDraftRevision");
+    expect(instructions).toContain("workflow_draft_stale");
+    expect(instructions).toContain("create_workflow is not idempotent");
   });
 });

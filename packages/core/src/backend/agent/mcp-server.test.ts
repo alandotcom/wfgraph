@@ -4,6 +4,7 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { describe, expect, it, vi } from "vitest";
+import { buildAuthoringInstructions } from "@wfgraph/agent/prompt";
 import { agentToolkit } from "@wfgraph/agent/toolkit";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { readJsonObject } from "@wfgraph/shared/types/json";
@@ -158,6 +159,50 @@ describe("createAgentMcpServer", () => {
         },
         outputSchema: { type: "object" },
       });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("sends the authoring rules as instructions and as the build_workflow prompt", async () => {
+    const { client, server } = await makeSubject();
+    try {
+      const instructions = client.getInstructions() ?? "";
+      expect(instructions).toBe(buildAuthoringInstructions());
+      expect(instructions).toContain("set_lifecycle_rules");
+      expect(instructions).toContain("list_references");
+      expect(instructions).toContain("expectedDraftRevision");
+      expect(instructions).not.toContain("revert_draft");
+
+      const { prompts } = await client.listPrompts();
+      expect(prompts.map((prompt) => prompt.name)).toEqual(["build_workflow"]);
+      const prompt = await client.getPrompt({
+        name: "build_workflow",
+        arguments: { request: "Remind each applicant a day before the call." },
+      });
+      const text = prompt.messages
+        .map((message) =>
+          message.content.type === "text" ? message.content.text : ""
+        )
+        .join("\n");
+      expect(text).toContain(buildAuthoringInstructions());
+      expect(text).toContain("Remind each applicant a day before the call.");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("describes every tool without pointing at instructions the client may not have", async () => {
+    const { client, server } = await makeSubject();
+    try {
+      const { tools } = await client.listTools();
+      for (const tool of tools) {
+        expect(JSON.stringify(tool), tool.name).not.toMatch(
+          /system instructions/i
+        );
+      }
     } finally {
       await client.close();
       await server.close();

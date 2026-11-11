@@ -17,6 +17,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { Tool } from "effect/ai";
 import { Schema } from "effect";
+import { buildAuthoringInstructions } from "@wfgraph/agent/prompt";
 import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -356,13 +357,67 @@ function collectionToolResult(result: JsonObject, isError: boolean) {
   };
 }
 
+/**
+ * The authoring rules, fixed at module load. The built-in agent reads the same
+ * text as its system prompt, so an MCP client and the chat panel build to one
+ * set of rules.
+ */
+const AUTHORING_INSTRUCTIONS = buildAuthoringInstructions();
+
+const BUILD_WORKFLOW_ARGUMENTS = fromJsonSchema<Record<string, unknown>>({
+  type: "object",
+  properties: {
+    request: {
+      type: "string",
+      description: "What the workflow should do, in the person's own words.",
+    },
+  },
+  additionalProperties: false,
+});
+
+/**
+ * The `build_workflow` prompt: the authoring rules followed by the request, for
+ * a client that surfaces prompts and does not hand a model the instructions.
+ */
+function buildWorkflowPrompt(request: unknown) {
+  const ask =
+    typeof request === "string" && request.trim() !== ""
+      ? `Build this workflow:\n\n${request}`
+      : "Ask what the workflow should do, then build it.";
+  return {
+    messages: [
+      {
+        role: "user" as const,
+        content: {
+          type: "text" as const,
+          text: `${AUTHORING_INSTRUCTIONS}\n\n${ask}`,
+        },
+      },
+    ],
+  };
+}
+
 /** Creates one MCP server whose calls read and write through the supplied executor. */
 export function createAgentMcpServer(
   input: CreateAgentMcpServerInput
 ): McpServer {
   const server = new McpServer(
     { name: "workflow-graph", version: "1.0.0" },
-    { maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS }
+    {
+      instructions: AUTHORING_INSTRUCTIONS,
+      maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
+    }
+  );
+
+  server.registerPrompt(
+    "build_workflow",
+    {
+      title: "Build a workflow",
+      description:
+        "The rules for authoring a Workflow Graph workflow with these tools, followed by the workflow to build.",
+      argsSchema: BUILD_WORKFLOW_ARGUMENTS,
+    },
+    (arguments_) => buildWorkflowPrompt(readJsonObject(arguments_)?.request)
   );
 
   const listWorkflows = COLLECTION_TOOL_SCHEMAS.list_workflows;
