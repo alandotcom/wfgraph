@@ -287,6 +287,7 @@ describe("focused scenarios", () => {
     expect(expectedCompletion.answerMustMentionOneOf).toEqual([
       "SMS",
       "text message",
+      "text-message",
       "texting",
     ]);
     expect(

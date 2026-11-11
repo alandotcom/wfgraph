@@ -591,7 +591,12 @@ export const focusedScenarios: Array<{
       },
       expectedCompletion: {
         outcome: "unsupported",
-        answerMustMentionOneOf: ["SMS", "text message", "texting"],
+        answerMustMentionOneOf: [
+          "SMS",
+          "text message",
+          "text-message",
+          "texting",
+        ],
       },
       intentCriteria: [
         "The answer explains that the available actions cannot send SMS.",

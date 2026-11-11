@@ -181,9 +181,14 @@ export const authoringScenarios: Array<{
           [BUILT_IN_ACTION_IDS.wait]: 1,
         },
         exactEvents: { start: ["applicant.created"], cancel: [] },
-        // Advisory: a batch of edits is one graph revision, so a build that
-        // uses apply_edits fits well inside this.
-        efficiencyBudget: { maxGraphRevisions: 6, maxToolCalls: 24 },
+        // Advisory: a batch of edits is one graph revision and one
+        // list_references call names every new step, so a build that batches
+        // fits inside this and one that works step by step does not.
+        efficiencyBudget: {
+          maxGraphRevisions: 6,
+          maxModelCalls: 12,
+          maxToolCalls: 22,
+        },
         requiredFlows: [
           {
             source: { kind: "action", actionId: "crm/get-applicant" },
@@ -329,6 +334,7 @@ export const authoringScenarios: Array<{
             "not run",
             "never run",
             "no run",
+            "no recorded run",
             "hasn't run",
             "not been run",
             "not yet run",
@@ -389,7 +395,12 @@ export const authoringScenarios: Array<{
       },
       expectedCompletion: {
         outcome: "ready",
-        answerMustMentionOneOf: ["SMS", "text message", "texting"],
+        answerMustMentionOneOf: [
+          "SMS",
+          "text message",
+          "text-message",
+          "texting",
+        ],
       },
       intentCriteria: [
         "The Slack half of the request is built.",

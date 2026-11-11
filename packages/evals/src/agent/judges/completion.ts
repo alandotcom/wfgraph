@@ -77,7 +77,7 @@ function claimsPublishBlocker(finalText: string): boolean {
 }
 
 function hasUnsupportedExplanation(finalText: string): boolean {
-  return /\b(?:cannot|can['’]t|could not|couldn['’]t|unavailable|unsupported|not available|does not support|doesn['’]t support)\b|\bno\b[^.?!]*\baction is available\b/i.test(
+  return /\b(?:cannot|can['’]t|could not|couldn['’]t|unavailable|unsupported|not available|does not support|doesn['’]t support|does not have|doesn['’]t have|has no)\b|\bno\b[^.?!]*\baction is available\b/i.test(
     finalText
   );
 }

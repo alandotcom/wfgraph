@@ -566,6 +566,8 @@ describe("assessExpectedCompletion", () => {
     "SMS can’t be sent with an available action.",
     "I couldn't add SMS because this workspace has no SMS action.",
     "I couldn’t add SMS because this workspace has no SMS action.",
+    "SMS doesn’t have a setting for that.",
+    "This Group has no SMS setting.",
   ])("accepts unsupported explanations that say %s", (finalText) => {
     expect(
       assess({
