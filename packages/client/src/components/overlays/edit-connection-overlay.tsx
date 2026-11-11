@@ -751,11 +751,26 @@ export function DeleteConnectionOverlay({
   const dismiss = onDismiss ?? pop;
   const queryClient = useQueryClient();
   const canDelete = can(WfGraphOperations.integrationDelete.id);
+  const catalogEntry = findIntegration(useExtensionCatalog(), integration.type);
 
   const deleteIntegration = useMutation(
     orpcQuery.integration.delete.mutationOptions({
-      onSuccess: async () => {
-        toast.success("Connection deleted");
+      onSuccess: async ({ oauthRevocation }) => {
+        if (oauthRevocation === "not_revoked") {
+          // The connection is gone, but the provider may still honor the grant
+          // it held, and only someone with access to the provider can end it.
+          // The notice stays until dismissed, because it asks for an action.
+          const providerLabel = catalogEntry?.oauth?.label ?? integration.type;
+          toast.warning(
+            `Connection deleted, but ${providerLabel} did not revoke its access`,
+            {
+              description: `Revoke this app's access in ${providerLabel}'s own settings to end the grant.`,
+              duration: Number.POSITIVE_INFINITY,
+            }
+          );
+        } else {
+          toast.success("Connection deleted");
+        }
         // Dismissing is this overlay's own business, and it happens before the
         // refresh is awaited: that await is a round trip, and the screen behind
         // this confirmation is the edit form for the connection just deleted.

@@ -6,10 +6,14 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { ConfigureConnectionOverlay } from "#src/components/overlays/add-connection-overlay";
-import { EditConnectionOverlay } from "#src/components/overlays/edit-connection-overlay";
+import {
+  DeleteConnectionOverlay,
+  EditConnectionOverlay,
+} from "#src/components/overlays/edit-connection-overlay";
 import { OverlayContainer } from "#src/components/overlays/overlay-container";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import type { Integration } from "#src/lib/rpc-client";
@@ -1024,5 +1028,58 @@ describe("OAuth connection overlays", () => {
         String(input).includes("/api/rpc/integration/getAll")
       )
     ).toBe(true);
+  });
+});
+
+describe("Deleting an OAuth connection", () => {
+  function deleteAnswering(oauthRevocation: "revoked" | "not_revoked") {
+    const integration = connection({
+      status: "connected",
+      connectedAt: "2026-08-24T10:00:00.000Z",
+    });
+    stubFetch(async (input) =>
+      String(input).includes("/api/rpc/integration/getAll")
+        ? integrationListResponse([])
+        : new Response(
+            JSON.stringify({ json: { success: true, oauthRevocation } }),
+            { headers: { "content-type": "application/json" } }
+          )
+    );
+    renderOverlay(
+      <DeleteConnectionOverlay
+        integration={integration}
+        overlayId="delete_resend"
+      />,
+      { integration }
+    );
+  }
+
+  it("tells the admin to revoke a grant the provider did not revoke", async () => {
+    const warning = vi.spyOn(toast, "warning");
+    deleteAnswering("not_revoked");
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    });
+
+    await waitFor(() => expect(warning).toHaveBeenCalledTimes(1));
+    expect(warning.mock.calls[0]?.[0]).toBe(
+      "Connection deleted, but Resend did not revoke its access"
+    );
+  });
+
+  it("says nothing more when the provider revoked the grant", async () => {
+    const warning = vi.spyOn(toast, "warning");
+    const success = vi.spyOn(toast, "success");
+    deleteAnswering("revoked");
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    });
+
+    await waitFor(() =>
+      expect(success).toHaveBeenCalledWith("Connection deleted")
+    );
+    expect(warning).not.toHaveBeenCalled();
   });
 });
