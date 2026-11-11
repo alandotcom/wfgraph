@@ -10,9 +10,12 @@ import {
 import {
   type ConditionFieldDefinition,
   type ConditionModel,
+  conditionFieldOutputPath,
   createDefaultConditionModel,
   entityStateConditionPath,
   EVENT_NAME_FIELD_PATH,
+  nodeOutputConditionPath,
+  parseNodeOutputConditionPath,
 } from "@wfgraph/shared/conditions/conditions";
 import {
   type ArrivingEventReachability,
@@ -111,16 +114,29 @@ export function seedConditionModelForField(
  * The field a rule names.
  *
  * A rule stores the path the picker offered and, for an open record, its key
- * beside it, so every path a rule holds is one this list already carries. The
- * lookup is therefore exact: what is left for this function is saying so in one
- * place, which is what keeps the picker, the summary and the reconcile from
- * disagreeing about whether a rule still points at anything.
+ * beside it, so every path a rule holds is one this list already carries, and
+ * the lookup is exact. The exception is a rule stored before rules named their
+ * node, which holds a node output path alone. The engine reads such a path
+ * from the node latest in the graph's node order that offers it, so that node's
+ * row answers, carrying the stored path: the rule reads as it always did, and
+ * picking any row rewrites it naming its node. Saying this in one place keeps
+ * the picker, the summary and the reconcile agreeing on what a rule points at.
  */
 export function conditionFieldForPath(
   fields: readonly ConditionSelectableField[],
   path: string
 ): ConditionSelectableField | undefined {
-  return fields.find((field) => field.path === path);
+  const exact = fields.find((field) => field.path === path);
+  if (exact) {
+    return exact;
+  }
+
+  // The fields are in the graph's node order wherever two share a path, so the
+  // last match is the node the engine reads.
+  const read = fields.findLast(
+    (field) => parseNodeOutputConditionPath(field.path)?.fieldPath === path
+  );
+  return read ? { ...read, path } : undefined;
 }
 
 /**
@@ -733,24 +749,17 @@ export function getUpstreamConditionFields(input: {
   const graphKeys = collectOpenRecordKeys(input.nodes, input.catalog);
 
   for (const field of upstreamFields(input, reachability)) {
-    const path = field.path.trim();
+    // Every row names the node it comes from, so two nodes offering one path
+    // are two rows, and a rule built from either reads that node's value.
+    const path = nodeOutputConditionPath(field.sourceNodeId, field.path);
     // A path the reaching Events type differently has no type to build a rule
     // over. Splitting on `$event.name` is what leaves one Event, and one type.
-    if (!path || field.typeClash) {
+    if (!path || field.typeClash || fieldsByPath.has(path)) {
       continue;
     }
 
     const conditionFieldType = conditionTypeOf(field);
     if (!conditionFieldType) {
-      continue;
-    }
-
-    const existing = fieldsByPath.get(path);
-    if (existing) {
-      if (!existing.sourceNodeLabels.includes(field.sourceNodeName)) {
-        existing.sourceNodeLabels.push(field.sourceNodeName);
-        existing.sourceNodeLabels.sort(compareText);
-      }
       continue;
     }
 
@@ -775,7 +784,7 @@ export function getUpstreamConditionFields(input: {
     // config row naming it.
     for (const keyField of keyFieldsUnderRecord(
       entry,
-      keysForRecord(graphKeys, field.integration, path)
+      keysForRecord(graphKeys, field.integration, field.path)
     )) {
       if (!fieldsByPath.has(keyField.path)) {
         fieldsByPath.set(keyField.path, keyField);
@@ -783,7 +792,12 @@ export function getUpstreamConditionFields(input: {
     }
   }
 
+  // Sorted by the path a builder reads, which leaves the rows two nodes share
+  // in the graph's node order: `conditionFieldForPath` relies on that order.
   return Array.from(fieldsByPath.values()).toSorted((a, b) =>
-    compareText(a.path, b.path)
+    compareText(
+      conditionFieldOutputPath(a.path),
+      conditionFieldOutputPath(b.path)
+    )
   );
 }

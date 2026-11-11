@@ -189,17 +189,6 @@ export function ConditionFieldCombobox({
                             One key of this record, named beside it
                           </span>
                         )}
-                        {field.sourceNodeLabels.length > 1 && (
-                          <span className="text-muted-foreground text-xs">
-                            Also from{" "}
-                            {field.sourceNodeLabels
-                              .filter(
-                                (sourceLabelName) =>
-                                  sourceLabelName !== group.value
-                              )
-                              .join(", ")}
-                          </span>
-                        )}
                       </span>
                     </ComboboxItem>
                   );

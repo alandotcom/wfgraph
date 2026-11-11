@@ -536,6 +536,59 @@ describe("ConditionBuilderRow field picker", () => {
   });
 });
 
+describe("ConditionBuilderRow rules naming their source node", () => {
+  // The Start Event and a scoring step both offer `score`, which the picker
+  // lists as one row per node, each written naming that node.
+  const SCORE_FIELDS: ConditionSelectableField[] = [
+    field("$node:lifecycle.score", "Lifecycle", {
+      label: "Score",
+      type: "number",
+    }),
+    field("$node:scorer.score", "Score Applicant", {
+      label: "Score",
+      type: "number",
+    }),
+  ];
+
+  it("offers a path two nodes share once under each node", () => {
+    const view = renderRow(SCORE_FIELDS, storedModel("$node:lifecycle.score"));
+
+    enterEdit(view);
+    openFieldPicker(view);
+
+    expect(view.getByText("Lifecycle")).toBeTruthy();
+    expect(view.getByText("Score Applicant")).toBeTruthy();
+    expect(
+      view.getAllByRole("option").map((option) => option.textContent)
+    ).toEqual(["Score", "Score"]);
+  });
+
+  // A rule stored before rules named their node holds the path alone, and the
+  // engine reads it from the node latest in the graph's node order.
+  it("reads a rule naming no node as the field it reads, and rewrites it on a pick", () => {
+    const onChange = vi.fn();
+    const view = renderRow(SCORE_FIELDS, storedModel("score"), onChange);
+
+    expect(view.queryByText("Unavailable field")).toBeNull();
+    expect(view.getByText(/Score/)).toBeTruthy();
+
+    enterEdit(view);
+    expect(
+      (view.getByLabelText("Select field") as HTMLInputElement).value
+    ).toBe("Score");
+
+    chooseField(view, "Lifecycle");
+    expect(writtenRule(onChange)?.field).toBe("$node:lifecycle.score");
+  });
+
+  it("marks a rule naming a node the graph no longer offers", () => {
+    const view = renderRow(SCORE_FIELDS, storedModel("$node:deleted.score"));
+
+    expect(view.getByText("Unavailable field")).toBeTruthy();
+    expect(view.queryByText(/deleted/)).toBeNull();
+  });
+});
+
 describe("ConditionBuilderRow view mode", () => {
   function twoGroupModel(): string {
     return serializeConditionModel({

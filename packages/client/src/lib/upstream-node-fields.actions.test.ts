@@ -171,11 +171,13 @@ describe("upstream-node-fields actions", () => {
       edges,
     });
 
-    const appointmentField = fields.find((f) => f.path === "appointmentId");
+    const appointmentField = fields.find(
+      (f) => f.path === "$node:action-1.appointmentId"
+    );
     expect(appointmentField).toBeDefined();
     expect(appointmentField?.type).toBe("string");
 
-    const statusField = fields.find((f) => f.path === "status");
+    const statusField = fields.find((f) => f.path === "$node:action-1.status");
     expect(statusField).toBeDefined();
     expect(statusField?.type).toBe("string");
   });
@@ -316,7 +318,7 @@ describe("upstream-node-fields actions", () => {
       edges,
     }).map((field) => field.path);
 
-    expect(paths).toEqual(["resumedAt", "waitType"]);
+    expect(paths).toEqual(["$node:wait-1.resumedAt", "$node:wait-1.waitType"]);
   });
 
   it("offers authorable event Wait outputs", () => {
@@ -369,6 +371,11 @@ describe("upstream-node-fields actions", () => {
     }).map((field) => field.path);
 
     // payload is object and stays out of the condition vocabulary.
-    expect(paths).toEqual(["event", "resumedAt", "timedOut", "waitType"]);
+    expect(paths).toEqual([
+      "$node:wait-1.event",
+      "$node:wait-1.resumedAt",
+      "$node:wait-1.timedOut",
+      "$node:wait-1.waitType",
+    ]);
   });
 });

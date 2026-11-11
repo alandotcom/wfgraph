@@ -71,9 +71,18 @@ describe("upstream-node-fields events", () => {
     });
 
     expect(fields).toEqual([
-      expect.objectContaining({ path: "occurredAt", type: "timestamp" }),
-      expect.objectContaining({ path: "patientName", type: "string" }),
-      expect.objectContaining({ path: "startsAt", type: "timestamp" }),
+      expect.objectContaining({
+        path: "$node:lifecycle-1.occurredAt",
+        type: "timestamp",
+      }),
+      expect.objectContaining({
+        path: "$node:lifecycle-1.patientName",
+        type: "string",
+      }),
+      expect.objectContaining({
+        path: "$node:lifecycle-1.startsAt",
+        type: "timestamp",
+      }),
     ]);
   });
 
@@ -443,7 +452,9 @@ describe("upstream-node-fields events", () => {
       edges: [startedEdge("action-1")],
     });
 
-    expect(fields.map((field) => field.path)).toEqual(["bookedBy"]);
+    expect(fields.map((field) => field.path)).toEqual([
+      "$node:lifecycle-1.bookedBy",
+    ]);
   });
 
   it("offers nothing when it cannot name the Start Event", () => {
@@ -586,7 +597,7 @@ describe("upstream-node-fields events", () => {
 
     expect(fields).toContainEqual(
       expect.objectContaining({
-        path: "previousStartsAt",
+        path: "$node:lifecycle-1.previousStartsAt",
         type: "timestamp",
         nullable: true,
       })
@@ -594,7 +605,8 @@ describe("upstream-node-fields events", () => {
     // The path both Events declare stays guaranteed, which is what keeps the
     // is-set operators off its row.
     expect(
-      fields.find((field) => field.path === "appointmentId")?.nullable
+      fields.find((field) => field.path === "$node:lifecycle-1.appointmentId")
+        ?.nullable
     ).toBeUndefined();
   });
 
@@ -701,8 +713,14 @@ describe("upstream-node-fields events", () => {
             field.path !== EVENT_NAME_FIELD_PATH
         )
         .map((field) => field.path)
-    ).toEqual(["amount", "passed", "reason"]);
-    expect(fields.find((field) => field.path === "passed")).toMatchObject({
+    ).toEqual([
+      "$node:lifecycle-1.amount",
+      "$node:lifecycle-1.passed",
+      "$node:lifecycle-1.reason",
+    ]);
+    expect(
+      fields.find((field) => field.path === "$node:lifecycle-1.passed")
+    ).toMatchObject({
       nullable: true,
     });
     expect(

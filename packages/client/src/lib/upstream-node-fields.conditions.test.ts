@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  conditionFieldForPath,
   getEventConditionFields,
   getUpstreamConditionFields,
   getUpstreamNodes,
@@ -105,9 +106,15 @@ describe("upstream-node-fields conditions", () => {
       edges,
     });
 
-    expect(fields.some((field) => field.path === "data.id")).toBe(true);
-    expect(fields.some((field) => field.path === "result.total")).toBe(true);
-    expect(fields.some((field) => field.path === "status")).toBe(true);
+    expect(
+      fields.some((field) => field.path === "$node:lifecycle-1.data.id")
+    ).toBe(true);
+    expect(
+      fields.some((field) => field.path === "$node:call-1.result.total")
+    ).toBe(true);
+    expect(fields.some((field) => field.path === "$node:call-1.status")).toBe(
+      true
+    );
   });
 
   it("offers tracked Entity State without Eligibility in its own namespace", () => {
@@ -177,13 +184,78 @@ describe("upstream-node-fields conditions", () => {
           sourceNodeId: "$entity",
           sourceNodeLabel: "Patient State",
         }),
-        expect.objectContaining({ path: "status", type: "number" }),
+        expect.objectContaining({
+          path: "$node:load-1.status",
+          type: "number",
+        }),
         expect.objectContaining({
           path: "$entity:patient.attributes",
           openRecord: true,
         }),
       ])
     );
+  });
+
+  // The Start Event and a scoring step both offer `score`. Each is its own
+  // row naming its node, in the graph's node order, and a rule stored with the
+  // path alone answers to the node the engine reads it from: the later one.
+  it("offers a path two nodes share as one row per node", () => {
+    surface.events = [
+      anEvent({
+        name: "app/applicant.created",
+        schema: Schema.Struct({ score: Schema.Finite }),
+      }),
+    ];
+    surface.actions = [
+      anAction({
+        id: "custom/score",
+        outputFields: [{ path: "score", type: "number" }],
+      }),
+    ];
+    const nodes: WorkflowNode[] = [
+      anEntryNode({ startEvents: ["app/applicant.created"] }),
+      createNode({
+        id: "scorer",
+        type: "action",
+        label: "Score Applicant",
+        config: { actionType: "custom/score" },
+      }),
+      createNode({
+        id: "condition-1",
+        type: "action",
+        label: "Condition",
+        config: { actionType: "Condition" },
+      }),
+    ];
+    const edges: WorkflowEdge[] = [
+      createEdge({
+        id: "e1",
+        source: "lifecycle-1",
+        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        target: "scorer",
+      }),
+      createEdge({ id: "e2", source: "scorer", target: "condition-1" }),
+    ];
+
+    const fields = getUpstreamConditionFields({
+      catalog: surface,
+      currentNodeId: "condition-1",
+      nodes,
+      edges,
+    });
+
+    expect(fields.map((field) => [field.path, field.sourceNodeLabels])).toEqual(
+      [
+        ["$node:lifecycle-1.score", ["Lifecycle"]],
+        ["$node:scorer.score", ["Score Applicant"]],
+      ]
+    );
+    expect(conditionFieldForPath(fields, "score")).toMatchObject({
+      path: "score",
+      label: "Score",
+      sourceNodeId: "scorer",
+    });
+    expect(conditionFieldForPath(fields, "$node:gone.score")).toBeUndefined();
   });
 
   it("includes only condition-compatible primitive fields", () => {
@@ -230,8 +302,12 @@ describe("upstream-node-fields conditions", () => {
       edges,
     });
 
-    expect(fields.some((field) => field.path === "count")).toBe(true);
-    expect(fields.some((field) => field.path === "items")).toBe(false);
+    expect(fields.some((field) => field.path === "$node:list-1.count")).toBe(
+      true
+    );
+    expect(fields.some((field) => field.path === "$node:list-1.items")).toBe(
+      false
+    );
   });
 
   // Output fields declare showWhen the same way config fields do. A delay Wait
@@ -302,18 +378,21 @@ describe("upstream-node-fields conditions", () => {
         edges,
       });
 
-      const record = fields.find((field) => field.path === "tags");
+      const record = fields.find((field) => field.path === "$node:send-1.tags");
       expect(record?.openRecord).toBe(true);
 
       // The whole point: a rule can be built on this without anybody typing it.
-      expect(fields.find((field) => field.path === "tags.name")).toMatchObject({
-        path: "tags.name",
+      expect(
+        fields.find((field) => field.path === "$node:send-1.tags.name")
+      ).toMatchObject({
+        path: "$node:send-1.tags.name",
         label: "Name",
         type: "string",
         nullable: true,
       });
       expect(
-        fields.find((field) => field.path === "tags.name")?.openRecord
+        fields.find((field) => field.path === "$node:send-1.tags.name")
+          ?.openRecord
       ).toBeUndefined();
     });
 
@@ -330,9 +409,9 @@ describe("upstream-node-fields conditions", () => {
         edges,
       });
 
-      expect(fields.some((field) => field.path.startsWith("tags."))).toBe(
-        false
-      );
+      expect(
+        fields.some((field) => field.path.startsWith("$node:send-1.tags."))
+      ).toBe(false);
     });
 
     // One integration's rows must never name another's record, which is what
@@ -377,8 +456,12 @@ describe("upstream-node-fields conditions", () => {
         ],
       });
 
-      expect(fields.some((field) => field.path === "tags.name")).toBe(true);
-      expect(fields.some((field) => field.path === "tags.plan")).toBe(false);
+      expect(
+        fields.some((field) => field.path === "$node:send-1.tags.name")
+      ).toBe(true);
+      expect(
+        fields.some((field) => field.path === "$node:send-1.tags.plan")
+      ).toBe(false);
     });
 
     // The Wait node's case, and the second half of the answer: the tags on a
@@ -430,12 +513,14 @@ describe("upstream-node-fields conditions", () => {
         edges,
       });
 
-      expect(fields.find((field) => field.path === "tags.name")).toMatchObject({
-        recordPath: "tags",
+      expect(
+        fields.find((field) => field.path === "$node:send-1.tags.name")
+      ).toMatchObject({
+        recordPath: "$node:send-1.tags",
         recordKey: "name",
       });
       expect(
-        fields.find((field) => field.path === "tags")?.recordKey
+        fields.find((field) => field.path === "$node:send-1.tags")?.recordKey
       ).toBeUndefined();
     });
 
@@ -456,9 +541,11 @@ describe("upstream-node-fields conditions", () => {
       });
 
       expect(fields.map((field) => field.path)).toContain(
-        'tags["campaign.name"]'
+        '$node:send-1.tags["campaign.name"]'
       );
-      expect(fields.map((field) => field.path)).toContain('tags["items[0]"]');
+      expect(fields.map((field) => field.path)).toContain(
+        '$node:send-1.tags["items[0]"]'
+      );
     });
 
     it("offers the record alone when no node in the graph fills it", () => {
