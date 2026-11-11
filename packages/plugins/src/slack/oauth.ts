@@ -109,6 +109,32 @@ function basicAuthorization(client: OAuthClientRegistration): string {
   )}`;
 }
 
+/**
+ * A refused Slack OAuth call. `slackError` is Slack's own error code when the
+ * answer carried one that is safe to repeat, which is how a caller tells one
+ * refusal from another without reading the message.
+ */
+class SlackOAuthError extends Error {
+  readonly slackError: string | undefined;
+
+  constructor(message: string, slackError: string | undefined) {
+    super(message);
+    this.name = "SlackOAuthError";
+    this.slackError = slackError;
+  }
+}
+
+/**
+ * The `apps.uninstall` errors saying the token no longer grants anything: the
+ * workspace removed the app, Slack revoked the token, or the account behind it
+ * is gone. Revocation has nothing left to do for any of them.
+ */
+const SLACK_ALREADY_REVOKED_ERRORS: ReadonlySet<string> = new Set([
+  "invalid_auth",
+  "token_revoked",
+  "account_inactive",
+]);
+
 async function requestSlackOAuth<S extends Schema.ConstraintDecoder<unknown>>(
   client: OAuthClientRegistration,
   url: string,
@@ -134,11 +160,12 @@ async function requestSlackOAuth<S extends Schema.ConstraintDecoder<unknown>>(
   );
 
   if (!result.ok) {
-    throw new Error(
-      describeOAuthFailure(result.failure, [
-        client.clientSecret ?? "",
-        ...body.values(),
-      ])
+    const sensitiveValues = [client.clientSecret ?? "", ...body.values()];
+    throw new SlackOAuthError(
+      describeOAuthFailure(result.failure, sensitiveValues),
+      result.failure._tag === "ExternalRejected"
+        ? readSafeSlackError(result.failure.payload, sensitiveValues)
+        : undefined
     );
   }
 
@@ -233,17 +260,28 @@ function createSlackOAuth(clientId: string, clientSecret: string) {
     },
 
     revoke: async ({ grant }: OAuthRevokeInput) => {
-      await requestSlackOAuth(
-        { clientId: client.clientId, clientSecret: undefined },
-        SLACK_UNINSTALL_URL,
-        new URLSearchParams({
-          token: grant.tokens.accessToken,
-          client_id: client.clientId,
-          client_secret: client.clientSecret ?? "",
-        }),
-        slackOkResponseSchema,
-        { basicAuth: false }
-      );
+      try {
+        await requestSlackOAuth(
+          { clientId: client.clientId, clientSecret: undefined },
+          SLACK_UNINSTALL_URL,
+          new URLSearchParams({
+            token: grant.tokens.accessToken,
+            client_id: client.clientId,
+            client_secret: client.clientSecret ?? "",
+          }),
+          slackOkResponseSchema,
+          { basicAuth: false }
+        );
+      } catch (error) {
+        if (
+          error instanceof SlackOAuthError &&
+          error.slackError !== undefined &&
+          SLACK_ALREADY_REVOKED_ERRORS.has(error.slackError)
+        ) {
+          return;
+        }
+        throw error;
+      }
     },
   } satisfies IntegrationOAuth;
 }

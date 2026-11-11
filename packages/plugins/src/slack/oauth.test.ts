@@ -244,6 +244,41 @@ describe("Slack OAuth definition", () => {
     });
   });
 
+  // A workspace that already uninstalled the app, or a token Slack already
+  // revoked, leaves nothing to revoke. Throwing there would leave the operator
+  // a connection whose disconnect fails on every try.
+  it.each(["invalid_auth", "token_revoked", "account_inactive"])(
+    "treats apps.uninstall answering %s as already revoked",
+    async (slackError) => {
+      stubFetch(() => Response.json({ ok: false, error: slackError }));
+
+      await expect(
+        configuredOAuth().revoke({
+          client: oauthClient,
+          grant: {
+            credentials: { SLACK_API_KEY: accessToken },
+            tokens: { accessToken },
+          },
+        })
+      ).resolves.toBeUndefined();
+      expect(requests).toHaveLength(1);
+    }
+  );
+
+  it("still refuses an uninstall Slack rejects for another reason", async () => {
+    stubFetch(() => Response.json({ ok: false, error: "invalid_client_id" }));
+
+    await expect(
+      configuredOAuth().revoke({
+        client: oauthClient,
+        grant: {
+          credentials: { SLACK_API_KEY: accessToken },
+          tokens: { accessToken },
+        },
+      })
+    ).rejects.toThrow("Slack OAuth request rejected: invalid_client_id");
+  });
+
   it("sanitizes malformed Slack errors and makes one request", async () => {
     const leakedValue = "authorization-code-and-access-token";
     stubFetch(() =>
