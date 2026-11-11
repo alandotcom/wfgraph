@@ -68,6 +68,9 @@ describe("apply_edits", () => {
         });
 
         const document = yield* draft.current;
+        // The batch is one write: the editor and the trajectory see one
+        // revision for it, however many operations it held.
+        expect((yield* draft.latest).revision).toBe(1);
         const [score, check, notify] = result.results;
         expect(result.results.map((step) => step.tool)).toEqual([
           "add_node",
@@ -116,6 +119,7 @@ describe("apply_edits", () => {
       expect(failure.reason).toContain("Operation 2 (connect_nodes)");
       expect(failure.reason).toContain("no operation was applied");
       expect(yield* draft.current).toEqual({ nodes: [entry], edges: [] });
+      expect((yield* draft.latest).revision).toBe(0);
     })
   );
 

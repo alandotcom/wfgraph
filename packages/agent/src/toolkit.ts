@@ -128,7 +128,11 @@ export const agentToolHandlers = Effect.gen(function* () {
     disconnect_nodes: reportingNewIssues(graphWrite.disconnect_nodes),
     insert_node_on_edge: reportingNewIssues(graphWrite.insert_node_on_edge),
     apply_edits: reportingNewIssues(
-      applyEditsHandler({ draft, handlers: graphWrite })
+      applyEditsHandler({
+        draft,
+        handlersFor: (scratch) =>
+          Effect.provideService(graphWriteToolHandlers, WorkflowDraft, scratch),
+      })
     ),
     set_lifecycle_rules: reportingNewIssues(lifecycle.set_lifecycle_rules),
     set_condition: reportingNewIssues(lifecycle.set_condition),

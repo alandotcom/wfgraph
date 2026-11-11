@@ -93,6 +93,15 @@ export type WorkflowDraftService = {
   readonly update: (
     edit: (document: AgentDocument) => AgentDocument
   ) => Effect.Effect<WorkflowDraftUpdate, { readonly reason: string }>;
+  /**
+   * Runs several edits as one write. `run` edits a scratch draft that starts
+   * from the current graph and checks each edit as `update` does; when it
+   * succeeds, the scratch draft's final graph is stored as one revision, and
+   * when it fails, nothing is stored.
+   */
+  readonly transaction: <A, E>(
+    run: (scratch: WorkflowDraftService) => Effect.Effect<A, E>
+  ) => Effect.Effect<A, E>;
   /** Read the immutable document stored after one successful update. */
   readonly revision: (revision: number) => Effect.Effect<AgentDocument>;
   /** The newest stored revision and its number; the opening graph is 0. */
@@ -130,7 +139,7 @@ export function makeWorkflowDraft(
       revisions: [input.document] as readonly AgentDocument[],
     });
 
-    return {
+    const draft: WorkflowDraftService = {
       current: Ref.get(state).pipe(Effect.map((snapshot) => snapshot.document)),
       update: (edit) =>
         Ref.modify(
@@ -201,10 +210,25 @@ export function makeWorkflowDraft(
           document: snapshot.document,
         }))
       ),
+      transaction: (run) =>
+        Effect.gen(function* () {
+          const scratch = yield* makeWorkflowDraft({
+            ...input,
+            document: (yield* Ref.get(state)).document,
+          });
+          const answer = yield* run(scratch);
+          const edited = yield* scratch.current;
+          yield* Ref.update(state, (current) => ({
+            document: edited,
+            revisions: [...current.revisions, edited],
+          }));
+          return answer;
+        }),
       catalog: input.catalog,
       integrations: input.integrations,
       validateDraft: input.validateDraft,
     };
+    return draft;
   });
 }
 

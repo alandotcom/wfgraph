@@ -20,7 +20,7 @@ import {
   type JsonValue,
   readJsonValue,
 } from "@wfgraph/shared/types/json";
-import type { AgentDocument, WorkflowDraftService } from "#src/document";
+import type { WorkflowDraftService } from "#src/document";
 import {
   AddNode,
   ConnectNodes,
@@ -227,11 +227,12 @@ function runOperation(
 /** The `apply_edits` handler over the draft and the single-edit handlers. */
 export function applyEditsHandler(input: {
   readonly draft: WorkflowDraftService;
-  readonly handlers: GraphWriteHandlers;
+  /** The single-edit handlers bound to one draft, the scratch the batch edits. */
+  readonly handlersFor: (
+    scratch: WorkflowDraftService
+  ) => Effect.Effect<GraphWriteHandlers>;
 }) {
-  const { draft, handlers } = input;
-  const restore = (snapshot: AgentDocument) =>
-    Effect.orDie(draft.update(() => snapshot));
+  const { draft, handlersFor } = input;
 
   return (batch: { readonly operations: readonly Operation[] }) =>
     Effect.gen(function* () {
@@ -246,26 +247,31 @@ export function applyEditsHandler(input: {
         });
       }
 
-      const snapshot = yield* draft.current;
-      const ids = new Map<string, string>();
-      const results: OperationResult[] = [];
-      for (const [index, raw] of batch.operations.entries()) {
-        const operation = resolveOperation(raw, ids);
-        const outcome = yield* Effect.result(runOperation(handlers, operation));
-        if (Result.isFailure(outcome)) {
-          if (results.length > 0) {
-            yield* restore(snapshot);
+      // The operations edit a scratch copy, which the draft stores as one
+      // revision when every operation succeeds and drops when one fails.
+      return yield* draft.transaction((scratch) =>
+        Effect.gen(function* () {
+          const handlers = yield* handlersFor(scratch);
+          const ids = new Map<string, string>();
+          const results: OperationResult[] = [];
+          for (const [index, raw] of batch.operations.entries()) {
+            const operation = resolveOperation(raw, ids);
+            const outcome = yield* Effect.result(
+              runOperation(handlers, operation)
+            );
+            if (Result.isFailure(outcome)) {
+              return yield* Effect.fail({
+                reason: `Operation ${index + 1} (${raw.tool}) was refused, so no operation was applied: ${outcome.failure.reason}`,
+              });
+            }
+            const result = outcome.success;
+            if (result.key !== undefined && result.nodeId !== undefined) {
+              ids.set(result.key, result.nodeId);
+            }
+            results.push(result);
           }
-          return yield* Effect.fail({
-            reason: `Operation ${index + 1} (${raw.tool}) was refused, so no operation was applied: ${outcome.failure.reason}`,
-          });
-        }
-        const result = outcome.success;
-        if (result.key !== undefined && result.nodeId !== undefined) {
-          ids.set(result.key, result.nodeId);
-        }
-        results.push(result);
-      }
-      return { results };
+          return { results };
+        })
+      );
     });
 }

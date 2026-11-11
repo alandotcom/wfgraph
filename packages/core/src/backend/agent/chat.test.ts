@@ -54,6 +54,7 @@ const draft: WorkflowDraftService = {
     edges: [],
   }),
   update: () => Effect.die("unused"),
+  transaction: () => Effect.die("unused"),
   revision: () => Effect.succeed(document),
   latest: Effect.succeed({ revision: 1, document }),
   catalog: { actions: [], entities: [], events: [], integrations: [] },
@@ -272,6 +273,7 @@ describe("withGraphParts", () => {
 
         const delayedDraft: WorkflowDraftService = {
           current: Effect.sync(() => current),
+          transaction: () => Effect.die("unused"),
           update: (edit) =>
             Effect.gen(function* () {
               activeHandlers += 1;
