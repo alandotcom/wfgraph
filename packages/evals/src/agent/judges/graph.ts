@@ -105,7 +105,10 @@ export function assessGraphGrounding(
       );
     }
 
-    if (action) {
+    // A built-in step's config is written by set_wait or set_condition rather
+    // than declared as config fields, so only a catalog action's keys are held
+    // to its declaration.
+    if (action && !BUILT_INS.has(actionId)) {
       const allowed = new Set([
         "actionType",
         "integrationId",

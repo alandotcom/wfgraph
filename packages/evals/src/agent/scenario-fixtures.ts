@@ -1,4 +1,5 @@
 import { fixtureCatalog } from "@wfgraph/agent/tools/catalog-fixture";
+import { builtInActions } from "@wfgraph/core/backend/extensions/built-ins";
 import { serializeConditionModel } from "@wfgraph/shared/conditions/condition-schema";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { AgentDocument } from "@wfgraph/agent/document";
@@ -74,7 +75,12 @@ export const evalCatalog: ExtensionCatalog = {
       ],
     },
   ],
+  // The built-in Condition, Event Split and Wait come first, as the catalog a
+  // host serves lists them: list_references reads a Wait's timedOut, event and
+  // payload outputs from that metadata, and without it a step below a Wait
+  // can reference nothing the Wait produced.
   actions: [
+    ...builtInActions,
     ...fixtureCatalog.actions,
     {
       id: "crm/get-applicant",
