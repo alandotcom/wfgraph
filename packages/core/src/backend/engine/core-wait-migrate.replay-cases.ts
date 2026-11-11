@@ -625,6 +625,9 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
     await expect(run).rejects.toMatchObject({
       message: expect.stringContaining("moved off workflow version ver_1"),
     });
+    // The refusal ends the pass. It fails no node, so the pass writes no
+    // terminal record for the run.
+    expect(store.callsOf("completeRun")).toEqual([]);
   });
 
   // The first park carries the same fence in its own write. The repository
@@ -652,6 +655,9 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
     await expect(run).rejects.toMatchObject({
       message: expect.stringContaining("would not accept a park"),
     });
+    // The refusal ends the pass. It fails no node, so the pass writes no
+    // terminal record for the run.
+    expect(store.callsOf("completeRun")).toEqual([]);
   });
 
   // A re-park the repository refused for the version guard is the same fence one

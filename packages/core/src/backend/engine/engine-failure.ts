@@ -84,11 +84,16 @@ export function failureFromUnknown(error: unknown): EngineFailure {
 /**
  * Whether a failure ends this pass of the body with nothing more written,
  * rather than failing a node or the run. An interrupted invocation is retried
- * by the durable runtime, and a pass that lost its lease leaves the run to the
- * owner that holds it now.
+ * by the durable runtime, a pass that lost its lease leaves the run to the
+ * owner that holds it now, and a refused version fence leaves it to the pass
+ * that loads the version the run was moved to.
  */
 export function endsPass(failure: EngineFailure): boolean {
-  return failure.kind === "interrupt" || failure.kind === "lease_lost";
+  return (
+    failure.kind === "interrupt" ||
+    failure.kind === "lease_lost" ||
+    failure.kind === "version_refused"
+  );
 }
 
 /**

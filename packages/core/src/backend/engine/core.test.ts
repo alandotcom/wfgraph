@@ -613,8 +613,11 @@ describe("run persistence through the store port", () => {
     });
   });
 
+  // The interrupt crosses the durable callback's Promise as an `interrupt`
+  // failure, and an interrupted pass ends where it stands: no node is failed and
+  // no terminal record is written, so the retried pass finds the run in flight.
   it("preserves an interrupt raised inside a durable runtime callback", async () => {
-    const result = await executeWorkflow(
+    const run = executeWorkflow(
       {
         graph: createLifecycleToActionGraph(),
         executionId: "exec_durable_interrupt",
@@ -628,10 +631,11 @@ describe("run persistence through the store port", () => {
       actions
     );
 
-    expect(executionFailure(result.results.lifecycle_1)).toEqual({
+    await expect(run).rejects.toEqual({
       kind: "interrupt",
       message: "Workflow execution was interrupted",
     });
+    expect(store.callsOf("completeRun")).toEqual([]);
   });
 
   // Under the database executor a write the pass's fence refused means another

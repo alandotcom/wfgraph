@@ -396,11 +396,6 @@ function executeWorkflowInner(
 
       if (outcome.kind === "failed") {
         const failure = failureFromCause(outcome.cause);
-        yield* Effect.logError("Fatal error during workflow execution").pipe(
-          Effect.annotateLogs({
-            error: { kind: failure.kind, cause: Cause.squash(outcome.cause) },
-          })
-        );
 
         // An interrupted pass is one the executor runs again, and that pass
         // replays the memoized steps, reads the claim at the terminal read and
@@ -408,10 +403,19 @@ function executeWorkflowInner(
         // this dying pass would leave the next one reading a row that is no
         // longer in flight, so the pass ends the way it was interrupted and
         // writes nothing. A pass that lost its lease ends the same way, leaving
-        // the run to the owner that holds it now.
+        // the run to the owner that holds it now, and so does a pass a version
+        // fence refused, leaving the run to the pass that loads the version it
+        // was moved to. The executor logs how the pass ended, so none of these
+        // is logged as a fatal error here.
         if (endsPass(failure)) {
           return yield* Effect.failCause(outcome.cause);
         }
+
+        yield* Effect.logError("Fatal error during workflow execution").pipe(
+          Effect.annotateLogs({
+            error: { kind: failure.kind, cause: Cause.squash(outcome.cause) },
+          })
+        );
 
         // The flag is the authority here as it is on the success path: a run is
         // canceled because a Cancel Event claimed it, never because the text of
@@ -587,8 +591,8 @@ function endParked(input: {
  * `failed` and the audit row says the outlet died partway. An interrupt is no
  * outlet failure: the cause is re-raised, the pass ends with nothing written,
  * and the next pass the executor runs takes the outlet. A lost
- * lease and an outlet that left a Wait parked are re-raised the same way, and
- * end the pass before the record.
+ * lease, a refused version fence and an outlet that left a Wait parked are
+ * re-raised the same way, and end the pass before the record.
  *
  * The step id is shared with whichever terminal path did not call this. An
  * execution takes one of the two paths, and a replay takes the path it took

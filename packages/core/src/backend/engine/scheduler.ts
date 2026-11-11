@@ -56,6 +56,7 @@ import {
 } from "#src/backend/engine/strategies/index";
 import {
   type EngineFailure,
+  endsPass,
   failureFromCause,
 } from "#src/backend/engine/engine-failure";
 import { runDurable } from "#src/backend/engine/durable";
@@ -494,8 +495,9 @@ export class NodeScheduler {
 
     return Effect.catchCauseIf(
       execute,
-      // A pass that lost its lease ends where it stands, and no node failed.
-      (cause) => failureFromCause(cause).kind !== "lease_lost",
+      // A failure that ends the pass (a lost lease, a refused version fence, an
+      // interruption) ends it where it stands, and no node failed.
+      (cause) => !endsPass(failureFromCause(cause)),
       (cause) =>
         Effect.gen(
           function* (this: NodeScheduler) {
