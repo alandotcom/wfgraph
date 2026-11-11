@@ -974,9 +974,21 @@ Inngest `serve` or `connect`; each forwarder sends the Inngest event in with `ev
 For how to send one, see `docs/events.md`.
 
 An inbox row stays after its delivery settles, as `delivered`, or as `failed` with the
-reason in its `error` column. The loop deletes settled rows once they are older than
+reason in its `error` column. A delivery retries each workflow the Event concerns on its
+own, so a workflow whose step keeps failing, such as one whose Entity resolver times out,
+does not hold the Event back from the others. Once that workflow's retries are spent, it
+alone is recorded with a `run_refused` or `cancel_not_delivered` audit row whose `reason`
+is `delivery_failed`, and the row settles `failed` with an error that counts the workflows
+the Event reached and names each one that failed. A resend of the row's idempotency key
+delivers the Event again, and each workflow that already received it answers from the
+decision it recorded. The loop deletes settled rows once they are older than
 `events.retentionMs`, seven days by default, and never deletes a row still waiting for
 delivery. See Keep settled Events for a window.
+
+A paused workflow opens no new run: a Start Event's arrival starts nothing for it, a manual
+run is recorded as ignored, and its schedules do not fire. Its runs in flight carry on, so
+a Cancel Event still claims them and an Event still wakes their Waits. `CONTEXT.md` defines
+the Paused workflow.
 
 The loop keeps its state in two tables beside the other Workflow Graph tables.
 `workflow_execution_schedule` holds one row per run in flight, and
