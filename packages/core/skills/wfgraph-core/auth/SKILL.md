@@ -2,16 +2,17 @@
 name: auth
 description: >
   Use when deciding who can open and change an embedded Workflow Graph app:
-  writing the auth callback for createWfGraphApp or wfWorker with
+  writing the auth function for createWfGraphApp or wfWorker, with or without
   defineWfGraphAuth, mapping host sessions to the viewer, editor and admin
   policies in WfGraphRoles, building a custom policy from the host's own grants
   with WfGraphAccess.fromPermissions or fromOperationIds, choosing
   trustWfGraphUpstream behind a gateway that authorizes every request, or
-  explaining a 401, 403 or 500 from the Workflow Graph API. Also use for
+  explaining a 401, 403, 413 or 500 from the Workflow Graph API. Also use for
   requests such as "let support staff see runs but not edit workflows", "only
   admins may manage connections" or "the workflow editor fails to load after we
   changed our login". For the other createWfGraphApp options use wfgraph-core;
-  for turning on the built-in OAuth integrations use wfgraph-plugins.
+  for an MCP client's bearer token use wfgraph-core/mcp; for turning on the
+  built-in OAuth integrations use wfgraph-plugins.
 metadata:
   purpose: >
     Write the host access policy for Workflow Graph with defineWfGraphAuth,
@@ -34,11 +35,14 @@ authorization").
 # Authentication and authorization
 
 `auth` is a required option of `createWfGraphApp`, and a required field of the
-object a Worker's `request(env)` callback returns. It is a callback that reads
+object a Worker's `request(env)` callback returns. It is a function that reads
 the host's own session from the request and returns an access policy for that
-request, or `null` when the request has no session. Workflow Graph stores no
-principal, so host identity, organization and grants stay in the callback's
-closure.
+request, or `null` or `undefined` when the request has no session; an object
+holding that function as `authenticate` also works. `createWfGraphApp` refuses
+any other value, a missing one included, at startup with a message naming the
+option. `createWfGraphRunner` serves no requests, so it takes `auth` as
+optional and ignores it. Workflow Graph stores no principal, so host identity,
+organization and grants stay in the function's closure.
 
 A policy grants application capabilities: which operations a session may call,
 such as `workflow.publish`. A granted operation acts on every Workflow Graph
@@ -50,15 +54,18 @@ Every name in this skill is exported from `@wfgraph/core` and from
 
 ## Procedure
 
-1. **Read the session.** Write the callback with `defineWfGraphAuth`, read the
-   host's session from headers and cookies, and return `null` when there is
-   none. Workflow Graph passes the callback a clone of the request, so reading
-   its body drains nothing, but a session belongs in a cookie or header.
-   Result: a request with no session answers `401 Unauthorized`.
+1. **Read the session.** Pass the function inline as `auth`, or write it in a
+   module of its own with `defineWfGraphAuth`, which returns the function
+   unchanged and gives it its types (`WfGraphAuthenticate`). Read the host's
+   session from headers and cookies, and return `null` when there is none.
+   Workflow Graph passes the function a clone of the request, so reading its
+   body drains nothing, but a session belongs in a cookie or header. Result: a
+   request with no session answers `401 Unauthorized`.
 2. **Return a role policy.** Map the session's role to `WfGraphRoles.viewer`,
-   `WfGraphRoles.editor` or `WfGraphRoles.admin`. Result: a viewer can read
-   workflows and is refused a publish with `403 Forbidden`; an editor can
-   create and publish.
+   `WfGraphRoles.editor` or `WfGraphRoles.admin`. A lookup such as
+   `WfGraphRoles[session.role]` for a role the map lacks answers `undefined`,
+   which is a `401`. Result: a viewer can read workflows and is refused a
+   publish with `403 Forbidden`; an editor can create and publish.
 3. **Build a custom policy only for custom roles.** Load the session's grants
    once inside the callback, then return
    `WfGraphAccess.fromPermissions(grants)`. Use
@@ -95,8 +102,10 @@ each route's operation id and its `x-wfgraph-permission`.
 
 | Callback or policy outcome                                          | Answer                            |
 | ------------------------------------------------------------------- | --------------------------------- |
-| The callback returns `null`                                         | `401 Unauthorized`                |
+| The callback returns `null` or `undefined`                          | `401 Unauthorized`                |
 | `allows(operation)` returns `false`                                 | `403 Forbidden`                   |
+| A browser write sent from another site, before the callback runs    | `403`                             |
+| An operator request body larger than 8 MiB, before any handler      | `413`                             |
 | The callback throws or rejects                                      | `500`, details logged server-side |
 | The callback returns something without an `allows` function         | `500`, details logged server-side |
 | `allows` throws, rejects, or answers something other than a boolean | `500`, details logged server-side |
@@ -105,14 +114,24 @@ A `500` is a host-system failure. Workflow Graph logs the cause on the
 request's `wfgraph.http` record (`wfgraph.http.auth` for the editor page
 itself), and the response body is `{ "error": "Internal Server Error" }`.
 
+The cross-site rule covers a `POST`, `PUT`, `PATCH` or `DELETE` to the RPC,
+REST and OAuth routes whose `Sec-Fetch-Site` is `cross-site` or `same-site`,
+or that carries an `Origin` with no `Sec-Fetch-Site`, unless that `Origin` is
+`publicUrl` or the request's own origin. A server-side client sends neither
+header and is unaffected. Machine routes and the MCP endpoint sit outside the
+rule.
+
 ### Routes the callback never sees
 
 Two machine routes carry a credential of their own and skip the callback: a
 Connection's webhook intake (`POST /api/webhooks/{type}/{connectionId}`,
 verified by the vendor's signature) and `POST /api/events` (mounted only when
 `events.key` is set, sent with `Authorization: Bearer <key>`). The OAuth client
-metadata route is public provider-discovery data. Every other route, the editor
-page included, goes through the callback.
+metadata route is public provider-discovery data, as is the MCP
+protected-resource metadata when `mcp.authorization` is set, and
+`GET /api/health`, mounted by `health: true`, answers a load balancer that
+cannot sign in. Every other route, the editor page and the MCP endpoint
+included, goes through the callback.
 
 ### The editor's grant snapshot
 
@@ -142,7 +161,7 @@ Source: alandotcom/wfgraph:docs/embedding.md (Authentication and authorization)
 
 Wrong: `if (!session) throw new Error("not signed in")`.
 
-Correct: `if (!session) return null`.
+Correct: `if (!session) return null`, or `return undefined`.
 
 A throw is a host-system failure: the request answers `500` and logs an error,
 and the editor shows a broken page where a sign-in redirect belongs.
@@ -166,14 +185,29 @@ Source: alandotcom/wfgraph:docs/embedding.md (Authentication and authorization)
 Wrong: a callback that accepts only `Authorization: Bearer <token>` from the
 editor's requests.
 
-Correct: authenticate from a `SameSite=Lax` session cookie, which the
-provider's redirect to the OAuth callback carries.
+Correct: authenticate the editor from a `SameSite=Lax` session cookie, which
+the provider's redirect to the OAuth callback carries. Read a bearer header in
+addition, for a client that holds no cookie such as an MCP client
+(wfgraph-core/mcp).
 
 The OAuth callback stays behind `auth`, and a top-level redirect from the
 provider carries cookies and no custom headers, so every OAuth connection
 fails at its last step.
 
 Source: alandotcom/wfgraph:docs/embedding.md (Built-in integrations)
+
+### MEDIUM The host's own page writes from another subdomain
+
+Wrong: a page served from `console.example.com` calling
+`fetch("https://workflows.example.com/api/rest/...", { method: "POST", credentials: "include" })`.
+
+Correct: call the API from the origin `publicUrl` names, or from the host's
+server, which sends no `Sec-Fetch-Site` or `Origin`.
+
+The browser marks the request `same-site`, so it answers `403` before the
+callback runs, whatever session the cookie holds.
+
+Source: alandotcom/wfgraph:docs/embedding.md (Authentication and authorization)
 
 ## Completion
 
