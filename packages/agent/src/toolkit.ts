@@ -7,6 +7,7 @@
  */
 
 import { Effect } from "effect";
+import { WorkflowDraft } from "#src/document";
 import { Toolkit } from "effect/ai";
 import {
   catalogToolHandlers,
@@ -42,6 +43,7 @@ import {
   referenceToolHandlers,
 } from "#src/tools/reference-tools";
 import { SetWait, waitToolHandlers } from "#src/tools/wait-tools";
+import { issuesIntroduced, type NewIssue } from "#src/tools/new-issues";
 
 export const agentToolkit = Toolkit.make(
   ListActions,
@@ -74,19 +76,45 @@ export const agentToolkit = Toolkit.make(
  * `AiError` that no structural check can separate.
  */
 export const agentToolHandlers = Effect.gen(function* () {
+  const draft = yield* WorkflowDraft;
   const catalog = yield* catalogToolHandlers;
   const graphRead = yield* graphReadToolHandlers;
   const references = yield* referenceToolHandlers;
   const graphWrite = yield* graphWriteToolHandlers;
   const lifecycle = yield* lifecycleToolHandlers;
   const wait = yield* waitToolHandlers;
+
+  /**
+   * A write handler that also answers the validation issues its edit
+   * introduced, read from the host's draft checks before and after it.
+   */
+  const reportingNewIssues =
+    <I, A extends object, E>(
+      handler: (input: I) => Effect.Effect<A, E>
+    ): ((input: I) => Effect.Effect<A & { newIssues?: NewIssue[] }, E>) =>
+    (input) =>
+      Effect.gen(function* () {
+        const before = draft.validateDraft(yield* draft.current);
+        const result = yield* handler(input);
+        const after = draft.validateDraft(yield* draft.current);
+        const newIssues = issuesIntroduced({ before, after });
+        return newIssues.length === 0 ? result : { ...result, newIssues };
+      });
+
   return {
     ...catalog,
     ...graphRead,
     ...references,
-    ...graphWrite,
-    ...lifecycle,
-    ...wait,
+    revert_draft: reportingNewIssues(graphWrite.revert_draft),
+    add_node: reportingNewIssues(graphWrite.add_node),
+    update_node: reportingNewIssues(graphWrite.update_node),
+    delete_node: reportingNewIssues(graphWrite.delete_node),
+    connect_nodes: reportingNewIssues(graphWrite.connect_nodes),
+    disconnect_nodes: reportingNewIssues(graphWrite.disconnect_nodes),
+    insert_node_on_edge: reportingNewIssues(graphWrite.insert_node_on_edge),
+    set_lifecycle_rules: reportingNewIssues(lifecycle.set_lifecycle_rules),
+    set_condition: reportingNewIssues(lifecycle.set_condition),
+    set_wait: reportingNewIssues(wait.set_wait),
   };
 });
 

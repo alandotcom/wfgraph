@@ -223,27 +223,6 @@ describe("read_nodes", () => {
 });
 
 describe("validate_workflow", () => {
-  it.effect("requires an explicit draft validation stub", () =>
-    Effect.gen(function* () {
-      const { tools } = yield* agentToolsFor({ catalog });
-      const result = yield* Effect.exit(tools.validate_workflow());
-
-      expect(Exit.isFailure(result)).toBe(true);
-      if (Exit.isFailure(result)) {
-        const failure = result.cause.reasons[0];
-        expect(failure?._tag).toBe("Die");
-        if (failure?._tag === "Die") {
-          expect(failure.defect).toBeInstanceOf(Error);
-          if (failure.defect instanceof Error) {
-            expect(failure.defect.message).toBe(
-              "agentToolsFor requires an explicit validateDraft stub for validate_workflow"
-            );
-          }
-        }
-      }
-    })
-  );
-
   it.effect("separates whether the draft saves from whether it publishes", () =>
     Effect.gen(function* () {
       const blockers = [

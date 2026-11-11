@@ -42,6 +42,7 @@ import {
   brokenReferenceWarning,
   referencesBrokenBetween,
 } from "#src/tools/reference-diagnosis";
+import { newIssuesField } from "#src/tools/new-issues";
 import { nodeName } from "#src/tools/node-name";
 import { referencesForNode } from "#src/tools/reference-tools";
 import { writeHints } from "#src/tools/tool-hints";
@@ -90,11 +91,15 @@ const builtInActionIds: readonly string[] = Object.values(BUILT_IN_ACTION_IDS);
 const failureSchema = Schema.Struct({ reason: Schema.String });
 
 /** What every write tool answers: enough for the model to narrate the edit. */
-const writeResultSchema = Schema.Struct({ summary: Schema.String });
+const writeResultSchema = Schema.Struct({
+  summary: Schema.String,
+  ...newIssuesField,
+});
 
 const addNodeResultSchema = Schema.Struct({
   nodeId: Schema.String,
   summary: Schema.String,
+  ...newIssuesField,
 });
 
 const insertNodeResultSchema = Schema.Struct({
@@ -102,6 +107,7 @@ const insertNodeResultSchema = Schema.Struct({
   incomingEdgeId: Schema.String,
   outgoingEdgeId: Schema.String,
   summary: Schema.String,
+  ...newIssuesField,
 });
 
 /** A placeholder the editor replaces the moment it lays the graph out. */

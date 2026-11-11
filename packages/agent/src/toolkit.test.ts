@@ -155,6 +155,68 @@ describe("the toolkit", () => {
   );
 });
 
+describe("the issues a write introduced", () => {
+  it.effect("answers what the write added and leaves out what was there", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        catalog: fixtureCatalog,
+        nodes: [
+          {
+            id: "entry",
+            position: { x: 0, y: 0 },
+            type: "lifecycle",
+            data: { label: "Lifecycle", type: "lifecycle", config: {} },
+          },
+          {
+            id: "old",
+            position: { x: 0, y: 0 },
+            type: "action",
+            data: {
+              label: "Old",
+              type: "action",
+              config: { actionType: "slack/send-message" },
+            },
+          },
+        ],
+        // One blocker per Slack step, the way a missing channel reads.
+        validateDraft: (document) => ({
+          draftValid: true,
+          structuralIssues: [],
+          publishBlockers: document.nodes
+            .filter((node) => node.data.type === "action")
+            .map((node) => ({
+              kind: "missing_required_field",
+              nodeId: node.id,
+              nodeLabel: node.data.label,
+              message: "Channel is required",
+            })),
+          warnings: [],
+        }),
+      });
+
+      const added = yield* tools.add_node({
+        actionId: "slack/send-message",
+        label: "Notify",
+      });
+      const renamed = yield* tools.update_node({
+        nodeId: "old",
+        description: "Still missing its channel.",
+      });
+
+      expect(added.newIssues).toEqual([
+        {
+          blocksPublish: true,
+          kind: "missing_required_field",
+          nodeId: added.nodeId,
+          nodeLabel: "Notify",
+          message: "Channel is required",
+        },
+      ]);
+      expect(renamed.newIssues).toBeUndefined();
+    })
+  );
+});
+
 describe("the toolkit layer", () => {
   it.effect("routes a call by name, the way a model reaches a tool", () =>
     Effect.gen(function* () {

@@ -51,13 +51,16 @@ export function agentToolsFor(
       catalog: input.catalog,
       integrations: input.integrations ?? [],
       validateUpdate: input.validateUpdate ?? (() => null),
+      // Every write reads the draft checks to report what it introduced, so
+      // the default is a draft with nothing to report.
       validateDraft:
         input.validateDraft ??
-        (() => {
-          throw new Error(
-            "agentToolsFor requires an explicit validateDraft stub for validate_workflow"
-          );
-        }),
+        (() => ({
+          draftValid: true,
+          structuralIssues: [],
+          publishBlockers: [],
+          warnings: [],
+        })),
     });
 
     const tools = yield* Effect.provide(

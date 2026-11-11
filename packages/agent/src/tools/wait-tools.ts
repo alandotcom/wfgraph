@@ -50,6 +50,7 @@ import {
   explainArrivingEventChange,
   referencesBrokenBetween,
 } from "#src/tools/reference-diagnosis";
+import { newIssuesField } from "#src/tools/new-issues";
 import { nodeName } from "#src/tools/node-name";
 import { writeHints } from "#src/tools/tool-hints";
 
@@ -61,6 +62,7 @@ const writeResultSchema = Schema.Struct({
    * else reports that before Publish, so act on it in the same turn.
    */
   warning: Schema.optionalKey(Schema.String),
+  ...newIssuesField,
 });
 
 const waitForSchema = Schema.Array(

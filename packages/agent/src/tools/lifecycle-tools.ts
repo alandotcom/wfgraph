@@ -61,11 +61,15 @@ import {
   brokenReferenceWarning,
   referencesBrokenBetween,
 } from "#src/tools/reference-diagnosis";
+import { newIssuesField } from "#src/tools/new-issues";
 import { nodeName } from "#src/tools/node-name";
 import { writeHints } from "#src/tools/tool-hints";
 
 const failureSchema = Schema.Struct({ reason: Schema.String });
-const writeResultSchema = Schema.Struct({ summary: Schema.String });
+const writeResultSchema = Schema.Struct({
+  summary: Schema.String,
+  ...newIssuesField,
+});
 const lifecycleWriteResultSchema = Schema.Struct({
   nodeId: Schema.String,
   summary: Schema.String,
@@ -74,6 +78,7 @@ const lifecycleWriteResultSchema = Schema.Struct({
    * Nothing else reports that before Publish, so act on it in the same turn.
    */
   warning: Schema.optionalKey(Schema.String),
+  ...newIssuesField,
 });
 
 const UNPLACED = { x: 0, y: 0 };
