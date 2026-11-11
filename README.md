@@ -161,6 +161,7 @@ const appointmentCreated = defineEvent({
 const cancelAppointment = defineAction({
   id: "appointments/cancel",
   label: "Cancel Appointment",
+  description: "Cancels an appointment and records the reason.",
   category: "Appointments",
   input: z.object({
     appointmentId: z.string().describe("Appointment ID"),

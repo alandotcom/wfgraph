@@ -236,7 +236,9 @@ returns. The same method is on the value `createWfGraphRunner` returns.
 ```ts
 const { id, duplicate } = await app.events.send({
   name: "app/appointment.created",
-  data: { appointmentId: "appt_123" },
+  data: {
+    appointment: { id: "appt_123", startsAt: "2026-08-10T19:00:00.000Z" },
+  },
   id: "appointment-created-appt_123",
 });
 ```
@@ -264,7 +266,7 @@ const { id, duplicate } = await app.events.send({
 curl -X POST https://app.example.com/api/events \
   -H "Authorization: Bearer $WFGRAPH_EVENTS_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"name":"app/appointment.created","data":{"appointmentId":"appt_123"},"id":"appointment-created-appt_123"}'
+  -d '{"name":"app/appointment.created","data":{"appointment":{"id":"appt_123","startsAt":"2026-08-10T19:00:00.000Z"}},"id":"appointment-created-appt_123"}'
 ```
 
 The body is `{ name, data, id? }`, with the same meaning as the arguments of `events.send`.

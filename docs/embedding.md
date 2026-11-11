@@ -181,7 +181,7 @@ Bun.serve({ port: 3000, fetch: wfgraph.fetch });
 ```
 
 Express and Fastify speak `IncomingMessage` and `ServerResponse`.
-`createRequestListener` does that translation. It needs Node 20 or later.
+`createRequestListener` does that translation.
 
 ```ts
 const app = express();
@@ -830,9 +830,12 @@ encryption key and extensions as the app, and give the app `runner: false`.
 ```ts
 import { createWfGraphRunner } from "@wfgraph/core";
 import { wfPostgres } from "@wfgraph/core/postgres";
+import { builtInIntegrations } from "@wfgraph/plugins";
+// The same Event and action definitions the app passes.
+import { actions, events } from "./wfgraph-extensions";
 
 const runner = await createWfGraphRunner({
-  persistence: wfPostgres({ url: process.env.DATABASE_URL }),
+  persistence: wfPostgres({ url: process.env.DATABASE_URL! }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   extensions: { integrations: builtInIntegrations(), events, actions },
   // The app's own values, which an OAuth token refresh builds its callback URLs from.
