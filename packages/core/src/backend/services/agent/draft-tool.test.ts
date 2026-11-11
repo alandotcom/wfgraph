@@ -109,6 +109,27 @@ describe("executeDraftTool", () => {
       })
     );
 
+    it.effect("names the field when a tool's arguments do not decode", () =>
+      Effect.gen(function* () {
+        const failure = yield* executeDraftTool({
+          workflowId: workflow.id,
+          name: "read_workflow",
+          arguments: { limit: "many" },
+          toolCallId: "call_invalid",
+        }).pipe(
+          Effect.provide(
+            stubWorkflowRepo({ findById: () => Effect.succeed(workflow) })
+          ),
+          Effect.flip
+        );
+
+        assert.strictEqual(failure._tag, "InvalidInput");
+        assert.include(failure.error, "read_workflow");
+        assert.include(failure.error, "limit");
+        assert.notInclude(failure.error, "many");
+      })
+    );
+
     it.effect("does not store a canonical tool refusal", () =>
       Effect.gen(function* () {
         const result = yield* executeDraftTool({

@@ -21,6 +21,14 @@ import {
 } from "#src/backend/agent/mcp-server";
 
 const allowAll: AuthContext = { allows: async () => true };
+
+/** Every text block of a tool result, joined. */
+function textOf(result: { readonly content?: unknown }): string {
+  return (Array.isArray(result.content) ? result.content : [])
+    .map((block) => readJsonObject(block)?.text)
+    .filter((text): text is string => typeof text === "string")
+    .join("\n");
+}
 const listNoWorkflows: WorkflowListExecutor = async () => ({
   ok: true,
   workflows: [],
@@ -576,7 +584,7 @@ describe("createAgentMcpServer", () => {
 });
 
 describe("createAgentMcpHandler", () => {
-  it("returns malformed tool arguments as a protocol error", async () => {
+  it("answers invalid arguments with a tool error naming each field", async () => {
     const execute = vi.fn<DraftToolExecutor>(async () => {
       throw new Error("unexpected");
     });
@@ -595,22 +603,37 @@ describe("createAgentMcpHandler", () => {
 
     await client.connect(transport);
     try {
-      await expect(
-        client.callTool({ name: "read_workflow", arguments: {} })
-      ).rejects.toMatchObject({ code: -32602 });
-      await expect(
-        client.callTool({
-          name: "list_workflows",
-          arguments: { unexpected: true },
-        })
-      ).rejects.toMatchObject({ code: -32602 });
-      await expect(
-        client.callTool({
-          name: "create_workflow",
-          arguments: { name: "Reminders", graph: {} },
-        })
-      ).rejects.toMatchObject({ code: -32602 });
+      const missing = await client.callTool({
+        name: "add_node",
+        arguments: { expectedDraftRevision: 0, actionId: 7 },
+      });
+      expect(missing.isError).toBe(true);
+      const missingText = textOf(missing);
+      expect(missingText).toContain("workflowId: Missing key");
+      expect(missingText).toContain("expectedDraftRevision:");
+      expect(missingText).toContain("actionId: Expected string");
+      expect(missingText).toContain("label: Missing key");
+
+      const unexpected = await client.callTool({
+        name: "list_workflows",
+        arguments: { unexpected: "secret-value" },
+      });
+      expect(unexpected.isError).toBe(true);
+      expect(textOf(unexpected)).toContain("unexpected: Unexpected key");
+      expect(textOf(unexpected)).not.toContain("secret-value");
+
+      const create = await client.callTool({
+        name: "create_workflow",
+        arguments: { name: "Reminders", graph: {} },
+      });
+      expect(create.isError).toBe(true);
+      expect(textOf(create)).toContain("graph: Unexpected key");
       expect(execute).not.toHaveBeenCalled();
+
+      // An unknown tool is a protocol error, as the specification classes it.
+      await expect(
+        client.callTool({ name: "no_such_tool", arguments: {} })
+      ).rejects.toMatchObject({ code: -32602 });
     } finally {
       await client.close();
       await handler.close();

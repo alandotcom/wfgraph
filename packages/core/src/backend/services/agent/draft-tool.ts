@@ -68,9 +68,17 @@ function runTool(session: AgentToolSession, input: ExecuteDraftToolInput) {
         }
         return { result: resultObject, isFailure: result.isFailure };
       }),
+      // A parameter failure names the field and what it expected, as the
+      // built-in agent reads it; Effect leaves the rejected value out.
       Effect.catchTag(
         "AiError",
-        () => new InvalidInput({ error: "Tool arguments are invalid" })
+        (error) =>
+          new InvalidInput({
+            error:
+              error.reason._tag === "ToolParameterValidationError"
+                ? `Invalid arguments for ${input.name}: ${error.reason.description}`
+                : `Tool ${input.name} failed: ${error.reason.message}`,
+          })
       )
     );
 }

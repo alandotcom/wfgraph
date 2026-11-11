@@ -14,14 +14,20 @@ import {
   fromJsonSchema,
   type JsonSchemaType,
   type McpHttpHandler,
+  type StandardSchemaWithJSON,
 } from "@modelcontextprotocol/server";
 import { Tool } from "effect/ai";
-import { Schema } from "effect";
+import { Result, Schema, type SchemaAST } from "effect";
 import { buildAuthoringInstructions } from "@wfgraph/agent/prompt";
 import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
+import {
+  NonEmptyTrimmedString,
+  positiveInteger,
+} from "@wfgraph/shared/types/schema";
+import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
 import { workflowSummarySchema } from "@wfgraph/shared/rpc/contracts/workflows";
@@ -141,24 +147,123 @@ const DRAFT_REVISION_SCHEMA = {
     "Revision returned by the latest read or write. Read the workflow again after a conflict.",
 } as const;
 
+const LIST_WORKFLOWS_ARGUMENTS = Schema.Struct({});
+
+const CREATE_WORKFLOW_ARGUMENTS = Schema.Struct({
+  name: NonEmptyTrimmedString.annotate({
+    description: "Name of the workflow to create.",
+  }),
+  description: Schema.optionalKey(Schema.String).annotate({
+    description: "Optional description of the workflow.",
+  }),
+});
+
+/** The persisted-draft fields a workflow tool reads beside its own arguments. */
+const WORKFLOW_READ_ARGUMENTS = Schema.Struct({
+  workflowId: NonEmptyTrimmedString,
+});
+
+const WORKFLOW_WRITE_ARGUMENTS = Schema.Struct({
+  workflowId: NonEmptyTrimmedString,
+  expectedDraftRevision: positiveInteger,
+});
+
+/**
+ * How a tool's declared arguments are read. `errors: "all"` lets the refusal
+ * name every field that was wrong in one answer, and `formatSchemaFailure`
+ * renders them without quoting a rejected value. Unknown keys are reported
+ * against the listed schema's properties, which covers a tool with no
+ * arguments: Effect reads an empty Struct as an open object.
+ */
+const ARGUMENT_DECODE_OPTIONS = {
+  errors: "all",
+} as const satisfies SchemaAST.ParseOptions;
+
+/**
+ * Every argument problem of one call as `path: message` sentences, or
+ * undefined when the arguments are valid. `transport` holds the persisted-draft
+ * fields read off the same object, `own` the tool's declared arguments, read
+ * with those transport keys removed, and `listed` the JSON Schema the client
+ * was shown, whose properties are the only keys a call may send.
+ */
+function argumentProblems(input: {
+  readonly listed: JsonObject;
+  readonly transport: Schema.Codec<unknown, unknown> | undefined;
+  readonly own: Schema.Codec<unknown, unknown>;
+  readonly value: unknown;
+}): string | undefined {
+  const value = readJsonObject(input.value) ?? {};
+  const { workflowId: _id, expectedDraftRevision: _revision, ...own } = value;
+  const allowedKeys = Object.keys(
+    readJsonObject(input.listed.properties) ?? {}
+  );
+  const unexpectedKeys = Object.keys(value)
+    .filter((key) => !allowedKeys.includes(key))
+    .map((key) => `${key}: Unexpected key`);
+  const transport =
+    input.transport === undefined
+      ? undefined
+      : Schema.decodeUnknownResult(Schema.toCodecJson(input.transport))(
+          value,
+          ARGUMENT_DECODE_OPTIONS
+        );
+  const declared = Schema.decodeUnknownResult(Schema.toCodecJson(input.own))(
+    input.transport === undefined ? value : own,
+    ARGUMENT_DECODE_OPTIONS
+  );
+  const problems = [
+    ...unexpectedKeys,
+    ...[transport, declared].flatMap((result) =>
+      result !== undefined && Result.isFailure(result)
+        ? [formatSchemaFailure(result.failure.issue)]
+        : []
+    ),
+  ];
+  return problems.length === 0 ? undefined : problems.join("; ");
+}
+
+/**
+ * The listed JSON Schema with the validation above in place of the SDK's own.
+ * The SDK answers a failed validation as an `isError` tool result carrying the
+ * message, which a model reads and corrects; the specification classes input
+ * validation errors as tool execution errors for that reason.
+ */
+function argumentsSchema(input: {
+  readonly listed: JsonObject;
+  readonly transport: Schema.Codec<unknown, unknown> | undefined;
+  readonly own: Schema.Codec<unknown, unknown>;
+}): StandardSchemaWithJSON<Record<string, unknown>> {
+  const listed = fromJsonSchema<Record<string, unknown>>(input.listed);
+  return {
+    "~standard": {
+      ...listed["~standard"],
+      validate: (value: unknown) => {
+        const problems = argumentProblems({ ...input, value });
+        return problems === undefined
+          ? { value: readJsonObject(value) ?? {} }
+          : { issues: [{ message: problems }] };
+      },
+    },
+  };
+}
+
+function jsonSchemaOf(schema: Schema.Top, label: string): JsonObject {
+  const json = readJsonObject(Tool.getJsonSchemaFromSchema(schema));
+  if (!json) {
+    throw new Error(`${label} has a non-object schema`);
+  }
+  return json;
+}
+
 const LIST_WORKFLOWS_INPUT_SCHEMA = {
-  type: "object",
-  properties: {},
+  ...jsonSchemaOf(LIST_WORKFLOWS_ARGUMENTS, "list_workflows"),
   additionalProperties: false,
-} as const;
+};
 
 const CREATE_WORKFLOW_INPUT_SCHEMA = {
-  type: "object",
-  properties: {
-    name: { type: "string", description: "Name of the workflow to create." },
-    description: {
-      type: "string",
-      description: "Optional description of the workflow.",
-    },
-  },
-  required: ["name"],
+  ...jsonSchemaOf(CREATE_WORKFLOW_ARGUMENTS, "create_workflow"),
   additionalProperties: false,
-} as const;
+};
 
 const CREATE_WORKFLOW_OUTPUT_SCHEMA = {
   type: "object",
@@ -264,43 +369,52 @@ function toolDescription(name: AgentToolName, description: string): string {
  * server per request, and both the server and the pre-check below read these.
  */
 type ToolSchemas = {
-  readonly input: ReturnType<typeof fromJsonSchema<Record<string, unknown>>>;
-  readonly output: ReturnType<typeof fromJsonSchema<Record<string, unknown>>>;
+  readonly input: StandardSchemaWithJSON<Record<string, unknown>>;
+  readonly output: StandardSchemaWithJSON<Record<string, unknown>>;
 };
-
-function toolSchemas(inputJson: JsonSchemaType, outputJson: JsonSchemaType) {
-  return {
-    input: fromJsonSchema<Record<string, unknown>>(inputJson),
-    output: fromJsonSchema<Record<string, unknown>>(outputJson),
-  } satisfies ToolSchemas;
-}
 
 const COLLECTION_TOOL_SCHEMAS = {
-  list_workflows: toolSchemas(
-    LIST_WORKFLOWS_INPUT_SCHEMA,
-    LIST_WORKFLOWS_OUTPUT_SCHEMA
-  ),
-  create_workflow: toolSchemas(
-    CREATE_WORKFLOW_INPUT_SCHEMA,
-    CREATE_WORKFLOW_OUTPUT_SCHEMA
-  ),
-};
+  list_workflows: {
+    input: argumentsSchema({
+      listed: LIST_WORKFLOWS_INPUT_SCHEMA,
+      transport: undefined,
+      own: LIST_WORKFLOWS_ARGUMENTS,
+    }),
+    output: fromJsonSchema<Record<string, unknown>>(
+      LIST_WORKFLOWS_OUTPUT_SCHEMA
+    ),
+  },
+  create_workflow: {
+    input: argumentsSchema({
+      listed: CREATE_WORKFLOW_INPUT_SCHEMA,
+      transport: undefined,
+      own: CREATE_WORKFLOW_ARGUMENTS,
+    }),
+    output: fromJsonSchema<Record<string, unknown>>(
+      CREATE_WORKFLOW_OUTPUT_SCHEMA
+    ),
+  },
+} satisfies Record<string, ToolSchemas>;
 
 const AGENT_TOOL_SCHEMAS: ReadonlyMap<string, ToolSchemas> = new Map(
   Object.values(agentToolkit.tools)
     .filter((tool) => !TOOLS_WITHOUT_AN_MCP_MEANING.has(tool.name))
     .map((tool) => [
       tool.name,
-      toolSchemas(inputSchemaFor(tool.name), outputSchemaFor(tool.name)),
+      {
+        input: argumentsSchema({
+          listed: inputSchemaFor(tool.name),
+          transport: WRITE_TOOL_NAMES.has(tool.name)
+            ? WORKFLOW_WRITE_ARGUMENTS
+            : WORKFLOW_READ_ARGUMENTS,
+          own: tool.parametersSchema,
+        }),
+        output: fromJsonSchema<Record<string, unknown>>(
+          outputSchemaFor(tool.name)
+        ),
+      } satisfies ToolSchemas,
     ])
 );
-
-function schemasForTool(name: unknown): ToolSchemas | undefined {
-  if (name === "list_workflows" || name === "create_workflow") {
-    return COLLECTION_TOOL_SCHEMAS[name];
-  }
-  return typeof name === "string" ? AGENT_TOOL_SCHEMAS.get(name) : undefined;
-}
 
 function invalidParamsResponse(body: JsonObject, message: string): Response {
   const id = body.id;
@@ -649,20 +763,6 @@ export function createAgentMcpHandler(
                 body ?? {},
                 "Request _meta requires client identity and capabilities"
               );
-            }
-
-            const schemas =
-              method === "tools/call" ? schemasForTool(name) : undefined;
-            if (schemas) {
-              const validation = await schemas.input["~standard"].validate(
-                params?.arguments ?? {}
-              );
-              if (validation.issues) {
-                return invalidParamsResponse(
-                  body ?? {},
-                  "Invalid tool arguments"
-                );
-              }
             }
           }
         } catch {

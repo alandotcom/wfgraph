@@ -674,6 +674,11 @@ tools also require `expectedDraftRevision`, using the revision returned by the
 most recent read or write. A successful write increments the revision once and
 returns the new value.
 
+A call whose arguments do not match the tool's input schema returns an error
+tool result (`isError: true`) that names each wrong field and what it expected,
+so a model can correct the call. A call naming a tool the server does not list
+returns JSON-RPC error `-32602`, as the MCP specification classes it.
+
 A stale write returns an error tool result with code
 `workflow_draft_stale` and the stored `draftRevision`. Call `read_workflow`
 again, evaluate the edit against the returned graph, and then send a new write
