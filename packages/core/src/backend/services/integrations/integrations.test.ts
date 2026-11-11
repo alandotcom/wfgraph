@@ -860,3 +860,219 @@ describe("an integration this server does not hold", () => {
     );
   });
 });
+
+/**
+ * An integration whose secret is sent to a host the connection names, which is
+ * the shape of PostHog's project key and API host.
+ */
+const hostedDefinition = (test?: IntegrationTestLoader) =>
+  defineIntegration({
+    type: "hosted",
+    label: "Hosted",
+    description: "test double",
+    credentials: {
+      API_KEY: { label: "API Key", type: "password" },
+      API_HOST: { label: "API Host", type: "url" },
+      REGION_NOTE: { label: "Region note", type: "text" },
+    },
+    test,
+    actions: {},
+  });
+
+const storedHosted: DecryptedIntegration = {
+  ...storedSlackIntegration,
+  type: "hosted",
+  config: {
+    API_KEY: "stored-key",
+    API_HOST: "https://us.hosted.example",
+    REGION_NOTE: "us",
+  },
+};
+
+function hostedRepo() {
+  const updates: unknown[] = [];
+  const repoLayer = stubIntegrationRepo({
+    findById: () => Effect.succeed(storedHosted),
+    update: (_integrationId, update) =>
+      Effect.sync(() => {
+        updates.push(update);
+        return {
+          status: "updated" as const,
+          integration: {
+            ...storedHosted,
+            config: update.config ?? storedHosted.config,
+          },
+        };
+      }),
+  });
+  return { layer: repoLayer, updates };
+}
+
+/**
+ * Holding `connection.write` does not mean knowing the stored secret, so a
+ * request that moves where the secret is sent has to bring the secret too.
+ */
+describe("a request that moves where a stored secret is sent", () => {
+  layer(integrationServiceTestLayer)((it) => {
+    const hostedCatalog = makeExtensionsLayer(
+      assembleExtensions({ integrations: [hostedDefinition()] })
+    );
+
+    it.effect.each([
+      {
+        name: "omits the secret",
+        config: { API_HOST: "https://evil.example" },
+      },
+      {
+        name: "sends back the mask",
+        config: { API_HOST: "https://evil.example", API_KEY: SECRET_MASK },
+      },
+      {
+        name: "clears the host",
+        config: { API_HOST: "", API_KEY: "  " },
+      },
+    ])("refuses an update that $name", ({ config }) =>
+      Effect.gen(function* () {
+        const repo = hostedRepo();
+
+        const failure = yield* putIntegration("int_1", { config }).pipe(
+          Effect.provide(Layer.mergeAll(repo.layer, hostedCatalog)),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, InvalidInput);
+        assert.include(failure.error, "API Host");
+        assert.include(failure.error, "API Key");
+        assert.deepStrictEqual(repo.updates, []);
+      })
+    );
+
+    it.effect("stores a new host that arrives with its secret", () =>
+      Effect.gen(function* () {
+        const repo = hostedRepo();
+
+        yield* putIntegration("int_1", {
+          config: { API_HOST: "https://eu.hosted.example", API_KEY: "eu-key" },
+        }).pipe(Effect.provide(Layer.mergeAll(repo.layer, hostedCatalog)));
+
+        assert.strictEqual(repo.updates.length, 1);
+      })
+    );
+
+    it.effect("leaves an edit that keeps the host alone", () =>
+      Effect.gen(function* () {
+        const repo = hostedRepo();
+
+        yield* putIntegration("int_1", {
+          config: {
+            API_HOST: "https://us.hosted.example",
+            API_KEY: SECRET_MASK,
+            REGION_NOTE: "still us",
+          },
+        }).pipe(Effect.provide(Layer.mergeAll(repo.layer, hostedCatalog)));
+
+        assert.strictEqual(repo.updates.length, 1);
+      })
+    );
+
+    it.effect("refuses a saved-connection test pointed at a new host", () =>
+      Effect.gen(function* () {
+        let tested = 0;
+        const testedHosted = makeExtensionsLayer(
+          assembleExtensions({
+            integrations: [
+              hostedDefinition(() =>
+                Promise.resolve(async () => {
+                  tested += 1;
+                  return { success: true };
+                })
+              ),
+            ],
+          })
+        );
+
+        const failure = yield* postIntegrationTest("int_1", {
+          API_HOST: "https://evil.example",
+        }).pipe(
+          Effect.provide(Layer.mergeAll(hostedRepo().layer, testedHosted)),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, InvalidInput);
+        assert.include(failure.error, "API Host");
+        assert.strictEqual(tested, 0);
+      })
+    );
+
+    it.effect("tests a new host with the secret the caller supplied", () =>
+      Effect.gen(function* () {
+        let tested: Record<string, string | undefined> | undefined;
+        const testedHosted = makeExtensionsLayer(
+          assembleExtensions({
+            integrations: [
+              hostedDefinition(() =>
+                Promise.resolve(async (credentials) => {
+                  tested = credentials;
+                  return { success: true };
+                })
+              ),
+            ],
+          })
+        );
+
+        yield* postIntegrationTest("int_1", {
+          API_HOST: "https://eu.hosted.example",
+          API_KEY: "eu-key",
+        }).pipe(
+          Effect.provide(Layer.mergeAll(hostedRepo().layer, testedHosted))
+        );
+
+        assert.deepStrictEqual(tested, {
+          API_KEY: "eu-key",
+          API_HOST: "https://eu.hosted.example",
+          REGION_NOTE: "us",
+        });
+      })
+    );
+  });
+});
+
+describe("a destination change on an OAuth connection", () => {
+  layer(integrationServiceTestLayer)((it) => {
+    it.effect("is refused while the grant supplies the secret", () =>
+      Effect.gen(function* () {
+        const repo = stubIntegrationRepo({
+          findById: () =>
+            Effect.succeed({
+              ...storedHosted,
+              config: {
+                API_HOST: "https://us.hosted.example",
+                [OAUTH_GRANT_CONFIG_KEY]: serializeStoredOAuthGrant({
+                  credentials: { API_KEY: "granted-key" },
+                  tokens: { accessToken: "granted-key" },
+                  connectedAt: "2026-08-01T00:00:00.000Z",
+                }),
+              },
+            }),
+        });
+
+        const failure = yield* putIntegration("int_1", {
+          config: { API_HOST: "https://evil.example" },
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              repo,
+              makeExtensionsLayer(
+                assembleExtensions({ integrations: [hostedDefinition()] })
+              )
+            )
+          ),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, InvalidInput);
+        assert.include(failure.error, "Disconnect OAuth first");
+      })
+    );
+  });
+});

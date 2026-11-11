@@ -154,6 +154,69 @@ function oauthCredentialOverrideFailure(): InvalidInput {
   });
 }
 
+/** A value a request supplied for a secret field, as opposed to the mask or a blank. */
+function suppliesSecret(value: string | undefined): boolean {
+  return value !== undefined && value !== SECRET_MASK && !isBlank(value);
+}
+
+/**
+ * Refuse a request that moves where a stored secret is sent unless it brings
+ * that secret too.
+ *
+ * Every `url` field is treated as a destination for every `password` field of
+ * the same integration. Holding `connection.write` lets a caller edit a
+ * connection without knowing its stored secrets, so a changed destination with
+ * a reused secret would send that secret to a host the caller chose. `stored`
+ * is the connection's current credential map; `grantedKeys` names the ones an
+ * OAuth grant supplies, which no request can supply again.
+ */
+function refuseSecretRedirect(
+  catalog: ExtensionCatalog,
+  type: string,
+  stored: Readonly<Record<string, string | undefined>>,
+  updates: IntegrationConfig | undefined,
+  grantedKeys: readonly string[]
+): InvalidInput | null {
+  const integration = findIntegration(catalog, type);
+  if (!updates || !integration) {
+    return null;
+  }
+  const fields = Object.entries(integration.credentialFields);
+  const movedDestination = fields.find(([key, field]) => {
+    const next = updates[key];
+    return (
+      field.type === "url" &&
+      next !== undefined &&
+      next.trim() !== (stored[key] ?? "").trim()
+    );
+  });
+  if (!movedDestination) {
+    return null;
+  }
+  const missingSecrets = fields.filter(
+    ([key, field]) =>
+      field.type === "password" &&
+      !isBlank(stored[key] ?? "") &&
+      !suppliesSecret(updates[key])
+  );
+  if (missingSecrets.length === 0) {
+    return null;
+  }
+  const [destinationKey, destination] = movedDestination;
+  const destinationName = `${destination.label} (${destinationKey})`;
+  if (missingSecrets.some(([key]) => grantedKeys.includes(key))) {
+    return new InvalidInput({
+      error: `${destinationName} cannot change while OAuth supplies the credentials sent to it. Disconnect OAuth first.`,
+    });
+  }
+  const secretNames = missingSecrets
+    .map(([key, field]) => `${field.label} (${key})`)
+    .join(", ");
+  return new InvalidInput({
+    error: `Changing ${destinationName} changes where the stored ${secretNames} is sent. Enter ${secretNames} again in the same request.`,
+  });
+}
+
 function toIntegrationSummary(
   catalog: ExtensionCatalog,
   input: {
@@ -388,6 +451,19 @@ export const putIntegration = Effect.fn("putIntegration")(function* (
   if (rejectsOAuthCredentialOverride(body.config, managedCredentialKeys)) {
     return yield* oauthCredentialOverrideFailure();
   }
+  const redirect = refuseSecretRedirect(
+    catalog,
+    existingIntegration.type,
+    {
+      ...existingIntegration.config,
+      ...readStoredOAuthGrant(existingIntegration.config)?.credentials,
+    },
+    body.config,
+    managedCredentialKeys
+  );
+  if (redirect) {
+    return yield* redirect;
+  }
 
   // A config the browser sent back still carries the mask over each secret, so
   // the stored value has to be merged back in before anything is written.
@@ -591,6 +667,16 @@ export const postIntegrationTest = Effect.fn("postIntegrationTest")(function* (
   const managedCredentialKeys = resolved.oauthCredentialKeys;
   if (rejectsOAuthCredentialOverride(config, managedCredentialKeys)) {
     return yield* oauthCredentialOverrideFailure();
+  }
+  const redirect = refuseSecretRedirect(
+    extensions.catalog,
+    resolved.integrationType,
+    resolved.credentials,
+    config,
+    managedCredentialKeys
+  );
+  if (redirect) {
+    return yield* redirect;
   }
   const credentials = config
     ? credentialsFromConfig(

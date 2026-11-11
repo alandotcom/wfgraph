@@ -102,6 +102,13 @@ integration's own `credentials` record, with no annotation written anywhere. Lif
 action, or its handler, into a `const` above the call loses the contextual type that does
 it, so both are written where they are read.
 
+**A `url` credential field is where the `password` fields are sent.** A connection
+update or saved-connection test that changes a `url` field is refused unless the same
+request supplies every stored `password` field again, so an operator who can edit a
+connection cannot point its stored secret at a host of their choosing. Declare a
+destination as `type: "url"` for that protection, and validate its scheme where the
+client builds requests from it.
+
 **`category` defaults to the integration's `label`.** An action wanting a different
 heading in the selector still writes one.
 
