@@ -145,7 +145,7 @@ export const slack = (options?: SlackOptions) => {
             key: "slackChannel",
             label: "Channel",
             type: "text",
-            placeholder: "#general or {{NodeName.channel}}",
+            placeholder: "#general or C0123456789",
             example: "#general",
             required: true,
           },
@@ -154,7 +154,7 @@ export const slack = (options?: SlackOptions) => {
             label: "Message",
             type: "template-textarea",
             placeholder:
-              "Your message. Use {{NodeName.field}} to insert data from previous nodes.",
+              "Your message. It can include references to earlier steps' outputs.",
             rows: 4,
             example: "Hello from my workflow!",
             required: true,
@@ -243,7 +243,7 @@ export const slack = (options?: SlackOptions) => {
             label: "Message",
             type: "template-textarea",
             placeholder:
-              "Your reply. Use {{NodeName.field}} to insert data from previous nodes.",
+              "Your reply. It can include references to earlier steps' outputs.",
             rows: 4,
             example: "Following up in this thread.",
             required: true,
