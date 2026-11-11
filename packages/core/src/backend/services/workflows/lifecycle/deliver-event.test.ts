@@ -1145,6 +1145,71 @@ describe("applyLifecycleRules", () => {
       })
     );
 
+    // An action an admin can break by deleting its integration stops new
+    // starts, and the runs already in flight still owe their Cancel Event.
+    it.effect("cancels runs of a workflow whose graph will not run", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
+          subscriber: subscriber({ roles: ["cancel"] }),
+          event: appointmentCanceled,
+          payload,
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubPublishedWorkflow(
+                createWorkflow({
+                  graph: createSerializedWorkflowGraph({
+                    nodes: [
+                      {
+                        id: "lifecycle-1",
+                        type: "lifecycle",
+                        position: { x: 0, y: 0 },
+                        data: {
+                          label: "Start",
+                          type: "lifecycle",
+                          config: { lifecycleRules: cancelRules },
+                        },
+                      },
+                      {
+                        id: "action-1",
+                        type: "action",
+                        position: { x: 0, y: 120 },
+                        data: {
+                          label: "Unset",
+                          type: "action",
+                          config: {},
+                        },
+                      },
+                    ],
+                    edges: [
+                      {
+                        id: "e1",
+                        source: "lifecycle-1",
+                        target: "action-1",
+                        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+                      },
+                    ],
+                  }),
+                })
+              ),
+              lifecyclePorts
+            )
+          )
+        );
+
+        assert.deepStrictEqual(outcome, {
+          kind: "canceled",
+          workflowId: "wf_1",
+          canceledExecutionIds: ["exec_running"],
+        });
+        assert.strictEqual(
+          requestCanceledOutletMock.mock.calls[0]?.[0].entityValue,
+          "appt_8813"
+        );
+      })
+    );
+
     // A rejected query is not a verdict: it keeps failing so the delivery is
     // retried rather than silently dropped.
     it.effect("leaves a refused query failing", () =>

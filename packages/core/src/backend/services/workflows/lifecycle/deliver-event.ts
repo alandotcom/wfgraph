@@ -54,12 +54,18 @@ import {
 import { connectionMatches } from "@wfgraph/shared/lifecycle/event-connections";
 import {
   emptyLifecycleRules,
+  readLifecycleRules,
   resolveCorrelationPath,
   type LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { isLifecycleNode } from "@wfgraph/shared/graph/node-config";
 import { readCancelFilter } from "@wfgraph/shared/lifecycle/cancel-filters";
 import { readStartFilter } from "@wfgraph/shared/lifecycle/start-filters";
-import type { WorkflowMode } from "@wfgraph/shared/graph/types";
+import type {
+  SerializedWorkflowGraph,
+  WorkflowMode,
+} from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
 import { getValueByPath } from "@wfgraph/shared/utils/object-path";
@@ -253,40 +259,19 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       return skipped(input.subscriber.id, "not_published");
     }
 
-    // Preflight is the start/cancel branch's alone: it validates every action,
-    // condition and integration reference in the graph, and a wait delivery
-    // needs none of that. Its refusals are this workflow's problem rather than
-    // the Event's, so they answer here instead of failing.
-    const preflight = yield* runWorkflowExecutionPreflight({
-      workflow: { graph: version.graph },
-      workflowVersionId: version.id,
-      catalogFingerprint: version.catalogFingerprint,
-    }).pipe(
-      Effect.catchTags({
-        InvalidInput: (failure) =>
-          logger
-            .warn("Skipped a workflow whose graph will not run", {
-              error: failure.error,
-            })
-            .pipe(Effect.as(undefined)),
-        IntegrationValidationFailed: (failure) =>
-          logger
-            .warn("Skipped a workflow naming integrations it cannot use", {
-              error: failure.error,
-            })
-            .pipe(Effect.as(undefined)),
-      })
-    );
-
-    if (!preflight) {
+    // These rules come from the published version. A Cancel Event added to the
+    // draft alone therefore reaches no run of that draft, whether or not the
+    // workflow is published (ADR-0012, 2026-08-29). They are read off the entry
+    // node alone, because the cancel role needs nothing else of the graph: a
+    // graph that will no longer run, such as one naming an integration deleted
+    // since Publish, stops new starts and still owes its runs in flight their
+    // Cancel Events.
+    const publishedRules = readPublishedRules(version.graph);
+    if (publishedRules === null) {
+      yield* logger.warn("Skipped a workflow whose published graph will not parse");
       return skipped(input.subscriber.id, "graph_unrunnable");
     }
-
-    // These rules come from the published version, and the cancel role below
-    // reads them too. A Cancel Event added to the draft alone therefore reaches
-    // no run of that draft, whether or not the workflow is published
-    // (ADR-0012, 2026-08-29).
-    const rules = preflight.lifecycleRules ?? emptyLifecycleRules;
+    const rules = publishedRules ?? emptyLifecycleRules;
 
     // The index selected this workflow for consideration, but its Connection
     // can describe an older publication. Re-derive it from the graph whose
@@ -394,6 +379,36 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     // checked here, on the row this attempt loaded.
     if (workflow.isPaused) {
       return skipped(workflow.id, "workflow_paused");
+    }
+
+    // Preflight is the start role's alone: it validates every action,
+    // condition and integration reference in the graph, which a run about to
+    // open needs and a Cancel claim and a wait delivery do not. Its refusals
+    // are this workflow's problem rather than the Event's, so they answer here
+    // instead of failing.
+    const preflight = yield* runWorkflowExecutionPreflight({
+      workflow: { graph: version.graph },
+      workflowVersionId: version.id,
+      catalogFingerprint: version.catalogFingerprint,
+    }).pipe(
+      Effect.catchTags({
+        InvalidInput: (failure) =>
+          logger
+            .warn("Skipped a workflow whose graph will not run", {
+              error: failure.error,
+            })
+            .pipe(Effect.as(undefined)),
+        IntegrationValidationFailed: (failure) =>
+          logger
+            .warn("Skipped a workflow naming integrations it cannot use", {
+              error: failure.error,
+            })
+            .pipe(Effect.as(undefined)),
+      })
+    );
+
+    if (!preflight) {
+      return skipped(input.subscriber.id, "graph_unrunnable");
     }
 
     const runTarget = toWorkflowRunTarget({
@@ -653,6 +668,21 @@ export const deliverWaitCandidates = Effect.fn("deliverWaitCandidates")(
     return { workflowId: input.workflowId, resumedWaits };
   }
 );
+
+/**
+ * The Lifecycle Rules a published graph's entry node stores, `undefined` when
+ * it stores none, and `null` when the graph does not parse at all. Publish
+ * checked these rules, so they are read as stored, with none of the action,
+ * condition and integration checks the preflight runs for a start.
+ */
+function readPublishedRules(graph: SerializedWorkflowGraph) {
+  try {
+    const entry = toWorkflowGraphData(graph).nodes.find(isLifecycleNode);
+    return readLifecycleRules(entry?.data.config);
+  } catch {
+    return null;
+  }
+}
 
 function skipped(
   workflowId: string,
