@@ -25,7 +25,7 @@ import {
   formatTemplateToken,
   mapTemplateTokens,
 } from "@wfgraph/shared/graph/node-references";
-import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
+import { placeNewWorkflowNodes } from "@wfgraph/shared/graph/workflow-placement";
 import {
   repairCanvasGroups,
   storedEdgeIdsForPaintedEdge,
@@ -984,14 +984,28 @@ export const applyAgentGraphAtom = atom(
       get(nodesStateAtom).map((node) => [node.id, node] as const)
     );
 
-    const { nodes: laidOut } = layoutWorkflowNodes({
+    // Only a step the agent added in this turn is placed, beside its
+    // neighbours; a step on the canvas keeps the position the person gave it.
+    // A step the agent added sits at the origin until then, while one a revert
+    // brought back carries the position it had.
+    const laidOut = placeNewWorkflowNodes({
       nodes: repair.nodes,
       edges: input.edges,
       catalog: input.catalog,
+      unplacedIds: new Set(
+        repair.nodes
+          .filter(
+            (node) =>
+              !existingById.has(node.id) &&
+              node.position.x === 0 &&
+              node.position.y === 0
+          )
+          .map((node) => node.id)
+      ),
     });
 
-    // `layoutWorkflowNodes` rebuilds every node it is given, so identity is
-    // restored here rather than assumed. `displayNodesAtom` keeps a paint cache
+    // A placed node is rebuilt, so identity is restored here rather than
+    // assumed. `displayNodesAtom` keeps a paint cache
     // keyed on it, and a turn calls several write tools, each sending the whole
     // graph back: without this every card on the canvas repaints per tool call.
     const reconciled = laidOut.map((node) => {

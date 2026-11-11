@@ -10,7 +10,7 @@ import {
   serializeWorkflowGraphData,
   toWorkflowGraphData,
 } from "@wfgraph/shared/graph/graph";
-import { layoutWorkflowNodes } from "@wfgraph/shared/graph/workflow-layout";
+import { placeNewWorkflowNodes } from "@wfgraph/shared/graph/workflow-placement";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -112,9 +112,10 @@ function runTool(session: AgentToolSession, input: ExecuteDraftToolInput) {
 }
 
 /**
- * Loads one draft, executes one tool, and conditionally stores one laid-out
- * graph. Every invocation owns a new tool session and reads all shared state
- * from application services.
+ * Loads one draft, executes one tool, and conditionally stores one graph,
+ * with each step the tool added placed beside its neighbours. Every
+ * invocation owns a new tool session and reads all shared state from
+ * application services.
  */
 export const executeDraftTool = Effect.fn("wfgraph.agent.draft_tool")(
   function* (input: ExecuteDraftToolInput) {
@@ -182,15 +183,23 @@ export const executeDraftTool = Effect.fn("wfgraph.agent.draft_tool")(
       } satisfies DraftToolResult;
     }
 
+    // Only the steps this call added are placed; every step already stored
+    // keeps the position a person or an earlier write gave it.
     const document = yield* session.draft.current;
-    const laidOut = layoutWorkflowNodes({
+    const storedIds = new Set(workflow.graph.nodes.map((node) => node.key));
+    const placed = placeNewWorkflowNodes({
       nodes: [...document.nodes],
       edges: [...document.edges],
       catalog,
+      unplacedIds: new Set(
+        document.nodes
+          .filter((node) => !storedIds.has(node.id))
+          .map((node) => node.id)
+      ),
     });
     const prepared = yield* prepareGraphSave({
       graph: serializeWorkflowGraphData({
-        nodes: laidOut.nodes,
+        nodes: placed,
         edges: [...document.edges],
       }),
     });

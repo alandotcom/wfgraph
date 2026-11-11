@@ -145,6 +145,65 @@ describe("executeDraftTool", () => {
       })
     );
 
+    it.effect(
+      "keeps the positions a person set and places only the new step",
+      () =>
+        Effect.gen(function* () {
+          const arranged: Workflow = {
+            ...workflow,
+            graph: createSerializedWorkflowGraph({
+              nodes: [
+                {
+                  id: "entry",
+                  type: "lifecycle",
+                  position: { x: 700, y: 300 },
+                  data: { type: "lifecycle", label: "Lifecycle", config: {} },
+                },
+              ],
+              edges: [],
+            }),
+          };
+          const writes: Array<
+            Parameters<WorkflowRepo["Service"]["writeDraft"]>[0]
+          > = [];
+          yield* executeDraftTool({
+            workflowId: workflow.id,
+            name: "add_node",
+            arguments: {
+              actionId: "score-applicant",
+              label: "Score",
+              sourceNodeId: "entry",
+              sourceHandle: "started",
+            },
+            toolCallId: "call_place",
+            expectedDraftRevision: 1,
+          }).pipe(
+            Effect.provide(
+              stubWorkflowRepo({
+                findById: () => Effect.succeed(arranged),
+                writeDraft: (input) =>
+                  Effect.sync(() => {
+                    writes.push(input);
+                    return {
+                      status: "updated" as const,
+                      workflow: { ...arranged, draftRevision: 2 },
+                    };
+                  }),
+              })
+            )
+          );
+
+          const stored = writes[0]?.updates.graph.nodes ?? [];
+          const entry = stored.find((node) => node.key === "entry");
+          const added = stored.find(
+            (node) => node.attributes.data.label === "Score"
+          );
+          assert.deepEqual(entry?.attributes.position, { x: 700, y: 300 });
+          assert.strictEqual(added?.attributes.position?.x, 700);
+          assert.isAbove(added?.attributes.position?.y ?? 0, 300);
+        })
+    );
+
     it.effect("does not store a canonical tool refusal", () =>
       Effect.gen(function* () {
         const result = yield* executeDraftTool({

@@ -89,3 +89,13 @@ protocol version. The legacy path answered each request from a fresh server and
 kept no transport session, which matched the stateless design: the persisted
 draft revision remained the only cross-request state. `GET` and `DELETE`
 session operations still answered 405.
+
+## Amendment: authoring writes place new steps only
+
+Date: 2026-11-11
+
+Built-in agent and MCP writes stopped re-running full automatic layout. A full
+layout discarded positions a person had set by hand on every write. Each write
+placed only the steps it added, beside a neighbour that already had a position,
+and left every other step where it was. A graph with no positioned step was
+still laid out whole.

@@ -225,7 +225,7 @@ describe("applyAgentGraphAtom", () => {
     expect(store.get(canUndoAtom)).toBe(false);
   });
 
-  it("reflows existing nodes while placing a new node", () => {
+  it("keeps a hand-placed node and places the new node below it", () => {
     const positioned = {
       ...actionNode("a"),
       position: { x: 725, y: 315 },
@@ -236,14 +236,19 @@ describe("applyAgentGraphAtom", () => {
       workflowId: "workflow_1",
       turnId,
       recordHistory: true,
-      nodes: [actionNode("a"), actionNode("b")],
+      // The turn's document carries the canvas positions it was sent with.
+      nodes: [positioned, actionNode("b")],
       edges: [{ id: "e1", source: "a", target: "b" }],
       catalog,
     });
 
-    expect(
-      store.get(nodesAtom).find((node) => node.id === "a")?.position
-    ).not.toEqual(positioned.position);
+    const placed = store.get(nodesAtom);
+    expect(placed.find((node) => node.id === "a")?.position).toEqual(
+      positioned.position
+    );
+    const added = placed.find((node) => node.id === "b")?.position;
+    expect(added?.x).toBe(725);
+    expect(added?.y).toBeGreaterThan(315);
     expect(store.get(workflowGraphUpdateAtom)).toEqual({
       workflowId: "workflow_1",
       revision: 1,
