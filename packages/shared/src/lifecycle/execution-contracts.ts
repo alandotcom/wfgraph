@@ -247,6 +247,12 @@ export const WORKFLOW_EXECUTION_IGNORED_REASONS = [
 export type WorkflowExecutionIgnoredReason =
   (typeof WORKFLOW_EXECUTION_IGNORED_REASONS)[number];
 
+export function isWorkflowExecutionIgnoredReason(
+  value: unknown
+): value is WorkflowExecutionIgnoredReason {
+  return WORKFLOW_EXECUTION_IGNORED_REASONS.some((reason) => reason === value);
+}
+
 export type WorkflowExecutionRunningResponse = {
   status: "running";
   executionId: string;

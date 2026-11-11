@@ -629,6 +629,34 @@ describe("a delivery retried after its Execution was committed", () => {
         })
     );
 
+    // A first-wins or Start Filter refusal is recorded under the same id as an
+    // Entity refusal, so a delivery run again after its memo was lost, such as
+    // a resent failed row, answers it instead of deciding the start again.
+    it.effect(
+      "answers a first-wins refusal an earlier attempt recorded without deciding the start again",
+      () =>
+        Effect.gen(function* () {
+          findAdmissionRefusalMock.mockImplementation(() =>
+            Effect.succeed("concurrency_first_wins")
+          );
+
+          const outcome = yield* applyLifecycleRules({
+            subscriber: subscriber(),
+            event: appointmentCreated,
+            payload: videoPayload,
+            deliveryId: "evt_reopened",
+          }).pipe(Effect.provide(workflowWith(startRules)));
+
+          assert.deepStrictEqual(outcome, {
+            kind: "refused",
+            workflowId: "wf_1",
+            reason: "concurrency_first_wins",
+          });
+          assert.strictEqual(startRunMock.mock.calls.length, 0);
+          assert.strictEqual(recordAuditEventMock.mock.calls.length, 0);
+        })
+    );
+
     // Preflight reads the graph published now, and the committed row pins the
     // graph it was opened against, which the run is executing regardless.
     it.effect(

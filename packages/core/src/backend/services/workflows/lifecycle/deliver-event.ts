@@ -106,6 +106,22 @@ type LifecycleDeliveryRefusalReason =
   /** The Start Filter could not be read against this payload at all. */
   | "start_filter_unevaluable";
 
+/** The reasons a delivery records when it refuses a start. */
+const DELIVERY_START_REFUSAL_REASONS = [
+  "concurrency_first_wins",
+  "entity_value_missing",
+  "entity_condition_not_met",
+  "entity_not_found",
+  "start_filter_not_met",
+  "start_filter_unevaluable",
+] as const satisfies readonly LifecycleDeliveryRefusalReason[];
+
+function isDeliveryRefusalReason(
+  value: unknown
+): value is (typeof DELIVERY_START_REFUSAL_REASONS)[number] {
+  return DELIVERY_START_REFUSAL_REASONS.some((reason) => reason === value);
+}
+
 /** What the Lifecycle Rules did to one workflow, as the fan-out records it. */
 export type LifecycleDeliveryOutcome =
   | {
@@ -553,10 +569,13 @@ const answerFromCommittedDecision = Effect.fn("answerFromCommittedDecision")(
   }) {
     const executionRepo = yield* ExecutionRepo;
 
-    const priorRefusal = yield* executionRepo.findAdmissionRefusal({
+    const recordedRefusal = yield* executionRepo.findAdmissionRefusal({
       workflowId: input.workflowId,
       decisionId: startAdmissionDecisionId(input.workflowId, input.deliveryId),
     });
+    const priorRefusal = isDeliveryRefusalReason(recordedRefusal)
+      ? recordedRefusal
+      : undefined;
     if (priorRefusal) {
       yield* input.logger.info("Answered a retried delivery from its refusal", {
         delivery: { id: input.deliveryId },

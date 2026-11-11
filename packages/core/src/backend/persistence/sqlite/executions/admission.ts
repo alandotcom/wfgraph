@@ -11,6 +11,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   isEntityEligibilityReason,
+  isWorkflowExecutionIgnoredReason,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type {
   ConcurrencyStartOutcome,
@@ -37,7 +38,11 @@ import {
   sqliteExecution,
 } from "#src/backend/persistence/sqlite/executions/rows";
 
-export function findAdmissionRefusal(
+/**
+ * The reason of the start refusal recorded under `decisionId`, whatever
+ * refused the start, or null when none was recorded.
+ */
+export function findStartRefusal(
   database: SqliteReadExecutor,
   input: { workflowId: string; decisionId: string }
 ) {
@@ -57,9 +62,22 @@ export function findAdmissionRefusal(
         const reason = row
           ? optionalJsonObject(row.metadata, "metadata")?.reason
           : undefined;
-        return isEntityEligibilityReason(reason) ? reason : null;
+        return isWorkflowExecutionIgnoredReason(reason) ? reason : null;
       })
     );
+}
+
+/**
+ * The Entity Eligibility refusal recorded under `decisionId`, which a start
+ * transaction consults, or null when the row records none.
+ */
+export function findAdmissionRefusal(
+  database: SqliteReadExecutor,
+  input: { workflowId: string; decisionId: string }
+) {
+  return findStartRefusal(database, input).pipe(
+    Effect.map((reason) => (isEntityEligibilityReason(reason) ? reason : null))
+  );
 }
 
 function findByDelivery(database: SqliteExecutor, execution: NewExecution) {

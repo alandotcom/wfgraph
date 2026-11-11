@@ -5,11 +5,15 @@ import {
   type DatabaseError,
   serializableTransaction,
 } from "#src/backend/lib/effect/database";
-import type { EntityEligibilityReason } from "@wfgraph/shared/lifecycle/execution-contracts";
+import type {
+  EntityEligibilityReason,
+  WorkflowExecutionIgnoredReason,
+} from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   admissionReads,
   admitStart,
   findAdmissionRefusal,
+  findStartRefusal,
   openRun,
 } from "#src/backend/services/executions/repo/admission";
 import {
@@ -109,11 +113,15 @@ type CrossTableRepoMethods = {
   readonly startForEntity: (
     input: StartForEntityInput
   ) => Effect.Effect<EntityStartOutcome, DatabaseError>;
-  /** Read a durable Entity admission refusal before repeating its resolver. */
+  /**
+   * The start refusal one delivery recorded in one workflow, under
+   * `startAdmissionDecisionId`, whatever refused it: a retried delivery
+   * answers from it before it repeats a filter, a resolver or Concurrency.
+   */
   readonly findAdmissionRefusal: (input: {
     workflowId: string;
     decisionId: string;
-  }) => Effect.Effect<EntityEligibilityReason | null, DatabaseError>;
+  }) => Effect.Effect<WorkflowExecutionIgnoredReason | null, DatabaseError>;
   /**
    * Atomically records a refusal or returns the start that won the delivery.
    * The refusal's metadata carries `deliveryId`, which keeps the row through
@@ -221,7 +229,7 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
               ),
 
         findAdmissionRefusal: (input) =>
-          database.query((db) => findAdmissionRefusal(db, input)),
+          database.query((db) => findStartRefusal(db, input)),
 
         recordAdmissionRefusal: (input) =>
           serializableTransaction(

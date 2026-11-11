@@ -12,7 +12,10 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { SilentAppLoggerLayer } from "#src/backend/lib/effect/test-layers";
 import { makeExecutionDriverLayer } from "#src/backend/services/executions/driver";
 import { cancelInFlightRuns } from "#src/backend/services/executions/end-runs";
-import { recordPausedRunIgnored } from "#src/backend/services/executions/run-rows";
+import {
+  recordPausedRunIgnored,
+  startAdmissionDecisionId,
+} from "#src/backend/services/executions/run-rows";
 import { startWithConcurrency } from "#src/backend/services/workflows/lifecycle/concurrency";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
@@ -74,10 +77,14 @@ function acceptEntry(eventType: RefusedEntry) {
 }
 
 /**
- * One attempt of the durable step that starts a newest-wins run of `wf_1` for
- * an arrival. A refused attempt fails the step, which the executor runs again.
+ * One attempt of the durable step that starts a run of `wf_1` for an arrival,
+ * newest-wins unless `concurrency` says otherwise. A refused attempt fails the
+ * step, which the executor runs again.
  */
-const startNewestWins = (deliveryId: string) =>
+const startNewestWins = (
+  deliveryId: string,
+  concurrency: "newest-wins" | "first-wins" = "newest-wins"
+) =>
   Effect.gen(function* () {
     const appLogger = yield* AppLogger;
     return yield* startWithConcurrency({
@@ -88,7 +95,7 @@ const startNewestWins = (deliveryId: string) =>
         versionId: "ver_1",
         catalogFingerprint: "catalog",
       },
-      concurrency: "newest-wins",
+      concurrency,
       start: {
         source: "event",
         eventName: "appointment/rescheduled",
@@ -171,6 +178,43 @@ export function describeExecutionConformance({
       expect(state.events[0]?.metadata).toEqual({
         createdAt: "host-json-stays-a-string",
       });
+    });
+
+    // A delivery whose memo is gone, such as a resent failed row, reads the
+    // refusal back by its decision id instead of deciding the start again.
+    it("records a first-wins refusal under the delivery's decision id, once", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          yield* startNewestWins("delivery_1", "first-wins");
+          const refused = yield* startNewestWins("delivery_2", "first-wins");
+          yield* startNewestWins("delivery_2", "first-wins");
+          return {
+            refused,
+            recorded: yield* executions.findAdmissionRefusal({
+              workflowId: "wf_1",
+              decisionId: startAdmissionDecisionId("wf_1", "delivery_2"),
+            }),
+            refusals: yield* executions.listWorkflowEvents({
+              workflowId: "wf_1",
+              eventType: "run_refused",
+            }),
+          };
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(SilentAppLoggerLayer, makeExecutionDriverLayer([]))
+          )
+        )
+      );
+
+      expect(result.refused).toMatchObject({
+        status: "not_started",
+        reason: "concurrency_first_wins",
+      });
+      expect(result.recorded).toBe("concurrency_first_wins");
+      expect(result.refusals).toHaveLength(1);
     });
 
     // A delivery step that runs again writes its decision's row again, so a

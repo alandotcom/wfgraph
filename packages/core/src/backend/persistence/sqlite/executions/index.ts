@@ -24,6 +24,7 @@ import {
 import {
   admitStart,
   findAdmissionRefusal,
+  findStartRefusal,
 } from "#src/backend/persistence/sqlite/executions/admission";
 import { deleteWorkflowHistory } from "#src/backend/persistence/sqlite/executions/history";
 
@@ -46,7 +47,7 @@ export function makeSqliteExecutionRepo(
     startForEntity: (input) =>
       store.write((database) => admitStart(database, input)),
     findAdmissionRefusal: (input) =>
-      store.read((database) => findAdmissionRefusal(database, input)),
+      store.read((database) => findStartRefusal(database, input)),
     recordAdmissionRefusal: (input) =>
       store.write((database) =>
         Effect.gen(function* () {

@@ -15,7 +15,9 @@ import type {
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   isEntityEligibilityReason,
+  isWorkflowExecutionIgnoredReason,
   type EntityEligibilityReason,
+  type WorkflowExecutionIgnoredReason,
 } from "@wfgraph/shared/lifecycle/execution-contracts";
 import { recordAuditEventWrite } from "#src/backend/services/executions/repo/audit";
 import { endRunsWrite } from "#src/backend/services/executions/repo/runs";
@@ -28,10 +30,14 @@ import type {
   WorkflowExecution,
 } from "#src/backend/services/executions/repo/contracts";
 
-export async function findAdmissionRefusal(
+/**
+ * The reason of the start refusal recorded under `decisionId`, whatever
+ * refused the start, or null when none was recorded.
+ */
+export async function findStartRefusal(
   database: WfGraphDatabase | WfGraphTransaction,
   input: { workflowId: string; decisionId: string }
-): Promise<EntityEligibilityReason | null> {
+): Promise<WorkflowExecutionIgnoredReason | null> {
   const row = await database.query.workflowExecutionEvents.findFirst({
     where: {
       id: input.decisionId,
@@ -41,6 +47,18 @@ export async function findAdmissionRefusal(
     columns: { metadata: true },
   });
   const reason = row?.metadata?.reason;
+  return isWorkflowExecutionIgnoredReason(reason) ? reason : null;
+}
+
+/**
+ * The Entity Eligibility refusal recorded under `decisionId`, which a start
+ * transaction consults, or null when the row records none.
+ */
+export async function findAdmissionRefusal(
+  database: WfGraphDatabase | WfGraphTransaction,
+  input: { workflowId: string; decisionId: string }
+): Promise<EntityEligibilityReason | null> {
+  const reason = await findStartRefusal(database, input);
   return isEntityEligibilityReason(reason) ? reason : null;
 }
 
