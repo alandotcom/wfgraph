@@ -127,8 +127,19 @@ export type LifecycleDeliveryOutcome =
   | {
       kind: "skipped";
       workflowId: string;
-      reason: "workflow_gone" | "graph_unrunnable" | "not_published";
+      reason: SkipReason;
     };
+
+/**
+ * Why the Lifecycle Rules did nothing to a workflow. `workflow_paused` is a
+ * start role refused because the workflow is paused, which stops new starts
+ * and nothing else.
+ */
+type SkipReason =
+  | "workflow_gone"
+  | "graph_unrunnable"
+  | "not_published"
+  | "workflow_paused";
 
 /** How many candidates a durable snapshot or delivery step carries at once. */
 const WAIT_CANDIDATE_PAGE_SIZE = 200;
@@ -376,6 +387,13 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
 
     if (!rules.startEvents.includes(input.event.name)) {
       return { kind: "waits_only" as const, workflowId: workflow.id };
+    }
+
+    // The subscriber list leaves a paused workflow's start role out, and it is
+    // memoized per arrival, so a pause that landed after it was read is
+    // checked here, on the row this attempt loaded.
+    if (workflow.isPaused) {
+      return skipped(workflow.id, "workflow_paused");
     }
 
     const runTarget = toWorkflowRunTarget({
@@ -638,7 +656,7 @@ export const deliverWaitCandidates = Effect.fn("deliverWaitCandidates")(
 
 function skipped(
   workflowId: string,
-  reason: "workflow_gone" | "graph_unrunnable" | "not_published"
+  reason: SkipReason
 ): LifecycleDeliveryOutcome {
   return { kind: "skipped", workflowId, reason };
 }

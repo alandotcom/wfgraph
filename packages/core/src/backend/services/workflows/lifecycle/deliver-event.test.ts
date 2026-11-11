@@ -410,6 +410,61 @@ describe("applyLifecycleRules", () => {
       })
     );
 
+    it.effect(
+      "opens no run for a workflow paused after the subscriber list was read",
+      () =>
+        Effect.gen(function* () {
+          const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
+            subscriber: subscriber(),
+            event: appointmentCreated,
+            payload,
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                stubPublishedWorkflow(
+                  createWorkflow({ rules: startRules, isPaused: true })
+                ),
+                lifecyclePorts
+              )
+            )
+          );
+
+          assert.deepStrictEqual(outcome, {
+            kind: "skipped",
+            workflowId: "wf_1",
+            reason: "workflow_paused",
+          });
+          assert.strictEqual(startRunMock.mock.calls.length, 0);
+        })
+    );
+
+    it.effect("cancels the runs of a paused workflow", () =>
+      Effect.gen(function* () {
+        const outcome = yield* applyLifecycleRules({
+          deliveryId: "delivery_1",
+          subscriber: subscriber({ roles: ["cancel"] }),
+          event: appointmentCanceled,
+          payload,
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              stubPublishedWorkflow(
+                createWorkflow({ rules: cancelRules, isPaused: true })
+              ),
+              lifecyclePorts
+            )
+          )
+        );
+
+        assert.deepStrictEqual(outcome, {
+          kind: "canceled",
+          workflowId: "wf_1",
+          canceledExecutionIds: ["exec_running"],
+        });
+      })
+    );
+
     it.effect("is waits_only when the arrival is a different Connection", () =>
       Effect.gen(function* () {
         const outcome = yield* applyLifecycleRules({

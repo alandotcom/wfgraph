@@ -222,7 +222,12 @@ export function makeSqliteWorkflowRepo(
               and(
                 eq(workflowEventSubscriptions.eventName, eventName),
                 ne(workflowEventSubscriptions.role, "wait"),
-                eq(workflows.isPaused, 0)
+                // A pause stops new starts and nothing else, so a paused
+                // workflow keeps its cancel role for the runs in flight.
+                or(
+                  eq(workflows.isPaused, 0),
+                  ne(workflowEventSubscriptions.role, "start")
+                )
               )
             );
           for (const row of direct) addEventSubscriber(subscribers, row);
@@ -252,7 +257,6 @@ export function makeSqliteWorkflowRepo(
             .where(
               and(
                 eq(workflowWaitStates.status, "waiting"),
-                eq(workflows.isPaused, 0),
                 sql`exists (
                   select 1 from json_each(${workflowWaitStates.subscribedEvents}) e
                   where e.value = ${eventName}

@@ -334,6 +334,13 @@ version. A draft snapshot takes no number and never moves the pointer. The event
 subscription index tracks the published graph, so a half-built draft cannot
 start runs on an Event.
 
+**Paused workflow**:
+A workflow its builder has stopped from opening new runs. A pause refuses every
+new start: an arrival of a Start Event opens no run, a manual run is recorded as
+ignored, and a schedule does not fire. The runs already in flight are untouched:
+a Cancel Event still claims them, and an Event still wakes their Waits.
+Resuming the workflow lets the next start open a run again.
+
 **Execution**:
 One run of one workflow, started by a Start Event, a schedule, or a manual
 test. Pins the Workflow Version it started against, and a Migration is the one

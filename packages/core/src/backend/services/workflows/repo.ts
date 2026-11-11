@@ -1,4 +1,4 @@
-import { and, arrayContains, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, arrayContains, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
   foldedName,
@@ -184,9 +184,11 @@ export class WorkflowRepo extends Context.Service<
      * then no longer describes what its parked runs are owed, and the run would
      * otherwise wait out its timeout. Both are indexed on the Event name.
      *
-     * Paused workflows are left out here rather than skipped later: a paused
-     * workflow starts nothing and its parked runs are not reachable either, and
-     * filtering in the join is what keeps a per-delivery row out of the timeline.
+     * A paused workflow keeps its cancel and wait roles and loses its start
+     * role here: a pause stops new starts, while the runs already in flight
+     * still take their Cancel Events and wake on the Events they parked on.
+     * `applyLifecycleRules` checks the pause again when it decides a start,
+     * because a pause can land after this list was read.
      */
     readonly listEventSubscribers: (
       eventName: string
@@ -543,7 +545,12 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                   and(
                     eq(workflowEventSubscriptions.eventName, eventName),
                     ne(workflowEventSubscriptions.role, "wait"),
-                    eq(workflows.isPaused, false)
+                    // A pause stops new starts and nothing else, so a paused
+                    // workflow keeps its cancel role for the runs in flight.
+                    or(
+                      eq(workflows.isPaused, false),
+                      ne(workflowEventSubscriptions.role, "start")
+                    )
                   )
                 ),
               // A parked run holds the wait role whether or not the graph still
@@ -577,8 +584,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
                     eq(workflowWaitStates.status, "waiting"),
                     arrayContains(workflowWaitStates.subscribedEvents, [
                       eventName,
-                    ]),
-                    eq(workflows.isPaused, false)
+                    ])
                   )
                 ),
             ]);

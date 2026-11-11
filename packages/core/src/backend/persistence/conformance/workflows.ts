@@ -702,7 +702,7 @@ export function describeWorkflowConformance({
       expect(result.otherEvent).toEqual([]);
     });
 
-    it("leaves a paused workflow out of both subscriber reads", async () => {
+    it("keeps a paused workflow's cancel and wait roles and drops its start role", async () => {
       const database = await openConnection();
       const result = await database.run(
         Effect.gen(function* () {
@@ -728,6 +728,13 @@ export function describeWorkflowConformance({
                 workflowId: "wf_1",
                 eventName: "appointment/approved",
                 role: "start",
+                correlationPath: null,
+                connectionId: null,
+              },
+              {
+                workflowId: "wf_1",
+                eventName: "appointment/canceled",
+                role: "cancel",
                 correlationPath: null,
                 connectionId: null,
               },
@@ -768,8 +775,9 @@ export function describeWorkflowConformance({
           const whileRunning = yield* workflows.listEventSubscribers(
             "appointment/approved"
           );
-          // Pausing has to close both arms. A workflow paused mid-run would
-          // otherwise keep waking on the wait it already parked.
+          // A pause stops new starts and nothing else: the run already in
+          // flight still owes its Wait the Event it parked on, and its Cancel
+          // Event still has to reach it.
           yield* workflows.setPaused({
             workflowId: "wf_1",
             isPaused: true,
@@ -781,13 +789,23 @@ export function describeWorkflowConformance({
             whilePaused: yield* workflows.listEventSubscribers(
               "appointment/approved"
             ),
+            cancelWhilePaused: yield* workflows.listEventSubscribers(
+              "appointment/canceled"
+            ),
             paused: yield* workflows.findPausedById("wf_1"),
           };
         })
       );
 
       expect(result.whileRunning).toHaveLength(1);
-      expect(result.whilePaused).toEqual([]);
+      expect(result.whileRunning[0]?.roles.toSorted()).toEqual([
+        "start",
+        "wait",
+      ]);
+      expect(result.whilePaused).toHaveLength(1);
+      expect(result.whilePaused[0]?.roles).toEqual(["wait"]);
+      expect(result.cancelWhilePaused).toHaveLength(1);
+      expect(result.cancelWhilePaused[0]?.roles).toEqual(["cancel"]);
       expect(result.paused).toMatchObject({ id: "wf_1", isPaused: true });
     });
 
