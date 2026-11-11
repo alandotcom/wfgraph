@@ -6,6 +6,7 @@ import {
   compileConditionModel,
   entityStateConditionPath,
   EVENT_NAME_FIELD_PATH,
+  nodeOutputConditionPath,
 } from "@wfgraph/shared/conditions/conditions";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
@@ -19,7 +20,8 @@ function evaluate(
   payload: JsonObject,
   eventName: string | null = null,
   timestampPaths: string[] = [],
-  entity: JsonObject = {}
+  entity: JsonObject = {},
+  node: JsonObject = {}
 ) {
   const model: ConditionModel = {
     version: 2,
@@ -42,6 +44,7 @@ function evaluate(
     payload,
     eventName,
     entity,
+    node,
   });
 }
 
@@ -72,6 +75,74 @@ describe("a compiled condition against a payload", () => {
       null,
       [],
       { patient: { status: "active" } }
+    );
+
+    expect(evaluation).toEqual({ ok: true, value: true });
+  });
+
+  it("reads a node-qualified field from that node's output, not the payload", () => {
+    const evaluation = evaluate(
+      [
+        [
+          {
+            id: "rule-1",
+            field: nodeOutputConditionPath("lifecycle", "score") ?? "",
+            fieldType: "number",
+            operator: "greater_or_equal",
+            value: 80,
+          },
+        ],
+      ],
+      { score: 10 },
+      null,
+      [],
+      {},
+      { lifecycle: { score: 90 } }
+    );
+
+    expect(evaluation).toEqual({ ok: true, value: true });
+  });
+
+  it("reads a node-qualified field as false where that node has no output", () => {
+    const field = nodeOutputConditionPath("lookup", "score") ?? "";
+    const evaluation = evaluate(
+      [
+        [
+          {
+            id: "rule-1",
+            field,
+            fieldType: "number",
+            operator: "greater_than",
+            value: 1,
+          },
+        ],
+        [{ id: "rule-2", field, fieldType: "number", operator: "is_not_set" }],
+      ],
+      { score: 10 }
+    );
+
+    expect(evaluation).toEqual({ ok: true, value: true });
+  });
+
+  it("decodes a node-qualified timestamp inside that node's output", () => {
+    const field = nodeOutputConditionPath("lookup", "appointment.endsAt") ?? "";
+    const evaluation = evaluate(
+      [
+        [
+          {
+            id: "rule-1",
+            field,
+            fieldType: "timestamp",
+            operator: "after",
+            dateTime: "2020-01-01T00:00:00.000Z",
+          },
+        ],
+      ],
+      {},
+      null,
+      [field],
+      {},
+      { lookup: { appointment: { endsAt: "2026-01-01T00:00:00.000Z" } } }
     );
 
     expect(evaluation).toEqual({ ok: true, value: true });

@@ -92,8 +92,9 @@ describe("Traversal.outputsInGraphOrder", () => {
   }
 
   // A replay finishes nodes in another order than the pass that first ran
-  // them, and a Condition folds these outputs into one namespace where the
-  // later of two equal names wins, so the order is the graph's.
+  // them, and a Condition rule naming no node folds these outputs into one
+  // namespace where the later of two equal names wins, so the order is the
+  // graph's.
   it.effect(
     "lists outputs in the graph's node order, whatever order they finished in",
     () =>
@@ -111,8 +112,8 @@ describe("Traversal.outputsInGraphOrder", () => {
         }
 
         assert.deepStrictEqual(traversal.outputsInGraphOrder("third"), [
-          { label: "first", data: { from: "first" } },
-          { label: "third", data: { from: "third" } },
+          { nodeId: "first", label: "first", data: { from: "first" } },
+          { nodeId: "third", label: "third", data: { from: "third" } },
         ]);
       })
   );

@@ -423,9 +423,10 @@ export function buildGroupScenario(
   const { shape } = scenario;
   const startMarker =
     shape.kind === "condition" && !shape.takesTrue ? "stop" : "go";
-  // The prefix copies the Start payload's marker into its own output. A
-  // Condition reads a flat namespace in which a later step's `marker` replaces
-  // the Start Event's, so the gate compares the prefix output.
+  // The prefix copies the Start payload's marker into its own output. The
+  // gate's rule names no node, so it reads a flat namespace in which a later
+  // step's `marker` replaces the Start Event's, and it compares the prefix
+  // output.
   builder.nodes.push(record("prefix", "prefix:{{@entry:entry.marker}}"));
   builder.resolved.set("prefix", `prefix:${startMarker}`);
   builder.reached.push("prefix");

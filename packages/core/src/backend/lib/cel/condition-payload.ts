@@ -17,8 +17,10 @@ import {
   CONDITION_CONTEXT_ROOT,
   ENTITY_CONTEXT_ROOT,
   EVENT_CONTEXT_ROOT,
+  NODE_CONTEXT_ROOT,
   parseConditionModel,
   parseEntityStateConditionPath,
+  parseNodeOutputConditionPath,
 } from "@wfgraph/shared/conditions/conditions";
 import { parseOutputPath } from "@wfgraph/shared/graph/node-references";
 
@@ -94,23 +96,11 @@ function readContextPath(
  * write lands inside whatever object holds the path.
  */
 function decodeConditionTimestamps(
-  payload: JsonObject,
-  entity: JsonObject,
+  roots: { payload: JsonObject; entity: JsonObject; node: JsonObject },
   paths: readonly string[]
 ) {
   for (const path of paths) {
-    const entityReference = parseEntityStateConditionPath(path);
-    const entityTypeContext = entityReference
-      ? Reflect.get(entity, entityReference.entityType)
-      : undefined;
-    const context = entityReference
-      ? isJsonObject(entityTypeContext)
-        ? entityTypeContext
-        : undefined
-      : payload;
-    const located = context
-      ? readContextPath(context, entityReference?.fieldPath ?? path)
-      : null;
+    const located = locateTimestampPath(roots, path);
     if (!located || typeof located.value !== "string") {
       continue;
     }
@@ -120,6 +110,36 @@ function decodeConditionTimestamps(
       Reflect.set(located.parent, located.key, decoded);
     }
   }
+}
+
+/**
+ * Where a rule's stored field sits among the roots: under its Entity type in
+ * `entity`, under its node id in `node`, or in `payload` for a field naming
+ * neither.
+ */
+function locateTimestampPath(
+  roots: { payload: JsonObject; entity: JsonObject; node: JsonObject },
+  path: string
+): ReturnType<typeof readContextPath> {
+  const entityReference = parseEntityStateConditionPath(path);
+  if (entityReference) {
+    const context = Reflect.get(roots.entity, entityReference.entityType);
+    return isJsonObject(context)
+      ? readContextPath(context, entityReference.fieldPath)
+      : null;
+  }
+
+  const nodeReference = parseNodeOutputConditionPath(path);
+  if (nodeReference) {
+    const context = Object.hasOwn(roots.node, nodeReference.nodeId)
+      ? roots.node[nodeReference.nodeId]
+      : undefined;
+    return context !== undefined && isJsonObject(context)
+      ? readContextPath(context, nodeReference.fieldPath)
+      : null;
+  }
+
+  return readContextPath(roots.payload, path);
 }
 
 /**
@@ -139,6 +159,11 @@ export function evaluateCompiledCondition(input: {
   /** Current tracked Entity State projected for this Condition node. */
   entity?: JsonObject | undefined;
   /**
+   * The unwrapped outputs a node-qualified rule reads, keyed by node id. Only
+   * a Condition node has these; a payload evaluated on its own has none.
+   */
+  node?: JsonObject | undefined;
+  /**
    * The Event this payload arrived on, null where nothing named one. The key is
    * written either way, because an absent CEL root raises where a null value
    * compares false.
@@ -147,7 +172,8 @@ export function evaluateCompiledCondition(input: {
 }) {
   const payload = structuredClone(input.payload);
   const entity = structuredClone(input.entity ?? {});
-  decodeConditionTimestamps(payload, entity, input.timestampPaths);
+  const node = structuredClone(input.node ?? {});
+  decodeConditionTimestamps({ payload, entity, node }, input.timestampPaths);
 
   return evaluateCelBooleanExpression({
     expression: input.expression,
@@ -158,6 +184,7 @@ export function evaluateCompiledCondition(input: {
       },
       [CONDITION_CONTEXT_ROOT]: payload,
       [ENTITY_CONTEXT_ROOT]: entity,
+      [NODE_CONTEXT_ROOT]: node,
     },
   });
 }

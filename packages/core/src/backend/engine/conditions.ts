@@ -1,11 +1,14 @@
 /**
- * How a Condition node's expression is decided: the flat namespace the run's
- * node outputs are folded into, and the CEL evaluation over it.
+ * How a Condition node's expression is decided: the roots its CEL reads, built
+ * from the run's node outputs, and the evaluation over them. A rule naming its
+ * source node reads `node`; a rule naming none reads the flat `payload`
+ * namespace published versions were written against.
  */
 
 import { evaluateCompiledCondition } from "#src/backend/lib/cel/condition-payload";
 import {
   collectEntityStateConditionReferences,
+  collectNodeOutputConditionReferences,
   collectTimestampFieldPaths,
   parseConditionModel,
 } from "@wfgraph/shared/conditions/conditions";
@@ -14,8 +17,9 @@ import {
   unwrapStepOutput,
 } from "@wfgraph/shared/graph/node-references";
 import type { JsonObject, JsonValue } from "@wfgraph/shared/types/json";
-import type { NodeOutputs } from "#src/backend/engine/contracts";
 import type { EntityTemplateContext } from "#src/backend/engine/entities";
+import type { NodeOutputInGraphOrder } from "#src/backend/engine/traversal";
+import { uniq } from "es-toolkit/array";
 import { Effect } from "effect";
 
 type ConditionEvalResult = {
@@ -23,17 +27,19 @@ type ConditionEvalResult = {
 };
 
 /**
- * Fold one node's output into the flat namespace a CEL condition reads from.
+ * Fold one node's output into the flat namespace a rule naming no node reads.
  *
- * Steps return their fields inside a `{ success, data }` wrapper, and a condition
- * names those fields by path alone (`payload.donorId == "abc"`), so the output goes
- * through the same unwrapping a template token gets before its keys are lifted into
- * the namespace.
+ * Steps return their fields inside a `{ success, data }` wrapper, and such a
+ * rule names those fields by path alone (`payload.donorId == "abc"`), so the
+ * output goes through the same unwrapping a template token gets before its keys
+ * are lifted into the namespace.
  *
- * Known hazard, deliberately left alone: the namespace is flat across every node,
- * so two nodes that both produce a field called `id` collide, and the node later
- * in the graph's node order wins. Node-qualifying it would mean naming a node in
- * every rule.
+ * The namespace is flat across every node, so two nodes that both produce a
+ * field called `id` collide, and the node later in the graph's node order wins.
+ * Every rule the editor and the build agent write names its node and reads the
+ * `node` root instead (`nodeOutputConditionContext`). This fold stays, unchanged,
+ * because a published version is immutable and its unqualified rules must keep
+ * routing runs the way they did when it was published.
  */
 function mergeConditionContextValue(context: JsonObject, value: JsonValue) {
   const record = unwrapStepOutput(value);
@@ -74,6 +80,7 @@ function mergeConditionContextValue(context: JsonObject, value: JsonValue) {
 function readConditionContextShape(conditionModel: unknown): Effect.Effect<{
   timestampPaths: string[];
   entityReferences: ReturnType<typeof collectEntityStateConditionReferences>;
+  nodeIds: string[];
 }> {
   const parsed = parseConditionModel(conditionModel);
   if (!parsed.valid) {
@@ -81,14 +88,47 @@ function readConditionContextShape(conditionModel: unknown): Effect.Effect<{
       Effect.logWarning("Condition model did not parse").pipe(
         Effect.annotateLogs({ error: parsed.error })
       ),
-      { timestampPaths: [], entityReferences: [] }
+      { timestampPaths: [], entityReferences: [], nodeIds: [] }
     );
   }
 
   return Effect.succeed({
     timestampPaths: collectTimestampFieldPaths(parsed.model),
     entityReferences: collectEntityStateConditionReferences(parsed.model),
+    nodeIds: uniq(
+      collectNodeOutputConditionReferences(parsed.model).map(
+        (reference) => reference.nodeId
+      )
+    ),
   });
+}
+
+/**
+ * CEL's `node` root: the unwrapped output of each node a rule names, keyed by
+ * node id. A named node that has not finished is left out, and the compiled
+ * presence guard then reads the rule as false, the way it reads a payload
+ * field the run does not carry.
+ */
+function nodeOutputConditionContext(
+  outputs: readonly NodeOutputInGraphOrder[],
+  nodeIds: readonly string[]
+): JsonObject {
+  const context: JsonObject = {};
+  const named = new Set(nodeIds);
+  for (const output of outputs) {
+    if (!named.has(output.nodeId)) {
+      continue;
+    }
+    // A node id is text the builder chose, so it is defined rather than
+    // assigned: an id of `__proto__` stays an own key.
+    Object.defineProperty(context, output.nodeId, {
+      value: unwrapStepOutput(output.data),
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+  }
+  return context;
 }
 
 function setConditionContextValue(
@@ -176,7 +216,7 @@ function entityConditionContext(
 export function evaluateConditionExpression(
   conditionExpression: unknown,
   /** Every finished node's output, in the graph's node order. */
-  outputs: readonly NodeOutputs[string][],
+  outputs: readonly NodeOutputInGraphOrder[],
   conditionModel: unknown,
   /** The Event that put the run on the branch this node sits on. */
   eventName: string | null,
@@ -219,6 +259,7 @@ export function evaluateConditionExpression(
         entityContext,
         conditionContext.entityReferences
       ),
+      node: nodeOutputConditionContext(outputs, conditionContext.nodeIds),
     });
 
     if (!evaluation.ok) {

@@ -7,14 +7,14 @@
 
 import type { WorkflowActions } from "#src/backend/engine/actions";
 import type { EntityTemplateContext } from "#src/backend/engine/entities";
-import type {
-  ExecutionResult,
-  NodeOutputs,
-} from "#src/backend/engine/contracts";
+import type { ExecutionResult } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { NodeContext } from "#src/backend/engine/step-log";
 import type { WorkflowStore } from "#src/backend/engine/store";
-import type { Traversal } from "#src/backend/engine/traversal";
+import type {
+  NodeOutputInGraphOrder,
+  Traversal,
+} from "#src/backend/engine/traversal";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { ExecutionSide } from "@wfgraph/shared/lifecycle/execution-contracts";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -105,9 +105,10 @@ export type ActionStepInput = {
   config: Record<string, unknown>;
   /**
    * Every finished node's output in the graph's node order, which is the
-   * order a Condition folds them into its namespace.
+   * order a Condition folds them into its namespace, each beside the id a
+   * node-qualified rule names it by.
    */
-  outputsInGraphOrder: readonly NodeOutputs[string][];
+  outputsInGraphOrder: readonly NodeOutputInGraphOrder[];
   context: NodeContext;
   store: WorkflowStore;
   actions: WorkflowActions;

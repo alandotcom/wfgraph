@@ -31,6 +31,9 @@ import {
 } from "#src/backend/engine/contracts";
 import type { EngineFailure } from "#src/backend/engine/engine-failure";
 
+/** One finished node's output, with the id of the node that produced it. */
+export type NodeOutputInGraphOrder = NodeOutputs[string] & { nodeId: string };
+
 /** Key a node's output is stored and looked up under. */
 export function outputKey(nodeId: string): string {
   return nodeId;
@@ -180,16 +183,17 @@ export class Traversal {
   }
 
   /**
-   * `outputsFor` in the graph's node order. A pass and its replay finish nodes
-   * in different orders, and this order is the same for both.
+   * `outputsFor` in the graph's node order, each beside the id of the node
+   * that produced it. A pass and its replay finish nodes in different orders,
+   * and this order is the same for both.
    */
-  outputsInGraphOrder(nodeId: string): NodeOutputs[string][] {
+  outputsInGraphOrder(nodeId: string): NodeOutputInGraphOrder[] {
     const outputs = this.outputsFor(nodeId);
     return this.nodes.flatMap((node) => {
       const output = Object.hasOwn(outputs, outputKey(node.id))
         ? outputs[outputKey(node.id)]
         : undefined;
-      return output === undefined ? [] : [output];
+      return output === undefined ? [] : [{ nodeId: node.id, ...output }];
     });
   }
 
