@@ -195,7 +195,7 @@ function readAllows(access: unknown): ReadAllowsResult {
  */
 export function resolveAuth(
   auth: WfGraphAuth,
-  caller?: string | undefined
+  caller?: string
 ): ResolvedAuth {
   const authenticate = readAuthenticate(auth, caller);
   return {

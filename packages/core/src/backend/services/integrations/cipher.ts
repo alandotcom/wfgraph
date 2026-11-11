@@ -44,7 +44,7 @@ export type EncryptionRuntimeConfig = {
  */
 export function assertValidEncryptionKey(
   key: string | undefined,
-  caller?: string | undefined
+  caller?: string
 ): asserts key is string {
   const trimmed = key?.trim() ?? "";
   const option =

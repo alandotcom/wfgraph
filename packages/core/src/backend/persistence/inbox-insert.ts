@@ -21,7 +21,7 @@ export type InboxInsertStatement = {
  * connection's own `search_path` otherwise. A PostgreSQL schema name has passed
  * `normalizeDatabaseConfig`, so it is an unquoted lowercase identifier.
  */
-export function inboxInsertSql(schema?: string | undefined): string {
+export function inboxInsertSql(schema?: string): string {
   const table =
     schema === undefined
       ? "workflow_event_inbox"
