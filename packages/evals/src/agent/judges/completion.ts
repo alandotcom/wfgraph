@@ -41,7 +41,7 @@ function answerRequirementFailure(
 
 function clauseClaimsPublishBlocker(clause: string): boolean {
   return (
-    /\b(?:cannot|can't|unable to)\s+(?:be\s+)?publish(?:ed)?\b|\bnot ready (?:to publish|for publication)\b|\bnot publishable\b/i.test(
+    /\b(?:cannot|can't|unable to)\s+(?:be\s+)?publish(?:ed)?\b|(?:\bnot|n['’]t)\s+(?:yet\s+)?ready (?:to publish|for publication)\b|\bnot publishable\b/i.test(
       clause
     ) ||
     /\b(?:publishing|publication) (?:is|remains|has been) blocked\b/i.test(

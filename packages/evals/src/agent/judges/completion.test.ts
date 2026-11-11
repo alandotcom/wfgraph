@@ -367,6 +367,27 @@ describe("assessExpectedCompletion", () => {
     });
   });
 
+  it.each([
+    "The Slack workflow is built, but it isn't ready to publish. It requires a connection.",
+    "The Slack workflow is built, but it isn’t yet ready to publish. It requires a connection.",
+  ])("reads %s as naming a blocker", (finalText) => {
+    expect(
+      assess({
+        expected: {
+          outcome: "blocked",
+          answerMustMention: ["slack"],
+          requiredPublishBlocker: {
+            kind: "missing_integration",
+            messageMustMention: ["connected slack integration"],
+          },
+          allowedPublishBlockerKinds: ["missing_integration"],
+        },
+        finalText,
+        facts: blockedFacts,
+      })
+    ).toMatchObject({ score: 1 });
+  });
+
   it("rejects a blocked answer that says the workflow is ready for publication", () => {
     expect(
       assess({

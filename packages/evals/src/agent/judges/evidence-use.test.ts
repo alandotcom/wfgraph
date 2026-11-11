@@ -81,7 +81,43 @@ describe("assessEvidenceUse", () => {
     expect(assessEvidenceUse(trajectory)).toEqual({
       score: 0,
       rationale:
-        "set_lifecycle_rules was called before read_workflow completed every topology page.",
+        "set_lifecycle_rules was called before read_workflow returned every topology page, or the pages holding the steps it names.",
+    });
+  });
+
+  // The authoring rules ask for the pages that hold the steps an edit
+  // touches, and let the other pages of a large graph stay unread.
+  it("accepts a write naming steps the pages read so far returned", () => {
+    const readPages = [
+      call("read-1", "read_workflow"),
+      valueResult("read-1", "read_workflow", {
+        nodes: [{ id: "entry" }],
+        edges: [],
+        nextNodeOffset: 20,
+      }),
+      call("read-3", "read_workflow", { nodeOffset: 40 }),
+      valueResult("read-3", "read_workflow", {
+        nodes: [{ id: "step-64", actionType: "score-applicant" }],
+        edges: [],
+      }),
+      call("describe", "describe_action", { actionId: "slack/send-message" }),
+      result("describe", "describe_action"),
+    ];
+    const addAfter = (sourceNodeId: string) =>
+      buildAgentTrajectory([
+        ...readPages,
+        call("add", "add_node", {
+          actionId: "slack/send-message",
+          sourceNodeId,
+        }),
+        result("add", "add_node"),
+      ]);
+
+    expect(assessEvidenceUse(addAfter("step-64"))).toMatchObject({ score: 1 });
+    expect(assessEvidenceUse(addAfter("step-30"))).toEqual({
+      score: 0,
+      rationale:
+        "add_node was called before read_workflow returned every topology page, or the pages holding the steps it names.",
     });
   });
 

@@ -207,6 +207,94 @@ function workflowReadCompletedBefore(
   );
 }
 
+/** The argument keys under which a write names a step or an edge the graph holds. */
+const NAMED_ID_KEYS = new Set([
+  "nodeId",
+  "sourceNodeId",
+  "targetNodeId",
+  "edgeId",
+]);
+
+/**
+ * Every step and edge id a write's arguments name, at any depth, which covers
+ * the operations of an apply_edits batch. A `$key` names a step the same
+ * batch creates and is left out.
+ */
+function idsNamedBy(value: JsonValue, key?: string): string[] {
+  if (typeof value === "string") {
+    return key !== undefined && NAMED_ID_KEYS.has(key) && !value.startsWith("$")
+      ? [value]
+      : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => idsNamedBy(item));
+  }
+  return isJsonObject(value)
+    ? Object.entries(value).flatMap(([childKey, child]) =>
+        idsNamedBy(child, childKey)
+      )
+    : [];
+}
+
+/** The step and edge ids a tool result carries: the rows of a read, or what a write created. */
+function idsAnsweredBy(call: AgentTrajectoryToolCall): string[] {
+  const result = call.result?.result;
+  if (
+    call.result === undefined ||
+    call.result.failed ||
+    !isJsonObject(result)
+  ) {
+    return [];
+  }
+  const rows = [result.nodes, result.edges].flatMap((list) =>
+    Array.isArray(list)
+      ? list.flatMap((row) =>
+          isJsonObject(row) && typeof row.id === "string" ? [row.id] : []
+        )
+      : []
+  );
+  const created = [
+    result.nodeId,
+    result.incomingEdgeId,
+    result.outgoingEdgeId,
+    ...(Array.isArray(result.results)
+      ? result.results.flatMap((entry) =>
+          isJsonObject(entry)
+            ? [entry.nodeId, entry.incomingEdgeId, entry.outgoingEdgeId]
+            : []
+        )
+      : []),
+  ].flatMap((id) => (typeof id === "string" ? [id] : []));
+  return [...rows, ...created];
+}
+
+/**
+ * Whether the pages read before a write hold every step and edge the write
+ * names, which is what the authoring rules ask of an edit to a large graph.
+ * A write that names none, such as set_lifecycle_rules, answers false, so it
+ * still needs every page.
+ */
+function namedStepsWereRead(
+  calls: readonly AgentTrajectoryToolCall[],
+  boundary: AgentTrajectoryToolCall
+): boolean {
+  const named = idsNamedBy(boundary.input);
+  if (named.length === 0) {
+    return false;
+  }
+  const known = new Set(
+    calls
+      .filter(
+        (candidate) =>
+          candidate.order < boundary.order &&
+          candidate.result !== undefined &&
+          candidate.result.order < boundary.order
+      )
+      .flatMap(idsAnsweredBy)
+  );
+  return named.every((id) => known.has(id));
+}
+
 function nodeActionIds(
   document: AgentDocument,
   calls: readonly AgentTrajectoryToolCall[]
@@ -320,10 +408,13 @@ export function assessEvidenceUse(
       };
     }
 
-    if (!workflowReadCompletedBefore(trajectory.calls, call)) {
+    if (
+      !workflowReadCompletedBefore(trajectory.calls, call) &&
+      !namedStepsWereRead(trajectory.calls, call)
+    ) {
       return {
         score: 0,
-        rationale: `${call.name} was called before read_workflow completed every topology page.`,
+        rationale: `${call.name} was called before read_workflow returned every topology page, or the pages holding the steps it names.`,
       };
     }
 
