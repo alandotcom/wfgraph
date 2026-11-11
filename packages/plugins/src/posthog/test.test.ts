@@ -35,6 +35,26 @@ describe("testPostHog", () => {
 
   // A personal API key pasted into this box is the common mistake, and the
   // prefix names it before a request is spent earning a 401 that would not.
+  it("refuses a host that is not HTTPS before spending a request", async () => {
+    const spent = vi.fn();
+    globalThis.fetch = spent as unknown as typeof fetch;
+
+    expect(
+      await testPostHog(
+        {
+          POSTHOG_PROJECT_API_KEY: "phc_project",
+          POSTHOG_HOST: "http://collector.example",
+        },
+        manual
+      )
+    ).toEqual({
+      success: false,
+      error:
+        "POSTHOG_HOST must be an https: URL, such as https://eu.i.posthog.com.",
+    });
+    expect(spent).not.toHaveBeenCalled();
+  });
+
   it("names the prefix before spending a request", async () => {
     const spent = vi.fn();
     globalThis.fetch = spent as unknown as typeof fetch;

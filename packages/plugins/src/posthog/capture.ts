@@ -50,10 +50,12 @@ export function connectionFrom(credentials: {
     return Effect.fail(new StepFailure({ message: MISSING_CREDENTIAL }));
   }
 
-  return Effect.succeed({
-    projectApiKey,
-    host: resolvePostHogHost(credentials.POSTHOG_HOST),
-  });
+  const host = resolvePostHogHost(credentials.POSTHOG_HOST);
+  if (!host.ok) {
+    return Effect.fail(new StepFailure({ message: host.error }));
+  }
+
+  return Effect.succeed({ projectApiKey, host: host.host });
 }
 
 export function captureOrFail(

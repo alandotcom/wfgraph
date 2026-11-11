@@ -387,6 +387,27 @@ describe("the capture-event action", () => {
     })
   );
 
+  it.effect("refuses a host that is not HTTPS before reaching PostHog", () =>
+    Effect.gen(function* () {
+      const { credentials } = credentialsRead({
+        POSTHOG_PROJECT_API_KEY: "phc_test_key",
+        POSTHOG_HOST: "http://collector.example",
+      });
+
+      const error = actionError(
+        yield* runAction(posthog, "capture-event", {
+          input: { eventName: "user_signed_up", distinctId: "user_1" },
+          credentials,
+        })
+      );
+
+      expect(error.message).toBe(
+        "POSTHOG_HOST must be an https: URL, such as https://eu.i.posthog.com."
+      );
+      expect(mocks.captureEvent).toHaveBeenCalledTimes(0);
+    })
+  );
+
   // Both fields are required in the form, but a template that resolved to
   // nothing still arrives blank. PostHog would take the event and file it
   // against a person nobody can find.

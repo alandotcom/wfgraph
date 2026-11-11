@@ -48,17 +48,16 @@ export async function testPostHog(
     };
   }
 
+  const host = resolvePostHogHost(credentials.POSTHOG_HOST);
+  if (!host.ok) {
+    return { success: false, error: host.error };
+  }
+
   // A connection test answers the credentials UI over a Promise, so this is
   // where the effect is run and the transport provided. A step reaches PostHog
   // through the same client without any of that, because `defineStep` does it.
   const result = await callExternalAsync(
-    evaluateFlags(
-      {
-        projectApiKey,
-        host: resolvePostHogHost(credentials.POSTHOG_HOST),
-      },
-      TEST_DISTINCT_ID
-    ),
+    evaluateFlags({ projectApiKey, host: host.host }, TEST_DISTINCT_ID),
     (error) => error
   );
 

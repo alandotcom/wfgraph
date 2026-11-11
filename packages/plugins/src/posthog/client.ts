@@ -117,14 +117,31 @@ export function readPostHogError(payload: JsonValue | undefined) {
   return parsePayload(payload, posthogErrorSchema);
 }
 
+const INVALID_HOST_MESSAGE =
+  "POSTHOG_HOST must be an https: URL, such as https://eu.i.posthog.com.";
+
 /**
- * The host with any trailing slash taken off, so joining a path cannot produce
- * a double slash. A blank host is the US cloud, which is where a project lives
- * unless someone chose otherwise.
+ * The host requests go to, with any trailing slash taken off so joining a path
+ * cannot produce a double slash. A blank host is the US cloud, which is where a
+ * project lives unless someone chose otherwise.
+ *
+ * Every request carries the project key, so a host is accepted only as an
+ * `https:` URL with no user info. The refusal never quotes the value.
  */
-export function resolvePostHogHost(host: string | undefined): string {
-  const trimmed = host?.trim();
-  return (trimmed || DEFAULT_POSTHOG_HOST).replace(/\/+$/, "");
+export function resolvePostHogHost(
+  host: string | undefined
+): { ok: true; host: string } | { ok: false; error: string } {
+  const candidate = host?.trim() || DEFAULT_POSTHOG_HOST;
+  const parsed = URL.parse(candidate);
+  if (
+    parsed === null ||
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== ""
+  ) {
+    return { ok: false, error: INVALID_HOST_MESSAGE };
+  }
+  return { ok: true, host: candidate.replace(/\/+$/, "") };
 }
 
 /**

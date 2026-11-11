@@ -86,13 +86,33 @@ describe("resolvePostHogHost", () => {
   // A connection saved without a host is a US Cloud project, which is the one
   // most people have.
   it.each([undefined, "", "   "])("falls back to US Cloud for %o", (host) => {
-    expect(resolvePostHogHost(host)).toBe("https://us.i.posthog.com");
+    expect(resolvePostHogHost(host)).toEqual({
+      ok: true,
+      host: "https://us.i.posthog.com",
+    });
   });
 
   it("takes a trailing slash off so a path cannot double it", () => {
-    expect(resolvePostHogHost("https://eu.i.posthog.com/")).toBe(
-      "https://eu.i.posthog.com"
-    );
+    expect(resolvePostHogHost("https://eu.i.posthog.com/")).toEqual({
+      ok: true,
+      host: "https://eu.i.posthog.com",
+    });
+  });
+
+  // The project key travels in every request body, so a host that is not
+  // HTTPS would put it on the wire in the clear.
+  it.each([
+    "http://eu.i.posthog.com",
+    "eu.i.posthog.com",
+    "javascript:alert(1)",
+    "https://user:secret@eu.i.posthog.com",
+  ])("refuses %s without quoting it", (host) => {
+    const resolved = resolvePostHogHost(host);
+    expect(resolved).toEqual({
+      ok: false,
+      error:
+        "POSTHOG_HOST must be an https: URL, such as https://eu.i.posthog.com.",
+    });
   });
 });
 
