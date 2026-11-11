@@ -311,13 +311,14 @@ export class NodeScheduler {
           }
         }
 
+        // One id whether or not the node reads Entity fields. A Migration can
+        // add or remove a node's Entity templates, and an id that followed
+        // that would resolve a node that already ran again, and could claim an
+        // Exit against it.
         const resolution = yield* runDurable(
           runtime,
           {
-            id:
-              paths.length > 0
-                ? `entity-context:${node.id}`
-                : `entity-eligibility:${node.id}`,
+            id: `entity:${node.id}`,
             nodeId: node.id,
             name: `${nodeName} (Entity)`,
           },

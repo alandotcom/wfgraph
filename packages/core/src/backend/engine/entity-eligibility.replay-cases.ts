@@ -128,7 +128,10 @@ export function graph(
   });
 }
 
-function migrationGraph(eligibilityCondition: string) {
+function migrationGraph(
+  eligibilityCondition: string,
+  firstConfig: Record<string, unknown> = {}
+) {
   const wait: WorkflowNode = {
     ...actionNode("wait_1", true, "Wait"),
     data: {
@@ -145,7 +148,7 @@ function migrationGraph(eligibilityCondition: string) {
   return createSerializedWorkflowGraph({
     nodes: [
       lifecycleNode(["before-node"], [], eligibilityCondition),
-      actionNode("first"),
+      actionNode("first", true, "test/action", firstConfig),
       wait,
       actionNode("second"),
     ],
@@ -249,6 +252,62 @@ export function defineEntityEligibilityReplayCases(
         nodeId: "second",
         condition: migratedCondition,
       }),
+    ]);
+  });
+  // A Migration can give a node that already ran an Entity template it did not
+  // have. The node's Entity resolution is memoized under one step id whether or
+  // not it reads Entity fields, so the replay answers it from the memo rather
+  // than resolving the node again and claiming an Exit against it.
+  it("keeps a completed node's Entity resolution when a Migration adds an Entity template to it", async () => {
+    const store = createRecordingWorkflowStore();
+    const entities = entityPort([
+      { outcome: "eligible" },
+      { outcome: "eligible" },
+      { outcome: "eligible" },
+      {
+        outcome: "exit",
+        reason: "entity_condition_not_met",
+        checkedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+
+    const run = await driveWithReplay(
+      (runtime) => {
+        const migrated = store.callsOf("createWaitState").length > 0;
+        return executeTestWorkflow(
+          {
+            ...executionInput,
+            graph: migrationGraph(
+              condition,
+              migrated
+                ? { message: "{{@$entity:appointment|Appointment.name}}" }
+                : {}
+            ),
+            executionId: "exec_wait",
+            workflowVersionId: migrated ? "version_2" : "version_1",
+          },
+          runtime,
+          store,
+          succeedingActions,
+          entities
+        );
+      },
+      {
+        events: {
+          "wait-park-wait_1-0": migrateWake(),
+          "wait-park-wait_1-1": resumeWake({}, "appointment.ready"),
+        },
+        executor,
+        waitRows: store,
+      }
+    );
+
+    expect(run.value.status).toBe("completed");
+    expect(store.callsOf("requestExit")).toEqual([]);
+    expect(entities.inputs.map((input) => input.nodeId)).toEqual([
+      "first",
+      "wait_1",
+      "second",
     ]);
   });
 }
