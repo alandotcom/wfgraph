@@ -270,7 +270,9 @@ const wfgraph = await createWfGraphApp({
   },
   // The example exposes the authoring tools to local MCP clients. A tool
   // request authenticates with the editor's demo session cookie, or with
-  // `WFGRAPH_MCP_TOKEN` as a bearer token; anything else answers 401.
+  // `WFGRAPH_MCP_TOKEN` as a bearer token, and any other request answers 401.
+  // In development with `WFGRAPH_DEMO_USER` set, every request acts as that
+  // demo account, MCP requests included.
   mcp: true,
   // Another process sends Events with `POST /api/events` and this key as a
   // bearer token. Without the variable the route stays off.
