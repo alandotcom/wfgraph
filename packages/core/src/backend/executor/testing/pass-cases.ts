@@ -73,6 +73,10 @@ let throwsOnceCalls = 0;
 let failsTwiceCalls = 0;
 /** Settles once the `flaky` node's log row is closed. */
 let flakyClosed = Promise.withResolvers<void>();
+/** How many times the `test/throws-when-held` step has run in the current case. */
+let throwsWhenHeldCalls = 0;
+/** Settles as the `test/throws-when-held` step is about to throw. */
+let throwsWhenHeldThrew = Promise.withResolvers<void>();
 
 const actions = createWorkflowActions(
   assembleExtensions({
@@ -140,6 +144,25 @@ const actions = createWorkflowActions(
             return failsTwiceCalls <= 2
               ? Promise.reject(new Error("The vendor is down"))
               : Promise.resolve(null);
+          });
+          return { sent: true };
+        },
+      }),
+      defineAction({
+        id: "test/throws-when-held",
+        label: "Throws when held",
+        description:
+          "Runs one durable step that throws on its first call, once the held step has started",
+        input: Schema.Struct({}),
+        handler: async ({ step }) => {
+          await step.run("dispatch", async () => {
+            throwsWhenHeldCalls += 1;
+            if (throwsWhenHeldCalls === 1) {
+              await heldStep.entered;
+              throwsWhenHeldThrew.resolve();
+              throw new Error("The vendor answered 502");
+            }
+            return null;
           });
           return { sent: true };
         },
@@ -301,6 +324,8 @@ function describeCases(
     throwsOnceCalls = 0;
     failsTwiceCalls = 0;
     flakyClosed = Promise.withResolvers<void>();
+    throwsWhenHeldCalls = 0;
+    throwsWhenHeldThrew = Promise.withResolvers<void>();
     const connection = await openConnection();
     const executionId = await connection.run(
       Effect.gen(function* () {
@@ -899,6 +924,50 @@ function describeCases(
       { name: "writeStepMemo", outcome: "LeaseLost" },
     ]);
     expect(await readRun(harness)).toEqual(afterLive);
+  });
+
+  // A step that throws stops the pass from starting another step, but a step
+  // a parallel branch had already started may have reached its vendor, so the
+  // pass keeps its lease until that step settles and records its value.
+  it("records the value of a step a parallel branch was running when another branch's step threw, and does not run it again", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode(),
+          actionNode("held", "test/held"),
+          actionNode("fails", "test/throws-when-held"),
+        ],
+        edges: [
+          edge("entry", "held", "started"),
+          edge("entry", "fails", "started"),
+        ],
+      })
+    );
+
+    const first = harness.pass();
+    await heldStep.entered;
+    await throwsWhenHeldThrew.promise;
+    // Long enough for the failure to stop the pass before the held step ends.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    heldStep.release();
+    expect(await first).toMatchObject({
+      kind: "retry",
+      schedule: { state: "queued", attempt: 0 },
+    });
+    const afterFirst = await readRun(harness);
+    expect(
+      afterFirst.memo.map(({ stepId, status }) => ({ stepId, status }))
+    ).toEqual(
+      expect.arrayContaining([
+        { stepId: "node:held:dispatch", status: "succeeded" },
+        { stepId: "node:fails:dispatch", status: "failing" },
+      ])
+    );
+
+    expect(await harness.pass()).toEqual({ kind: "ended" });
+    expect(heldStep.calls()).toBe(1);
+    expect(throwsWhenHeldCalls).toBe(2);
+    expect((await readRun(harness)).status).toBe("completed");
   });
 
   // A node's log close runs on every pass, and the fenced close lets a later

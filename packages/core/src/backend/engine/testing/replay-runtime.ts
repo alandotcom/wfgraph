@@ -356,9 +356,12 @@ export async function driveWithReplay<T>(
     });
     let stepFailure: { error: unknown } | undefined;
     /** Runs a step's `fn`, keeping the first error a step throws in the pass. */
-    const keepingFailure = async <V>(fn: () => Promise<V>): Promise<V> => {
+    const keepingFailure = async <V>(
+      fn: (signal: AbortSignal) => Promise<V>,
+      signal: AbortSignal
+    ): Promise<V> => {
       try {
-        return await fn();
+        return await fn(signal);
       } catch (error) {
         stepFailure ??= { error };
         throw error;
@@ -369,9 +372,9 @@ export async function driveWithReplay<T>(
       // The wrapper sees only a memo miss, because the backend calls `fn` for
       // a step it has no stored value for and for nothing else.
       run: (step, fn) =>
-        inner.run(step, () =>
+        inner.run(step, (signal) =>
           keepingFailure(async () => {
-            const value = await fn();
+            const value = await fn(signal);
             executed.push({
               run: RUN_ID,
               invocation,
@@ -379,12 +382,12 @@ export async function driveWithReplay<T>(
               stepId: step.id,
             });
             return value;
-          })
+          }, signal)
         ),
       // An idempotent step stores nothing, so it is not one of the memoized
       // steps `executed` lists. Its failure still ends the drive.
       runIdempotent: (step, fn) =>
-        inner.runIdempotent(step, () => keepingFailure(fn)),
+        inner.runIdempotent(step, (signal) => keepingFailure(fn, signal)),
       waitForEvent: async (step, waitOptions) => {
         fixDeadline(step.id, waitOptions.waitStateId);
         const answer = await inner.waitForEvent(step, waitOptions);

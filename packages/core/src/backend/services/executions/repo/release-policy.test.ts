@@ -102,6 +102,7 @@ describe("stepFailureOf", () => {
         by: "budget",
         nodeId: null,
         stepId: "step_a",
+        wakeAfterMs: 0,
       })
     ).toEqual({ stepId: "step_a", nodeId: null, error: BUDGET_CUT_ERROR });
     expect(
@@ -110,9 +111,12 @@ describe("stepFailureOf", () => {
         by: "budget",
         nodeId: null,
         stepId: null,
+        wakeAfterMs: 0,
       })
     ).toBeNull();
-    expect(stepFailureOf({ kind: "interrupted", by: "drain" })).toBeNull();
+    expect(
+      stepFailureOf({ kind: "interrupted", by: "drain", wakeAfterMs: 0 })
+    ).toBeNull();
   });
 });
 
@@ -178,10 +182,10 @@ describe("decideRelease", () => {
     ).toEqual({ state: "queued", wakeAt: NOW, attempt: 0, lastError: null });
   });
 
-  it("re-queues an interrupted pass at once, keeping the row's count, and records a budget cut's counted step", () => {
+  it("re-queues an interrupted pass after its wakeAfterMs, keeping the row's count, and records a budget cut's counted step", () => {
     expect(
       decideRelease({
-        outcome: { kind: "interrupted", by: "drain" },
+        outcome: { kind: "interrupted", by: "drain", wakeAfterMs: 0 },
         attempt: 2,
         now: NOW,
         parks: [],
@@ -195,6 +199,7 @@ describe("decideRelease", () => {
           by: "budget",
           nodeId: null,
           stepId: "step_a",
+          wakeAfterMs: 60_000,
         },
         attempt: 2,
         now: NOW,
@@ -207,7 +212,7 @@ describe("decideRelease", () => {
       })
     ).toEqual({
       state: "queued",
-      wakeAt: NOW,
+      wakeAt: new Date(NOW.getTime() + 60_000),
       attempt: 2,
       lastError: BUDGET_CUT_ERROR,
     });

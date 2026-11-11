@@ -50,7 +50,13 @@ export type StepResult<TData = unknown> =
  * `JsonSafe` is what holds the round trip to values that survive it. The answer
  * is stored as JSON and read back on the next attempt, so a `Date` in it would
  * arrive as a string with its type still claiming otherwise.
+ *
+ * `work` is handed the signal the runtime aborts when it stops the step while
+ * it runs; work that passes it on ends early.
  */
 export type NodeSteps = {
-  run: <T>(stepId: string, work: () => Promise<T & JsonSafe<T>>) => Promise<T>;
+  run: <T>(
+    stepId: string,
+    work: (signal: AbortSignal) => Promise<T & JsonSafe<T>>
+  ) => Promise<T>;
 };

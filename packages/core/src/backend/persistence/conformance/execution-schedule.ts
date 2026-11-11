@@ -269,18 +269,24 @@ export function describeExecutionScheduleConformance({
             }),
             fenceRefused: yield* release({ kind: "fence_refused" }),
             nothingParked: yield* release({ kind: "parked" }),
-            drained: yield* release({ kind: "interrupted", by: "drain" }),
+            drained: yield* release({
+              kind: "interrupted",
+              by: "drain",
+              wakeAfterMs: 0,
+            }),
             budgetCut: yield* release({
               kind: "interrupted",
               by: "budget",
               nodeId: "send",
               stepId: "node:send:dispatch",
+              wakeAfterMs: 0,
             }),
             budgetCutBetweenSteps: yield* release({
               kind: "interrupted",
               by: "budget",
               nodeId: null,
               stepId: null,
+              wakeAfterMs: 0,
             }),
           };
         })

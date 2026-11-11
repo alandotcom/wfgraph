@@ -98,8 +98,15 @@ export type WorkflowExecutionRuntime = {
    * writes against, and a port that adapters implement and forward through
    * cannot carry it, because comparing two generic signatures re-applies the
    * check to a value that already passed it.
+   *
+   * `fn` is handed the signal the runtime aborts when it stops a step already
+   * running, such as the database executor on an interrupted pass. A step that
+   * passes it on ends early; one that ignores it runs on detached.
    */
-  run: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
+  run: <T>(
+    step: DurableStepRef,
+    fn: (signal: AbortSignal) => Promise<T>
+  ) => Promise<T>;
   /**
    * Runs `fn` on every pass, which is safe only because `fn` is idempotent. It
    * stores no value. A failure counts against `step.id` and stops the pass
@@ -107,8 +114,12 @@ export type WorkflowExecutionRuntime = {
    * is refused before `fn` is called. A success after counted failures is
    * recorded, so the step no longer reads as retrying. The step is never the
    * one the runtime reports as running, since `fn` is a short store write.
+   * `fn` is handed the same signal as `run`'s.
    */
-  runIdempotent: <T>(step: DurableStepRef, fn: () => Promise<T>) => Promise<T>;
+  runIdempotent: <T>(
+    step: DurableStepRef,
+    fn: (signal: AbortSignal) => Promise<T>
+  ) => Promise<T>;
 };
 
 export type InMemoryRuntimeOptions = {
@@ -148,6 +159,8 @@ export function createInMemoryWorkflowRuntime(
   const { waitAnswer = { kind: "woke", wake: { kind: "timeout" } } } = options;
   const memo = options.memo ?? new Map<string, unknown>();
   const waits: Array<{ stepId: string; options: WaitForEventOptions }> = [];
+  // Nothing stops a step here, so the signal every step is handed never aborts.
+  const { signal } = new AbortController();
 
   return {
     memo,
@@ -161,13 +174,16 @@ export function createInMemoryWorkflowRuntime(
     // The display name is dropped rather than recorded: no runtime reads it,
     // and a test asserting on one would be asserting on wording no behaviour
     // reads.
-    run: async <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> => {
+    run: async <T>(
+      step: DurableStepRef,
+      fn: (signal: AbortSignal) => Promise<T>
+    ): Promise<T> => {
       if (memo.has(step.id)) {
         // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type
         return memo.get(step.id) as T;
       }
 
-      const value = await fn();
+      const value = await fn(signal);
 
       memo.set(step.id, JSON.parse(JSON.stringify(value ?? null)));
 
@@ -175,6 +191,9 @@ export function createInMemoryWorkflowRuntime(
     },
 
     // Nothing here counts failures, so an idempotent step only runs.
-    runIdempotent: <T>(_step: DurableStepRef, fn: () => Promise<T>) => fn(),
+    runIdempotent: <T>(
+      _step: DurableStepRef,
+      fn: (signal: AbortSignal) => Promise<T>
+    ) => fn(signal),
   };
 }

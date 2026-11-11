@@ -199,15 +199,20 @@ export type ClaimLane = { kind: ClaimedSchedule["kind"]; limit: number };
  *   counts nothing, and the next pass loads the version the run now pins.
  * - `interrupted` with `by: "drain"`: a worker stopping gracefully interrupted
  *   the pass, as a dispose does to a pass still running when its drain ends.
- *   Nothing failed, so the release re-queues the row at once and counts
- *   nothing, against the row or against the step that was running.
+ *   Nothing failed, so the release re-queues the row due `wakeAfterMs` from
+ *   now and counts nothing, against the row or against the step that was
+ *   running.
  * - `interrupted` with `by: "budget"`: the pass was still running when its
  *   host's time budget ran out, as a Worker tick's does. The release re-queues
- *   the row at once and counts one failure on the memo row of `stepId`, the
- *   step the pass was running, which carries `nodeId`, as a claim counts one
- *   against a step whose lease expired under it, so a step that outlasts
- *   every budget spends its retries and fails its node. A pass cut between
- *   steps (`stepId` null) counts nothing.
+ *   the row due `wakeAfterMs` from now and counts one failure on the memo row
+ *   of `stepId`, the step the pass was running, which carries `nodeId`, as a
+ *   claim counts one against a step whose lease expired under it, so a step
+ *   that outlasts every budget spends its retries and fails its node. A pass
+ *   cut between steps (`stepId` null) counts nothing.
+ *
+ * An interrupted pass sets `wakeAfterMs` to 0 when every step it started has
+ * stopped, and to its lease when one may still be running, so no other worker
+ * runs that step beside it within the lease.
  */
 export type PassOutcome =
   | { kind: "parked" }
@@ -220,12 +225,13 @@ export type PassOutcome =
     }
   | { kind: "body_failed"; error: string; backoffMs: number }
   | { kind: "fence_refused" }
-  | { kind: "interrupted"; by: "drain" }
+  | { kind: "interrupted"; by: "drain"; wakeAfterMs: number }
   | {
       kind: "interrupted";
       by: "budget";
       stepId: string | null;
       nodeId: string | null;
+      wakeAfterMs: number;
     };
 
 /** The schedule row a release left behind. */

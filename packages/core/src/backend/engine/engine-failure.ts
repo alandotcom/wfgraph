@@ -123,10 +123,17 @@ export function failureFromCause<E>(cause: Cause.Cause<E>): EngineFailure {
 /**
  * Runs an Effect inside a Promise-shaped durability callback without losing its
  * cause or the invocation context that owns its logging and tracing references.
+ * Aborting `options.signal` interrupts the Effect, which rejects with an
+ * `interrupt` failure.
  */
 export function runPromiseWithEngineFailure<R>(context: Context.Context<R>) {
-  return async <A, E>(effect: Effect.Effect<A, E, R>): Promise<A> => {
-    const exit = await Effect.runPromiseExitWith(context)(effect);
+  return async <A, E>(
+    effect: Effect.Effect<A, E, R>,
+    options?: { signal?: AbortSignal | undefined }
+  ): Promise<A> => {
+    const exit = await Effect.runPromiseExitWith(context)(effect, {
+      signal: options?.signal,
+    });
     return Exit.isFailure(exit)
       ? Promise.reject(failureFromCause(exit.cause))
       : exit.value;

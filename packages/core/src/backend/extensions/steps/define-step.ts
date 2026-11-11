@@ -119,7 +119,7 @@ type RememberedStep<A> =
  */
 type DurableRemember = <T>(
   stepId: string,
-  work: () => Promise<T>
+  work: (signal: AbortSignal) => Promise<T>
 ) => Promise<T>;
 
 /**
@@ -138,8 +138,9 @@ export function nodeStepApi(steps: NodeSteps | undefined): NodeStepApi {
 
   // A caller with no durable runtime runs the work where it stands, which is
   // what an in-process test wants and what the engine hands a disabled node.
+  // Nothing stops that work, so its signal never aborts.
   const remember: DurableRemember = (stepId, work) =>
-    memoize ? memoize(stepId, work) : work();
+    memoize ? memoize(stepId, work) : work(new AbortController().signal);
 
   /**
    * Effect memoization. Work is run to a `Result` inside the step, so the
@@ -156,7 +157,9 @@ export function nodeStepApi(steps: NodeSteps | undefined): NodeStepApi {
         // The durability API is Promise-shaped. Running the work on the
         // invocation's current context keeps this the only adapter inside the
         // action rather than starting another managed-runtime fiber.
-        remember(stepId, () =>
+        // The runtime's signal interrupts the work when the runtime stops the
+        // step, so a call in flight is abandoned with it.
+        remember(stepId, (signal) =>
           Effect.runPromiseWith(effectContext)(
             // A plain shape rather than the `Result` itself: what the runtime
             // stores round-trips through JSON, and an Effect data type does not
@@ -167,7 +170,8 @@ export function nodeStepApi(steps: NodeSteps | undefined): NodeStepApi {
                 Result.isFailure(result)
                   ? { ok: false, message: result.failure.message }
                   : { ok: true, value: result.success }
-            )
+            ),
+            { signal }
           )
         )
       );

@@ -804,7 +804,10 @@ describe("run persistence through the store port", () => {
     const runtime = createInMemoryWorkflowRuntime();
     return {
       ...runtime,
-      run: <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> =>
+      run: <T>(
+        step: DurableStepRef,
+        fn: (signal: AbortSignal) => Promise<T>
+      ): Promise<T> =>
         step.id === "workflow-run-completed"
           ? Promise.reject(new Error("terminal write refused"))
           : runtime.run(step, fn),

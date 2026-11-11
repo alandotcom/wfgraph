@@ -161,10 +161,13 @@ describe("runWithStepLog", () => {
 function runtimeStoppedAfterOpen(): WorkflowExecutionRuntime {
   const inner = createInMemoryWorkflowRuntime();
   let calls = 0;
-  const refuseAfterOpen = <T>(fn: () => Promise<T>): Promise<T> => {
+  const { signal } = new AbortController();
+  const refuseAfterOpen = <T>(
+    fn: (signal: AbortSignal) => Promise<T>
+  ): Promise<T> => {
     calls += 1;
     return calls === 1
-      ? fn()
+      ? fn(signal)
       : Promise.reject(new Error("This pass has stopped"));
   };
   return {

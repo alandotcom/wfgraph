@@ -8,9 +8,15 @@
  * the release and the retry policy, is the pass core; a run's pass adds the
  * engine's fenced store writes and its parks on top. A pass that loses its
  * lease writes nothing after the write that found it out, its release
- * included. An interrupted pass releases its row due at once, counting no
- * failure, unless its host's time budget cut it, which counts one against the
- * step it was running.
+ * included. The release waits for every step body the pass started to
+ * settle, so a step still running when another threw records its value. An
+ * interrupted pass aborts the signal its step bodies were handed and waits
+ * `INTERRUPTED_STEP_WAIT_MS` for them to stop, then releases its row counting
+ * no failure, unless its host's time budget cut it, which counts one against
+ * the step it was running. The row is due at once when every step stopped,
+ * and one lease later when one did not, since a step body that ignores the
+ * signal, such as a handler's plain Promise, cannot be stopped and may still
+ * run: no other worker runs it beside this one within the lease.
  */
 
 import { Cause, Clock, Effect, Exit, Fiber, FiberSet, Option } from "effect";
@@ -119,10 +125,11 @@ export type UnavailableSeverity = "info" | "warn";
  *   with `error`. The release counted a failure against the row and re-queued
  *   it after a backoff, so a later pass tries the write again.
  * - `budget_cut`: the pass was still running at `budgetEndsAt`. It was
- *   interrupted, and its release re-queued the row at once and counted one
- *   failure against `stepId`, the step it was running, or nothing when it was
- *   between steps. A release the database failed or did not answer in time
- *   leaves the row leased, and the claim that sweeps it counts that failure.
+ *   interrupted, and its release re-queued the row, due at once or one lease
+ *   later as the module header describes, and counted one failure against
+ *   `stepId`, the step it was running, or nothing when it was between steps.
+ *   A release the database failed or did not answer in time leaves the row
+ *   leased, and the claim that sweeps it counts that failure.
  */
 export type PassResult =
   | { kind: "ended" }
@@ -178,8 +185,10 @@ export type PassCore<C extends ClaimedSchedule, Port> = {
   /**
    * Builds the port the body runs its steps through, over the memo the pass
    * loaded. `runEffect` runs one of a Promise port's own reads and writes;
-   * the leased pass hands it one tied to the body's scope, so ending the pass
-   * interrupts whatever it still runs.
+   * the leased pass hands it one tied to the body's scope, which stays open
+   * until every step body has settled, or has been given
+   * `INTERRUPTED_STEP_WAIT_MS` to stop, and closing it interrupts whatever
+   * reads and writes it still runs.
    */
   port: (input: {
     memo: ReadonlyMap<string, StepMemo>;
@@ -571,6 +580,19 @@ export type LeasedPassOptions = {
  */
 const INTERRUPTED_RELEASE_TIMEOUT_MS = 10_000;
 
+/**
+ * How long an interrupted pass waits for the step bodies it started to stop
+ * once it has aborted their signal. A step that honours the signal stops at
+ * once; one still running after this is left running, and the release holds
+ * its row back by one lease.
+ */
+export const INTERRUPTED_STEP_WAIT_MS = 2_000;
+
+/** Why a pass was interrupted, as its release counts it. */
+type Interruption =
+  | { by: "drain" }
+  | { by: "budget"; stepId: string | null; nodeId: string | null };
+
 /** Why a body that did not end on its own stopped, as the release reads it. */
 type Failure =
   | { kind: "step"; step: PassStep; error: unknown }
@@ -584,7 +606,8 @@ const OWNER_REFUSED = { kind: "fence_refused", fence: "owner" } as const;
  * the row leased, so a later claim sweeps it once the lease expires. An
  * interrupted pass releases its row as `interrupted` before the interruption
  * completes: a worker that stops gracefully spends no retry of the step it
- * was running, and a pass its `budgetEndsAt` cut spends one.
+ * was running, and a pass its `budgetEndsAt` cut spends one. The module
+ * header says when that row is due again.
  */
 export const leasedPass = Effect.fn("wfgraph.executor.pass")(function* <R>(
   claimed: ClaimedSchedule,
@@ -646,13 +669,12 @@ function runOpenedPass<Port, P extends PassCore<ClaimedSchedule, Port>, R>(
   body: BodyOver<P, Port, R>,
   options: LeasedPassOptions
 ): Effect.Effect<PassResult, DatabaseError, R> {
-  let interruption: Extract<PassOutcome, { kind: "interrupted" }> = {
-    kind: "interrupted",
-    by: "drain",
-  };
+  let interruption: Interruption = { by: "drain" };
   const settled = settlePass(pass, body, options).pipe(
     Effect.onInterrupt(() =>
-      Effect.suspend(() => releaseInterrupted(pass, interruption))
+      Effect.suspend(() =>
+        releaseInterrupted(pass, interruption, options.leaseMs)
+      )
     )
   );
   const { budgetEndsAt } = options;
@@ -673,7 +695,6 @@ function runOpenedPass<Port, P extends PassCore<ClaimedSchedule, Port>, R>(
       const running = pass.state.runningStep();
       const stepId = running?.stepId ?? null;
       interruption = {
-        kind: "interrupted",
         by: "budget",
         stepId,
         nodeId: running?.nodeId ?? null,
@@ -686,17 +707,19 @@ function runOpenedPass<Port, P extends PassCore<ClaimedSchedule, Port>, R>(
 }
 
 /**
- * Hands an interrupted pass's row back, due at once, counting what
- * `interruption` says to. A pass that already released its row, ended its
- * subject or lost its lease finds the fence refused, and writes nothing. A
- * release the database fails, or does not answer within
- * `INTERRUPTED_RELEASE_TIMEOUT_MS`, is logged, and the row is swept once its
- * lease expires.
+ * Hands an interrupted pass's row back, counting what `interruption` says to,
+ * due at once, or `leaseMs` from now when a step body the pass started is
+ * still running. A pass that already released its row, ended its subject or
+ * lost its lease finds the fence refused, and writes nothing. A release the
+ * database fails, or does not answer within `INTERRUPTED_RELEASE_TIMEOUT_MS`,
+ * is logged, and the row is swept once its lease expires.
  */
 function releaseInterrupted(
   pass: AnyPass,
-  interruption: Extract<PassOutcome, { kind: "interrupted" }>
+  interruption: Interruption,
+  leaseMs: number
 ): Effect.Effect<void> {
+  const wakeAfterMs = pass.state.stepsRunning() > 0 ? leaseMs : 0;
   const notReleased = (error: unknown) =>
     Effect.logWarning(
       "Could not release an interrupted pass; its row is claimed again once its lease expires"
@@ -709,7 +732,9 @@ function releaseInterrupted(
     );
   // Interruptible, so the timeout can abandon a write the database never
   // answers even though an interruption's finalizer runs uninterruptibly.
-  return Effect.interruptible(pass.release(interruption)).pipe(
+  return Effect.interruptible(
+    pass.release({ kind: "interrupted", ...interruption, wakeAfterMs })
+  ).pipe(
     Effect.asVoid,
     Effect.catchTag("DatabaseError", notReleased),
     Effect.timeoutOrElse({
@@ -816,6 +841,7 @@ const settlePass = Effect.fnUntraced(function* <
 
   const memo = yield* pass.loadMemo;
   const { heartbeatMs } = options;
+  const { state } = pass;
   // The body's scope holds the fibers that run a Promise port's own reads and
   // writes, and the heartbeat. Closing it, when the body ends or the pass is
   // interrupted, interrupts them before the release is written.
@@ -831,7 +857,21 @@ const settlePass = Effect.fnUntraced(function* <
             )
         );
       }
-      return yield* Effect.exit(opened.run(pass.port({ memo, runEffect })));
+      // Added last, so it runs first when the scope closes, while the
+      // heartbeat still renews the lease and a stopping step can still record
+      // its value.
+      yield* Effect.addFinalizer((exit) =>
+        Exit.hasInterrupts(exit) ? stopRunningSteps(state) : Effect.void
+      );
+      const exit = yield* Effect.exit(
+        opened.run(pass.port({ memo, runEffect }))
+      );
+      // A branch whose step threw can end the body while a sibling's step body
+      // still runs. The release waits for it, so its value is recorded and
+      // the next pass does not run it again. A pass that lost its lease aborted
+      // those bodies, and records nothing.
+      if (!leaseLost(state)) yield* state.stepsSettled;
+      return exit;
     })
   );
 
@@ -1007,6 +1047,32 @@ function passRecord(
       break;
   }
   return null;
+}
+
+/** Whether the pass lost its lease. */
+function leaseLost(state: PassState): boolean {
+  const phase = state.phase();
+  return phase.kind === "stopped" && phase.stop.kind === "lease_lost";
+}
+
+/**
+ * Aborts the signal of every step body the pass started and waits, for at
+ * most `INTERRUPTED_STEP_WAIT_MS`, for them to stop. Interruptible, so the
+ * wait can be cut short inside the scope's finalizer, which runs
+ * uninterruptibly. A pass that lost its lease aborted them already and has
+ * nothing to write, so it does not wait.
+ */
+function stopRunningSteps(state: PassState): Effect.Effect<void> {
+  return Effect.suspend(() => {
+    state.stopSteps();
+    if (leaseLost(state)) return Effect.void;
+    return Effect.interruptible(state.stepsSettled).pipe(
+      Effect.timeoutOrElse({
+        duration: INTERRUPTED_STEP_WAIT_MS,
+        orElse: () => Effect.void,
+      })
+    );
+  });
 }
 
 /**

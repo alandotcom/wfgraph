@@ -310,11 +310,14 @@ describe("Promise step.run adapter", () => {
 
     const remembered = new Map<string, unknown>();
     const steps = {
-      run: async <T>(stepId: string, work: () => Promise<T>) => {
+      run: async <T>(
+        stepId: string,
+        work: (signal: AbortSignal) => Promise<T>
+      ) => {
         if (remembered.has(stepId)) {
           return remembered.get(stepId) as T;
         }
-        const value = await work();
+        const value = await work(new AbortController().signal);
         remembered.set(stepId, value);
         return value;
       },
@@ -348,11 +351,14 @@ describe("Promise step.run adapter", () => {
 
     const remembered = new Map<string, unknown>();
     const steps = {
-      run: async <T>(stepId: string, work: () => Promise<T>) => {
+      run: async <T>(
+        stepId: string,
+        work: (signal: AbortSignal) => Promise<T>
+      ) => {
         if (remembered.has(stepId)) {
           return remembered.get(stepId) as T;
         }
-        const value = await work();
+        const value = await work(new AbortController().signal);
         remembered.set(stepId, value);
         return value;
       },

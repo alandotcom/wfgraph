@@ -931,8 +931,10 @@ runner in the same process are not supported.
   starts at one second and doubles up to one minute. A step that still fails fails its
   node, and the run's other branches continue.
 - **`dispose()` drains the loop.** It stops claiming runs and waits up to ten seconds for
-  the runs in progress. A run still in progress after that is released and resumes from its
-  last completed step when a loop next claims it. The loop then logs `Worker loop stopped`
+  the runs in progress. A run still in progress after that has its running steps stopped and
+  is released, and it resumes from its last completed step when a loop next claims it. A step
+  written as a plain Promise cannot be stopped, so its run is held back for one lease (60
+  seconds) before another loop may claim it. The loop then logs `Worker loop stopped`
   with how many runs finished within the drain and how many were interrupted.
 - **A loop that stops on an unexpected error starts again.** It logs the error and
   restarts after a backoff that starts at 200 milliseconds and grows to five seconds.
@@ -1083,8 +1085,9 @@ backlog in turn. These limits apply to each tick:
 
 - **Wall time.** Cloudflare ends a Cron Trigger or Queue consumer invocation after 15
   minutes. A tick claims new rows for its first 10 minutes and cuts any pass still running
-  at 14 minutes. A cut pass hands its run back, due at once, and counts one failure against
-  the step it was running, so a step that outlasts every tick spends its retries and fails
+  at 14 minutes. A cut pass hands its run back, due at once, or one lease (5 minutes) later
+  when the step it was running is a plain Promise that cannot be stopped, and counts one
+  failure against the step it was running, so a step that outlasts every tick spends its retries and fails
   its node instead of repeating its side effects on every tick. The next tick resumes the run
   from its last completed step. A tick returns at most 30 seconds after its budget, whether or
   not the cut passes' releases answered, and closing the database connection waits at most

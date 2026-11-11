@@ -83,6 +83,9 @@ Handler|log-close-unconditional|CloseIsConditional == TRUE|CloseIsConditional ==
 Handler|success-leaves-failures|SuccessReconcilesFailures == TRUE|SuccessReconcilesFailures == FALSE|FinishedNodeNeverRefused
 Handler|log-open-is-running-step|IdempotentStepIsNeverRunning == TRUE|IdempotentStepIsNeverRunning == FALSE|FinishedNodeNeverRefused
 Handler|pass-reads-no-log-rows|PassReadsLogRows == TRUE|PassReadsLogRows == FALSE|NodeEnds
+Siblings|sibling-memo-refused|AdmitRunningStepWrites == TRUE|AdmitRunningStepWrites == FALSE|SucceededStepRunsOnce
+Siblings|release-before-steps-settle|ReleaseWaitsForSteps == TRUE|ReleaseWaitsForSteps == FALSE|SucceededStepRunsOnce OneBodyAtATime
+Siblings|interrupted-row-due-at-once|DelayWhileStepsRun == TRUE|DelayWhileStepsRun == FALSE|OneBodyAtATime
 Timing|heartbeat-slower-than-lease|NodeHeartbeat == 1|NodeHeartbeat == 3|LiveLeaseNeverExpires
 Timing|no-cron-sweep|WorkerUsesCron == TRUE|WorkerUsesCron == FALSE|DeadlineHonouredOnTime EveryRunEndsInTime
 Timing|claim-ignores-the-deadline|ClaimWaitsForTheDeadline == TRUE|ClaimWaitsForTheDeadline == FALSE|NoResumeBeforeTheDeadline

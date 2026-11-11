@@ -4,10 +4,15 @@
  * A durable callback is Promise-shaped, so an Effect that must run inside one
  * has to cross without losing its cause or the invocation context that owns
  * logging and tracing. Every engine site that calls `runtime.run` or
- * `runtime.runIdempotent` with an Effect goes through here.
+ * `runtime.runIdempotent` with an Effect goes through here. The step's Effect
+ * runs with `CurrentDurableStep` naming the step, and stops when the runtime
+ * aborts the signal it hands the step. Interrupting the engine fiber that
+ * waits on the step does not stop it, since a sibling branch's failure
+ * interrupts that fiber and a step already started must finish for the
+ * runtime to remember its value.
  */
 
-import { Effect } from "effect";
+import { Context, Effect } from "effect";
 import {
   type EngineFailure,
   failureFromUnknown,
@@ -18,11 +23,26 @@ import type {
   WorkflowExecutionRuntime,
 } from "#src/backend/engine/runtime";
 
-/** Lift a Promise into the engine failure channel. */
+/**
+ * The durable step whose Effect is running, or null outside any step. A
+ * runtime reads it to tell which step a write made inside a step belongs to.
+ */
+export const CurrentDurableStep = Context.Reference<DurableStepRef | null>(
+  "wfgraph/engine/CurrentDurableStep",
+  { defaultValue: () => null }
+);
+
+/**
+ * Lift a Promise into the engine failure channel. The Promise is not told
+ * when the fiber awaiting it is interrupted, so it runs on detached.
+ */
 export function fromUnknownPromise<A>(
   evaluate: () => Promise<A>
 ): Effect.Effect<A, EngineFailure> {
-  return Effect.tryPromise({ try: evaluate, catch: failureFromUnknown });
+  return Effect.tryPromise({
+    try: () => evaluate(),
+    catch: failureFromUnknown,
+  });
 }
 
 /**
@@ -57,8 +77,11 @@ function crossInto<A, E>(
 ): Effect.Effect<A, EngineFailure> {
   return Effect.gen(function* () {
     const effectContext = yield* Effect.context();
+    const inStep = Effect.provideService(effect, CurrentDurableStep, step);
     return yield* fromUnknownPromise(() =>
-      method(step, () => runPromiseWithEngineFailure(effectContext)(effect))
+      method(step, (signal) =>
+        runPromiseWithEngineFailure(effectContext)(inStep, { signal })
+      )
     );
   });
 }

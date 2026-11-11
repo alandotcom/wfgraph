@@ -47,6 +47,7 @@ import {
   waitUntil,
 } from "#src/backend/executor/testing/waiting";
 import {
+  DEFAULT_LEASE_MS,
   runWorkerLoop,
   tick,
   type WorkerLoopOptions,
@@ -70,6 +71,8 @@ import { BUDGET_CUT_ERROR } from "#src/backend/services/executions/repo/release-
 import { DatabaseError } from "#src/backend/lib/effect/database";
 
 let heldStep = createGate();
+/** Whether the `test/held-effect` step's Effect was interrupted. */
+let heldEffectInterrupted = false;
 /** When each `test/mark` node ran, by node id. */
 let marks = new Map<string, number>();
 
@@ -101,6 +104,27 @@ const extensionSet = assembleExtensions({
         });
         return { held: true };
       },
+    }),
+    defineAction({
+      id: "test/held-effect",
+      label: "Held Effect",
+      description:
+        "Runs one durable Effect step the case holds open once, which stops when its pass stops it",
+      input: Schema.Struct({}),
+      handler: ({ step }) =>
+        step
+          .run(
+            "dispatch",
+            Effect.promise(() => heldStep.pass()).pipe(
+              Effect.onInterrupt(() =>
+                Effect.sync(() => {
+                  heldEffectInterrupted = true;
+                })
+              ),
+              Effect.as(null)
+            )
+          )
+          .pipe(Effect.as({ held: true })),
     }),
     defineAction({
       id: "test/mark",
@@ -197,6 +221,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
 
   async function open(): Promise<Harness> {
     heldStep = createGate();
+    heldEffectInterrupted = false;
     marks = new Map();
     const database = await openDatabase();
     const connection = await database.open();
@@ -333,12 +358,12 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
 
   it("counts a pass that ended within the drain, and interrupts one that outlasted it", async () => {
     const harness = await open();
-    const held = await harness.start(oneActionThenMark("test/held"));
+    const held = await harness.start(oneActionThenMark("test/held-effect"));
     const loop = harness.loop({ drainMs: 50 });
     await heldStep.entered;
 
     expect(await loop.stop()).toEqual({ drained: 0, interrupted: 1 });
-    // The interrupted pass released its run due at once.
+    // The interrupted pass stopped its step and released its run due at once.
     expect((await harness.schedule(held))?.state).toBe("queued");
 
     heldStep.release();
@@ -663,9 +688,9 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     ).toHaveLength(1);
   });
 
-  it("cuts a tick's pass still running when its budget runs out, releasing the run due at once with one failure on its step", async () => {
+  it("cuts a tick's pass still running when its budget runs out, stopping its Effect step and releasing the run due at once with one failure on that step", async () => {
     const harness = await open();
-    const held = await harness.start(oneActionThenMark("test/held"));
+    const held = await harness.start(oneActionThenMark("test/held-effect"));
 
     const outcome = await harness.connection.run(
       tick({
@@ -681,12 +706,14 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       results: { passed: 0, cut: 1, interrupted: 0 },
       stopped: "budget",
     });
+    expect(heldEffectInterrupted).toBe(true);
     const schedule = await harness.schedule(held);
     expect(schedule).toMatchObject({
       state: "queued",
       workerId: null,
       lastError: BUDGET_CUT_ERROR,
     });
+    expect(schedule?.wakeAt.getTime()).toBeLessThanOrEqual(Date.now());
     const memo = await harness.connection.run(
       Effect.gen(function* () {
         const executions = yield* ExecutionRepo;
@@ -709,6 +736,36 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     const loop = harness.loop({});
     expect(await harness.ended(held)).toBe("completed");
     await loop.stop();
+  });
+
+  // A plain Promise step cannot be stopped, so it may still be calling its
+  // vendor after the tick returns. The row is held back one lease, so no
+  // other worker runs that step beside it within the lease.
+  it("cuts a tick's pass whose Promise step ignores the stop, releasing the run one lease later with one failure on that step", async () => {
+    const harness = await open();
+    const held = await harness.start(oneActionThenMark("test/held"));
+
+    const cutAt = Date.now();
+    const outcome = await harness.connection.run(
+      tick({
+        actions: () => actions,
+        ...LOOP_SETTINGS,
+        budgetMs: 100,
+        sweep: false,
+      }).pipe(Effect.provide(noDeliveryServices))
+    );
+    heldStep.release();
+
+    expect(outcome).toMatchObject({ results: { cut: 1 } });
+    const schedule = await harness.schedule(held);
+    expect(schedule).toMatchObject({
+      state: "queued",
+      workerId: null,
+      lastError: BUDGET_CUT_ERROR,
+    });
+    expect(schedule?.wakeAt.getTime()).toBeGreaterThanOrEqual(
+      cutAt + DEFAULT_LEASE_MS
+    );
   });
 
   it("stops claiming once the stop signal aborts and returns after the pass in flight has released its run", async () => {
@@ -740,9 +797,11 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
   // A graceful restart during a long step must not spend that step's retry.
   // The interrupted pass hands its row back as it is interrupted, so the next
   // claim finds a queued row and sweeps no expired lease.
-  it("interrupts a pass still running once its drain deadline passes, releasing its row due at once and counting no failure", async () => {
+  it("interrupts a pass still running once its drain deadline passes, stopping its Effect step and releasing its row due at once and counting no failure", async () => {
     const harness = await open();
-    const executionId = await harness.start(oneActionThenMark("test/held"));
+    const executionId = await harness.start(
+      oneActionThenMark("test/held-effect")
+    );
     const loop = harness.loop({
       drainMs: 100,
       workerId: "worker_draining",
@@ -754,12 +813,11 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     await sleep(100);
 
     // The loop returns with the step body still held, because its pass was
-    // interrupted at the deadline.
+    // interrupted at the deadline, which interrupted the step's Effect too.
     const stoppedAt = Date.now();
     await loop.stop();
+    expect(heldEffectInterrupted).toBe(true);
     heldStep.release();
-    // The step body returns after its pass ended. Its memo write runs on a
-    // fiber the interrupted pass closed, so it never reaches the database.
     await sleep(200);
 
     const released = await harness.schedule(executionId);
@@ -797,6 +855,28 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       reclaimed.memo.filter((entry) => entry.stepId.includes("dispatch"))
     ).toEqual([]);
     expect(marks.has("after")).toBe(false);
+  });
+
+  it("interrupts a pass whose Promise step ignores the stop once its drain deadline passes, releasing its row one lease later and counting no failure", async () => {
+    const harness = await open();
+    const executionId = await harness.start(oneActionThenMark("test/held"));
+    const loop = harness.loop({ drainMs: 100, heartbeatMs: 20 });
+    await heldStep.entered;
+
+    const stoppedAt = Date.now();
+    await loop.stop();
+    const released = await harness.schedule(executionId);
+    heldStep.release();
+
+    expect(released).toMatchObject({
+      state: "queued",
+      attempt: 0,
+      workerId: null,
+      lastError: null,
+    });
+    expect(released?.wakeAt.getTime()).toBeGreaterThanOrEqual(
+      stoppedAt + DEFAULT_LEASE_MS
+    );
   });
 
   it("logs a pass that fails, keeps claiming, and runs the failed run again once its lease expires", async () => {

@@ -11,12 +11,17 @@
  * this pass. A delivery's pass
  * runs its steps through `createPassSteps`, which parks nothing. Every write
  * is fenced on the pass's owner token until the pass ends its row's subject.
- * Once the pass stops, because a step threw or the lease was lost, it starts
- * no step and writes nothing more: each attempt fails with `LeaseLost`, which
- * ends the body. The caller reads `PassState` to decide the release.
+ * Once the pass stops it starts no step. A pass a step's failure stopped still
+ * holds its lease, so it renews it and accepts the writes of a step already
+ * running, its memo write and the store writes made inside it
+ * (`CurrentDurableStep`), and refuses every other write with `LeaseLost`,
+ * which ends the body. A pass that lost its lease refuses every write and
+ * aborts the signal its step bodies were handed. The caller reads `PassState`
+ * to decide the release.
  */
 
 import { Cause, Effect, Schema } from "effect";
+import { CurrentDurableStep } from "#src/backend/engine/durable";
 import type {
   DurableStepRef,
   WaitAnswer,
@@ -61,7 +66,7 @@ function passStepOf(step: DurableStepRef): PassStep {
  * Why a pass stopped before its body ended on its own.
  *
  * - `step_threw`: a step body threw. The release counts a failure against
- *   that step.
+ *   that step, once every step already running has settled.
  * - `lease_lost`: a fenced write found the schedule row no longer names this
  *   pass. Another worker, a terminal write or a Migration's re-queue owns the
  *   run now, so the pass writes nothing, not even its release.
@@ -92,14 +97,36 @@ export type PassState = {
   readonly phase: () => PassPhase;
   /** Records the first step that threw. A pass already stopped keeps its stop. */
   readonly stepThrew: (step: PassStep, error: unknown) => void;
-  /** Records a lost lease, which outranks a step that threw. */
+  /**
+   * Records a lost lease, which outranks a step that threw, and aborts
+   * `signal`.
+   */
   readonly leaseLost: () => void;
   /** Records that this pass wrote the run's terminal record. */
   readonly ended: () => void;
-  /** Records that a step body started running. */
-  readonly stepStarted: (step: PassStep) => void;
+  /**
+   * The signal every step body of the pass is handed. It aborts once the
+   * pass loses its lease or `stopSteps` is called, never because a step threw.
+   */
+  readonly signal: AbortSignal;
+  /** Aborts `signal`, for a pass that is being interrupted. */
+  readonly stopSteps: () => void;
+  /**
+   * Records that a step body started running. A step started with `reported`
+   * false, an idempotent one, is never the step `runningStep` answers.
+   */
+  readonly stepStarted: (
+    step: PassStep,
+    options?: { reported?: boolean | undefined }
+  ) => void;
   /** Records that a step body and its memo write are done, either way. */
   readonly stepFinished: (step: PassStep) => void;
+  /** Whether the step `stepId` has started and not yet finished. */
+  readonly isRunning: (stepId: string) => boolean;
+  /** How many step bodies have started and not yet finished. */
+  readonly stepsRunning: () => number;
+  /** Succeeds once no step body is running, at once when none is. */
+  readonly stepsSettled: Effect.Effect<void>;
   /**
    * The step the heartbeat records as running: the earliest started of the
    * steps still running, since parallel branches run steps side by side, and
@@ -122,7 +149,10 @@ export type PassState = {
 
 export function createPassState(): PassState {
   let phase: PassPhase = { kind: "running" };
-  const running: PassStep[] = [];
+  const steps = new AbortController();
+  const running: { step: PassStep; reported: boolean }[] = [];
+  // Called once no step body is running.
+  const onSettled = new Set<() => void>();
   const spent: SpentStep[] = [];
   return {
     phase: () => phase,
@@ -132,18 +162,36 @@ export function createPassState(): PassState {
     },
     leaseLost: () => {
       phase = { kind: "stopped", stop: { kind: "lease_lost" } };
+      steps.abort();
     },
     ended: () => {
       if (phase.kind === "running") phase = { kind: "ended" };
     },
-    stepStarted: (step) => {
-      running.push(step);
+    signal: steps.signal,
+    stopSteps: () => steps.abort(),
+    stepStarted: (step, options) => {
+      running.push({ step, reported: options?.reported ?? true });
     },
     stepFinished: (step) => {
-      const index = running.indexOf(step);
+      const index = running.findIndex((entry) => entry.step === step);
       if (index >= 0) running.splice(index, 1);
+      if (running.length > 0) return;
+      for (const settled of onSettled) settled();
+      onSettled.clear();
     },
-    runningStep: () => running[0] ?? null,
+    isRunning: (stepId) =>
+      running.some((entry) => entry.step.stepId === stepId),
+    stepsRunning: () => running.length,
+    stepsSettled: Effect.suspend(() =>
+      running.length === 0
+        ? Effect.void
+        : Effect.callback<void>((resume) => {
+            const settled = () => resume(Effect.void);
+            onSettled.add(settled);
+            return Effect.sync(() => onSettled.delete(settled));
+          })
+    ),
+    runningStep: () => running.find((entry) => entry.reported)?.step ?? null,
     spentStep: (stepId, message) => {
       const failure = engineFailure("failure", message);
       spent.push({ stepId, failure });
@@ -157,6 +205,38 @@ function isStopped(state: PassState): boolean {
   return state.phase().kind === "stopped";
 }
 
+/** What a pass does with one write. */
+type WriteRule = "fenced" | "unfenced" | "refused";
+
+/**
+ * What a pass does with a write `admitted` says belongs to a step still
+ * running, or to no such step: fenced while the pass runs, and after a step
+ * threw only when `admitted`; unfenced once the pass has ended the run; and
+ * refused once the pass has lost its lease.
+ */
+function writeRule(phase: PassPhase, admitted: () => boolean): WriteRule {
+  if (phase.kind === "running") return "fenced";
+  if (phase.kind === "ended") return "unfenced";
+  return phase.stop.kind === "step_threw" && admitted() ? "fenced" : "refused";
+}
+
+/**
+ * Runs `fenced`, recording a refusal of its fence as a lost lease, which stops
+ * the pass for good.
+ */
+function fencedWrite<A>(
+  fenced: Effect.Effect<A, DatabaseError | LeaseLost>,
+  state: PassState
+): Effect.Effect<A, DatabaseError | LeaseLost> {
+  return fenced.pipe(
+    Effect.tapError((failure) =>
+      Effect.sync(() => {
+        if (failure._tag === "LeaseLost") state.leaseLost();
+      })
+    )
+  );
+}
+
 /**
  * What a stopped pass answers for a write it no longer makes and a step it no
  * longer starts.
@@ -168,43 +248,53 @@ function passStopped(): LeaseLost {
 }
 
 /**
- * One store write of the pass: fenced while the pass runs, stopping the pass
- * when the fence refuses it; unfenced once the pass has ended the run; and
- * refused locally once the pass has stopped.
+ * One store write of the pass, ruled on when it runs (`writeRule`): fenced,
+ * stopping the pass when the fence refuses it; unfenced; or refused locally.
+ * A write made inside a durable step belongs to that step
+ * (`CurrentDurableStep`).
  */
 function watchedStoreWrite<I, A>(
   fenced: (input: I) => Effect.Effect<A, DatabaseError | LeaseLost>,
   unfenced: (input: I) => Effect.Effect<A, DatabaseError | LeaseLost>,
   state: PassState
 ): (input: I) => Effect.Effect<A, DatabaseError | LeaseLost> {
-  return (input) => {
-    const { kind } = state.phase();
-    if (kind === "stopped") return Effect.fail(passStopped());
-    if (kind === "ended") return unfenced(input);
-    return fenced(input).pipe(
-      Effect.tapError((failure) =>
-        Effect.sync(() => {
-          if (failure._tag === "LeaseLost") state.leaseLost();
-        })
-      )
-    );
-  };
+  return (input) =>
+    Effect.gen(function* () {
+      const step = yield* CurrentDurableStep;
+      const rule = writeRule(
+        state.phase(),
+        () => step !== null && state.isRunning(step.id)
+      );
+      if (rule === "refused") return yield* passStopped();
+      if (rule === "unfenced") return yield* unfenced(input);
+      return yield* fencedWrite(fenced(input), state);
+    });
 }
 
 /**
- * One of the writes only a pass makes, which stand on the schedule row: fenced
- * while the pass runs, and skipped once the pass has ended the run, since the
- * terminal write deleted the memo and the schedule row they would write.
+ * One of the writes only a pass makes, which stand on the schedule row,
+ * ruled on when it runs (`writeRule`) with `admitted` deciding for a pass a
+ * step's failure stopped. Once the pass has ended the run it is skipped, since
+ * the terminal write deleted the memo and the schedule row it would write.
  */
 function watchedPassWrite<I>(
   write: (input: I) => Effect.Effect<void, DatabaseError | LeaseLost>,
-  state: PassState
+  state: PassState,
+  admitted: (input: I) => boolean
 ): (input: I) => Effect.Effect<void, DatabaseError | LeaseLost> {
-  return watchedStoreWrite(write, () => Effect.void, state);
+  return (input) =>
+    Effect.suspend(() => {
+      const rule = writeRule(state.phase(), () => admitted(input));
+      if (rule === "refused") return Effect.fail(passStopped());
+      if (rule === "unfenced") return Effect.void;
+      return fencedWrite(write(input), state);
+    });
 }
 
 /**
- * The writes every pass makes, each watched by `state`. The release and the
+ * The writes every pass makes, each watched by `state`. A pass a step's
+ * failure stopped still renews its lease, which it holds until its release,
+ * and still records the value of a step already running. The release and the
  * schedule row's deletion are passed through unwatched: a pass whose step
  * threw still writes its release, and a pass that found its subject gone
  * deletes its row before it runs anything.
@@ -215,8 +305,10 @@ export function watchPassOnlyWrites(input: {
 }): PassWrites {
   const { fenced, state } = input;
   return {
-    renewLease: watchedPassWrite(fenced.renewLease, state),
-    writeStepMemo: watchedPassWrite(fenced.writeStepMemo, state),
+    renewLease: watchedPassWrite(fenced.renewLease, state, () => true),
+    writeStepMemo: watchedPassWrite(fenced.writeStepMemo, state, (write) =>
+      state.isRunning(write.stepId)
+    ),
     releasePass: fenced.releasePass,
     dropSchedule: fenced.dropSchedule,
   };
@@ -266,7 +358,11 @@ export function watchParkWrites(input: {
   state: PassState;
 }): ParkWrites {
   return {
-    recordParkStep: watchedPassWrite(input.fenced.recordParkStep, input.state),
+    recordParkStep: watchedPassWrite(
+      input.fenced.recordParkStep,
+      input.state,
+      () => false
+    ),
   };
 }
 
@@ -518,23 +614,26 @@ export function createExecutorRuntime(
   }
 
   /**
-   * Runs the body of `passStep`, which the heartbeat records as running
-   * meanwhile, and then `after` with the body's value. A body that throws
-   * stops the pass as a failure of that step, which the release counts
-   * against the step.
+   * Runs the body of `passStep` with the pass's signal, which the heartbeat
+   * records as running meanwhile unless `reported` is false, and then `after`
+   * with the body's value, while the step still counts as running. A body
+   * that throws stops the pass as a failure of that step, which the release
+   * counts against the step; one that ends because the pass aborted its
+   * signal records nothing, since the pass is ending anyway.
    */
   async function runStep<T>(
     passStep: PassStep,
-    fn: () => Promise<T>,
-    after: (value: T) => Promise<void>
+    fn: (signal: AbortSignal) => Promise<T>,
+    after: (value: T) => Promise<void>,
+    options?: { reported?: boolean | undefined }
   ): Promise<T> {
-    state.stepStarted(passStep);
+    state.stepStarted(passStep, options);
     try {
       let value: T;
       try {
-        value = await fn();
+        value = await fn(state.signal);
       } catch (error) {
-        state.stepThrew(passStep, error);
+        if (!state.signal.aborted) state.stepThrew(passStep, error);
         throw error;
       }
       await after(value);
@@ -545,7 +644,10 @@ export function createExecutorRuntime(
   }
 
   return {
-    run: async <T>(step: DurableStepRef, fn: () => Promise<T>): Promise<T> => {
+    run: async <T>(
+      step: DurableStepRef,
+      fn: (signal: AbortSignal) => Promise<T>
+    ): Promise<T> => {
       const answer = book.answer(step.id);
       if (answer.kind === "value") {
         // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- a step id always maps back to that step's own result type
@@ -574,22 +676,20 @@ export function createExecutorRuntime(
     // log's `retries`, so the node no longer reads as retrying.
     runIdempotent: async <T>(
       step: DurableStepRef,
-      fn: () => Promise<T>
+      fn: (signal: AbortSignal) => Promise<T>
     ): Promise<T> => {
       const failure = book.refusal(step.id);
       if (failure !== undefined) throw failure;
-      const passStep = passStepOf(step);
-      let value: T;
-      try {
-        value = await fn();
-      } catch (error) {
-        state.stepThrew(passStep, error);
-        throw error;
-      }
-      if (book.memo.get(step.id)?.status === "failing") {
-        await runEffect(book.remember(passStep, null));
-      }
-      return value;
+      return await runStep(
+        passStepOf(step),
+        fn,
+        async () => {
+          if (book.memo.get(step.id)?.status === "failing") {
+            await runEffect(book.remember(passStepOf(step), null));
+          }
+        },
+        { reported: false }
+      );
     },
 
     waitForEvent: async (
