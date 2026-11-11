@@ -65,8 +65,10 @@ type DemoAuthOptions = {
   publicUrl?: string | undefined;
   /**
    * Names a demo account (a key of `demoUsers`) whose access every request
-   * receives, so a developer skips the login page while testing locally.
-   * Ignored outside development. `app.ts` reads `WFGRAPH_DEMO_USER` and
+   * but an MCP one receives, so a developer skips the login page while
+   * testing locally. A request to `/api/mcp` still presents `mcpToken` or the
+   * demo session cookie, since an MCP client is another program on the
+   * machine and has no login page to skip. Ignored outside development. `app.ts` reads `WFGRAPH_DEMO_USER` and
    * passes the value here, which keeps this module free of environment
    * reads of its own.
    */
@@ -239,10 +241,11 @@ export function createDemoAuth(options: DemoAuthOptions) {
   // as not signed in. An MCP client with no browser session authenticates
   // with the configured bearer token instead.
   const auth: WfGraphAuth = (request) => {
-    if (demoAutoLoginAccess) return demoAutoLoginAccess;
+    const isMcp = new URL(request.url).pathname === "/api/mcp";
+    if (demoAutoLoginAccess && !isMcp) return demoAutoLoginAccess;
     if (
+      isMcp &&
       options.mcpToken &&
-      new URL(request.url).pathname === "/api/mcp" &&
       bearerTokenMatches(request, options.mcpToken)
     ) {
       return WfGraphRoles.editor;
