@@ -3,11 +3,11 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "4e1f30bcf8060867477a9f95d2900e143863d40faa3ea6e352b2a1cf3b0d274c",
+      "fingerprint": "234c9b387d41a1e29d7ed8d5a110f1e6ac5002725fc05e0cdbb8a47720070dfa",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
         "docs/embedding.md": "e183ee9d7e7b626f509cb044c5b70c910f1d4ada1ba1766ab392af333d6606b3",
-        "packages/core/skills/wfgraph-core/SKILL.md": "6ac8cdef309bae89b694dfbf1087f22dc08e01d9e05501ac2f7021adb62c8553",
+        "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "ac2b3fc55bb55741bb59cf50aa5de80684a2c74a439443419a4ea438d598e848",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
@@ -17,28 +17,27 @@
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "da8caeef519f57e953822ef0f3afc95c40219d7dbbdbd4bf7515aa22422bfa36",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "updated",
-      "reason": "wfgraph-core said a missing auth answers 500, that encryption is always required, and that every runner sets its retention windows by hand, and its return shape lacked health. createWfGraphApp now refuses a missing or malformed auth at startup, takes auth as a function or { authenticate }, makes encryption optional with no integration, answers health(), and createWfGraphRunner takes the app's options object. The skill now states each, adds the PostgreSQL concurrency default and maxStepValueBytes, adds a HIGH mistake for separate app and runner options, and routes MCP and the build agent to their new skills.",
+      "reason": "The skill gained two rules with the code that introduced them: a Cancel Event follows the order Events were received in, and an event-mode Wait that first parks after a matching Event was delivered wakes at once with it.",
       "evidence": [
-        "e476cb51 fix(skills): bring wfgraph-core up to date with the app's options",
-        "Checked against packages/core/src/app.ts, packages/core/src/runner.ts, packages/core/src/backend/lib/http/authorize.ts (readAuthenticate) and packages/core/src/backend/host-health.ts",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "0f1d0ad3 fix(core): let a Cancel Event follow arrival order, not delivery order",
+        "2dee4785 feat(core): wake an event-mode Wait at its first park with an arrival it missed",
+        "pnpm run skills:validate passed for ten skills"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
-      "fingerprint": "f3942e9593e3941c79612b037eada5303bf2b0c2d31584352e4454b05e72ea42",
+      "fingerprint": "154b978b7963a83f706f7f64e5ff02647c990f4b58a1333589f91cd982d16773",
       "snapshot": {
-        "docs/events.md": "82fa89d30e79813ed56dcb87ab2a97d4faef5f125d25f978ef90830688474fb9",
+        "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "events.send now takes a defineEvent value and types its payload, events.inboxInsert builds the host's own inbox insert, a delivery retries each workflow on its own and settles failed naming the failures, a resend keeps refused starts, and a paused workflow still receives Cancel and Wait Events. The skill knew only the name form and a hand-written insert; it now states each and adds a mistake for an insert on the wrong search_path.",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "no-change",
+      "reason": "docs/events.md gained the Cancel arrival-order rule and the Wait catch-up rule. Both rules are stated once in the wfgraph-core skill, which the events skill is loaded beside, and nothing the events skill says about Cancel Events or Waits became wrong.",
       "evidence": [
-        "8b56c5a5 fix(skills): teach events the typed send, inboxInsert and delivery settlement",
-        "Checked against docs/events.md (Sending an Event) and packages/core/src/backend/host-events.ts (inboxInsert answers sql, params, namedParams)",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "Read packages/core/skills/wfgraph-core/events/SKILL.md lines mentioning Cancel and Wait against docs/events.md at HEAD",
+        "git diff of packages/core/skills/wfgraph-core/SKILL.md shows the two rules"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
@@ -90,16 +89,16 @@
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "c118795491b6233ee54803d26e96b9667875896450131dfab89768d74907b208",
+      "fingerprint": "eed7f5f6a1e37bb56d8ecab605cdd3c8c9b2ac5b5f4700d4098d32eb45d1f8b8",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
         "_artifacts/domain_map.yaml": "c0c37dffbc738e3b15b2b1370e969bb4a574c2e39ef61054e2b252d048c7d746",
         "_artifacts/skill_spec.md": "a73b6c1289b3321ca97cc0b489b84f2c6b33ba1c027597509bd578101f045ad9",
         "_artifacts/skill_tree.yaml": "0d7d9f2fd93f3844a71191892ab9574e5fb8f43e26d8dc0292b488ad443bd352",
         "docs/embedding.md": "e183ee9d7e7b626f509cb044c5b70c910f1d4ada1ba1766ab392af333d6606b3",
-        "docs/events.md": "82fa89d30e79813ed56dcb87ab2a97d4faef5f125d25f978ef90830688474fb9",
+        "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
-        "packages/core/skills/wfgraph-core/SKILL.md": "6ac8cdef309bae89b694dfbf1087f22dc08e01d9e05501ac2f7021adb62c8553",
+        "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "ac2b3fc55bb55741bb59cf50aa5de80684a2c74a439443419a4ea438d598e848",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
@@ -121,13 +120,12 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "b7a92179cb4b08dd4aa4a559e9caa2e63d3187be94a11a2d5a7f2daaa0a54628",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "All three documents changed with the batch. domain_map.yaml gained the mcp and build-agent entries, updated covers, tasks and failure modes for the eight changed skills, a cookie-versus-bearer tension, four cross-references, the resolved agent gap and a new build-agent verification gap. skill_tree.yaml carries the new entries and each changed description copied from its SKILL.md (intent maintainer check reports 0 files to sync). skill_spec.md gained decision 8, the inventory and failure-mode rows, the batch 5 history and the updated remaining work.",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "no-change",
+      "reason": "The schema follow-up changes add no skill and no developer task. The two new rules extend the existing events domain of wfgraph-core, which domain_map.yaml and skill_tree.yaml already cover.",
       "evidence": [
-        "_artifacts/domain_map.yaml and _artifacts/skill_tree.yaml parse with yaml 2.9.1",
-        "intent maintainer check: 0 authoring issues, 0 files to sync",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "_artifacts/skill_tree.yaml lists wfgraph-core and its events skill",
+        "No skill path was added or removed since the batch 5 record"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -518,29 +516,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-toolbar-handlers.test.tsx": {
-      "fingerprint": "c9ea689c5fde49f6dac980bf5a43c935102ee4250a784cacb4348fd6474d3079",
+      "fingerprint": "0a262e3a1cac1998ba792378967a2510caa88c614a36dfb2fc036b7f3c7c6883",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-toolbar-handlers.test.tsx": "3a204eac79b49b17f2e314a34132268c291f5f1ac0c1027eb788932d64215ca5"
+        "packages/client/src/components/workflow/workflow-toolbar-handlers.test.tsx": "2b64034bef566eb0bef26229f88aa63087c008a8892dfa6303d1a731b2dd93d1"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Editor UI: the Agent panel (thread storage, copy and retry, turn records, undo, usage line, no remote images), held save retries, draft-sync visibility, the publish conflict review, OAuth polling and the revocation notice. An adopter passes clientBundle and writes none of this; decision 2 gives @wfgraph/client no skill.",
+      "reason": "Editor-facing change: the publish response's warnings list and its toast, and where the editor places a step the build agent adds. No published skill teaches the editor's RPC contract or canvas behaviour.",
       "evidence": [
-        "_artifacts/skill_spec.md decision 2",
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-toolbar-handlers.ts": {
-      "fingerprint": "12606e56e30603d556fedd7e2a5c4431a554a416eea40247fd7d4662e40018ae",
+      "fingerprint": "9441f0fd7039e8a9d92916a26566894360da56698f6a39cf5c8079d193a6ac1c",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-toolbar-handlers.ts": "023ff0dc68a7bdca0a238b8041d283854580db668ceead432dc35450bcf8f285"
+        "packages/client/src/components/workflow/workflow-toolbar-handlers.ts": "7f8df0955b84d0097aa0428a3f5467f8c570c43d49fcb095d7df5545f15b5f24"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Editor UI: the Agent panel (thread storage, copy and retry, turn records, undo, usage line, no remote images), held save retries, draft-sync visibility, the publish conflict review, OAuth polling and the revocation notice. An adopter passes clientBundle and writes none of this; decision 2 gives @wfgraph/client no skill.",
+      "reason": "Editor-facing change: the publish response's warnings list and its toast, and where the editor places a step the build agent adds. No published skill teaches the editor's RPC contract or canvas behaviour.",
       "evidence": [
-        "_artifacts/skill_spec.md decision 2",
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-toolbar-state.ts": {
@@ -616,16 +614,16 @@
       ]
     },
     "source:packages/client/src/lib/agent-graph-apply.test.ts": {
-      "fingerprint": "a68569b43ba750a4d217dada8bd76d34018bf8894fb06cc5e529b6337d281846",
+      "fingerprint": "3ff77ab997600edfa4143ae962e90a9ad122e838730267c194157f684e884e62",
       "snapshot": {
-        "packages/client/src/lib/agent-graph-apply.test.ts": "9cb500d1b73c49b02efa438a36afbdd8de6a12eb917767cd3d146cf18e91fdb5"
+        "packages/client/src/lib/agent-graph-apply.test.ts": "4f5355e54c201a84dc5cedcab0746068cb2d0e83cba5b0e7c0e5d27dedd50320"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Editor UI: the Agent panel (thread storage, copy and retry, turn records, undo, usage line, no remote images), held save retries, draft-sync visibility, the publish conflict review, OAuth polling and the revocation notice. An adopter passes clientBundle and writes none of this; decision 2 gives @wfgraph/client no skill.",
+      "reason": "Editor-facing change: the publish response's warnings list and its toast, and where the editor places a step the build agent adds. No published skill teaches the editor's RPC contract or canvas behaviour.",
       "evidence": [
-        "_artifacts/skill_spec.md decision 2",
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/client/src/lib/command-palette-store.test.ts": {
@@ -728,16 +726,16 @@
       ]
     },
     "source:packages/client/src/lib/workflow-graph-store.ts": {
-      "fingerprint": "b589110e789aa73047a5b6ae56884b56a192857b2d76298f1958bd85c537ff0b",
+      "fingerprint": "d99f64bb03f478969bf5a839731ccfc2f30481b1e04c31413bd83a2c5f0deea2",
       "snapshot": {
-        "packages/client/src/lib/workflow-graph-store.ts": "c7bd28cdd283533d03796a3e7186bb4a592975763f14cf847466c5cd972de489"
+        "packages/client/src/lib/workflow-graph-store.ts": "2913222d515061e3cb3f30eeace6943a98ad4a4f910e89d7d53d63c7d1f70154"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Editor UI: the Agent panel (thread storage, copy and retry, turn records, undo, usage line, no remote images), held save retries, draft-sync visibility, the publish conflict review, OAuth polling and the revocation notice. An adopter passes clientBundle and writes none of this; decision 2 gives @wfgraph/client no skill.",
+      "reason": "Editor-facing change: the publish response's warnings list and its toast, and where the editor places a step the build agent adds. No published skill teaches the editor's RPC contract or canvas behaviour.",
       "evidence": [
-        "_artifacts/skill_spec.md decision 2",
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/client/src/lib/workflow-publication-review-store.test.ts": {
@@ -785,7 +783,9 @@
       "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "out-of-scope",
       "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml"]
+      "evidence": [
+        "_artifacts/skill_tree.yaml"
+      ]
     },
     "source:packages/client/src/lib/workflow-save-store.test.ts": {
       "fingerprint": "7c64f294150356d10b76fd786832100ac90a77b136e78ae80b6c9a64e39e927b",
@@ -944,17 +944,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/store.ts": {
-      "fingerprint": "6e10bdf04c609912f4e89f123245f47c6decf49fbf3eaa2363f69d38faa7cb65",
+      "fingerprint": "51fee8a15aab70c52fce5cbbb2afc09c6c7628da1e13522ce05f9b6a4808ccef",
       "snapshot": {
-        "packages/core/src/backend/engine/store.ts": "82a3ff5498d3418070963b21a10e72e05af0c9deb8e3486445f41546b3a086fb"
+        "packages/core/src/backend/engine/store.ts": "4989a9feb755bb0b05454cce691114cc402a6c9176453e0056873287477f7aef"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/engine/wait-delay.ts": {
@@ -972,17 +971,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/wait.ts": {
-      "fingerprint": "36bab32ce34948c958971d1656e38b8a7785a28900edea02f485d67ce26c3987",
+      "fingerprint": "a3b8ca6cfe6cbd254292730f452714dd2e98668a009580461c6281139dade9f2",
       "snapshot": {
-        "packages/core/src/backend/engine/wait.ts": "89b04e9ac3d5e6400902b0fb7a052d2f8a10ac8811205b861ea63327d96035f9"
+        "packages/core/src/backend/engine/wait.ts": "985de84b6e8330efe0c4a02980323288c9ff2249cb73a511899ac62fca75cbc4"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/executor/testing/pass-cases.ts": {
@@ -1012,17 +1010,16 @@
       ]
     },
     "source:packages/core/src/backend/lib/db/schema.ts": {
-      "fingerprint": "e06a19e1e2fe5d763e18bc305048c0d23c587d22c3ca6fafcf1a84e753784ad5",
+      "fingerprint": "c299fc1663615fd9e46904bf9b29d99742c496f9962cf9ed23f861f0d1ff9feb",
       "snapshot": {
-        "packages/core/src/backend/lib/db/schema.ts": "51bd54eadafc4864f86ac86688858680ed279fa3f0a092b9365f276dab89b8ac"
+        "packages/core/src/backend/lib/db/schema.ts": "dd1cbdc6689313ca86254e7cc23997dd81fe7ae4740452917367f7290b0e5a10"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/execution-fencing.ts": {
@@ -1101,17 +1098,16 @@
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/admission.ts": {
-      "fingerprint": "166a1891790e03fc5fae31c37869e7993c451685a6eaefbe82afa4ed748656bc",
+      "fingerprint": "c1ce5cd0d5559c91117b1a625d258e408886ae74c181e53c485b390fa9493bab",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/admission.ts": "9e5b059e04123670bd439c818dab98fd83420daaa954d75ab3e010754920331d"
+        "packages/core/src/backend/persistence/sqlite/executions/admission.ts": "b0894df8a89bf9805b05ae6a1abc182b15b57a0451ef8179cbd99aee6c42ef4f"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/runs.ts": {
@@ -1153,17 +1149,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/admission.ts": {
-      "fingerprint": "37dc8d57d6bc2be9fb35b5856fa6f76b57235be6102406636c66557644d6299f",
+      "fingerprint": "adc71faff592c2c15d3b033564aba6082b1118df363b0f8e21517567b392bdba",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/admission.ts": "7afe6bd1a8a81fdc3b1b0ecb7f30470e359022a3232b073484dbecd9f26e7ea5"
+        "packages/core/src/backend/services/executions/repo/admission.ts": "7b7b256fdbf7d58e17317625b101ad5ce5e26dfc080c158a6540254b5922ce14"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/release-policy.ts": {
@@ -1556,16 +1551,16 @@
       ]
     },
     "source:packages/shared/src/rpc/contracts/workflows.ts": {
-      "fingerprint": "c484507c741ef1b6a8dd2841d4938aa298b7f1694e47bf6ec27a1e4de690094e",
+      "fingerprint": "96d6dd537fdbbbd4f8ba0aba7f904e8646a312490a66ad7f5b7f133992536ec2",
       "snapshot": {
-        "packages/shared/src/rpc/contracts/workflows.ts": "6bf7dbabb34f1aa5e508d69c7a7115db97f2f5f13ba4b763c5c9932f2c05b33e"
+        "packages/shared/src/rpc/contracts/workflows.ts": "00d69925139731e45dc4f3b8fef89ad5d763434b16240fb93d5451cfa9767bcc"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Shared contracts behind the editor and agent: the agent stream and chat input (selection, records, usage), workflow placement, the step result envelope, execution contracts and the operation table's tests. They are inlined into the published packages and named by no adopter; the adopter-visible effects, such as integration.configOptions requiring workflow.write, are covered in auth and the manual's operation table.",
+      "reason": "Editor-facing change: the publish response's warnings list and its toast, and where the editor places a step the build agent adds. No published skill teaches the editor's RPC contract or canvas behaviour.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "docs/embedding.md (Authentication and authorization) lists integration.configOptions under workflow.write"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-run-detail.test.tsx": {
@@ -1755,17 +1750,16 @@
       ]
     },
     "source:packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": {
-      "fingerprint": "b09b11b85352cf8cca873bfb875b25b198566a88c849b0b99fd355ce7e29928c",
+      "fingerprint": "6ab4c9a68c8848aa7ab0b9b06d8c258f1600e1e2d469c559f7c44a5ca142975b",
       "snapshot": {
-        "packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": "f8604198ad1cf208094d60e8b9e930358d56a6e13699c25e6038bc4dce7bdfa1"
+        "packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": "11f3bd3780731ffac5c7dc6855b561740d275b34349b34d3c6076e5ea470a335"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/postgres-migrations.pg.test.ts": {
@@ -1781,70 +1775,68 @@
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/rows.ts": {
-      "fingerprint": "ab99dda7d287d5e929ba79c1bb2156e2185ab25da416eae6faeb1bb814805925",
+      "fingerprint": "b7d40ddb0332e3e1fa39687fca11e799b7be5f9da5a18c54966e299c13133255",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/rows.ts": "e68a082e288b981d1b9ebb04c87d4a6ae826e52ddd9f8a3d98654d080b212d9e"
+        "packages/core/src/backend/persistence/sqlite/executions/rows.ts": "59cb84face7cadd1c5dbefb1c1665c4f861a96309488ab4c2d95c9c0ed7a5865"
       },
-      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "The executor's node log writes: the log open as an idempotent step that reconciles its failures and is never the running step, the close as a quiet store write under one guard on every close, the log rows read when a pass opens, the Wait's open off its memo row, and the model and plan that describe them. Nothing a host configures or calls changes.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no engine, executor, executions repository, persistence log or internal skill sources.",
-        "No file under packages/core/skills or packages/plugins/skills mentions the log open, the log close, runIdempotent or the node log reads."
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/generated-migrations.ts": {
-      "fingerprint": "275d3a75cd27c1663a26520ff1bfeb559d3199980fe140ce1696df53f7809b95",
+      "fingerprint": "0b1f0e5b1e627d5bab447afa68dda1c54147996f671327cdc1ed23d32a1f9009",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/generated-migrations.ts": "c2f638db62a9a1b8d6fc870c1096b653936ae2a5c862325fbee0269655e4202f"
+        "packages/core/src/backend/persistence/sqlite/generated-migrations.ts": "7b79d4fb9ef2873c9900f50dc40e00dbbfd4426ae14ea0299241d41198945f7a"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/migrations.ts": {
-      "fingerprint": "5c152e20ddf0281e059c3658ae7256c606b2fd38e8058357f0b61478d27d9028",
+      "fingerprint": "f09120577a7e265d4b1c042bc5e4037c90fe598f4eba0fc3547cc6604dc3573f",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/migrations.ts": "b7c3dd96827e55254b24aca47a18e322caf17f18caa65760f760817a9f28229f"
+        "packages/core/src/backend/persistence/sqlite/migrations.ts": "c46b7c445450eb6923b6cdc6dccaa966c45851c24c1edafc675440478043ebc6"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/schema.ts": {
-      "fingerprint": "091c0488450210dc3440f144f02a32e3347abdbb021d3e0520e6e7381b5a8832",
+      "fingerprint": "44fcff477427ceb66ad019d090478db3d111c8ff11f232d988c51f1f4d1ac31a",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/schema.ts": "e9482c72a4ed2bcdc68ed40823c99cb54f75f0488ce54bd08fcc2eb241567c61"
+        "packages/core/src/backend/persistence/sqlite/schema.ts": "9abb1b228ba6ebb66a167d86f3a1316673c1af4a7fdf8aaf043941e8b022e963"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/shared/src/lifecycle/execution-schedule.ts": {
-      "fingerprint": "c6f0adf684c1c67e5b487c56caf7f92b4ffcaedb19a254ab1906b3d357bf47f1",
+      "fingerprint": "98767a3033953b9feb7335124d70d495909d4bb0af44de9b1b325bf8edb68b96",
       "snapshot": {
-        "packages/shared/src/lifecycle/execution-schedule.ts": "0e65747300b9818d58b1357a20c0ffc019cb1dfd2372ee9a29053530d9a79d20"
+        "packages/shared/src/lifecycle/execution-schedule.ts": "d83644ded3399b50265cd5fd3ab08d261052e8c40771cdd53433bc04c98a9c48"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
-      "outcome": "no-change",
-      "reason": "Row-state CHECK constraints, a removed run status no write stored, and one migration per backend; the skills teach how to run migrations, which is unchanged, and name no run status or column constraint.",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "grep of packages/core/skills for pending, migrat, set null and published_version: only SKILL.md migration steps (lines 7-216) and the inbox pending-row sweep (line 143), both unchanged in meaning."
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/drizzle/20261108202253_row_state_constraints/migration.sql": {
@@ -1976,17 +1968,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/db-store.ts": {
-      "fingerprint": "d1d4451c2470abb9158cc87686e9860b8846f419d393f07cbe79e62e9ab6640b",
+      "fingerprint": "68c8011d12cbf8b3e88cbf841607ef4632f8f5f6aa7a4e0b2344183d65f67c92",
       "snapshot": {
-        "packages/core/src/backend/engine/db-store.ts": "435c1763a6014957b7445e5643b31410fb8e91f9e5299b2d0e9638af94a6dadd"
+        "packages/core/src/backend/engine/db-store.ts": "f8ac29658f76162614a76338d8ca0c696d4714eacb1fb4e59445588bdcfca390"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/engine/entity-eligibility.test.ts": {
@@ -2068,17 +2059,16 @@
       ]
     },
     "source:packages/core/src/backend/executor/run-body.ts": {
-      "fingerprint": "935667c56545da16efad9a1c4867b13192c717c7d9701ba58001954963c6475f",
+      "fingerprint": "62bfd65559e991981e4b75b8ad41a03065ed870b9c5a51d534d39547c3570355",
       "snapshot": {
-        "packages/core/src/backend/executor/run-body.ts": "c320d246bca317d1308551ed3a1a7a423e25bbd3e5ad673d81ec21ab68dff2e8"
+        "packages/core/src/backend/executor/run-body.ts": "07cc73b592ea736c5798577a1f731d97bbd1d00f74d5305d71c89269f99cbb23"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/end-runs.test.ts": {
@@ -2106,17 +2096,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/contracts.ts": {
-      "fingerprint": "710ad429a98d04731a2422e754ae5016eda54a9a0358419d3cf4a9d06e3e5d80",
+      "fingerprint": "cff7e8c2e003da83d94252df0694aab20d1dafd24c63331564d3000ec8fe101f",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/contracts.ts": "b1397226c3d84175606ce32c72711f5ece004a04ae87dfe26f4ae01b0b93bfd7"
+        "packages/core/src/backend/services/executions/repo/contracts.ts": "26c1b1eca98d6d9dc8615dc64e6ff519370a78e86d761deb289283b03744fdba"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/workflows/lifecycle/concurrency.test.ts": {
@@ -2193,7 +2182,9 @@
       "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "out-of-scope",
       "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml"]
+      "evidence": [
+        "_artifacts/skill_tree.yaml"
+      ]
     },
     "source:packages/core/src/backend/services/workflows/lifecycle/scheduled-start.ts": {
       "fingerprint": "231d8f87ffd4c24cb3f62bddb6fc81bff39f4b5cb3b989e73621318ba9092443",
@@ -2208,14 +2199,17 @@
       ]
     },
     "source:.claude/skills/verify-durable-executor/SKILL.md": {
-      "fingerprint": "d74c6133a6ab81e5c33a0a37c86e887bf4e08b5058c2a79ffe11b0cf31c78c8a",
+      "fingerprint": "2e60e2f2ce49bd99ef62fe1bb370a3db0c9841bbf337b01ef71261df007a5312",
       "snapshot": {
-        ".claude/skills/verify-durable-executor/SKILL.md": "61e0d243c300843836eb6635324470ec6cf2946046822f669b4b32ac03feac2a"
+        ".claude/skills/verify-durable-executor/SKILL.md": "05d370ec83bb0f26548127d26775b162cb017832244e8cbf3e3284fe2cc76326"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Contributor tooling for this repository: the durable-executor TLA+ models and the workflow-authoring behavior. Decision 1 keeps contributor guidance out of the published skills.",
-      "evidence": ["_artifacts/skill_spec.md decision 1"]
+      "reason": "Contributor material: TLA+ models, an ADR amendment and domain vocabulary. Published skills carry adopter guidance only, and the adopter-visible rules these describe are in the wfgraph-core skill.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
     },
     "source:.claude/skills/verify-durable-executor/model/DurableExecutor.tla": {
       "fingerprint": "c475a8e7ebe8a0a0bdf1f8a5d3a8bb03f6468ad1399c12e4ce8eb3e51913626a",
@@ -2249,7 +2243,9 @@
       "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
       "reason": "Generated release notes that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no CHANGELOG sources."
+      ]
     },
     "source:packages/client/CHANGELOG.md": {
       "fingerprint": "d22e3f835880f80b38975641b06e35e85821e6202db33f116b5ed26322b525cc",
@@ -2259,7 +2255,9 @@
       "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
       "reason": "Generated release notes that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no CHANGELOG sources."
+      ]
     },
     "source:packages/core/CHANGELOG.md": {
       "fingerprint": "ba7f5437ef115d1a8e92614e7270069d2babc10bccc6f162e743b973798b6f38",
@@ -2269,7 +2267,9 @@
       "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
       "reason": "Generated release notes that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no CHANGELOG sources."
+      ]
     },
     "source:packages/core/src/backend/engine/core-replay.test.ts": {
       "fingerprint": "13a13ef7ce28d1f5ac2cd5ea6b103f5eaefa50e25ec003e4de3c7b0169b75589",
@@ -2342,17 +2342,16 @@
       ]
     },
     "source:packages/core/src/backend/lib/effect/test-layers.ts": {
-      "fingerprint": "25e52a9da45f9b8e9e8484e2614cd374c2be6e85cf2981c54212720ba7d2d131",
+      "fingerprint": "77bbf4dd03786b5e4b5cf5bcd3b1895db4a8d2a549df9c0ffe2a1abecd7a97b7",
       "snapshot": {
-        "packages/core/src/backend/lib/effect/test-layers.ts": "8a42c56a62732a56970d4a17cab7de1d65360ffc6afabed1345aec3746244f2d"
+        "packages/core/src/backend/lib/effect/test-layers.ts": "0730add6559244781ef8853664c7821a7eed1460c70ad778a55ead0103118a3f"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/conformance/draft-snapshots.ts": {
@@ -2420,15 +2419,16 @@
       ]
     },
     "source:packages/core/src/backend/persistence/persistence-conformance-test-support.ts": {
-      "fingerprint": "6a4a0447368b5a9b57d1b5dda38b6b93299c328d90b98d2d1be11359f028509e",
+      "fingerprint": "3755269ea78688e52e6c21da01b716cf4580b67ecf0d67ba3b69400e9bfa4e4f",
       "snapshot": {
-        "packages/core/src/backend/persistence/persistence-conformance-test-support.ts": "e034ba10044dd434d624aeb0d4e0c16fb6dd25ec0a42b9fd89147eb7a794e241"
+        "packages/core/src/backend/persistence/persistence-conformance-test-support.ts": "1fb9cfc092dc9d8648ae62dd1dee8d087efd355993151000c0f928201eba18eb"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Run-ending internals and their tests, which no published skill teaches.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "_artifacts/skill_tree.yaml sources cover authorization, logging and the Worker entry; none of the run-ending files are listed."
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/fenced-writes.ts": {
@@ -2519,17 +2519,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/index.test.ts": {
-      "fingerprint": "45f8b8793d8a454686f286262b5f86d77dda5021c4003a0bae951896966c2568",
+      "fingerprint": "9f4f1de476a4f695187c61e58c46cd5f56a49414f584085489e7a4bf1a3c07ef",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/index.test.ts": "0257162ad0753a4d4ad9bddfc5254f85f4b7ebc8628d4ed4a18d3b8a5d8832f4"
+        "packages/core/src/backend/services/executions/repo/index.test.ts": "723d20468972747547df1e54521bf9e9eab6b64745d0006ee9be33d9d3d9324a"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/runs.test.ts": {
@@ -2545,17 +2544,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/schedule.ts": {
-      "fingerprint": "71933de6b3814a6c23885d3d61dc74ee9a7c3d7d0ce6f7bb61fbe4b8a9390247",
+      "fingerprint": "6976844d2e2ed53c0a4ba1908ad20ac41d6244d4c0dc8dc3ddf106461321603d",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/schedule.ts": "76be445176c5fd665da77f238d87d8f7c0d4947c722e50b53f1166831b292f06"
+        "packages/core/src/backend/services/executions/repo/schedule.ts": "1c67b7ed5ee323c0592e68fc345cd0924d66c47837fc8c3a97388add715bd6d8"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/run-rows.test.ts": {
@@ -2628,7 +2626,9 @@
       "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
       "reason": "Generated release notes that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no CHANGELOG sources."
+      ]
     },
     "source:packages/shared/CHANGELOG.md": {
       "fingerprint": "226dbd5fa65bc1b71aba862b8afd1c845ec7e4486e366f3950da8fe6b276c13f",
@@ -2638,7 +2638,9 @@
       "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
       "reason": "Generated release notes that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+      "evidence": [
+        "_artifacts/skill_tree.yaml lists no CHANGELOG sources."
+      ]
     },
     "source:packages/shared/src/lifecycle/run-ending.test.ts": {
       "fingerprint": "a6a4d52e43e21d9a894d7fc1502aba1fe6af4a72440c3f77ced6779a6218bbfb",
@@ -2875,14 +2877,17 @@
       ]
     },
     "source:.claude/skills/verify-durable-executor/mutations.sh": {
-      "fingerprint": "d05c32d3f527cf223b9428266ca3b4383a30ee90aea86e52e1e3fa1a44b785ad",
+      "fingerprint": "30c1cf92909040aced9b5f8bdc97535bd47d0308f1776316ebbd17fd459f4cab",
       "snapshot": {
-        ".claude/skills/verify-durable-executor/mutations.sh": "c8e5ddfc38e9607587d29faeeed17ff91c4925d1e41fdf732b46465cc801d735"
+        ".claude/skills/verify-durable-executor/mutations.sh": "10d62bcbae02969862a340f821e81a40078c832da6d41403e887c45c015a7d3b"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Contributor tooling for this repository: the durable-executor TLA+ models and the workflow-authoring behavior. Decision 1 keeps contributor guidance out of the published skills.",
-      "evidence": ["_artifacts/skill_spec.md decision 1"]
+      "reason": "Contributor material: TLA+ models, an ADR amendment and domain vocabulary. Published skills carry adopter guidance only, and the adopter-visible rules these describe are in the wfgraph-core skill.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
     },
     "source:packages/core/drizzle/20261109062647_schedule_leased_index/migration.sql": {
       "fingerprint": "8abe02414d7c6102db98bb03e383e02dcaf12cd476bb964b46ca6005d928edeb",
@@ -2938,16 +2943,16 @@
       ]
     },
     "source:CONTEXT.md": {
-      "fingerprint": "af7b91f52b94c8be6d9f785ddab166c5966b9bc168188f3c7bd5242f636c3f8f",
+      "fingerprint": "0f5167eb33f70d9d10eba090afd03c26b7e2faec11feeb65b99aec5cfb3ff9f7",
       "snapshot": {
-        "CONTEXT.md": "d2ab0d91cf58ebae0aa72fb303e1afc8b13434973f8374906ed3e9412993e334"
+        "CONTEXT.md": "d3a080d7330f1409a4106c0ef3c650bbcce5956223794d322a08dc75fc0e4e91"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "ADR amendments and CONTEXT.md terms record why and the domain vocabulary. AGENTS.md gives each fact one home and keeps it out of skills; the skills state the resulting contracts, such as the once-per-node handler from the ADR-0009 amendment.",
+      "reason": "Contributor material: TLA+ models, an ADR amendment and domain vocabulary. Published skills carry adopter guidance only, and the adopter-visible rules these describe are in the wfgraph-core skill.",
       "evidence": [
-        "AGENTS.md (Documentation: one fact, one home)",
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/agent/src/prompt.ts": {
@@ -3163,7 +3168,9 @@
       "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
       "outcome": "out-of-scope",
       "reason": "Contributor tooling for this repository: the durable-executor TLA+ models and the workflow-authoring behavior. Decision 1 keeps contributor guidance out of the published skills.",
-      "evidence": ["_artifacts/skill_spec.md decision 1"]
+      "evidence": [
+        "_artifacts/skill_spec.md decision 1"
+      ]
     },
     "source:.claude/skills/verify-durable-executor/model/Siblings.cfg": {
       "fingerprint": "8def5c2da0abf96ee583175f070f118b1a1fc6f7d0a6b66b86154f803d3b0d8b",
@@ -3173,7 +3180,9 @@
       "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
       "outcome": "out-of-scope",
       "reason": "Contributor tooling for this repository: the durable-executor TLA+ models and the workflow-authoring behavior. Decision 1 keeps contributor guidance out of the published skills.",
-      "evidence": ["_artifacts/skill_spec.md decision 1"]
+      "evidence": [
+        "_artifacts/skill_spec.md decision 1"
+      ]
     },
     "source:.claude/skills/verify-durable-executor/model/Siblings.tla": {
       "fingerprint": "d4c095818b8a3f3e55ecf1c9c22a31ccd322ab225bc04123174792f2ffd8f9c3",
@@ -3183,7 +3192,9 @@
       "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
       "outcome": "out-of-scope",
       "reason": "Contributor tooling for this repository: the durable-executor TLA+ models and the workflow-authoring behavior. Decision 1 keeps contributor guidance out of the published skills.",
-      "evidence": ["_artifacts/skill_spec.md decision 1"]
+      "evidence": [
+        "_artifacts/skill_spec.md decision 1"
+      ]
     },
     "source:docs/adr/0009-replay-memoization-belongs-to-the-handler.md": {
       "fingerprint": "30d6c11ce7e7a8544243a65e20ad4f33722dd6b77a20f19c01271e7d2a955245",
@@ -3251,30 +3262,29 @@
       ]
     },
     "source:docs/adr/0022-events-arrive-through-an-inbox-in-the-application-database.md": {
-      "fingerprint": "71d4bdc933b8102da78ede6e5ab6cba660acd5e9ee9ab414300603bf0b525137",
+      "fingerprint": "8b98a3e2f0ef9b7ad4e017fa9762c4c6022f1f88709d0d82494fa28d2a83e1cf",
       "snapshot": {
-        "docs/adr/0022-events-arrive-through-an-inbox-in-the-application-database.md": "f05373087dda8a98cfc575735cd122cc436aaa0721283d544defa4807e08045e"
+        "docs/adr/0022-events-arrive-through-an-inbox-in-the-application-database.md": "e5a4b2afaf645193468b8825e9c3d24742d6ee02adcbaf09738f13a9b56ff78c"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "ADR amendments and CONTEXT.md terms record why and the domain vocabulary. AGENTS.md gives each fact one home and keeps it out of skills; the skills state the resulting contracts, such as the once-per-node handler from the ADR-0009 amendment.",
+      "reason": "Contributor material: TLA+ models, an ADR amendment and domain vocabulary. Published skills carry adopter guidance only, and the adopter-visible rules these describe are in the wfgraph-core skill.",
       "evidence": [
-        "AGENTS.md (Documentation: one fact, one home)",
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:examples/app.ts": {
-      "fingerprint": "3aa4ee866b4f39a7431549067153f996ef7af5e63b948b5ab372327af0f696ad",
+      "fingerprint": "f587d16d8746147cea013e9ce919303ae86534623d02e5bd051525d5f19166eb",
       "snapshot": {
-        "examples/app.ts": "75fe8207f0fbd9c4d44d1cf83f119eaff3fd54ee9afd76a686cbe1658dfb42e5"
+        "examples/app.ts": "77d7cf6faf3c847e2cb069f3d4cb56864f9d7ef25758810b0ed8ec77d7de842a"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "no-change",
-      "reason": "The example host and the core package README now show auth as a bare function, the MCP authorization option and a host action that checks runMode and is marked sideEffect. Skills point to these files for copy-paste forms and never repeat them, and the skills now state the same contracts.",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "A comment in the example app about WFGRAPH_DEMO_USER and MCP requests. The mcp skill already tells a host to verify the bearer token inside auth.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "Read the example and README diffs against the updated skill text",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:examples/demo-auth.ts": {
@@ -4638,17 +4648,16 @@
       ]
     },
     "source:packages/core/src/backend/executor/delivery-fanout.ts": {
-      "fingerprint": "37b629a3a3578c79e07ae7d78aab2a7c25c681e4aa6f12eb8dc06b6e6f7dc560",
+      "fingerprint": "63cf84bf2775d0e68ee9ac28521ee9c329dec402774a12e39373b7897de26469",
       "snapshot": {
-        "packages/core/src/backend/executor/delivery-fanout.ts": "36e7f6cc7c71084445956fe9a5d4432accecb3ff18bb05b5cbf4a273681f3dbe"
+        "packages/core/src/backend/executor/delivery-fanout.ts": "29ec3f7571e3ebad6f5a337d413b385cd6b223b9cea44fe44f3e41b449b0c27d"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "Event delivery: per-workflow retries, the failed settlement naming each failed workflow, resends answered from recorded decisions, deliveries side by side, and a paused workflow still receiving Cancel and Wait Events. events states this, and docs/embedding.md (Workflow runs) gained the settlement and pause text.",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "8b56c5a5 fix(skills): teach events the typed send, inboxInsert and delivery settlement",
-        "cc0a5f17 docs(embedding): say how a partly failed delivery and a pause settle Events",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/executor/in-process-runner.ts": {
@@ -4694,17 +4703,16 @@
       ]
     },
     "source:packages/core/src/backend/executor/testing/delivery-crash-cases.ts": {
-      "fingerprint": "03c976466f42e81d6a0842ac10fecd652630c7e94f6e13a98ee021bf823575aa",
+      "fingerprint": "45f0317d296638d52400b83ec392119c21b247261416cb42ad833ee8d38b38b0",
       "snapshot": {
-        "packages/core/src/backend/executor/testing/delivery-crash-cases.ts": "c7bc17d758c82157776a1adf07b29593705a579645da39ce83211cbf49a12b71"
+        "packages/core/src/backend/executor/testing/delivery-crash-cases.ts": "abc53110147f7a50e586a4e94626dda5050942ad619427b0ae3dd4203cd2fcef"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/executor/testing/replay-suites.ts": {
@@ -5111,17 +5119,16 @@
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/claims.ts": {
-      "fingerprint": "b199d4601ee8fa0620f0aee1f4b72524abe5f7f4fbe6bef88887ede592012537",
+      "fingerprint": "a27f99dec00b4c52f58b2068637a5d2379b7cc97e17ead39b91140210a14da0d",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/claims.ts": "c859ab908f6f23c431b4df0c120532523248c30728426033a1b6939ffdfc2096"
+        "packages/core/src/backend/persistence/sqlite/executions/claims.ts": "805c17c5be5ccd1c8b0c451d1b4948922635834852b16db51eb817bbb4f952d4"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/executor-state.ts": {
@@ -5407,17 +5414,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/claims.ts": {
-      "fingerprint": "af0d81f8e18e7ef1652be7c2cf8c7e4c16c3c6b32cba3336b5cd7472c0fc247a",
+      "fingerprint": "431f244c315af39232bb7ee5d059f800252503bebb7a791e5de68bb3232a4aea",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/claims.ts": "ad3f8ee1b4fdc9bcfd90781127ed27f5f7a303fa1162dd9c03acdaa6d2253b3c"
+        "packages/core/src/backend/services/executions/repo/claims.ts": "7d2b9c095ad6025164451acc3fec5c24e7810c5f44a1b02bc8c5e9d85c115947"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/cron.ts": {
@@ -5435,17 +5441,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/executor-state.ts": {
-      "fingerprint": "91d2b09c95da4032f8580377c910954efd38ea45336c4aa2f622cd2bc4ddd4f9",
+      "fingerprint": "65a6418873e287645ae962315e32f7dc28de86054a67462acbb300dca3d76840",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/executor-state.ts": "51af4c409aad39420d160c1a8009ef7fc29e349af396f2cf3ecdb75ecb35b8b8"
+        "packages/core/src/backend/services/executions/repo/executor-state.ts": "3a62b6f42af8bc55aa931f85bcec6c9031ecd8ad635cef6c83274686b6dfe51d"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/history.ts": {
@@ -5463,45 +5468,42 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/inbox-policy.ts": {
-      "fingerprint": "668f7183853dd8c92db24b73d75c7a1fb1ee34ab7feb49b3d5386c0bd122bfb0",
+      "fingerprint": "375c9a040df97a0a55e9fe537901564660c65890f9ce4c39bc33777556c4b675",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/inbox-policy.ts": "eb31fa05124f92af19f12a2123d3954800cc087356edfb7e7797082d4a9804e5"
+        "packages/core/src/backend/services/executions/repo/inbox-policy.ts": "62b03c826fe13932dc3358aa5485450413dbf8737533168635bd7583d66944dd"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/index.ts": {
-      "fingerprint": "a1ac3ef876b3972301251fd978c157a61f0f928474b48207f9d722e8c61d8b09",
+      "fingerprint": "4fb4bce964f5a42c893ffd638ca708d28496b7273c6669c9fe6e009f32b71ec6",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/index.ts": "30f550dc64b2e3c7433a5f82e974d48b33ad51da3b152886b08383657c786b7a"
+        "packages/core/src/backend/services/executions/repo/index.ts": "7d79b3646c11ed480211b3f57de650162101db6ca1f7a395b37ee91ff2642c63"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/lease-clock.pg.test.ts": {
-      "fingerprint": "f362888d54f9ff758cb836cf7b2ac9aae2d6f47e8cc182b74c8e6fc2b863405f",
+      "fingerprint": "c7600e4c6e6ab4221c0855a5db304cb9b98f684a276c0a3c312b385ad568061d",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/lease-clock.pg.test.ts": "523b445ddf84131321556d46234cf3edd5432ad789d07bee096d22681b05e682"
+        "packages/core/src/backend/services/executions/repo/lease-clock.pg.test.ts": "0a847ddc49008dd3fa639dbff0748a53eb3fecaa8326507a32b59336e7c0bc5f"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/release-policy.test.ts": {
@@ -6418,6 +6420,448 @@
       "reason": "Workspace build configuration: the Effect 4.1.3 catalog, the provider packages for the agent, tsrs and @effect/tsgo pins, and allowed Effect AI annotation keys. The effect version a host installs is a changeset note, and no skill names a dependency version.",
       "evidence": [
         "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6"
+      ]
+    },
+    "source:.claude/skills/verify-durable-executor/model/Delivery.cfg": {
+      "fingerprint": "fa68b28723ca89c15efbf9e413c22e1eae66188570829de4bc358a68563446c7",
+      "snapshot": {
+        ".claude/skills/verify-durable-executor/model/Delivery.cfg": "9051af2a567611de6822e12e5e740cf586da1c96a18d308d86bfa262fc632ef8"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Contributor material: TLA+ models, an ADR amendment and domain vocabulary. Published skills carry adopter guidance only, and the adopter-visible rules these describe are in the wfgraph-core skill.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:.claude/skills/verify-durable-executor/model/Delivery.tla": {
+      "fingerprint": "439be7a8bd7810935f4290e81f959a4d484b3dc8020754337884fd9237329a89",
+      "snapshot": {
+        ".claude/skills/verify-durable-executor/model/Delivery.tla": "32d1009ef0582317f246403bc61e017a3bcb03dfd11fafa6b27bf3f780cdbf86"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Contributor material: TLA+ models, an ADR amendment and domain vocabulary. Published skills carry adopter guidance only, and the adopter-visible rules these describe are in the wfgraph-core skill.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:.claude/skills/verify-durable-executor/model/Intake.cfg": {
+      "fingerprint": "93685893ff4d4cd837da62103af8d1e6460ee2c51c71ca2cf9bd463084691bfc",
+      "snapshot": {
+        ".claude/skills/verify-durable-executor/model/Intake.cfg": "85f768c9d0810c3669fb8946c0b8ee95e5258e4b40df4e9f5ef301b010e5b4ac"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Contributor material: TLA+ models, an ADR amendment and domain vocabulary. Published skills carry adopter guidance only, and the adopter-visible rules these describe are in the wfgraph-core skill.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:.claude/skills/verify-durable-executor/model/Intake.tla": {
+      "fingerprint": "0df9219ef00344072ca2aa5dad7696353d9557eff9399f3a0eabc5ba32cf40a7",
+      "snapshot": {
+        ".claude/skills/verify-durable-executor/model/Intake.tla": "22b7e0d73e3874d310ea96b637e8ad55f2ecd4b7a1b53edc359ad1814ecce35a"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Contributor material: TLA+ models, an ADR amendment and domain vocabulary. Published skills carry adopter guidance only, and the adopter-visible rules these describe are in the wfgraph-core skill.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/client/src/lib/publish-warnings.test.ts": {
+      "fingerprint": "d9559ceee3de8c132aa3f22fd560a77f7208d580bcb8813ea95731ef1b88b07f",
+      "snapshot": {
+        "packages/client/src/lib/publish-warnings.test.ts": "a0ec8fc2cca35f3df8b6044e15760991eecbc22973066c782679a0b3977dbf12"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Editor-facing change: the publish response's warnings list and its toast, and where the editor places a step the build agent adds. No published skill teaches the editor's RPC contract or canvas behaviour.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/client/src/lib/publish-warnings.ts": {
+      "fingerprint": "fb61a504866946e7e68eed02ac2e13a21998b8011abffc6897fcaa8a1c08b2cd",
+      "snapshot": {
+        "packages/client/src/lib/publish-warnings.ts": "60ab75eb8134a15b60a2ac225c32392213bf21daa1c334b6c8093fb57db0dfc6"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Editor-facing change: the publish response's warnings list and its toast, and where the editor places a step the build agent adds. No published skill teaches the editor's RPC contract or canvas behaviour.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle-sqlite/20261111165849_inbox_scheduled_marker/migration.sql": {
+      "fingerprint": "af7586930a360526883a5c29d2d1d67092e1acaa09a2fcc88431f5d864fff6ef",
+      "snapshot": {
+        "packages/core/drizzle-sqlite/20261111165849_inbox_scheduled_marker/migration.sql": "f2b7678c246940f00e63231ea6a3dbe6202741214ecaaebd8b8bccfcd92fdb36"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle-sqlite/20261111165849_inbox_scheduled_marker/snapshot.json": {
+      "fingerprint": "fa2edf24ec8268ac3a3d0e00701e5e72dae24b451f2fdb8f9ebc785d6cfe2acb",
+      "snapshot": {
+        "packages/core/drizzle-sqlite/20261111165849_inbox_scheduled_marker/snapshot.json": "0a3c27d7364752c09fb79bdf1ea4753b103e9a223b3194f114ca2898ad5536d1"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle-sqlite/20261111170718_delivery_settled_state/migration.sql": {
+      "fingerprint": "a4ad9a140a886e4fae1ddb20ed64d7d30613db71f8e683c144c5be1f1633c19c",
+      "snapshot": {
+        "packages/core/drizzle-sqlite/20261111170718_delivery_settled_state/migration.sql": "6fe6b5bab16a5ccd8e2ebd571d018450d1201a37018f05e66208bcaf812f5ae7"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle-sqlite/20261111170718_delivery_settled_state/snapshot.json": {
+      "fingerprint": "05918abb6edff78d48b7aa750bcd13384f425ff04d1283a682e045d60cfe31bc",
+      "snapshot": {
+        "packages/core/drizzle-sqlite/20261111170718_delivery_settled_state/snapshot.json": "94affd52aedb60de29ff6dedcbc0eaf998cdd50fcee4cd609386576f31d4916b"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle-sqlite/20261111171948_cancel_decision_arrival/migration.sql": {
+      "fingerprint": "c8b2d495cb0744c7809c3e6673cceff5b2e864970cca2d9409914223b6a48b35",
+      "snapshot": {
+        "packages/core/drizzle-sqlite/20261111171948_cancel_decision_arrival/migration.sql": "37bfe06cc2cd3d14353a59865a1fd92a074d3493d304bb676de68cda26af477f"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle-sqlite/20261111171948_cancel_decision_arrival/snapshot.json": {
+      "fingerprint": "6fa3c8fe580a843149ace260b8e5f14961ae6633b92918e2a22f4239345449ec",
+      "snapshot": {
+        "packages/core/drizzle-sqlite/20261111171948_cancel_decision_arrival/snapshot.json": "198ebcbd4f16937d858182ba509558c0f37db915bdb171ae63024ce2a1a99261"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle/20261111165848_inbox_scheduled_marker/migration.sql": {
+      "fingerprint": "1dae7e1718eff529ed1d430a5c1a610ed1fe9f12eb16c73ad9d0a19d84b1d9f7",
+      "snapshot": {
+        "packages/core/drizzle/20261111165848_inbox_scheduled_marker/migration.sql": "cb49d4205921ec8bd4899893d58626462f58ec70007ca5c766d92f2c7b8f8ebd"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle/20261111165848_inbox_scheduled_marker/snapshot.json": {
+      "fingerprint": "cd57f53f8037c4ab1f1b4f6ee7913a38c1e122a578f67d622cc94ac8ba3ca462",
+      "snapshot": {
+        "packages/core/drizzle/20261111165848_inbox_scheduled_marker/snapshot.json": "9068ec4ed0a649aee2cbb307a59e97e81a532508fc2d667e2b07738df11a6f1e"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle/20261111170716_delivery_settled_state/migration.sql": {
+      "fingerprint": "51517d4829a5f563cbece0cb005afbed4a9ebfa6be9012cf93566d9daa84b2ec",
+      "snapshot": {
+        "packages/core/drizzle/20261111170716_delivery_settled_state/migration.sql": "4ee98924fb0980681f1385b324708783e0fce4ec703f8fd5958b9f8dcdae4320"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle/20261111170716_delivery_settled_state/snapshot.json": {
+      "fingerprint": "5ef7659fdd0a3171b088386ed62cf379d1ac29a7b3fbdff3d9640cabad521e65",
+      "snapshot": {
+        "packages/core/drizzle/20261111170716_delivery_settled_state/snapshot.json": "a9f06a1140d4f93369d3cedc30b14f27f5dc3c63567d5df1988221219ceb1ef8"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle/20261111171946_cancel_decision_arrival/migration.sql": {
+      "fingerprint": "9e43d7fc4fac37fd776a62073217d71af7be72267d2de6f6cb44d740ec8fd59e",
+      "snapshot": {
+        "packages/core/drizzle/20261111171946_cancel_decision_arrival/migration.sql": "ff080fea5ca7e14aa63dc414cda3c35f97136d894e1917d6d52cb295cb01a319"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle/20261111171946_cancel_decision_arrival/snapshot.json": {
+      "fingerprint": "164c4c39f46170715880d0d171328056ca93c6a5d2b15325e81bc15f4a69895e",
+      "snapshot": {
+        "packages/core/drizzle/20261111171946_cancel_decision_arrival/snapshot.json": "23f33de588d3ffd1420d052a90f5027a01de3c7baede6237bce0957cc7b1c117"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/executor/testing/delivery-cases.ts": {
+      "fingerprint": "fd1193d841d1962ce33e280110f37bac4e1e4f1eac348a7ec4c7188f7b87b7ad",
+      "snapshot": {
+        "packages/core/src/backend/executor/testing/delivery-cases.ts": "f2a1dac5ee6596973c526f1f113cbe9d69a6923b68bd64d3d435127e8b72c473"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/executor/testing/delivery-catch-up-cases.ts": {
+      "fingerprint": "3cee95490e1105ed7fe22eb35437e40ecdf06e465e3aeafc05e7036202152f22",
+      "snapshot": {
+        "packages/core/src/backend/executor/testing/delivery-catch-up-cases.ts": "f4ac4f215e78ea01abbc70ce56532e5cdfb19fee286039791d3c87020aa0c409"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/execution-cancel-order.ts": {
+      "fingerprint": "f5069f8e315ab18a1517ad273ad753e8b531e41bc18ffea7e44b976385cdb761",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/execution-cancel-order.ts": "4f585fc4b0e06d54ed27dc4b931967ba32522463012a17bc25f883330e0cb250"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/persistence/conformance/execution-inbox.ts": {
+      "fingerprint": "14476894f5e38c5a688b6388216c33fe46a3e462c8dc5b286873c9abcf4593c0",
+      "snapshot": {
+        "packages/core/src/backend/persistence/conformance/execution-inbox.ts": "e4e66d6fd6499a4de8413826dac39903e9c6cb74c38d6eff0568b7a0f23ec47a"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/executions/cancel-order.ts": {
+      "fingerprint": "e38cfb19032d1fabb73c0a763e70453e7e75fc5ca68bbcaa18026e525fae8eb9",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/executions/cancel-order.ts": "99c1ddc28c6790d8811a2a90c000611a131b3564efdd3d80c7b425e1a3e23256"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/persistence/sqlite/executions/inbox.ts": {
+      "fingerprint": "88bcef296a7acad3220831f996f969d0848d3b8c8e4f5fd3243a89d98a8d5178",
+      "snapshot": {
+        "packages/core/src/backend/persistence/sqlite/executions/inbox.ts": "89c8514557dab48ccca9d59674ef5ab2dfccfc265a6f2576c073684136b994dc"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/cancel-order-policy.ts": {
+      "fingerprint": "47bce99038b8490ec0f2fd800225f6776ef0036e28a080a29b46e8ed9aa248d9",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/cancel-order-policy.ts": "78c2e6bf6ce68be500c02963d0630010d311bdfe32b846a239e1b1854e5670b6"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/cancel-order.ts": {
+      "fingerprint": "c6b2697cbfe74c21d70dc8702b7b3a55929b69340f53881aa81cf9956b026a21",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/cancel-order.ts": "37516afbecf8a31e20e21cbcb83783a491f476872aa0375826621ac4b3bca7c5"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/executor-activity.ts": {
+      "fingerprint": "ab7a01d8ac6439bfdbef66c88ad19470ff1f768d681b6ec5dfd1cecbe10479c3",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/executor-activity.ts": "b78de629496aa8072029b3010a02aed9c8398a86edb3f85eccdc732f066895ed"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/inbox.ts": {
+      "fingerprint": "c47b06a31cdcbd755e13bf203a4282613d0759e53e5bb38c7ba92f21c29b79d9",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/inbox.ts": "4ed42fc656044f26bfd998b1f71ca94dc2e01a3ca091a0bf8e870dd80f7d351f"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/services/executions/repo/lease-clock.ts": {
+      "fingerprint": "240d4de3d8ec513f8d458fe262e61fea7691fc4d5c06e2385285809aabd267bd",
+      "snapshot": {
+        "packages/core/src/backend/services/executions/repo/lease-clock.ts": "aa4062f065f0c15d34b8b3d8f26d536970a208d9988880d65dfc2ef6413aa72a"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/lifecycle/resume-waits.ts": {
+      "fingerprint": "58847041bc0d3462addfe16ac3b07a392617ad90190380013a92e338d5255d2d",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/lifecycle/resume-waits.ts": "0017ba2931ed9abc35df26dd011dcd2fe3d651d22180bd7a8c73e265ebc8429c"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/publish.test.ts": {
+      "fingerprint": "9b0adb5994a4ba01c8155aad474d8da9ee65650d637c9f1dc2a7493b942e85fd",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/publish.test.ts": "b7a67c642d18a2f9cc0ed0d46286f344d0506eabffac9d2325d21b36214762e9"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Editor-facing change: the publish response's warnings list and its toast, and where the editor places a step the build agent adds. No published skill teaches the editor's RPC contract or canvas behaviour.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/publish.ts": {
+      "fingerprint": "54d60902a97f97e543566458d1186904c1d9ff144d70a09f49d1b33f28153782",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/publish.ts": "2848d35793500eca9eac28ce521f7886fbdcb62c49a21e7560f4cf1d6d85682f"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Editor-facing change: the publish response's warnings list and its toast, and where the editor places a step the build agent adds. No published skill teaches the editor's RPC contract or canvas behaviour.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/shared/src/graph/api-contracts.ts": {
+      "fingerprint": "fcc4108c46bae8146770615a70d21f0443d384ce6bb8b7e5cf7b38221a47b806",
+      "snapshot": {
+        "packages/shared/src/graph/api-contracts.ts": "17920c1c45035ae4c9ea69fe741708e7706866b91dd6796f346bbd9f2a80f57d"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Editor-facing change: the publish response's warnings list and its toast, and where the editor places a step the build agent adds. No published skill teaches the editor's RPC contract or canvas behaviour.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/shared/src/graph/publication-contracts.ts": {
+      "fingerprint": "aad8f72875096bfa834c43f82d74bcbde929933ad1983ce8c9feddc3f01d6930",
+      "snapshot": {
+        "packages/shared/src/graph/publication-contracts.ts": "8853856f69a1f2f12f6fa1033c1ae43795f18ea71e8e705f4a73e09e751beed3"
+      },
+      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "outcome": "out-of-scope",
+      "reason": "Editor-facing change: the publish response's warnings list and its toast, and where the editor places a step the build agent adds. No published skill teaches the editor's RPC contract or canvas behaviour.",
+      "evidence": [
+        "git log 0570e6c6^..HEAD for the path",
+        "pnpm run test, test:postgres and test:reliability pass at HEAD"
       ]
     }
   }
