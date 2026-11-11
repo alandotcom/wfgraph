@@ -1165,6 +1165,196 @@ different migration tool puts the tables in `public`. This repository's
 `pnpm run db:migrate` is the same entry with the environment read in front
 (`scripts/migrate.ts`).
 
+## Testing a host
+
+`runHostAction` from `@wfgraph/core/testing` runs one of your `defineAction` actions the way a
+workflow runs it, through the input decode, the handler, the output encode and the envelope
+the engine reads. It resolves with that envelope and with every `step.run` the handler made.
+The cases below test `cancelAppointmentAction` from `examples/app.ts`, whose handler puts its
+cancellation inside `step.run("cancel", ...)`:
+
+```ts
+import { actionData, runHostAction } from "@wfgraph/core/testing";
+
+const run = await runHostAction(cancelAppointmentAction, {
+  input: { appointmentId: "appt_123", reason: "Patient asked" },
+  runMode: "live",
+});
+expect(actionData(run.result)).toMatchObject({ status: "cancelled" });
+expect(run.steps).toMatchObject([{ id: "cancel", replayed: false }]);
+
+// A retried pass answers a step that already ran from its stored value.
+const stored = {
+  appointmentId: "appt_123",
+  status: "cancelled",
+  reason: "Patient asked",
+  cancelledAt: "2026-08-10T19:00:00.000Z",
+};
+const retried = await runHostAction(cancelAppointmentAction, {
+  input: { appointmentId: "appt_123", reason: "Patient asked" },
+  replay: { cancel: stored },
+});
+expect(actionData(retried.result)).toEqual(stored);
+expect(retried.steps).toMatchObject([{ id: "cancel", replayed: true }]);
+```
+
+- `input` is the action's config after templates resolved, on the encoded side of its schema.
+- `runMode` is `"live"` unless a case passes `"test"`. `credentials` stands in for a
+  Connection's secrets; leave it out for an action that reads none.
+- `replay` maps a `step.run` id to the value it stored, and that step answers the value
+  without running its work.
+- A handler that throws fails the node: the promise resolves, and `actionError(run.result)`
+  reads the message.
+
+The test below runs a whole app in CI with nothing but the public API: an in-memory SQLite
+database, `trustWfGraphUpstream()` in place of your sessions, a workflow created and
+published over the REST API, an Event sent with `app.events.send`, and the run's status read
+back until it completes. A template such as `{{@entry:Appointments.appointment.id}}` reads
+the payload of the Event that started the run, by the Lifecycle Node's id and label. This
+repository runs the same test, in `packages/core/src/host-recipe.test.ts`.
+
+```ts
+import { expect, it } from "vitest";
+import { z } from "zod";
+import {
+  createWfGraphApp,
+  defineAction,
+  defineEvent,
+  trustWfGraphUpstream,
+} from "@wfgraph/core";
+import { wfSqlite } from "@wfgraph/core/sqlite";
+
+const appointmentCreated = defineEvent({
+  name: "app/appointment.created",
+  label: "Appointment created",
+  schema: z.object({ appointment: z.object({ id: z.string() }) }),
+  correlationPath: "appointment.id",
+});
+
+const confirmed: string[] = [];
+const confirmAppointment = defineAction({
+  id: "appointments/confirm",
+  label: "Confirm Appointment",
+  description: "Records that an appointment was confirmed.",
+  input: z.object({ appointmentId: z.string() }),
+  handler: async ({ input, step }) => {
+    await step.run("confirm", async () => {
+      confirmed.push(input.appointmentId);
+      return null;
+    });
+    return { appointmentId: input.appointmentId };
+  },
+});
+
+it("runs a published workflow from an Event sent with app.events.send", async () => {
+  await using app = await createWfGraphApp({
+    auth: trustWfGraphUpstream(),
+    persistence: wfSqlite(),
+    extensions: {
+      events: [appointmentCreated],
+      actions: [confirmAppointment],
+    },
+  });
+  const rest = async (method: string, path: string, body?: unknown) => {
+    const response = await app.fetch(
+      new Request(`http://localhost/api/rest${path}`, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: body === undefined ? null : JSON.stringify(body),
+      })
+    );
+    expect(response.ok).toBe(true);
+    return await response.json();
+  };
+
+  // The Lifecycle Node starts a run on the Event, and its Started outlet
+  // leads to the action, whose input reads the Event's payload.
+  const graph = {
+    attributes: {},
+    options: { allowSelfLoops: false, multi: false, type: "directed" },
+    nodes: [
+      {
+        key: "entry",
+        attributes: {
+          id: "entry",
+          type: "lifecycle",
+          position: { x: 0, y: 0 },
+          data: {
+            label: "Appointments",
+            type: "lifecycle",
+            config: {
+              lifecycleRules: {
+                startEvents: ["app/appointment.created"],
+                cancelEvents: [],
+                concurrency: "unlimited",
+                allowManualStart: true,
+              },
+            },
+          },
+        },
+      },
+      {
+        key: "confirm",
+        attributes: {
+          id: "confirm",
+          type: "action",
+          position: { x: 0, y: 160 },
+          data: {
+            label: "Confirm",
+            type: "action",
+            config: {
+              actionType: "appointments/confirm",
+              appointmentId: "{{@entry:Appointments.appointment.id}}",
+            },
+          },
+        },
+      },
+    ],
+    edges: [
+      {
+        key: "entry->confirm",
+        source: "entry",
+        target: "confirm",
+        attributes: {
+          id: "entry->confirm",
+          source: "entry",
+          target: "confirm",
+          sourceHandle: "started",
+        },
+      },
+    ],
+  };
+
+  const created = await rest("POST", "/workflows/create", {
+    name: "Confirm appointments",
+    graph,
+  });
+  await rest("POST", `/workflows/${created.id}/publish`, {
+    graph,
+    expectedDraftRevision: created.draftRevision,
+    expectedPublishedVersionId: null,
+  });
+
+  await app.events.send(appointmentCreated, {
+    appointment: { id: "appt_123" },
+  });
+
+  await expect
+    .poll(
+      async () =>
+        (await rest("GET", `/workflows/${created.id}/executions`)).items[0]
+          ?.status,
+      { timeout: 10_000 }
+    )
+    .toBe("completed");
+  expect(confirmed).toEqual(["appt_123"]);
+});
+```
+
+`POST /api/rest/workflows/create` answers the workflow with its `id` and `draftRevision`,
+and publishing names the revision it reviewed, with `expectedPublishedVersionId: null` for a
+first publication. `GET /api/openapi.json` documents every route.
+
 ## Package exports
 
 | Entry                    | What it is                                                                                                                                                                                                                                                                                               |
@@ -1174,7 +1364,7 @@ different migration tool puts the tables in `public`. This repository's
 | `@wfgraph/core/sqlite`   | `wfSqlite` for native Node SQLite                                                                                                                                                                                                                                                                        |
 | `@wfgraph/core/worker`   | `wfWorker`, the Worker host with its `fetch`, `scheduled` and `queue` handlers, and `wfHyperdrive`, per-invocation PostgreSQL through Hyperdrive                                                                                                                                                         |
 | `@wfgraph/core/plugin`   | What an integration package builds against                                                                                                                                                                                                                                                               |
-| `@wfgraph/core/testing`  | `runAction`, `actionData` and `actionError`, for that package's own suite                                                                                                                                                                                                                                |
+| `@wfgraph/core/testing`  | `runAction` for an integration's action, `runHostAction` for a host `defineAction`, and `actionData` and `actionError`, for a test suite. See Testing a host                                                                                                                                             |
 | `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                                                          |
 | `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                                                                                             |
 | `@wfgraph/core/inngest`  | `createWfGraphInngestFunctions`, the forwarders a host on Inngest registers so `inngest.send` reaches the event inbox. The one entry that imports `inngest`, an optional peer dependency. See `docs/events.md`                                                                                           |
