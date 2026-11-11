@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { AgentConfig } from "#src/backend/agent/config";
 import {
   createAgentMcpHandler,
+  type HostToolExecution,
   mcpAuthenticationChallenge,
   mcpHttpValidationResponse,
   mcpProtectedResourceMetadataPath,
@@ -12,6 +13,7 @@ import {
   type WfGraphMcpOptions,
 } from "#src/backend/agent/mcp-server";
 import { Extensions } from "#src/backend/lib/effect/extensions";
+import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import {
   OPERATOR_REQUEST_BODY_BYTES,
@@ -41,6 +43,11 @@ import { getWorkflows } from "#src/backend/services/workflows/list";
 import { receiveWebhook } from "#src/backend/services/integrations/webhook-intake";
 import { sendEvent } from "#src/backend/services/executions/send-event";
 import { executeDraftTool } from "#src/backend/services/agent/draft-tool";
+import {
+  listPublishedVersions,
+  publishStoredDraft,
+  restorePublishedVersion,
+} from "#src/backend/services/agent/publication-tools";
 import { makeWorkflowOperations } from "#src/backend/services/agent/workflow-operations";
 import { postWorkflowsCreate } from "#src/backend/services/workflows/create";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
@@ -119,6 +126,28 @@ type McpRequestLogFields = {
 };
 
 /** The body as JSON, or `undefined` for one that is not. */
+/**
+ * A service answer as an MCP host tool's execution. `refused` marks an answer
+ * the tool returns as an error result, such as a publish its blockers stop.
+ */
+function hostToolExecution<A extends object, R>(
+  effect: Effect.Effect<A, ServiceFailure, R>,
+  refused: (answer: A) => boolean = () => false
+): Effect.Effect<HostToolExecution, never, R> {
+  return effect.pipe(
+    Effect.match({
+      onSuccess: (answer): HostToolExecution => {
+        const result = readJsonObject(answer);
+        if (result === null) {
+          throw new Error("A host tool answered a value that is not JSON");
+        }
+        return { ok: true, result, isError: refused(answer) };
+      },
+      onFailure: (failure): HostToolExecution => ({ ok: false, failure }),
+    })
+  );
+}
+
 function parseJsonBody(rawBody: string): unknown {
   try {
     return JSON.parse(rawBody);
@@ -677,6 +706,26 @@ export function createApiApp(options: CreateApiAppOptions) {
             ),
             { signal }
           ),
+        publication: {
+          publish: async (input, signal) =>
+            await runtime.runPromise(
+              hostToolExecution(
+                publishStoredDraft(input),
+                (answer) => answer.status === "blocked"
+              ),
+              { signal }
+            ),
+          listVersions: async (input, signal) =>
+            await runtime.runPromise(
+              hostToolExecution(listPublishedVersions(input)),
+              { signal }
+            ),
+          restore: async (input, signal) =>
+            await runtime.runPromise(
+              hostToolExecution(restorePublishedVersion(input)),
+              { signal }
+            ),
+        },
         execute: async (input, signal) =>
           await runtime.runPromise(
             Effect.gen(function* () {

@@ -25,7 +25,10 @@ import {
   CATALOG_TOOL_NAMES,
   WRITE_TOOL_NAMES,
 } from "@wfgraph/agent/toolkit";
-import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import {
+  WfGraphOperations,
+  type WfGraphOperation,
+} from "@wfgraph/shared/authorization/operations";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import {
@@ -76,11 +79,53 @@ export type WorkflowCreateExecutor = (
   signal: AbortSignal
 ) => Promise<WorkflowCreateExecution>;
 
+/**
+ * One answer of a tool the host serves outside the toolkit. `isError` marks
+ * an answer the tool refuses with, such as a publish the draft's blockers
+ * stop, which still carries a structured result.
+ */
+export type HostToolExecution =
+  | {
+      readonly ok: true;
+      readonly result: JsonObject;
+      readonly isError?: boolean | undefined;
+    }
+  | { readonly ok: false; readonly failure: ServiceFailure };
+
+/**
+ * Publish, version history and restore. These are MCP tools only: the chat
+ * panel's editor has its own Publish review and version history, and a chat
+ * turn holds edits the editor has not stored yet, which a publish of the
+ * stored draft would leave out.
+ */
+export type WorkflowPublicationExecutors = {
+  readonly publish: (
+    input: {
+      readonly workflowId: string;
+      readonly expectedDraftRevision: number;
+    },
+    signal: AbortSignal
+  ) => Promise<HostToolExecution>;
+  readonly listVersions: (
+    input: { readonly workflowId: string },
+    signal: AbortSignal
+  ) => Promise<HostToolExecution>;
+  readonly restore: (
+    input: {
+      readonly workflowId: string;
+      readonly versionId: string;
+      readonly expectedDraftRevision: number;
+    },
+    signal: AbortSignal
+  ) => Promise<HostToolExecution>;
+};
+
 export type CreateAgentMcpServerInput = {
   readonly auth: AuthContext;
   readonly execute: DraftToolExecutor;
   readonly listWorkflows: WorkflowListExecutor;
   readonly createWorkflow: WorkflowCreateExecutor;
+  readonly publication: WorkflowPublicationExecutors;
 };
 
 /**
@@ -449,6 +494,44 @@ const LIST_WORKFLOWS_OUTPUT_SCHEMA = (() => {
   }
   return schema;
 })();
+
+const PUBLISH_ARGUMENTS = Schema.Struct({
+  workflowId: NonEmptyTrimmedString,
+  expectedDraftRevision: positiveInteger,
+});
+
+const LIST_VERSIONS_ARGUMENTS = Schema.Struct({
+  workflowId: NonEmptyTrimmedString,
+});
+
+const RESTORE_ARGUMENTS = Schema.Struct({
+  workflowId: NonEmptyTrimmedString,
+  versionId: NonEmptyTrimmedString.annotate({
+    description: "A versionId from list_versions.",
+  }),
+  expectedDraftRevision: positiveInteger,
+});
+
+const PUBLISH_OUTPUT = Schema.Struct({
+  status: Schema.Literals(["published", "blocked"]),
+  versionId: Schema.optionalKey(Schema.String),
+  version: Schema.optionalKey(Schema.Number),
+  publishBlockers: Schema.optionalKey(Schema.Array(Schema.String)),
+  draftRevision: Schema.Number,
+});
+
+const LIST_VERSIONS_OUTPUT = Schema.Struct({
+  versions: Schema.Array(
+    Schema.Struct({
+      versionId: Schema.String,
+      version: Schema.Number,
+      publishedAt: Schema.String,
+      isCurrent: Schema.Boolean,
+    })
+  ),
+});
+
+const RESTORE_OUTPUT = Schema.Struct({ draftRevision: Schema.Number });
 
 /** Adds persisted-draft fields while retaining the canonical tool schema. */
 function inputSchemaFor(name: AgentToolName): JsonObject {
@@ -845,6 +928,8 @@ export function createAgentMcpServer(
     }
   );
 
+  registerPublicationTools(server, input);
+
   for (const tool of Object.values(agentToolkit.tools)) {
     const name = tool.name;
     const schemas = AGENT_TOOL_SCHEMAS.get(name);
@@ -919,6 +1004,136 @@ export function createAgentMcpServer(
   }
 
   return server;
+}
+
+/** One MCP tool the host serves outside the toolkit, with its own schemas. */
+type HostTool<A extends JsonObject> = {
+  readonly name: string;
+  readonly title: string;
+  readonly description: string;
+  readonly arguments: Schema.Codec<A, unknown>;
+  readonly output: Schema.Top;
+  readonly destructive: boolean;
+  readonly idempotent: boolean;
+  readonly readOnly: boolean;
+  /** Every grant the call needs, checked before it runs. */
+  readonly operations: readonly WfGraphOperation[];
+  readonly run: (
+    arguments_: A,
+    signal: AbortSignal
+  ) => Promise<HostToolExecution>;
+};
+
+function registerHostTool<A extends JsonObject>(
+  server: McpServer,
+  auth: AuthContext,
+  tool: HostTool<A>
+) {
+  const listed = {
+    ...jsonSchemaOf(tool.arguments, tool.name),
+    additionalProperties: false,
+  };
+  const inputSchema = argumentsSchema({
+    listed,
+    transport: undefined,
+    own: tool.arguments,
+  });
+  const output = jsonSchemaOf(tool.output, tool.name);
+  const outputSchema = fromJsonSchema<Record<string, unknown>>({
+    ...output,
+    properties: {
+      ...readJsonObject(output.properties),
+      workflowId: WORKFLOW_ID_SCHEMA,
+    },
+    additionalProperties: false,
+  });
+  // The SDK has validated the arguments against the same schema already.
+  const decode = Schema.decodeUnknownSync(tool.arguments);
+  server.registerTool<typeof outputSchema, typeof inputSchema>(
+    tool.name,
+    {
+      description: tool.description,
+      inputSchema,
+      outputSchema,
+      title: tool.title,
+      annotations: {
+        title: tool.title,
+        readOnlyHint: tool.readOnly,
+        destructiveHint: tool.destructive,
+        idempotentHint: tool.idempotent,
+        openWorldHint: false,
+      },
+    },
+    async (arguments_, context) => {
+      const decoded = decode(arguments_);
+      const workflowId =
+        typeof decoded.workflowId === "string" ? decoded.workflowId : undefined;
+      const grants = await Promise.all(
+        tool.operations.map(async (operation) => auth.allows(operation))
+      );
+      if (grants.includes(false)) {
+        return toolResult({
+          workflowId,
+          result: { reason: "Forbidden" },
+          isError: true,
+        });
+      }
+      const outcome = await tool.run(decoded, context.mcpReq.signal);
+      return outcome.ok
+        ? collectionToolResult(
+            omitUndefined({ ...outcome.result, workflowId }),
+            outcome.isError === true
+          )
+        : failureResult(workflowId, outcome.failure);
+    }
+  );
+}
+
+function registerPublicationTools(
+  server: McpServer,
+  input: CreateAgentMcpServerInput
+) {
+  const { publication } = input;
+  registerHostTool(server, input.auth, {
+    name: "publish_workflow",
+    title: "Publish the workflow",
+    description:
+      "Publish the stored draft as the workflow's next version, which Events then start. Publish only when the person asks. A draft with publish blockers is not published: the answer lists them, so fix them and publish again. Publishing advances the draft revision; send the draftRevision it answers with the next write.",
+    arguments: PUBLISH_ARGUMENTS,
+    output: PUBLISH_OUTPUT,
+    readOnly: false,
+    destructive: true,
+    idempotent: false,
+    operations: [WfGraphOperations.workflowPublish],
+    run: async (arguments_, signal) => publication.publish(arguments_, signal),
+  });
+  registerHostTool(server, input.auth, {
+    name: "list_versions",
+    title: "List published versions",
+    description:
+      "List the workflow's most recent published versions, newest first, with the one Events start marked isCurrent. Pass a versionId to restore_version.",
+    arguments: LIST_VERSIONS_ARGUMENTS,
+    output: LIST_VERSIONS_OUTPUT,
+    readOnly: true,
+    destructive: false,
+    idempotent: true,
+    operations: [WfGraphOperations.workflowGetVersionHistory],
+    run: async (arguments_, signal) =>
+      publication.listVersions(arguments_, signal),
+  });
+  registerHostTool(server, input.auth, {
+    name: "restore_version",
+    title: "Restore a published version",
+    description:
+      "Replace the draft with the graph of a published version, which undoes every draft edit made since. The published version Events start is unchanged until the next publish. Restore only when the person asks.",
+    arguments: RESTORE_ARGUMENTS,
+    output: RESTORE_OUTPUT,
+    readOnly: false,
+    destructive: true,
+    idempotent: true,
+    operations: [WfGraphOperations.workflowRestoreVersion],
+    run: async (arguments_, signal) => publication.restore(arguments_, signal),
+  });
 }
 
 /**

@@ -695,9 +695,27 @@ again, evaluate the edit against the returned graph, and then send a new write
 with the updated revision. Don't automatically repeat the stale mutation.
 
 Every tool carries a `title` and all four behaviour hints. Read tools are
-read-only and idempotent. `delete_node` and `disconnect_nodes` are marked
-destructive. Every tool sets `openWorldHint: false`, because it reaches only
-the workflow store and the host's catalog.
+read-only and idempotent. `delete_node`, `disconnect_nodes`, `publish_workflow`
+and `restore_version` are marked destructive. Every tool except
+`start_test_run` sets `openWorldHint: false`, because it reaches only the
+workflow store and the host's catalog. `start_test_run` starts a Draft run,
+which calls the real action handlers in test mode, so it is marked open-world
+and not read-only.
+
+`list_runs` and `read_run` read a workflow's recent runs and one run's step
+log. `read_run` cuts each step's output to 2,000 characters and reports its
+full size as `outputBytes`; with no `runId` it reads the most recent run.
+`start_test_run` starts a Draft run of the stored draft with a JSON payload
+and answers its `runId`. `list_field_options` answers the choices a
+provider-backed config field offers, as the editor's picker lists them.
+
+`publish_workflow` publishes the stored draft. A draft with publish blockers is
+not published: the error result lists every blocker. A publish advances the
+draft revision, and the result carries the new `draftRevision` for the next
+write. `list_versions` lists the published versions, and `restore_version`
+replaces the draft with one of them, which is how an MCP client undoes its own
+edits. The editor's build agent offers the run tools and leaves publish,
+version history and restore to the editor's own controls.
 
 Host and Origin validation protects the HTTP boundary from DNS rebinding. The
 host authentication callback authenticates the caller. MCP tool calls use the
@@ -712,14 +730,20 @@ following operation grants:
   `integration.getAll` because the result contains Connection IDs.
 - Every other workflow tool requires `workflow.getById`.
 - Graph-writing tools also require `workflow.update`.
+- `list_runs` requires `workflow.getExecutions`, `read_run`
+  `workflow.getExecutionLogs`, and `start_test_run` `workflow.execute`.
+- `list_field_options` requires `action.configOptions` for a host action and
+  `integration.configOptions` for an integration action.
+- `publish_workflow` requires `workflow.publish`, `list_versions`
+  `workflow.getVersionHistory`, and `restore_version`
+  `workflow.restoreVersion`.
 
 The authoring tools expose integration types and Connection IDs. They don't
 return or decrypt integration credentials.
 
-The MCP authoring surface supports draft creation and existing-draft edits. The
-unavailable operations are duplicate, restore, delete, run, and publish. MCP
-writes change the editable draft and leave the published workflow version
-unchanged.
+MCP writes change the editable draft and leave the published workflow version
+unchanged until `publish_workflow`. Duplicating and deleting a workflow are
+editor operations only.
 
 MCP tools read Group membership and keep existing Groups valid. `read_workflow`
 reports each step's `groupId` and each Group's `memberIds`. The tools cannot

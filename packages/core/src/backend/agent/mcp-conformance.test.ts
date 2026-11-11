@@ -297,6 +297,17 @@ async function runMcpTool(testCase: ConformanceCase) {
       workflowId: "wf_created",
       draftRevision: 1,
     }),
+    publication: {
+      publish: async () => {
+        throw new Error("publish is outside the toolkit");
+      },
+      listVersions: async () => {
+        throw new Error("listVersions is outside the toolkit");
+      },
+      restore: async () => {
+        throw new Error("restore is outside the toolkit");
+      },
+    },
   });
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();

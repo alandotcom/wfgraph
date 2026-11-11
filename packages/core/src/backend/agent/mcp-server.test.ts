@@ -18,6 +18,7 @@ import {
   type DraftToolExecutor,
   type WorkflowCreateExecutor,
   type WorkflowListExecutor,
+  type WorkflowPublicationExecutors,
 } from "#src/backend/agent/mcp-server";
 
 const allowAll: AuthContext = { allows: async () => true };
@@ -34,11 +35,28 @@ const listNoWorkflows: WorkflowListExecutor = async () => ({
   workflows: [],
 });
 
+/** Publication executors no case expects to reach. */
+const unusedPublication: WorkflowPublicationExecutors = {
+  publish: async () => {
+    throw new Error("publish was not expected");
+  },
+  listVersions: async () => {
+    throw new Error("listVersions was not expected");
+  },
+  restore: async () => {
+    throw new Error("restore was not expected");
+  },
+};
+
 function createTestMcpHandler(
-  input: Omit<CreateAgentMcpServerInput, "listWorkflows" | "createWorkflow">
+  input: Omit<
+    CreateAgentMcpServerInput,
+    "listWorkflows" | "createWorkflow" | "publication"
+  >
 ) {
   return createAgentMcpHandler({
     ...input,
+    publication: unusedPublication,
     listWorkflows: listNoWorkflows,
     createWorkflow: async () => ({
       ok: true,
@@ -62,6 +80,7 @@ async function makeSubject(input?: {
   execute?: DraftToolExecutor;
   listWorkflows?: WorkflowListExecutor;
   createWorkflow?: WorkflowCreateExecutor;
+  publication?: WorkflowPublicationExecutors;
 }) {
   const execute =
     input?.execute ??
@@ -78,6 +97,7 @@ async function makeSubject(input?: {
     auth: input?.auth ?? allowAll,
     execute,
     listWorkflows: input?.listWorkflows ?? listNoWorkflows,
+    publication: input?.publication ?? unusedPublication,
     createWorkflow:
       input?.createWorkflow ??
       (async () => ({
@@ -107,6 +127,9 @@ describe("createAgentMcpServer", () => {
         [
           "list_workflows",
           "create_workflow",
+          "publish_workflow",
+          "list_versions",
+          "restore_version",
           // revert_draft is turn-scoped, and an MCP call carries no turn.
           ...Object.values(agentToolkit.tools)
             .map((tool) => tool.name)
@@ -1170,6 +1193,127 @@ describe("createAgentMcpHandler", () => {
     } finally {
       await client.close();
       await handler.close();
+    }
+  });
+});
+
+describe("the publication tools", () => {
+  it("answers a blocked publish as a tool error listing every blocker", async () => {
+    const { client, server } = await makeSubject({
+      publication: {
+        ...unusedPublication,
+        publish: async () => ({
+          ok: true,
+          isError: true,
+          result: {
+            status: "blocked",
+            publishBlockers: ["Notify: Channel is required"],
+            draftRevision: 3,
+          },
+        }),
+      },
+    });
+    try {
+      const result = await client.callTool({
+        name: "publish_workflow",
+        arguments: { workflowId: "wf_1", expectedDraftRevision: 3 },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toEqual({
+        status: "blocked",
+        publishBlockers: ["Notify: Channel is required"],
+        draftRevision: 3,
+        workflowId: "wf_1",
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("answers the draft revision a publish leaves the workflow at", async () => {
+    const published: unknown[] = [];
+    const { client, server } = await makeSubject({
+      publication: {
+        ...unusedPublication,
+        publish: async (input) => {
+          published.push(input);
+          return {
+            ok: true,
+            result: {
+              status: "published",
+              versionId: "v_2",
+              version: 2,
+              draftRevision: 4,
+            },
+          };
+        },
+      },
+    });
+    try {
+      const result = await client.callTool({
+        name: "publish_workflow",
+        arguments: { workflowId: "wf_1", expectedDraftRevision: 3 },
+      });
+
+      expect(published).toEqual([
+        { workflowId: "wf_1", expectedDraftRevision: 3 },
+      ]);
+      expect(result.isError).toBe(false);
+      expect(result.structuredContent).toMatchObject({
+        status: "published",
+        draftRevision: 4,
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("refuses a restore the caller holds no restore grant for", async () => {
+    const { client, server } = await makeSubject({
+      auth: {
+        allows: async (operation) =>
+          operation.id !== WfGraphOperations.workflowRestoreVersion.id,
+      },
+    });
+    try {
+      const result = await client.callTool({
+        name: "restore_version",
+        arguments: {
+          workflowId: "wf_1",
+          versionId: "v_1",
+          expectedDraftRevision: 3,
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({ reason: "Forbidden" });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("marks publish and restore destructive and list_versions read-only", async () => {
+    const { client, server } = await makeSubject();
+    try {
+      const { tools } = await client.listTools();
+      const hintsOf = (name: string) =>
+        tools.find((tool) => tool.name === name)?.annotations;
+
+      expect(hintsOf("publish_workflow")).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: true,
+      });
+      expect(hintsOf("restore_version")).toMatchObject({
+        destructiveHint: true,
+      });
+      expect(hintsOf("list_versions")).toMatchObject({ readOnlyHint: true });
+    } finally {
+      await client.close();
+      await server.close();
     }
   });
 });
