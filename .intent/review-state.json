@@ -3,13 +3,13 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "a46d8123b1bed6790a839d83ce4dd47d88f908f78e831881ef7937120a1c0ee2",
+      "fingerprint": "3946ab70414041ce927ea9d25b25276af219951c0ec4037a9c2bfafe0c011e99",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
-        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
+        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "ac2b3fc55bb55741bb59cf50aa5de80684a2c74a439443419a4ea438d598e848",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "4d603080005e4ce39b8178c86cd077ebb2289ef28a588dc325a48b0745ad5962",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1",
@@ -17,12 +17,12 @@
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "52b4d08d03e1e8e5d001d6b43ef7cfc4bdba8d7cada7156b300f654c3e455da0",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "no-change",
-      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong. The mcp skill change it also tracks is recorded on the mcp item.",
+      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
       "evidence": [
-        "Read the skill against docs/embedding.md at HEAD",
-        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
+        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
+        "pnpm run skills:validate passed"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -40,18 +40,18 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "a1f91f986e8e92b44bc0e4c75a42b098f30b3ac04d6f227fe81c95593b89904e",
+      "fingerprint": "38212bbda55f7ac7174c83da4be23535219091c3652b2103df23f16e21f465ab",
       "snapshot": {
-        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
+        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "no-change",
-      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
+      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
       "evidence": [
-        "Read the skill against docs/embedding.md at HEAD",
-        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
+        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
+        "pnpm run skills:validate passed"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
@@ -70,40 +70,40 @@
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "e10d9b193fa68110b636cafe7072291c732ae5a8946aed962978021685bdd40e",
+      "fingerprint": "b64aeda6ba11495b3f59928960d57133f9c1ca8eaea18e4842013488f0874d12",
       "snapshot": {
-        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
+        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "b7a92179cb4b08dd4aa4a559e9caa2e63d3187be94a11a2d5a7f2daaa0a54628"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "no-change",
-      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
+      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
       "evidence": [
-        "Read the skill against docs/embedding.md at HEAD",
-        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
+        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
+        "pnpm run skills:validate passed"
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "0c9963e9b851c2048f517eb0df85f97bdc88bb964d017a303981ea5f9ea12753",
+      "fingerprint": "e813a0a9bda2a7285b22f5b7d1a602201c96429399263b5c0e420397e4450fd3",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
         "_artifacts/domain_map.yaml": "c0c37dffbc738e3b15b2b1370e969bb4a574c2e39ef61054e2b252d048c7d746",
         "_artifacts/skill_spec.md": "a73b6c1289b3321ca97cc0b489b84f2c6b33ba1c027597509bd578101f045ad9",
         "_artifacts/skill_tree.yaml": "0d7d9f2fd93f3844a71191892ab9574e5fb8f43e26d8dc0292b488ad443bd352",
-        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
+        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "ac2b3fc55bb55741bb59cf50aa5de80684a2c74a439443419a4ea438d598e848",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "4d603080005e4ce39b8178c86cd077ebb2289ef28a588dc325a48b0745ad5962",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "45656429549e5ddab3d00815e3d9d9610f0ba8b99d0c2dcd195eae6ee37d9162",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "52b4d08d03e1e8e5d001d6b43ef7cfc4bdba8d7cada7156b300f654c3e455da0",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d",
-        "packages/core/src/backend/agent/config.ts": "0007c555287f0e56f81b60dd57d3fa75fd5f8e09fcc67366fca4ee83765be545",
+        "packages/core/src/backend/agent/config.ts": "a2af761557931d94e007ce609f197f8f57d508a60630ae0b33a646ce9c02836f",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
@@ -116,12 +116,12 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "b7a92179cb4b08dd4aa4a559e9caa2e63d3187be94a11a2d5a7f2daaa0a54628",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "no-change",
-      "reason": "domain_map.yaml, skill_spec.md and skill_tree.yaml record the MCP endpoint and its draft protocol at the level of tasks and skills; none names set_condition, list_references or Condition rule fields, so the added mcp bullet changes no domain, task, coverage decision or tree entry.",
+      "reason": "No skill and no developer task was added. The build-agent skill's existing task covers provider configuration.",
       "evidence": [
-        "rg -i 'set_condition|list_references' _artifacts found nothing",
-        "1060166f docs(skills): teach MCP clients the sourceNodeId a set_condition rule takes"
+        "_artifacts/skill_tree.yaml lists wfgraph-core/build-agent",
+        "No skill path added or removed"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -138,19 +138,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "60fe405458ccaf09777983bfb6e4d52f8ab549dc765afa5468f1e2cbc69c6207",
+      "fingerprint": "b00bf3e7be4d41992133346f0c32c2ad431a2f8a3e6c4e9e99b6bf54ddee7484",
       "snapshot": {
-        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
+        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "no-change",
-      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
+      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
       "evidence": [
-        "Read the skill against docs/embedding.md at HEAD",
-        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
+        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
+        "pnpm run skills:validate passed"
       ]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
@@ -182,20 +182,20 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "a348fadbe74339accd7c41381359396db4bfbd82cf42e13b44a29e46d140b1d4",
+      "fingerprint": "8c3c303a092991c068b9e96e9898f9b99a37358de31e0733f6b4e2d47420c510",
       "snapshot": {
-        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
+        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "no-change",
-      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
+      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
       "evidence": [
-        "Read the skill against docs/embedding.md at HEAD",
-        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
+        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
+        "pnpm run skills:validate passed"
       ]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
@@ -237,19 +237,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "170fc350196c5203a025221f3af3ace3828777ba9fea47733fbdf34eded489a9",
+      "fingerprint": "77d7ba65e86d8a5ffb224f13d10857adefa7e3daeab6751d11b6a82f4b47eaae",
       "snapshot": {
-        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
+        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "no-change",
-      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
+      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
       "evidence": [
-        "Read the skill against docs/embedding.md at HEAD",
-        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
+        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
+        "pnpm run skills:validate passed"
       ]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
@@ -789,16 +789,16 @@
       ]
     },
     "source:packages/client/src/lib/workflow-save-store.ts": {
-      "fingerprint": "ea6057ccf4dc48b0b2377b1d011612fa4892b54ee6da43b44fe71ba7066a1831",
+      "fingerprint": "21e3d19daff4776a4a451c7a2af19e7bded873505f984cb9fd0581de48b33cce",
       "snapshot": {
-        "packages/client/src/lib/workflow-save-store.ts": "202abe9934f265c4d05c5083e984de5dce26ae43a9c583daceae00794c7f4b44"
+        "packages/client/src/lib/workflow-save-store.ts": "e30c4c0be3b8a62338f4d5198722a550b6e6702dcb728238acaed47afd54913a"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "Editor UI: the Agent panel (thread storage, copy and retry, turn records, undo, usage line, no remote images), held save retries, draft-sync visibility, the publish conflict review, OAuth polling and the revocation notice. An adopter passes clientBundle and writes none of this; decision 2 gives @wfgraph/client no skill.",
+      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
       "evidence": [
-        "_artifacts/skill_spec.md decision 2",
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6"
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/client/src/lib/workflow-ui-store.test.ts": {
@@ -1552,15 +1552,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-run-detail.test.tsx": {
-      "fingerprint": "355f235844bd2e610482cbdec2baf0c61da853d3956d0390bcf540cccc94b655",
+      "fingerprint": "b90cc2e9ce1247fc7b655f83caf529981483dcf1e0ecbafac7827031ce40f010",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-run-detail.test.tsx": "801427f60d28c267104daf79e244e499d67bf8732bb1ca94e292847ff6b060c4"
+        "packages/client/src/components/workflow/workflow-run-detail.test.tsx": "e6c4890fbae62a8b3cdd8fdad06dce9243b0b811d85ce19cdeeb813f9b1d7087"
       },
-      "head": "a1a2aee762cf9234329f8331173683cc249cbca1",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "Test, editor or conformance code that no published skill teaches.",
+      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations, observability and the Worker (_artifacts/skill_tree.yaml)."
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-run-shared.tsx": {
@@ -2930,16 +2931,16 @@
       ]
     },
     "source:packages/agent/src/prompt.ts": {
-      "fingerprint": "b94381f96fc34e06b9fcdd03a7141d366774db97c3d0728f669647cde2e34bd6",
+      "fingerprint": "548fa38e50d0c53926d849f3e8367b167283315c9bd10ac17f94e75f5fbe7441",
       "snapshot": {
-        "packages/agent/src/prompt.ts": "60bfa948d423a8f450f4019c94b16fa3bfcd4311d85f39130c52043487341ad2"
+        "packages/agent/src/prompt.ts": "1c28bc9976589a55003d02bf4432ad9ca5d29ee32ee60247edf8377450c64dae"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "reason": "The build agent's prompt: the validation closing step and the narrower refusal rule. The prompt reaches an MCP client as the server's instructions and is not skill content.",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/changes-summary.ts": {
@@ -3099,36 +3100,36 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "c2f37dcdaf2ae003611548612a2a80b1101c92ab45f464ea79cbf41544c4777f",
+      "fingerprint": "240b4f093807cc3522f26c5883b19128c49afd5fcc7aa46569aa0be9952f65a1",
       "snapshot": {
-        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "ac2b3fc55bb55741bb59cf50aa5de80684a2c74a439443419a4ea438d598e848",
-        "packages/core/src/backend/agent/config.ts": "0007c555287f0e56f81b60dd57d3fa75fd5f8e09fcc67366fca4ee83765be545",
+        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "4d603080005e4ce39b8178c86cd077ebb2289ef28a588dc325a48b0745ad5962",
+        "packages/core/src/backend/agent/config.ts": "a2af761557931d94e007ce609f197f8f57d508a60630ae0b33a646ce9c02836f",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
-      "outcome": "no-change",
-      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "updated",
+      "reason": "The Anthropic provider's default effort moved from medium to high, the tools are sent without strict, and claude-sonnet-5-5 is the Claude model the eval suite measured. The skill states the new default, what the suite found below high, and names the measured model in its no-model mistake.",
       "evidence": [
-        "Read the skill against docs/embedding.md at HEAD",
-        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
+        "23c253fa feat(core): default the build agent to high effort on Anthropic",
+        "f674068f fix(core): run the build agent on Anthropic by sending no strict tools",
+        "pnpm run skills:validate passed for ten skills",
+        "Eval suite on claude-sonnet-5-5: 47 of 78 at medium, 64 at high, 69 after the prompt changes"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
-      "fingerprint": "1a57d7f8b8c0c8628edf66559501568faadd7998c19bd0ef09034dcb6fc35e0a",
+      "fingerprint": "88e5273e3a5cb734756784e87ebcadfc50667c2328a5fe261f6150a79d05f5c9",
       "snapshot": {
-        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
+        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "52b4d08d03e1e8e5d001d6b43ef7cfc4bdba8d7cada7156b300f654c3e455da0",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
-      "outcome": "updated",
-      "reason": "set_condition now takes a sourceNodeId per rule, stores the rule naming that step, and refuses a rule without one when two steps above the Condition offer its path. The skill's draft-revision protocol taught the reference read but not this, so it gained one bullet stating the invariant; docs/embedding.md holds the full statement.",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
       "evidence": [
-        "1060166f docs(skills): teach MCP clients the sourceNodeId a set_condition rule takes",
-        "2b711be2 feat(agent): write every set_condition rule naming the step it tests",
-        "pnpm run skills:validate passed for ten skills",
-        "pnpm run evals -t 'builds applicant triage' passed 9 of 9 trials with every rule naming the scoring step; fresh-consumer MCP check not run, no isolated MCP client session was available"
+        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
+        "pnpm run skills:validate passed"
       ]
     },
     "source:.agents/behaviors/workflow-authoring/BEHAVIOR.md": {
@@ -3240,30 +3241,29 @@
       ]
     },
     "source:examples/app.ts": {
-      "fingerprint": "f587d16d8746147cea013e9ce919303ae86534623d02e5bd051525d5f19166eb",
+      "fingerprint": "291cfee715995781a5f1d56afaf0b396463be845698291fc193aad56084d369b",
       "snapshot": {
-        "examples/app.ts": "77d7cf6faf3c847e2cb069f3d4cb56864f9d7ef25758810b0ed8ec77d7de842a"
+        "examples/app.ts": "d7d6543de24006b6240e4105eda900acda5cb966ddc5e117f4081c4016ab4fdf"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "A comment in the example app about WFGRAPH_DEMO_USER and MCP requests. The mcp skill already tells a host to verify the bearer token inside auth.",
+      "reason": "The example app's demo authentication for /api/mcp. The mcp skill already tells a host to verify the bearer token inside auth.",
       "evidence": [
-        "git log 0570e6c6^..HEAD for the path",
-        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:examples/demo-auth.ts": {
-      "fingerprint": "4c5bbdc8c746fe9c77ad0307248cb71203901a2133e7e29ca6dcd401ce08b0be",
+      "fingerprint": "8024e9b06adbd18302e0bc7576db8d500f93ea5fb8aaa3060fb269a51ed46f3c",
       "snapshot": {
-        "examples/demo-auth.ts": "48580dd92abe29a188a676f1b10cf1d83ad480a0431b65a303c9eec999759b34"
+        "examples/demo-auth.ts": "1bfaef73d2702dc68db556b2e8a06d9eb752a26399948bb88c9bbdf29910cdbb"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "no-change",
-      "reason": "The example host and the core package README now show auth as a bare function, the MCP authorization option and a host action that checks runMode and is marked sideEffect. Skills point to these files for copy-paste forms and never repeat them, and the skills now state the same contracts.",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "The example app's demo authentication for /api/mcp. The mcp skill already tells a host to verify the bearer token inside auth.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "Read the example and README diffs against the updated skill text",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/agent/src/operations.ts": {
@@ -3281,17 +3281,16 @@
       ]
     },
     "source:packages/agent/src/prompt.test.ts": {
-      "fingerprint": "60bc9c753a1ea81e5aec855689bb3876ea97d0232b2c2e60e1844b3bf6a5d10f",
+      "fingerprint": "3972cf0a869d183c16299bc97f93435970635ec6e4b10cbcfee3dc7a805390f1",
       "snapshot": {
-        "packages/agent/src/prompt.test.ts": "c942e4eb75dd55760e44197b912a49379da31bfa51e83e4b3c0841bc18e89847"
+        "packages/agent/src/prompt.test.ts": "da9a764b9601dc9a272b2821faabedff2c1885b82cbeb8f0003c0575d3124a6d"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools, toolkit and system prompt: apply_edits, the run tools, newIssues, validate_workflow's canSave and canPublish, label-and-id names in results, placement that keeps positions, and prompt rules. A host neither calls nor configures these; mcp and build-agent describe the tool contract an MCP client or a host runner sees, and docs/embedding.md (MCP authoring) now names canSave and canPublish.",
+      "reason": "The build agent's prompt: the validation closing step and the narrower refusal rule. The prompt reaches an MCP client as the server's instructions and is not skill content.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "4f1d4fec docs(embedding): document mcp.authorization and validate_workflow's answer",
-        "@wfgraph/agent is private and inlined into core; no published entry exports its modules"
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/agent/src/testing.ts": {
@@ -4099,16 +4098,16 @@
       ]
     },
     "source:packages/core/src/backend/agent/config.test.ts": {
-      "fingerprint": "a1ad3d5900bc779f801781a55dffdd77697693be973089d4aec60b4f3bed08c8",
+      "fingerprint": "a728815bfedbe0ce0b0156791c9a0b25e23dbabb86cbd0414d79baf8f8231b46",
       "snapshot": {
-        "packages/core/src/backend/agent/config.test.ts": "fcab137efaf7cfd8124e418994991e57aeccf2563ec8e942ebec00dde9c92599"
+        "packages/core/src/backend/agent/config.test.ts": "5df6d46eb1c3905e6f98bd2d8d693c802f328a6f4cdf956a782607aadbde4ce8"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "Tests of the agent, the MCP server, the HTTP boundary, the RPC router and the extension set. They assert the contracts the updated auth, mcp, build-agent and host-actions skills state, and add no guidance of their own.",
+      "reason": "The Anthropic model layer and its settings. The adopter-visible facts, the high default effort and the measured model, are in the build-agent skill and docs/embedding.md.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "pnpm run test passed: 510 files, 6590 tests"
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/core/src/backend/agent/mcp-conformance.test.ts": {
@@ -4165,30 +4164,29 @@
       ]
     },
     "source:packages/core/src/backend/agent/model.test.ts": {
-      "fingerprint": "8f6a6beb4c4ffe6c4419cb9cdaacd70dd30966a256efccfdfaf1872cc66fdc30",
+      "fingerprint": "a6b02fcd28413f72c5ee7d59faea7a6412fea5aec2296917c7f6a39501d83bf4",
       "snapshot": {
-        "packages/core/src/backend/agent/model.test.ts": "838c385b4ea647e280a2e476f939f63d871f7968d8f7ffd2ef452b13d279f8e3"
+        "packages/core/src/backend/agent/model.test.ts": "fe8794e6ec82be3368af1b0045b1841a4b61ff2f6d0b3d9d0e35d7c4ca47977b"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "Tests of the agent, the MCP server, the HTTP boundary, the RPC router and the extension set. They assert the contracts the updated auth, mcp, build-agent and host-actions skills state, and add no guidance of their own.",
+      "reason": "The Anthropic model layer and its settings. The adopter-visible facts, the high default effort and the measured model, are in the build-agent skill and docs/embedding.md.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "pnpm run test passed: 510 files, 6590 tests"
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/core/src/backend/agent/model.ts": {
-      "fingerprint": "6b0b1db583aa01424eae8d460f0c4990bf44006d6a9e8ca782f9a111c64b1528",
+      "fingerprint": "5ef18fe56a4e2db92b2bca3fa99ef8d52be8fffff5406d98436a27bf62c3f48f",
       "snapshot": {
-        "packages/core/src/backend/agent/model.ts": "aa61b612836e7abf6e329f2acefaec198b62af5f72abc204310c47e8e19d3782"
+        "packages/core/src/backend/agent/model.ts": "0909070bb2d167896c34c729a0e64d6bf9f9861ddeb50d788e3c75e05d024d4b"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The build agent and MCP server internals behind the new skills: providers and the runner seam, per-tool grants shared by chat and MCP, prompt caching, usage parts, the smaller MCP tool list and the publish and run tools. build-agent and mcp state the host-visible contract; the schema compaction, trace and session plumbing change no instruction.",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "The Anthropic model layer and its settings. The adopter-visible facts, the high default effort and the measured model, are in the build-agent skill and docs/embedding.md.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "9bec1944 feat(skills): add a wfgraph-core/build-agent skill",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/core/src/backend/agent/runner.test.ts": {
@@ -5907,66 +5905,67 @@
       ]
     },
     "source:packages/evals/src/agent/harness.ts": {
-      "fingerprint": "8f02ca7fa55d8f4494a3197e2f9654acac1d20462cd45afd4ac126f22bb02b3d",
+      "fingerprint": "92148fb0c686f8f7f4f960e01aeaf35827533d13bb6efc504224ee0138428184",
       "snapshot": {
-        "packages/evals/src/agent/harness.ts": "1cab996d0d16a56c95992088a587e95ce71a8d9dffe0045614a586ad3fbb01e7"
+        "packages/evals/src/agent/harness.ts": "009bab3415c965328f5274986f3d935c503f853039918e8907beab7e4c941b05"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios for the build agent. @wfgraph/evals is neither built nor published, and no adopter task touches it.",
+      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
       "evidence": [
-        "packages/evals/package.json is private and in the changesets ignore list"
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/evals/src/agent/judges/completion.test.ts": {
-      "fingerprint": "902ae56b69a102a64d91c820cc3f29b0ce5d026591e846ed9feeff0f55e098b4",
+      "fingerprint": "6b420f110c037420fc662bce8c24fed2f415821c87967a06d956058cfd9709b7",
       "snapshot": {
-        "packages/evals/src/agent/judges/completion.test.ts": "3769784744929a7e2fd6cc6370a62b4b278e869b39a18c5daca902ad00a63bea"
+        "packages/evals/src/agent/judges/completion.test.ts": "6cf163ff9f1de4a23d2ec20f6a7df7706677f932f241407919eebe2607a993be"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
+      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
       "evidence": [
-        "git log 3fa8dc9e..HEAD for the path",
+        "git log bc8a556e..HEAD for the path",
         "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/evals/src/agent/judges/completion.ts": {
-      "fingerprint": "97992bdfd46e26272259a12d5c0bf07ac7fb14ed71c4d91de021f0c9df8ecd2f",
+      "fingerprint": "62bb17a21d6cb829d5834f4bdbb34bb8dfaee2459b96ac03ce8f2672f8ead24a",
       "snapshot": {
-        "packages/evals/src/agent/judges/completion.ts": "194128b3e33fa31786d38dd73a82e0fb7080d35ddf479706ecdb5c819f3c08f1"
+        "packages/evals/src/agent/judges/completion.ts": "0eae6d5a77c89a10ac06cccbb6c577cb6accd845292868f849ed548b700e3b04"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
+      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
       "evidence": [
-        "git log 3fa8dc9e..HEAD for the path",
+        "git log bc8a556e..HEAD for the path",
         "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/evals/src/agent/judges/evidence-use.test.ts": {
-      "fingerprint": "0a8c95f1a424f04c766f18a92acdcdefec3d2f4de7e481305036fb7b7c2f4a56",
+      "fingerprint": "675b0a444f517e2ab2d526f6cdd2d5a3e891225c221a4a909bfe66ba22ad8255",
       "snapshot": {
-        "packages/evals/src/agent/judges/evidence-use.test.ts": "59b0ddfddb99d2232c37c1856675eb4bc20ad8eddaf350be495f79fd30ec7449"
+        "packages/evals/src/agent/judges/evidence-use.test.ts": "50333ef58e1b8cda9b8bac9195d5c6e23be2dac407a9b76e0283c0a3719536e5"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
+      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
       "evidence": [
-        "git log 3fa8dc9e..HEAD for the path",
+        "git log bc8a556e..HEAD for the path",
         "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/evals/src/agent/judges/evidence-use.ts": {
-      "fingerprint": "e1ebd1be4351d3d0ab95881db707d78e573ae5cb9854de1aff71a1e6c365fcef",
+      "fingerprint": "826e333270f021f407f1b9e69c9d7f4ca403466cb764c1441498b4a9a324efb2",
       "snapshot": {
-        "packages/evals/src/agent/judges/evidence-use.ts": "d67f1f3e90d82e70d13c4ba1392d93e89b848f896e5fb80a3f6ca96437403d9a"
+        "packages/evals/src/agent/judges/evidence-use.ts": "d73c2377c5fee99553070bfc9f5a1aa6428fffb02504351cdf1540de667e29bd"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
+      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
       "evidence": [
-        "git log 3fa8dc9e..HEAD for the path",
+        "git log bc8a556e..HEAD for the path",
         "pnpm run test passes at HEAD"
       ]
     },
@@ -6044,15 +6043,16 @@
       ]
     },
     "source:packages/evals/src/agent/workflows.eval.ts": {
-      "fingerprint": "d68818fca50b3b7280cbda8d6ca98333b4feca1e5ea7a59d0cb9bd79326fe167",
+      "fingerprint": "f22e17b81f8ae46f427311b2d4a4f92d6b47c9a2ff3477c0f4d6d760a8806ff3",
       "snapshot": {
-        "packages/evals/src/agent/workflows.eval.ts": "ee141810fe7118b92855eba1fb988a336b5915f61f1b16125b88bdb5133179a0"
+        "packages/evals/src/agent/workflows.eval.ts": "c8b071a20c5a0b85002ccc4a9383e56fe8908d6aed6d0df544bec533638784ce"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios for the build agent. @wfgraph/evals is neither built nor published, and no adopter task touches it.",
+      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
       "evidence": [
-        "packages/evals/package.json is private and in the changesets ignore list"
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/evals/src/skills/build-agent/agent-config.test.ts": {
@@ -7203,6 +7203,162 @@
       "evidence": [
         "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
         "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/client/src/components/workflow/mobile-group-workspaces.test.tsx": {
+      "fingerprint": "60cf794fc0e417af2fb317e5f069837fa48176a0479c5056520220c3270b2400",
+      "snapshot": {
+        "packages/client/src/components/workflow/mobile-group-workspaces.test.tsx": "08753036f454291478e5f88eb94d2f2f2c42cf336f7d260b26fc8d6cb286d1aa"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/client/src/components/workflow/nodes/action-node.test.ts": {
+      "fingerprint": "34fe8d6556dfc89c783f77a2b86b2cda0e4a23bc78e6323f49497400bf645e25",
+      "snapshot": {
+        "packages/client/src/components/workflow/nodes/action-node.test.ts": "6ca7c378f55ae194a3874419452182d7867bfedf9600b5159e1d5524178d5275"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/client/src/components/workflow/nodes/action-node.tsx": {
+      "fingerprint": "0dc7e4f3b63072a8a9c5667de0a03992113ee8ccf89c82ba743fddf7bdc46740",
+      "snapshot": {
+        "packages/client/src/components/workflow/nodes/action-node.tsx": "209bb6fae5e71dfd42d0fe61edefc3b084c72472fc33ed22a4cf929c08a0dcae"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-run-detail.tsx": {
+      "fingerprint": "f75985370b127c8e7c5ff0cb3bfed31019d82978666d22a2540131549c6d318e",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-run-detail.tsx": "fc4ec54d7cc7d9fd1db253950f2424f6821abee3328c58216bb314f3266adb70"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-run-timeline.tsx": {
+      "fingerprint": "323df6bfaa37d07ade710602cc916a413b11dac41b7cc7c5e063571134c2b372",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-run-timeline.tsx": "4f10d3bd7ed0deef04795e616da40265e1af1ebcee0e68cb846443c29c7b355a"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-status-strip.test.tsx": {
+      "fingerprint": "cc78a0cb14e174298d9e61fa8427b923b30ad4880a6249e936b0bed885fca9ca",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-status-strip.test.tsx": "098f2e609049086b82e193314e1a3eabfab030974d1a4d01e8323ee7ef2bea93"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/client/src/components/workflow/workflow-status-strip.tsx": {
+      "fingerprint": "aa28a6942321166f1cc12e84043fd40a03775cf891ff247de7426cf3037a9bc9",
+      "snapshot": {
+        "packages/client/src/components/workflow/workflow-status-strip.tsx": "106f1637e9fdaa527656cbf04de1dad8b3b8e1cef30ac9f97857d4483985ba2f"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/evals/AGENTS.md": {
+      "fingerprint": "345adb90aadeb6dfb4e11f99b9b3c1102b7284ccefcf725bd97e8babdc70c882",
+      "snapshot": {
+        "packages/evals/AGENTS.md": "1ddd6a8af2c9f153698d96799a15ec4e2b617aa7aeb9a548818d49cc173f55e1"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/evals/src/agent/harness.test.ts": {
+      "fingerprint": "38229a4a6b601421b3babf85861a4dd250a862f657e811ecb747a0add1ffb5fc",
+      "snapshot": {
+        "packages/evals/src/agent/harness.test.ts": "9fa3286a08331053c75555d1c0dd87c81968da9d0e1878393a0f8c1f04f847fe"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/evals/src/agent/judges/recovery.test.ts": {
+      "fingerprint": "7c814b7a054f67a62429ed5246be6d90d04c1d57b2c5baefa22b1619406ed3be",
+      "snapshot": {
+        "packages/evals/src/agent/judges/recovery.test.ts": "85442936e34ef5be961b00faf55bbc0624d209c4d0889eeaac4fd4ba495717a9"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/evals/src/agent/judges/recovery.ts": {
+      "fingerprint": "9f20cc33b58a2734eaaa262ba9aaf8d737f0eb3eed9ac85673317fd9fc173873",
+      "snapshot": {
+        "packages/evals/src/agent/judges/recovery.ts": "dc8896c1dea94f15e9fb555e4885d54e748175415ddc506e606427f7209a9e02"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/evals/vitest.evals.config.ts": {
+      "fingerprint": "3dbe6192d2ca9c536f088bc0ccc18f7363ba6cd6b91c05b25e8b64347b296f56",
+      "snapshot": {
+        "packages/evals/vitest.evals.config.ts": "f59b8b66a1f5d17798833f7699b0573ebf6b77acbb3795ad24129e6ac1ec9a12"
+      },
+      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "outcome": "out-of-scope",
+      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
+      "evidence": [
+        "git log bc8a556e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     }
   }
