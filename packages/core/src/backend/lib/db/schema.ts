@@ -722,9 +722,10 @@ export const workflowWaitStates = pgTable(
  * `on conflict do nothing` turns that refusal into a no-op.
  * `id` defaults to a random UUID, and a host may set its own. The host leaves
  * `received_at` and `status` to their defaults, the insert time and `pending`,
- * and writes no schedule row: the executor's poll (`scheduleUnscheduledInbox`)
- * gives every `pending` row without one a schedule row, so the arrival is
- * delivered after the host's transaction commits and the next poll runs.
+ * leaves `scheduled_at` null, and writes no schedule row: the executor's poll
+ * (`scheduleUnscheduledInbox`) gives every `pending` row it has never scheduled
+ * a schedule row, so the arrival is delivered after the host's transaction
+ * commits and the next poll runs.
  */
 export const workflowEventInbox = pgTable(
   "workflow_event_inbox",
@@ -745,6 +746,14 @@ export const workflowEventInbox = pgTable(
     error: text("error"),
     /** When the delivery settled, on a `delivered` or `failed` row. */
     settledAt: timestamp("settled_at"),
+    /**
+     * When the executor last gave the row a `delivery` schedule row, and null
+     * on a row it has not scheduled yet. The executor's own, outside the host
+     * contract: a send and a resend set it in the transaction that writes the
+     * schedule row, the poll sets it on every row it takes, and a host's
+     * insert leaves it null, which is how the poll finds that row.
+     */
+    scheduledAt: timestamp("scheduled_at"),
   },
   (table) => [
     check(
@@ -771,12 +780,15 @@ export const workflowEventInbox = pgTable(
         table.idempotencyKey
       )
       .where(sql`${table.idempotencyKey} is not null`),
-    // The poll's question: the oldest rows still waiting to be delivered.
-    index("workflow_event_inbox_pending_idx")
+    // The poll's question: the oldest pending rows no schedule row was ever
+    // written for. A row leaves the index once it is scheduled, so the poll
+    // reads only the host's unscheduled rows however deep the backlog of
+    // scheduled ones. `awaitsSchedule` states this predicate as written.
+    index("workflow_event_inbox_unscheduled_idx")
       .on(table.receivedAt, table.id)
-      .where(sql`${table.status} = 'pending'`),
+      .where(sql`${table.status} = 'pending' and ${table.scheduledAt} is null`),
     // The retention sweep's question: settled rows past the window.
-    // `sweepableInbox` states this predicate as written. Like the pending
+    // `sweepableInbox` states this predicate as written. Like the unscheduled
     // index, this one is the executor's own and outside the host contract.
     index("workflow_event_inbox_settled_idx")
       .on(table.receivedAt)

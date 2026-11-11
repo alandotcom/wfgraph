@@ -6,7 +6,7 @@
  * inbox row, the order every fenced write takes a schedule row first.
  */
 
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import {
   workflowEventInbox,
@@ -48,10 +48,11 @@ export type InboxRepoMethods = {
     input: NewInboxEvent & { now: Date }
   ) => Effect.Effect<InboxInsert, DatabaseError>;
   /**
-   * The poll: give up to `limit` `pending` inbox rows that have no schedule
-   * row a `delivery` schedule row, due at `now`, oldest arrival first. A row
-   * a host inserted through the SQL contract at `workflowEventInbox` starts
-   * this way. Answers the rows it scheduled.
+   * The poll: give up to `limit` `pending` inbox rows the executor has never
+   * scheduled a `delivery` schedule row, due at `now`, oldest arrival first,
+   * and mark each as scheduled at `now`. A row a host inserted through the SQL
+   * contract at `workflowEventInbox` starts this way. Answers the rows it
+   * scheduled.
    */
   readonly scheduleUnscheduledInbox: (input: {
     now: Date;
@@ -136,6 +137,7 @@ async function insertOrResend(
       connectionId: input.connectionId,
       idempotencyKey: input.idempotencyKey,
       receivedAt: input.now,
+      scheduledAt: input.now,
     })
     .onConflictDoNothing()
     .returning({ id: workflowEventInbox.id });
@@ -164,7 +166,12 @@ async function insertOrResend(
   }
   await tx
     .update(workflowEventInbox)
-    .set({ status: "pending", error: null, settledAt: null })
+    .set({
+      status: "pending",
+      error: null,
+      settledAt: null,
+      scheduledAt: input.now,
+    })
     .where(eq(workflowEventInbox.id, held.id));
   const scheduleId = await insertDeliverySchedule(tx, {
     inboxId: held.id,
@@ -237,12 +244,7 @@ export function makeInboxMethods(
           const awaiting = await tx
             .select({ id: workflowEventInbox.id })
             .from(workflowEventInbox)
-            .where(
-              awaitsSchedule(workflowEventInbox, {
-                table: workflowExecutionSchedule,
-                inboxId: workflowExecutionSchedule.inboxId,
-              })
-            )
+            .where(awaitsSchedule(workflowEventInbox))
             .orderBy(
               asc(workflowEventInbox.receivedAt),
               asc(workflowEventInbox.id)
@@ -266,6 +268,17 @@ export function makeInboxMethods(
               scheduleId: workflowExecutionSchedule.id,
               inboxId: workflowExecutionSchedule.inboxId,
             });
+          // Every row taken is marked, including one a schedule row already
+          // named, which only a row written before the marker existed is.
+          await tx
+            .update(workflowEventInbox)
+            .set({ scheduledAt: input.now })
+            .where(
+              inArray(
+                workflowEventInbox.id,
+                awaiting.map((row) => row.id)
+              )
+            );
           return scheduled.flatMap((row) =>
             row.inboxId === null
               ? []

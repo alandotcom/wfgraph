@@ -369,6 +369,65 @@ export function describeExecutionInboxConformance({
       expect(result.failedSchedule).toBeNull();
     });
 
+    it("marks every row it gives a schedule row, and marks without a second schedule row a pending row one already names", async () => {
+      const database = await openDatabase();
+      const connection = await database.open();
+      const sent = await connection.run(sendNew(arrival("sent")));
+      const failed = await connection.run(sendNew(arrival("failed")));
+      await database.execute(hostInsert({ id: "host_1", idempotencyKey: "h" }));
+      // A pending row whose schedule row was written before the marker
+      // existed, which is how a database migrated with arrivals in flight
+      // holds them.
+      await database.execute(hostInsert({ id: "host_2", idempotencyKey: "i" }));
+      await database.execute({
+        postgresql: `insert into workflow_execution_schedule (id, kind, inbox_id, state, wake_at) values ('schedule_2', 'delivery', 'host_2', 'queued', now())`,
+        sqlite: `insert into workflow_execution_schedule (id, kind, inbox_id, state, wake_at) values ('schedule_2', 'delivery', 'host_2', 'queued', 0)`,
+      });
+      const unscheduled = () =>
+        database.selectIds(
+          `select id from workflow_event_inbox where status = 'pending' and scheduled_at is null order by id`
+        );
+      const before = await unscheduled();
+
+      const failedFence = await leaseDelivery(database, failed, "owner_f");
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          yield* executions.failDelivery({
+            fence: failedFence,
+            error: "The subscriber step failed",
+            now: at(1_000),
+          });
+          const resent = yield* send(arrival("failed"), at(2_000));
+          const polled = yield* executions.scheduleUnscheduledInbox({
+            now: at(3_000),
+            limit: 10,
+          });
+          return {
+            resent,
+            polled,
+            secondPoll: yield* executions.scheduleUnscheduledInbox({
+              now: at(4_000),
+              limit: 10,
+            }),
+            hostSchedule: yield* executions.findSchedule({
+              inboxId: "host_2",
+            }),
+          };
+        })
+      );
+
+      // A send marks its row in the transaction that writes its schedule row,
+      // and only the host's rows wait for the poll.
+      expect(before).toEqual(["host_1", "host_2"]);
+      expect(sent.inboxId).not.toBe("host_1");
+      expect(result.resent.duplicate).toBe(false);
+      expect(result.polled.map((row) => row.inboxId)).toEqual(["host_1"]);
+      expect(result.secondPoll).toEqual([]);
+      expect(result.hostSchedule).toMatchObject({ id: "schedule_2" });
+      expect(await unscheduled()).toEqual([]);
+    });
+
     it("refuses a settling write under a stale owner token, and settles under the current one with the schedule row and its memo", async () => {
       const database = await openDatabase();
       const connection = await database.open();

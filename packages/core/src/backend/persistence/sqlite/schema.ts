@@ -416,6 +416,7 @@ export const workflowEventInbox = sqliteTable(
     status: text("status").notNull().default("pending"),
     error: text("error"),
     settledAt: integer("settled_at"),
+    scheduledAt: integer("scheduled_at"),
   },
   (table) => [
     uniqueIndex("inbox_idempotency_uidx")
@@ -425,9 +426,11 @@ export const workflowEventInbox = sqliteTable(
         table.idempotencyKey
       )
       .where(sql`${table.idempotencyKey} is not null`),
-    index("inbox_pending_idx")
+    // The poll's question. SQLite uses it only because `awaitsSchedule`
+    // states this predicate as written.
+    index("inbox_unscheduled_idx")
       .on(table.receivedAt, table.id)
-      .where(sql`${table.status} = 'pending'`),
+      .where(sql`${table.status} = 'pending' and ${table.scheduledAt} is null`),
     // The retention sweep's question. SQLite uses it only because
     // `sweepableInbox` states this predicate as written.
     index("inbox_settled_idx")

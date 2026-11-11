@@ -7,7 +7,7 @@
  * transaction, as `release-policy.ts` describes for the run's decisions.
  */
 
-import { type Column, type SQL, type Table, sql } from "drizzle-orm";
+import { type Column, type SQL, sql } from "drizzle-orm";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import type {
   InboxEvent,
@@ -26,19 +26,25 @@ type InboxColumns = {
   idempotencyKey: Column;
   receivedAt: Column;
   status: Column;
+  scheduledAt: Column;
 };
 
 /**
  * Whether the poll gives this inbox row a delivery schedule row: it is
- * `pending` and no schedule row names it. A row inserted through the SQL
- * contract starts this way. A row a send inserted has its schedule row from
- * the same transaction, and a settled row is never scheduled again.
+ * `pending` and the executor has never scheduled it. A row inserted through
+ * the SQL contract starts this way. A row a send inserted is marked in the
+ * transaction that writes its schedule row, the poll marks every row it takes,
+ * and a settled row is never scheduled again except by a resend, which marks
+ * it too.
+ *
+ * The terms are the predicate of the unscheduled index on both backends, as
+ * written, because SQLite uses a partial index only for a query whose terms
+ * state its predicate.
  */
 export function awaitsSchedule(
-  inbox: Pick<InboxColumns, "id" | "status">,
-  schedule: { table: Table; inboxId: Column }
+  inbox: Pick<InboxColumns, "status" | "scheduledAt">
 ): SQL {
-  return sql`(${inbox.status} = 'pending' and not exists (select 1 from ${schedule.table} where ${schedule.inboxId} = ${inbox.id}))`;
+  return sql`(${inbox.status} = 'pending' and ${inbox.scheduledAt} is null)`;
 }
 
 /**

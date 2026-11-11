@@ -431,4 +431,15 @@ export const sqliteMigrations = [
     hash: "8b75d0f5bf9857d6000a2dd7347e5605198a669d8ad72ced9745b59e919b625c",
     name: "20261111153213_run_list_indexes_and_run_checks",
   },
+  {
+    sql: [
+      "ALTER TABLE `workflow_event_inbox` ADD `scheduled_at` integer;",
+      "\nDROP INDEX IF EXISTS `inbox_pending_idx`;",
+      "\nCREATE INDEX `inbox_unscheduled_idx` ON `workflow_event_inbox` (`received_at`,`id`) WHERE \"workflow_event_inbox\".\"status\" = 'pending' and \"workflow_event_inbox\".\"scheduled_at\" is null;",
+    ],
+    bps: true,
+    folderMillis: 1794416329000,
+    hash: "f2b7678c246940f00e63231ea6a3dbe6202741214ecaaebd8b8bccfcd92fdb36",
+    name: "20261111165849_inbox_scheduled_marker",
+  },
 ] satisfies readonly MigrationMeta[];

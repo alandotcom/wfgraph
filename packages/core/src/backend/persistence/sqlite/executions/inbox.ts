@@ -6,7 +6,7 @@
  */
 
 import { Effect } from "effect";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type {
   DeliveryFence,
@@ -90,6 +90,7 @@ export function writeArrival(
         idempotencyKey: input.idempotencyKey,
         receivedAt: input.now.getTime(),
         status: "pending",
+        scheduledAt: input.now.getTime(),
       })
       .onConflictDoNothing()
       .returning({ id: workflowEventInbox.id });
@@ -129,7 +130,12 @@ export function writeArrival(
     }
     yield* database
       .update(workflowEventInbox)
-      .set({ status: "pending", error: null, settledAt: null })
+      .set({
+        status: "pending",
+        error: null,
+        settledAt: null,
+        scheduledAt: input.now.getTime(),
+      })
       .where(eq(workflowEventInbox.id, held.id));
     const scheduleId = yield* insertDeliverySchedule(database, {
       inboxId: held.id,
@@ -177,24 +183,44 @@ export function makeSqliteInboxMethods(
           const awaiting = yield* database
             .select({ id: workflowEventInbox.id })
             .from(workflowEventInbox)
-            .where(
-              awaitsSchedule(workflowEventInbox, {
-                table: workflowExecutionSchedule,
-                inboxId: workflowExecutionSchedule.inboxId,
-              })
-            )
+            .where(awaitsSchedule(workflowEventInbox))
             .orderBy(
               asc(workflowEventInbox.receivedAt),
               asc(workflowEventInbox.id)
             )
             .limit(input.limit);
-          return yield* Effect.forEach(awaiting, (row) =>
-            insertDeliverySchedule(database, {
-              inboxId: row.id,
-              wakeAt: input.now,
-            }).pipe(
-              Effect.map((scheduleId) => ({ scheduleId, inboxId: row.id }))
+          if (awaiting.length === 0) return [];
+          const scheduled = yield* database
+            .insert(workflowExecutionSchedule)
+            .values(
+              awaiting.map((row) => ({
+                id: generateId(),
+                kind: "delivery" as const,
+                inboxId: row.id,
+                state: "queued" as const,
+                wakeAt: input.now.getTime(),
+              }))
             )
+            .onConflictDoNothing({ target: workflowExecutionSchedule.inboxId })
+            .returning({
+              scheduleId: workflowExecutionSchedule.id,
+              inboxId: workflowExecutionSchedule.inboxId,
+            });
+          // Every row taken is marked, including one a schedule row already
+          // named, which only a row written before the marker existed is.
+          yield* database
+            .update(workflowEventInbox)
+            .set({ scheduledAt: input.now.getTime() })
+            .where(
+              inArray(
+                workflowEventInbox.id,
+                awaiting.map((row) => row.id)
+              )
+            );
+          return scheduled.flatMap((row) =>
+            row.inboxId === null
+              ? []
+              : [{ scheduleId: row.scheduleId, inboxId: row.inboxId }]
           );
         })
       ),
