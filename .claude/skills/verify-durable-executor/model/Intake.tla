@@ -229,7 +229,7 @@ StartWrite(r) ==
            /\ refused' = [refused EXCEPT ![r] = "eligibility"]
            /\ eligRefused' = [eligRefused EXCEPT ![r] = TRUE]
            /\ IF ~EligibilityBeforeConcurrency /\ mode = "newest" /\ Live # {}
-                THEN Supersede(<<"none">>) /\ refusedChanged' = TRUE
+                THEN Supersede(<<"none">>) /\ refusedChanged' = TRUE /\ UNCHANGED cancelSet
                 ELSE UNCHANGED <<exec, esched, refusedChanged, failed, cancelSet, lostResend>>
     ELSE IF mode = "first" /\ Live # {}
       THEN \* recordAuditEvent: a run_refused row no retry reads.
