@@ -81,12 +81,17 @@ export function settleableInbox(
  * Whether the retention sweep deletes this inbox row: its delivery settled,
  * as `delivered` or `failed`, and it arrived before `olderThan`. A `pending`
  * row is never swept, since its arrival has not been delivered yet.
+ *
+ * "Settled" is written as `status <> 'pending'`, the predicate of the settled
+ * index on both backends, because SQLite uses a partial index only for a
+ * query whose terms state its predicate. The status check admits no third
+ * settled status for the two forms to differ on.
  */
 export function sweepableInbox(
   inbox: Pick<InboxColumns, "status" | "receivedAt">,
   olderThan: BoundInstant
 ): SQL {
-  return sql`(${inbox.status} in ('delivered', 'failed') and ${inbox.receivedAt} < ${instantOf(inbox.receivedAt, olderThan)})`;
+  return sql`(${inbox.status} <> 'pending' and ${inbox.receivedAt} < ${instantOf(inbox.receivedAt, olderThan)})`;
 }
 
 /** An inbox row's columns, as both backends read them back. */

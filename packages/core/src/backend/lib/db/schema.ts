@@ -735,6 +735,8 @@ export const workflowEventInbox = pgTable(
       .on(table.receivedAt, table.id)
       .where(sql`${table.status} = 'pending'`),
     // The retention sweep's question: settled rows past the window.
+    // `sweepableInbox` states this predicate as written. Like the pending
+    // index, this one is the executor's own and outside the host contract.
     index("workflow_event_inbox_settled_idx")
       .on(table.receivedAt)
       .where(sql`${table.status} <> 'pending'`),

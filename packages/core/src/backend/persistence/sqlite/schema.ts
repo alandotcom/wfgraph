@@ -395,6 +395,8 @@ export const workflowEventInbox = sqliteTable(
     index("inbox_pending_idx")
       .on(table.receivedAt, table.id)
       .where(sql`${table.status} = 'pending'`),
+    // The retention sweep's question. SQLite uses it only because
+    // `sweepableInbox` states this predicate as written.
     index("inbox_settled_idx")
       .on(table.receivedAt)
       .where(sql`${table.status} <> 'pending'`),
