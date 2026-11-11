@@ -12,7 +12,7 @@
  * commits.
  */
 
-import { and, asc, eq, inArray, or, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, type SQL, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import {
   workflowExecutionSchedule,
@@ -50,6 +50,7 @@ import {
   countStepFailure,
   decideRelease,
   dueSchedule,
+  type DueRow,
   type DueSchedule,
   leasedUnderFence,
   openPark,
@@ -489,6 +490,69 @@ async function countFailureOnStep(
   return counted;
 }
 
+/**
+ * Locks up to each lane's `limit` due rows of the lane's kind, oldest
+ * `wake_at` first, skipping rows another transaction holds, and answers the
+ * columns the claim's counting rule reads, in one statement. Each lane is a
+ * locking common table expression, because PostgreSQL refuses `for update` on
+ * a union. The columns come from the locking select itself, which answers the
+ * row version it locked: a statement that read them anywhere else would see
+ * the version its snapshot holds, and a release committed between that
+ * snapshot and the lock would be counted as an expired lease.
+ */
+async function lockDueRows(
+  tx: Executor,
+  lanes: readonly ClaimLane[],
+  now: Date
+): Promise<DueRow[]> {
+  if (lanes.length === 0) return [];
+  const locked = lanes.map((lane) => {
+    const name = sql.identifier(`due_${lane.kind}`);
+    const select = tx
+      .select({
+        id: workflowExecutionSchedule.id,
+        state: workflowExecutionSchedule.state,
+        runningStepId: workflowExecutionSchedule.runningStepId,
+        runningNodeId: workflowExecutionSchedule.runningNodeId,
+      })
+      .from(workflowExecutionSchedule)
+      .where(dueSchedule(workflowExecutionSchedule, { kind: lane.kind, now }))
+      .orderBy(
+        asc(workflowExecutionSchedule.wakeAt),
+        asc(workflowExecutionSchedule.id)
+      )
+      .limit(lane.limit)
+      .for("update", { skipLocked: true });
+    return {
+      definition: sql`${name} as (${select.getSQL()})`,
+      read: sql`select * from ${name}`,
+    };
+  });
+  const rows = await tx.execute<DueRowColumns>(
+    sql`with ${sql.join(
+      locked.map((lane) => lane.definition),
+      sql`, `
+    )} ${sql.join(
+      locked.map((lane) => lane.read),
+      sql` union all `
+    )}`
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    state: row.state,
+    runningStepId: row.running_step_id,
+    runningNodeId: row.running_node_id,
+  }));
+}
+
+/** The due-row columns as the driver answers them, by column name. */
+type DueRowColumns = {
+  id: string;
+  state: string;
+  running_step_id: string | null;
+  running_node_id: string | null;
+};
+
 /** Builds the schedule and step memo slice of `ExecutionRepo` over one database. */
 export function makeScheduleMethods(
   database: Database["Service"]
@@ -510,41 +574,7 @@ export function makeScheduleMethods(
           db.transaction(async (tx) => {
             const lanes = input.lanes.filter((lane) => lane.limit > 0);
             if (lanes.length === 0) return [];
-            // One select reads every lane: each lane is a locking subquery
-            // limited to its own rows, because PostgreSQL refuses `for update`
-            // on a union.
-            const due = await tx
-              .select({
-                id: workflowExecutionSchedule.id,
-                state: workflowExecutionSchedule.state,
-                runningStepId: workflowExecutionSchedule.runningStepId,
-                runningNodeId: workflowExecutionSchedule.runningNodeId,
-              })
-              .from(workflowExecutionSchedule)
-              .where(
-                or(
-                  ...lanes.map((lane) =>
-                    inArray(
-                      workflowExecutionSchedule.id,
-                      tx
-                        .select({ id: workflowExecutionSchedule.id })
-                        .from(workflowExecutionSchedule)
-                        .where(
-                          dueSchedule(workflowExecutionSchedule, {
-                            kind: lane.kind,
-                            now: input.now,
-                          })
-                        )
-                        .orderBy(
-                          asc(workflowExecutionSchedule.wakeAt),
-                          asc(workflowExecutionSchedule.id)
-                        )
-                        .limit(lane.limit)
-                        .for("update", { skipLocked: true })
-                    )
-                  )
-                )
-              );
+            const due = await lockDueRows(tx, lanes, input.now);
             if (due.length === 0) return [];
 
             // A swept step whose memo row already settled counts against the
