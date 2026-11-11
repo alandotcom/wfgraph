@@ -275,8 +275,94 @@ describe("add_node", () => {
         })
       );
 
-      expect(failure.reason).toContain("Connect the node before");
+      expect(failure.reason).toContain("sourceNodeId");
       expect((yield* draft.current).nodes).toEqual([entry]);
+    })
+  );
+
+  it.effect("connects a new step below its source in the same call", () =>
+    Effect.gen(function* () {
+      const startedEntry: WorkflowNode = {
+        ...entry,
+        data: {
+          ...entry.data,
+          config: {
+            lifecycleRules: {
+              startEvents: ["applicant.created"],
+              cancelEvents: [],
+              concurrency: "unlimited",
+              allowManualStart: false,
+            },
+          },
+        },
+      };
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [startedEntry],
+        catalog,
+      });
+      const applicantId = formatTemplateToken({
+        nodeId: "entry",
+        nodeLabel: "Lifecycle",
+        fieldPath: "applicantId",
+      });
+
+      const result = yield* tools.add_node({
+        actionId: "score-applicant",
+        label: "Score",
+        sourceNodeId: "entry",
+        sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        config: [{ key: "applicantId", value: applicantId }],
+      });
+
+      const document = yield* draft.current;
+      expect(document.edges).toEqual([
+        {
+          id: expect.any(String),
+          source: "entry",
+          target: result.nodeId,
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        },
+      ]);
+      expect(
+        document.nodes.find((node) => node.id === result.nodeId)?.data.config
+      ).toMatchObject({ applicantId });
+      expect(result.summary).toContain('after "Lifecycle" (entry)');
+    })
+  );
+
+  it.effect("refuses a source outlet the source does not have", () =>
+    Effect.gen(function* () {
+      const { tools, draft } = yield* agentToolsFor({
+        nodes: [entry],
+        catalog,
+      });
+
+      const failure = yield* Effect.flip(
+        tools.add_node({
+          actionId: "score-applicant",
+          label: "Score",
+          sourceNodeId: "entry",
+        })
+      );
+
+      expect(failure.reason).toContain('"started" or "canceled"');
+      expect((yield* draft.current).nodes).toEqual([entry]);
+    })
+  );
+
+  it.effect("refuses a source the graph does not hold", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({ nodes: [entry], catalog });
+
+      const failure = yield* Effect.flip(
+        tools.add_node({
+          actionId: "score-applicant",
+          label: "Score",
+          sourceNodeId: "ghost",
+        })
+      );
+
+      expect(failure.reason).toContain("No node with id ghost");
     })
   );
 

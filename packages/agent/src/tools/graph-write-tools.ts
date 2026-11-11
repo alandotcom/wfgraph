@@ -69,7 +69,7 @@ const configBagSchema = Schema.Array(
     }),
     value: Schema.String.annotate({
       description:
-        "The value for that key. A reference to an earlier step is the whole {{@nodeId:Label.path}} token from list_references.",
+        "The value for that key. A reference to an earlier step is the whole {{@nodeId:Label.path}} token from list_references, accepted once the step is connected below that earlier step.",
     }),
   })
 );
@@ -140,7 +140,7 @@ function wouldCycle(
 
 export const AddNode = Tool.make("add_node", {
   description:
-    "Add a step to the workflow and answer its new id. Call describe_action first so the config keys are the ones the action declares. The node arrives unconnected and belongs to no Group; call connect_nodes to place it in the flow. The Lifecycle Node is not added here: set_lifecycle_rules creates it.",
+    "Add a step to the workflow and answer its new id. Call describe_action first so the config keys are the ones the action declares. Pass sourceNodeId to connect the step below that node in the same call, which also lets config hold references to steps above it; without sourceNodeId the step arrives unconnected and config takes literal values only. The step belongs to no Group. The Lifecycle Node is not added here: set_lifecycle_rules creates it.",
   parameters: Schema.Struct({
     actionId: Schema.String.annotate({
       description:
@@ -152,6 +152,14 @@ export const AddNode = Tool.make("add_node", {
     }),
     description: Schema.optionalKey(Schema.String).annotate({
       description: "A sentence saying why this step is here.",
+    }),
+    sourceNodeId: Schema.optionalKey(Schema.String).annotate({
+      description:
+        "The node the new step runs after, from read_workflow or an earlier add_node. An edge from it to the new step is drawn in the same call.",
+    }),
+    sourceHandle: Schema.optionalKey(Schema.String).annotate({
+      description:
+        'The outlet of sourceNodeId the edge leaves by: "true" or "false" on a Condition, "started" or "canceled" on the Lifecycle Node, or "event:<Event name>" on an Event Split. Omit for other steps.',
     }),
     config: Schema.optionalKey(configBagSchema).annotate({
       description:
@@ -350,6 +358,73 @@ function outletRefusal(input: {
   return sourceHandle === undefined
     ? undefined
     : `Only a Condition or the Lifecycle Node has named outlets, so ${source.id} takes no sourceHandle.`;
+}
+
+type Placement =
+  | {
+      readonly ok: true;
+      readonly document: AgentDocument;
+      /** The step the new one runs after, absent for an unconnected step. */
+      readonly source: WorkflowNode | undefined;
+    }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * The graph with `node` added, connected below `sourceNodeId` when one is
+ * named. The new node has no edges yet, so the edge into it cannot close a
+ * loop; the outlet rule `connect_nodes` holds an edge to is the one check.
+ */
+function placeBelowSource(input: {
+  readonly document: AgentDocument;
+  readonly node: WorkflowNode;
+  readonly sourceNodeId: string | undefined;
+  readonly sourceHandle: string | undefined;
+  readonly catalog: ExtensionCatalog;
+}): Placement {
+  const nodes = [...input.document.nodes, input.node];
+  if (input.sourceNodeId === undefined) {
+    return {
+      ok: true,
+      document: { ...input.document, nodes },
+      source: undefined,
+    };
+  }
+
+  const source = findNode(input.document, input.sourceNodeId);
+  if (!source) {
+    return {
+      ok: false,
+      reason: `No node with id ${input.sourceNodeId}. Call read_workflow to see what the graph holds.`,
+    };
+  }
+  if (isGroupNode(source)) {
+    return {
+      ok: false,
+      reason: `Group "${nodeLabel(source)}" is an organizational frame and takes no edges. Name a step inside the Group as sourceNodeId instead.`,
+    };
+  }
+
+  const document: AgentDocument = {
+    nodes,
+    edges: [
+      ...input.document.edges,
+      {
+        id: generateId(),
+        source: source.id,
+        target: input.node.id,
+        sourceHandle: input.sourceHandle,
+      },
+    ],
+  };
+  const refusal = outletRefusal({
+    source,
+    sourceHandle: input.sourceHandle,
+    document,
+    catalog: input.catalog,
+  });
+  return refusal === undefined
+    ? { ok: true, document, source }
+    : { ok: false, reason: refusal };
 }
 
 function mergedConfig(input: {
@@ -567,9 +642,11 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
       readonly actionId: string;
       readonly label: string;
       readonly description?: string | undefined;
+      readonly sourceNodeId?: string | undefined;
+      readonly sourceHandle?: string | undefined;
       readonly config?: ConfigBag | undefined;
     }) =>
-      Effect.suspend(() => {
+      Effect.flatMap(draft.current, (document) => {
         if (!knownActionId(draft.catalog, input.actionId)) {
           return Effect.fail({
             reason: `No action with id ${input.actionId}. Call list_actions to see what exists, or use one of ${builtInActionIds.join(", ")}.`,
@@ -583,27 +660,40 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           });
         }
 
+        const nodeId = generateId();
+        const node = actionNode({ ...input, nodeId });
+        const placed = placeBelowSource({
+          document,
+          node,
+          sourceNodeId: input.sourceNodeId,
+          sourceHandle: input.sourceHandle,
+          catalog: draft.catalog,
+        });
+        if (!placed.ok) {
+          return Effect.fail({ reason: placed.reason });
+        }
+
         const configRefusal = configPatchRefusal({
           actionId: input.actionId,
           patch: input.config,
           catalog: draft.catalog,
           integrations: draft.integrations,
+          ...(placed.source === undefined
+            ? {
+                referenceGuidance:
+                  "A reference needs the step connected first. Pass sourceNodeId to connect it in this call, or connect it and then set the value with update_node, using an exact token from list_references.",
+              }
+            : { document: placed.document, nodeId }),
         });
         if (configRefusal) {
           return Effect.fail({ reason: configRefusal });
         }
 
-        const nodeId = generateId();
-        const node = actionNode({ ...input, nodeId });
-
         return Effect.map(
-          draft.update((current) => ({
-            ...current,
-            nodes: [...current.nodes, node],
-          })),
+          draft.update(() => placed.document),
           (result) => ({
             nodeId,
-            summary: `Added "${input.label}" (${nodeId}), a ${input.actionId} step.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+            summary: `Added "${input.label}" (${nodeId}), a ${input.actionId} step${placed.source === undefined ? ", unconnected" : ` after ${nodeName(placed.source)}${input.sourceHandle === undefined ? "" : ` by its ${input.sourceHandle} outlet`}`}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
           })
         );
       }),

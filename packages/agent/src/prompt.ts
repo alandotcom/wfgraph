@@ -125,7 +125,9 @@ How a step reads a value from an earlier step:
   above this one in the graph is a publish blocker. Reference only steps above
   it, or move the step below the one it reads.
 - Connect a step before filling in a config that reads from upstream, because
-  what a step can reference is decided by what reaches it.
+  what a step can reference is decided by what reaches it. add_node with
+  sourceNodeId connects the new step in the same call, so its config can hold
+  references to the steps above that source.
 - The Lifecycle Node offers the payload of the Event that put the run where it
   is. An Event wait replaces that Event for every step below it, so below such a
   wait the Lifecycle Node carries the waited-for payload and the Start Event
