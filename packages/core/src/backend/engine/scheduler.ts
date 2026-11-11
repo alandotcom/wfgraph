@@ -710,11 +710,7 @@ export class NodeScheduler {
           return;
         }
 
-        const route = routeAfterStrategy(
-          node,
-          this.currentEventName(),
-          outcome
-        );
+        const route = routeAfterStrategy(node, outcome);
 
         // A Condition whose expression produced no boolean routes nowhere. The
         // value it did produce is on the node's own record above.

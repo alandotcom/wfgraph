@@ -31,8 +31,9 @@ type ConditionEvalResult = {
  * the namespace.
  *
  * Known hazard, deliberately left alone: the namespace is flat across every node,
- * so two nodes that both produce a field called `id` collide, and the node that
- * runs later wins. Node-qualifying it would mean naming a node in every rule.
+ * so two nodes that both produce a field called `id` collide, and the node later
+ * in the graph's node order wins. Node-qualifying it would mean naming a node in
+ * every rule.
  */
 function mergeConditionContextValue(context: JsonObject, value: JsonValue) {
   const record = unwrapStepOutput(value);
@@ -174,7 +175,8 @@ function entityConditionContext(
 
 export function evaluateConditionExpression(
   conditionExpression: unknown,
-  outputs: NodeOutputs,
+  /** Every finished node's output, in the graph's node order. */
+  outputs: readonly NodeOutputs[string][],
   conditionModel: unknown,
   /** The Event that put the run on the branch this node sits on. */
   eventName: string | null,
@@ -203,7 +205,7 @@ export function evaluateConditionExpression(
     }
 
     const merged: JsonObject = {};
-    for (const output of Object.values(outputs)) {
+    for (const output of outputs) {
       mergeConditionContextValue(merged, output.data);
     }
 

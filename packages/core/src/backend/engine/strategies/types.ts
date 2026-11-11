@@ -41,6 +41,12 @@ export type SettledNodeWork = {
    */
   conditionValue?: boolean | undefined;
   /**
+   * The Event an Event Split routed by, as its memoized route step stored it.
+   * Absent on every other node; null where the branch named no Event, which
+   * matches no outlet.
+   */
+  routedEvent?: string | null | undefined;
+  /**
    * Whether the run stops below this node. A Wait that was skipped or woken by
    * a cancel says so, a disabled routing node says so, and a branch that was
    * handed to a durable run of its own says so because that run already walked
@@ -96,7 +102,11 @@ export type NodeStrategy = {
 export type ActionStepInput = {
   actionType: string;
   config: Record<string, unknown>;
-  outputs: NodeOutputs;
+  /**
+   * Every finished node's output in the graph's node order, which is the
+   * order a Condition folds them into its namespace.
+   */
+  outputsInGraphOrder: readonly NodeOutputs[string][];
   context: NodeContext;
   store: WorkflowStore;
   actions: WorkflowActions;

@@ -61,12 +61,12 @@ const unknownNodeStrategy: NodeStrategy = {
 /**
  * Which edges a finished node hands the run along.
  *
- * Condition reads its boolean from the outcome; Lifecycle and Event Split are
- * decided from the node kind; everything else fans out on every edge.
+ * Condition reads its boolean from the outcome and Event Split its Event, both
+ * of which the node memoized when it first decided; Lifecycle is decided from
+ * the node kind; everything else fans out on every edge.
  */
 export function routeAfterStrategy(
   node: WorkflowNode,
-  eventName: string | null,
   outcome: SettledNodeWork
 ): TraversalRoute | null {
   if (isConditionNode(node)) {
@@ -83,7 +83,7 @@ export function routeAfterStrategy(
   }
 
   if (isEventSplitNode(node) || isEventSplitActionNode(node)) {
-    return { kind: "event", eventName };
+    return { kind: "event", eventName: outcome.routedEvent ?? null };
   }
 
   return { kind: "all" };

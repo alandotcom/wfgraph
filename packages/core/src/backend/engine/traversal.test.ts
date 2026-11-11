@@ -81,6 +81,43 @@ describe("Traversal.deterministicTerminalOutput", () => {
   );
 });
 
+describe("Traversal.outputsInGraphOrder", () => {
+  function node(id: string): WorkflowNode {
+    return {
+      id,
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: { label: id, type: "action", config: {} },
+    };
+  }
+
+  // A replay finishes nodes in another order than the pass that first ran
+  // them, and a Condition folds these outputs into one namespace where the
+  // later of two equal names wins, so the order is the graph's.
+  it.effect(
+    "lists outputs in the graph's node order, whatever order they finished in",
+    () =>
+      Effect.sync(() => {
+        const traversal = new Traversal(
+          [node("first"), node("second"), node("third")],
+          []
+        );
+        for (const id of ["third", "first"]) {
+          traversal.markCompleted(
+            id,
+            { success: true, data: { from: id } },
+            { label: id, data: { from: id } }
+          );
+        }
+
+        assert.deepStrictEqual(traversal.outputsInGraphOrder, [
+          { label: "first", data: { from: "first" } },
+          { label: "third", data: { from: "third" } },
+        ]);
+      })
+  );
+});
+
 describe("Traversal result keys", () => {
   it.effect(
     "keeps a __proto__ failure enumerable through every result write",

@@ -53,7 +53,7 @@ function getNodeName(
 function executeActionStep(
   input: ActionStepInput
 ): Effect.Effect<
-  { result: SettledNodeWork["result"]; conditionValue?: boolean },
+  Pick<SettledNodeWork, "result" | "conditionValue" | "routedEvent">,
   EngineFailure
 > {
   const execute = Effect.suspend(() => {
@@ -178,7 +178,7 @@ function runAction(context: NodeWorkContext) {
     const actionOutcome = yield* executeActionStep({
       actionType,
       config: processedConfig,
-      outputs: traversal.outputs,
+      outputsInGraphOrder: traversal.outputsInGraphOrder,
       context: stepContext,
       runtime,
       store,
@@ -194,6 +194,7 @@ function runAction(context: NodeWorkContext) {
         status: "settled" as const,
         result: { success: true as const, data: stepResult },
         conditionValue: actionOutcome.conditionValue,
+        routedEvent: actionOutcome.routedEvent,
       };
     }
 

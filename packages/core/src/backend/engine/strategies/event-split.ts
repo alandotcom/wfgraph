@@ -1,3 +1,11 @@
+/**
+ * The Event Split node: routes by the Arriving Event its branch carries,
+ * decided once as a durable step under `node:<id>:route` and read back from
+ * that memo on every later pass, so a replay leaves by the outlet the first
+ * pass chose.
+ */
+
+import { runDurable } from "#src/backend/engine/durable";
 import { runWithStepLog } from "#src/backend/engine/step-log";
 import type { ActionStepInput } from "#src/backend/engine/strategies/types";
 import { executionResultFromStepResult } from "#src/backend/engine/contracts";
@@ -7,15 +15,24 @@ export function runEventSplitStep(input: ActionStepInput) {
   return Effect.gen(function* () {
     const { context, store, runtime } = input;
 
-    const result = yield* runWithStepLog(
-      { store, context, runtime, input: { event: input.eventName } },
-      () =>
-        Effect.succeed({
-          success: true as const,
-          data: { event: input.eventName },
-        })
+    const { event } = yield* runDurable(
+      runtime,
+      {
+        id: `node:${context.nodeId}:route`,
+        nodeId: context.nodeId,
+        name: `${context.nodeName} (route)`,
+      },
+      Effect.sync(() => ({ event: input.eventName }))
     );
 
-    return { result: executionResultFromStepResult(result) };
+    const result = yield* runWithStepLog(
+      { store, context, runtime, input: { event } },
+      () => Effect.succeed({ success: true as const, data: { event } })
+    );
+
+    return {
+      result: executionResultFromStepResult(result),
+      routedEvent: event,
+    };
   });
 }

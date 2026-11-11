@@ -110,6 +110,20 @@ export class Traversal {
     return this.nodeOutputs;
   }
 
+  /**
+   * Every finished node's output in the graph's node order. A pass and its
+   * replay finish nodes in different orders, and this order is the same for
+   * both.
+   */
+  get outputsInGraphOrder(): NodeOutputs[string][] {
+    return this.nodes.flatMap((node) => {
+      const output = Object.hasOwn(this.nodeOutputs, outputKey(node.id))
+        ? this.nodeOutputs[outputKey(node.id)]
+        : undefined;
+      return output === undefined ? [] : [output];
+    });
+  }
+
   /** What each node that produced an outcome left, keyed by node id. */
   get results(): Readonly<Record<string, ExecutionResult>> {
     return this.nodeResults;
