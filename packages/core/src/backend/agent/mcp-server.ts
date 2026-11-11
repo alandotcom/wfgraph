@@ -39,6 +39,10 @@ import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
 import { workflowSummarySchema } from "@wfgraph/shared/rpc/contracts/workflows";
+import {
+  compactInputSchema,
+  compactOutputSchema,
+} from "#src/backend/agent/mcp-schema-compaction";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import type { AuthContext } from "#src/backend/lib/http/authorize";
 import type {
@@ -318,13 +322,12 @@ const MAX_TOOL_INPUT_ELEMENTS = 10_000;
 const WORKFLOW_ID_SCHEMA = {
   type: "string",
   minLength: 1,
-  description: "ID of the existing workflow draft to read or edit.",
+  description: "The workflow's id.",
 } as const;
 
 const CATALOG_WORKFLOW_ID_SCHEMA = {
   type: "string",
-  description:
-    "Optional and unused: the catalog is the same for every workflow, so this tool reads none.",
+  description: "Unused: the catalog is the same for every workflow.",
 } as const;
 
 /**
@@ -344,8 +347,7 @@ function scopeOf(name: string): ToolScope {
 const DRAFT_REVISION_SCHEMA = {
   type: "integer",
   minimum: 1,
-  description:
-    "Revision returned by the latest read or write. Read the workflow again after a conflict.",
+  description: "The draftRevision the latest read or write answered.",
 } as const;
 
 const LIST_WORKFLOWS_ARGUMENTS = Schema.Struct({});
@@ -434,7 +436,9 @@ function argumentsSchema(input: {
   readonly transport: Schema.Codec<unknown, unknown> | undefined;
   readonly own: Schema.Codec<unknown, unknown>;
 }): StandardSchemaWithJSON<Record<string, unknown>> {
-  const listed = fromJsonSchema<Record<string, unknown>>(input.listed);
+  const listed = fromJsonSchema<Record<string, unknown>>(
+    compactInputSchema(input.listed)
+  );
   return {
     "~standard": {
       ...listed["~standard"],
@@ -446,6 +450,13 @@ function argumentsSchema(input: {
       },
     },
   };
+}
+
+/** An output schema as the tool list carries it, with its validator. */
+function listedOutputSchema(
+  schema: JsonObject
+): StandardSchemaWithJSON<Record<string, unknown>> {
+  return fromJsonSchema<Record<string, unknown>>(compactOutputSchema(schema));
 }
 
 function jsonSchemaOf(schema: Schema.Top, label: string): JsonObject {
@@ -466,7 +477,7 @@ const CREATE_WORKFLOW_INPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-const CREATE_WORKFLOW_OUTPUT_SCHEMA = {
+const CREATE_WORKFLOW_OUTPUT_SCHEMA: JsonObject = {
   type: "object",
   properties: {
     workflowId: {
@@ -481,7 +492,7 @@ const CREATE_WORKFLOW_OUTPUT_SCHEMA = {
   },
   required: ["workflowId", "draftRevision"],
   additionalProperties: false,
-} as const;
+};
 
 const LIST_WORKFLOWS_OUTPUT_SCHEMA = (() => {
   const schema = readJsonObject(
@@ -630,9 +641,7 @@ const COLLECTION_TOOL_SCHEMAS = {
       transport: undefined,
       own: LIST_WORKFLOWS_ARGUMENTS,
     }),
-    output: fromJsonSchema<Record<string, unknown>>(
-      LIST_WORKFLOWS_OUTPUT_SCHEMA
-    ),
+    output: listedOutputSchema(LIST_WORKFLOWS_OUTPUT_SCHEMA),
   },
   create_workflow: {
     input: argumentsSchema({
@@ -640,9 +649,7 @@ const COLLECTION_TOOL_SCHEMAS = {
       transport: undefined,
       own: CREATE_WORKFLOW_ARGUMENTS,
     }),
-    output: fromJsonSchema<Record<string, unknown>>(
-      CREATE_WORKFLOW_OUTPUT_SCHEMA
-    ),
+    output: listedOutputSchema(CREATE_WORKFLOW_OUTPUT_SCHEMA),
   },
 } satisfies Record<string, ToolSchemas>;
 
@@ -657,9 +664,7 @@ const AGENT_TOOL_SCHEMAS: ReadonlyMap<string, ToolSchemas> = new Map(
           transport: TRANSPORT_ARGUMENTS[scopeOf(tool.name)],
           own: tool.parametersSchema,
         }),
-        output: fromJsonSchema<Record<string, unknown>>(
-          outputSchemaFor(tool.name)
-        ),
+        output: listedOutputSchema(outputSchemaFor(tool.name)),
       } satisfies ToolSchemas,
     ])
 );
@@ -1039,7 +1044,7 @@ function registerHostTool<A extends JsonObject>(
     own: tool.arguments,
   });
   const output = jsonSchemaOf(tool.output, tool.name);
-  const outputSchema = fromJsonSchema<Record<string, unknown>>({
+  const outputSchema = listedOutputSchema({
     ...output,
     properties: {
       ...readJsonObject(output.properties),

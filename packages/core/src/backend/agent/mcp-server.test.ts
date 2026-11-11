@@ -1317,3 +1317,24 @@ describe("the publication tools", () => {
     }
   });
 });
+
+describe("the tool list", () => {
+  // Every client sends the listed tools to its model on every turn, so the
+  // list is held to a budget. Raise it only for a tool whose schema a model
+  // needs, after moving any prose that repeats the server instructions out.
+  const TOOL_LIST_BUDGET_CHARS = 72_000;
+
+  it(`stays within ${TOOL_LIST_BUDGET_CHARS} characters of JSON`, async () => {
+    const { client, server } = await makeSubject();
+    try {
+      const { tools } = await client.listTools();
+
+      expect(JSON.stringify(tools).length).toBeLessThanOrEqual(
+        TOOL_LIST_BUDGET_CHARS
+      );
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+});

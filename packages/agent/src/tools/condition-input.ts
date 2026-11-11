@@ -47,7 +47,7 @@ export const conditionRuleSchema = Schema.Struct({
     description:
       "One or more values for a string is_one_of or is_not_one_of operator.",
   }),
-  amount: Schema.optionalKey(Schema.Number).annotate({
+  amount: Schema.optionalKey(Schema.Finite).annotate({
     description: "How many units, for a relative timestamp operator.",
   }),
   unit: Schema.optionalKey(
