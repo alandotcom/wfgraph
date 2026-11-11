@@ -321,17 +321,20 @@ const getModelDisplayName = (modelId: string): string => {
 };
 
 // The badge over an action node: the integration it belongs to, by the label that
-// integration goes by. An action belonging to none reads as "System", which is
-// the engine's own: Condition and Wait, neither of which names a connection.
-const getIntegrationFromActionType = (
+// integration goes by. An action belonging to none reads as its category, the
+// group the step picker lists it under: the host's own word for a host action,
+// and "System" for Condition and Wait. An action the catalog no longer holds
+// reads as "System" too.
+export const getIntegrationFromActionType = (
   catalog: ExtensionCatalog,
   actionType: string
 ): string => {
-  const integrationType = findAction(catalog, actionType)?.integration;
+  const action = findAction(catalog, actionType);
+  const integrationLabel = action?.integration
+    ? findIntegration(catalog, action.integration)?.label
+    : undefined;
 
-  return integrationType
-    ? findIntegration(catalog, integrationType)?.label || "System"
-    : "System";
+  return integrationLabel || action?.category || "System";
 };
 
 const ProviderLogo = ({
