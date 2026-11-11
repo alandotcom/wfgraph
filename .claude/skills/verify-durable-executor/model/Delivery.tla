@@ -26,15 +26,21 @@
 (* delivery settles failed after delivering W1 and W2. Its schedule row is *)
 (* then kept `settled` with its memo, and one resend of the arrival's key  *)
 (* reopens it, which re-runs the body against that memo.                   *)
+(*                                                                         *)
+(* R4, a third run of W2 for another Entity, parks its Wait on X (row r4)  *)
+(* at any moment. A Wait that parks once the delivery has finished catches *)
+(* up on X at its park, unless X started its run, claimed it, or already   *)
+(* woke a Wait of it, as catchUpParkedWait in resume-waits.ts does.        *)
 (***************************************************************************)
 EXTENDS Naturals, Sequences
 
 CONSTANTS Workers, MaxFaults
 
-Rows == <<"r1old", "r1new", "w2a", "r3", "w2b", "rc">>   \* in id order
+Rows == <<"r1old", "r1new", "w2a", "r3", "w2b", "rc", "r4">>   \* in id order
 RowSet == {Rows[i] : i \in 1..Len(Rows)}
 RunOf == [r \in RowSet |-> CASE r \in {"r1old"} -> "R1old" [] r = "r1new" -> "R1new"
-                                 [] r \in {"w2a", "w2b", "rc"} -> "R2" [] r = "r3" -> "R3"]
+                                 [] r \in {"w2a", "w2b", "rc"} -> "R2" [] r = "r3" -> "R3"
+                                 [] r = "r4" -> "R4"]
 WorkflowOf == [r \in RowSet |-> IF RunOf[r] \in {"R1old", "R1new"} THEN "W1" ELSE "W2"]
 Workflows == <<"W1", "W2">>
 
@@ -53,16 +59,19 @@ VARIABLES
   run,         \* each run: "running" | "superseded" | "claimed" | "none"
   declined,    \* whether W2's Cancel Filter declined X (chosen at the start)
   wokenByX,    \* each wait row: how many times X woke it
-  reopened     \* whether a resend has reopened the failed delivery
+  reopened,    \* whether a resend has reopened the failed delivery
+  r4Late       \* whether R4 parked after the delivery finished
 
 vars == <<dsched, holder, faults, pc, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row,
-          run, declined, wokenByX, reopened>>
+          run, declined, wokenByX, reopened, r4Late>>
 memoVars == <<lifeDone, memoLife, pagesDone, memoPages, memoWoken>>
 
 \* The guards the design depends on.
 ExcludeSettledRuns == TRUE        \* candidates leave out the runs this arrival settled
 SavePagesBeforeWaking == TRUE     \* every page is saved before any page is offered
 KeepMemoOnReopen == TRUE          \* failDelivery keeps the schedule row `settled`, and a resend requeues it
+CatchUpOnPark == TRUE             \* catchUpParkedWait: a first park reads back a delivered arrival
+CatchUpLeavesOwnArrivals == TRUE  \* listArrivalsSinceRunStart leaves out the run's start, Cancel and waking arrivals
 WakeIsUnclaimed(r) == row[r] = "waiting"   \* claimWaitState: `status = 'waiting'`
 LeaseHeldBy(w) == holder = w
 
@@ -73,10 +82,10 @@ Init ==
   /\ pagesDone = [i \in 1..2 |-> FALSE] /\ memoPages = [i \in 1..2 |-> <<>>]
   /\ scanned = [i \in 1..2 |-> <<>>] /\ memoWoken = [i \in 1..2 |-> 0]
   /\ row = [r \in RowSet |-> IF r \in {"r1old", "w2a", "r3"} THEN "waiting" ELSE "none"]
-  /\ run = [x \in {"R1old", "R1new", "R2", "R3"} |-> IF x = "R1new" THEN "none" ELSE "running"]
+  /\ run = [x \in {"R1old", "R1new", "R2", "R3", "R4"} |-> IF x = "R1new" THEN "none" ELSE "running"]
   /\ declined \in BOOLEAN
   /\ wokenByX = [r \in RowSet |-> 0]
-  /\ reopened = FALSE
+  /\ reopened = FALSE /\ r4Late = FALSE
 
 -----------------------------------------------------------------------------
 (* The delivery body. *)
@@ -84,13 +93,13 @@ Init ==
 Claim(w) ==
   /\ dsched = "queued" /\ pc[w][1] = "idle"
   /\ dsched' = "leased" /\ holder' = w /\ pc' = [pc EXCEPT ![w] = <<"life", 1>>]
-  /\ UNCHANGED <<faults, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row, run, declined, wokenByX, reopened>>
+  /\ UNCHANGED <<faults, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row, run, declined, wokenByX, reopened, r4Late>>
 
 Fenced(w) ==
   /\ pc[w][1] # "idle" /\ ~LeaseHeldBy(w)
   /\ pc' = [pc EXCEPT ![w] = <<"idle", 0>>]
   /\ UNCHANGED <<dsched, holder, faults, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row, run,
-                 declined, wokenByX, reopened>>
+                 declined, wokenByX, reopened, r4Late>>
 
 Stage(w) == pc[w][1]
 Wf(w) == pc[w][2]
@@ -124,7 +133,7 @@ Lifecycle(w) ==
             /\ lifeDone' = [lifeDone EXCEPT ![Wf(w)] = TRUE]
             /\ memoLife' = [memoLife EXCEPT ![Wf(w)] = Settled(Wf(w))]
   /\ Go(w, "scan", Wf(w))
-  /\ UNCHANGED <<dsched, holder, faults, pagesDone, memoPages, scanned, memoWoken, wokenByX, reopened>>
+  /\ UNCHANGED <<dsched, holder, faults, pagesDone, memoPages, scanned, memoWoken, wokenByX, reopened, r4Late>>
 
 \* listWaitsForEvent: rows still waiting, of this workflow, of a run in flight,
 \* past the cursor, leaving out the runs this arrival settled.
@@ -149,7 +158,7 @@ ScanAllPages(w) ==
             /\ memoPages' = [memoPages EXCEPT ![Wf(w)] =
                                 SelectSeq(Rows, LAMBDA r : Candidate(Wf(w), r, 0))]
   /\ Go(w, "wake", Wf(w))
-  /\ UNCHANGED <<dsched, holder, faults, lifeDone, memoLife, scanned, memoWoken, row, run, declined, wokenByX, reopened>>
+  /\ UNCHANGED <<dsched, holder, faults, lifeDone, memoLife, scanned, memoWoken, row, run, declined, wokenByX, reopened, r4Late>>
 
 \* Offer the next saved page the arrival: the claim wakes a row still waiting.
 Offer(r) ==
@@ -167,14 +176,14 @@ WakeSavedPage(w) ==
        ELSE /\ (IF i = 1 THEN Go(w, "life", 2) ELSE Go(w, "finish", 2))
             /\ UNCHANGED <<row, wokenByX>>
   /\ UNCHANGED <<dsched, holder, faults, lifeDone, memoLife, pagesDone, memoPages, scanned,
-                 memoWoken, run, declined, reopened>>
+                 memoWoken, run, declined, reopened, r4Late>>
 
 RecordWokenPage(w) ==
   /\ Stage(w) = "woken" /\ LeaseHeldBy(w)
   /\ memoWoken' = [memoWoken EXCEPT ![Wf(w)] = @ + 1]
   /\ Go(w, "wake", Wf(w))
   /\ UNCHANGED <<dsched, holder, faults, lifeDone, memoLife, pagesDone, memoPages, scanned,
-                 row, run, declined, wokenByX, reopened>>
+                 row, run, declined, wokenByX, reopened, r4Late>>
 
 \* The alternative the design rules out: scan one page, offer it, scan the next.
 ScanAndWakeByPage(w) ==
@@ -188,12 +197,12 @@ ScanAndWakeByPage(w) ==
                /\ Offer(next)
                /\ UNCHANGED pc
   /\ UNCHANGED <<dsched, holder, faults, lifeDone, memoLife, pagesDone, memoPages, memoWoken, run, declined,
-                 reopened>>
+                 reopened, r4Late>>
 
 Finish(w) ==
   /\ Stage(w) = "finish" /\ LeaseHeldBy(w)
   /\ dsched' = "gone" /\ holder' = 0 /\ pc' = [pc EXCEPT ![w] = <<"idle", 0>>]
-  /\ UNCHANGED <<faults, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row, run, declined, wokenByX, reopened>>
+  /\ UNCHANGED <<faults, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row, run, declined, wokenByX, reopened, r4Late>>
 
 \* failDelivery, once the unmodelled workflow's step is past its retries: the
 \* inbox row is marked failed, and the schedule row is kept `settled` with its
@@ -201,7 +210,7 @@ Finish(w) ==
 FinishFailed(w) ==
   /\ Stage(w) = "finish" /\ LeaseHeldBy(w) /\ ~reopened
   /\ dsched' = "settled" /\ holder' = 0 /\ pc' = [pc EXCEPT ![w] = <<"idle", 0>>]
-  /\ UNCHANGED <<faults, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row, run, declined, wokenByX, reopened>>
+  /\ UNCHANGED <<faults, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row, run, declined, wokenByX, reopened, r4Late>>
 
 \* A resend of the failed row's key reopens it: writeArrival queues the
 \* settled schedule row again, and the next claim replays the body against
@@ -215,7 +224,7 @@ Reopen ==
        ELSE /\ lifeDone' = [i \in 1..2 |-> FALSE] /\ memoLife' = [i \in 1..2 |-> {}]
             /\ pagesDone' = [i \in 1..2 |-> FALSE] /\ memoPages' = [i \in 1..2 |-> <<>>]
             /\ memoWoken' = [i \in 1..2 |-> 0]
-  /\ UNCHANGED <<holder, faults, pc, scanned, row, run, declined, wokenByX>>
+  /\ UNCHANGED <<holder, faults, pc, scanned, row, run, declined, wokenByX, r4Late>>
 
 -----------------------------------------------------------------------------
 (* Faults, and the runs the executor drives beside the delivery. *)
@@ -223,31 +232,54 @@ Reopen ==
 Crash(w) ==
   /\ pc[w][1] # "idle" /\ faults < MaxFaults
   /\ pc' = [pc EXCEPT ![w] = <<"idle", 0>>] /\ faults' = faults + 1
-  /\ UNCHANGED <<dsched, holder, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row, run, declined, wokenByX, reopened>>
+  /\ UNCHANGED <<dsched, holder, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row, run, declined, wokenByX, reopened, r4Late>>
 
 SweepLease ==
   /\ dsched = "leased" /\ (pc[holder][1] = "idle" \/ faults < MaxFaults)
   /\ faults' = IF pc[holder][1] = "idle" THEN faults ELSE faults + 1
   /\ dsched' = "queued" /\ holder' = 0
-  /\ UNCHANGED <<pc, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row, run, declined, wokenByX, reopened>>
+  /\ UNCHANGED <<pc, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, row, run, declined, wokenByX, reopened, r4Late>>
+
+\* Whether X is an arrival the run of row r may still be woken by: one that
+\* did not start it, claim it, or wake a Wait of it already.
+OwedByX(r) ==
+  \/ ~CatchUpLeavesOwnArrivals
+  \/ /\ RunOf[r] # "R1new"
+     /\ ~(RunOf[r] = "R2" /\ ~declined)
+     /\ \A q \in RowSet : RunOf[q] = RunOf[r] => wokenByX[q] = 0
+
+\* A Wait's first park: the row waits, or catches up on X when X's delivery
+\* has finished and the run is owed it.
+CatchesUp(r) == CatchUpOnPark /\ dsched = "gone" /\ OwedByX(r)
+Park(r) ==
+  /\ row' = [row EXCEPT ![r] = IF CatchesUp(r) THEN "woken" ELSE "waiting"]
+  /\ wokenByX' = [wokenByX EXCEPT ![r] = IF CatchesUp(r) THEN @ + 1 ELSE @]
 
 \* The run X started reaches its Wait on X.
 R1NewParks ==
   /\ run["R1new"] = "running" /\ row["r1new"] = "none"
-  /\ row' = [row EXCEPT !["r1new"] = "waiting"]
-  /\ UNCHANGED <<dsched, holder, faults, pc, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, run, declined, wokenByX, reopened>>
+  /\ Park("r1new")
+  /\ UNCHANGED <<dsched, holder, faults, pc, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, run, declined, reopened, r4Late>>
 
 \* R2 resumes from its first Wait and parks on the second, also on X.
 R2ParksAgain ==
   /\ run["R2"] = "running" /\ row["w2a"] = "woken" /\ row["w2b"] = "none"
-  /\ row' = [row EXCEPT !["w2b"] = "waiting"]
-  /\ UNCHANGED <<dsched, holder, faults, pc, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, run, declined, wokenByX, reopened>>
+  /\ Park("w2b")
+  /\ UNCHANGED <<dsched, holder, faults, pc, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, run, declined, reopened, r4Late>>
 
 \* A claimed R2 enters its Canceled outlet and parks there on a Wait on X.
 R2ParksCanceledWait ==
   /\ run["R2"] = "claimed" /\ row["rc"] = "none"
-  /\ row' = [row EXCEPT !["rc"] = "waiting"]
-  /\ UNCHANGED <<dsched, holder, faults, pc, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, run, declined, wokenByX, reopened>>
+  /\ Park("rc")
+  /\ UNCHANGED <<dsched, holder, faults, pc, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, run, declined, reopened, r4Late>>
+
+\* R4 reaches its Wait on X, before X arrives, while its delivery runs, or
+\* after it finished.
+R4Parks ==
+  /\ row["r4"] = "none"
+  /\ Park("r4")
+  /\ r4Late' = (dsched = "gone")
+  /\ UNCHANGED <<dsched, holder, faults, pc, lifeDone, memoLife, pagesDone, memoPages, scanned, memoWoken, run, declined, reopened>>
 
 Ended == dsched \in {"gone", "settled"} /\ \A w \in Workers : pc[w][1] = "idle" /\ UNCHANGED vars
 
@@ -257,7 +289,7 @@ WorkerStep(w) ==
 
 Next ==
   \/ \E w \in Workers : WorkerStep(w) \/ Crash(w)
-  \/ SweepLease \/ R1NewParks \/ R2ParksAgain \/ R2ParksCanceledWait \/ Reopen \/ Ended
+  \/ SweepLease \/ R1NewParks \/ R2ParksAgain \/ R2ParksCanceledWait \/ R4Parks \/ Reopen \/ Ended
 
 Spec == Init /\ [][Next]_vars
 FairSpec == Spec /\ \A w \in Workers : WF_vars(WorkerStep(w)) /\ WF_vars(SweepLease /\ pc[holder][1] = "idle")
@@ -286,7 +318,11 @@ EachWaitWokenOnce == \A r \in RowSet : wokenByX[r] <= 1
 SurvivingWaitsAreWoken ==
   <>(dsched \in {"gone", "settled"} /\ wokenByX["r3"] = 1 /\ (declined => wokenByX["w2a"] = 1))
 
+\* A Wait that parks after X's delivery finished is woken by X at its park.
+LateParkCatchesUp == r4Late => wokenByX["r4"] = 1
+
 ReachR2WokenThenParkedAgain == wokenByX["w2a"] = 1 /\ row["w2b"] = "waiting"
+ReachLateParkCaughtUp == r4Late /\ row["r4"] = "woken"
 ReachNewRunParksBeforeScan  == row["r1new"] = "waiting" /\ ~pagesDone[1]
 ReachCanceledWaitParked     == row["rc"] = "waiting"
 ReachRedeliveredAfterCrash  == faults = 1 /\ dsched = "gone"

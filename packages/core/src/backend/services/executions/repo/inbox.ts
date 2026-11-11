@@ -8,11 +8,14 @@
  * inbox row, the order every fenced write takes a schedule row first.
  */
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, notExists, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { Effect } from "effect";
 import {
   workflowEventInbox,
   workflowExecutionSchedule,
+  workflowExecutions,
+  workflowWaitStates,
 } from "#src/backend/lib/db/schema";
 import type { WfGraphTransaction } from "#src/backend/lib/db/index";
 import { deleteOldestBatch } from "#src/backend/lib/db/batched-delete";
@@ -23,6 +26,7 @@ import type {
 } from "#src/backend/lib/effect/database";
 import type {
   DeliveryFence,
+  RunArrival,
   InboxEvent,
   InboxInsert,
   NewInboxEvent,
@@ -97,6 +101,20 @@ export type InboxRepoMethods = {
   readonly findInboxEvent: (
     inboxId: string
   ) => Effect.Effect<InboxEvent | null, DatabaseError>;
+  /**
+   * The arrivals a Wait parking now in run `executionId` may have missed:
+   * `delivered` inbox rows recorded under one of `names`, received no earlier
+   * than the run's start (its start Event's inbox row, or its start time when
+   * no Event started it or that row is gone), oldest first, at most `limit`.
+   * The run's own start and Cancel arrivals are left out, and so is every
+   * arrival a Wait of the run was already woken by, so one arrival never
+   * resumes a run twice.
+   */
+  readonly listArrivalsSinceRunStart: (input: {
+    executionId: string;
+    names: readonly string[];
+    limit: number;
+  }) => Effect.Effect<RunArrival[], DatabaseError>;
 };
 
 /** Gives one inbox row its `delivery` schedule row, `queued` and due at `wakeAt`. */
@@ -346,6 +364,76 @@ export function makeInboxMethods(
           limit: input.limit,
         })
       ),
+
+    listArrivalsSinceRunStart: (input) =>
+      database.query(async (db) => {
+        if (input.names.length === 0) return [];
+        const start = alias(workflowEventInbox, "start_arrival");
+        const rows = await db
+          .select({
+            id: workflowEventInbox.id,
+            name: workflowEventInbox.name,
+            data: workflowEventInbox.data,
+            connectionId: workflowEventInbox.connectionId,
+          })
+          .from(workflowEventInbox)
+          .where(
+            and(
+              // Both terms, so the settled index's predicate is stated.
+              sql`${workflowEventInbox.status} <> 'pending'`,
+              eq(workflowEventInbox.status, "delivered"),
+              inArray(workflowEventInbox.name, [...input.names]),
+              // A scalar subquery, so the run's start bounds the index range.
+              gte(
+                workflowEventInbox.receivedAt,
+                db
+                  .select({
+                    since: sql`coalesce(${start.receivedAt}, ${workflowExecutions.startedAt})`,
+                  })
+                  .from(workflowExecutions)
+                  .leftJoin(start, eq(start.id, workflowExecutions.deliveryId))
+                  .where(eq(workflowExecutions.id, input.executionId))
+              ),
+              notExists(
+                db
+                  .select({ id: workflowExecutions.id })
+                  .from(workflowExecutions)
+                  .where(
+                    and(
+                      eq(workflowExecutions.id, input.executionId),
+                      or(
+                        eq(
+                          workflowExecutions.deliveryId,
+                          workflowEventInbox.id
+                        ),
+                        eq(
+                          workflowExecutions.cancelDeliveryId,
+                          workflowEventInbox.id
+                        )
+                      )
+                    )
+                  )
+              ),
+              notExists(
+                db
+                  .select({ id: workflowWaitStates.id })
+                  .from(workflowWaitStates)
+                  .where(
+                    and(
+                      eq(workflowWaitStates.executionId, input.executionId),
+                      sql`${workflowWaitStates.wake} ->> 'deliveryId' = ${workflowEventInbox.id}`
+                    )
+                  )
+              )
+            )
+          )
+          .orderBy(
+            asc(workflowEventInbox.receivedAt),
+            asc(workflowEventInbox.id)
+          )
+          .limit(input.limit);
+        return rows;
+      }),
 
     findInboxEvent: (inboxId) =>
       database.query(async (db) => {

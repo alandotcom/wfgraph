@@ -156,6 +156,9 @@ Loop defaults and the `runner` fields: `docs/embedding.md` ("Workflow runs").
 - A Cancel Event follows the order Events were received in, whatever order
   they are delivered in: it reaches a run whose start Event was received no
   later than it, and never one whose start Event was received after it.
+- An event-mode Wait that first parks after a matching Event was delivered,
+  since its run started, wakes at once with it. The run's own start and
+  Cancel Events, and an Event that already woke one of its Waits, never count.
 - The loop deletes settled inbox rows older than `events.retentionMs` (default
   seven days, a positive integer of at most 100 years or startup refuses).
   It never deletes a pending row. Every process running a loop sweeps with its

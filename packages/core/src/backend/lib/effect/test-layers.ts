@@ -408,6 +408,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   failDelivery: refuse("failDelivery"),
   sweepSettledInbox: refuse("sweepSettledInbox"),
   findInboxEvent: refuse("findInboxEvent"),
+  listArrivalsSinceRunStart: refuse("listArrivalsSinceRunStart"),
   sweepEndedExecutions: refuse("sweepEndedExecutions"),
   sweepWorkflowAuditEvents: refuse("sweepWorkflowAuditEvents"),
   // `fenced` answers a set of writes, each of which dies when called, the way

@@ -15,9 +15,9 @@ import {
   type WorkflowEntities,
 } from "#src/backend/engine/entities";
 import type { PassBody, RunPass } from "#src/backend/executor/pass";
-import type {
+import {
   DatabaseError,
-  LeaseLost,
+  type LeaseLost,
 } from "#src/backend/lib/effect/database";
 import type { RunPassWrites } from "#src/backend/executor/runtime";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
@@ -27,6 +27,16 @@ import {
   RunInputUnavailable,
 } from "#src/backend/services/executions/run-input";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { catchUpParkedWait } from "#src/backend/services/workflows/lifecycle/resume-waits";
+
+/**
+ * Every service a run's pass reads: the run's repositories, and what an
+ * event-mode Wait's first park reads to catch up on an arrival it missed.
+ */
+export type RunServices =
+  | ExecutionRepo
+  | WorkflowRepo
+  | Effect.Services<ReturnType<typeof catchUpParkedWait>>;
 
 export function runBody(input: {
   /**
@@ -36,7 +46,7 @@ export function runBody(input: {
    */
   actions: () => WorkflowActions;
   entities?: WorkflowEntities | undefined;
-}): PassBody<RunPass, ExecutionRepo | WorkflowRepo> {
+}): PassBody<RunPass, RunServices> {
   const entities = input.entities ?? noWorkflowEntities;
   const versions = createRunVersionCache();
   return {
@@ -63,11 +73,21 @@ export function runBody(input: {
         // Read here, before any step runs, so a failed read is the pass's
         // own failure and no step is charged with it.
         const logRows = yield* executions.listNodeLogStates(executionId);
+        const services = yield* Effect.context<RunServices>();
         const store = createDbWorkflowStore({
           executionId,
           reads: executions,
           writes,
           logRows,
+          // A producer's refused write is the store's database failure here,
+          // which the pass answers as it answers any other.
+          catchUpWait: (waitStateId) =>
+            catchUpParkedWait(waitStateId).pipe(
+              Effect.catchTag("DriverError", (error) =>
+                Effect.fail(new DatabaseError({ cause: error.cause }))
+              ),
+              Effect.provide(services)
+            ),
         });
         const actions = input.actions();
         return {

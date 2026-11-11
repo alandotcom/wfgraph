@@ -446,6 +446,13 @@ opens already claimed for the Canceled outlet. It never reaches a run whose star
 received after it. A run a person or a schedule started has no arrival to compare, and a
 Cancel reaches it as before.
 
+An event-mode Wait does not miss an Event that was delivered while its run was still on
+the way to it. When the Wait first parks, it looks for an Event its subscription and match
+accept that was delivered since the run started, and wakes at once with the oldest. The
+Event that started the run, the Cancel Event that claimed it, and an Event that already
+woke a Wait of the run are never offered again. An Event whose delivery is still pending is
+left to that delivery, and an Event older than the run never counts.
+
 `CONTEXT.md` defines Lifecycle Node, Start Event, Start Filter, Cancel Event, Cancel Filter,
 Arriving Event, Concurrency, Precedence, Refused Start, and Execution status in full.
 `docs/adr/0007` says why the model has this shape. An Event Author designs against that shape.

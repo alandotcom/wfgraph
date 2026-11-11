@@ -476,6 +476,18 @@ export type RepinOutcome =
   | { moved: true; requeued: boolean };
 
 /**
+ * An arrival a parked Wait may have missed, as `listArrivalsSinceRunStart`
+ * reads it: the inbox row's id, the name it was recorded under, its data and
+ * its Connection.
+ */
+export type RunArrival = {
+  id: string;
+  name: string;
+  data: JsonObject;
+  connectionId: string | null;
+};
+
+/**
  * One row of `workflow_executions`, as the Runs view and the engine see it.
  *
  * `cancel_delivery_id` is left out: only the Cancel producer reads it, inside

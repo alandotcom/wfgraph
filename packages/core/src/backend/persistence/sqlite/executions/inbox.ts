@@ -6,7 +6,8 @@
  */
 
 import { Effect } from "effect";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, notExists, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type {
   DeliveryFence,
@@ -30,6 +31,8 @@ import type {
 import {
   workflowEventInbox,
   workflowExecutionSchedule,
+  workflowExecutions,
+  workflowWaitStates,
 } from "#src/backend/persistence/sqlite/schema";
 import { writeFenced } from "#src/backend/persistence/sqlite/executions/schedule";
 import { deleteOldestBatch } from "#src/backend/persistence/sqlite/batched-delete";
@@ -292,5 +295,83 @@ export function makeSqliteInboxMethods(
           .get()
           .pipe(Effect.map((row) => (row ? sqliteInboxEvent(row) : null)))
       ),
+
+    listArrivalsSinceRunStart: (input) =>
+      store.read((database) => {
+        if (input.names.length === 0) return Effect.succeed([]);
+        const start = alias(workflowEventInbox, "start_arrival");
+        return database
+          .select({
+            id: workflowEventInbox.id,
+            name: workflowEventInbox.name,
+            data: workflowEventInbox.data,
+            connectionId: workflowEventInbox.connectionId,
+          })
+          .from(workflowEventInbox)
+          .where(
+            and(
+              // Both terms, so the settled index's predicate is stated.
+              sql`${workflowEventInbox.status} <> 'pending'`,
+              eq(workflowEventInbox.status, "delivered"),
+              inArray(workflowEventInbox.name, [...input.names]),
+              // A scalar subquery, so the run's start bounds the index range.
+              gte(
+                workflowEventInbox.receivedAt,
+                database
+                  .select({
+                    since: sql`coalesce(${start.receivedAt}, ${workflowExecutions.startedAt})`,
+                  })
+                  .from(workflowExecutions)
+                  .leftJoin(start, eq(start.id, workflowExecutions.deliveryId))
+                  .where(eq(workflowExecutions.id, input.executionId))
+              ),
+              notExists(
+                database
+                  .select({ id: workflowExecutions.id })
+                  .from(workflowExecutions)
+                  .where(
+                    and(
+                      eq(workflowExecutions.id, input.executionId),
+                      or(
+                        eq(
+                          workflowExecutions.deliveryId,
+                          workflowEventInbox.id
+                        ),
+                        eq(
+                          workflowExecutions.cancelDeliveryId,
+                          workflowEventInbox.id
+                        )
+                      )
+                    )
+                  )
+              ),
+              notExists(
+                database
+                  .select({ id: workflowWaitStates.id })
+                  .from(workflowWaitStates)
+                  .where(
+                    and(
+                      eq(workflowWaitStates.executionId, input.executionId),
+                      sql`json_extract(${workflowWaitStates.wake}, '$.deliveryId') = ${workflowEventInbox.id}`
+                    )
+                  )
+              )
+            )
+          )
+          .orderBy(
+            asc(workflowEventInbox.receivedAt),
+            asc(workflowEventInbox.id)
+          )
+          .limit(input.limit)
+          .pipe(
+            Effect.map((rows) =>
+              rows.map((row) => {
+                const data = optionalJsonObject(row.data, "inbox data");
+                if (data === null) throw new Error("Invalid SQLite inbox data");
+                return { ...row, data };
+              })
+            )
+          );
+      }),
   };
 }

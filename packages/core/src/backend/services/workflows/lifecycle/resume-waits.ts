@@ -14,6 +14,8 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { readCompiledWaitSubscriptions } from "#src/backend/engine/wait-match";
 import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { Extensions } from "#src/backend/lib/effect/extensions";
+import { uniq } from "es-toolkit/array";
 import type {
   ParkWake,
   WorkflowWaitState,
@@ -333,4 +335,77 @@ const resumeOneWait = Effect.fn("resumeOneWait")(function* (input: {
     }
     previousCandidate = currentCandidate;
   }
+});
+
+/** How many missed arrivals one park reads back before it gives up. */
+const CATCH_UP_LIMIT = 100;
+
+/**
+ * Wakes an event-mode Wait that just parked with an arrival it missed: one
+ * delivered before the park, which no delivery will offer it again. Answers
+ * whether this claimed the park.
+ *
+ * The arrivals are the run's since its start (`listArrivalsSinceRunStart`),
+ * which leaves out the run's own start and Cancel arrivals and every arrival
+ * that already woke a Wait of the run, so an arrival never resumes a run it
+ * started, a run it canceled, or a second Wait of one run. Each is resolved to
+ * the Event it is, as its delivery resolved it, and offered to the row's own
+ * subscriptions and match in arrival order; the first that matches claims the
+ * park the way a delivery's claim does. A pending arrival is left to its own
+ * delivery, which offers it to every Wait parked when it scans.
+ */
+export const catchUpParkedWait = Effect.fn("catchUpParkedWait")(function* (
+  waitStateId: string
+) {
+  const repo = yield* ExecutionRepo;
+  const driver = yield* ExecutionDriver;
+  const extensions = yield* Extensions;
+  const waitState = yield* repo.findWaitStateById(waitStateId);
+  if (
+    waitState === null ||
+    waitState.waitType !== "event" ||
+    waitState.status !== "waiting" ||
+    waitState.resumeToken === null
+  ) {
+    return false;
+  }
+  const subscribed = waitState.subscribedEvents ?? [];
+  // An arrival is recorded under its Event's name or the source name its
+  // Event arrives under.
+  const names = uniq(
+    subscribed.flatMap((name) => {
+      const event = extensions.eventByName(name);
+      return event === undefined ? [name] : [name, event.source.event];
+    })
+  );
+  const arrivals = yield* repo.listArrivalsSinceRunStart({
+    executionId: waitState.executionId,
+    names,
+    limit: CATCH_UP_LIMIT,
+  });
+  for (const arrival of arrivals) {
+    const match = extensions.resolveArrival(arrival);
+    if (match.kind !== "event" || !subscribed.includes(match.event.name)) {
+      continue;
+    }
+    const { matched } = waitStateMatches({
+      waitState,
+      eventType: match.event.name,
+      payload: arrival.data,
+      connectionId: arrival.connectionId ?? undefined,
+    });
+    if (!matched) continue;
+    const claimed = yield* driver.resolvePark({
+      target: {
+        kind: "wait_state",
+        waitStateId,
+        token: waitState.resumeToken,
+        eventName: match.event.name,
+        deliveryId: arrival.id,
+      },
+      payload: arrival.data,
+    });
+    return claimed !== null;
+  }
+  return false;
 });

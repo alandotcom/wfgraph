@@ -98,6 +98,8 @@ export function createDbWorkflowStore(bound: {
   writes: StoreWrites;
   /** The run's log rows, as the pass read them when it opened. */
   logRows: readonly NodeLogState[];
+  /** `WorkflowStore.catchUpWait`, which a store with no inbox leaves out. */
+  catchUpWait?: WorkflowStore["catchUpWait"];
 }): WorkflowStore {
   const { reads, writes } = bound;
   // Each log row's status and opening time by row id, kept current by the
@@ -112,6 +114,7 @@ export function createDbWorkflowStore(bound: {
   );
 
   return {
+    catchUpWait: bound.catchUpWait,
     // Step payloads can carry secrets pulled in through templates, so they are
     // scrubbed here rather than at each call site - this is the last point before
     // they reach a table.

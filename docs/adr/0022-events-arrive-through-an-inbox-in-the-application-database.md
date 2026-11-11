@@ -274,3 +274,29 @@ delivered, is what the code did; it makes the outcome depend on delivery order, 
 retry or a second process decides. First-wins Concurrency still compares runs as they stand
 when the start is delivered, so a start refused in arrival order because an earlier run was
 in flight can open, already claimed, when the Cancel of that earlier run was delivered first.
+
+## Amendment: A Wait catches up on an arrival it missed
+
+Date: 2026-11-11
+
+A delivery offers an Event to the Waits parked when it scans. A run that was still on its
+way to an event-mode Wait when the Event was delivered parked afterwards and waited for the
+next arrival, usually until its timeout, although the Event it waited for had been delivered.
+
+An event-mode Wait now asks for that arrival when it first parks. It reads the `delivered`
+inbox rows recorded under its Events, or the source names they arrive under, received since
+its run started: the run's start Event's `received_at`, or its start time when no Event
+started it. The run's own start delivery, the Cancel delivery that claimed it, and every
+arrival a Wait of the run was already woken by are left out, so an arrival never resumes a
+run it started, a run it canceled, or a second Wait of one run. Each row is resolved to its
+Event as its delivery resolved it and offered to the row's subscriptions and match in
+arrival order, and the first that matches claims the park with the claim a delivery makes.
+
+The window is the run's, not the branch's, because a branch's Arriving Event carries no
+delivery id the engine could bound it by; the exclusions are what keep the run's own
+arrivals out. A pending row is left to its delivery, which offers it to every Wait parked
+when it scans, and a failed row is left to the resend that reopens it. A Wait that parks
+while an arrival's delivery is between its candidate scan and its finish is still offered
+that arrival by neither. A Migration's re-park catches up on nothing, since the run was
+parked throughout. The read uses the settled index from the run's start, since the inbox
+table's indexes are part of what a host's SQL contract leaves alone.

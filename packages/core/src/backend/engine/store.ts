@@ -279,6 +279,16 @@ export type WorkflowStore = {
   readWaitState(
     waitStateId: string
   ): Effect.Effect<WaitStateSnapshot | null, StoreFailure>;
+  /**
+   * Offers an event-mode Wait that has just parked for the first time the
+   * arrivals it missed: Events delivered since the run started, before the
+   * Wait was parked to receive them. Claims the park with the first one its
+   * match accepts, writing the same wake a delivery would, and answers whether
+   * it did. A store with no inbox leaves it out, and the Wait waits as parked.
+   */
+  catchUpWait?:
+    | ((waitStateId: string) => Effect.Effect<boolean, StoreFailure>)
+    | undefined;
   /** Closes out a wait row once its Wait resumes or is cancelled. */
   markWaitStateStatus(
     input: MarkWaitStateStatusInput

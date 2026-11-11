@@ -2,11 +2,12 @@
  * Event deliveries on the database executor, on one persistence backend. A
  * runner per backend calls `describeDeliveryCases`, so every backend answers
  * the same assertions: the worker loop's cases in `delivery-loop-cases.ts`
- * and the pass-by-pass cases in `delivery-crash-cases.ts`, both over the
- * harness in `delivery-fixtures.ts`.
+ * and the pass-by-pass cases in `delivery-crash-cases.ts` and
+ * `delivery-catch-up-cases.ts`, all over the harness in `delivery-fixtures.ts`.
  */
 
 import { describe, it } from "vitest";
+import { describeDeliveryCatchUpCases } from "#src/backend/executor/testing/delivery-catch-up-cases";
 import { describeDeliveryCrashCases } from "#src/backend/executor/testing/delivery-crash-cases";
 import { useDeliveryHarness } from "#src/backend/executor/testing/delivery-fixtures";
 import { describeDeliveryLoopCases } from "#src/backend/executor/testing/delivery-loop-cases";
@@ -33,5 +34,6 @@ export function describeDeliveryCases(
     const open = useDeliveryHarness(registry.openDatabase);
     describeDeliveryLoopCases(open);
     describeDeliveryCrashCases(open);
+    describeDeliveryCatchUpCases(open);
   });
 }

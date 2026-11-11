@@ -297,6 +297,10 @@ expression over the arriving payload. Independent of the Lifecycle Rules: an
 Event needs no lifecycle role to wake a wait, and waking follows Precedence.
 The Events it parks on become the Arriving Event for everything below the
 Wait, which is how an Event Split after a Wait tells those arrivals apart.
+A Wait that first parks after a matching Event was already delivered, since
+its run started, wakes at once with the oldest such Event. The Event that
+started the run, the Cancel Event that claimed it, and an Event that already
+woke a Wait of the run never count.
 A step above a Wait keeps its memoized output when the run resumes, so fresh
 data after a Wait comes from a copy of the lookup steps placed below the Wait.
 

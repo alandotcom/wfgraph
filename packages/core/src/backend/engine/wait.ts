@@ -476,13 +476,22 @@ function prepareWaitAttempt<Prepared>(
     // re-park already holds one. The rest of the preparation is the same
     // either way.
     const parked = (
-      waitStateId: string
+      waitStateId: string,
+      firstPark: boolean
     ): Effect.Effect<WaitAttemptPreparation<Prepared>, EngineFailure> =>
       Effect.gen(function* () {
         const carry = {
           waitStateId,
           anchorAtIso,
         };
+        // An Event delivered before this Wait first parked has already passed
+        // every Wait its delivery found, so the park asks for it here. A
+        // re-park after a Migration asks for nothing: the run was parked
+        // throughout, and every arrival since reached it.
+        const { catchUpWait } = store;
+        if (firstPark && park.waitType === "event" && catchUpWait) {
+          yield* fromStore(catchUpWait(waitStateId));
+        }
         // A producer can resolve the row between its write and this park. A
         // wake already on the row is durable input for this attempt.
         const missed = yield* readMissedWake(branch, waitStateId);
@@ -556,7 +565,7 @@ function prepareWaitAttempt<Prepared>(
       }
 
       yield* recordWaiting(branch, { attempt: input.attempt, park });
-      return yield* parked(created.waitStateId);
+      return yield* parked(created.waitStateId, true);
     }
 
     const reparked = yield* fromStore(
@@ -610,7 +619,7 @@ function prepareWaitAttempt<Prepared>(
     }
 
     yield* recordWaiting(branch, { attempt: input.attempt, park });
-    return yield* parked(input.waitStateId);
+    return yield* parked(input.waitStateId, false);
   });
 }
 
