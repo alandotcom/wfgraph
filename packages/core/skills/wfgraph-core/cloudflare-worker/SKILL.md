@@ -65,7 +65,8 @@ its runs.
 3. **Write the entry.** Export `wfWorker<Env>({ ... })` as the default export.
    Resolve every binding and secret inside `request(env)`, which `wfWorker`
    calls once per invocation of each handler: `auth`, `persistence:
-   wfHyperdrive(env.HYPERDRIVE)`, `encryption.key`, and optionally
+   wfHyperdrive(env.HYPERDRIVE)`, `encryption.key` (required on a Worker even
+   with no integration declared), and optionally
    `events.key`, `events.retentionMs`, `runs.retentionMs`, `wakeQueue` and
    `agent`. `basePath`, `publicUrl`, `entityResolverTimeoutMs`, `mcp`,
    `logger` and `extensions` go on `wfWorker` itself; `extensions` may be a
@@ -105,9 +106,10 @@ Cron Trigger tick finds the run.
 
 - **Wall time.** Cloudflare ends a Cron Trigger or Queue invocation after 15
   minutes. A tick claims for its first 10 minutes and cuts any pass still
-  running at 14. A cut pass hands its run back due at once and counts one
-  failure against its step, so a step longer than every tick spends its
-  retries and fails its node.
+  running at 14. A cut pass hands its run back due at once, or one lease
+  later when the step it was running is a plain Promise that cannot be
+  stopped, and counts one failure against that step, so a step longer than
+  every tick spends its retries and fails its node.
 - **Leases.** A tick holds each run under a five-minute lease renewed every
   minute. A run whose invocation the platform killed is claimed again by a
   tick about six minutes later at most.
