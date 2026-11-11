@@ -6,8 +6,10 @@ description: >
   application: passing builtInIntegrations() or individual exports in
   extensions.integrations, configuring Slack OAuth with slack({ oauthClient }),
   meeting the publicUrl and session cookie requirements of Slack, Resend and
-  PostHog OAuth, or receiving Resend webhook Events. Also use for requests such
-  as "let workflows send Slack messages" or "the Slack OAuth connection fails".
+  PostHog OAuth, receiving Resend webhook Events, deciding what the built-in
+  steps do in a test run, or deleting an OAuth connection whose grant the
+  provider did not revoke. Also use for requests such as "let workflows send
+  Slack messages" or "the Slack OAuth connection fails".
   For writing a new vendor integration use wfgraph-core/integrations; for
   mounting the app itself use wfgraph-core.
 metadata:
@@ -63,6 +65,27 @@ OAuth requires `publicUrl`. HTTPS except loopback. Callback stays behind
 `auth`; `SameSite=Lax` cookies work, custom request headers on the provider
 redirect do not. Core derives callback and metadata URLs from `publicUrl`
 plus `basePath`.
+
+Deleting a connection that holds an OAuth grant always removes it. Workflow
+Graph asks the provider to revoke the grant first and answers
+`oauthRevocation: "revoked"` or `"not_revoked"`; on `not_revoked` it logs a
+warning with the reason, and an admin revokes the app's access in the
+provider's own settings. Slack's answer that a workspace already uninstalled
+the app counts as revoked.
+
+### Test runs and connection rules
+
+A Draft run, and a run of a workflow in Test mode, call every action. The
+Slack, PostHog, Twilio and Resend actions each carry a per-step test setting
+that defaults to logging the call and sending nothing. Slack and PostHog can
+be set to send for real, and Twilio and Resend to send to a test phone number
+or address. Clerk and Linear actions
+carry none, so a test run calls them for real.
+
+PostHog's `POSTHOG_HOST` must be an `https:` URL with no user name or
+password; a blank host means US Cloud. Resend's Send Email sends an
+idempotency key naming its node within the run, so two Send Email nodes in one
+run each send.
 
 ### Editor UI
 
