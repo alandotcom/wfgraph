@@ -173,6 +173,17 @@ Started outlet. Publish, a draft run and the editor refuse a reference to any
 other node of the graph, such as one on a parallel branch, because that node may
 or may not have run by then.
 
+**Condition Source**:
+The node a Condition rule's field comes from, stored in the field as
+`$node:<node id>.<path>`. The rule reads that node's output the way a Template
+Reference does, the Lifecycle Node's being the payload of the Arriving Event on
+the Condition's branch, so two nodes offering one path stay two values. Publish,
+a draft run and the editor refuse a Condition Source that is not upstream of
+the Condition or no longer in the graph. A rule stored without one reads its
+path from every finished output folded together in the graph's node order,
+where the later node wins; such a rule keeps running that way, and the editor
+warns where more than one node above the Condition offers its path.
+
 **Cancel Event**:
 An Event the Lifecycle Rules list as canceling runs. When one arrives and its
 Cancel Filter accepts it, every matching in-flight Execution jumps to the Canceled

@@ -343,3 +343,27 @@ untracked version, its tracked Entity binding for a tracking one. A Cancel names
 and claims a run matching either; a start keeps its own form on the new row and passes the
 other as `alsoInFlightAs`, which the in-flight probe compares beside it. A version's rules
 are read once per process, since a version never changes.
+
+## Amendment: A Condition rule names the node its field comes from
+
+Date: 2026-11-11
+
+The 2026-09-19 amendment gave Entity State its own CEL root so an Entity field
+could not collide with an upstream field of the same path. Upstream fields still
+collided with each other: the flat namespace folds every finished node's output in
+the graph's node order, so a `score` on the Start Event was replaced by a later
+scoring step's `score`, and no rule could test the earlier one.
+
+Node outputs now take the same treatment. A rule's field may name its source node
+as `$node:<node id>.<path>`, which compiles to a `node` root holding each named
+node's unwrapped output keyed by id, the entry node's being the payload of the
+Arriving Event on the Condition's branch. The editor and the build agent write
+every new rule from a step or the Lifecycle Node in that form, and Publish and a
+draft run refuse one naming a node that is not upstream of the Condition or no
+longer in the graph.
+
+A rule naming no node keeps reading the flat namespace. Published versions are
+immutable and runs are pinned to them, so the engine cannot rewrite those rules,
+and reading them any other way would change which branch a run in flight takes.
+The editor warns on such a rule where more than one node above the Condition
+offers its path, and picking the field again writes it naming its node.

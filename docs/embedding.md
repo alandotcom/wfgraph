@@ -721,9 +721,12 @@ can read, for up to 25 steps in one call. A reference every named step can read
 carries no `readableBy`, and a reference only some can read lists those steps
 there. A build of several steps therefore takes three calls: one `apply_edits`
 that adds and connects the steps, one `list_references`, and one `apply_edits`
-that writes the tokens. `set_condition` names a value by its path alone; when
-two steps above the Condition offer the same path, the Condition reads the
-later step's value, and the tool's summary names that step.
+that writes the tokens. Each `set_condition` rule takes a reference's `path` as
+`field` and its `sourceNodeId`, and is stored naming that step as
+`$node:<sourceNodeId>.<path>`, so the Condition reads that step's value even
+where another step above it offers the same path. A rule without
+`sourceNodeId` is written naming the one step that offers its path, and is
+refused, with the offering steps listed, when more than one does.
 
 `validate_workflow` answers `canSave` with the `saveIssues` that refuse a save,
 `canPublish` with the `publishBlockers` that refuse a Publish, and `warnings`.
