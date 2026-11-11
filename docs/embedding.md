@@ -307,13 +307,27 @@ An entered Group uses the same stored member positions on a phone as on desktop.
 
 ## Authentication and authorization
 
-The host owns operator sessions and policy. Authentication returns a request-scoped access
-policy or `null`; Workflow Graph neither receives nor stores a principal. Keep host identity,
-organization, and grant state in the callback's closure.
+The host owns operator sessions and policy. `auth` is a function of the request that returns
+a request-scoped access policy, or `null` or `undefined` when the request is not signed in;
+Workflow Graph neither receives nor stores a principal. Keep host identity, organization, and
+grant state in the function's closure.
 
 This is application capability authorization for the Workflow Graph surface. It is not
 row-level ownership or tenant isolation: a granted operation can act on every Workflow Graph
 record that operation addresses.
+
+```ts
+const wfgraph = await createWfGraphApp({
+  // persistence, encryption, extensions
+  auth: async (request) => {
+    const session = await readSession(request);
+    return session ? WfGraphRoles[session.role] : null;
+  },
+});
+```
+
+A function written in a module of its own takes its types from `defineWfGraphAuth`, which
+returns the function unchanged, or from a `WfGraphAuth` annotation:
 
 ```ts
 import { defineWfGraphAuth, WfGraphRoles } from "@wfgraph/core";
@@ -323,6 +337,9 @@ export const auth = defineWfGraphAuth(async (request) => {
   return session ? WfGraphRoles[session.role] : null;
 });
 ```
+
+`auth` also takes an object holding the function as `authenticate`. `createWfGraphApp`
+refuses any other value at startup, with a message naming the option.
 
 The `readSession` function represents your host's session adapter. A provider such as Clerk
 can supply the user ID, organization ID, and role through that adapter. Load any remote grant
@@ -344,8 +361,6 @@ protected server action such as `workflow.publish`; its permission is the broade
 
 Workflow Graph passes a clone to authentication, so reading its body cannot drain the request
 handled downstream. Authentication should normally use only session headers and cookies.
-The `defineWfGraphAuth` helper supplies contextual types when the callback lives outside the
-application options.
 
 An operation is a frozen `WfGraphOperation` value with two fields:
 
@@ -400,8 +415,9 @@ Each RPC and REST operation carries one descriptor from `WfGraphOperations`. The
 operation ID matches `WfGraphOperation.id`, and the `x-wfgraph-permission` extension contains
 `WfGraphOperation.permission`.
 
-Authentication and authorization failures have distinct status codes. If `authenticate`
-returns `null`, Workflow Graph returns `401 Unauthorized`. If `allows` returns `false`, the
+Authentication and authorization failures have distinct status codes. If authentication
+returns `null` or `undefined`, Workflow Graph returns `401 Unauthorized`. A lookup such as
+`WfGraphRoles[session.role]` that finds no role therefore answers 401. If `allows` returns `false`, the
 operation returns `403 Forbidden`. A thrown or rejected callback, malformed access policy, or
 non-boolean `allows` result is a host-system failure: Workflow Graph logs its details server-side
 and returns a sanitized `500 Internal Server Error`.
@@ -1166,7 +1182,7 @@ Cloudflare Workers and Hyperdrive.
 | ------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `basePath`                | No       | Path the host mounts Workflow Graph at (default `/`)                                                                                                                                                                   |
 | `publicUrl`               | No       | External HTTPS origin. Required for OAuth callback and client metadata URLs, and to copy a Connection webhook URL. Loopback development can use HTTP                                                                   |
-| `auth`                    | Yes      | Authentication callback returning a request-scoped access policy or `null`                                                                                                                                             |
+| `auth`                    | Yes      | A function of the request returning a request-scoped access policy, or `null` or `undefined` for a request that is not signed in. An object holding that function as `authenticate` also works                         |
 | `persistence`             | Yes      | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                                                                                      |
 | `entityResolverTimeoutMs` | No       | How long one call to a `defineEntity` resolver may take, in milliseconds, as a positive integer. Defaults to 10,000. A timeout is an operational failure. See Current Entity State in `docs/events.md`                 |
 | `encryption.key`          | Yes      | 64-character hex string. It encrypts the integration secrets                                                                                                                                                           |
@@ -1188,10 +1204,9 @@ Cloudflare Workers and Hyperdrive.
 Read these once:
 
 - **`auth` protects operator routes.** It is a required option, so a call without it fails
-  to type-check, and a JavaScript host that omits it answers `500` to every operator
-  request. Pass
-  an authentication callback that resolves the session your application already uses and
-  returns an access policy. Return `WfGraphAccess.all` for explicit unrestricted access, or
+  to type-check, and `createWfGraphApp` refuses a missing or malformed value at startup.
+  Pass a function that resolves the session your application already uses and returns an
+  access policy. Return `WfGraphAccess.all` for explicit unrestricted access, or
   pass `trustWfGraphUpstream()` when an upstream component enforces both checks. For the full
   contract, see [Authentication and authorization](#authentication-and-authorization).
 - **Three route classes define exposure.** Operator routes use `auth`. The

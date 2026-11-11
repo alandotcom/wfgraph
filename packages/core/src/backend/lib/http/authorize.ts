@@ -1,7 +1,9 @@
 /**
- * Resolves host authentication into one request-scoped access policy. Machine
- * routes remain outside this boundary because their own credentials prove their
- * sender.
+ * Resolves host authentication into one request-scoped access policy. A host
+ * passes `auth` as a function of the request or as an object holding that
+ * function as `authenticate`; either answers an access policy, or `null` or
+ * `undefined` for a request that is not signed in. Machine routes remain
+ * outside this boundary because their own credentials prove their sender.
  */
 
 import {
@@ -15,11 +17,24 @@ export type WfGraphAccess = Readonly<{
   allows: (operation: WfGraphOperation) => boolean | Promise<boolean>;
 }>;
 
-export type WfGraphAuth = Readonly<{
-  authenticate: (
-    request: Request
-  ) => WfGraphAccess | null | Promise<WfGraphAccess | null>;
-}>;
+/**
+ * Reads the operator's session from a request and answers their access
+ * policy. `null` and `undefined` both mean the request is not signed in, which
+ * Workflow Graph answers with a 401; a throw or rejection is answered with a
+ * 500.
+ */
+export type WfGraphAuthenticate = (
+  request: Request
+) =>
+  | WfGraphAccess
+  | null
+  | undefined
+  | Promise<WfGraphAccess | null | undefined>;
+
+/** The `auth` option: the authenticate function, or an object holding it. */
+export type WfGraphAuth =
+  | WfGraphAuthenticate
+  | Readonly<{ authenticate: WfGraphAuthenticate }>;
 
 type AuthFailureReporter = (failure: {
   stage: "authenticate" | "allows";
@@ -89,13 +104,14 @@ export const WfGraphRoles = Object.freeze({
 });
 
 /**
- * Gives an extracted authentication callback contextual request and return
- * types, then packages it for `createWfGraphApp` or `wfWorker`.
+ * Answers `authenticate` unchanged. It gives a callback written in a module of
+ * its own, away from the `auth` option, its request and return types without
+ * an annotation.
  */
 export function defineWfGraphAuth(
-  authenticate: WfGraphAuth["authenticate"]
-): WfGraphAuth {
-  return Object.freeze({ authenticate });
+  authenticate: WfGraphAuthenticate
+): WfGraphAuthenticate {
+  return authenticate;
 }
 
 /** Trust an upstream boundary to authenticate and authorize every request. */
@@ -103,7 +119,31 @@ export function trustWfGraphUpstream(): WfGraphAuth {
   return trustedUpstreamAuth;
 }
 
-const trustedUpstreamAuth = defineWfGraphAuth(() => allAccess);
+const trustedUpstreamAuth: WfGraphAuthenticate = () => allAccess;
+
+/**
+ * The authenticate function `auth` holds, or a throw naming the option when
+ * `auth` is neither form. `caller` names the function the host called, such
+ * as "createWfGraphApp"; absent, the message names the option alone.
+ */
+function readAuthenticate(
+  auth: unknown,
+  caller: string | undefined
+): WfGraphAuthenticate {
+  if (typeof auth === "function") {
+    return (request) => Reflect.apply(auth, undefined, [request]);
+  }
+  if (typeof auth === "object" && auth !== null) {
+    const authenticate: unknown = Reflect.get(auth, "authenticate");
+    if (typeof authenticate === "function") {
+      return (request) => Reflect.apply(authenticate, auth, [request]);
+    }
+  }
+  const option = caller === undefined ? "The auth option" : `${caller}'s auth`;
+  throw new TypeError(
+    `${option} must be a function of the request answering an access policy, or null when the request is not signed in, or an object holding that function as authenticate. Pass trustWfGraphUpstream() when an upstream component authenticates and authorizes every request.`
+  );
+}
 
 class HostAuthFailure extends Error {
   constructor(message: string, cause: unknown) {
@@ -127,7 +167,7 @@ function readAllows(access: unknown): ReadAllowsResult {
       return {
         ok: false,
         error: new TypeError(
-          "The host authenticate callback must return an access policy or null"
+          "The host authenticate callback must return an access policy, or null or undefined"
         ),
       };
     }
@@ -140,7 +180,7 @@ function readAllows(access: unknown): ReadAllowsResult {
       : {
           ok: false,
           error: new TypeError(
-            "The host authenticate callback must return an access policy or null"
+            "The host authenticate callback must return an access policy, or null or undefined"
           ),
         };
   } catch (error) {
@@ -148,18 +188,27 @@ function readAllows(access: unknown): ReadAllowsResult {
   }
 }
 
-export function resolveAuth(auth: WfGraphAuth): ResolvedAuth {
+/**
+ * Checks the host's `auth` option at once, throwing a message that names it
+ * when it is neither a function nor an object with an `authenticate`
+ * function, and answers the gate every operator route goes through.
+ */
+export function resolveAuth(
+  auth: WfGraphAuth,
+  caller?: string | undefined
+): ResolvedAuth {
+  const authenticate = readAuthenticate(auth, caller);
   return {
     authenticate: async (request, reportFailure = () => undefined) => {
       let access: unknown;
       try {
-        access = await auth.authenticate(request.clone());
+        access = await authenticate(request.clone());
       } catch (error) {
         reportFailure({ stage: "authenticate", error });
         throw new HostAuthFailure("Host authentication failed", error);
       }
 
-      if (access === null) return null;
+      if (access === null || access === undefined) return null;
 
       const policy = readAllows(access);
       if (!policy.ok) {

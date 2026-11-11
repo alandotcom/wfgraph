@@ -138,7 +138,6 @@ import { clientBundle } from "@wfgraph/client";
 import {
   createRequestListener,
   createWfGraphApp,
-  defineWfGraphAuth,
   defineAction,
   defineEvent,
   WfGraphRoles,
@@ -176,11 +175,6 @@ const cancelAppointment = defineAction({
   },
 });
 
-const auth = defineWfGraphAuth(async (request) => {
-  const session = await readSession(request);
-  return session ? WfGraphRoles[session.role] : null;
-});
-
 const wfgraph = await createWfGraphApp({
   persistence: wfPostgres({
     url: process.env.DATABASE_URL!,
@@ -188,7 +182,11 @@ const wfgraph = await createWfGraphApp({
   }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
   agent: { apiKey: process.env.OPENAI_API_KEY },
-  auth,
+  // Answer the session's access policy, or null when nobody is signed in.
+  auth: async (request) => {
+    const session = await readSession(request);
+    return session ? WfGraphRoles[session.role] : null;
+  },
   client: clientBundle,
   extensions: {
     events: [appointmentCreated],

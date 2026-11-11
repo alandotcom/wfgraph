@@ -18,15 +18,9 @@ import { createServer } from "node:http";
 import {
   createRequestListener,
   createWfGraphApp,
-  defineWfGraphAuth,
   WfGraphRoles,
 } from "@wfgraph/core";
 import { wfPostgres } from "@wfgraph/core/postgres";
-
-const auth = defineWfGraphAuth(async (request) => {
-  const session = await readSession(request);
-  return session ? WfGraphRoles[session.role] : null;
-});
 
 const wfgraph = await createWfGraphApp({
   persistence: wfPostgres({
@@ -34,7 +28,11 @@ const wfgraph = await createWfGraphApp({
     migrations: { runOnStartup: true },
   }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
-  auth,
+  // Answer the session's access policy, or null when nobody is signed in.
+  auth: async (request) => {
+    const session = await readSession(request);
+    return session ? WfGraphRoles[session.role] : null;
+  },
   extensions: { events: [], actions: [], integrations: [] },
 });
 

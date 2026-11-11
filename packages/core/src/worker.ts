@@ -20,6 +20,7 @@ export {
   WfGraphAccess,
   WfGraphRoles,
   type WfGraphAuth,
+  type WfGraphAuthenticate,
 } from "#src/backend/lib/http/authorize";
 export {
   WfGraphOperationIds,

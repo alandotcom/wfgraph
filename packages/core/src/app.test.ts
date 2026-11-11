@@ -20,6 +20,7 @@ import {
   defineEvent,
   trustWfGraphUpstream,
   WfGraphAccess,
+  type WfGraphAuth,
   WfGraphOperationIds,
   WfGraphOperations,
 } from "#src/index";
@@ -450,6 +451,35 @@ describe("createWfGraphApp with host authentication", () => {
     for (const path of ["/wfgraph/", "/wfgraph/workflows/abc"]) {
       expect((await get(app, path)).status).toBe(401);
     }
+  });
+
+  // A bare function is the whole option, and an undefined answer from it, such
+  // as a role lookup that found nothing, is a 401 rather than a 500.
+  it("takes a bare authenticate function and answers 401 for undefined", async () => {
+    await using app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      basePath: "/wfgraph",
+      auth: (request) =>
+        request.headers.get("x-role") === "admin"
+          ? WfGraphAccess.all
+          : undefined,
+    });
+    expect((await get(app, "/wfgraph/api/extensions")).status).toBe(401);
+    const signedIn = await app.fetch(
+      new Request("http://localhost/wfgraph/api/extensions", {
+        headers: { "x-role": "admin" },
+      })
+    );
+    expect(signedIn.status).toBe(200);
+  });
+
+  it("refuses an auth option that cannot authenticate before it opens anything", async () => {
+    await expect(
+      createWfGraphApp({
+        ...BASE_OPTIONS,
+        auth: undefined as unknown as WfGraphAuth,
+      })
+    ).rejects.toThrow("createWfGraphApp's auth must be a function");
   });
 
   it("lets everything through when the host says yes", async () => {

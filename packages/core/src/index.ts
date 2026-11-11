@@ -61,6 +61,7 @@ export {
   trustWfGraphUpstream,
   WfGraphAccess,
   type WfGraphAuth,
+  type WfGraphAuthenticate,
   WfGraphRoles,
   type WfGraphClientBundle,
   WfGraphEventRefused,

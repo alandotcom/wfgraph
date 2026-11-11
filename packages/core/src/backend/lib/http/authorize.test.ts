@@ -12,6 +12,7 @@ import {
   WfGraphAccess,
   WfGraphRoles,
   type WfGraphAuth,
+  type WfGraphAuthenticate,
 } from "#src/backend/lib/http/authorize";
 
 const request = new Request("http://localhost/api/extensions");
@@ -74,7 +75,7 @@ describe("resolveAuth", () => {
         },
       };
     });
-    expectTypeOf(auth).toEqualTypeOf<WfGraphAuth>();
+    expectTypeOf(auth).toEqualTypeOf<WfGraphAuthenticate>();
 
     const access = await resolveAuth(auth).authenticate(request);
 
@@ -99,12 +100,39 @@ describe("resolveAuth", () => {
     await expect(original.text()).resolves.toBe("request body");
   });
 
-  it("returns null only when the host explicitly returns null", async () => {
-    const access = await resolveAuth(
-      defineWfGraphAuth(() => null)
-    ).authenticate(request);
+  // `WfGraphRoles[session.role]` answers undefined for a role the table does
+  // not hold, and the host meant "not signed in" there, not a broken system.
+  it("treats null and undefined alike as a request that is not signed in", async () => {
+    for (const answer of [null, undefined]) {
+      const access = await resolveAuth(() => answer).authenticate(request);
+      expect(access).toBeNull();
+    }
+  });
 
-    expect(access).toBeNull();
+  it("takes the authenticate function bare or held by an object", async () => {
+    const bare: WfGraphAuth = () => WfGraphRoles.viewer;
+    const held: WfGraphAuth = {
+      authenticate: () => WfGraphRoles.editor,
+    };
+
+    const viewer = await resolveAuth(bare).authenticate(request);
+    const editor = await resolveAuth(held).authenticate(request);
+
+    expect(await viewer?.allows(WfGraphOperations.workflowCreate)).toBe(false);
+    expect(await editor?.allows(WfGraphOperations.workflowCreate)).toBe(true);
+  });
+
+  // A host on plain JavaScript can pass anything, and a value that cannot
+  // authenticate must stop startup rather than answer 500 to every request.
+  it("refuses an auth that is neither form, naming the option", () => {
+    for (const auth of [undefined, null, "secret", {}, { authenticate: 1 }]) {
+      expect(() =>
+        resolveAuth(auth as unknown as WfGraphAuth, "createWfGraphApp")
+      ).toThrow("createWfGraphApp's auth must be a function of the request");
+    }
+    expect(() => resolveAuth(undefined as unknown as WfGraphAuth)).toThrow(
+      "The auth option must be a function of the request"
+    );
   });
 
   it("makes unrestricted upstream trust explicit without a principal", async () => {
@@ -125,9 +153,7 @@ describe("resolveAuth", () => {
       })
     );
     const malformed = resolveAuth(
-      defineWfGraphAuth(
-        (() => undefined) as unknown as WfGraphAuth["authenticate"]
-      )
+      defineWfGraphAuth((() => ({})) as unknown as WfGraphAuthenticate)
     );
 
     await expect(

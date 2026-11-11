@@ -11,8 +11,8 @@ import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, setCookie } from "hono/cookie";
 import {
-  defineWfGraphAuth,
   type WfGraphAccess,
+  type WfGraphAuth,
   WfGraphRoles,
 } from "@wfgraph/core";
 import { DemoLoginPage } from "./demo-login-page";
@@ -213,13 +213,15 @@ export function createDemoAuth(options: DemoAuthOptions) {
     return c.redirect("/login", 303);
   });
 
-  const auth = defineWfGraphAuth((request) => {
+  // A request with no session answers undefined, which Workflow Graph reads
+  // as not signed in.
+  const auth: WfGraphAuth = (request) => {
     if (demoAutoLoginAccess) return demoAutoLoginAccess;
     if (!options.isProduction && new URL(request.url).pathname === "/api/mcp") {
       return WfGraphRoles.editor;
     }
-    return sessionForRequest(request)?.access ?? null;
-  });
+    return sessionForRequest(request)?.access;
+  };
 
   const createFetch =
     (wfgraphFetch: (request: Request) => Promise<Response>) =>

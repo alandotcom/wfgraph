@@ -48,6 +48,7 @@ export {
   WfGraphAccess,
   WfGraphRoles,
   type WfGraphAuth,
+  type WfGraphAuthenticate,
 } from "#src/backend/lib/http/authorize";
 export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
@@ -75,9 +76,12 @@ export type WfGraphAppOptions = {
   /** Public origin used in provider callback URLs and client metadata. */
   publicUrl?: string | undefined;
   /**
-   * Authenticates operators and returns their request-scoped access policy.
-   * Use `trustWfGraphUpstream()` only when an upstream boundary authenticates
-   * and authorizes every operator request.
+   * Authenticates operators and returns their request-scoped access policy:
+   * a function of the request, or an object holding that function as
+   * `authenticate`. It answers `null` or `undefined` for a request that is not
+   * signed in. `createWfGraphApp` refuses any other value at startup. Use
+   * `trustWfGraphUpstream()` only when an upstream boundary authenticates and
+   * authorizes every operator request.
    *
    * Required everywhere rather than only in production, because the check that
    * would tell the two apart reads an environment variable that says
@@ -194,7 +198,7 @@ export async function createWfGraphApp(
 ): Promise<WfGraphApp> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);
-  const auth = resolveAuth(options.auth);
+  const auth = resolveAuth(options.auth, "createWfGraphApp");
 
   assertValidEncryptionKey(options.encryption.key, "createWfGraphApp");
   assertValidEventsKey(options.events?.key, "createWfGraphApp");
