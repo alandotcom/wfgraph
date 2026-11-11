@@ -163,7 +163,6 @@ test("two predecessors admit and execute their join only once", async () => {
     workflowVersionId: "version",
     runMode: "live",
     startPayload: {},
-    startEventName: null,
     catalogFingerprint: "",
     entityEligibility: {
       entityType: "subject",

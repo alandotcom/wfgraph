@@ -85,7 +85,9 @@ export function createWaitSplitGraph() {
           config: { actionType: BUILT_IN_ACTION_IDS.eventSplit },
         },
       },
-      createConditionNode("on_settled", true),
+      // True only where the node reads the settled payload through the entry
+      // node, which is what its branch's Arriving Event hands it.
+      createConditionNode("on_settled", 'payload.amount == "40"'),
       createConditionNode("on_failed", true),
       createConditionNode("on_created", true),
     ],
@@ -120,9 +122,10 @@ export function createWaitSplitGraph() {
 }
 
 export function defineWaitSplitReplayCases(executor: ReplayExecutor): void {
-  // The pass that resumes the Wait overwrites the entry payload in its own
-  // traversal, so the run's result carries the Wait's Event.
-  it("overwrites the entry payload so the run's result carries the Wait's Event", async () => {
+  // The branch below the Wait carries the Event that woke it, so a node there
+  // reads that Event's payload where it addresses the entry node, while the
+  // entry node's own output stays the Start Event's.
+  it("hands the branch below the Wait the payload of the Event that woke it", async () => {
     const store = createRecordingWorkflowStore();
     const input = {
       graph: createWaitSplitGraph(),
@@ -152,6 +155,12 @@ export function defineWaitSplitReplayCases(executor: ReplayExecutor): void {
       success: true,
       data: { event: SETTLED },
     });
-    expect(result.outputs.lifecycle_1?.data).toEqual({ amount: "40" });
+    expect(executionData(result.results.on_settled)).toEqual({
+      success: true,
+      data: { condition: true },
+    });
+    expect(result.outputs.lifecycle_1?.data).toEqual({
+      appointmentId: "appt_1",
+    });
   });
 }

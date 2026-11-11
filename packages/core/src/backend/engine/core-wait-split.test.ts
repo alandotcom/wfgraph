@@ -110,9 +110,12 @@ describe("executeWorkflow Event Split after Wait", () => {
       success: true,
       data: { event: SETTLED },
     });
-    // The entry node's output is the payload that woke the Wait, matching the
-    // Events the editor now offers below it.
-    expect(result.outputs.lifecycle_1?.data).toEqual({ amount: "40" });
+    // The node below the Wait reads the payload that woke it through the
+    // entry node, matching the Events the editor offers below the Wait.
+    expect(executionData(result.results.on_settled)).toEqual({
+      success: true,
+      data: { condition: true },
+    });
   });
 
   it("still splits on the Start Event after a delay Wait", async () => {
@@ -280,7 +283,6 @@ describe("executeWorkflow Event Split after Wait", () => {
       success: true,
       data: { event: null },
     });
-    expect(result.outputs.lifecycle_1?.data).toEqual({});
   });
 
   describe("under the replay driver", () => {

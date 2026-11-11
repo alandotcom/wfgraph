@@ -176,7 +176,10 @@ function prepareRun(
   } = input;
   const { nodes, edges } = input.parsedGraph ?? toWorkflowGraphData(graph);
 
-  const traversal = new Traversal(nodes, edges);
+  const traversal = new Traversal(nodes, edges, {
+    eventName: startEventName,
+    payload: startPayload,
+  });
   const lifecycleNodes = traversal.lifecycleNodes;
   const lifecycleRules = readLifecycleRules(lifecycleNodes[0]?.data.config);
   const eligibility = lifecycleRules?.entityEligibility;
@@ -215,7 +218,6 @@ function prepareRun(
     workflowId,
     runMode,
     startPayload,
-    startEventName,
     catalogFingerprint: input.catalogFingerprint,
     workflowVersionId: input.workflowVersionId,
     trackedEntity,

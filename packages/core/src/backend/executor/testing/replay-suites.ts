@@ -1,5 +1,5 @@
 /**
- * The eight replay suites' cases, with every drive run through one persistence
+ * The nine replay suites' cases, with every drive run through one persistence
  * backend: each pass is claimed with `claimDue`, replayed over the memo rows,
  * woken through `wakePark`, and released with `releasePass`, all at the
  * harness's virtual clock.
@@ -11,6 +11,7 @@
  */
 
 import { afterAll, describe, expect, it } from "vitest";
+import { defineArrivingEventReplayCases } from "#src/backend/engine/core-arriving-event.replay-cases";
 import { defineCancelPartialProgressReplayCases } from "#src/backend/engine/core-cancel-partial-progress.replay-cases";
 import { defineCancelReplayCases } from "#src/backend/engine/core-cancel.replay-cases";
 import { defineMigrationSnapshotReplayCases } from "#src/backend/engine/core-migration-snapshot.replay-cases";
@@ -26,6 +27,10 @@ import type { PersistenceConformanceHarness } from "#src/backend/persistence/per
 
 /** Each suite's cases, by the path of the suite file under `backend/`. */
 const SUITES: ReadonlyArray<{ suite: string; cases: ReplayCases }> = [
+  {
+    suite: "engine/core-arriving-event.test.ts",
+    cases: defineArrivingEventReplayCases,
+  },
   { suite: "engine/core-cancel.test.ts", cases: defineCancelReplayCases },
   {
     suite: "engine/core-cancel-partial-progress.test.ts",

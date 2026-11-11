@@ -110,7 +110,7 @@ describe("Traversal.outputsInGraphOrder", () => {
           );
         }
 
-        assert.deepStrictEqual(traversal.outputsInGraphOrder, [
+        assert.deepStrictEqual(traversal.outputsInGraphOrder("third"), [
           { label: "first", data: { from: "first" } },
           { label: "third", data: { from: "third" } },
         ]);

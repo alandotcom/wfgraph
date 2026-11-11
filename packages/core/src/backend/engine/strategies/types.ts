@@ -56,10 +56,11 @@ export type SettledNodeWork = {
   /** A durable child reported execution-wide Exit before entering this node. */
   executionExited?: boolean | undefined;
   /**
-   * How this node changes the Arriving Event. Absent means leave it. `null`
-   * means the run names none below this node (a timeout that continues past
-   * an event-mode Wait). A named Event replaces the one the run was on, and
-   * its payload overwrites the entry node's output the way a Cancel Event does.
+   * How this node changes the Arriving Event its branch carries below it.
+   * Absent means leave it. `null` means the branch names none below this node
+   * (a timeout that continues past an event-mode Wait). A named Event replaces
+   * the branch's, and its payload is what the nodes below read where they
+   * address the entry node.
    */
   arrivingEvent?: { eventName: string; payload: JsonObject } | null | undefined;
 };

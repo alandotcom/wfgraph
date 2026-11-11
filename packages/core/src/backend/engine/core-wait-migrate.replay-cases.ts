@@ -9,7 +9,7 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { executeTestWorkflow as executeWorkflow } from "#src/backend/engine/test-execution";
 import type { WaitWake } from "#src/backend/engine/runtime";
-import { executionError } from "#src/backend/engine/contracts";
+import { executionData, executionError } from "#src/backend/engine/contracts";
 import {
   createRecordingWorkflowStore,
   type RecordingWorkflowStore,
@@ -47,6 +47,8 @@ function runMigratedWait(options: {
   startPayload?: JsonObject | undefined;
   /** An execution-wide claim that lands once the run has parked. */
   claimOnPark?: ExecutionTerminationState | undefined;
+  /** The condition of the node below the Wait. Left out, `true`. */
+  afterWaitCondition?: string | undefined;
 }) {
   const afterMigration = options.store.waitState;
   options.store.waitState = null;
@@ -58,7 +60,10 @@ function runMigratedWait(options: {
 
       return executeWorkflow(
         {
-          graph: createWaitGraph(migrated ? options.migrated : options.parked),
+          graph: createWaitGraph(
+            migrated ? options.migrated : options.parked,
+            options.afterWaitCondition
+          ),
           executionId: "exec_wait",
           workflowId: "workflow_wait",
           workflowVersionId,
@@ -469,6 +474,9 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
       },
       startEventName: "app/appointment.created",
       startPayload: { id: "appt_1" },
+      // The node below the Wait reads the entry node's `id` as its branch's
+      // Arriving Event has it.
+      afterWaitCondition: 'payload.id == "pay_1"',
     });
 
     expect(store.callsOf("reparkWaitState")[0]?.waitType).toBe("delay");
@@ -476,7 +484,10 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
       waitType: "delay",
       hops: 1,
     });
-    expect(run.value.outputs.lifecycle_1?.data).toEqual({ id: "pay_1" });
+    expect(executionData(run.value.results.after_wait)).toEqual({
+      success: true,
+      data: { condition: true },
+    });
     expect(store.callsOf("markWaitStateStatus")).toEqual([
       { waitStateId: "wait_state_1", status: "resumed" },
     ]);

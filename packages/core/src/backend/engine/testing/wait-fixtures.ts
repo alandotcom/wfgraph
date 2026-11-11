@@ -67,7 +67,14 @@ export function createWaitNode(
  * A node below the wait, so whether the wait halted its branch is a fact about
  * what ran rather than a flag on the wait's own result.
  */
-export function createAfterWaitNode(): WorkflowNode {
+/**
+ * The Condition below the Wait. Its condition is `true` unless a case asks a
+ * question of what the node reads, such as the payload of the Event that woke
+ * the Wait.
+ */
+export function createAfterWaitNode(
+  condition: boolean | string = true
+): WorkflowNode {
   return {
     id: "after_wait",
     type: "action",
@@ -75,17 +82,20 @@ export function createAfterWaitNode(): WorkflowNode {
     data: {
       label: "After Wait",
       type: "action",
-      config: { actionType: "Condition", condition: true },
+      config: { actionType: "Condition", condition },
     },
   };
 }
 
-export function createWaitGraph(config: Record<string, unknown>) {
+export function createWaitGraph(
+  config: Record<string, unknown>,
+  afterWaitCondition: boolean | string = true
+) {
   return createSerializedWorkflowGraph({
     nodes: [
       createLifecycleNode("lifecycle_1"),
       createWaitNode(WAIT_NODE_ID, config),
-      createAfterWaitNode(),
+      createAfterWaitNode(afterWaitCondition),
     ],
     edges: [
       {

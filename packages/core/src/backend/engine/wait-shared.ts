@@ -105,9 +105,9 @@ export type SettledWaitOutcome = {
   result: ExecutionResult;
   haltBranch: boolean;
   /**
-   * How this Wait changes the Arriving Event. Absent means leave it. `null`
-   * means the run names none below this node (a timeout that continues). A
-   * named Event replaces the one the run was on.
+   * How this Wait changes the Arriving Event its branch carries below it.
+   * Absent means leave it. `null` means the branch names none below this node
+   * (a timeout that continues). A named Event replaces the branch's.
    */
   arrivingEvent?: { eventName: string; payload: JsonObject } | null | undefined;
 };

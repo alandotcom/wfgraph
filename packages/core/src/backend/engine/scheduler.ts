@@ -47,7 +47,7 @@ import {
 } from "#src/backend/engine/contracts";
 import type { WorkflowExecutionRuntime } from "#src/backend/engine/runtime";
 import type { PendingCancel, WorkflowStore } from "#src/backend/engine/store";
-import type { Traversal } from "#src/backend/engine/traversal";
+import { NO_ARRIVAL, type Traversal } from "#src/backend/engine/traversal";
 import {
   resolveStrategy,
   routeAfterStrategy,
@@ -118,8 +118,6 @@ export type NodeSchedulerInput = {
   runMode: "live" | "test";
   /** What the entry node hands on: see `WorkflowExecutionInput.startPayload`. */
   startPayload: JsonObject;
-  /** The Event that started the run: see `WorkflowExecutionInput.startEventName`. */
-  startEventName: string | null;
   /**
    * Catalog fingerprint the published version pinned. Compared against the live
    * catalog when an action resolves.
@@ -216,17 +214,8 @@ export class NodeScheduler {
   /** Wait nodes the drain has dealt with, which are no longer held back. */
   private readonly drainedWaits = new Set<string>();
 
-  /**
-   * The Event the nodes running now arrived on, before a Cancel Event takes the
-   * Canceled outlet. Starts as the Start Event, becomes the Event that woke the
-   * most recent event-mode Wait, and is cleared when that Wait times out and
-   * continues.
-   */
-  private arrivingEventName: string | null;
-
   constructor(input: NodeSchedulerInput) {
     this.input = input;
-    this.arrivingEventName = input.startEventName;
   }
 
   /**
@@ -240,16 +229,15 @@ export class NodeScheduler {
   }
 
   /**
-   * The Event the nodes running now arrived on: the Cancel Event once the run
-   * has taken the Canceled outlet, the Event that woke the most recent
-   * event-mode Wait below that, and the Start Event before either. A timeout
-   * that continues past an event-mode Wait, or a run nothing named an Event
-   * for, answers null, which a rule compares false against.
+   * The Event a node arrived on, which its branch carries
+   * (`Traversal.arrivalOf`): the Cancel Event below the Canceled outlet, the
+   * Event that woke the nearest event-mode Wait above it, and the Start Event
+   * where neither applies. A timeout that continues past an event-mode Wait,
+   * or a run nothing named an Event for, answers null, which a rule compares
+   * false against.
    */
-  private currentEventName(): string | null {
-    return (
-      this.input.cancelBoundary.canceledByEvent() ?? this.arrivingEventName
-    );
+  private eventNameOf(nodeId: string): string | null {
+    return this.input.traversal.arrivalOf(nodeId).eventName;
   }
 
   /**
@@ -328,7 +316,7 @@ export class NodeScheduler {
               entityId: entity.entityId,
               nodeId: node.id,
               condition: eligibility?.condition,
-              eventName: this.currentEventName(),
+              eventName: this.eventNameOf(node.id),
               paths,
             })
           )
@@ -389,29 +377,6 @@ export class NodeScheduler {
           : ({ admitted: false } as const);
       }.bind(this)
     );
-  }
-
-  /**
-   * Applies a Wait's Arriving Event change: a named Event replaces the one the
-   * run was on, and `null` clears it so an Event Split below a timed-out Wait
-   * does not take a Start Event outlet.
-   *
-   * The entry node's output becomes that payload, matching a Cancel Event. A
-   * clear writes an empty payload, so Start Event fields are not what a node
-   * below the Wait addresses.
-   */
-  private applyArrival(
-    arrivingEvent: { eventName: string; payload: JsonObject } | null
-  ) {
-    this.arrivingEventName = arrivingEvent?.eventName ?? null;
-    const payload = arrivingEvent?.payload ?? {};
-    const { traversal } = this.input;
-    for (const lifecycleNode of traversal.lifecycleNodes) {
-      traversal.setOutput(lifecycleNode.id, {
-        label: lifecycleNode.data.label || lifecycleNode.id,
-        data: payload,
-      });
-    }
   }
 
   // The persisted graph is validated as a DAG before execution, so we avoid
@@ -578,7 +543,7 @@ export class NodeScheduler {
           runMode,
           startPayload,
           entityContext,
-          eventName: this.currentEventName(),
+          eventName: this.eventNameOf(node.id),
           catalogFingerprint: this.input.catalogFingerprint,
           workflowVersionId: this.input.workflowVersionId,
           side: this.sideOf(node.id),
@@ -683,10 +648,6 @@ export class NodeScheduler {
           data: outputData,
         });
 
-        if (outcome.arrivingEvent !== undefined) {
-          this.applyArrival(outcome.arrivingEvent);
-        }
-
         const failure = executionError(result);
         yield* logNode(startedAt, result.success ? "success" : "failed", {
           // oxlint-disable-next-line wfgraph/no-conditional-spread -- `haltBranch` is a boolean, so `omitUndefined` would keep `halt: false` on every ordinary node.
@@ -718,7 +679,16 @@ export class NodeScheduler {
           return;
         }
 
-        const nextNodes = traversal.markReadyForDownstream(nodeId, route);
+        // A Wait that names an Arriving Event hands it to the branch below
+        // it, and one that names none hands on `NO_ARRIVAL`. Any other node
+        // hands on the arrival its own branch carries.
+        const nextNodes = traversal.markReadyForDownstream(
+          nodeId,
+          route,
+          outcome.arrivingEvent === undefined
+            ? traversal.arrivalOf(nodeId)
+            : (outcome.arrivingEvent ?? NO_ARRIVAL)
+        );
         yield* this.runAll(nextNodes);
       }.bind(this)
     );

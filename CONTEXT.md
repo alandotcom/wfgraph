@@ -188,9 +188,13 @@ against literals. The filter runs before the workflow selects an Entity binding
 or requires an Entity Value.
 
 **Arriving Event**:
-The Event that put a run where it is: the Start Event it began on, the Cancel
-Event once it has taken the Canceled outlet, and the Event that woke an
-event-mode Wait for everything below that Wait. A timeout that continues
+The Event that put a branch of a run where it is: the Start Event it began on,
+the Cancel Event below the Canceled outlet, and the Event that woke an
+event-mode Wait for everything below that Wait. Each branch carries its own,
+so a node reads the arrival of the nearest Wait above it on its own path, and
+addresses that Event's payload where it addresses the entry node. A node
+joining branches that carry different arrivals takes the one on its incoming
+edge listed first in the graph. A timeout that continues
 below an event-mode Wait names none, so an Event Split there stops rather
 than taking a Start Event outlet. A manual run names one of the Start Events
 to stand in for, or none at all, and one naming none reaches an Event Split

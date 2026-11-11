@@ -66,13 +66,6 @@ export class CancelBoundary {
    */
   private entered = false;
 
-  /**
-   * The Cancel Event that claimed this run, which the Canceled branch reads as
-   * the Event it arrived on. Rebuilt on a replay along with `entered`, because
-   * the boundary read is memoized and hands back the same claim.
-   */
-  private cancelEventName: string | null = null;
-
   constructor(input: CancelBoundaryInput) {
     this.input = input;
 
@@ -102,14 +95,6 @@ export class CancelBoundary {
    */
   isOnCanceledBranch(nodeId: string): boolean {
     return this.canceledBranchNodeIds.has(nodeId);
-  }
-
-  /**
-   * The Cancel Event this run is now on, or null while it is still on the
-   * Started branch and the Start Event is the answer.
-   */
-  canceledByEvent(): string | null {
-    return this.cancelEventName;
   }
 
   /**
@@ -154,28 +139,6 @@ export class CancelBoundary {
   }
 
   /**
-   * Records the claim this run is now on and writes its payload over the entry
-   * nodes' outputs.
-   *
-   * A node below the Canceled outlet addresses the entry node in its templates,
-   * and on that side the entry node's output is the payload the canceling Event
-   * carried. The stored output the entry node's row holds is the Start Event's
-   * payload, recorded before the claim landed.
-   */
-  private adoptClaim(claim: PendingCancel): void {
-    this.entered = true;
-    this.cancelEventName = claim.eventName;
-
-    const { lifecycleNodes, traversal } = this.input;
-    for (const lifecycleNode of lifecycleNodes) {
-      traversal.setOutput(lifecycleNode.id, {
-        label: lifecycleNode.data.label || lifecycleNode.id,
-        data: claim.payload,
-      });
-    }
-  }
-
-  /**
    * Takes the Canceled outlet for a Cancel claim the caller has already read,
    * and answers with the branch's first nodes.
    *
@@ -192,6 +155,11 @@ export class CancelBoundary {
    * Routes the run into the Lifecycle Node's Canceled outlet, and answers with
    * the branch's first nodes.
    *
+   * The outlet's edges carry the Cancel Event as the branch's Arriving Event,
+   * so a node below the outlet reads the canceling Event's payload where it
+   * addresses the entry node. The entry node's own stored output stays the
+   * Start Event's payload, recorded before the claim landed.
+   *
    * The branch runs inside the same Execution, so every node that already
    * landed keeps its output. An outlet with no edge leaves nothing to schedule,
    * and the run ends on the status alone.
@@ -199,7 +167,7 @@ export class CancelBoundary {
   private enter(pending: PendingCancel): Effect.Effect<readonly string[]> {
     return Effect.gen(
       function* (this: CancelBoundary) {
-        this.adoptClaim(pending);
+        this.entered = true;
 
         const { lifecycleNodes, traversal } = this.input;
 
@@ -208,10 +176,11 @@ export class CancelBoundary {
           // The entry node may not have scheduled anything yet, and the branch's
           // first node waits on it the way any node waits on its source.
           nextNodes.push(
-            ...traversal.markReadyForDownstream(lifecycleNode.id, {
-              kind: "outlet",
-              outlet: LIFECYCLE_CANCELED_HANDLE,
-            })
+            ...traversal.markReadyForDownstream(
+              lifecycleNode.id,
+              { kind: "outlet", outlet: LIFECYCLE_CANCELED_HANDLE },
+              { eventName: pending.eventName, payload: pending.payload ?? {} }
+            )
           );
         }
 

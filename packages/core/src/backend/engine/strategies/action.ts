@@ -117,10 +117,13 @@ function runAction(context: NodeWorkContext) {
     // a step's config decode.
     const { condition: originalCondition, ...configWithoutCondition } = config;
 
+    // The outputs as this node reads them, with its branch's Arriving Event in
+    // place of the entry node's output.
+    const outputs = traversal.outputsFor(node.id);
     const resolutionRules = actions.metadataFor(actionType);
     const processedConfig = processTemplates(
       configWithoutCondition,
-      traversal.outputs,
+      outputs,
       new Set(resolutionRules?.literalConfigKeys ?? []),
       new Map(resolutionRules?.templateJsonConfigShapes ?? []),
       entityContext
@@ -148,7 +151,7 @@ function runAction(context: NodeWorkContext) {
         workflowVersionId,
         side: context.side,
         resolveTemplates: (value) =>
-          resolveTemplateString(value, traversal.outputs, entityContext),
+          resolveTemplateString(value, outputs, entityContext),
       });
 
       if (waitOutcome.status === "parked") {
@@ -178,7 +181,7 @@ function runAction(context: NodeWorkContext) {
     const actionOutcome = yield* executeActionStep({
       actionType,
       config: processedConfig,
-      outputsInGraphOrder: traversal.outputsInGraphOrder,
+      outputsInGraphOrder: traversal.outputsInGraphOrder(node.id),
       context: stepContext,
       runtime,
       store,

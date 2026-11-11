@@ -22,6 +22,7 @@ import type {
 } from "@wfgraph/shared/graph/types";
 import { eventSplitOutletEvent } from "@wfgraph/shared/lifecycle/event-split";
 import type { LifecycleOutlet } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import {
   type ExecutionResult,
   executionData,
@@ -65,6 +66,16 @@ export type TraversalRoute =
   | { kind: "event"; eventName: string | null };
 
 /**
+ * The Arriving Event one branch carries: the Event that put the branch where it
+ * is, or null where nothing named one, and the payload the entry node reads as
+ * on that branch.
+ */
+export type Arrival = { eventName: string | null; payload: JsonObject };
+
+/** The arrival below a Wait that timed out and continued, which names none. */
+export const NO_ARRIVAL: Arrival = { eventName: null, payload: {} };
+
+/**
  * Identifies an edge by its endpoints and source outlet, so a released edge is
  * still found when a Migration recreates it under another id.
  */
@@ -83,10 +94,22 @@ export class Traversal {
   private readonly completedNodes = new Set<string>();
   private readonly inProgressNodes = new Set<string>();
   private readonly parkedNodes = new Set<string>();
-  private readonly downstreamReadyEdges = new Set<string>();
+  /**
+   * Every released edge, by `releasedEdgeKey`, with the Arriving Event the
+   * branch carries along it.
+   */
+  private readonly downstreamReadyEdges = new Map<string, Arrival>();
+  /** What the entry nodes hand on: the Start Event and its payload. */
+  private readonly startArrival: Arrival;
+  private readonly entryNodes: readonly WorkflowNode[];
 
-  constructor(nodes: readonly WorkflowNode[], edges: readonly WorkflowEdge[]) {
+  constructor(
+    nodes: readonly WorkflowNode[],
+    edges: readonly WorkflowEdge[],
+    startArrival: Arrival = NO_ARRIVAL
+  ) {
     this.nodes = nodes;
+    this.startArrival = startArrival;
     this.nodeMap = new Map(nodes.map((node) => [node.id, node]));
 
     for (const edge of edges) {
@@ -98,27 +121,73 @@ export class Traversal {
       targetEdges.push(edge);
       this.edgesByTarget.set(edge.target, targetEdges);
     }
+
+    this.entryNodes = nodes.filter(
+      (node) =>
+        isLifecycleNode(node) && this.predecessorIds(node.id).length === 0
+    );
   }
 
   /**
    * Every finished node's output, which templates and CEL conditions read.
    *
-   * Read-only to everyone outside, so `setOutput` and `markCompleted` stay the
-   * only way a node's output is written and the run's state has one author.
+   * Read-only to everyone outside, so `markCompleted` stays the only way a
+   * node's output is written and the run's state has one author. A node reads
+   * them through `outputsFor`, which puts its branch's arrival in place of the
+   * entry node's output.
    */
   get outputs(): Readonly<NodeOutputs> {
     return this.nodeOutputs;
   }
 
   /**
-   * Every finished node's output in the graph's node order. A pass and its
-   * replay finish nodes in different orders, and this order is the same for
-   * both.
+   * The Arriving Event of the branch a node sits on: the one carried along its
+   * incoming edges, and the Start Event for an entry node. A node joining
+   * branches that carry different arrivals takes the one on its incoming edge
+   * listed first in the graph's edges, so a pass and its replay agree.
    */
-  get outputsInGraphOrder(): NodeOutputs[string][] {
+  arrivalOf(nodeId: string): Arrival {
+    for (const edge of this.edgesByTarget.get(nodeId) ?? []) {
+      const arrival = this.downstreamReadyEdges.get(releasedEdgeKey(edge));
+      if (arrival !== undefined) {
+        return arrival;
+      }
+    }
+    return this.startArrival;
+  }
+
+  /**
+   * The node outputs as one node reads them: every finished node's output,
+   * with each entry node's output replaced by the payload of the Arriving
+   * Event on this node's branch. That is how a node below a Wait addresses the
+   * Event that woke it through the entry node, while a parallel branch keeps
+   * its own.
+   */
+  outputsFor(nodeId: string): Readonly<NodeOutputs> {
+    // Copying the descriptors keeps an own key named `__proto__`.
+    const outputs: NodeOutputs = Object.defineProperties(
+      {},
+      Object.getOwnPropertyDescriptors(this.nodeOutputs)
+    );
+    const { payload } = this.arrivalOf(nodeId);
+    for (const entryNode of this.entryNodes) {
+      writeNodeValue<NodeOutputs[string]>(outputs, entryNode.id, {
+        label: entryNode.data.label || entryNode.id,
+        data: payload,
+      });
+    }
+    return outputs;
+  }
+
+  /**
+   * `outputsFor` in the graph's node order. A pass and its replay finish nodes
+   * in different orders, and this order is the same for both.
+   */
+  outputsInGraphOrder(nodeId: string): NodeOutputs[string][] {
+    const outputs = this.outputsFor(nodeId);
     return this.nodes.flatMap((node) => {
-      const output = Object.hasOwn(this.nodeOutputs, outputKey(node.id))
-        ? this.nodeOutputs[outputKey(node.id)]
+      const output = Object.hasOwn(outputs, outputKey(node.id))
+        ? outputs[outputKey(node.id)]
         : undefined;
       return output === undefined ? [] : [output];
     });
@@ -223,15 +292,21 @@ export class Traversal {
   }
 
   /**
-   * Lets the nodes below this one run. Called only where the run is going down
-   * that path: a node that failed, halted its branch, was never configured, or
-   * is a Condition whose expression produced no boolean releases nothing, and
-   * everything behind it stays unscheduled for the life of the run.
+   * Lets the nodes below this one run, carrying `arrival` along each released
+   * edge; left out, the branch carries the arrival it reached this node with.
+   * Called only where the run is going down that path: a node that failed,
+   * halted its branch, was never configured, or is a Condition whose
+   * expression produced no boolean releases nothing, and everything behind it
+   * stays unscheduled for the life of the run.
    */
-  markReadyForDownstream(nodeId: string, route: TraversalRoute): string[] {
+  markReadyForDownstream(
+    nodeId: string,
+    route: TraversalRoute,
+    arrival: Arrival = this.arrivalOf(nodeId)
+  ): string[] {
     const edges = this.nextEdges(nodeId, route);
     for (const edge of edges) {
-      this.downstreamReadyEdges.add(releasedEdgeKey(edge));
+      this.downstreamReadyEdges.set(releasedEdgeKey(edge), arrival);
     }
     return edges.map((edge) => edge.target);
   }
@@ -273,19 +348,12 @@ export class Traversal {
     return this.parkedNodes.size;
   }
 
-  /** Writes a node's output without closing the node. */
-  setOutput(nodeId: string, output: NodeOutputs[string]) {
-    writeNodeValue(this.nodeOutputs, nodeId, output);
-  }
-
   /**
-   * The entry nodes of this graph, whose output is the Arriving Event payload.
+   * The entry nodes of this graph, whose output a node reads as the payload of
+   * its branch's Arriving Event.
    */
   get lifecycleNodes(): readonly WorkflowNode[] {
-    return this.nodes.filter(
-      (node) =>
-        isLifecycleNode(node) && this.predecessorIds(node.id).length === 0
-    );
+    return this.entryNodes;
   }
 
   get resultCount(): number {
