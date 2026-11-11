@@ -565,11 +565,12 @@ export const resend = defineIntegration({
       handler: Effect.fn(function* (bag) {
         const { input } = bag;
 
-        // The run's own id doubles as the idempotency key: a step Inngest
-        // re-runs sends the same key, and Resend replays its first answer
-        // rather than sending a second email.
-        const idempotencyKey = bag.executionId;
-        const syntheticIdSuffix = idempotencyKey;
+        // The node's key within its run: a send that runs again after a crash
+        // carries the same key, and Resend replays its first answer rather
+        // than sending a second email. Two Resend nodes in one run hold
+        // different keys, so the second node's email is sent.
+        const { idempotencyKey } = bag;
+        const syntheticIdSuffix = bag.executionId;
         const testBehavior = input.testBehavior ?? "log_only";
 
         // Parsed once, up here, because both the wire body and this step's own

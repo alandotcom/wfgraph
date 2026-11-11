@@ -113,7 +113,7 @@ describe("the send-email action", () => {
       expect(payload.to).toBe("qa@example.com");
       expect(payload.cc).toBeUndefined();
       expect(payload.bcc).toBeUndefined();
-      expect(idempotencyKey).toBe("execution_test");
+      expect(idempotencyKey).toBe("execution_test:node_1");
       expect(result).toEqual({ id: "email_123" });
     })
   );
@@ -238,9 +238,9 @@ describe("the send-email action", () => {
     })
   );
 
-  // The run's id is the idempotency key, which is what keeps an Inngest retry
-  // from sending a second copy of the same email.
-  it.effect("sends the execution id as the idempotency key", () =>
+  // The key names the node within its run, which keeps a repeated send from
+  // delivering a second copy and keeps two Resend nodes of one run apart.
+  it.effect("sends the node's key within its run as the idempotency key", () =>
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
@@ -251,11 +251,11 @@ describe("the send-email action", () => {
           emailBody: "Body",
         },
         credentials,
-        node: { executionId: "exec_42" },
+        node: { executionId: "exec_42", nodeId: "welcome" },
       });
 
       const [, , idempotencyKey] = sentCall();
-      expect(idempotencyKey).toBe("exec_42");
+      expect(idempotencyKey).toBe("exec_42:welcome");
     })
   );
 
