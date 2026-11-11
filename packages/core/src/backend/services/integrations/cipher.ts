@@ -31,8 +31,10 @@ export type EncryptionRuntimeConfig = {
 };
 
 /**
- * The key's shape, checked without building a cipher, so `createWfGraphApp` can
- * report a bad key as a bad key before it has changed anything about the process.
+ * The key's shape, checked without building a cipher, so the function a host
+ * called can report a bad key as a bad key before it has changed anything about
+ * the process. `caller` names that function in the message, such as
+ * "createWfGraphRunner"; absent, the message names the option alone.
  *
  * An absent key and a wrong-shaped one are different mistakes with different
  * fixes, so they get different messages: the first sends the reader to their
@@ -40,13 +42,16 @@ export type EncryptionRuntimeConfig = {
  * lets the caller use the key as a string once this returns.
  */
 export function assertValidEncryptionKey(
-  key: string | undefined
+  key: string | undefined,
+  caller?: string | undefined
 ): asserts key is string {
   const trimmed = key?.trim() ?? "";
+  const option =
+    caller === undefined ? "encryption.key" : `${caller}'s encryption.key`;
 
   if (!trimmed) {
     throw new Error(
-      `createWfGraphApp's encryption.key is unset. It is a 64-character hex string; read it from ${ENCRYPTION_KEY_ENV} or wherever your app keeps its secrets.`
+      `${option} is unset. It is a 64-character hex string; read it from ${ENCRYPTION_KEY_ENV} or wherever your app keeps its secrets.`
     );
   }
 
@@ -54,9 +59,7 @@ export function assertValidEncryptionKey(
   // the first non-hex digit, so a 64-character key holding one typo builds a
   // short buffer, and the throw lands at the first seal or open rather than here.
   if (!isHex(trimmed, KEY_LENGTH)) {
-    throw new Error(
-      "createWfGraphApp's encryption.key must be a 64-character hex string (32 bytes)"
-    );
+    throw new Error(`${option} must be a 64-character hex string (32 bytes)`);
   }
 }
 

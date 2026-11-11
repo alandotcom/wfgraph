@@ -73,7 +73,7 @@ export async function createWfGraphRunner(
 ): Promise<WfGraphRunner> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);
-  assertValidEncryptionKey(options.encryption.key);
+  assertValidEncryptionKey(options.encryption.key, "createWfGraphRunner");
   const retention = resolveRetention({
     events: options.events,
     runs: options.runs,

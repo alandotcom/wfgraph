@@ -527,6 +527,22 @@ describe("createWfGraphApp configuration", () => {
     ).rejects.toThrow("64-character hex string");
   });
 
+  // The message names the function the host called, so a runner process
+  // missing its key is not sent looking at the web process's call.
+  it("names the function a host called in an encryption key refusal", async () => {
+    await expect(
+      createWfGraphApp({ ...BASE_OPTIONS, encryption: { key: undefined } })
+    ).rejects.toThrow("createWfGraphApp's encryption.key is unset");
+    await expect(
+      createWfGraphRunner({
+        persistence: BASE_OPTIONS.persistence,
+        encryption: { key: "abc123" },
+      })
+    ).rejects.toThrow(
+      "createWfGraphRunner's encryption.key must be a 64-character hex string"
+    );
+  });
+
   // Dispose closes the app-owned pool: postgres.js holds an idle socket open per
   // pool, so a host that shuts Workflow Graph down and never exits would otherwise keep it.
   it("gives the database runtime back when an app is disposed", async () => {

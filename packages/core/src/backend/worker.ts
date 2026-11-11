@@ -257,7 +257,7 @@ export function wfWorker<Env>(
     config: WfGraphWorkerRequestConfig,
     wakeQueue: WfGraphWakeQueue | undefined
   ): Promise<Invocation> => {
-    assertValidEncryptionKey(config.encryption.key);
+    assertValidEncryptionKey(config.encryption.key, "wfWorker");
     assertValidEventsKey(config.events?.key, "wfWorker");
     const retention = resolveRetention({
       events: config.events,

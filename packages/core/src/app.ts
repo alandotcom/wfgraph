@@ -196,7 +196,7 @@ export async function createWfGraphApp(
   const publicUrl = resolvePublicUrl(options.publicUrl);
   const auth = resolveAuth(options.auth);
 
-  assertValidEncryptionKey(options.encryption.key);
+  assertValidEncryptionKey(options.encryption.key, "createWfGraphApp");
   assertValidEventsKey(options.events?.key, "createWfGraphApp");
   const retention = resolveRetention({
     events: options.events,
