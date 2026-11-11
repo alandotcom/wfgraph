@@ -1,7 +1,7 @@
 # domain_map.yaml
 # Library: wfgraph (the published packages @wfgraph/core, @wfgraph/client and @wfgraph/plugins)
 # Version: 3.1.1
-# Date: 2026-11-07
+# Date: 2026-11-11
 # Status: reviewed
 
 library:
@@ -31,7 +31,8 @@ domains:
       Mounting Workflow Graph in a host application and operating it: the
       createWfGraphApp call, the editor bundle, the access policy, persistence
       and migrations, the worker loop that runs workflows, a Cloudflare Worker
-      deployment, and logging and tracing.
+      deployment, logging and tracing, the MCP authoring endpoint, and the
+      editor's build agent.
   - name: Host extensions
     slug: host-extensions
     description: >-
@@ -70,20 +71,22 @@ skills:
       - events.retentionMs
       - runs.retentionMs
       - dispose and Symbol.asyncDispose
-      - mcp
+      - health and app.health()
+      - runner.maxStepValueBytes
+      - mcp and agent (one routing line each; the options live in mcp and build-agent)
       - configureWfGraphLogging (the one-line console setup; the rest lives in observability)
       - wfWorker and wfHyperdrive (one routing line; the deployment lives in cloudflare-worker)
       - createWfGraphInngestFunctions
     tasks:
       - Mount createWfGraphApp in a Node HTTP, Express or Fastify server with createRequestListener, or hand wfgraph.fetch to a fetch-native runtime.
       - Serve the editor by passing clientBundle from @wfgraph/client, including under a sub-path set with basePath.
-      - Supply the required auth callback and the 64-character hex encryption key.
+      - Supply the required auth function, and the 64-character hex encryption key once extensions.integrations declares an integration.
       - Choose PostgreSQL with wfPostgres or SQLite with wfSqlite, and the Postgres schema that holds the tables.
       - Apply PostgreSQL migrations at start-up or from a release step with migrateWfGraphDatabase.
       - Tune the worker loop with the runner option, or move it to a createWfGraphRunner process and give the app runner false.
-      - Set events.retentionMs and runs.retentionMs to the same values in every process that runs a worker loop.
+      - Build one options object in a shared module and pass it to createWfGraphApp with runner false and to createWfGraphRunner, so every process runs with the same database, key, extensions and retention windows.
       - Shut the app down with dispose() or an await using declaration.
-      - Enable MCP authoring with mcp set to true locally, or to allowed hostnames on a deployed host.
+      - Add a readiness probe with health true, or serve app.health() from the host's own endpoint.
       - Keep publishing Events with inngest.send by registering createWfGraphInngestFunctions on the host's own Inngest client.
       - Set publicUrl so OAuth callback and webhook URLs resolve.
     subsystems:
@@ -98,11 +101,11 @@ skills:
         config_surface: wfHyperdrive(env.HYPERDRIVE) inside wfWorker's request callback
     failure_modes:
       - mistake: Missing authorization boundary
-        mechanism: auth is a required option, so the call fails to type-check without it; a JavaScript host that omits it starts and answers 500 to every operator request. The failure the rule prevents is an editor the internet can open that decrypts integration secrets.
+        mechanism: auth is a required option, so the call fails to type-check without it, and createWfGraphApp refuses a missing or malformed value at startup. The failure the rule prevents is a policy that grants every request, which auth accepts, leaving an editor the internet can open that decrypts integration secrets.
         wrong_pattern: |
           createWfGraphApp({ persistence, encryption, extensions })
         correct_pattern: |
-          createWfGraphApp({ persistence, encryption, extensions, auth: defineWfGraphAuth((request) => accessForSession(request)) })
+          createWfGraphApp({ persistence, encryption, extensions, auth: (request) => accessForSession(request) })
         source: alandotcom/wfgraph:docs/embedding.md (createWfGraphApp options)
         priority: CRITICAL
         status: active
@@ -171,13 +174,13 @@ skills:
         source: alandotcom/wfgraph:docs/embedding.md (Groups)
         priority: HIGH
         status: active
-      - mistake: Repeat a stale MCP write
-        mechanism: A write refused with workflow_draft_stale can refer to graph state another editor changed, and Workflow Graph does not replay it.
+      - mistake: Separate options for the app and the runner
+        mechanism: createWfGraphRunner takes the options object createWfGraphApp takes, and a runner given another key, extension list or retention window starts without a complaint, then cannot read the stored Connections, refuses nodes whose actions it does not declare, or deletes history on a window the app never set.
         wrong_pattern: |
-          Send the same MCP write again after workflow_draft_stale.
+          createWfGraphRunner({ persistence, encryption: { key: otherKey } }) beside a createWfGraphApp call with its own options
         correct_pattern: |
-          Call read_workflow, re-evaluate the edit, and write with the returned draftRevision.
-        source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
+          One options object, passed as { ...options, runner: false } to the app and options to the runner.
+        source: alandotcom/wfgraph:docs/embedding.md (Run the loop in its own process)
         priority: HIGH
         status: active
     compositions:
@@ -204,9 +207,10 @@ skills:
       - selectEntityId bindings
       - correlationPath
       - umbrella source and when
-      - app.events.send
+      - app.events.send with a defineEvent value or a name
       - POST /api/events
-      - workflow_event_inbox insert
+      - workflow_event_inbox insert and events.inboxInsert
+      - delivery settlement when some workflows fail, and paused workflows
       - createWfGraphInngestFunctions
       - WfGraphEventRefused
       - Entity Eligibility checkpoints
@@ -215,7 +219,7 @@ skills:
       - Declare host-owned current state with defineEntity and bind it to Events with selectEntityId.
       - Mark datetime payload fields with format date-time so the editor offers before and after operators.
       - Label a closed string set's choices with title on singleton const or enum branches.
-      - Send an Event with app.events.send, POST /api/events with the events key, or an insert into workflow_event_inbox inside the host's transaction.
+      - Send an Event with a typed app.events.send, POST /api/events with the events key, or the statement events.inboxInsert answers, run inside the host's transaction.
       - Keep inngest.send by registering the forwarders from @wfgraph/core/inngest.
       - Split one bus name into several Events with an umbrella source and when.
       - Choose between a payload Start Filter and a current-state Eligibility rule.
@@ -274,6 +278,15 @@ skills:
         source: alandotcom/wfgraph:docs/events.md
         priority: MEDIUM
         status: active
+      - mistake: A hand-written inbox insert on the default search_path
+        mechanism: On PostgreSQL the inbox table lives in the persistence schema, _workflows by default, so an unqualified insert on a connection whose search_path starts at public finds no table, and a hand-written insert checks no payload until the loop delivers it.
+        wrong_pattern: |
+          insert into workflow_event_inbox (name, data, idempotency_key) values ($1, $2, $3)
+        correct_pattern: |
+          const insert = await app.events.inboxInsert(event, data, { id }); then run insert.sql with insert.params in the host's transaction
+        source: alandotcom/wfgraph:docs/events.md (Sending an Event)
+        priority: MEDIUM
+        status: active
     sources:
       - alandotcom/wfgraph:docs/events.md
 
@@ -291,16 +304,23 @@ skills:
       - Standard Schema input and output
       - configFields and showWhen
       - options callbacks
-      - step.run with a Promise factory
+      - step.run with a Promise factory, its 1 to 64 character names and the step value limit
+      - idempotencyKey on the bag, on each step's work, and step.idempotencyKey(name)
+      - runMode and test runs
       - readCredentials
       - sideEffect
+      - callExternal and callExternalAsync from @wfgraph/core
+      - runHostAction from @wfgraph/core/testing
     tasks:
       - Write a defineAction with a Promise handler that fails by throwing and passes it in extensions.actions.
       - Describe the config form with the input schema, letting the editor derive labels, and add configFields for presentation the schema cannot express.
       - Show a field for several template variants with showWhen.in.
       - Offer application-owned choices with options callbacks, including choices that depend on another field and an unavailable result.
-      - Wrap side-effecting work in step.run so a replay answers it from the step memo.
+      - Put each call to an outside system in a step.run of its own, so a retry after a later failure resumes past it, knowing the handler runs once per node of a run.
+      - Pass the bag's or the step's idempotencyKey to a vendor that deduplicates by key.
+      - Check runMode so a Draft run or a Test-mode run changes nothing real.
       - Mark an action that writes outside the workflow with sideEffect true.
+      - Test the action with runHostAction, including a later pass from the memo an earlier one left.
     failure_modes:
       - mistake: Effect handler on defineAction
         mechanism: defineAction is the Promise host path; Effect handlers belong to defineIntegration.
@@ -330,6 +350,34 @@ skills:
         source: alandotcom/wfgraph:docs/embedding.md
         priority: MEDIUM
         status: active
+      - mistake: A side effect with no runMode check
+        mechanism: A Draft run and a Test-mode run call every handler with runMode test, and sideEffect true does not keep a step out of them, so an unchecked handler refunds, cancels or sends for real.
+        wrong_pattern: |
+          handler: async ({ input }) => payments.refund(input.chargeId)
+        correct_pattern: |
+          if (runMode === "test") return { status: "skipped" }
+        source: alandotcom/wfgraph:docs/embedding.md (Test runs call your handler)
+        priority: CRITICAL
+        status: active
+        skills: [host-actions, mcp]
+      - mistake: Two external calls in one step
+        mechanism: A throw inside step.run retries the whole step, so a failed second call repeats the first.
+        wrong_pattern: |
+          await step.run("refund-and-email", async () => { await refund(); await email(); })
+        correct_pattern: |
+          await step.run("refund", ...); await step.run("email", ...)
+        source: alandotcom/wfgraph:docs/embedding.md (A handler runs once per node of a run)
+        priority: HIGH
+        status: active
+      - mistake: A key the vendor never sees
+        mechanism: A handler and a step are at-least-once, so a process that dies after the vendor applied a call and before its answer was stored repeats the call unless the vendor deduplicates by key.
+        wrong_pattern: |
+          await step.run("refund", () => payments.refund(chargeId))
+        correct_pattern: |
+          await step.run("refund", ({ idempotencyKey }) => payments.refund(chargeId, { idempotencyKey }))
+        source: alandotcom/wfgraph:docs/embedding.md (A handler runs once per node of a run)
+        priority: HIGH
+        status: active
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:docs/integrations.md
@@ -354,10 +402,18 @@ skills:
       - runAction, actionData and actionError
       - checkIntegration
       - hidden actions
+      - step names, step.idempotencyKey(name) and the bag's idempotencyKey
+      - runMode in test runs
+      - url credential fields
+      - IntegrationOAuth revoke on disconnect and delete
     tasks:
       - Define an integration with a credential form and Effect action handlers written inline in the actions record.
       - Call a vendor API with callExternal inside step.run so a replay does not repeat the side effect.
       - Fail a refused request once with StepFailure.
+      - Pass step.idempotencyKey(name) to a vendor that deduplicates by key.
+      - Answer a test run without reaching a real person or record when runMode is test.
+      - Declare a credential holding the secrets' destination as a url field.
+      - Resolve revoke for a token the provider already revoked.
       - Load config choices from the Connection with configOptions and a provider-select field.
       - Declare integration-owned Events and a webhook that verifies the raw body.
       - Write an IntegrationOAuth adapter for a registered client or a public metadata client with S256 PKCE.
@@ -429,6 +485,15 @@ skills:
         source: alandotcom/wfgraph:docs/integrations.md (Testing an integration)
         priority: HIGH
         status: active
+      - mistake: A revoke that throws for an already revoked token
+        mechanism: Disconnect keeps a grant whose revocation threw, so a connection whose provider already revoked the token could never be disconnected.
+        wrong_pattern: |
+          revoke throws on the provider's token_revoked or invalid_auth answer
+        correct_pattern: |
+          revoke resolves when the provider says the token is already invalid or revoked
+        source: alandotcom/wfgraph:docs/integrations.md (Core owns the browser flow)
+        priority: HIGH
+        status: active
     sources:
       - alandotcom/wfgraph:docs/integrations.md
 
@@ -448,6 +513,9 @@ skills:
       - publicUrl OAuth routes
       - Resend webhook Events
       - "@wfgraph/plugins/ui"
+      - per-step test settings of the Slack, PostHog, Twilio and Resend actions
+      - oauthRevocation on a connection delete
+      - the https rule for POSTHOG_HOST
     tasks:
       - Turn on all six built-in integrations with builtInIntegrations() in extensions.integrations.
       - Turn on a subset by passing individual exports.
@@ -455,6 +523,8 @@ skills:
       - Meet the publicUrl, HTTPS and SameSite=Lax session cookie requirements of Slack, Resend and PostHog OAuth.
       - Receive Resend webhook Events by pasting the Connection URL and adding RESEND_WEBHOOK_SECRET on that Connection.
       - Keep one resolved copy of @wfgraph/core beside @wfgraph/plugins.
+      - Know what each built-in step does in a Draft or Test-mode run.
+      - Revoke at the provider a grant a connection delete reported as not_revoked.
     failure_modes:
       - mistake: Expect import to enable integrations
         mechanism: Nothing registers on import, so an empty extensions object turns nothing on.
@@ -515,15 +585,16 @@ skills:
       - WfGraphAccess (all, fromPermissions, fromOperationIds)
       - trustWfGraphUpstream
       - WfGraphOperations, WfGraphOperationIds and WfGraphPermissions
-      - the 401, 403 and 500 answers
-      - machine and public routes outside the callback
+      - the auth function, the authenticate object form, and WfGraphAuthenticate
+      - the 401, 403, 413 and 500 answers, including the cross-site write refusal
+      - machine and public routes outside the callback, health and the MCP metadata included
       - the editor's grant snapshot on GET /api/extensions
     tasks:
       - Map host sessions to the viewer, editor and admin role policies, returning null for a request with no session.
       - Build a custom policy from permissions or operation IDs, loading remote grants once in the authentication callback.
       - Choose trustWfGraphUpstream only behind an upstream component that authorizes every request.
       - Keep the OAuth callback authenticated by a cookie the provider redirect carries.
-      - Explain a 401, 403 or 500 answer from the API.
+      - Explain a 401, 403, 413 or 500 answer from the API.
     failure_modes:
       - mistake: A policy that grants everything
         mechanism: WfGraphAccess.all for every request, or trustWfGraphUpstream with no upstream authorizer, lets anonymous requests read and publish workflows and manage connections that hold decrypted credentials.
@@ -558,11 +629,20 @@ skills:
         wrong_pattern: |
           A callback that accepts only an Authorization header
         correct_pattern: |
-          A callback that reads a SameSite=Lax session cookie
+          A callback that reads a SameSite=Lax session cookie, and a bearer header only for a client with no cookie such as an MCP client
         source: alandotcom/wfgraph:docs/embedding.md (Built-in integrations)
         priority: MEDIUM
         status: active
         skills: [auth, wfgraph-plugins, wfgraph-core]
+      - mistake: The host's own page writes from another subdomain
+        mechanism: A browser marks a write from a sibling subdomain same-site, and operator routes answer 403 to it before the auth callback runs unless its Origin is publicUrl or the request's own origin.
+        wrong_pattern: |
+          fetch("https://workflows.example.com/api/rest/...", { method: "POST", credentials: "include" }) from console.example.com
+        correct_pattern: |
+          Call the API from the origin publicUrl names, or from the host's server.
+        source: alandotcom/wfgraph:docs/embedding.md (Authentication and authorization)
+        priority: MEDIUM
+        status: active
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/core/src/backend/lib/http/authorize.ts
@@ -585,11 +665,14 @@ skills:
       - OpenTelemetry tracer provider on the global API
       - Sentry and @logtape/sentry
       - stable span names and the wfgraph-workflows scope
+      - app.health().queue as a metric
+      - credential masking in refused RPC records, and the readiness probe's trace-level record
     tasks:
       - Receive log records with configureWfGraphLogging, a logger option, or a LogTape configuration that sinks the wfgraph category, choosing by what logging the host already has.
       - Set up logging the same way in every process, including a createWfGraphRunner process, a Worker and a migration job.
       - Register an OpenTelemetry provider or initialize Sentry so Workflow Graph's spans export.
       - Build dashboards and alerts on the stable span names and attributes, joining a run's passes on wfgraph.execution.id.
+      - Export the run queue's due count and lag from app.health().queue as a metric with the host's own library.
     failure_modes:
       - mistake: A LogTape configuration with no wfgraph sink
         mechanism: Workflow Graph configures no LogTape of its own, so a host configuration that names only its own categories drops every wfgraph record, and only a start-up warning says so.
@@ -709,6 +792,169 @@ skills:
       - alandotcom/wfgraph:packages/core/src/backend/worker.ts
       - alandotcom/wfgraph:packages/core/src/backend/persistence/hyperdrive-postgres.ts
 
+  - name: mcp
+    slug: mcp
+    domain: embedding
+    description: >-
+      A developer lets an MCP client author workflows in an embedded app, and
+      secures the endpoint the client reaches.
+    type: sub-skill
+    packages:
+      - "@wfgraph/core"
+    covers:
+      - mcp option (true, allowedHostnames, allowedOriginHostnames)
+      - mcp.authorization and the RFC 9728 protected-resource metadata
+      - bearer tokens verified by the host's auth function
+      - the 401 WWW-Authenticate challenge and the 403 Host and Origin refusal
+      - protocol revisions 2026-07-28 and 2024-10-07 through 2025-11-25, served statelessly
+      - per-tool operation grants
+      - catalog tools without a workflowId
+      - create_workflow, expectedDraftRevision, workflow_draft_stale and newIssues
+      - apply_edits
+      - validate_workflow canSave and canPublish
+      - publish_workflow, list_versions and restore_version
+      - list_runs, read_run, start_test_run and list_field_options
+      - instructions and the build_workflow prompt
+    tasks:
+      - "Let an MCP client author workflows in a deployed host: admit the hostname, verify the client's bearer token in auth, advertise the authorization server, and grant each tool's operations."
+      - Follow the draft-revision protocol from create_workflow through validate_workflow to publish_workflow, recovering from a stale write by reading again.
+      - Explain a 401, a 403, an isError argument result or a refused publish from the endpoint.
+    failure_modes:
+      - mistake: A bearer token nobody verifies
+        mechanism: mcp.authorization only tells a client where to get a token, and Workflow Graph checks no MCP token itself, so an auth function that answers a role for any bearer header lets any string reach every tool the role grants.
+        wrong_pattern: |
+          auth answers WfGraphRoles.editor for any request carrying Authorization: Bearer
+        correct_pattern: |
+          auth verifies the token with the authorization server and answers null when it fails
+        source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
+        priority: CRITICAL
+        status: active
+        skills: [mcp, auth]
+      - mistake: An auth function that reads only the editor's cookie
+        mechanism: An MCP client sends a bearer header and no cookie, so every call answers 401.
+        wrong_pattern: |
+          The editor's cookie-only auth left unchanged when mcp is turned on
+        correct_pattern: |
+          auth reads the session cookie and, beside it, a verified bearer token
+        source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
+        priority: HIGH
+        status: active
+        skills: [mcp, auth]
+      - mistake: mcp true on a deployed host
+        mechanism: mcp true admits localhost alone, so every request to the deployed name answers 403 naming mcp.allowedHostnames.
+        wrong_pattern: |
+          mcp: true in production
+        correct_pattern: |
+          mcp: { allowedHostnames: ["workflows.example.com"], allowedOriginHostnames: [] }
+        source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
+        priority: HIGH
+        status: active
+      - mistake: Repeat a stale MCP write
+        mechanism: A write refused with workflow_draft_stale can refer to graph state another editor changed, and Workflow Graph does not replay it.
+        wrong_pattern: |
+          Send the same MCP write again after workflow_draft_stale.
+        correct_pattern: |
+          Call read_workflow, re-evaluate the edit, and write with the returned draftRevision.
+        source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
+        priority: HIGH
+        status: active
+      - mistake: Retry create_workflow after an unknown result
+        mechanism: Creation is not idempotent, so a retry after a creation that landed makes a second workflow.
+        wrong_pattern: |
+          Call create_workflow again after a timeout
+        correct_pattern: |
+          Call list_workflows and look for the workflow by name first
+        source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
+        priority: HIGH
+        status: active
+      - mistake: Publish on canSave
+        mechanism: A draft can save while it holds publish blockers, which publish_workflow then refuses.
+        wrong_pattern: |
+          publish_workflow once validate_workflow answers canSave true
+        correct_pattern: |
+          publish_workflow once validate_workflow answers canPublish true
+        source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
+        priority: MEDIUM
+        status: active
+      - mistake: start_test_run treated as a dry run
+        mechanism: A test run calls every action handler it reaches with runMode test, so a handler that ignores runMode acts for real.
+        wrong_pattern: |
+          Grant workflow.execute on the assumption that start_test_run only simulates
+        correct_pattern: |
+          Each handler with a side effect checks runMode
+        source: alandotcom/wfgraph:docs/embedding.md (Test runs call your handler)
+        priority: MEDIUM
+        status: active
+        skills: [mcp, host-actions]
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:packages/core/src/backend/agent/mcp-server.ts
+
+  - name: build-agent
+    slug: build-agent
+    domain: embedding
+    description: >-
+      A developer turns on the editor's chat agent against a provider, a
+      gateway or a runner of the host's own, and sizes what it may do.
+    type: sub-skill
+    packages:
+      - "@wfgraph/core"
+    covers:
+      - agent.provider (openai, anthropic, openrouter, openai-compatible)
+      - agent.apiKey, agent.model, agent.reasoningEffort and agent.baseUrl
+      - the default model gpt-6.1-terra
+      - agent.maxConcurrentTurns
+      - agent.runner, WfGraphAgentRunner and WfGraphAgentTurn
+      - streamAgentTurn
+      - agent.use and the per-tool grants a turn checks
+      - the usage part and the "Agent turn finished" record
+      - prompt caching and store false
+    tasks:
+      - Turn on the editor's build agent against a chosen provider or gateway, or run its turns on the host's own model, and size its turn limit and grants.
+      - Choose openai-compatible for a gateway that serves Chat Completions alone.
+      - Explain a missing chat panel, a startup refusal of the agent option, or a refused tool call.
+    failure_modes:
+      - mistake: Anthropic or OpenRouter with no model
+        mechanism: Only openai has a default model, so a key with a blank model fails at startup.
+        wrong_pattern: |
+          agent: { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY }
+        correct_pattern: |
+          agent: { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY, model: "claude-opus-5-5" }
+        source: alandotcom/wfgraph:docs/embedding.md (The build agent)
+        priority: HIGH
+        status: active
+      - mistake: A Chat Completions gateway under the default provider
+        mechanism: The default provider calls POST {baseUrl}/responses, so a gateway serving Chat Completions alone fails every turn.
+        wrong_pattern: |
+          agent: { apiKey, baseUrl: "http://llm-gateway.internal/v1" }
+        correct_pattern: |
+          agent: { provider: "openai-compatible", baseUrl: "http://llm-gateway.internal/v1", model }
+        source: alandotcom/wfgraph:docs/embedding.md (The build agent)
+        priority: HIGH
+        status: active
+      - mistake: An unset variable read as a startup check
+        mechanism: A blank key turns the agent off without an error, so a deployment missing the variable loses the panel silently.
+        wrong_pattern: |
+          Rely on apiKey: process.env.ANTHROPIC_API_KEY to stop a deployment that forgot the variable
+        correct_pattern: |
+          Check the variable at host startup, or assert agent.enabled in GET /api/extensions after a deploy
+        source: alandotcom/wfgraph:docs/embedding.md (The build agent)
+        priority: MEDIUM
+        status: active
+      - mistake: A runner that draws the canvas itself
+        mechanism: Workflow Graph sends the graph part after each successful toolkit write and drops one a runner sends.
+        wrong_pattern: |
+          A runner that emits graph parts after its own tool calls
+        correct_pattern: |
+          Call the turn's toolkit and let Workflow Graph send the graph part
+        source: alandotcom/wfgraph:docs/embedding.md (Run turns on your own gateway or model)
+        priority: MEDIUM
+        status: active
+    sources:
+      - alandotcom/wfgraph:docs/embedding.md
+      - alandotcom/wfgraph:packages/core/src/backend/agent/config.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/runner.ts
+
 tensions:
   - name: Promise host step versus Effect integration
     skills: [host-actions, integrations]
@@ -722,6 +968,10 @@ tensions:
     skills: [wfgraph-plugins, wfgraph-core, auth]
     description: The built-in OAuth flows need publicUrl and an auth callback that accepts a top-level provider redirect.
     implication: An agent writes header-only authentication and every OAuth connection fails at the callback.
+  - name: Cookie for the editor, bearer token for an MCP client
+    skills: [auth, mcp]
+    description: The editor and the OAuth callback authenticate from a session cookie, while an MCP client holds no cookie and sends a bearer token, and both arrive at the same auth function.
+    implication: An agent writes an auth function for one caller and every request of the other answers 401, or accepts any bearer header to make the MCP client work.
 
 cross_references:
   - from: events
@@ -745,6 +995,18 @@ cross_references:
   - from: wfgraph-core
     to: cloudflare-worker
     reason: wfgraph-core keeps one routing line for wfWorker; the deployment, its two Worker failure modes and the runner refusal live in cloudflare-worker.
+  - from: wfgraph-core
+    to: mcp
+    reason: wfgraph-core keeps one routing line for the mcp option; the endpoint's security, grants, protocol and the stale-write failure mode live in mcp.
+  - from: wfgraph-core
+    to: build-agent
+    reason: wfgraph-core keeps one routing line for the agent option; its providers, runner and grants live in build-agent.
+  - from: mcp
+    to: host-actions
+    reason: start_test_run calls every handler with runMode test, and host-actions owns the rule that a handler checks it.
+  - from: build-agent
+    to: mcp
+    reason: A build agent turn checks the same per-tool grants the MCP endpoint checks, and both use the same authoring tools.
 
 gaps:
   - skill: cloudflare-worker
@@ -753,11 +1015,11 @@ gaps:
     status: open
   - skill: wfgraph-core
     question: Does configuring the build agent (agent.apiKey, agent.model, agent.reasoningEffort, agent.baseUrl) need adopter guidance?
-    context: No skill covers the agent options in docs/embedding.md; the gap was found during this assessment and has no maintainer decision.
-    status: open
+    context: The agent option grew providers, a host runner, streamAgentTurn and a turn limit, which made it a task of its own. The build-agent skill now covers it, and the mcp skill covers the MCP endpoint that wfgraph-core used to describe in bullets.
+    status: resolved
   - skill: wfgraph-core
     question: Discovery checks for every skill, executable task checks for the five batch 1 skills, and a fresh consumer session for any skill.
-    context: Task checks live in packages/evals/src/skills/ and exist for auth, observability and cloudflare-worker. No isolated agent session was available, so activation and consumer behavior are unverified for every skill.
+    context: Task checks live in packages/evals/src/skills/ and exist for auth, observability, cloudflare-worker, host-actions, mcp and build-agent. No isolated agent session was available, so activation and consumer behavior are unverified for every skill.
     status: open
   - skill: auth
     question: docs/embedding.md (createWfGraphApp options) says Workflow Graph refuses to start without auth, but the app starts and answers 500 to every operator request; only the type requires the option. Should the manual say so?
@@ -767,3 +1029,7 @@ gaps:
     question: The operation table in docs/embedding.md (Authentication and authorization) omits action.configOptions, which WfGraphOperations grants under workflow.write. Should the manual list it?
     context: The auth skill names WfGraphOperationIds and the OpenAPI document as the full list instead of repeating the table. The manual's table now lists action.configOptions under workflow.write.
     status: resolved
+  - skill: build-agent
+    question: Which build agent claims can be checked without a live model?
+    context: The task check covers startup refusals and agent.enabled for each provider form and a host runner. Whether a gateway passes streaming, tools and the cache fields through, adaptive thinking on older Claude models, and a turn's tool grants in a live turn are unverified.
+    status: open
