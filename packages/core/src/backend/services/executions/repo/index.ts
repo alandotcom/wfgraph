@@ -1,8 +1,7 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
   workflowExecutionEvents,
-  workflowExecutionSchedule,
   workflowExecutions,
 } from "#src/backend/lib/db/schema";
 import {
@@ -30,6 +29,7 @@ import {
   makeNodeLogsMethods,
 } from "#src/backend/services/executions/repo/node-logs";
 import {
+  lockWorkflowRuns,
   makeRunsMethods,
   type RunsRepoMethods,
 } from "#src/backend/services/executions/repo/runs";
@@ -285,31 +285,10 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
               // than from a pre-read of ids, which would bind one parameter per
               // run and stop working past the protocol's 65535.
               await db.transaction(async (tx) => {
-                // A pass's fenced write holds its schedule row and then writes
-                // the execution row. The cascade would take the schedule rows
-                // after the execution rows, the reverse order, and the two
-                // transactions would deadlock; so the schedule rows go first.
-                await tx
-                  .select({ id: workflowExecutionSchedule.id })
-                  .from(workflowExecutionSchedule)
-                  .where(
-                    inArray(
-                      workflowExecutionSchedule.executionId,
-                      tx
-                        .select({ id: workflowExecutions.id })
-                        .from(workflowExecutions)
-                        .where(eq(workflowExecutions.workflowId, workflowId))
-                    )
-                  )
-                  .orderBy(asc(workflowExecutionSchedule.id))
-                  .for("update");
-                // Runs before audit rows, the order the run sweep's cascade takes.
-                await tx
-                  .select({ id: workflowExecutions.id })
-                  .from(workflowExecutions)
-                  .where(eq(workflowExecutions.workflowId, workflowId))
-                  .orderBy(asc(workflowExecutions.id))
-                  .for("update");
+                // Schedule rows, then runs, then audit rows: the runs in the
+                // order a pass's fenced write takes them, and the runs before
+                // the audit rows, the order the run sweep's cascade takes.
+                await lockWorkflowRuns(tx, workflowId);
                 await tx
                   .delete(workflowExecutionEvents)
                   .where(eq(workflowExecutionEvents.workflowId, workflowId));

@@ -24,6 +24,7 @@ import {
 import type { PgColumn } from "drizzle-orm/pg-core";
 import type { Effect } from "effect";
 import {
+  workflowExecutionSchedule,
   workflowExecutions,
   workflows,
   workflowVersions,
@@ -249,6 +250,36 @@ function buildPageFilters(query: ExecutionPageQuery): SQL[] {
   }
 
   return filters;
+}
+
+/**
+ * Locks every run of `workflowId` for a delete that takes them all: their
+ * schedule rows first and then the execution rows, each by id. A pass's
+ * fenced write holds its schedule row and then writes the execution row, and
+ * a delete's cascade reaches the execution rows before their schedule rows,
+ * so a delete that left the locks to its cascade would take the two rows in
+ * the reverse order and deadlock against the pass.
+ */
+export async function lockWorkflowRuns(
+  tx: WfGraphTransaction,
+  workflowId: string
+): Promise<void> {
+  const runsOfWorkflow = tx
+    .select({ id: workflowExecutions.id })
+    .from(workflowExecutions)
+    .where(eq(workflowExecutions.workflowId, workflowId));
+  await tx
+    .select({ id: workflowExecutionSchedule.id })
+    .from(workflowExecutionSchedule)
+    .where(inArray(workflowExecutionSchedule.executionId, runsOfWorkflow))
+    .orderBy(asc(workflowExecutionSchedule.id))
+    .for("update");
+  await tx
+    .select({ id: workflowExecutions.id })
+    .from(workflowExecutions)
+    .where(eq(workflowExecutions.workflowId, workflowId))
+    .orderBy(asc(workflowExecutions.id))
+    .for("update");
 }
 
 /** The `workflow_executions` slice of `ExecutionRepo`. */

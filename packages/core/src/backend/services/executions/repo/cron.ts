@@ -1,7 +1,8 @@
 /**
  * The PostgreSQL cron timer slice of `ExecutionRepo`. Lock order: workflow row,
- * timer rows by id, run schedule rows, execution rows. Publish, pause, resume
- * and `deleteById` take them in that order. A fire locks its timer, and its run
+ * timer rows by id, run schedule rows by id, execution rows by id. Publish,
+ * pause and resume take the first two; `deleteById` takes all four
+ * (`lockWorkflowRuns` the last two). A fire locks its timer, and its run
  * insert then key-shares the workflow row, which their no-key locks allow.
  * `deleteAllForWorkflow` and the retention sweeps start at run schedule rows.
  */

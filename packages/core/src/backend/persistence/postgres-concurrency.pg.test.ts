@@ -1040,6 +1040,89 @@ describePostgres("PostgreSQL concurrency", () => {
     });
   });
 
+  // A pass's fenced write holds its run's schedule row and then writes the
+  // execution row. The workflow's delete cascades to the execution rows
+  // before their schedule rows, so it locks the run schedule rows and then
+  // the runs before it deletes anything.
+  it("deletes a workflow behind a fenced write of one of its runs without a deadlock", async () => {
+    const schema = mintTestSchemaName();
+    const url = requirePostgresTestUrl();
+    await migrateWfGraphDatabase({ url, schema });
+    const connection = connect(
+      await wfPostgres({ url, schema }).open(conformanceCipher)
+    );
+    try {
+      await seedPublishedWorkflow(connection);
+      const { executionId, scheduleId } = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const started = yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "manual",
+              runMode: "live",
+              input: {},
+            },
+            concurrency: "unlimited",
+            ...notYetDue,
+          });
+          if (started.status !== "started") throw new Error("Start refused");
+          const schedule = yield* executions.findSchedule({
+            executionId: started.execution.id,
+          });
+          if (!schedule) throw new Error("The run has no schedule row");
+          return {
+            executionId: started.execution.id,
+            scheduleId: schedule.id,
+          };
+        })
+      );
+      await withAdminClient(async (pass) => {
+        await pass.unsafe(`set search_path to "${schema}"`);
+        let deletion: Promise<void> | undefined;
+        try {
+          const [backend] = await pass.unsafe<{ pid: number }[]>(
+            "select pg_backend_pid() as pid"
+          );
+          if (!backend) throw new Error("Backend not found");
+          await pass.unsafe("begin");
+          // The fenced write's first statement: hold the schedule row.
+          await pass.unsafe(
+            "select id from workflow_execution_schedule where id = $1 for share",
+            [scheduleId]
+          );
+          deletion = connection.run(
+            Effect.flatMap(WorkflowRepo, (workflows) =>
+              workflows.deleteById("wf_1")
+            )
+          );
+          await waitUntilBlockedBy(backend.pid);
+          // The fenced write's own statement on the execution row, which the
+          // deletion must not be holding while it waits for the schedule row.
+          await pass.unsafe(
+            "update workflow_executions set status = 'running' where id = $1",
+            [executionId]
+          );
+          await pass.unsafe("commit");
+          await deletion;
+        } finally {
+          await pass.unsafe("rollback");
+          await deletion?.catch(() => undefined);
+        }
+      });
+      const left = await connection.run(
+        Effect.flatMap(WorkflowRepo, (workflows) => workflows.findById("wf_1"))
+      );
+      expect(left).toBeNull();
+    } finally {
+      await connection.close();
+      await withAdminClient((client) =>
+        client.unsafe(`drop schema "${schema}" cascade`)
+      );
+    }
+  });
+
   // A pause sets `is_paused` and then deletes the workflow's timers, in the
   // order Publish takes the same rows.
   it("deletes a workflow behind a pause deleting its timers without a deadlock", async () => {

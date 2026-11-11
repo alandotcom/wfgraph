@@ -31,6 +31,7 @@ import {
   replaceCronTimers,
 } from "#src/backend/services/executions/repo/cron";
 import { timerSchedules } from "#src/backend/services/executions/repo/cron-policy";
+import { lockWorkflowRuns } from "#src/backend/services/executions/repo/runs";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 export { type WorkflowVersionUsageRow } from "#src/backend/services/workflows/repo/version-row";
@@ -734,13 +735,17 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               // timers, so the workflow row goes first here too. A fire holds
               // its timer row and then takes a key-share lock on the workflow
               // row through its run's insert, which `no key update` allows, so
-              // the fire commits while this waits for its timer.
+              // the fire commits while this waits for its timer. The runs'
+              // schedule rows and execution rows come last, in the order a
+              // pass's fenced write takes them, because the cascade would
+              // reach them in the reverse order.
               await tx
                 .select({ id: workflows.id })
                 .from(workflows)
                 .where(eq(workflows.id, workflowId))
                 .for("no key update");
               await lockCronTimers(tx, workflowId);
+              await lockWorkflowRuns(tx, workflowId);
               await tx.delete(workflows).where(eq(workflows.id, workflowId));
             })
           ),
