@@ -141,7 +141,7 @@ describe("the toolkit", () => {
     }
     // The read tools are the rest, and none of them may claim to write.
     expect(WRITE_TOOL_NAMES).toContain("insert_node_on_edge");
-    expect(WRITE_TOOL_NAMES.size).toBe(10);
+    expect(WRITE_TOOL_NAMES.size).toBe(11);
   });
 
   it.effect("supplies a handler for every tool it declares, and no other", () =>

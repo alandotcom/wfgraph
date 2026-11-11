@@ -145,6 +145,15 @@ const successCases: readonly ConformanceCase[] = [
     },
   },
   {
+    name: "apply_edits",
+    arguments: {
+      operations: [
+        { tool: "update_node", nodeId: "score", label: "Rescore" },
+        { tool: "disconnect_nodes", edgeId: "wait-notify" },
+      ],
+    },
+  },
+  {
     name: "set_lifecycle_rules",
     arguments: { concurrency: "first-wins" },
   },
@@ -185,6 +194,15 @@ const refusalCases: readonly ConformanceCase[] = [
   { name: "delete_node", arguments: { nodeId: "missing" } },
   { name: "connect_nodes", arguments: { source: "missing", target: "score" } },
   { name: "disconnect_nodes", arguments: { edgeId: "missing" } },
+  {
+    name: "apply_edits",
+    arguments: {
+      operations: [
+        { tool: "update_node", nodeId: "score", label: "Rescore" },
+        { tool: "delete_node", nodeId: "missing" },
+      ],
+    },
+  },
   {
     name: "insert_node_on_edge",
     arguments: {

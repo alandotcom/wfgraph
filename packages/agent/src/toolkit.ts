@@ -43,6 +43,7 @@ import {
   referenceToolHandlers,
 } from "#src/tools/reference-tools";
 import { SetWait, waitToolHandlers } from "#src/tools/wait-tools";
+import { ApplyEdits, applyEditsHandler } from "#src/tools/batch-tools";
 import { issuesIntroduced, type NewIssue } from "#src/tools/new-issues";
 
 export const agentToolkit = Toolkit.make(
@@ -61,6 +62,7 @@ export const agentToolkit = Toolkit.make(
   ConnectNodes,
   DisconnectNodes,
   InsertNodeOnEdge,
+  ApplyEdits,
   RevertDraft,
   SetLifecycleRules,
   SetCondition,
@@ -112,6 +114,9 @@ export const agentToolHandlers = Effect.gen(function* () {
     connect_nodes: reportingNewIssues(graphWrite.connect_nodes),
     disconnect_nodes: reportingNewIssues(graphWrite.disconnect_nodes),
     insert_node_on_edge: reportingNewIssues(graphWrite.insert_node_on_edge),
+    apply_edits: reportingNewIssues(
+      applyEditsHandler({ draft, handlers: graphWrite })
+    ),
     set_lifecycle_rules: reportingNewIssues(lifecycle.set_lifecycle_rules),
     set_condition: reportingNewIssues(lifecycle.set_condition),
     set_wait: reportingNewIssues(wait.set_wait),
@@ -135,6 +140,7 @@ export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   ConnectNodes.name,
   DisconnectNodes.name,
   InsertNodeOnEdge.name,
+  ApplyEdits.name,
   RevertDraft.name,
   SetLifecycleRules.name,
   SetCondition.name,

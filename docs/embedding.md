@@ -675,6 +675,15 @@ tools also require `expectedDraftRevision`, using the revision returned by the
 most recent read or write. A successful write increments the revision once and
 returns the new value.
 
+`apply_edits` applies an ordered list of `add_node`, `update_node`,
+`delete_node`, `connect_nodes`, `disconnect_nodes` and `insert_node_on_edge`
+operations to one draft and stores the result once, under one
+`expectedDraftRevision`. A refused operation stops the batch, nothing is
+stored, and the reason names the operation. A step an operation creates can
+carry a `key`, and a later operation in the same batch names it as `$key`. Every
+write, `apply_edits` included, answers `newIssues`: the validation issues the
+draft gained with that write.
+
 A call whose arguments do not match the tool's input schema returns an error
 tool result (`isError: true`) that names each wrong field and what it expected,
 so a model can correct the call. A call naming a tool the server does not list

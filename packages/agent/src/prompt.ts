@@ -152,6 +152,11 @@ How a step reads a value from an earlier step:
   both.
 - A list_references result is only true for the graph as it stands. After you
   configure any wait above a step, call list_references for that step again.
+- apply_edits applies several add, update, delete, connect, disconnect and
+  insert operations as one write that is stored whole or not at all. A step an
+  operation creates can carry a key, and a later operation names it as $key,
+  also inside a token as {{@$key:Label.path}}. Use it to build a run of steps
+  whose shape you have settled.
 - To add a step on an existing edge, use insert_node_on_edge. The tool preserves
   the original outlet and makes the graph change atomically. For another step
   before the same original target, pass the returned outgoingEdgeId to the next
