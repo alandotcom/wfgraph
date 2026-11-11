@@ -50,7 +50,7 @@ the history with each message and keeps the thread in its own storage.
 
    | Provider            | Turned on by | `model`                     | Note                                                                 |
    | ------------------- | ------------ | --------------------------- | -------------------------------------------------------------------- |
-   | `openai`            | `apiKey`     | Defaults to `gpt-6.1-terra` | `gpt-6-luna` is the lowest cost per turn                             |
+   | `openai`            | `apiKey`     | Defaults to `gpt-6.1-terra` | `gpt-6-luna` is the lowest cost per turn and passes fewer eval runs  |
    | `anthropic`         | `apiKey`     | Required                    | A Claude model of the 4.6 generation or later, for adaptive thinking |
    | `openrouter`        | `apiKey`     | Required                    | An OpenRouter model id                                               |
    | `openai-compatible` | `baseUrl`    | Required                    | `apiKey` is optional and sent as a bearer token when set             |

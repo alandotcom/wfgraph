@@ -37,7 +37,11 @@ const API_KEY_ENV = "OPENAI_API_KEY";
  *
  * Chosen by the eval suite in `packages/evals`, where it passed as many cases
  * as `gpt-6.1-sol` at half the price. `gpt-6-luna` costs a tenth as much and
- * passed fewer, so a host that prefers the lower bill names it in `model`.
+ * passes fewer: 213 of 234 runs over three passes of the 78-run suite, against
+ * 152 of 156 for this model (Fisher's exact test, p = 0.011). Five of the
+ * `gpt-6-luna` runs built a graph the request did not ask for, most often with
+ * a Condition nobody requested. A host that prefers the lower bill names it
+ * in `model`.
  */
 export const DEFAULT_AGENT_MODEL = "gpt-6.1-terra";
 
