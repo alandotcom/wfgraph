@@ -218,6 +218,17 @@ export type InProcessRunner = {
    * writes one record saying how the loop's passes in flight ended.
    */
   readonly stop: () => Promise<void>;
+  /**
+   * When the loop last finished a turn of polling and claiming, or undefined
+   * before its first. A loop that died and is waiting out its restart
+   * backoff, or that waits on a claim the database never answers, falls
+   * behind its poll interval here.
+   */
+  readonly lastTurnAt: () => Date | undefined;
+  /** When the loop started, which stands in for its last turn before the first. */
+  readonly startedAt: Date;
+  /** How long the loop sleeps between turns when nothing wakes it. */
+  readonly pollMs: number;
 };
 
 export function startInProcessRunner(input: {
@@ -230,6 +241,8 @@ export function startInProcessRunner(input: {
   const { runtime, extensions, wakes, settings } = input;
   const controller = new AbortController();
   const { signal } = controller;
+  let lastTurnAt: Date | undefined;
+  const startedAt = new Date();
 
   // Built per start, so a loop that restarts begins with none of the state the
   // one that died held.
@@ -241,6 +254,9 @@ export function startInProcessRunner(input: {
       signal,
       drainMs: RUNNER_DRAIN_MS,
       wake: wakes.local,
+      onTurn: () => {
+        lastTurnAt = new Date();
+      },
       ...settings,
     })
   );
@@ -290,6 +306,9 @@ export function startInProcessRunner(input: {
   });
 
   return {
+    lastTurnAt: () => lastTurnAt,
+    startedAt,
+    pollMs: settings.pollMs,
     stop: async () => {
       controller.abort();
       const exit = await within(ended, RUNNER_DRAIN_MS + RUNNER_STOP_MARGIN_MS);

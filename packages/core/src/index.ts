@@ -72,10 +72,12 @@ export {
   type WfGraphEventsOptions,
   type WfGraphInboxInsert,
   type WfGraphExtensions,
+  type WfGraphHealth,
   type WfGraphAgentConfig,
   type WfGraphLogger,
   type WfGraphMcpOptions,
   type WfGraphPersistence,
+  type WfGraphRunnerHealth,
   type WfGraphRunnerOptions,
   type WfGraphRunsOptions,
 } from "#src/app";

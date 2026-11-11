@@ -55,6 +55,7 @@ import {
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import { readinessBody, type WfGraphHealth } from "#src/backend/host-health";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 
 // A path segment is whatever the sender typed, so the refusal names the field
@@ -183,7 +184,15 @@ export type CreateApiAppOptions = {
    * Absent, the route is not mounted.
    */
   eventsKey?: string | undefined;
+  /**
+   * The app's health check. Present, `GET /health` is mounted outside the
+   * host gate and answers its readiness body, 200 when ok and 503 otherwise.
+   */
+  health?: (() => Promise<WfGraphHealth>) | undefined;
 };
+
+/** The readiness route a load balancer probes, which no session reaches. */
+const HEALTH_ROUTE = "/health";
 
 const WEBHOOK_ROUTE = "/webhooks/:type/:connectionId";
 
@@ -248,7 +257,7 @@ export function requestLogPath(path: string): string {
 }
 
 export function createApiApp(options: CreateApiAppOptions) {
-  const { basePath, auth, runtime, mcp = false, eventsKey } = options;
+  const { basePath, auth, runtime, mcp = false, eventsKey, health } = options;
   const app = new Hono<WfGraphHonoEnv>().basePath(basePath);
   const rpcHandler = new RPCHandler<RpcContext>(rpcRouter);
   const ungatedRoutes = machineRoutes({
@@ -316,7 +325,8 @@ export function createApiApp(options: CreateApiAppOptions) {
       httpLogger.warn(summary, fields);
     } else if (
       (procedure !== null && POLLED_RPC_PROCEDURES.has(procedure)) ||
-      OAUTH_ATTEMPT_LOG_PATH.test(path)
+      OAUTH_ATTEMPT_LOG_PATH.test(path) ||
+      path === `${basePath}${HEALTH_ROUTE}`
     ) {
       httpLogger.trace(summary, fields);
     } else {
@@ -350,6 +360,16 @@ export function createApiApp(options: CreateApiAppOptions) {
     app.use(route, async (c, next) => {
       c.set("wfgraphPublicRoute", true);
       await next();
+    });
+  }
+
+  // A load balancer cannot sign in, so the readiness route answers before the
+  // gate, with booleans and a timestamp alone.
+  if (health !== undefined) {
+    app.get(HEALTH_ROUTE, async (c) => {
+      c.header("Cache-Control", "no-store");
+      const checked = await health();
+      return c.json(readinessBody(checked), checked.ok ? 200 : 503);
     });
   }
 

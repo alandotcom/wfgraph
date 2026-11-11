@@ -1215,6 +1215,7 @@ Cloudflare Workers and Hyperdrive.
 | `agent.reasoningEffort`   | No                  | How hard the model thinks before answering: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. Defaults to `medium`                                                                                        |
 | `agent.baseUrl`           | No                  | An OpenAI-compatible endpoint that is not OpenAI's own                                                                                                                                                                 |
 | `mcp`                     | No                  | Enables the authenticated stateless MCP authoring endpoint at `${basePath}/api/mcp`. Pass `true` for localhost development. For deployed hosts, configure allowed hostnames and origin hostnames. Disabled by default  |
+| `health`                  | No                  | `true` mounts `GET /api/health`, the readiness route outside `auth`. Off by default. See API endpoints                                                                                                                 |
 | `logger`                  | No                  | A `WfGraphLogger` that takes every record. See Logging below                                                                                                                                                           |
 | `client`                  | No                  | The editor bundle to serve, from `@wfgraph/client`                                                                                                                                                                     |
 
@@ -1247,11 +1248,13 @@ Read these once:
 - **`hono` is a peer dependency**, at `^4.13.14`, and `inngest` is an optional one, at
   `^4.26.1`. Your application installs `hono` and owns its version; Workflow Graph builds
   its own Hono app inside, and `createWfGraphApp` answers with `fetch`, `basePath`,
-  `events`, `dispose`, and `[Symbol.asyncDispose]` alone, so Hono appears nowhere in what
+  `events`, `health`, `dispose`, and `[Symbol.asyncDispose]` alone, so Hono appears nowhere in what
   it hands back. Only `@wfgraph/core/inngest` imports `inngest`, so install it only when
   you register the forwarders; your own Inngest client then shares the one SDK copy.
-- `createWfGraphApp` answers `{ fetch, basePath, events, dispose, [Symbol.asyncDispose] }`.
-  `events.send` raises an Event from your own code; see `docs/events.md`. For a
+- `createWfGraphApp` answers
+  `{ fetch, basePath, events, health, dispose, [Symbol.asyncDispose] }`. `events.send`
+  raises an Event from your own code; see `docs/events.md`. `health()` is the check behind
+  the readiness route; see API endpoints. For a
   lexical lifetime, declare the app with `await using`. For a long-running host, call
   `await dispose()` from its shutdown handler. Both forms run the same idempotent shutdown:
   they stop the worker loop and wait up to ten seconds for the runs it is advancing,
@@ -1440,3 +1443,30 @@ from `packages/shared/src/rpc/contracts.ts` and serves it live:
 
 - `GET /api/openapi.json` for the document
 - `GET /api/docs` for the browsable form
+
+### Readiness
+
+`health: true` mounts `GET /api/health` for a load balancer or an orchestrator's readiness
+probe. A load balancer cannot sign in, so the route answers outside `auth`, and its body
+holds booleans and a timestamp alone:
+
+```json
+{
+  "ok": true,
+  "checkedAt": "2026-11-11T09:00:00.000Z",
+  "database": true,
+  "runner": true
+}
+```
+
+- `database` is whether the database answered a read of one row by id within five
+  seconds.
+- `runner` is whether this process's worker loop finished a turn of polling and claiming
+  within two poll intervals, and never less than a minute. It is `null` in an app created
+  with `runner: false`.
+- `ok` holds when both do, and the status is then 200; otherwise it is 503. The response
+  carries `Cache-Control: no-store`, and its request record is written at the `trace`
+  level, so a probe every few seconds stays out of the logs until it fails.
+
+`app.health()` answers the same check with the time of the loop's last turn, for a host
+that serves a health endpoint of its own. It never rejects. The route is off by default.

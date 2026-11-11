@@ -38,6 +38,10 @@ import {
   type WfGraphEvents,
   type WfGraphEventsOptions,
 } from "#src/backend/host-events";
+import {
+  createHealthCheck,
+  type WfGraphHealth,
+} from "#src/backend/host-health";
 import { resolveRetention } from "#src/backend/host-retention";
 import type { WfGraphRunsOptions } from "#src/backend/host-runs";
 
@@ -66,6 +70,10 @@ export {
   type WfGraphInboxInsert,
 } from "#src/backend/host-events";
 export type { WfGraphRunsOptions } from "#src/backend/host-runs";
+export type {
+  WfGraphHealth,
+  WfGraphRunnerHealth,
+} from "#src/backend/host-health";
 
 export type WfGraphAppOptions = {
   /**
@@ -151,6 +159,12 @@ export type WfGraphAppOptions = {
   /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */
   mcp?: true | WfGraphMcpOptions | undefined;
   /**
+   * `true` mounts `GET {basePath}/api/health`, a readiness route outside
+   * `auth` for a load balancer, answering `app.health()` as booleans and a
+   * timestamp, with 200 when ok and 503 otherwise. Off by default.
+   */
+  health?: boolean | undefined;
+  /**
    * The workflow editor, from `import { clientBundle } from "@wfgraph/client"`.
    *
    * Workflow Graph serves the editor when a host hands it one and serves nothing when they
@@ -183,6 +197,12 @@ export type WfGraphApp = {
   basePath: "" | `/${string}`;
   /** Raises an Event into this app's event inbox from the host's own code. */
   events: WfGraphEvents;
+  /**
+   * Checks that the database answers a one-row read and, when this app runs
+   * a worker loop, that the loop finished a turn recently. Never rejects, so
+   * a host with its own health endpoint can call it on every probe.
+   */
+  health: () => Promise<WfGraphHealth>;
   /**
    * Give back everything this app holds. Awaiting it waits for the worker
    * loop to stop and for the Effect runtime's Layers to finalize; a host that
@@ -283,6 +303,13 @@ async function assembleWfGraphApp(
   const { basePath, auth, setup } = startup;
   const { runtime } = setup;
   const { startRunner } = setup;
+  // Assigned last, below, and read by the check whenever it runs.
+  let runner: InProcessRunner | undefined;
+  const health = createHealthCheck({
+    runtime,
+    runsLoop: startRunner !== undefined,
+    runner: () => runner,
+  });
 
   const apiApp = createApiApp({
     basePath: `${basePath}/api`,
@@ -290,6 +317,7 @@ async function assembleWfGraphApp(
     runtime,
     mcp: options.mcp,
     eventsKey: options.events?.key,
+    health: options.health === true ? health : undefined,
   });
   const fullApp = new Hono();
 
@@ -327,7 +355,7 @@ async function assembleWfGraphApp(
   }
 
   // Last, so a boot that failed before this line leaves no loop running.
-  let runner: InProcessRunner | undefined = startRunner?.();
+  runner = startRunner?.();
 
   const disposeOnce = async (): Promise<void> => {
     // The loop's passes write through the runtime and the backend, so it
@@ -344,6 +372,7 @@ async function assembleWfGraphApp(
     fetch: async (request) => await fullApp.fetch(request),
     basePath,
     events: setup.events,
+    health,
     dispose,
     [Symbol.asyncDispose]: dispose,
   };

@@ -330,6 +330,12 @@ export type WorkerLoopOptions = DrainSettings & {
   retention: RetentionWindows;
   /** Wakes the loop to claim at once, for a producer in the same process. */
   wake?: WorkerWake | undefined;
+  /**
+   * Called after each turn of the loop has polled and claimed what its free
+   * lanes allow, or found every lane full. A turn that waits on a database
+   * that never answers never calls it, which is what a health check reads.
+   */
+  onTurn?: (() => void) | undefined;
 };
 
 /** What a stopped loop's passes in flight came to. */
@@ -688,6 +694,8 @@ export function runWorkerLoop(
           );
         }
       }
+
+      options.onTurn?.();
 
       // Sleep for one poll, or until the soonest released row is due, a pass
       // frees a slot in a full lane, `wake` is called, or the stop signal

@@ -987,3 +987,90 @@ describe("createWfGraphApp runner", () => {
     ).rejects.toThrow("must be shorter than runner.leaseMs");
   });
 });
+
+describe("createWfGraphApp health", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  // A load balancer cannot sign in, so the route answers outside `auth`, and
+  // it says nothing beyond booleans and a timestamp.
+  it("answers the readiness route outside auth once the loop has turned", async () => {
+    await using app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      auth: () => null,
+      persistence: wfSqlite(),
+      health: true,
+    });
+
+    await vi.waitFor(async () =>
+      expect((await app.health()).runner?.lastTurnAt).not.toBeNull()
+    );
+    const response = await get(app, "/api/health");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({
+      ok: true,
+      checkedAt: expect.any(String),
+      database: true,
+      runner: true,
+    });
+  });
+
+  it("keeps the readiness route off unless the host turns it on", async () => {
+    await using app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      auth: () => null,
+      persistence: wfSqlite(),
+    });
+    expect((await get(app, "/api/health")).status).toBe(401);
+    expect((await app.health()).database).toBe(true);
+  });
+
+  it("answers 503 when the database does not answer, and names no loop it does not run", async () => {
+    await using app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      runner: false,
+      health: true,
+    });
+
+    const response = await get(app, "/api/health");
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      database: false,
+      runner: null,
+    });
+  });
+
+  // A loop that stopped turning, here one that never does, falls behind its
+  // poll interval and makes the app unready, though the database answers.
+  it("reads a loop that stopped turning as not ok", async () => {
+    vi.spyOn(workerLoopModule, "runWorkerLoop").mockImplementation(
+      ({ signal }) =>
+        Effect.promise(
+          () =>
+            new Promise((resolve) => {
+              signal.addEventListener("abort", () =>
+                resolve({ drained: 0, interrupted: 0 })
+              );
+            })
+        )
+    );
+    await using app = await createWfGraphApp({
+      ...BASE_OPTIONS,
+      persistence: wfSqlite(),
+    });
+    expect((await app.health()).ok).toBe(true);
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 2 * 60_000);
+    const health = await app.health();
+    expect(health).toMatchObject({
+      ok: false,
+      database: true,
+      runner: { ok: false, lastTurnAt: null },
+    });
+  });
+});
