@@ -3,10 +3,10 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "a4d34ae26a4153e116d8df5b2e04a84277ce61d912143b9cb76e37d3af740e4f",
+      "fingerprint": "a46d8123b1bed6790a839d83ce4dd47d88f908f78e831881ef7937120a1c0ee2",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
-        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
+        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
         "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "ac2b3fc55bb55741bb59cf50aa5de80684a2c74a439443419a4ea438d598e848",
@@ -14,15 +14,15 @@
         "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "45656429549e5ddab3d00815e3d9d9610f0ba8b99d0c2dcd195eae6ee37d9162",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "f7b926ca29fb3a4eb2637a72f83ba67f5304662d4d3c777d80441e33e85c9c7d",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "52b4d08d03e1e8e5d001d6b43ef7cfc4bdba8d7cada7156b300f654c3e455da0",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "no-change",
-      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
+      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong. The mcp skill change it also tracks is recorded on the mcp item.",
       "evidence": [
         "Read the skill against docs/embedding.md at HEAD",
-        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
+        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -40,18 +40,18 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "2d2f87c18d190db751707c460668ecbb7aaa5660f4effeb01e66fac78f4d4c77",
+      "fingerprint": "a1f91f986e8e92b44bc0e4c75a42b098f30b3ac04d6f227fe81c95593b89904e",
       "snapshot": {
-        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
+        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "no-change",
-      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
+      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
       "evidence": [
         "Read the skill against docs/embedding.md at HEAD",
-        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
+        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
@@ -70,28 +70,28 @@
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "6ec45ecec0e16b70d489f5137cf9ab20401064dbc0a961147a0ed8643c92c589",
+      "fingerprint": "e10d9b193fa68110b636cafe7072291c732ae5a8946aed962978021685bdd40e",
       "snapshot": {
-        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
+        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "b7a92179cb4b08dd4aa4a559e9caa2e63d3187be94a11a2d5a7f2daaa0a54628"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "no-change",
-      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
+      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
       "evidence": [
         "Read the skill against docs/embedding.md at HEAD",
-        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
+        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "8f58797e57a88561b4ea329c16e8bdcd071952fdb2353eb0ecc536cf1a897b0d",
+      "fingerprint": "0c9963e9b851c2048f517eb0df85f97bdc88bb964d017a303981ea5f9ea12753",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
         "_artifacts/domain_map.yaml": "c0c37dffbc738e3b15b2b1370e969bb4a574c2e39ef61054e2b252d048c7d746",
         "_artifacts/skill_spec.md": "a73b6c1289b3321ca97cc0b489b84f2c6b33ba1c027597509bd578101f045ad9",
         "_artifacts/skill_tree.yaml": "0d7d9f2fd93f3844a71191892ab9574e5fb8f43e26d8dc0292b488ad443bd352",
-        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
+        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
@@ -101,7 +101,7 @@
         "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "45656429549e5ddab3d00815e3d9d9610f0ba8b99d0c2dcd195eae6ee37d9162",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "f7b926ca29fb3a4eb2637a72f83ba67f5304662d4d3c777d80441e33e85c9c7d",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "52b4d08d03e1e8e5d001d6b43ef7cfc4bdba8d7cada7156b300f654c3e455da0",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d",
         "packages/core/src/backend/agent/config.ts": "0007c555287f0e56f81b60dd57d3fa75fd5f8e09fcc67366fca4ee83765be545",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca",
@@ -116,12 +116,12 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "b7a92179cb4b08dd4aa4a559e9caa2e63d3187be94a11a2d5a7f2daaa0a54628",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "no-change",
-      "reason": "No skill and no developer task was added. The mcp skill's existing task, authoring over MCP, covers the reference read.",
+      "reason": "domain_map.yaml, skill_spec.md and skill_tree.yaml record the MCP endpoint and its draft protocol at the level of tasks and skills; none names set_condition, list_references or Condition rule fields, so the added mcp bullet changes no domain, task, coverage decision or tree entry.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists wfgraph-core/mcp",
-        "No skill path added or removed"
+        "rg -i 'set_condition|list_references' _artifacts found nothing",
+        "1060166f docs(skills): teach MCP clients the sourceNodeId a set_condition rule takes"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -138,19 +138,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "97fbb692a72fa8d24b95a3d437f535cfa6083cafcc48354a094aba7e2e2c0a55",
+      "fingerprint": "60fe405458ccaf09777983bfb6e4d52f8ab549dc765afa5468f1e2cbc69c6207",
       "snapshot": {
-        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
+        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "no-change",
-      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
+      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
       "evidence": [
         "Read the skill against docs/embedding.md at HEAD",
-        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
+        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
       ]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
@@ -182,20 +182,20 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "f5e64cbd086670d143fc8b2ced6a72d8364a90da002480463e307ec91c4e94bd",
+      "fingerprint": "a348fadbe74339accd7c41381359396db4bfbd82cf42e13b44a29e46d140b1d4",
       "snapshot": {
-        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
+        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "no-change",
-      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
+      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
       "evidence": [
         "Read the skill against docs/embedding.md at HEAD",
-        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
+        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
       ]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
@@ -237,19 +237,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "4dbe1e0f733654514d928e65edeb548b902f96bf5d76d750ac9fd574815a80fe",
+      "fingerprint": "170fc350196c5203a025221f3af3ace3828777ba9fea47733fbdf34eded489a9",
       "snapshot": {
-        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
+        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "no-change",
-      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
+      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
       "evidence": [
         "Read the skill against docs/embedding.md at HEAD",
-        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
+        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
       ]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
@@ -773,9 +773,7 @@
       "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "out-of-scope",
       "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
-      "evidence": [
-        "_artifacts/skill_tree.yaml"
-      ]
+      "evidence": ["_artifacts/skill_tree.yaml"]
     },
     "source:packages/client/src/lib/workflow-save-store.test.ts": {
       "fingerprint": "7c64f294150356d10b76fd786832100ac90a77b136e78ae80b6c9a64e39e927b",
@@ -2172,9 +2170,7 @@
       "head": "b2d0401a6c3d146fadff419ff4bee25869777bde",
       "outcome": "out-of-scope",
       "reason": "Test, editor, conformance or release-note file that no published skill teaches.",
-      "evidence": [
-        "_artifacts/skill_tree.yaml"
-      ]
+      "evidence": ["_artifacts/skill_tree.yaml"]
     },
     "source:packages/core/src/backend/services/workflows/lifecycle/scheduled-start.ts": {
       "fingerprint": "231d8f87ffd4c24cb3f62bddb6fc81bff39f4b5cb3b989e73621318ba9092443",
@@ -2233,9 +2229,7 @@
       "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
       "reason": "Generated release notes that no published skill teaches.",
-      "evidence": [
-        "_artifacts/skill_tree.yaml lists no CHANGELOG sources."
-      ]
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/client/CHANGELOG.md": {
       "fingerprint": "d22e3f835880f80b38975641b06e35e85821e6202db33f116b5ed26322b525cc",
@@ -2245,9 +2239,7 @@
       "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
       "reason": "Generated release notes that no published skill teaches.",
-      "evidence": [
-        "_artifacts/skill_tree.yaml lists no CHANGELOG sources."
-      ]
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/core/CHANGELOG.md": {
       "fingerprint": "ba7f5437ef115d1a8e92614e7270069d2babc10bccc6f162e743b973798b6f38",
@@ -2257,9 +2249,7 @@
       "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
       "reason": "Generated release notes that no published skill teaches.",
-      "evidence": [
-        "_artifacts/skill_tree.yaml lists no CHANGELOG sources."
-      ]
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/core/src/backend/engine/core-replay.test.ts": {
       "fingerprint": "13a13ef7ce28d1f5ac2cd5ea6b103f5eaefa50e25ec003e4de3c7b0169b75589",
@@ -2276,31 +2266,29 @@
       ]
     },
     "source:packages/core/src/backend/engine/traversal.test.ts": {
-      "fingerprint": "cb83d5700ce8ca8ded983e5a653aaac542a83169979297505d057a11a8786aea",
+      "fingerprint": "7e85e8f2f10f5b53ead0823f5b05830f6377c8fac38b850d1b2ff934494a7999",
       "snapshot": {
-        "packages/core/src/backend/engine/traversal.test.ts": "fb61dde4c0a0fdbdc6aca8136e16ce4f360f8526989a64f1d1143da07e7a54ea"
+        "packages/core/src/backend/engine/traversal.test.ts": "482670a849c0a595e9a2122d1a8eda4cc13ed1c04ee15faa933938a2c371bdff"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/core/src/backend/engine/traversal.ts": {
-      "fingerprint": "9f6e7a887d05595ff2b05e4b75f2750f6a616364ed6e30e7de3091c374167890",
+      "fingerprint": "1844ca8bbacee364bbe6053cd80f95cf001c047d8e32a28991fff1673d07cd4a",
       "snapshot": {
-        "packages/core/src/backend/engine/traversal.ts": "e32bb425d72f3219c60c8118ca71c987f6d61dcb1233f2a4ab336f60820311fe"
+        "packages/core/src/backend/engine/traversal.ts": "368626d99df5ea5dd1a4f87d2550452c307454dd7bb473eea493caa7e0670112"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/core/src/backend/executor/runtime.ts": {
@@ -2616,9 +2604,7 @@
       "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
       "reason": "Generated release notes that no published skill teaches.",
-      "evidence": [
-        "_artifacts/skill_tree.yaml lists no CHANGELOG sources."
-      ]
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/shared/CHANGELOG.md": {
       "fingerprint": "226dbd5fa65bc1b71aba862b8afd1c845ec7e4486e366f3950da8fe6b276c13f",
@@ -2628,9 +2614,7 @@
       "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
       "reason": "Generated release notes that no published skill teaches.",
-      "evidence": [
-        "_artifacts/skill_tree.yaml lists no CHANGELOG sources."
-      ]
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/shared/src/lifecycle/run-ending.test.ts": {
       "fingerprint": "a6a4d52e43e21d9a894d7fc1502aba1fe6af4a72440c3f77ced6779a6218bbfb",
@@ -2933,42 +2917,42 @@
       ]
     },
     "source:CONTEXT.md": {
-      "fingerprint": "0f5167eb33f70d9d10eba090afd03c26b7e2faec11feeb65b99aec5cfb3ff9f7",
+      "fingerprint": "4c1615f308e6a07849c22085e6fa6d4669329571fff23bed747538c07faf4c7f",
       "snapshot": {
-        "CONTEXT.md": "d3a080d7330f1409a4106c0ef3c650bbcce5956223794d322a08dc75fc0e4e91"
+        "CONTEXT.md": "5c27b18e4e2248ea5b2a31a7dca8cb91a03a2cbd19da57e361df56f4c94385ae"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "Contributor material: TLA+ models, an ADR amendment and domain vocabulary. Published skills carry adopter guidance only, and the adopter-visible rules these describe are in the wfgraph-core skill.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "git log 0570e6c6^..HEAD for the path",
-        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/agent/src/prompt.ts": {
-      "fingerprint": "f99b69a046e0f2fc8eb5b85b021ea53eb9dd54b268bb806158b08e95b1fcb939",
+      "fingerprint": "b94381f96fc34e06b9fcdd03a7141d366774db97c3d0728f669647cde2e34bd6",
       "snapshot": {
-        "packages/agent/src/prompt.ts": "d6c4f0231a4f2625025251a52d7b2c2aacf18c88ac9e145612d7173c14bbff95"
+        "packages/agent/src/prompt.ts": "60bfa948d423a8f450f4019c94b16fa3bfcd4311d85f39130c52043487341ad2"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "git log 3fa8dc9e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/changes-summary.ts": {
-      "fingerprint": "2335cc5ae72e38b705007368dc0ceeeb247677f3e33ed606adbf64eda429ecf7",
+      "fingerprint": "a190ad2bce781e84f0d173123fc5d24d71614b926de9b4da4ea7d3d454c67b1b",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/changes-summary.ts": "c3647498a1d667ae6242d3c5c52ed03361666fffd7c7b29fadc081be759d4ce7"
+        "packages/client/src/components/workflow/canvas-reveal/changes-summary.ts": "0d27116b6b2b607b343605337632d5b0b00c09e076fc6f795fd78a8d0fa62d1b"
       },
-      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
-        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/core/src/backend/agent/publication-validation.test.ts": {
@@ -3076,74 +3060,75 @@
       ]
     },
     "source:packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts": {
-      "fingerprint": "4e36a0cdc7c6934666d02af0746c11f7f9f95a5c25c35c71d88a40c7b83ff33e",
+      "fingerprint": "3c6d9a592f5c023f9a106ac563dbe25f8e80fe3b2741295ea8d3dfbe68516051",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts": "ec83a0c5299bd022c2d158174eda365c2bc89d19fdb4471352badd2740bc2cc2"
+        "packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts": "4da9147dc628a22f1f216d881e084642859bc99b6fe724e9445f7abdb7cd84a8"
       },
-      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
-        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/shared/src/graph/workflow-issues.test.ts": {
-      "fingerprint": "a8f40604fdd288395dd81a5a3be8232b2ed82828fc3b6c6f8339eb698f8c6bf2",
+      "fingerprint": "da6a1583ceddc4bce0a4f61133a9c9c69a0b1a65d6a32ccf5895562c3f1c6fd6",
       "snapshot": {
-        "packages/shared/src/graph/workflow-issues.test.ts": "413609b2aa7755d13194de150b60144c824cf7e28d10b6c2ea8bc7506846c0fe"
+        "packages/shared/src/graph/workflow-issues.test.ts": "651c9bc12d73ec9adee2307f5436f8b15d0ca933366e9e17430f3cd5cf65ee97"
       },
-      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
-        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/shared/src/graph/workflow-issues.ts": {
-      "fingerprint": "52614e3c953591bc4a0120064453aded901a5b55e4e1507024e64d606b8269b2",
+      "fingerprint": "510e82da330eed8c4de7f4733cc76fef0929bc515ea7ff2c9c984af6b6effd61",
       "snapshot": {
-        "packages/shared/src/graph/workflow-issues.ts": "ee98a9b5c48dc17dc1e1f0fd1ce74ba16e4df901202cf0a4a5dc9c9a43adbe15"
+        "packages/shared/src/graph/workflow-issues.ts": "d7ea3a6f4f212a728387ace954c34fa1bcc86c8ba599d7cc97eec6568d0592d3"
       },
-      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
-        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "6a64b4a8b0e0342ebd1d3b821632da500d167373df4152d994d6d6939cb8b769",
+      "fingerprint": "c2f37dcdaf2ae003611548612a2a80b1101c92ab45f464ea79cbf41544c4777f",
       "snapshot": {
-        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
+        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "ac2b3fc55bb55741bb59cf50aa5de80684a2c74a439443419a4ea438d598e848",
         "packages/core/src/backend/agent/config.ts": "0007c555287f0e56f81b60dd57d3fa75fd5f8e09fcc67366fca4ee83765be545",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "no-change",
-      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
+      "reason": "The only change to docs/embedding.md is the MCP authoring passage on set_condition, which now says each rule takes a reference's path and sourceNodeId and is stored naming that step. This skill does not teach set_condition or Condition rules, so nothing it states became wrong.",
       "evidence": [
         "Read the skill against docs/embedding.md at HEAD",
-        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
+        "1a6f2429 docs: describe the Condition Source and the rule form that names it"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
-      "fingerprint": "7b9bbd8f38d5598df8e926d3e02a479c5c1aebc9d76db050f1debe6a9870e87d",
+      "fingerprint": "1a57d7f8b8c0c8628edf66559501568faadd7998c19bd0ef09034dcb6fc35e0a",
       "snapshot": {
-        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "f7b926ca29fb3a4eb2637a72f83ba67f5304662d4d3c777d80441e33e85c9c7d",
+        "docs/embedding.md": "f236e54e464044aa3c24558773c96b2f29c4ffd7cd559a8d1009d43570b352a0",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "52b4d08d03e1e8e5d001d6b43ef7cfc4bdba8d7cada7156b300f654c3e455da0",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "updated",
-      "reason": "list_references takes nodeIds and answers for several steps in one call. The mcp skill gained one invariant: a batch of new steps needs one reference read between two apply_edits calls, and readableBy names the steps that can read an entry.",
+      "reason": "set_condition now takes a sourceNodeId per rule, stores the rule naming that step, and refuses a rule without one when two steps above the Condition offer its path. The skill's draft-revision protocol taught the reference read but not this, so it gained one bullet stating the invariant; docs/embedding.md holds the full statement.",
       "evidence": [
-        "a7dc88de feat(agent): let list_references answer for several steps in one call",
-        "878e9d88 docs: teach the multi-step reference read to MCP clients",
-        "pnpm run skills:validate passed for ten skills"
+        "1060166f docs(skills): teach MCP clients the sourceNodeId a set_condition rule takes",
+        "2b711be2 feat(agent): write every set_condition rule naming the step it tests",
+        "pnpm run skills:validate passed for ten skills",
+        "pnpm run evals -t 'builds applicant triage' passed 9 of 9 trials with every rule naming the scoring step; fresh-consumer MCP check not run, no isolated MCP client session was available"
       ]
     },
     "source:.agents/behaviors/workflow-authoring/BEHAVIOR.md": {
@@ -3154,9 +3139,7 @@
       "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
       "outcome": "out-of-scope",
       "reason": "Contributor tooling for this repository: the durable-executor TLA+ models and the workflow-authoring behavior. Decision 1 keeps contributor guidance out of the published skills.",
-      "evidence": [
-        "_artifacts/skill_spec.md decision 1"
-      ]
+      "evidence": ["_artifacts/skill_spec.md decision 1"]
     },
     "source:.claude/skills/verify-durable-executor/model/Siblings.cfg": {
       "fingerprint": "8def5c2da0abf96ee583175f070f118b1a1fc6f7d0a6b66b86154f803d3b0d8b",
@@ -3166,9 +3149,7 @@
       "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
       "outcome": "out-of-scope",
       "reason": "Contributor tooling for this repository: the durable-executor TLA+ models and the workflow-authoring behavior. Decision 1 keeps contributor guidance out of the published skills.",
-      "evidence": [
-        "_artifacts/skill_spec.md decision 1"
-      ]
+      "evidence": ["_artifacts/skill_spec.md decision 1"]
     },
     "source:.claude/skills/verify-durable-executor/model/Siblings.tla": {
       "fingerprint": "d4c095818b8a3f3e55ecf1c9c22a31ccd322ab225bc04123174792f2ffd8f9c3",
@@ -3178,9 +3159,7 @@
       "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
       "outcome": "out-of-scope",
       "reason": "Contributor tooling for this repository: the durable-executor TLA+ models and the workflow-authoring behavior. Decision 1 keeps contributor guidance out of the published skills.",
-      "evidence": [
-        "_artifacts/skill_spec.md decision 1"
-      ]
+      "evidence": ["_artifacts/skill_spec.md decision 1"]
     },
     "source:docs/adr/0009-replay-memoization-belongs-to-the-handler.md": {
       "fingerprint": "30d6c11ce7e7a8544243a65e20ad4f33722dd6b77a20f19c01271e7d2a955245",
@@ -3235,16 +3214,16 @@
       ]
     },
     "source:docs/adr/0020-host-resolved-entity-eligibility-controls-execution-admission.md": {
-      "fingerprint": "cbddf4790afdc9a367fc209f1e74727877635ef47d1fcfd54f386840f6046b54",
+      "fingerprint": "9c48af61c5b7376967dc9bdaa9923c74b65711bd8addefb39357b5145fe66811",
       "snapshot": {
-        "docs/adr/0020-host-resolved-entity-eligibility-controls-execution-admission.md": "5e8d7a0d76efd85ba2d8d3594efc9fd4e3e29e211f6d67e0b4f06ae316818548"
+        "docs/adr/0020-host-resolved-entity-eligibility-controls-execution-admission.md": "446ac3041af61137b88e93e141efc077c1b1f242667ecdd59712199d80d507ea"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "ADR amendments and CONTEXT.md terms record why and the domain vocabulary. AGENTS.md gives each fact one home and keeps it out of skills; the skills state the resulting contracts, such as the once-per-node handler from the ADR-0009 amendment.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "AGENTS.md (Documentation: one fact, one home)",
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:docs/adr/0022-events-arrive-through-an-inbox-in-the-application-database.md": {
@@ -3400,17 +3379,16 @@
       ]
     },
     "source:packages/agent/src/tools/condition-input.ts": {
-      "fingerprint": "9baecb05064a2adff882a792e7772d807d807d501e5113d2adc9e2bd17942654",
+      "fingerprint": "0dfd6910c71aafbb3c1919ebefba2ce4d3fc793702bd22a00c793b6c83b607b8",
       "snapshot": {
-        "packages/agent/src/tools/condition-input.ts": "e7448bc9387ef83ab52f18afdc594e8bec833758c84edd039adc1ffdbcd6e7d7"
+        "packages/agent/src/tools/condition-input.ts": "bca20dc9a8460b9af0c74f3a51f892283179f9f444a6c643c606387cb4542a0c"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools, toolkit and system prompt: apply_edits, the run tools, newIssues, validate_workflow's canSave and canPublish, label-and-id names in results, placement that keeps positions, and prompt rules. A host neither calls nor configures these; mcp and build-agent describe the tool contract an MCP client or a host runner sees, and docs/embedding.md (MCP authoring) now names canSave and canPublish.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "4f1d4fec docs(embedding): document mcp.authorization and validate_workflow's answer",
-        "@wfgraph/agent is private and inlined into core; no published entry exports its modules"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/agent/src/tools/graph-read-tools.test.ts": {
@@ -3442,17 +3420,16 @@
       ]
     },
     "source:packages/agent/src/tools/graph-write-tools.test.ts": {
-      "fingerprint": "02f440441f9c7add482cd7fb4286e4e2a3d94b49d6d85498c1958c616f957683",
+      "fingerprint": "279de46e3d5487ee2831d6675c5485779ae63d134f3ad7eaec85f3110e0183a9",
       "snapshot": {
-        "packages/agent/src/tools/graph-write-tools.test.ts": "92b4ee4372d4cae4bf1ea9422e172d2e92a8f18f9fde9475012c789a4c368e8a"
+        "packages/agent/src/tools/graph-write-tools.test.ts": "b955ebf3663ac607bd4c8b58ee4adcea3d00bead16728d9812645ce6e7aa77ee"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools, toolkit and system prompt: apply_edits, the run tools, newIssues, validate_workflow's canSave and canPublish, label-and-id names in results, placement that keeps positions, and prompt rules. A host neither calls nor configures these; mcp and build-agent describe the tool contract an MCP client or a host runner sees, and docs/embedding.md (MCP authoring) now names canSave and canPublish.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "4f1d4fec docs(embedding): document mcp.authorization and validate_workflow's answer",
-        "@wfgraph/agent is private and inlined into core; no published entry exports its modules"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/agent/src/tools/graph-write-tools.ts": {
@@ -3470,29 +3447,29 @@
       ]
     },
     "source:packages/agent/src/tools/lifecycle-tools.test.ts": {
-      "fingerprint": "848c33192a69ad8b6eacd04ec5ca9083758e9bc5aae88bf4fae5900e116680cf",
+      "fingerprint": "7b9930bdea2b2da6c95001356b440ce81bc85099707e00cc95b9271e555ccac8",
       "snapshot": {
-        "packages/agent/src/tools/lifecycle-tools.test.ts": "9e2eb38944c7e7c835ceb41980d76971ab0c74b128e62dc244f74f3738e01dfc"
+        "packages/agent/src/tools/lifecycle-tools.test.ts": "1172f0c9eaf007fe9a78ac1dc1aa4a23dc6ba97d35598d2a8c030e896f5fea1d"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "git log 3fa8dc9e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/agent/src/tools/lifecycle-tools.ts": {
-      "fingerprint": "11d545241ff9f08c527adf8600ca5958e20ac0b145c261a28ef2d080453a68a3",
+      "fingerprint": "c1a3e3324dfd5cbeb471e198e3811b98f8253a7f68736943b1814b2704cd8c35",
       "snapshot": {
-        "packages/agent/src/tools/lifecycle-tools.ts": "1d706faa6b4dfcec0b86a8ba1f7a672656b58104c45bf2a483c01a63791e71e6"
+        "packages/agent/src/tools/lifecycle-tools.ts": "6d6c2fac95b00463fd0673c8b40043cf03328f664c46c542b4842b2da80aaf70"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "git log 3fa8dc9e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/agent/src/tools/new-issues.ts": {
@@ -3524,16 +3501,16 @@
       ]
     },
     "source:packages/agent/src/tools/reference-tools.ts": {
-      "fingerprint": "d5ef5febf6653f7ef4054a5afea6d515583dee1f81678d60a8c2ce7aa4a7d9ec",
+      "fingerprint": "e30091df43a62431887a4f6744495a0bd53f896200a80e4fd95d8d43bb601479",
       "snapshot": {
-        "packages/agent/src/tools/reference-tools.ts": "36cc1dea797d3eac01df425cae23366d5ca863b14594dbc4ea97d2da9e794869"
+        "packages/agent/src/tools/reference-tools.ts": "8dae3b2f536cf6bd56b4826b1f1025c4941e98bc8341dd94982b618c8f5d43bb"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "git log 3fa8dc9e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/agent/src/tools/run-tools.test.ts": {
@@ -4135,16 +4112,16 @@
       ]
     },
     "source:packages/core/src/backend/agent/mcp-conformance.test.ts": {
-      "fingerprint": "1b60c3acede83c52618b949df6c82b8c6bc9faba308b1cc1ef2d17207c762ba4",
+      "fingerprint": "e876db6043aa53b6911a189fc0f73304700e786553434e0cee0df21874c92f81",
       "snapshot": {
-        "packages/core/src/backend/agent/mcp-conformance.test.ts": "9f06c5e3ff4c4b99471420779f31a9556ba4b0494fd5910206bc9b33b3604018"
+        "packages/core/src/backend/agent/mcp-conformance.test.ts": "b1780c353f2c58bb9ddfffa8370ae08267795c703c04605938e7eba3dd8f1cd2"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "git log 3fa8dc9e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/core/src/backend/agent/mcp-schema-compaction.test.ts": {
@@ -4337,17 +4314,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/conditions.ts": {
-      "fingerprint": "84b1748e320e9d568fbf344214d3f91caf4200fce6769b3d6e62be485fda9d34",
+      "fingerprint": "d0ea7b7b91c616ca2378168832b1c4758cdceca96c949190653901ef8d84201c",
       "snapshot": {
-        "packages/core/src/backend/engine/conditions.ts": "456b59a97a463d59726bdc74634a5a772909d616b8451526b211a13c1cbe44b6"
+        "packages/core/src/backend/engine/conditions.ts": "444a37ac465af39be2fcfa7582baf28c36063baddec50bdf95a2575e9590b77b"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/core/src/backend/engine/core-arriving-event.replay-cases.ts": {
@@ -4575,17 +4551,16 @@
       ]
     },
     "source:packages/core/src/backend/engine/strategies/types.ts": {
-      "fingerprint": "06f621dac99d42d91bddbf5532ef9225efdcc58b73656d82d73506262f550440",
+      "fingerprint": "05bb0f1057b474e63314e598e26516635cd5a814fc72d7719b04a74ccbf2d135",
       "snapshot": {
-        "packages/core/src/backend/engine/strategies/types.ts": "895523b014ddd1ded213e5004e2f163d9436968eed8f64f75a8f05e12132e02a"
+        "packages/core/src/backend/engine/strategies/types.ts": "c07127a601fe785fba6af9ce11006b63fa7e535a7a9c1dabbb84b0672524aaa8"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The action strategy that runs a host handler once per node and places each step.run under its node's namespace, which host-actions and integrations now describe. The strategy wiring itself has no adopter-facing name.",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "de816c1d fix(skills): add step keys, test runs and revoke on delete to integrations",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/core/src/backend/engine/wait-event.ts": {
@@ -5919,16 +5894,16 @@
       ]
     },
     "source:packages/evals/src/agent/authoring-scenarios.ts": {
-      "fingerprint": "9f1ba62598939a64ae54bef0b39c7b2de15e5368e0ff5a07b94ef15544faa962",
+      "fingerprint": "18915447343f49a685df3c4d0b37f9737c3294148440c315a15bd9f68953345b",
       "snapshot": {
-        "packages/evals/src/agent/authoring-scenarios.ts": "c34695c5c0d11421a0da456fbbca467239e638a37c61b0a33411bf47a9c942d9"
+        "packages/evals/src/agent/authoring-scenarios.ts": "15582cd5894e478a93a510b4cde0fe68a9b735d252fba7a7fadb6eba0643b870"
       },
-      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "git log 3fa8dc9e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/evals/src/agent/harness.ts": {
@@ -6056,15 +6031,16 @@
       ]
     },
     "source:packages/evals/src/agent/types.ts": {
-      "fingerprint": "d086c0b5a96dfbb6b09c7bd38b03de18c1bd55ac3f6a173697b5bd3af124b93b",
+      "fingerprint": "69775830e647c3666d6606ef0adc9550af64ba8140e83d0c1285c1e09a0135f2",
       "snapshot": {
-        "packages/evals/src/agent/types.ts": "96f22d7daf65b38348a9882a56f595b5c4a533f67a8d5a9ab5023a89c588f9fc"
+        "packages/evals/src/agent/types.ts": "e2909b7cb230d2d55f77ad8c480a6ff76c2d35088eabae016a18bc4ae9fc3df6"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios for the build agent. @wfgraph/evals is neither built nor published, and no adopter task touches it.",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
       "evidence": [
-        "packages/evals/package.json is private and in the changesets ignore list"
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     },
     "source:packages/evals/src/agent/workflows.eval.ts": {
@@ -6902,6 +6878,331 @@
       "evidence": [
         "git log 3fa8dc9e..HEAD for the path",
         "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/agent/src/tools/reference-diagnosis.test.ts": {
+      "fingerprint": "8b29d022c0a1d5e1a600fb0db9f4581f531b4f7072db6bc4478feaedd087c33e",
+      "snapshot": {
+        "packages/agent/src/tools/reference-diagnosis.test.ts": "0954d6f2eacf3d0db1ff026ef5d86530cc4332d537c1fb219d3e08125d640d6b"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/agent/src/tools/reference-diagnosis.ts": {
+      "fingerprint": "30794d0e1cc8743434618d056a8b0569762d8c77c811cbbcea19ef2be5772dae",
+      "snapshot": {
+        "packages/agent/src/tools/reference-diagnosis.ts": "200770b6b8b3f0143cbafcb7c617b1b1c4b3f2c37fb9d107ab2c1f9070b6aaea"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/client/src/components/overlays/workflow-issues-overlay.test.tsx": {
+      "fingerprint": "b2d6cd8b856ed3d72d13f1aace385becda4a6efe300ad4006feabd1774e35b1f",
+      "snapshot": {
+        "packages/client/src/components/overlays/workflow-issues-overlay.test.tsx": "faa6f0dca256bcb35ab45eee54767e423bd78e820b0ccbe2718b391b479ebd1b"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/client/src/components/overlays/workflow-issues-overlay.tsx": {
+      "fingerprint": "815b20969f6c67adad4bf4fe73f0fed636105eab76d6d109de6afa5d7ac2d559",
+      "snapshot": {
+        "packages/client/src/components/overlays/workflow-issues-overlay.tsx": "5c412cdcc5153be4d8cfaa1eb80ae9c56047eb39940cae3781db4153b578d2d8"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/client/src/components/workflow/config/condition-builder-row.test.tsx": {
+      "fingerprint": "c20efba687900ecd5835836c5eb6399f025690b556d46f8ba375ffbabb965ad0",
+      "snapshot": {
+        "packages/client/src/components/workflow/config/condition-builder-row.test.tsx": "133a9c43d3f5f4685f8fb12996f216bd0b321e9cdf7615bb20096a6924c079de"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/client/src/components/workflow/config/condition-field-combobox.tsx": {
+      "fingerprint": "a68249116bd615994414cff43faea0cceaf5d4463821058e8a93908145aaced0",
+      "snapshot": {
+        "packages/client/src/components/workflow/config/condition-field-combobox.tsx": "36c8161da099b78cc4eff2b9c8f4e306e90b745e7581f6cec93ccf81882b334f"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/client/src/lib/upstream-node-fields.actions.test.ts": {
+      "fingerprint": "dd14734ac38c53e5294e167357d2842c8588ddce310892a96dedd09cbbd2ebdc",
+      "snapshot": {
+        "packages/client/src/lib/upstream-node-fields.actions.test.ts": "967f9fd8c419df5b3cf11c3ddcb9daa2a32b46adeae5a64201c4bb5b79e6f5a2"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/client/src/lib/upstream-node-fields.conditions.test.ts": {
+      "fingerprint": "17c927355a9e0d59a595892d513dd4fa6bae0d0f35330da0dca77c9febc6e396",
+      "snapshot": {
+        "packages/client/src/lib/upstream-node-fields.conditions.test.ts": "315df9110d5b1e660f28482668916852a001c09a66ab442c3e47477a30ed9713"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/client/src/lib/upstream-node-fields.events.test.ts": {
+      "fingerprint": "60bcb094d87ba9cdd69610bf2d0dd54f54a9cd4616b9b65d76308b0b012dfa2a",
+      "snapshot": {
+        "packages/client/src/lib/upstream-node-fields.events.test.ts": "f0e869a68bbd390e4f0be18afc2d656020b589afe457ceb54641065bf33e532c"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/client/src/lib/upstream-node-fields.ts": {
+      "fingerprint": "821d254ba7370a46dc6d0d811e4f8bc5907664fc9cdb1e4e119755f6506e380e",
+      "snapshot": {
+        "packages/client/src/lib/upstream-node-fields.ts": "2d24e741534d352bd9a7b2baf9eb6bdad671c2bd0b3ae2aef4f820933d06d046"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/core/src/backend/engine/core-condition-source.test.ts": {
+      "fingerprint": "49cc83006ad5bd1b66d29036779184bd00572a86ce96fefe74e1c02e02156e00",
+      "snapshot": {
+        "packages/core/src/backend/engine/core-condition-source.test.ts": "7a5955de00ac5c2de6f39340a92746687deab95f6955fd43a285d5cf96f00791"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/core/src/backend/lib/cel/condition-payload.test.ts": {
+      "fingerprint": "9fed5dd7065114581d2f655d3cda31bb817208ae46883f9ce3188efb2a6b0ecc",
+      "snapshot": {
+        "packages/core/src/backend/lib/cel/condition-payload.test.ts": "acb5d6ea77f6d08af3c3b8a49b5db6633ba71ef85d0cd962292872ce8458de3c"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/core/src/backend/lib/cel/condition-payload.ts": {
+      "fingerprint": "de0511ac8582bb02db844356e891718b7b6feaaba1cd4c3844a470e01173deaf",
+      "snapshot": {
+        "packages/core/src/backend/lib/cel/condition-payload.ts": "5c1c697597087901d01b3dab4e522c4cd5d86757c6d753e948d59e884608c10a"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/publish-readiness.test.ts": {
+      "fingerprint": "27a9bda530a224aa2b5af7f1ae955fa5389662b38ad25ccf80d60a0c91be5964",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/publish-readiness.test.ts": "ab10b4aaf7888bd3ef30e96777e1aa9a1bf5e1d311819438f178485504ae50aa"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/core/src/backend/testing/reliability/group-scenarios.ts": {
+      "fingerprint": "22494cf1267fc31018d00768653a0c83411922813691b890b3fd715e01483335",
+      "snapshot": {
+        "packages/core/src/backend/testing/reliability/group-scenarios.ts": "e6019ef3d380d46c3fbbdc3bbba6d2fdb56d4d1c9c55c8a29897f6d6fb632550"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/evals/src/agent/complex-scenarios.ts": {
+      "fingerprint": "9e8d1a97d9b87842650d86f7b46f61b6f3533d2642936684d0c49b142f34c4a4",
+      "snapshot": {
+        "packages/evals/src/agent/complex-scenarios.ts": "8b6830157e7187f43029e3ee002dc246bc3263df497c15c6164bee86a96126b7"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/evals/src/agent/judges/semantics/configuration-conditions-references.test.ts": {
+      "fingerprint": "900814be677cfd227c628002138c4ad2aa14c47d151def514c6cc11a587a759e",
+      "snapshot": {
+        "packages/evals/src/agent/judges/semantics/configuration-conditions-references.test.ts": "cf7b265527fb183217b6ae53a8fd98655d2f9259df2884ff428cb5ac8d8ca22f"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/evals/src/agent/judges/semantics/configuration-conditions-references.ts": {
+      "fingerprint": "7d242a1a5b2d51c6aac84775fb95f391e8913a72f94462a3fc0edaa875f19c4c",
+      "snapshot": {
+        "packages/evals/src/agent/judges/semantics/configuration-conditions-references.ts": "96bcfe7a09f6a7d0f6a56ca7ef8d29bf32272416f8ba44dad6d01dbe1ebd080e"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/shared/src/conditions/condition-compile.ts": {
+      "fingerprint": "af73005a0711c981dcb4f7aa4fcfdf3afefd8f44e1b11fbd4769906bcd1af7a0",
+      "snapshot": {
+        "packages/shared/src/conditions/condition-compile.ts": "94d66f7e64699a6eb382d1403d88994f5cd1d36770fa5f1311e0841bb6f1ab56"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/shared/src/conditions/condition-model.ts": {
+      "fingerprint": "27413b27604b0c848c29f313f5e77f8b49f553d6011b00401b9dc840817cf2c6",
+      "snapshot": {
+        "packages/shared/src/conditions/condition-model.ts": "a809e3d0b8cf872d56b951a7fe2e7406ffd6eb127607e8f5dc2e90a029cfbd31"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/shared/src/conditions/conditions.test.ts": {
+      "fingerprint": "dcf90e5e9ef03518c23d2f76b2c87d1e5dfaa621f3eb92e08b9bd5bd82994523",
+      "snapshot": {
+        "packages/shared/src/conditions/conditions.test.ts": "cfa5c8262a675e97ccb7d59319d41e9fe6ecac2c0c2bf19922107a343b044ba7"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/shared/src/conditions/conditions.ts": {
+      "fingerprint": "78e90df0094a347c850314341f817875f3f2a28a6e56027028fb0fe431ccfb61",
+      "snapshot": {
+        "packages/shared/src/conditions/conditions.ts": "adee574175a1f1c6b293a108845f387b3463f34e0001a7e3446b1ccb7bd2a750"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/shared/src/graph/condition-sources.ts": {
+      "fingerprint": "c9cfa92f91d566f7bdf5241496bee60e3cd598b493eba34fa4cfe8beb037920f",
+      "snapshot": {
+        "packages/shared/src/graph/condition-sources.ts": "6961200ecd120191041d387326d80e25de5d6572fbe0bbe76af866eac0b94452"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/shared/src/graph/events-reaching.test.ts": {
+      "fingerprint": "3c9724470da918cfc0b6296aa7406fbc770f15e698e957c494a7513d38083b0e",
+      "snapshot": {
+        "packages/shared/src/graph/events-reaching.test.ts": "66b5d7c38a82bb16d83c3da9157a21bd502d7363956d7f52d1c039257232dcca"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
+      ]
+    },
+    "source:packages/shared/src/graph/events-reaching.ts": {
+      "fingerprint": "271733f22f507c861b3d122c5643e087f19ee29ea6eba1488398f31041b76db6",
+      "snapshot": {
+        "packages/shared/src/graph/events-reaching.ts": "ae86701c437a45cbf8ad29de20cffb16e5040e4603f1d5b7c1db6a6885a50871"
+      },
+      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "outcome": "out-of-scope",
+      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "evidence": [
+        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
+        "_artifacts/skill_tree.yaml"
       ]
     }
   }
