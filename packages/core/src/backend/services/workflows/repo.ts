@@ -1,6 +1,7 @@
 import { and, arrayContains, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import {
+  foldedName,
   type PublishedWorkflowVersion,
   type Workflow,
   type WorkflowVersion,
@@ -161,7 +162,8 @@ export class WorkflowRepo extends Context.Service<
     ) => Effect.Effect<boolean, DatabaseError>;
     /**
      * Whether any workflow already holds this name, compared the way the unique
-     * index does, which is case-insensitively.
+     * index does: ASCII letters case-insensitively, every other character as
+     * written, on both backends.
      */
     readonly hasWithName: (
       name: string
@@ -488,13 +490,15 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
 
         hasWithName: (name) =>
           database.query(async (db) => {
-            // Case-insensitive match against `workflows_name_ci_uidx`. Expression
+            // The comparison `workflows_name_ci_uidx` makes. Expression
             // predicates stay on the SQL builder; RQB's object `where` has no
-            // clean form for `lower(name)` that is not an escape hatch.
+            // clean form for an expression that is not an escape hatch.
             const [conflict] = await db
               .select({ id: workflows.id })
               .from(workflows)
-              .where(sql`lower(${workflows.name}) = lower(${name})`)
+              .where(
+                sql`${foldedName(workflows.name)} = ${foldedName(sql`${name}`)}`
+              )
               .limit(1);
 
             return conflict !== undefined;
@@ -507,7 +511,7 @@ export const WorkflowRepoLayer: Layer.Layer<WorkflowRepo, never, Database> =
               .from(workflows)
               .where(
                 and(
-                  sql`lower(${workflows.name}) = lower(${input.name})`,
+                  sql`${foldedName(workflows.name)} = ${foldedName(sql`${input.name}`)}`,
                   ne(workflows.id, input.excludingWorkflowId)
                 )
               )

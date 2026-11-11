@@ -1,4 +1,4 @@
-import { defineRelations, sql } from "drizzle-orm";
+import { type SQL, defineRelations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   bigint,
@@ -87,6 +87,16 @@ function literals(values: readonly string[]) {
   return sql.raw(values.map((value) => `'${value}'`).join(", "));
 }
 
+/**
+ * A workflow name as its unique index compares it: ASCII letters lower-cased
+ * under the "C" collation, everything else as written. `hasWithName` and
+ * `hasOtherWithName` compare through this same expression, so they ask the
+ * question the index answers.
+ */
+export function foldedName(name: SQL | AnyPgColumn): SQL {
+  return sql`lower((${name})::text collate "C")`;
+}
+
 export const workflows = pgTable(
   "workflows",
   {
@@ -124,7 +134,11 @@ export const workflows = pgTable(
     updatedAt: timestamp("updated_at").notNull().default(utcNow()),
   },
   (table) => [
-    uniqueIndex("workflows_name_ci_uidx").on(sql`lower(${table.name})`),
+    // Names are unique with their ASCII letters folded and every other
+    // character compared as written. Under the "C" collation `lower` folds
+    // ASCII alone, whatever locale the database was created with, which is
+    // how SQLite's NOCASE column compares the same names.
+    uniqueIndex("workflows_name_ci_uidx").on(foldedName(table.name)),
     check("workflows_mode_check", sql`${table.mode} in ('live', 'test')`),
     check(
       "workflows_visibility_check",

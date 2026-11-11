@@ -899,6 +899,58 @@ export function describeExecutionConformance({
       ).rejects.toBeDefined();
     });
 
+    // Both backends fold a name's ASCII letters alone, whatever locale the
+    // database was created with, so two names differing only in the case of
+    // an accented letter are two names on either.
+    it("folds only ASCII letters when it compares workflow names", async () => {
+      const database = await openConnection();
+      const answers = await database.run(
+        Effect.gen(function* () {
+          const workflows = yield* WorkflowRepo;
+          yield* workflows.insert({
+            id: "wf_1",
+            name: "Équipe",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          yield* workflows.insert({
+            id: "wf_2",
+            name: "équipe",
+            graph: emptyGraph,
+            eventSubscriptions: [],
+          });
+          return {
+            upper: yield* workflows.hasWithName("ÉQUIPE"),
+            lower: yield* workflows.hasWithName("éQUIPE"),
+            other: yield* workflows.hasOtherWithName({
+              name: "ÉQUIPE",
+              excludingWorkflowId: "wf_1",
+            }),
+            absent: yield* workflows.hasWithName("Equipe"),
+          };
+        })
+      );
+
+      expect(answers).toEqual({
+        upper: true,
+        lower: true,
+        other: false,
+        absent: false,
+      });
+      await expect(
+        database.run(
+          Effect.flatMap(WorkflowRepo, (workflows) =>
+            workflows.insert({
+              id: "wf_3",
+              name: "ÉQUIPE",
+              graph: emptyGraph,
+              eventSubscriptions: [],
+            })
+          )
+        )
+      ).rejects.toBeDefined();
+    });
+
     it("reads each of a run's log rows with its id, status and opening time", async () => {
       const database = await openConnection();
       await seedPublishedWorkflow(database);
