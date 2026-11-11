@@ -464,13 +464,21 @@ export default function WorkflowsPage() {
           {workflowRows.map((workflow) => {
             const isSelected = selectedWorkflowIds.has(workflow.id);
             const canMutate = canUpdate || canBulkLifecycle;
-            // Paused or Active is a neutral fact, marked by a green dot when
-            // the workflow is active. Amber belongs to the Published mode cell
-            // beside it, so the row's two dots never share a color.
-            const stateDotClass = workflow.isPaused
-              ? "text-muted-foreground"
-              : "text-success fill-current";
-            const stateLabel = workflow.isPaused ? "Paused" : "Active";
+            // Paused, Active or Never published is a neutral fact, marked by a
+            // green dot only when the workflow is active. A workflow with no
+            // published version runs nothing, so it reads as the editor's
+            // badge does rather than as active. Amber belongs to the Published
+            // mode cell beside it, so the row's two dots never share a color.
+            const isActive =
+              !workflow.isPaused && workflow.publishedVersionId !== undefined;
+            const stateDotClass = isActive
+              ? "text-success fill-current"
+              : "text-muted-foreground";
+            const stateLabel = workflow.isPaused
+              ? "Paused"
+              : isActive
+                ? "Active"
+                : "Never published";
             const isTestMode = workflow.mode === "test";
             // The cell reads the way the status strip does: a filled dot and
             // the word in Amber for Test, an outline dot and the muted

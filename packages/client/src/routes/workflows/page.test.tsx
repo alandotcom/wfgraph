@@ -21,19 +21,23 @@ import {
 import { orpcQuery } from "#src/lib/rpc-query";
 import WorkflowsPage from "#src/routes/workflows/page";
 import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const RETENTION_SENTENCE = "Runs are deleted 30 days after they finish.";
 
 /** Serves the two reads the dashboard makes, with the All Runs page naming `runRetentionMs`. */
-function stubDashboardRpc(runRetentionMs: number | null) {
+function stubDashboardRpc(
+  runRetentionMs: number | null,
+  workflows: readonly object[] = []
+) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const procedurePath = extractRpcProcedurePath(rpcUrl(input));
       switch (procedurePath) {
         case "workflow/getAll":
-          return rpcJsonResponse([]);
+          return rpcJsonResponse(workflows);
         case "workflow/getExecutionsGlobal":
           return rpcJsonResponse({
             items: [],
@@ -106,5 +110,44 @@ describe("WorkflowsPage run retention note", () => {
       view.getByText("Combined run history across workflows.")
     ).toBeTruthy();
     expect(view.queryByText(/Runs are deleted/)).toBeNull();
+  });
+});
+
+describe("WorkflowsPage workflow list", () => {
+  beforeEach(() => {
+    installAuthorizationGrantsForTests(WfGraphOperationIds);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetAuthorizationGrantsForTests();
+  });
+
+  function summary(id: string, name: string, publishedVersionId?: string) {
+    return omitUndefined({
+      id,
+      name,
+      isPaused: false,
+      mode: "live",
+      visibility: "private",
+      createdAt: "2026-03-01T10:00:00.000Z",
+      updatedAt: "2026-03-01T10:00:00.000Z",
+      publishedVersionId,
+    });
+  }
+
+  it("says a workflow that was never published is not active", async () => {
+    stubDashboardRpc(null, [
+      summary("workflow_1", "Draft only"),
+      summary("workflow_2", "Running", "version_1"),
+    ]);
+    const { view } = await renderWorkflowsPage();
+
+    const draftRow = (await view.findByText("Draft only")).closest("tr");
+    const runningRow = view.getByText("Running").closest("tr");
+
+    expect(draftRow?.textContent).toContain("Never published");
+    expect(draftRow?.textContent).not.toContain("Active");
+    expect(runningRow?.textContent).toContain("Active");
   });
 });
