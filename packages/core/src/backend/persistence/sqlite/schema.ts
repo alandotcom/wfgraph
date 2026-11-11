@@ -97,6 +97,10 @@ export const workflowVersions = sqliteTable(
       sql`${table.kind} in (${literals(WORKFLOW_VERSION_KINDS)})`
     ),
     check(
+      "workflow_versions_version_kind_check",
+      sql`(${table.kind} = 'published') = (${table.version} is not null)`
+    ),
+    check(
       "workflow_versions_last_pinned_kind_check",
       sql`(${table.kind} = 'draft_snapshot') = (${table.lastPinnedAt} is not null)`
     ),

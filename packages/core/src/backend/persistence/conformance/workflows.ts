@@ -808,6 +808,30 @@ export function describeWorkflowConformance({
       ).resolves.toBeUndefined();
     });
 
+    // A published version carries its number and a draft snapshot carries
+    // none, which `asPublishedVersion` and the version history read off the
+    // row.
+    it("holds a version's number to its kind", async () => {
+      const database = await openDatabase();
+      await seedPublishedWorkflow(await database.open());
+
+      await expect(
+        database.execute(
+          "update workflow_versions set version = null where id = 'ver_1'"
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          "update workflow_versions set kind = 'draft_snapshot', last_pinned_at = published_at where id = 'ver_1'"
+        )
+      ).rejects.toThrow();
+      await expect(
+        database.execute(
+          "update workflow_versions set version = 2 where id = 'ver_1'"
+        )
+      ).resolves.toBeUndefined();
+    });
+
     it("holds an event subscription's role to its vocabulary", async () => {
       const database = await openDatabase();
       await seedPublishedWorkflow(await database.open(), {

@@ -558,13 +558,15 @@ export const workflowExecutionLogs = pgTable(
       "workflow_execution_logs_status_check",
       sql`${table.status} in (${literals(STORED_NODE_LOG_STATUSES)})`
     ),
-    index("workflow_execution_logs_execution_id_idx").on(table.executionId),
     // A node has one log row per run: `nodeLogId` derives the row id from the
     // two, and the executor-state reads join a node's name on them.
     uniqueIndex("workflow_execution_logs_execution_node_uidx").on(
       table.executionId,
       table.nodeId
     ),
+    // This and the unique index both lead with `execution_id`, so either
+    // serves a lookup of a run's rows, the cascade from its execution row
+    // among them.
     index("workflow_execution_logs_execution_id_timestamp_idx").on(
       table.executionId,
       table.timestamp
