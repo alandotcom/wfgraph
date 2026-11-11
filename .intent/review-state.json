@@ -3,13 +3,13 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "3946ab70414041ce927ea9d25b25276af219951c0ec4037a9c2bfafe0c011e99",
+      "fingerprint": "fe1154f9a99105627290d82f9a49ae978e7a8fe6911144a333bae6cd85797a87",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "4d603080005e4ce39b8178c86cd077ebb2289ef28a588dc325a48b0745ad5962",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "d58ce1e275c60a8028294699bc95c68bbdae8eb65e12149a4a034df5a1901384",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1",
@@ -17,11 +17,11 @@
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "52b4d08d03e1e8e5d001d6b43ef7cfc4bdba8d7cada7156b300f654c3e455da0",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "db0e0f9c43b3e7188c69e81e4b32cc15be06ddcc",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
+      "reason": "The build-agent skill it is loaded beside changed one table cell about gpt-6-luna. Nothing this skill states concerns the model choice.",
       "evidence": [
-        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
+        "git show HEAD -- packages/core/skills",
         "pnpm run skills:validate passed"
       ]
     },
@@ -85,7 +85,7 @@
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "e813a0a9bda2a7285b22f5b7d1a602201c96429399263b5c0e420397e4450fd3",
+      "fingerprint": "4a6d8705eb2c6c1a512b5cb1c976316249586d617443269fece0058af8c1b996",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
         "_artifacts/domain_map.yaml": "c0c37dffbc738e3b15b2b1370e969bb4a574c2e39ef61054e2b252d048c7d746",
@@ -96,14 +96,14 @@
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "4d603080005e4ce39b8178c86cd077ebb2289ef28a588dc325a48b0745ad5962",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "d58ce1e275c60a8028294699bc95c68bbdae8eb65e12149a4a034df5a1901384",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "45656429549e5ddab3d00815e3d9d9610f0ba8b99d0c2dcd195eae6ee37d9162",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "52b4d08d03e1e8e5d001d6b43ef7cfc4bdba8d7cada7156b300f654c3e455da0",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d",
-        "packages/core/src/backend/agent/config.ts": "a2af761557931d94e007ce609f197f8f57d508a60630ae0b33a646ce9c02836f",
+        "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
@@ -116,13 +116,10 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "b7a92179cb4b08dd4aa4a559e9caa2e63d3187be94a11a2d5a7f2daaa0a54628",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "db0e0f9c43b3e7188c69e81e4b32cc15be06ddcc",
       "outcome": "no-change",
-      "reason": "No skill and no developer task was added. The build-agent skill's existing task covers provider configuration.",
-      "evidence": [
-        "_artifacts/skill_tree.yaml lists wfgraph-core/build-agent",
-        "No skill path added or removed"
-      ]
+      "reason": "No skill and no developer task was added or removed.",
+      "evidence": ["_artifacts/skill_tree.yaml unchanged"]
     },
     "source:.changeset/skill-activation-descriptions.md": {
       "fingerprint": "29663a0b9cb91e8ef3bc2e8a3d1c1ce4408390528deec93cf2bebfc1f0dee648",
@@ -3100,21 +3097,20 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "240b4f093807cc3522f26c5883b19128c49afd5fcc7aa46569aa0be9952f65a1",
+      "fingerprint": "939c9cbf4506925db5bbe1ce38f38f4b7cb7c34ec20f8b5865d54090e8d84a32",
       "snapshot": {
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "4d603080005e4ce39b8178c86cd077ebb2289ef28a588dc325a48b0745ad5962",
-        "packages/core/src/backend/agent/config.ts": "a2af761557931d94e007ce609f197f8f57d508a60630ae0b33a646ce9c02836f",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "d58ce1e275c60a8028294699bc95c68bbdae8eb65e12149a4a034df5a1901384",
+        "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "db0e0f9c43b3e7188c69e81e4b32cc15be06ddcc",
       "outcome": "updated",
-      "reason": "The Anthropic provider's default effort moved from medium to high, the tools are sent without strict, and claude-sonnet-5-5 is the Claude model the eval suite measured. The skill states the new default, what the suite found below high, and names the measured model in its no-model mistake.",
+      "reason": "The skill's provider table called gpt-6-luna the lowest cost per turn with no word on quality. Three passes of the eval suite measured it at 213 of 234 against 152 of 156 for the default, so the table now says it passes fewer eval runs.",
       "evidence": [
-        "23c253fa feat(core): default the build agent to high effort on Anthropic",
-        "f674068f fix(core): run the build agent on Anthropic by sending no strict tools",
-        "pnpm run skills:validate passed for ten skills",
-        "Eval suite on claude-sonnet-5-5: 47 of 78 at medium, 64 at high, 69 after the prompt changes"
+        "eval-results luna-full-final, -2, -3: 74, 71 and 68 of 78",
+        "terra-full-v3 and full-after-v2: 76 and 76 of 78",
+        "pnpm run skills:validate passed for ten skills"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
