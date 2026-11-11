@@ -21,7 +21,11 @@ import {
 import { Tool } from "effect/ai";
 import { Context, Option, Result, Schema, type SchemaAST } from "effect";
 import { buildAuthoringInstructions } from "@wfgraph/agent/prompt";
-import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
+import {
+  agentToolkit,
+  CATALOG_TOOL_NAMES,
+  WRITE_TOOL_NAMES,
+} from "@wfgraph/agent/toolkit";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
@@ -35,7 +39,6 @@ import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts
 import { workflowSummarySchema } from "@wfgraph/shared/rpc/contracts/workflows";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import type { AuthContext } from "#src/backend/lib/http/authorize";
-import { agentToolOperations } from "#src/backend/agent/tool-permissions";
 import type {
   DraftToolResult,
   ExecuteDraftToolInput,
@@ -274,6 +277,26 @@ const WORKFLOW_ID_SCHEMA = {
   description: "ID of the existing workflow draft to read or edit.",
 } as const;
 
+const CATALOG_WORKFLOW_ID_SCHEMA = {
+  type: "string",
+  description:
+    "Optional and unused: the catalog is the same for every workflow, so this tool reads none.",
+} as const;
+
+/**
+ * How a tool reaches the store. A catalog tool reads the host's catalog alone
+ * and takes no workflow; a read tool reads one draft; a write tool also
+ * stores one, under the revision the client last saw.
+ */
+type ToolScope = "catalog" | "read" | "write";
+
+function scopeOf(name: string): ToolScope {
+  if (CATALOG_TOOL_NAMES.has(name)) {
+    return "catalog";
+  }
+  return WRITE_TOOL_NAMES.has(name) ? "write" : "read";
+}
+
 const DRAFT_REVISION_SCHEMA = {
   type: "integer",
   minimum: 1,
@@ -292,15 +315,15 @@ const CREATE_WORKFLOW_ARGUMENTS = Schema.Struct({
   }),
 });
 
-/** The persisted-draft fields a workflow tool reads beside its own arguments. */
-const WORKFLOW_READ_ARGUMENTS = Schema.Struct({
-  workflowId: NonEmptyTrimmedString,
-});
-
-const WORKFLOW_WRITE_ARGUMENTS = Schema.Struct({
-  workflowId: NonEmptyTrimmedString,
-  expectedDraftRevision: positiveInteger,
-});
+/** The persisted-draft fields a tool reads beside its own arguments, by scope. */
+const TRANSPORT_ARGUMENTS = {
+  catalog: Schema.Struct({ workflowId: Schema.optionalKey(Schema.String) }),
+  read: Schema.Struct({ workflowId: NonEmptyTrimmedString }),
+  write: Schema.Struct({
+    workflowId: NonEmptyTrimmedString,
+    expectedDraftRevision: positiveInteger,
+  }),
+} satisfies Record<ToolScope, Schema.Codec<unknown, unknown>>;
 
 /**
  * How a tool's declared arguments are read. `errors: "all"` lets the refusal
@@ -443,20 +466,23 @@ function inputSchemaFor(name: AgentToolName): JsonObject {
         (value): value is string => typeof value === "string"
       )
     : [];
-  const writesGraph = WRITE_TOOL_NAMES.has(name);
+  const scope = scopeOf(name);
 
   return {
     ...canonical,
     type: "object",
     properties: {
       ...properties,
-      workflowId: WORKFLOW_ID_SCHEMA,
-      ...(writesGraph ? { expectedDraftRevision: DRAFT_REVISION_SCHEMA } : {}),
+      workflowId:
+        scope === "catalog" ? CATALOG_WORKFLOW_ID_SCHEMA : WORKFLOW_ID_SCHEMA,
+      ...(scope === "write"
+        ? { expectedDraftRevision: DRAFT_REVISION_SCHEMA }
+        : {}),
     },
     required: [
       ...required,
-      "workflowId",
-      ...(writesGraph ? ["expectedDraftRevision"] : []),
+      ...(scope === "catalog" ? [] : ["workflowId"]),
+      ...(scope === "write" ? ["expectedDraftRevision"] : []),
     ],
     additionalProperties: false,
   };
@@ -486,15 +512,23 @@ function outputSchemaFor(name: AgentToolName): JsonObject {
       workflowId: WORKFLOW_ID_SCHEMA,
       draftRevision: DRAFT_REVISION_SCHEMA,
     },
-    required: [...required, "workflowId", "draftRevision"],
+    required:
+      scopeOf(name) === "catalog"
+        ? required
+        : [...required, "workflowId", "draftRevision"],
     additionalProperties: false,
   };
 }
 
 function toolDescription(name: AgentToolName, description: string): string {
-  return WRITE_TOOL_NAMES.has(name)
-    ? `${description} Pass workflowId and the expectedDraftRevision from the latest read or write.`
-    : `${description} Pass workflowId to select the persisted draft.`;
+  switch (scopeOf(name)) {
+    case "catalog":
+      return `${description} Needs no workflowId.`;
+    case "read":
+      return `${description} Pass workflowId to select the persisted draft.`;
+    case "write":
+      return `${description} Pass workflowId and the expectedDraftRevision from the latest read or write.`;
+  }
 }
 
 /**
@@ -538,9 +572,7 @@ const AGENT_TOOL_SCHEMAS: ReadonlyMap<string, ToolSchemas> = new Map(
       {
         input: argumentsSchema({
           listed: inputSchemaFor(tool.name),
-          transport: WRITE_TOOL_NAMES.has(tool.name)
-            ? WORKFLOW_WRITE_ARGUMENTS
-            : WORKFLOW_READ_ARGUMENTS,
+          transport: TRANSPORT_ARGUMENTS[scopeOf(tool.name)],
           own: tool.parametersSchema,
         }),
         output: fromJsonSchema<Record<string, unknown>>(
@@ -562,8 +594,24 @@ function invalidParamsResponse(body: JsonObject, message: string): Response {
   );
 }
 
+/**
+ * The grants a tool call needs. A catalog tool reads what the editor's
+ * bootstrap gives every signed-in caller, except Connection IDs, which need
+ * the integration list grant.
+ */
+function requiredOperations(name: AgentToolName) {
+  const scope = scopeOf(name);
+  return [
+    ...(scope === "catalog" ? [] : [WfGraphOperations.workflowGetById]),
+    ...(scope === "write" ? [WfGraphOperations.workflowUpdate] : []),
+    ...(name === "list_integrations"
+      ? [WfGraphOperations.integrationGetAll]
+      : []),
+  ];
+}
+
 function toolResult(input: {
-  workflowId: string;
+  workflowId?: string | undefined;
   draftRevision?: number | undefined;
   result: JsonObject;
   isError: boolean;
@@ -582,7 +630,10 @@ function toolResult(input: {
   };
 }
 
-function failureResult(workflowId: string, failure: ServiceFailure) {
+function failureResult(
+  workflowId: string | undefined,
+  failure: ServiceFailure
+) {
   return toolResult({
     workflowId,
     draftRevision:
@@ -812,13 +863,18 @@ export function createAgentMcpServer(
       },
       async (arguments_, context) => {
         const argumentsObject = readJsonObject(arguments_) ?? {};
-        const workflowId = argumentsObject.workflowId;
-        if (typeof workflowId !== "string") {
+        const catalog = scopeOf(name) === "catalog";
+        const requestedWorkflowId = argumentsObject.workflowId;
+        if (!catalog && typeof requestedWorkflowId !== "string") {
           throw new Error("The validated workflowId is not a string");
         }
+        const workflowId =
+          !catalog && typeof requestedWorkflowId === "string"
+            ? requestedWorkflowId
+            : undefined;
 
         const grants = await Promise.all(
-          agentToolOperations(name).map(async (operation) =>
+          requiredOperations(name).map(async (operation) =>
             input.auth.allows(operation)
           )
         );
@@ -838,7 +894,7 @@ export function createAgentMcpServer(
         } = argumentsObject;
         const outcome = await input.execute(
           {
-            workflowId,
+            ...(workflowId === undefined ? {} : { workflowId }),
             name,
             arguments: toolArguments,
             toolCallId: String(context.mcpReq.id),

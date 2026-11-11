@@ -109,6 +109,21 @@ describe("executeDraftTool", () => {
       })
     );
 
+    it.effect("answers a catalog tool without loading a workflow", () =>
+      Effect.gen(function* () {
+        const result = yield* executeDraftTool({
+          name: "list_actions",
+          arguments: {},
+          toolCallId: "call_catalog",
+        }).pipe(Effect.provide(stubWorkflowRepo({})));
+
+        assert.isUndefined(result.workflowId);
+        assert.isUndefined(result.draftRevision);
+        assert.isFalse(result.isFailure);
+        assert.isNotEmpty(result.result.actions);
+      })
+    );
+
     it.effect("names the field when a tool's arguments do not decode", () =>
       Effect.gen(function* () {
         const failure = yield* executeDraftTool({

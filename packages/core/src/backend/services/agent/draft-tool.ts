@@ -1,7 +1,11 @@
 /** Executes one canonical authoring tool against one persisted workflow draft. */
 
 import { Effect, Option, Stream } from "effect";
-import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
+import {
+  agentToolkit,
+  CATALOG_TOOL_NAMES,
+  WRITE_TOOL_NAMES,
+} from "@wfgraph/agent/toolkit";
 import {
   serializeWorkflowGraphData,
   toWorkflowGraphData,
@@ -9,6 +13,7 @@ import {
 import { layoutWorkflowNodes } from "@wfgraph/shared/graph/workflow-layout";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   type AgentToolSession,
   makeAgentToolSession,
@@ -30,7 +35,8 @@ import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 export type AgentToolName = keyof typeof agentToolkit.tools;
 
 export type ExecuteDraftToolInput = {
-  readonly workflowId: string;
+  /** The draft to run against. A catalog tool takes none and reads no draft. */
+  readonly workflowId?: string | undefined;
   readonly name: AgentToolName;
   readonly arguments: JsonObject;
   readonly toolCallId: string;
@@ -38,15 +44,16 @@ export type ExecuteDraftToolInput = {
 };
 
 export type DraftToolResult = {
-  readonly workflowId: string;
-  readonly draftRevision: number;
+  /** Absent for a catalog tool, which reads no draft. */
+  readonly workflowId?: string | undefined;
+  readonly draftRevision?: number | undefined;
   readonly result: JsonObject;
   readonly isFailure: boolean;
 };
 
-const loggerFor = (workflowId: string) =>
+const loggerFor = (workflowId: string | undefined) =>
   Effect.map(AppLogger, (appLogger) =>
-    appLogger.get("agent").with({ workflowId })
+    appLogger.get("agent").with(omitUndefined({ workflowId }))
   );
 
 /** Runs one toolkit handler and requires its declared object result. */
@@ -90,6 +97,30 @@ function runTool(session: AgentToolSession, input: ExecuteDraftToolInput) {
  */
 export const executeDraftTool = Effect.fn("wfgraph.agent.draft_tool")(
   function* (input: ExecuteDraftToolInput) {
+    const { catalog } = yield* Extensions;
+    const integrations = yield* (yield* IntegrationRepo).listIdentities;
+
+    if (CATALOG_TOOL_NAMES.has(input.name)) {
+      const session = yield* makeAgentToolSession({
+        document: { nodes: [], edges: [] },
+        catalog,
+        integrations,
+        validateDraft: (document) =>
+          validateAgentDraft({ document, catalog, integrations }),
+      });
+      const answered = yield* runTool(session, input);
+      return {
+        workflowId: undefined,
+        draftRevision: undefined,
+        ...answered,
+      } satisfies DraftToolResult;
+    }
+
+    if (input.workflowId === undefined) {
+      return yield* new InvalidInput({
+        error: `${input.name} requires workflowId`,
+      });
+    }
     const workflows = yield* WorkflowRepo;
     const workflow = yield* workflows.findById(input.workflowId);
     if (!workflow) {
@@ -109,8 +140,6 @@ export const executeDraftTool = Effect.fn("wfgraph.agent.draft_tool")(
       });
     }
 
-    const { catalog } = yield* Extensions;
-    const integrations = yield* (yield* IntegrationRepo).listIdentities;
     const session = yield* makeAgentToolSession({
       document: toWorkflowGraphData(workflow.graph),
       catalog,

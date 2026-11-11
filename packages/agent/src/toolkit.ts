@@ -112,3 +112,16 @@ export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   SetCondition.name,
   SetWait.name,
 ]);
+
+/**
+ * The tools that read the host's catalog and never the draft. Their answers
+ * are the same for every workflow, so an MCP client may call them before it
+ * has created or chosen one.
+ */
+export const CATALOG_TOOL_NAMES: ReadonlySet<string> = new Set([
+  ListActions.name,
+  DescribeAction.name,
+  ListEvents.name,
+  DescribeEvent.name,
+  ListIntegrations.name,
+]);

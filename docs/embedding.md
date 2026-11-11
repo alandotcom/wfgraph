@@ -668,8 +668,9 @@ create a draft containing the default Lifecycle Node. The result contains only
 tools. Creation is not idempotent. Do not automatically retry a creation request
 when the result is unknown.
 
-The remaining MCP tools read or edit an existing workflow draft. Each tool call
-requires a `workflowId`. Read tools return the persisted `draftRevision`. Write
+The catalog tools read what the host offers and work before any workflow
+exists. The remaining MCP tools read or edit an existing workflow draft. Each of
+those calls requires a `workflowId`. Read tools return the persisted `draftRevision`. Write
 tools also require `expectedDraftRevision`, using the revision returned by the
 most recent read or write. A successful write increments the revision once and
 returns the new value.
@@ -695,10 +696,13 @@ following operation grants:
 
 - `list_workflows` requires `workflow.getAll`.
 - `create_workflow` requires `workflow.create`.
-- Every workflow-specific tool requires `workflow.getById`.
+- The catalog tools `list_actions`, `describe_action`, `list_events`,
+  `describe_event` and `list_integrations` take no `workflowId` and need no
+  workflow grant, since they read the same catalog the editor's bootstrap
+  gives every signed-in caller. `list_integrations` requires
+  `integration.getAll` because the result contains Connection IDs.
+- Every other workflow tool requires `workflow.getById`.
 - Graph-writing tools also require `workflow.update`.
-- `list_integrations` also requires `integration.getAll` because the result
-  contains Connection IDs.
 
 The authoring tools expose integration types and Connection IDs. They don't
 return or decrypt integration credentials.

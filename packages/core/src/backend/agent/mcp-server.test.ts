@@ -478,6 +478,74 @@ describe("createAgentMcpServer", () => {
     }
   });
 
+  it("reads the catalog without naming a workflow", async () => {
+    const checked: string[] = [];
+    const execute = vi.fn<DraftToolExecutor>(async () => ({
+      ok: true,
+      result: {
+        result: {
+          actions: [],
+          categories: [],
+          totalCategories: 0,
+          categoriesTruncated: false,
+          totalInCatalog: 0,
+          totalMatches: 0,
+          truncated: false,
+        },
+        isFailure: false,
+      },
+    }));
+    const { client, server } = await makeSubject({
+      auth: {
+        allows: async (operation) => {
+          checked.push(operation.id);
+          return true;
+        },
+      },
+      execute,
+    });
+    try {
+      const { tools } = await client.listTools();
+      for (const name of [
+        "list_actions",
+        "describe_action",
+        "list_events",
+        "describe_event",
+        "list_integrations",
+      ]) {
+        const tool = tools.find((candidate) => candidate.name === name);
+        expect(tool?.inputSchema.required ?? [], name).not.toContain(
+          "workflowId"
+        );
+      }
+
+      const result = await client.callTool({
+        name: "list_actions",
+        arguments: {},
+      });
+
+      expect(result).toMatchObject({
+        isError: false,
+        structuredContent: { actions: [], totalMatches: 0 },
+      });
+      expect(execute).toHaveBeenCalledWith(
+        {
+          name: "list_actions",
+          arguments: {},
+          toolCallId: expect.any(String),
+        },
+        expect.any(AbortSignal)
+      );
+      expect(checked).toEqual([]);
+
+      await client.callTool({ name: "list_integrations", arguments: {} });
+      expect(checked).toEqual([WfGraphOperations.integrationGetAll.id]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("strips transport fields and returns the persisted revision", async () => {
     const execute = vi.fn<DraftToolExecutor>(async () => ({
       ok: true,
@@ -575,13 +643,10 @@ describe("createAgentMcpServer", () => {
     try {
       const result = await client.callTool({
         name: "list_integrations",
-        arguments: { workflowId: "wf_secret" },
+        arguments: {},
       });
 
-      expect(checked).toEqual([
-        WfGraphOperations.workflowGetById.id,
-        WfGraphOperations.integrationGetAll.id,
-      ]);
+      expect(checked).toEqual([WfGraphOperations.integrationGetAll.id]);
       expect(execute).not.toHaveBeenCalled();
       expect(result.isError).toBe(true);
     } finally {
