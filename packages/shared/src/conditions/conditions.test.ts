@@ -3,7 +3,9 @@ import {
   type ConditionFieldDefinition,
   type ConditionModel,
   collectEntityStateConditionReferences,
+  collectNodeOutputConditionReferences,
   collectTimestampFieldPaths,
+  conditionFieldOutputPath,
   compileConditionModel,
   compileConditionRule,
   entityStateConditionPath,
@@ -11,7 +13,9 @@ import {
   createDefaultConditionModel,
   createDefaultConditionRule,
   parseConditionModel,
+  nodeOutputConditionPath,
   parseEntityStateConditionPath,
+  parseNodeOutputConditionPath,
   reconcileModelWithFields,
   serializeConditionModel,
 } from "#src/conditions/conditions";
@@ -355,6 +359,96 @@ describe("conditions", () => {
         '(("crm/patient.v2" in entity && type(entity["crm/patient.v2"]) == map && "attributes" in entity["crm/patient.v2"] && type(entity["crm/patient.v2"]["attributes"]) == map && "journey.status" in entity["crm/patient.v2"]["attributes"] && (entity["crm/patient.v2"]["attributes"]["journey.status"] == "active")))'
       );
     }
+  });
+
+  // Two nodes can offer the same output path, and a rule naming its source
+  // node reads that node's output under its own root rather than the flat
+  // payload namespace a later node's value would replace.
+  it("qualifies and compiles a node output field under the node root", () => {
+    const field = nodeOutputConditionPath("score.step/1", "result.score");
+    expect(field).toBe("$node:score%2Estep%2F1.result.score");
+    expect(parseNodeOutputConditionPath(field ?? "")).toEqual({
+      nodeId: "score.step/1",
+      fieldPath: "result.score",
+    });
+    expect(conditionFieldOutputPath(field ?? "")).toBe("result.score");
+    expect(conditionFieldOutputPath("result.score")).toBe("result.score");
+    expect(nodeOutputConditionPath("lifecycle", '["first name"]')).toBe(
+      '$node:lifecycle["first name"]'
+    );
+    expect(nodeOutputConditionPath(" ", "score")).toBeNull();
+    expect(nodeOutputConditionPath("step", "")).toBeNull();
+    expect(parseNodeOutputConditionPath("score")).toBeNull();
+    expect(parseNodeOutputConditionPath("$node:.score")).toBeNull();
+    expect(parseNodeOutputConditionPath("$node:step")).toBeNull();
+    expect(
+      parseEntityStateConditionPath(nodeOutputConditionPath("a", "b") ?? "")
+    ).toBeNull();
+
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: nodeOutputConditionPath("lifecycle", "score") ?? "",
+              fieldType: "number",
+              operator: "greater_or_equal",
+              value: 80,
+            },
+            {
+              id: "condition-2",
+              field: nodeOutputConditionPath("send", "tags") ?? "",
+              recordKey: "order id",
+              fieldType: "string",
+              operator: "is_set",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(collectNodeOutputConditionReferences(model)).toEqual([
+      { nodeId: "lifecycle", fieldPath: "score", fieldType: "number" },
+      { nodeId: "send", fieldPath: 'tags["order id"]', fieldType: "string" },
+    ]);
+    expect(collectEntityStateConditionReferences(model)).toEqual([]);
+    const compiled = compileConditionModel(model);
+    expect(compiled).toEqual({
+      valid: true,
+      expression:
+        '(("lifecycle" in node && type(node["lifecycle"]) == map && "score" in node["lifecycle"] && (node["lifecycle"]["score"] >= 80)) && ("send" in node && type(node["send"]) == map && "tags" in node["send"] && type(node["send"]["tags"]) == map && "order id" in node["send"]["tags"]))',
+    });
+  });
+
+  it("collects a node-qualified timestamp path as the rule stores it", () => {
+    const field = nodeOutputConditionPath("lookup", "appointment.startsAt");
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group-1",
+          logic: "and",
+          conditions: [
+            {
+              id: "condition-1",
+              field: field ?? "",
+              fieldType: "timestamp",
+              operator: "within_next",
+              amount: 1,
+              unit: "days",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(collectTimestampFieldPaths(model)).toEqual([field]);
   });
 
   it("keeps distinct field types when rules read the same Entity path", () => {

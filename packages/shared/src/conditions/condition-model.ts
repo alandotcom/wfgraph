@@ -21,6 +21,16 @@ export const CONDITION_CONTEXT_ROOT = "payload";
 export const ENTITY_CONTEXT_ROOT = "entity";
 
 /**
+ * The CEL root holding each finished node's unwrapped output, keyed by node id.
+ *
+ * A rule whose field names its source node reads here, so a path two nodes
+ * offer is read from the node the rule names. The entry node's entry holds the
+ * payload of the Arriving Event on the Condition's branch, as a template
+ * reference to it does.
+ */
+export const NODE_CONTEXT_ROOT = "node";
+
+/**
  * The CEL root holding the Event a run arrived on, beside `payload` and `now`.
  *
  * It sits outside the payload namespace because the entry node's output is the
@@ -47,6 +57,15 @@ export type EntityStateConditionReference = EntityStateConditionPath & {
   fieldType: ConditionFieldType;
 };
 
+export type NodeOutputConditionPath = {
+  nodeId: string;
+  fieldPath: string;
+};
+
+export type NodeOutputConditionReference = NodeOutputConditionPath & {
+  fieldType: ConditionFieldType;
+};
+
 /**
  * Qualify an Entity State field for storage in a Condition model.
  *
@@ -56,33 +75,47 @@ export type EntityStateConditionReference = EntityStateConditionPath & {
  */
 const ENTITY_STATE_CONDITION_PREFIX = `${ENTITY_STATE_SOURCE_ID}:`;
 
-function encodeEntityType(entityType: string): string {
-  return encodeURIComponent(entityType).replaceAll(".", "%2E");
+/**
+ * Qualify a node output field for storage in a Condition model, as
+ * `$node:<node id>.<path>`.
+ *
+ * An unqualified field is read from a namespace every finished node's output
+ * is folded into, where a later node replaces a path an earlier one offers.
+ * Naming the node is what lets a rule read the earlier one. The `$` keeps the
+ * form apart from a payload path, which an Event author cannot open with one.
+ */
+const NODE_OUTPUT_CONDITION_PREFIX = "$node:";
+
+/** A source key with the two characters that end it percent-encoded. */
+function encodeSourceKey(key: string): string {
+  return encodeURIComponent(key).replaceAll(".", "%2E");
 }
 
-export function entityStateConditionPath(
-  entityType: string,
+function qualifiedConditionPath(
+  prefix: string,
+  sourceKey: string,
   fieldPath: string
 ): string | null {
   const field = fieldPath.trim();
-  const trimmedType = entityType.trim();
-  if (!trimmedType || !parseOutputPath(field)?.length) {
+  const key = sourceKey.trim();
+  if (!key || !parseOutputPath(field)?.length) {
     return null;
   }
 
   const separator = field.startsWith("[") ? "" : ".";
-  return `${ENTITY_STATE_CONDITION_PREFIX}${encodeEntityType(trimmedType)}${separator}${field}`;
+  return `${prefix}${encodeSourceKey(key)}${separator}${field}`;
 }
 
-/** Read the Entity type and raw State path from a qualified Condition field. */
-export function parseEntityStateConditionPath(
+/** The source key and raw path of a field written by `qualifiedConditionPath`. */
+function parseQualifiedConditionPath(
+  prefix: string,
   path: string
-): EntityStateConditionPath | null {
-  if (!path.startsWith(ENTITY_STATE_CONDITION_PREFIX)) {
+): { sourceKey: string; fieldPath: string } | null {
+  if (!path.startsWith(prefix)) {
     return null;
   }
 
-  const remainder = path.slice(ENTITY_STATE_CONDITION_PREFIX.length);
+  const remainder = path.slice(prefix.length);
   const dot = remainder.indexOf(".");
   const bracket = remainder.indexOf("[");
   const boundary =
@@ -91,7 +124,7 @@ export function parseEntityStateConditionPath(
     return null;
   }
 
-  const encodedType = remainder.slice(0, boundary);
+  const encodedKey = remainder.slice(0, boundary);
   const fieldPath =
     remainder[boundary] === "."
       ? remainder.slice(boundary + 1)
@@ -101,11 +134,69 @@ export function parseEntityStateConditionPath(
   }
 
   try {
-    const entityType = decodeURIComponent(encodedType);
-    return entityType ? { entityType, fieldPath } : null;
+    const sourceKey = decodeURIComponent(encodedKey);
+    return sourceKey ? { sourceKey, fieldPath } : null;
   } catch {
     return null;
   }
+}
+
+export function entityStateConditionPath(
+  entityType: string,
+  fieldPath: string
+): string | null {
+  return qualifiedConditionPath(
+    ENTITY_STATE_CONDITION_PREFIX,
+    entityType,
+    fieldPath
+  );
+}
+
+/** Read the Entity type and raw State path from a qualified Condition field. */
+export function parseEntityStateConditionPath(
+  path: string
+): EntityStateConditionPath | null {
+  const parsed = parseQualifiedConditionPath(
+    ENTITY_STATE_CONDITION_PREFIX,
+    path
+  );
+  return parsed
+    ? { entityType: parsed.sourceKey, fieldPath: parsed.fieldPath }
+    : null;
+}
+
+/** The Condition field reading `fieldPath` of the node `nodeId`'s output. */
+export function nodeOutputConditionPath(
+  nodeId: string,
+  fieldPath: string
+): string | null {
+  return qualifiedConditionPath(
+    NODE_OUTPUT_CONDITION_PREFIX,
+    nodeId,
+    fieldPath
+  );
+}
+
+/** Read the node id and raw output path from a node-qualified Condition field. */
+export function parseNodeOutputConditionPath(
+  path: string
+): NodeOutputConditionPath | null {
+  const parsed = parseQualifiedConditionPath(
+    NODE_OUTPUT_CONDITION_PREFIX,
+    path
+  );
+  return parsed
+    ? { nodeId: parsed.sourceKey, fieldPath: parsed.fieldPath }
+    : null;
+}
+
+/**
+ * The output path a field names with its node qualification removed, and the
+ * field itself where it names no node. This is the path a reader compares
+ * when it asks which nodes offer the value a rule reads.
+ */
+export function conditionFieldOutputPath(field: string): string {
+  return parseNodeOutputConditionPath(field)?.fieldPath ?? field;
 }
 
 export type ConditionFieldType = "timestamp" | "string" | "number" | "boolean";
@@ -314,11 +405,7 @@ export function collectTimestampFieldPaths(model: ConditionModel): string[] {
         continue;
       }
 
-      const baseField = rule.field.trim();
-      const field =
-        rule.recordKey === undefined
-          ? baseField
-          : appendOutputPathKey(baseField, rule.recordKey.trim());
+      const field = conditionRuleReadPath(rule);
       if (field) {
         paths.add(field);
       }
@@ -326,6 +413,19 @@ export function collectTimestampFieldPaths(model: ConditionModel): string[] {
   }
 
   return [...paths];
+}
+
+/**
+ * The whole path a rule reads: its field, with the key of an open record
+ * appended where the rule names one.
+ */
+export function conditionRuleReadPath(
+  rule: Pick<ConditionRule, "field" | "recordKey">
+): string {
+  const field = rule.field.trim();
+  return rule.recordKey === undefined
+    ? field
+    : appendOutputPathKey(field, rule.recordKey.trim());
 }
 
 /** The distinct tracked Entity State paths a Condition model reads. */
@@ -336,11 +436,9 @@ export function collectEntityStateConditionReferences(
 
   for (const group of model.groups) {
     for (const rule of group.conditions) {
-      const path =
-        rule.recordKey === undefined
-          ? rule.field.trim()
-          : appendOutputPathKey(rule.field.trim(), rule.recordKey.trim());
-      const reference = parseEntityStateConditionPath(path);
+      const reference = parseEntityStateConditionPath(
+        conditionRuleReadPath(rule)
+      );
       if (reference) {
         references.set(
           `${reference.entityType}\u0000${reference.fieldPath}\u0000${rule.fieldType}`,
@@ -348,6 +446,33 @@ export function collectEntityStateConditionReferences(
             ...reference,
             fieldType: rule.fieldType,
           }
+        );
+      }
+    }
+  }
+
+  return [...references.values()];
+}
+
+/** The distinct node-qualified output paths a Condition model reads. */
+export function collectNodeOutputConditionReferences(
+  model: ConditionModel
+): NodeOutputConditionReference[] {
+  const references = new Map<string, NodeOutputConditionReference>();
+
+  for (const group of model.groups) {
+    for (const rule of group.conditions) {
+      const reference = parseNodeOutputConditionPath(
+        conditionRuleReadPath(rule)
+      );
+      if (reference) {
+        references.set(
+          JSON.stringify([
+            reference.nodeId,
+            reference.fieldPath,
+            rule.fieldType,
+          ]),
+          { ...reference, fieldType: rule.fieldType }
         );
       }
     }

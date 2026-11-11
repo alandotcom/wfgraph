@@ -3,6 +3,7 @@ import {
   CONDITION_CONTEXT_ROOT,
   ENTITY_CONTEXT_ROOT,
   EVENT_CONTEXT_ROOT,
+  NODE_CONTEXT_ROOT,
   EVENT_NAME_FIELD_PATH,
   type BooleanConditionRule,
   type ConditionCompileResult,
@@ -20,12 +21,13 @@ import {
   isNullCheckConditionRule,
   isStringSetConditionRule,
   isTimestampRelativeConditionRule,
+  conditionRuleReadPath,
   parseEntityStateConditionPath,
+  parseNodeOutputConditionPath,
 } from "#src/conditions/condition-model";
 import { parseConditionModel } from "#src/conditions/condition-schema";
 import { decodeIsoTimestamp } from "#src/types/timestamp";
 import {
-  appendOutputPathKey,
   parseOutputPath,
   type OutputPathStep,
 } from "#src/graph/node-references";
@@ -286,21 +288,49 @@ function compileContextPath(
   return { field, presence: guards.join(" && ") };
 }
 
-function compileEntityContextPath(
-  entityType: string,
+/**
+ * A path under one keyed entry of a source root: `entity[<type>]` for Entity
+ * State and `node[<node id>]` for a node's output. The key is guarded with `in`
+ * first, because CEL raises for an absent map key.
+ */
+function compileKeyedContextPath(
+  root: string,
+  key: string,
   fieldPath: string
 ): { field: string; presence: string } | null {
-  const type = celStringLiteral(entityType);
-  const compiled = compileContextPath(
-    `${ENTITY_CONTEXT_ROOT}[${type}]`,
-    fieldPath
-  );
+  const literal = celStringLiteral(key);
+  const compiled = compileContextPath(`${root}[${literal}]`, fieldPath);
   return compiled
     ? {
         field: compiled.field,
-        presence: `${type} in ${ENTITY_CONTEXT_ROOT} && ${compiled.presence}`,
+        presence: `${literal} in ${root} && ${compiled.presence}`,
       }
     : null;
+}
+
+/** The CEL path and presence guard for a rule's stored field. */
+function compileRulePath(
+  authoredPath: string
+): { field: string; presence: string } | null {
+  const entityReference = parseEntityStateConditionPath(authoredPath);
+  if (entityReference) {
+    return compileKeyedContextPath(
+      ENTITY_CONTEXT_ROOT,
+      entityReference.entityType,
+      entityReference.fieldPath
+    );
+  }
+
+  const nodeReference = parseNodeOutputConditionPath(authoredPath);
+  if (nodeReference) {
+    return compileKeyedContextPath(
+      NODE_CONTEXT_ROOT,
+      nodeReference.nodeId,
+      nodeReference.fieldPath
+    );
+  }
+
+  return compileContextPath(CONDITION_CONTEXT_ROOT, authoredPath);
 }
 
 /**
@@ -393,17 +423,7 @@ export function compileConditionRule(
 
   // A rule stores the path as the field picker offered it, relative to the node
   // output. The root belongs to the expression, not the model.
-  const authoredPath =
-    rule.recordKey === undefined
-      ? path
-      : appendOutputPathKey(path, rule.recordKey.trim());
-  const entityReference = parseEntityStateConditionPath(authoredPath);
-  const compiledPath = entityReference
-    ? compileEntityContextPath(
-        entityReference.entityType,
-        entityReference.fieldPath
-      )
-    : compileContextPath(CONDITION_CONTEXT_ROOT, authoredPath);
+  const compiledPath = compileRulePath(conditionRuleReadPath(rule));
   if (!compiledPath) {
     return { valid: false, error: "Condition field path is invalid" };
   }
