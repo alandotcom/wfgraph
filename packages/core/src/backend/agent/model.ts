@@ -29,6 +29,24 @@ import type { AgentModelSettings } from "#src/backend/agent/config";
 /** Maximum provider output for one model call inside a turn. */
 export const MAX_AGENT_OUTPUT_TOKENS = 8_192;
 
+/** What a model layer needs to know about the turn it serves. */
+export type AgentModelTurn = {
+  readonly workflowId: string;
+};
+
+/**
+ * The prompt cache key for one workflow's turns.
+ *
+ * Every turn and step on one workflow shares a prefix (the system prompt, the
+ * tools and the conversation so far), and turns on different workflows share
+ * only the first two. One key per workflow keeps a workflow's steps in one
+ * cache bucket and keeps one workflow's cache hits from being probed through
+ * another's.
+ */
+export function agentPromptCacheKey(workflowId: string): string {
+  return `wfgraph-agent:${workflowId}`;
+}
+
 function redacted(apiKey: string | undefined) {
   return apiKey === undefined ? undefined : Redacted.make(apiKey);
 }
@@ -48,13 +66,21 @@ function redacted(apiKey: string | undefined) {
  * readable without it.
  */
 export function agentModelLayer(
-  settings: AgentModelSettings
+  settings: AgentModelSettings,
+  turn: AgentModelTurn
 ): Layer.Layer<LanguageModel.LanguageModel> {
+  const cacheKey = agentPromptCacheKey(turn.workflowId);
   switch (settings.provider) {
     case "openai":
       return OpenAiLanguageModel.model(settings.model, {
         max_output_tokens: MAX_AGENT_OUTPUT_TOKENS,
         reasoning: { effort: settings.reasoningEffort, summary: "auto" },
+        // The Responses API stores every response unless told not to, and
+        // nothing here reads one back: each step resends the conversation,
+        // with reasoning carried as encrypted content, which Effect's client
+        // asks for whenever `store` is not `true`.
+        store: false,
+        prompt_cache_key: cacheKey,
       }).pipe(
         Layer.provide(
           OpenAiClient.layer(
@@ -72,6 +98,10 @@ export function agentModelLayer(
         max_tokens: MAX_AGENT_OUTPUT_TOKENS,
         thinking: { type: "adaptive", display: "summarized" },
         output_config: { effort: settings.reasoningEffort },
+        // Automatic caching: Anthropic places the breakpoint on the last
+        // cacheable block, so each step of a turn reads the conversation the
+        // step before it wrote.
+        cache_control: { type: "ephemeral" },
       }).pipe(
         Layer.provide(
           AnthropicClient.layer(
@@ -89,6 +119,7 @@ export function agentModelLayer(
         settings.model,
         omitUndefined({
           max_tokens: MAX_AGENT_OUTPUT_TOKENS,
+          prompt_cache_key: cacheKey,
           reasoning:
             settings.reasoningEffort === undefined
               ? undefined

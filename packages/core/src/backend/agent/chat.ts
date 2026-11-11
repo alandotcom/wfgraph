@@ -84,16 +84,17 @@ function runBuiltInAgentTurn(
   settings: EnabledAgentSettings,
   input: AgentRunnerInput
 ): Effect.Effect<Stream.Stream<AgentStreamPart, unknown>> {
+  const model = agentModelLayer(settings, { workflowId: input.workflowId });
   return Effect.gen(function* () {
     const session = yield* Chat.fromPrompt(
       agentPrompt({ messages: input.messages })
-    ).pipe(Effect.provide(agentModelLayer(settings)));
+    ).pipe(Effect.provide(model));
 
     const parts = agenticSteps({
       session,
       toolkit: input.session.toolkit,
       observeTrace: input.observeTrace,
-    }).pipe(Stream.provide(agentModelLayer(settings)));
+    }).pipe(Stream.provide(model));
 
     return withGraphParts(parts, input.session, input.observeTrace);
   });

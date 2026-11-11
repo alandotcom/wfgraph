@@ -5,6 +5,7 @@ import { FetchHttpClient } from "effect/http";
 import type { AgentModelSettings } from "#src/backend/agent/config";
 import {
   agentModelLayer,
+  agentPromptCacheKey,
   MAX_AGENT_OUTPUT_TOKENS,
 } from "#src/backend/agent/model";
 
@@ -54,7 +55,7 @@ function streamOnce(
       Effect.flatMap((model) =>
         Stream.runCollect(model.streamText({ prompt: "Hello" }))
       ),
-      Effect.provide(agentModelLayer(settings)),
+      Effect.provide(agentModelLayer(settings, { workflowId: "workflow-1" })),
       Effect.provideService(FetchHttpClient.Fetch, fetch)
     );
 
@@ -96,6 +97,74 @@ const chatCompletionsAnswer = () =>
   );
 
 describe("agentModelLayer", () => {
+  it.effect(
+    "keeps an OpenAI response unstored and caches it under the workflow",
+    () =>
+      Effect.gen(function* () {
+        const response = {
+          id: "resp_1",
+          object: "response",
+          model: "gpt-6.1-terra",
+          created_at: 1_700_000_000,
+          output: [],
+        };
+        const message = {
+          type: "message",
+          id: "msg_1",
+          role: "assistant",
+          status: "in_progress",
+          content: [],
+        };
+        const { request, text } = yield* streamOnce(
+          {
+            provider: "openai",
+            apiKey: "sk-test",
+            model: "gpt-6.1-terra",
+            reasoningEffort: "medium",
+          },
+          () =>
+            sse([
+              { type: "response.created", response },
+              {
+                type: "response.output_item.added",
+                output_index: 0,
+                item: message,
+              },
+              {
+                type: "response.output_text.delta",
+                item_id: "msg_1",
+                output_index: 0,
+                content_index: 0,
+                delta: "Ready",
+              },
+              {
+                type: "response.completed",
+                response: {
+                  ...response,
+                  usage: {
+                    input_tokens: 5,
+                    input_tokens_details: { cached_tokens: 0 },
+                    output_tokens: 1,
+                    output_tokens_details: { reasoning_tokens: 0 },
+                    total_tokens: 6,
+                  },
+                },
+              },
+            ])
+        );
+
+        expect(request?.url).toBe("https://api.openai.com/v1/responses");
+        expect(request?.body).toMatchObject({
+          model: "gpt-6.1-terra",
+          store: false,
+          prompt_cache_key: agentPromptCacheKey("workflow-1"),
+          max_output_tokens: MAX_AGENT_OUTPUT_TOKENS,
+          reasoning: { effort: "medium", summary: "auto" },
+        });
+        expect(text).toBe("Ready");
+      })
+  );
+
   it.effect(
     "sends Anthropic adaptive thinking, a pinned effort and the key header",
     () =>
@@ -149,6 +218,7 @@ describe("agentModelLayer", () => {
           max_tokens: MAX_AGENT_OUTPUT_TOKENS,
           thinking: { type: "adaptive", display: "summarized" },
           output_config: { effort: "high" },
+          cache_control: { type: "ephemeral" },
         });
         expect(text).toBe("Ready");
       })

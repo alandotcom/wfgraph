@@ -548,6 +548,10 @@ const wfgraph = await createWfGraphApp({
   gateway in front of a provider must pass server-sent events through and accept a
   `tools` array. A `baseUrl` for `openai` must serve the Responses API: a gateway that offers
   Chat Completions alone, such as most self-hosted model servers, is `openai-compatible`.
+- **Requests are cached per workflow and not stored.** OpenAI and OpenRouter requests carry
+  `prompt_cache_key: "wfgraph-agent:<workflowId>"`, an Anthropic request asks for automatic
+  prompt caching, and an OpenAI request sets `store: false`, so the Responses API keeps no
+  copy of a turn. A gateway in front of OpenAI must pass both fields through.
 - **`anthropic` needs a Claude model from the 4.6 generation or later**, because the turn
   asks for adaptive thinking, which earlier models refuse.
 - **A turn's tools follow the caller's grants.** `agent.chat` needs `agent.use`, and each tool
