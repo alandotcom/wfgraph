@@ -113,7 +113,7 @@ const patientEntity = defineEntity({
  *
  * Send one from your app:
  *
- *   await wfgraph.events.send({ name: "app/appointment.created", data: { appointment, occurredAt } });
+ *   await wfgraph.events.send(appointmentCreated, { appointment, occurredAt });
  *
  * or from another process with `POST /api/events` and the events key below.
  */

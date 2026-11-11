@@ -231,10 +231,22 @@ application that already publishes its Events with `inngest.send` registers forw
 instead; see Sending through Inngest.
 
 **From the application's own code**, call `events.send` on the value `createWfGraphApp`
-returns. The same method is on the value `createWfGraphRunner` returns.
+returns. The same method is on the value `createWfGraphRunner` returns. Pass the value
+`defineEvent` returned, and TypeScript checks the payload against the Event's schema:
 
 ```ts
-const { id, duplicate } = await app.events.send({
+const { id, duplicate } = await app.events.send(
+  appointmentCreated,
+  { appointment: { id: "appt_123", startsAt: "2026-08-10T19:00:00.000Z" } },
+  { id: "appointment-created-appt_123" }
+);
+```
+
+A sender that holds only the Event's name passes one object instead, and the payload is
+then checked at runtime alone:
+
+```ts
+await app.events.send({
   name: "app/appointment.created",
   data: {
     appointment: { id: "appt_123", startsAt: "2026-08-10T19:00:00.000Z" },
@@ -243,10 +255,11 @@ const { id, duplicate } = await app.events.send({
 });
 ```
 
-- `name` is the name of an Event in `extensions.events`, or the umbrella name it arrives
-  under. An integration-owned Event is refused, because it arrives only through its
-  integration's webhook, with the Connection it came through.
-- `data` must pass the schema of that Event before the send resolves.
+- The Event is one in `extensions.events`, named by its definition or by its name. The name
+  form also takes the umbrella name an Event arrives under. An integration-owned Event is
+  refused, because it arrives only through its integration's webhook, with the Connection
+  it came through.
+- The payload must pass the schema of that Event before the send resolves.
 - `id` is optional. It is the idempotency key: a second send with the same `name` and `id`
   resolves with `duplicate: true` and the `id` of the first send, and it starts nothing.
   When the first send's delivery failed for good, a second send with the same `id` delivers
@@ -300,6 +313,33 @@ on conflict do nothing
   qualify it or put that schema on the connection's `search_path`.
 - Nothing checks the payload until the worker loop delivers it, so a refused payload is
   marked failed on its row.
+
+`events.inboxInsert` builds that statement for one Event and checks the payload first, the
+way `events.send` does. It writes nothing: your code runs the statement on its own
+connection, inside its own transaction. On PostgreSQL the table is qualified with the
+`persistence` schema, and with postgres.js the call looks like this:
+
+```ts
+const insert = await app.events.inboxInsert(
+  appointmentCreated,
+  { appointment: { id: "appt_123", startsAt: "2026-08-10T19:00:00.000Z" } },
+  { id: "appointment-created-appt_123" }
+);
+
+await sql.begin(async (transaction) => {
+  await transaction`insert into appointments ${transaction(appointment)}`;
+  await transaction.unsafe(insert.sql, [...insert.params]);
+});
+```
+
+- `sql` is the statement above. `params` holds `$1` to `$3` in order, for a driver that binds
+  them by position, such as postgres.js or node-postgres. `namedParams` holds the same values
+  keyed `$1`, `$2` and `$3`, for a driver that binds a `$1` parameter by name, such as
+  `node:sqlite`.
+- `$2` is the payload object on PostgreSQL, which the driver encodes for the `jsonb` column,
+  and the payload as JSON text on SQLite.
+- The promise rejects with `WfGraphEventRefused` for an Event this app does not declare, a
+  payload its schema refuses, or a blank `id`.
 
 **The deduplication window is the inbox's retention window.** An idempotency key holds while
 the first send's inbox row exists. The worker loop deletes a row whose delivery has settled

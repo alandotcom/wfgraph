@@ -6,6 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, ManagedRuntime, Schema } from "effect";
@@ -167,7 +168,7 @@ describe("createWfGraphApp events", () => {
     }
   });
 
-  it("opens a run that completes from app.events.send and from POST /api/events", async () => {
+  it("opens a run that completes from app.events.send, POST /api/events and the host's own inbox insert", async () => {
     const filename = join(dir, "wfgraph.sqlite");
     // A connection of the case's own publishes the workflow before the app
     // opens and reads the runs back while it runs.
@@ -242,12 +243,81 @@ describe("createWfGraphApp events", () => {
       expect(receipt).toEqual({ id: expect.any(String), duplicate: false });
       const postedId = String(receipt?.id);
 
+      // The definition form types the payload from the Event's schema.
+      const typed = await app.events.send(
+        appointmentCreated,
+        { appointmentId: "appt_typed" },
+        { id: "booking_typed" }
+      );
+
+      // The host runs the documented statement on a connection of its own,
+      // inside its own transaction, and a repeat of it is a no-op.
+      const insert = await app.events.inboxInsert(
+        appointmentCreated,
+        { appointmentId: "appt_in_transaction" },
+        { id: "booking_tx" }
+      );
+      const values = [
+        appointmentCreated.name,
+        JSON.stringify({ appointmentId: "appt_in_transaction" }),
+        "booking_tx",
+      ] as const;
+      expect(insert).toEqual({
+        sql: "insert into workflow_event_inbox (name, data, idempotency_key)\nvalues ($1, $2, $3)\non conflict do nothing",
+        params: values,
+        namedParams: { $1: values[0], $2: values[1], $3: values[2] },
+      });
+      // On SQLite the payload parameter is JSON text, and node:sqlite binds a
+      // `$1` parameter by name.
+      const { $1, $2, $3 } = insert.namedParams;
+      if (typeof $2 !== "string") throw new Error("Expected JSON text");
+      const host = new DatabaseSync(filename);
+      let insertedId: string;
+      try {
+        host.exec("begin immediate");
+        const inserted = host.prepare(insert.sql).run({ $1, $2, $3 });
+        const repeated = host.prepare(insert.sql).run({ $1, $2, $3 });
+        host.exec("commit");
+        expect([inserted.changes, repeated.changes]).toEqual([1, 0]);
+        const row = host
+          .prepare(
+            "select id from workflow_event_inbox where idempotency_key = ?"
+          )
+          .get("booking_tx");
+        insertedId = String(row?.id);
+      } finally {
+        host.close();
+      }
+
       await completed(sent.id);
       await completed(postedId);
+      await completed(typed.id);
+      await completed(insertedId);
       expect(sent.duplicate).toBe(false);
       await expect(
         app.events.send({ name: "app/never.declared", data: {} })
       ).rejects.toThrow(WfGraphEventRefused);
+      await expect(
+        app.events.inboxInsert(
+          appointmentCreated,
+          // @ts-expect-error -- the schema types appointmentId as a string
+          { appointmentId: 1 }
+        )
+      ).rejects.toThrow('Payload refused for Event "app/appointment.created"');
+      const undeclared = defineEvent({
+        name: "app/never.declared",
+        schema: Schema.Struct({ id: Schema.String }),
+      });
+      await expect(
+        app.events.inboxInsert(undeclared, { id: "x" })
+      ).rejects.toThrow(WfGraphEventRefused);
+      await expect(
+        app.events.inboxInsert(
+          appointmentCreated,
+          { appointmentId: "a" },
+          { id: "  " }
+        )
+      ).rejects.toThrow("id: Expected a non-empty string");
     } finally {
       await seed.dispose();
       await instance.close();

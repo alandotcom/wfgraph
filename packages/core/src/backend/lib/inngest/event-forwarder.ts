@@ -18,13 +18,21 @@ import {
 } from "inngest";
 import {
   isWfGraphEventRefused,
+  type WfGraphEventInput,
   type WfGraphEventReceipt,
-  type WfGraphEvents,
 } from "#src/backend/host-events";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 
 const logger = getAppLogger("events");
+
+/**
+ * The part of an app's or runner's `events` a forwarder sends through: the
+ * send by name, since an Inngest event carries a name and no definition.
+ */
+export type ForwarderEvents = {
+  readonly send: (event: WfGraphEventInput) => Promise<WfGraphEventReceipt>;
+};
 
 /**
  * The Inngest function id of the forwarder for one Inngest event name. The
@@ -54,7 +62,7 @@ export function toForwarderFunctionId(eventName: string): string {
 async function forwardToInbox(input: {
   name: string;
   event: { id?: string | undefined; data?: unknown };
-  events: WfGraphEvents;
+  events: ForwarderEvents;
 }): Promise<WfGraphEventReceipt> {
   let receipt: WfGraphEventReceipt;
   try {
@@ -92,7 +100,7 @@ export function createInngestEventForwarder(input: {
   /** The Inngest event name this forwarder triggers on and sends under. */
   name: string;
   /** The app's or runner's `events`, whose inbox the event is sent into. */
-  events: WfGraphEvents;
+  events: ForwarderEvents;
 }): InngestFunction.Any {
   const { client, name, events } = input;
 

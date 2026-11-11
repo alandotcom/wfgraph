@@ -9,9 +9,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   WfGraphEventRefused,
   type WfGraphEventInput,
-  type WfGraphEvents,
 } from "#src/backend/host-events";
 import {
+  type ForwarderEvents,
   createInngestEventForwarder,
   toForwarderFunctionId,
 } from "#src/backend/lib/inngest/event-forwarder";
@@ -24,7 +24,7 @@ const NAME = "app/appointment.created";
 function recordingEvents(
   answer: () => Promise<{ id: string; duplicate: boolean }>
 ): {
-  events: WfGraphEvents;
+  events: ForwarderEvents;
   sent: WfGraphEventInput[];
 } {
   const sent: WfGraphEventInput[] = [];
@@ -35,13 +35,12 @@ function recordingEvents(
         sent.push(event);
         return await answer();
       }),
-      sourceNames: [NAME],
     },
   };
 }
 
 async function forward(
-  events: WfGraphEvents,
+  events: ForwarderEvents,
   event: { id: string; data: unknown }
 ) {
   const forwarder = createInngestEventForwarder({ client, name: NAME, events });

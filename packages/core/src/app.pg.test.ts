@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { Effect, Layer, ManagedRuntime, Schema } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { createWfGraphApp, type WfGraphAppOptions } from "#src/app";
-import { defineAction, trustWfGraphUpstream } from "#src/index";
+import { defineAction, defineEvent, trustWfGraphUpstream } from "#src/index";
 import { createWfGraphRunner } from "#src/runner";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import {
@@ -227,6 +227,59 @@ describePostgres("createWfGraphApp runner on PostgreSQL", () => {
       await seeded.close();
       await app.dispose();
     }
+  });
+
+  // The statement inboxInsert answers is the documented one, qualified with
+  // the app's schema, and a host's own transaction on its own connection
+  // stores an arrival the app's loop then delivers.
+  it("answers an inbox insert a host transaction runs, which the loop delivers", async () => {
+    const paymentSettled = defineEvent({
+      name: "billing/payment.settled",
+      schema: Schema.Struct({ appointmentId: Schema.String }),
+    });
+    await using app = await createWfGraphApp({
+      auth: trustWfGraphUpstream(),
+      persistence: wfPostgres({ url, schema }),
+      encryption: ENCRYPTION,
+      extensions: { events: [paymentSettled] },
+    });
+
+    const insert = await app.events.inboxInsert(
+      paymentSettled,
+      { appointmentId: "appt_pg" },
+      { id: "settled_pg" }
+    );
+    expect(insert.params).toEqual([
+      paymentSettled.name,
+      { appointmentId: "appt_pg" },
+      "settled_pg",
+    ]);
+    expect(insert.sql).toBe(
+      `insert into ${schema}.workflow_event_inbox (name, data, idempotency_key)\nvalues ($1, $2, $3)\non conflict do nothing`
+    );
+
+    const statusOf = () =>
+      withAdminClient(async (client) => {
+        const rows = await client.unsafe(
+          `select status, data from ${schema}.workflow_event_inbox where idempotency_key = $1`,
+          ["settled_pg"]
+        );
+        return rows.map((row) => ({ status: row.status, data: row.data }));
+      });
+    await withAdminClient(async (client) => {
+      await client.begin(async (transaction) => {
+        await transaction.unsafe(insert.sql, [...insert.params]);
+        await transaction.unsafe(insert.sql, [...insert.params]);
+      });
+    });
+
+    await vi.waitFor(
+      async () =>
+        expect(await statusOf()).toEqual([
+          { status: "delivered", data: { appointmentId: "appt_pg" } },
+        ]),
+      { timeout: 5_000 }
+    );
   });
 
   it("refuses to start a runner whose Layer graph fails to build, and closes the database", async () => {

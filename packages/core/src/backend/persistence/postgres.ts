@@ -10,6 +10,7 @@ import {
   type MigrationsOptions,
   runMigrations,
 } from "#src/backend/lib/db/migrations";
+import { inboxInsertSql } from "#src/backend/persistence/inbox-insert";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import { makePostgresRepositories } from "#src/backend/persistence/postgres-repositories";
 import { createPostgresRunWakes } from "#src/backend/persistence/postgres-run-wakes";
@@ -58,6 +59,10 @@ export function wfPostgres(
               pollMs: POSTGRES_POLL_MS,
               concurrency: POSTGRES_WORKER_CONCURRENCY,
             },
+          },
+          inboxInsert: {
+            sql: inboxInsertSql(database.schema),
+            data: "object",
           },
           description: {
             backend: "postgres",

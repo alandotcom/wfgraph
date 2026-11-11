@@ -99,11 +99,8 @@ const wfgraph = await createWfGraphApp({
 createServer(createRequestListener(wfgraph)).listen(3000);
 
 // Raise an Event from your own code. The worker loop in this process starts the runs.
-await wfgraph.events.send({
-  name: "app/appointment.created",
-  data: {
-    appointment: { id: "appt_123", startsAt: "2026-08-10T19:00:00.000Z" },
-  },
+await wfgraph.events.send(appointmentCreated, {
+  appointment: { id: "appt_123", startsAt: "2026-08-10T19:00:00.000Z" },
 });
 ```
 

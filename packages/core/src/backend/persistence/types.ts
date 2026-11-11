@@ -1,4 +1,5 @@
 import type { Layer } from "effect";
+import type { InboxInsertStatement } from "#src/backend/persistence/inbox-insert";
 import type { IntegrationCipher } from "#src/backend/services/integrations/cipher";
 import type { WfGraphRepositories } from "#src/backend/runtime";
 import type { RunWakeSink } from "#src/backend/services/executions/wakes";
@@ -61,6 +62,12 @@ export type WfGraphPersistenceInstance = {
   readonly repositories: Layer.Layer<WfGraphRepositories>;
   readonly capabilities: WfGraphRunCapabilities;
   readonly description: Readonly<Record<string, string | number | boolean>>;
+  /**
+   * The documented inbox insert a host runs on its own connection, naming
+   * this backend's table, and the form its payload parameter takes. Absent on
+   * a backend a host does not share, such as Hyperdrive.
+   */
+  readonly inboxInsert?: InboxInsertStatement | undefined;
   readonly close: () => Promise<void>;
 };
 

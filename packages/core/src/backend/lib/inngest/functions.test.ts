@@ -8,8 +8,10 @@ import {
   assembleExtensions,
   type WfGraphExtensions,
 } from "#src/backend/extensions/extension-set";
-import type { WfGraphEvents } from "#src/backend/host-events";
-import { createWfGraphInngestFunctions } from "#src/backend/lib/inngest/functions";
+import {
+  createWfGraphInngestFunctions,
+  type CreateWfGraphInngestFunctionsOptions,
+} from "#src/backend/lib/inngest/functions";
 
 // Constructing a client opens nothing; these functions are never invoked.
 const client = new Inngest({ id: "functions-test", isDev: true });
@@ -18,7 +20,9 @@ const client = new Inngest({ id: "functions-test", isDev: true });
  * An app over `extensions`, assembled as `createWfGraphApp` assembles them,
  * whose `send` the build never calls.
  */
-function appOver(extensions: WfGraphExtensions): { events: WfGraphEvents } {
+function appOver(
+  extensions: WfGraphExtensions
+): CreateWfGraphInngestFunctionsOptions["app"] {
   return {
     events: {
       send: () => Promise.reject(new Error("The build sends nothing")),

@@ -187,7 +187,7 @@ export async function openWfGraphSetup(
       runtime,
       extensions,
       capabilities,
-      events: createHostEvents(runtime, extensions),
+      events: createHostEvents(runtime, extensions, persistence.inboxInsert),
       startRunner:
         settings === undefined
           ? undefined

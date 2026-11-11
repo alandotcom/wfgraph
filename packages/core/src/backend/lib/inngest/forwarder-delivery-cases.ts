@@ -55,7 +55,7 @@ async function forward(
   const forwarder = createInngestEventForwarder({
     client: inngestClient,
     name: input.name,
-    events: createHostEvents(harness.app, extensions),
+    events: createHostEvents(harness.app, extensions, undefined),
   });
   const { result, error } = await new InngestTestEngine({
     function: forwarder,

@@ -11,6 +11,7 @@ import type { Inngest, InngestFunction } from "inngest";
 import type { WfGraphEvents } from "#src/backend/host-events";
 import {
   createInngestEventForwarder,
+  type ForwarderEvents,
   toForwarderFunctionId,
 } from "#src/backend/lib/inngest/event-forwarder";
 
@@ -23,7 +24,9 @@ export type CreateWfGraphInngestFunctionsOptions = {
    * through its `events`, so the process that registers the functions holds
    * the app or runner they write through.
    */
-  app: { readonly events: WfGraphEvents };
+  app: {
+    readonly events: ForwarderEvents & Pick<WfGraphEvents, "sourceNames">;
+  };
 };
 
 /**

@@ -61,7 +61,9 @@ export {
   type WfGraphEventInput,
   type WfGraphEventReceipt,
   type WfGraphEvents,
+  type WfGraphEventSendOptions,
   type WfGraphEventsOptions,
+  type WfGraphInboxInsert,
 } from "#src/backend/host-events";
 export type { WfGraphRunsOptions } from "#src/backend/host-runs";
 

@@ -3,6 +3,7 @@ import type { IntegrationCipher } from "#src/backend/services/integrations/ciphe
 import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { inboxInsertSql } from "#src/backend/persistence/inbox-insert";
 import type { WfGraphPersistence } from "#src/backend/persistence/types";
 import { openSqliteDatabase } from "#src/backend/persistence/sqlite/database";
 import { makeSqliteIntegrationRepo } from "#src/backend/persistence/sqlite/integrations";
@@ -66,6 +67,7 @@ export function wfSqlite(
             concurrency: SQLITE_WORKER_CONCURRENCY,
           },
         },
+        inboxInsert: { sql: inboxInsertSql(), data: "json_text" },
         description: { backend: "sqlite", filename },
         close: database.close,
       };
