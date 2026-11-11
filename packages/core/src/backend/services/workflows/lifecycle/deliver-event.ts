@@ -70,6 +70,7 @@ import type {
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { asNonEmptyString } from "@wfgraph/shared/types/string";
 import { getValueByPath } from "@wfgraph/shared/utils/object-path";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 /**
  * The Event as delivery reads it: its identity, and where its payload carries an
@@ -205,6 +206,86 @@ function readEntityValue(input: {
   return asNonEmptyString(getValueByPath(input.payload, path));
 }
 
+/** How many versions' Lifecycle Rules `rulesOfVersion` keeps. */
+const VERSION_RULES_MEMO_LIMIT = 500;
+
+/**
+ * The Lifecycle Rules of versions already read, by version id. A version row
+ * never changes, so what this process read stays true; `null` is a graph that
+ * did not parse.
+ */
+const versionRulesMemo = new Map<string, LifecycleRules | undefined | null>();
+
+/** The Lifecycle Rules one Workflow Version's entry node stores. */
+const rulesOfVersion = Effect.fn("rulesOfVersion")(function* (
+  versionId: string
+) {
+  if (versionRulesMemo.has(versionId)) return versionRulesMemo.get(versionId);
+  const repo = yield* WorkflowRepo;
+  const version = yield* repo.findVersionById(versionId);
+  const rules = version === null ? null : readPublishedRules(version.graph);
+  if (versionRulesMemo.size >= VERSION_RULES_MEMO_LIMIT) {
+    const oldest = versionRulesMemo.keys().next();
+    if (!oldest.done) versionRulesMemo.delete(oldest.value);
+  }
+  versionRulesMemo.set(versionId, rules);
+  return rules;
+});
+
+/**
+ * The arriving entity in the identity form the workflow's in-flight runs on
+ * other versions were started with, where that form is not the one `rules`
+ * use, or `undefined` when no such run exists or the payload yields none.
+ *
+ * A version that tracks an Entity stores a run's typed identity, and one that
+ * does not stores its legacy Entity Value. A Publish that changed tracking
+ * mode leaves the older version's runs in the other form, and a Cancel or
+ * Concurrency built from the current rules alone would never reach them. Each
+ * older version's own rules say where its form is read from.
+ */
+const entityInOtherForm = Effect.fn("entityInOtherForm")(function* (input: {
+  workflowId: string;
+  currentVersionId: string;
+  rules: LifecycleRules;
+  event: DeliveredEvent;
+  payload: JsonObject;
+}) {
+  const executions = yield* ExecutionRepo;
+  const versionIds = yield* executions.listInFlightVersionIds(input.workflowId);
+  const tracksNow = input.rules.trackedEntity !== undefined;
+  for (const versionId of versionIds) {
+    if (versionId === input.currentVersionId) continue;
+    const rules = yield* rulesOfVersion(versionId);
+    if (!rules || (rules.trackedEntity !== undefined) === tracksNow) continue;
+    if (tracksNow) {
+      const entityValue = readEntityValue({
+        event: input.event,
+        rules,
+        payload: input.payload,
+      });
+      if (entityValue) {
+        const legacy: ExecutionEntitySelector = { entityValue };
+        return legacy;
+      }
+      continue;
+    }
+    // A binding that older version named and the Event no longer carries is
+    // a form this arrival cannot produce.
+    const selected = yield* selectTrackedEntity({
+      rules,
+      event: input.event,
+    }).pipe(Effect.catchTag("InternalFailure", () => Effect.undefined));
+    if (selected) {
+      const typed: ExecutionEntitySelector = {
+        entityType: selected.entityType,
+        entityId: selected.entityId,
+      };
+      return typed;
+    }
+  }
+  return undefined;
+});
+
 /** The workflows this Event concerns, with the roles it holds in each. */
 export const listEventSubscribers = Effect.fn("listEventSubscribers")(
   function* (eventName: string) {
@@ -325,13 +406,23 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
         event: input.event,
       });
       // The runs a Cancel reaches are chosen by the typed Entity identity when
-      // the rules track one, and by the legacy Entity Value otherwise.
+      // the rules track one, and by the legacy Entity Value otherwise. Runs an
+      // older published version started in the other form are reached in
+      // that form too.
+      const otherForm = yield* entityInOtherForm({
+        workflowId: workflow.id,
+        currentVersionId: version.id,
+        rules,
+        event: input.event,
+        payload: input.payload,
+      });
       let selector: ExecutionEntitySelector;
       if (trackedEntity) {
-        selector = {
+        selector = omitUndefined({
           entityType: trackedEntity.entityType,
           entityId: trackedEntity.entityId,
-        };
+          entityValue: otherForm?.entityValue,
+        });
       } else {
         const entityValue = readEntityValue({
           event: input.event,
@@ -339,9 +430,18 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
           payload: input.payload,
         });
 
-        // An unguarded cancel matches by legacy Entity Value and has nothing
-        // else to match on, so a payload carrying none reaches no run.
-        if (!entityValue) {
+        // An unguarded cancel matches by legacy Entity Value, and by a typed
+        // identity only for the runs an older tracking version started, so a
+        // payload carrying neither reaches no run.
+        if (otherForm?.entityType !== undefined) {
+          selector = omitUndefined({
+            entityType: otherForm.entityType,
+            entityId: otherForm.entityId,
+            entityValue,
+          });
+        } else if (entityValue) {
+          selector = { entityValue };
+        } else {
           const executionRepo = yield* ExecutionRepo;
           yield* executionRepo.recordAuditEvent({
             id: deliveryDecisionId("cancel", workflow.id, input.deliveryId),
@@ -371,8 +471,6 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
             reason: "entity_value_missing" as const,
           };
         }
-
-        selector = { entityValue };
       }
 
       const canceledExecutionIds = yield* requestCanceledOutlet({
@@ -502,9 +600,24 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
       }
     }
 
+    // Concurrency compares the runs an older published version started in
+    // the other identity form too, so a version that changed tracking mode
+    // still serializes one entity's runs.
+    const alsoInFlightAs =
+      rules.concurrency === "unlimited"
+        ? undefined
+        : yield* entityInOtherForm({
+            workflowId: workflow.id,
+            currentVersionId: version.id,
+            rules,
+            event: input.event,
+            payload: input.payload,
+          });
+
     const started = yield* startWithConcurrency({
       workflow: runTarget,
       concurrency: rules.concurrency,
+      alsoInFlightAs,
       start: guarded
         ? {
             source: "event",

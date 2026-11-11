@@ -124,6 +124,33 @@ const bulkAudit = (workflowId: string) => ({
   sqlite: `with recursive n(i) as (select 1 union all select i + 1 from n where i < 700) insert into workflow_execution_events (id, workflow_id, event_type, message, created_at) select '${workflowId}_refused_' || i, '${workflowId}', 'run_refused', 'Refused', 0 from n`,
 });
 
+/**
+ * Opens an unlimited run of `wf_1` about one entity in one identity form, as a
+ * version tracking an Entity or one that does not would store it.
+ */
+const startInForm = (
+  deliveryId: string,
+  identity: { entityValue: string } | { entityType: string; entityId: string }
+) =>
+  Effect.gen(function* () {
+    const executions = yield* ExecutionRepo;
+    const started = yield* executions.startForEntity({
+      execution: {
+        workflowId: "wf_1",
+        workflowVersionId: "ver_1",
+        startSource: "event",
+        runMode: "live",
+        deliveryId,
+        input: {},
+        ...identity,
+      },
+      concurrency: "unlimited",
+      ...notYetDue,
+    });
+    if (started.status !== "started") throw new Error("Start was refused");
+    return started.execution.id;
+  });
+
 /** The first-wins start that the race cases in this file make. */
 const startFirstWins = (
   connection: ConformanceConnection,
@@ -177,6 +204,82 @@ export function describeExecutionConformance({
       expect(state.workflow?.name).toBe("Appointments");
       expect(state.events[0]?.metadata).toEqual({
         createdAt: "host-json-stays-a-string",
+      });
+    });
+
+    // A Publish that started tracking an Entity leaves the older version's
+    // runs keyed by their legacy Entity Value, beside the typed runs the new
+    // version starts. One Cancel arrival names the entity in both forms.
+    it("claims runs started under either identity form for a Cancel naming both, and lists the versions in-flight runs pin", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const legacy = yield* startInForm("delivery_legacy", {
+            entityValue: "appt_1",
+          });
+          const typed = yield* startInForm("delivery_typed", {
+            entityType: "appointment",
+            entityId: "appt_1",
+          });
+          const otherEntity = yield* startInForm("delivery_other", {
+            entityValue: "appt_2",
+          });
+          const versions = yield* executions.listInFlightVersionIds("wf_1");
+          const claims = yield* executions.requestCancelForEntity({
+            now: NOW,
+            workflowId: "wf_1",
+            entityType: "appointment",
+            entityId: "appt_1",
+            entityValue: "appt_1",
+            eventName: "appointment/cancelled",
+            payload: {},
+            deliveryId: yield* cancelArrival(),
+          });
+          return { legacy, typed, otherEntity, versions, claims };
+        })
+      );
+
+      expect(result.versions).toEqual(["ver_1"]);
+      expect(
+        result.claims.map((claim) => claim.executionId).toSorted()
+      ).toEqual([result.legacy, result.typed].toSorted());
+    });
+
+    it("lets newest-wins supersede a run an older version started in the other identity form", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const legacy = await attemptStart(database, {
+        deliveryId: "delivery_legacy",
+        entityValue: "appt_1",
+        concurrency: "newest-wins",
+      });
+      if (legacy.status !== "started") throw new Error("Start was refused");
+      const typed = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return yield* executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              runMode: "live",
+              entityType: "appointment",
+              entityId: "appt_1",
+              deliveryId: "delivery_typed",
+              input: {},
+            },
+            concurrency: "newest-wins",
+            alsoInFlightAs: { entityValue: "appt_1" },
+            ...notYetDue,
+          });
+        })
+      );
+
+      expect(typed).toMatchObject({
+        status: "started",
+        supersededExecutionIds: [legacy.execution.id],
       });
     });
 

@@ -324,3 +324,22 @@ of paths read by its templates and Condition. When the node is also a
 before-node Eligibility checkpoint, that same State snapshot serves all three
 uses. The existing durability, privacy, Canceled-side, replay, missing-Entity,
 and operational-failure rules continue to apply.
+
+## Amendment: Runs of a version with the other tracking mode
+
+Date: 2026-11-11
+
+A guarded run stored `{ entityType, entityId }` and an unguarded run stored the legacy
+`entityValue`, and the Cancel scope and Concurrency were built from the current published
+rules alone. A Publish that started or stopped tracking an Entity therefore left the older
+version's runs in a form no later Cancel Event or start compared, and Migration refused
+those runs because their Entity type differed from the target's.
+
+The Cancel claim and Concurrency now also compare in-flight runs in the other form. The
+delivery reads the Workflow Versions the workflow's in-flight runs pin, and for each one
+whose tracking mode differs from the current version's it derives the arriving entity in
+that version's form from that version's own Lifecycle Rules: its Correlation Path for an
+untracked version, its tracked Entity binding for a tracking one. A Cancel names both forms
+and claims a run matching either; a start keeps its own form on the new row and passes the
+other as `alsoInFlightAs`, which the in-flight probe compares beside it. A version's rules
+are read once per process, since a version never changes.

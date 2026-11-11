@@ -53,6 +53,8 @@ export const recordAdmissionRefusalMock =
 export const findByDeliveryMock = vi.fn<Repo["findByDelivery"]>();
 export const findVersionByIdMock =
   vi.fn<WorkflowRepo["Service"]["findVersionById"]>();
+export const listInFlightVersionIdsMock =
+  vi.fn<Repo["listInFlightVersionIds"]>();
 export const recordAuditEventMock = vi.fn<Repo["recordAuditEvent"]>(
   () => Effect.void
 );
@@ -463,6 +465,7 @@ export const lifecyclePorts = Layer.mergeAll(
     recordAdmissionRefusal: recordAdmissionRefusalMock,
     findByDelivery: findByDeliveryMock,
     recordAuditEvent: recordAuditEventMock,
+    listInFlightVersionIds: listInFlightVersionIdsMock,
   }),
   stubExecutionDriver({
     startRun: startRunMock,
@@ -492,6 +495,7 @@ export function resetGuardedStartMocks(): void {
   recordAdmissionRefusalMock.mockReset();
   findByDeliveryMock.mockReset();
   findVersionByIdMock.mockReset();
+  listInFlightVersionIdsMock.mockReset();
   recordAuditEventMock.mockReset();
   resolveEntityMock.mockReset();
   selectEntityIdMock.mockClear();
@@ -512,4 +516,7 @@ export function resetGuardedStartMocks(): void {
     Effect.succeed(publishedVersion(createWorkflow({ rules: startRules })))
   );
   recordAuditEventMock.mockImplementation(() => Effect.void);
+  // Every in-flight run is on the published version, which leaves no run in
+  // another identity form.
+  listInFlightVersionIdsMock.mockImplementation(() => Effect.succeed([]));
 }

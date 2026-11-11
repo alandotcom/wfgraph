@@ -18,6 +18,7 @@ import { Effect } from "effect";
 import type { EffectLogger } from "#src/backend/lib/effect/app-logger";
 import { ExecutionDriver } from "#src/backend/services/executions/driver";
 import type {
+  ExecutionEntitySelector,
   NewExecution,
   StartForEntityInput,
 } from "#src/backend/services/executions/repo";
@@ -37,6 +38,11 @@ export type StartWithConcurrencyInput = {
   workflow: WorkflowRunTarget;
   concurrency: Concurrency;
   start: WorkflowRunStart;
+  /**
+   * The start's entity in the identity form an older published version
+   * started its runs with, which Concurrency compares beside the start's own.
+   */
+  alsoInFlightAs?: ExecutionEntitySelector | undefined;
   runMode: WorkflowMode;
   payload: JsonObject;
   logger: EffectLogger;
@@ -98,6 +104,7 @@ export const startWithConcurrency = Effect.fn(
     workflow,
     concurrency: input.concurrency,
     start,
+    alsoInFlightAs: input.alsoInFlightAs,
     runMode,
     payload,
   });
@@ -162,6 +169,7 @@ export const startRequestFor = Effect.fnUntraced(function* (
   const request: Omit<StartForEntityInput, "now" | "admissionDecisionId"> = {
     execution,
     concurrency: input.concurrency,
+    alsoInFlightAs: input.alsoInFlightAs,
     startedEntry: yield* runStartedEntry(execution),
   };
   return request;

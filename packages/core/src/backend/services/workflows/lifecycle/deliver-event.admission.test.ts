@@ -15,6 +15,10 @@ import {
   catalogLayer,
   filterOn,
   findAdmissionRefusalMock,
+  findVersionByIdMock,
+  listInFlightVersionIdsMock,
+  publishedVersion,
+  createWorkflow,
   guardedCancelRules,
   guardedRules,
   recordAdmissionRefusalMock,
@@ -451,6 +455,56 @@ describe("applyLifecycleRules and Admission Entity Eligibility", () => {
           "entityValue"
         );
       })
+    );
+
+    // Version 1 tracked no Entity, so its runs carry the legacy Entity Value;
+    // the Cancel a tracking version receives has to reach them by it.
+    it.effect(
+      "reaches the runs an untracked older version started by their Entity Value",
+      () =>
+        Effect.gen(function* () {
+          listInFlightVersionIdsMock.mockImplementation(() =>
+            Effect.succeed(["ver_1", "ver_untracked"])
+          );
+          findVersionByIdMock.mockImplementation((versionId) =>
+            Effect.succeed({
+              ...publishedVersion(
+                createWorkflow({
+                  rules: {
+                    startEvents: ["app/appointment.created"],
+                    cancelEvents: ["app/appointment.canceled"],
+                    concurrency: "newest-wins",
+                    correlationPaths: {
+                      "app/appointment.canceled": "appointmentId",
+                    },
+                  },
+                })
+              ),
+              id: versionId,
+            })
+          );
+
+          const outcome = yield* applyLifecycleRules({
+            deliveryId: "delivery_1",
+            subscriber: { ...subscriber(), roles: ["cancel"] },
+            event: appointmentCanceled,
+            payload: { appointmentId: "appt_8813", reason: "host request" },
+          }).pipe(Effect.provide(workflowWith(guardedCancelRules())));
+
+          assert.strictEqual(outcome.kind, "canceled");
+          assert.deepInclude(requestCanceledOutletMock.mock.calls[0]?.[0], {
+            workflowId: "wf_1",
+            entityType: "appointment",
+            entityId: "appt_8813",
+            entityValue: "appt_8813",
+          });
+          // The published version's own rules come off the graph already
+          // loaded, so only the older version is read.
+          assert.deepStrictEqual(
+            findVersionByIdMock.mock.calls.map(([versionId]) => versionId),
+            ["ver_untracked"]
+          );
+        })
     );
 
     it.effect("runs a guarded Cancel Filter before its Entity selector", () =>

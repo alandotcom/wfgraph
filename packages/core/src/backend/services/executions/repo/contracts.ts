@@ -570,6 +570,13 @@ export type StartForEntityInput = {
   concurrency: Concurrency;
   /** Stable key shared with an admission refusal for this Event delivery. */
   admissionDecisionId?: string | undefined;
+  /**
+   * The same entity in the identity form an older published version of the
+   * workflow started its runs with, when that form differs from the new
+   * run's. Concurrency compares in-flight runs under either form; the new row
+   * stores its own form alone.
+   */
+  alsoInFlightAs?: ExecutionEntitySelector | undefined;
   /** The run's opening timeline entry, written as a `run_started` row. */
   startedEntry: { message: string; metadata: JsonObject };
   /** When the new run falls due: its schedule row's `wake_at`. */
@@ -760,12 +767,17 @@ export type ExecutionTerminationState = {
   didWrite: boolean;
 };
 
-/** The typed Entity identity, or the legacy untyped correlation value. */
+/**
+ * The typed Entity identity, the legacy untyped correlation value, or both. A
+ * selector naming both matches a run started under either form, which is how
+ * a workflow whose published versions changed tracking mode reaches the runs
+ * its older versions started.
+ */
 export type ExecutionEntitySelector =
   | {
       entityType: string;
       entityId: string;
-      entityValue?: never;
+      entityValue?: string | undefined;
     }
   | {
       entityType?: never;

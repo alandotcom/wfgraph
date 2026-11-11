@@ -580,10 +580,18 @@ export type CancelScope = {
 
 /** Whether a run is about the Cancel's Entity, in its workflow. */
 function inCancelScope(columns: CancelColumns, scope: CancelScope): SQL {
-  const entity =
+  const typed =
     scope.entityType === undefined
-      ? sql`${columns.entityValue} = ${scope.entityValue}`
-      : sql`${columns.entityType} = ${scope.entityType} and ${columns.entityId} = ${scope.entityId}`;
+      ? undefined
+      : sql`(${columns.entityType} = ${scope.entityType} and ${columns.entityId} = ${scope.entityId})`;
+  const legacy =
+    scope.entityValue === undefined
+      ? undefined
+      : sql`${columns.entityValue} = ${scope.entityValue}`;
+  const entity =
+    typed !== undefined && legacy !== undefined
+      ? sql`(${typed} or ${legacy})`
+      : (typed ?? legacy ?? sql`false`);
   return sql`(${columns.workflowId} = ${scope.workflowId} and ${entity})`;
 }
 

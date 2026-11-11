@@ -148,6 +148,15 @@ export type ClaimsRepoMethods = {
       now: Date;
     }
   ) => Effect.Effect<CanceledOutletClaim[], DatabaseError>;
+  /**
+   * The Workflow Versions this workflow's in-flight runs pin, each once. A
+   * Cancel Event and Concurrency read the Lifecycle Rules of each, because a
+   * version tracking an Entity and one that does not store a run's identity in
+   * different forms.
+   */
+  readonly listInFlightVersionIds: (
+    workflowId: string
+  ) => Effect.Effect<string[], DatabaseError>;
 };
 
 type RepinInput = Parameters<ClaimsRepoMethods["repinVersion"]>[0];
@@ -395,6 +404,22 @@ export function makeClaimsMethods(
   database: Database["Service"]
 ): ClaimsRepoMethods {
   return {
+    listInFlightVersionIds: (workflowId) =>
+      database.query(async (db) => {
+        const rows = await db
+          .selectDistinct({ id: workflowExecutions.workflowVersionId })
+          .from(workflowExecutions)
+          .where(
+            and(
+              eq(workflowExecutions.workflowId, workflowId),
+              inArray(workflowExecutions.status, [
+                ...IN_FLIGHT_EXECUTION_STATUSES,
+              ])
+            )
+          );
+        return rows.map((row) => row.id);
+      }),
+
     claimWaitingStateByToken: (input) =>
       database.query((db) =>
         claimWaitState(db, {

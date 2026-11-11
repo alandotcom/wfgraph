@@ -6,7 +6,7 @@
  * `admitWithConcurrency` in the transaction fenced on its timer's lease.
  */
 
-import { and, eq, inArray, isNull, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, type SQL } from "drizzle-orm";
 import { workflowExecutions } from "#src/backend/lib/db/schema";
 import type {
   WfGraphDatabase,
@@ -85,7 +85,9 @@ function started(
  * `entityValue` otherwise. Undefined for a run with neither, which no
  * Concurrency compares.
  */
-export function entityPredicate(execution: NewExecution): SQL | undefined {
+export function entityPredicate(
+  execution: Pick<NewExecution, "entityType" | "entityId" | "entityValue">
+): SQL | undefined {
   if (execution.entityType !== undefined && execution.entityId !== undefined) {
     return and(
       eq(workflowExecutions.entityType, execution.entityType),
@@ -95,6 +97,23 @@ export function entityPredicate(execution: NewExecution): SQL | undefined {
   return execution.entityValue === undefined
     ? undefined
     : eq(workflowExecutions.entityValue, execution.entityValue);
+}
+
+/**
+ * The runs Concurrency compares a new start against: those about its entity
+ * in the new run's own identity form, and in the form `alsoInFlightAs` names
+ * for the runs an older published version started. Undefined when the start
+ * names no entity.
+ */
+function inFlightEntityPredicate(
+  input: Pick<StartForEntityInput, "execution" | "alsoInFlightAs">
+): SQL | undefined {
+  const own = entityPredicate(input.execution);
+  const also =
+    input.alsoInFlightAs === undefined
+      ? undefined
+      : entityPredicate(input.alsoInFlightAs);
+  return own === undefined || also === undefined ? own : or(own, also);
 }
 
 async function findByDelivery(
@@ -180,7 +199,7 @@ export function admissionReads(input: StartForEntityInput): boolean {
   return (
     input.admissionDecisionId !== undefined ||
     (input.concurrency !== "unlimited" &&
-      entityPredicate(input.execution) !== undefined)
+      inFlightEntityPredicate(input) !== undefined)
   );
 }
 
@@ -229,7 +248,7 @@ export async function admitWithConcurrency(
     return started(own, []);
   }
 
-  const entity = entityPredicate(execution);
+  const entity = inFlightEntityPredicate(input);
   if (concurrency === "unlimited" || !entity) {
     return await openRun(tx, input);
   }

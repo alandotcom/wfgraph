@@ -359,6 +359,7 @@ const executionRepoStubs: ExecutionRepo["Service"] = {
   markWaitingIfParked: refuse("markWaitingIfParked"),
   cancelRun: refuse("cancelRun"),
   requestCancelForEntity: refuse("requestCancelForEntity"),
+  listInFlightVersionIds: refuse("listInFlightVersionIds"),
   requestExit: refuse("requestExit"),
   canAdmitNode: refuse("canAdmitNode"),
   findTerminationState: refuse("findTerminationState"),

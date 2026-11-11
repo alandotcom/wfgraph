@@ -409,6 +409,9 @@ const lifecyclePorts = Layer.mergeAll(
     recordAdmissionRefusal: recordAdmissionRefusalMock,
     findByDelivery: findByDeliveryMock,
     recordAuditEvent: recordAuditEventMock,
+    // Every in-flight run is on the published version, which leaves no run
+    // in another identity form.
+    listInFlightVersionIds: () => Effect.succeed([]),
   }),
   stubExecutionDriver({
     startRun: startRunMock,

@@ -322,6 +322,9 @@ const lifecyclePorts = Layer.mergeAll(
     recordAuditEvent: recordAuditEventMock,
     findAdmissionRefusal: () => Effect.succeed(null),
     findByDelivery: () => Effect.succeed(null),
+    // Every in-flight run is on the published version, which leaves no run
+    // in another identity form.
+    listInFlightVersionIds: () => Effect.succeed([]),
   }),
   stubExecutionDriver({
     startRun: startRunMock,
@@ -1004,6 +1007,7 @@ describe("applyLifecycleRules", () => {
                   Effect.sync(() => {
                     recorded.push(input);
                   }),
+                listInFlightVersionIds: () => Effect.succeed([]),
               }),
               stubExecutionDriver(),
               stubIntegrationRepo()

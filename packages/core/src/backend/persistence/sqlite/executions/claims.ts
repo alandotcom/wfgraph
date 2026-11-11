@@ -244,6 +244,20 @@ export function makeSqliteClaimsMethods(
   store: SqliteDatabase
 ): ClaimsRepoMethods {
   return {
+    listInFlightVersionIds: (workflowId) =>
+      store.read((database) =>
+        database
+          .selectDistinct({ id: workflowExecutions.workflowVersionId })
+          .from(workflowExecutions)
+          .where(
+            and(
+              eq(workflowExecutions.workflowId, workflowId),
+              inArray(workflowExecutions.status, IN_FLIGHT_EXECUTION_STATUSES)
+            )
+          )
+          .pipe(Effect.map((rows) => rows.map((row) => row.id)))
+      ),
+
     claimWaitingStateByToken: (input) =>
       store.write((database) =>
         claimWait(database, {

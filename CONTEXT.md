@@ -177,7 +177,10 @@ or may not have run by then.
 An Event the Lifecycle Rules list as canceling runs. When one arrives and its
 Cancel Filter accepts it, every matching in-flight Execution jumps to the Canceled
 outlet at its next step boundary. Tracked workflows match immutable Entity type and
-ID; untracked workflows match the Correlation Path's Entity Value. Stopping a
+ID; untracked workflows match the Correlation Path's Entity Value. A run an older
+published version started under the other of those two forms is matched in its own
+form, read from that version's Lifecycle Rules, and Concurrency compares it the same
+way. Stopping a
 sequence mid-graph is an unwired Condition False, not a Cancel Event.
 
 **Cancel Filter**:

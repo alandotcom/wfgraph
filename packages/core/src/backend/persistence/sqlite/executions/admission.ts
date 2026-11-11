@@ -7,7 +7,7 @@
  */
 
 import { Effect } from "effect";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import {
   IN_FLIGHT_EXECUTION_STATUSES,
   isEntityEligibilityReason,
@@ -71,6 +71,26 @@ export function findStartRefusal(
  * The Entity Eligibility refusal recorded under `decisionId`, which a start
  * transaction consults, or null when the row records none.
  */
+/**
+ * The runs about one entity, by its typed identity when it has one and by the
+ * legacy `entityValue` otherwise, or undefined for neither.
+ */
+function entityPredicateOf(entity: {
+  entityType?: string | undefined;
+  entityId?: string | undefined;
+  entityValue?: string | undefined;
+}) {
+  if (entity.entityType !== undefined && entity.entityId !== undefined) {
+    return and(
+      eq(workflowExecutions.entityType, entity.entityType),
+      eq(workflowExecutions.entityId, entity.entityId)
+    );
+  }
+  return entity.entityValue === undefined
+    ? undefined
+    : eq(workflowExecutions.entityValue, entity.entityValue);
+}
+
 export function findAdmissionRefusal(
   database: SqliteReadExecutor,
   input: { workflowId: string; decisionId: string }
@@ -173,15 +193,17 @@ export function admitWithConcurrency(
         supersededExecutionIds: [],
       };
     }
+    // The runs an older published version started may carry the entity in
+    // the other identity form, which `alsoInFlightAs` names.
+    const ownForm = entityPredicateOf(execution);
+    const otherForm =
+      input.alsoInFlightAs === undefined
+        ? undefined
+        : entityPredicateOf(input.alsoInFlightAs);
     const entityPredicate =
-      execution.entityType !== undefined && execution.entityId !== undefined
-        ? and(
-            eq(workflowExecutions.entityType, execution.entityType),
-            eq(workflowExecutions.entityId, execution.entityId)
-          )
-        : execution.entityValue === undefined
-          ? undefined
-          : eq(workflowExecutions.entityValue, execution.entityValue);
+      ownForm === undefined || otherForm === undefined
+        ? ownForm
+        : or(ownForm, otherForm);
     if (concurrency === "unlimited" || !entityPredicate) {
       return {
         status: "started" as const,
