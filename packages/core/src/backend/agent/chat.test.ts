@@ -15,6 +15,7 @@ import {
   hostAgentRunner,
   streamAgentTurn,
   withGraphParts,
+  withTurnRecord,
 } from "#src/backend/agent/chat";
 import {
   runAgentRunner,
@@ -663,5 +664,49 @@ describe("agentPrompt", () => {
     expect(texts[3]).toEqual([
       'Rename this step\n\n[Selected on the canvas when this was sent: "Notify \\"ops\\"" (id n3). "This", "this step" or "these" refers to them.]',
     ]);
+  });
+});
+
+describe("withTurnRecord", () => {
+  it("writes a past turn's tool calls, nodes and refusals under its text", () => {
+    expect(
+      withTurnRecord("Added the step.", {
+        tools: [
+          { name: "add_node", failed: false, summary: "Added Notify." },
+          {
+            name: "update_node",
+            failed: true,
+            summary: "The field channel is unknown.",
+          },
+          { name: "read_workflow", failed: false },
+        ],
+        nodes: {
+          added: [{ id: "n3", label: "Notify" }],
+          changed: [],
+          removed: [],
+        },
+      })
+    ).toBe(
+      [
+        "Added the step.",
+        "",
+        "[The editor's record of this turn:",
+        "- add_node: Added Notify.",
+        "- update_node was refused: The field channel is unknown.",
+        "- read_workflow",
+        'Nodes added: "Notify" (id n3). Changed: none. Removed: none.]',
+      ].join("\n")
+    );
+  });
+
+  it("records a stopped turn that wrote nothing as an assistant message", () => {
+    expect(withTurnRecord("", { stopped: true })).toBe(
+      "[The editor's record of this turn:\nThe person stopped this turn before it finished.]"
+    );
+  });
+
+  it("leaves a turn with no record as it was", () => {
+    expect(withTurnRecord("Done.", undefined)).toBe("Done.");
+    expect(withTurnRecord("Done.", {})).toBe("Done.");
   });
 });

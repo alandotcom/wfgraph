@@ -548,6 +548,12 @@ const wfgraph = await createWfGraphApp({
   gateway in front of a provider must pass server-sent events through and accept a
   `tools` array. A `baseUrl` for `openai` must serve the Responses API: a gateway that offers
   Chat Completions alone, such as most self-hosted model servers, is `openai-compatible`.
+- **A past turn reaches the model with its record.** The browser sends each assistant
+  message with a `record` of its turn: every tool call's name and outcome (the sentence a
+  write answered, or the reason a refusal gave), the ids and labels of the nodes it added,
+  changed and removed, and whether it was stopped or ended on an error. The built-in agent
+  writes that record under the message's text, so a later turn knows the node ids it
+  created. Whole graphs and tool payloads are never sent back.
 - **Each finished turn shows what it cost.** The stream closes with a `usage` part naming the
   turn's model calls, tool calls, and input, cached input, output and reasoning tokens, and
   the panel prints one line of it under the turn. The "Agent turn finished" log record

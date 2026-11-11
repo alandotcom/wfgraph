@@ -13,7 +13,7 @@
 import { Schema } from "effect";
 import { serializedWorkflowGraphSchema } from "#src/graph/schemas";
 import { jsonObjectSchema } from "#src/types/json";
-import { nonNegativeInteger } from "#src/types/schema";
+import { listOf, nonNegativeInteger } from "#src/types/schema";
 
 /** Prose the assistant is writing, one delta at a time. */
 const textDeltaPart = Schema.Struct({
@@ -101,10 +101,61 @@ export type AgentUsagePart = typeof agentUsagePartSchema.Type;
 
 export type AgentStreamPart = typeof agentStreamPartSchema.Type;
 
-/** One turn of the conversation, as the browser holds it. */
+/** A node a turn touched, by id and the label it had. */
+const agentTurnNodeSchema = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+});
+
+/** The most tool calls and nodes one turn record names. */
+export const MAX_AGENT_TURN_RECORD_ENTRIES = 100;
+
+/**
+ * What one past turn did, as the browser saw it stream: each tool call with
+ * its outcome, and the nodes the turn added, changed and removed. It is how the
+ * model learns, on the next turn, the node ids it created and the refusals it
+ * was given, without the browser replaying whole graphs or tool payloads.
+ */
+export const agentTurnRecordSchema = Schema.Struct({
+  tools: Schema.optionalKey(
+    listOf(
+      Schema.Struct({
+        name: Schema.String,
+        failed: Schema.Boolean,
+        /** The sentence a write answered, or the reason a refusal gave. */
+        summary: Schema.optionalKey(Schema.String),
+      })
+    ).check(Schema.isMaxLength(MAX_AGENT_TURN_RECORD_ENTRIES))
+  ),
+  nodes: Schema.optionalKey(
+    Schema.Struct({
+      added: listOf(agentTurnNodeSchema).check(
+        Schema.isMaxLength(MAX_AGENT_TURN_RECORD_ENTRIES)
+      ),
+      changed: listOf(agentTurnNodeSchema).check(
+        Schema.isMaxLength(MAX_AGENT_TURN_RECORD_ENTRIES)
+      ),
+      removed: listOf(agentTurnNodeSchema).check(
+        Schema.isMaxLength(MAX_AGENT_TURN_RECORD_ENTRIES)
+      ),
+    })
+  ),
+  /** The person stopped the turn before it finished. */
+  stopped: Schema.optionalKey(Schema.Literal(true)),
+  /** The turn ended on this error. */
+  error: Schema.optionalKey(Schema.String),
+});
+
+export type AgentTurnRecord = typeof agentTurnRecordSchema.Type;
+
+/**
+ * One turn of the conversation, as the browser holds it. An assistant message
+ * carries its turn's `record`; a user message carries none.
+ */
 export const agentMessageSchema = Schema.Struct({
   role: Schema.Literals(["user", "assistant"]),
   content: Schema.String,
+  record: Schema.optionalKey(agentTurnRecordSchema),
 });
 
 export type AgentMessage = typeof agentMessageSchema.Type;

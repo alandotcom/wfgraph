@@ -10,11 +10,17 @@
 import { Option, Schema } from "effect";
 import {
   type AgentUsagePart,
+  agentTurnRecordSchema,
   agentUsagePartSchema,
 } from "@wfgraph/shared/rpc/agent-stream";
 
 const turnMetadataSchema = Schema.Struct({
   usage: Schema.optionalKey(agentUsagePartSchema),
+  /**
+   * The tools the turn called and the nodes it touched. How the turn ended is
+   * the message's status, so the record sent back adds that from there.
+   */
+  record: Schema.optionalKey(agentTurnRecordSchema),
 });
 
 export type AgentTurnMetadata = typeof turnMetadataSchema.Type;

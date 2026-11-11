@@ -21,7 +21,9 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type {
   AgentMessage,
   AgentStreamPart,
+  AgentTurnRecord,
 } from "@wfgraph/shared/rpc/agent-stream";
+import { isBlank } from "@wfgraph/shared/types/string";
 import type { EnabledAgentSettings } from "#src/backend/agent/config";
 import { agentModelLayer } from "#src/backend/agent/model";
 import type {
@@ -62,11 +64,59 @@ export function agentPrompt(input: {
     input.messages.map((message, index) => ({
       role: message.role,
       content:
-        index === newest && message.role === "user"
-          ? withSelectionNote(message.content, input.selectedNodes)
-          : message.content,
+        message.role === "assistant"
+          ? withTurnRecord(message.content, message.record)
+          : index === newest
+            ? withSelectionNote(message.content, input.selectedNodes)
+            : message.content,
     }))
   ).pipe(Prompt.setSystem(buildSystemPrompt()));
+}
+
+function quotedNodes(nodes: readonly WfGraphAgentSelectedNode[]): string {
+  return nodes.length === 0
+    ? "none"
+    : nodes
+        .map((node) => `${JSON.stringify(node.label)} (id ${node.id})`)
+        .join(", ");
+}
+
+/**
+ * A past assistant turn with the editor's record of it written under its
+ * text, so the next turn knows the node ids it created, the refusals it was
+ * given, and that the person stopped it.
+ *
+ * Bracketed and attributed to the editor, because it is not something the
+ * model wrote and a reply that copied its form would read as a forgery.
+ */
+export function withTurnRecord(
+  content: string,
+  record: AgentTurnRecord | undefined
+): string {
+  if (!record) {
+    return content;
+  }
+  const lines = [
+    ...(record.tools ?? []).map((tool) =>
+      tool.failed
+        ? `- ${tool.name} was refused: ${tool.summary ?? "no reason given"}`
+        : `- ${tool.name}${tool.summary ? `: ${tool.summary}` : ""}`
+    ),
+    ...(record.nodes
+      ? [
+          `Nodes added: ${quotedNodes(record.nodes.added)}. Changed: ${quotedNodes(record.nodes.changed)}. Removed: ${quotedNodes(record.nodes.removed)}.`,
+        ]
+      : []),
+    ...(record.error ? [`The turn ended on an error: ${record.error}`] : []),
+    ...(record.stopped
+      ? ["The person stopped this turn before it finished."]
+      : []),
+  ];
+  if (lines.length === 0) {
+    return content;
+  }
+  const note = `[The editor's record of this turn:\n${lines.join("\n")}]`;
+  return isBlank(content) ? note : `${content}\n\n${note}`;
 }
 
 /**
@@ -84,9 +134,7 @@ export function withSelectionNote(
   if (selectedNodes.length === 0) {
     return content;
   }
-  const named = selectedNodes
-    .map((node) => `${JSON.stringify(node.label)} (id ${node.id})`)
-    .join(", ");
+  const named = quotedNodes(selectedNodes);
   return `${content}\n\n[Selected on the canvas when this was sent: ${named}. "This", "this step" or "these" refers to them.]`;
 }
 

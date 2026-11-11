@@ -13,15 +13,20 @@ import {
   type ChatModelAdapter,
   type ChatModelRunResult,
   type ThreadAssistantMessagePart,
-  type ThreadMessage,
   useLocalRuntime,
 } from "@assistant-ui/react";
 import { useSetAtom } from "jotai";
 import { useMemo } from "react";
-import type { AgentMessage } from "@wfgraph/shared/rpc/agent-stream";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
-import { isBlank } from "@wfgraph/shared/types/string";
+import type { AgentTurnRecord } from "@wfgraph/shared/rpc/agent-stream";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type { AgentTurnMetadata } from "#src/components/agent/turn-metadata";
+import {
+  changedAnyNode,
+  nodeChanges,
+  recordedTools,
+  toAgentMessages,
+} from "#src/components/agent/turn-record";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { appStore } from "#src/lib/app-store";
 import { rpc, toSerializedGraph } from "#src/lib/rpc-client";
@@ -34,33 +39,6 @@ import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
 import { activeAgentTurnIdAtom } from "#src/lib/workflow-ui-store";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-
-/**
- * The conversation as the server takes it.
- *
- * Only text crosses: a tool call is the server's own record of what it did, and
- * replaying it as a message would tell the model its edits twice.
- */
-function toAgentMessages(messages: readonly ThreadMessage[]): AgentMessage[] {
-  const sent: AgentMessage[] = [];
-
-  for (const message of messages) {
-    if (message.role !== "user" && message.role !== "assistant") {
-      continue;
-    }
-
-    const content = message.content
-      .filter((part) => part.type === "text")
-      .map((part) => part.text)
-      .join("");
-
-    if (!isBlank(content)) {
-      sent.push({ role: message.role, content });
-    }
-  }
-
-  return sent;
-}
 
 /** Text, reasoning and tool calls, in the order the turn produced them. */
 type TurnContent = ThreadAssistantMessagePart[];
@@ -180,6 +158,19 @@ export function useAgentRuntime(workflowId: string) {
           edges: appStore.get(edgesAtom),
         });
 
+        // The graph the turn starts on, against which its record names the
+        // nodes it added, changed and removed.
+        const startedOn = toWorkflowGraphData(graph).nodes;
+        let drawn = startedOn;
+        const record = (): AgentTurnRecord => {
+          const tools = recordedTools(content);
+          const nodes = nodeChanges(startedOn, drawn);
+          return omitUndefined({
+            tools: tools.length > 0 ? tools : undefined,
+            nodes: changedAnyNode(nodes) ? nodes : undefined,
+          });
+        };
+
         const turnId = Symbol("agent-turn");
         appStore.set(activeAgentTurnIdAtom, turnId);
         let content: TurnContent = [];
@@ -241,6 +232,7 @@ export function useAgentRuntime(workflowId: string) {
                 // The canvas redraws mid-turn, which is the point: the user
                 // watches the workflow being built rather than waiting for it.
                 const { nodes, edges } = toWorkflowGraphData(part.graph);
+                drawn = nodes;
                 const applied = applyGraph({
                   workflowId,
                   turnId,
@@ -269,16 +261,18 @@ export function useAgentRuntime(workflowId: string) {
               }
             }
 
-            yield turnResult(content, failure, metadata);
+            yield turnResult(content, failure, {
+              ...metadata,
+              record: record(),
+            });
           }
 
           // Reasoning the turn ended on is closed here, so its panel can say
           // how long it took.
-          yield turnResult(
-            withReasoningSettled(content, Date.now()),
-            failure,
-            metadata
-          );
+          yield turnResult(withReasoningSettled(content, Date.now()), failure, {
+            ...metadata,
+            record: record(),
+          });
         } finally {
           if (
             appStore.get(currentWorkflowIdAtom) === workflowId &&
