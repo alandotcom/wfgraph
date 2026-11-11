@@ -73,6 +73,10 @@ let throwsOnceCalls = 0;
 let failsTwiceCalls = 0;
 /** Settles once the `flaky` node's log row is closed. */
 let flakyClosed = Promise.withResolvers<void>();
+/** How many times the `test/large` step has run in the current case. */
+let largeCalls = 0;
+/** What the `test/large` step answers: 2,000 characters of one secret word. */
+const LARGE_VALUE = "secret ".repeat(2_000 / 7);
 /** How many times the `test/throws-when-held` step has run in the current case. */
 let throwsWhenHeldCalls = 0;
 /** Settles as the `test/throws-when-held` step is about to throw. */
@@ -146,6 +150,19 @@ const actions = createWorkflowActions(
               : Promise.resolve(null);
           });
           return { sent: true };
+        },
+      }),
+      defineAction({
+        id: "test/large",
+        label: "Large",
+        description: "Runs one durable step that answers about 2 KB of JSON",
+        input: Schema.Struct({}),
+        handler: async ({ step }) => {
+          const value = await step.run("dispatch", () => {
+            largeCalls += 1;
+            return Promise.resolve(LARGE_VALUE);
+          });
+          return { length: value.length };
         },
       }),
       defineAction({
@@ -312,6 +329,7 @@ function describeCases(
       workerId?: string | undefined;
       wrap?: RepoWrap | undefined;
       heartbeatMs?: number | undefined;
+      maxStepValueBytes?: number | undefined;
     }) => Promise<PassResult | null>;
     /** Publishes `graph` as the workflow's second version. */
     publishSecondVersion: (graph: SerializedWorkflowGraph) => Promise<void>;
@@ -326,6 +344,7 @@ function describeCases(
     flakyClosed = Promise.withResolvers<void>();
     throwsWhenHeldCalls = 0;
     throwsWhenHeldThrew = Promise.withResolvers<void>();
+    largeCalls = 0;
     const connection = await openConnection();
     const executionId = await connection.run(
       Effect.gen(function* () {
@@ -371,6 +390,7 @@ function describeCases(
                 now,
                 leaseMs: LEASE_MS,
                 heartbeatMs: options.heartbeatMs,
+                maxStepValueBytes: options.maxStepValueBytes,
                 backoffMs: () => 0,
               }
             ).pipe(
@@ -924,6 +944,47 @@ function describeCases(
       { name: "writeStepMemo", outcome: "LeaseLost" },
     ]);
     expect(await readRun(harness)).toEqual(afterLive);
+  });
+
+  // Running the step again would answer the same value, so its retries go at
+  // once rather than repeat whatever the step did.
+  it("fails a node at once whose step answers more JSON than a step's value may hold, naming the step and the size", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(), actionNode("large", "test/large")],
+        edges: [edge("entry", "large", "started")],
+      })
+    );
+
+    const first = await harness.pass({ maxStepValueBytes: 1_024 });
+    expect(first).toMatchObject({
+      kind: "retries_spent",
+      stepId: "node:large:dispatch",
+    });
+    expect(await harness.pass({ maxStepValueBytes: 1_024 })).toEqual({
+      kind: "ended",
+    });
+
+    expect(largeCalls).toBe(1);
+    const run = await readRun(harness);
+    expect(run.status).toBe("failed");
+    const [log] = await logsOf(harness, "large");
+    expect(log).toMatchObject({ status: "error" });
+    expect(log?.error).toContain("node:large:dispatch");
+    expect(log?.error).toContain("more than the 1024");
+    expect(log?.error).not.toContain("secret");
+  });
+
+  it("records a step's value up to the limit a step's value may hold", async () => {
+    const harness = await startRun(
+      createSerializedWorkflowGraph({
+        nodes: [lifecycleNode(), actionNode("large", "test/large")],
+        edges: [edge("entry", "large", "started")],
+      })
+    );
+
+    expect(await harness.pass()).toEqual({ kind: "ended" });
+    expect((await readRun(harness)).status).toBe("completed");
   });
 
   // A step that throws stops the pass from starting another step, but a step

@@ -756,9 +756,15 @@ The `runner` option controls the loop:
 | `pollMs`              | 1,000              | 250            | How long the loop waits between checks for due runs when nothing wakes it, in milliseconds |
 | `leaseMs`             | 60,000             | 60,000         | How long the loop holds a run before another loop can take it over, in milliseconds        |
 | `heartbeatMs`         | 20,000             | 20,000         | How often the loop renews its hold while a step runs, in milliseconds                      |
+| `maxStepValueBytes`   | 1,048,576          | 1,048,576      | The most JSON one durable step may answer, in bytes. A step answering more fails its node  |
 
 Each field must be a positive integer, and `heartbeatMs` must be shorter than `leaseMs`.
 `createWfGraphApp` refuses any other value at startup.
+
+A step's answer is stored in the run's step memo, which every later pass of the run reads
+back. A step whose JSON is larger than `maxStepValueBytes` fails its node at once, with no
+retry, because running it again would answer the same, and the node's error names the step
+and the size.
 
 The loop claims runs, Event deliveries and cron schedule fires in three lanes. Runs and
 deliveries are each limited by their own field, and fires take one slot. A delivery is the

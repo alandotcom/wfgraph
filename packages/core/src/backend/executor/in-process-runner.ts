@@ -67,6 +67,15 @@ export type WfGraphRunnerOptions = {
    * Defaults to 20,000, and must be shorter than `leaseMs`, defaulted or not.
    */
   heartbeatMs?: number | undefined;
+  /**
+   * The largest value one durable step may answer, in bytes of its JSON, which
+   * the run's step memo stores and every later pass of the run reads back. A
+   * step answering more fails its node at once, without retries, with a
+   * message naming the step and the size. Defaults to 1,048,576 (1 MiB), the
+   * size of the largest request body the app accepts, which holds an ordinary
+   * API response.
+   */
+  maxStepValueBytes?: number | undefined;
 };
 
 /** How many deliveries a loop or a tick runs at once when the host sets none. */
@@ -115,6 +124,7 @@ export function assertValidRunnerOptions(
     "pollMs",
     "leaseMs",
     "heartbeatMs",
+    "maxStepValueBytes",
   ] as const) {
     const value = options[key];
     if (value !== undefined && (!Number.isInteger(value) || value <= 0)) {
@@ -185,6 +195,7 @@ export type RunnerSettings = {
   pollMs: number;
   leaseMs: number | undefined;
   heartbeatMs: number | undefined;
+  maxStepValueBytes: number | undefined;
   retention: RetentionWindows;
 };
 
@@ -208,6 +219,7 @@ export function resolveRunnerSettings(
     pollMs,
     leaseMs: options.leaseMs,
     heartbeatMs: options.heartbeatMs,
+    maxStepValueBytes: options.maxStepValueBytes,
     retention,
   };
 }

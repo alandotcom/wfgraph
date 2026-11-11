@@ -463,7 +463,7 @@ async function countFailureOnStep(
     );
   const counted = countStepFailure(
     row === undefined ? undefined : stepMemoOf(row),
-    input.error
+    input
   );
   if (counted === null) return null;
   await tx

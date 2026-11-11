@@ -21,10 +21,11 @@ function after(ms: number): Date {
 describe("countStepFailure", () => {
   it("fails a step on the failure that passes the retry limit", () => {
     const counts = [];
-    let row = countStepFailure(undefined, "down");
+    const down = { error: "down", retriable: true };
+    let row = countStepFailure(undefined, down);
     while (row !== null && row.status === "failing") {
       counts.push(row.failures);
-      row = countStepFailure(row, "down");
+      row = countStepFailure(row, down);
     }
     expect(counts).toEqual([1, 2, 3, 4]);
     expect(row).toEqual({
@@ -34,12 +35,28 @@ describe("countStepFailure", () => {
     });
   });
 
-  it("leaves a row that already succeeded or failed alone", () => {
+  it("fails a step at once on a failure that is not retriable", () => {
+    const tooLarge = { error: "too large", retriable: false };
+    expect(countStepFailure(undefined, tooLarge)).toEqual({
+      status: "failed",
+      failures: 1,
+      error: "too large",
+    });
     expect(
-      countStepFailure({ status: "succeeded", failures: 2, value: 1 }, "down")
+      countStepFailure(
+        { status: "failing", failures: 2, error: "down" },
+        tooLarge
+      )
+    ).toEqual({ status: "failed", failures: 3, error: "too large" });
+  });
+
+  it("leaves a row that already succeeded or failed alone", () => {
+    const down = { error: "down", retriable: true };
+    expect(
+      countStepFailure({ status: "succeeded", failures: 2, value: 1 }, down)
     ).toBeNull();
     expect(
-      countStepFailure({ status: "failed", failures: 5, error: "x" }, "down")
+      countStepFailure({ status: "failed", failures: 5, error: "x" }, down)
     ).toBeNull();
   });
 });
@@ -80,6 +97,7 @@ describe("sweptStepFailures", () => {
         stepId: "step_a",
         nodeId: "node_a",
         error: LEASE_EXPIRED_ERROR,
+        retriable: true,
       },
     ]);
   });
@@ -95,7 +113,22 @@ describe("stepFailureOf", () => {
         error: "down",
         backoffMs: 1_000,
       })
-    ).toEqual({ stepId: "step_a", nodeId: "node_a", error: "down" });
+    ).toEqual({
+      stepId: "step_a",
+      nodeId: "node_a",
+      error: "down",
+      retriable: true,
+    });
+    expect(
+      stepFailureOf({
+        kind: "step_failed",
+        nodeId: "node_a",
+        stepId: "step_a",
+        error: "too large",
+        backoffMs: 1_000,
+        retriable: false,
+      })
+    ).toMatchObject({ retriable: false });
     expect(
       stepFailureOf({
         kind: "interrupted",
@@ -104,7 +137,12 @@ describe("stepFailureOf", () => {
         stepId: "step_a",
         wakeAfterMs: 0,
       })
-    ).toEqual({ stepId: "step_a", nodeId: null, error: BUDGET_CUT_ERROR });
+    ).toEqual({
+      stepId: "step_a",
+      nodeId: null,
+      error: BUDGET_CUT_ERROR,
+      retriable: true,
+    });
     expect(
       stepFailureOf({
         kind: "interrupted",

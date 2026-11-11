@@ -271,7 +271,7 @@ function countFailureOnStep(
       .get();
     const counted = countStepFailure(
       row === undefined ? undefined : sqliteStepMemo(row),
-      input.error
+      input
     );
     if (counted === null) return null;
     yield* database

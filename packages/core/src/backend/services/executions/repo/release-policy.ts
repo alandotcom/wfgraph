@@ -64,6 +64,11 @@ export type StepFailure = {
   /** The node the step does work for, written on a memo row it creates. */
   nodeId: string | null;
   error: string;
+  /**
+   * False for a failure running the step again cannot change, which spends
+   * the step's retries at once.
+   */
+  retriable: boolean;
 };
 
 /**
@@ -77,6 +82,7 @@ export function stepFailureOf(outcome: PassOutcome): StepFailure | null {
       stepId: outcome.stepId,
       nodeId: outcome.nodeId,
       error: outcome.error,
+      retriable: outcome.retriable ?? true,
     };
   }
   if (
@@ -88,6 +94,7 @@ export function stepFailureOf(outcome: PassOutcome): StepFailure | null {
       stepId: outcome.stepId,
       nodeId: outcome.nodeId,
       error: BUDGET_CUT_ERROR,
+      retriable: true,
     };
   }
   return null;
@@ -129,19 +136,21 @@ export const OPEN_PARK_STATUSES = [
 
 /**
  * The memo row a step's failure leaves, given the row before it: one more
- * failure, and `failed` once the count passes `STEP_RETRY_LIMIT`. A row that
- * already succeeded or already failed is left alone, which answers null.
+ * failure, and `failed` once the count passes `STEP_RETRY_LIMIT` or at once
+ * for a failure that is not `retriable`. A row that already succeeded or
+ * already failed is left alone, which answers null.
  */
 export function countStepFailure(
   previous: StepMemo | undefined,
-  error: string
+  failure: Pick<StepFailure, "error" | "retriable">
 ): CountedStepFailure | null {
   if (previous !== undefined && previous.status !== "failing") return null;
   const failures = (previous?.failures ?? 0) + 1;
   return {
-    status: failures > STEP_RETRY_LIMIT ? "failed" : "failing",
+    status:
+      failures > STEP_RETRY_LIMIT || !failure.retriable ? "failed" : "failing",
     failures,
-    error,
+    error: failure.error,
   };
 }
 
@@ -444,6 +453,7 @@ export function sweptStepFailures(
             stepId: row.runningStepId,
             nodeId: row.runningNodeId,
             error: LEASE_EXPIRED_ERROR,
+            retriable: true,
           },
         ]
       : []

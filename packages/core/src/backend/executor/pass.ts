@@ -33,8 +33,10 @@ import type {
 import {
   createExecutorRuntime,
   createPassSteps,
+  DEFAULT_MAX_STEP_VALUE_BYTES,
   createPassState,
   type PassState,
+  StepValueTooLarge,
   type PassStep,
   type PassSteps,
   type RunPassWrites,
@@ -248,6 +250,8 @@ type PassOpening = {
   now: () => Date;
   /** How long a memo write or a heartbeat renews the lease for. */
   leaseMs: number;
+  /** The largest JSON, in bytes, one step's value may hold in the memo. */
+  maxStepValueBytes: number;
 };
 
 /**
@@ -327,6 +331,7 @@ export function openRunPass(
     port: ({ memo, runEffect, state, passWrites, leaseExpiresAt }) =>
       createExecutorRuntime({
         memo,
+        maxValueBytes: input.maxStepValueBytes,
         writeStepMemo: passWrites.writeStepMemo,
         parks: {
           findPark: executions.findPark,
@@ -365,6 +370,7 @@ export function openDeliveryPass(
     port: ({ memo, state, passWrites, leaseExpiresAt }) =>
       createPassSteps({
         memo,
+        maxValueBytes: input.maxStepValueBytes,
         writeStepMemo: passWrites.writeStepMemo,
         state,
         leaseExpiresAt,
@@ -567,6 +573,11 @@ export type LeasedPassOptions = {
    */
   backoffMs?: ((failures: number) => number) | undefined;
   /**
+   * The largest JSON, in bytes, one step's value may hold in the memo.
+   * Defaults to `DEFAULT_MAX_STEP_VALUE_BYTES`.
+   */
+  maxStepValueBytes?: number | undefined;
+  /**
    * When the host's time budget for this pass runs out, such as the end of a
    * Worker tick. A pass still running then is interrupted and answers
    * `budget_cut`. Omitted, the pass runs until its body ends or its caller
@@ -651,6 +662,8 @@ const runPassBody = Effect.fnUntraced(function* <R>(
     workerId: options.workerId,
     now: options.now,
     leaseMs: options.leaseMs,
+    maxStepValueBytes:
+      options.maxStepValueBytes ?? DEFAULT_MAX_STEP_VALUE_BYTES,
   };
   return yield* withPassKind(claimed, (kind, row) =>
     kind.run({ ...opening, claimed: row }, bodies, options)
@@ -1208,6 +1221,9 @@ function decideFailedPass(input: {
       nodeId,
       error: engineFailure.message,
       backoffMs: input.backoffMs(input.memo.get(stepId)?.failures ?? 0),
+      // A value too large to record is answered again by every run of the
+      // step, so its retries go at once rather than repeat its side effect.
+      retriable: !(failure.error instanceof StepValueTooLarge),
     };
   }
   return {

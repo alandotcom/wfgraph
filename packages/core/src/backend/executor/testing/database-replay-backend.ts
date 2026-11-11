@@ -15,6 +15,7 @@
  * pass has read its wake.
  */
 
+import { DEFAULT_MAX_STEP_VALUE_BYTES } from "#src/backend/executor/runtime";
 import { Effect } from "effect";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type {
@@ -217,6 +218,7 @@ export function openDatabaseReplayBackend(
           workerId: "replay",
           now: () => virtual(clockMs),
           leaseMs: LEASE_MS,
+          maxStepValueBytes: DEFAULT_MAX_STEP_VALUE_BYTES,
         });
         const memo = await run(pass.loadMemo);
         current = pass;

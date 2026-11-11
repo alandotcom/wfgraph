@@ -218,6 +218,7 @@ describe("runIdempotent on the database executor", () => {
         nodeId: "send",
         error: "connection reset again",
         backoffMs: retryBackoffMs(2),
+        retriable: true,
       },
     ]);
     expect(pass.result).toMatchObject({

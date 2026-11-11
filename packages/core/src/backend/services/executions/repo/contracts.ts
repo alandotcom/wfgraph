@@ -186,11 +186,12 @@ export type ClaimLane = { kind: ClaimedSchedule["kind"]; limit: number };
  * - `parked`: the body ended with work parked. The release re-queues the run
  *   when a park holds a wake the pass did not consume, and otherwise puts it to
  *   sleep until its earliest park deadline.
- * - `step_failed`: the step `stepId` threw a retriable error. The release
- *   counts one failure on that step's memo row, which carries `nodeId`. A
- *   step still within its retries is re-queued after `backoffMs`; a step whose
- *   count passed the limit becomes `failed` and the run is re-queued at once,
- *   so the step fails its node and the rest of the run goes on.
+ * - `step_failed`: the step `stepId` failed. The release counts one failure
+ *   on that step's memo row, which carries `nodeId`. A step still within its
+ *   retries is re-queued after `backoffMs`; a step whose count passed the
+ *   limit, or whose failure is not `retriable`, becomes `failed` and the run
+ *   is re-queued at once, so the step fails its node and the rest of the run
+ *   goes on.
  * - `body_failed`: the body failed outside any step. The release counts one
  *   failure against the row's own count and re-queues the row after
  *   `backoffMs`.
@@ -224,6 +225,12 @@ export type PassOutcome =
       nodeId: string | null;
       error: string;
       backoffMs: number;
+      /**
+       * False for a failure running the step again cannot change, such as a
+       * value too large to record, which spends the step's retries at once.
+       * Omitted, true.
+       */
+      retriable?: boolean | undefined;
     }
   | { kind: "body_failed"; error: string; backoffMs: number }
   | { kind: "fence_refused"; backoffMs: number }

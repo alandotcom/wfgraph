@@ -16,8 +16,10 @@
  * running, its memo write and the store writes made inside it
  * (`CurrentDurableStep`), and refuses every other write with `LeaseLost`,
  * which ends the body. A pass that lost its lease refuses every write and
- * aborts the signal its step bodies were handed. The caller reads `PassState`
- * to decide the release.
+ * aborts the signal its step bodies were handed. A step whose value's JSON is
+ * larger than the pass's `maxValueBytes` fails with `StepValueTooLarge`
+ * before its memo write, and the release spends that step's retries at once.
+ * The caller reads `PassState` to decide the release.
  */
 
 import { Cause, Effect, Schema } from "effect";
@@ -447,6 +449,31 @@ function memoValue(value: unknown): JsonValue {
 }
 
 /**
+ * The largest serialized JSON, in bytes, one step's value may hold in the
+ * memo when the host sets no other limit: 1 MiB, the size of the largest
+ * request body the app accepts.
+ */
+export const DEFAULT_MAX_STEP_VALUE_BYTES = 1_048_576;
+
+/**
+ * A step answered a value whose JSON is larger than its pass may record.
+ * Running the step again would answer the same, so the release spends the
+ * step's retries at once. The message names the step and the size, never the
+ * value.
+ */
+export class StepValueTooLarge extends Schema.TaggedError<
+  StepValueTooLarge,
+  { readonly brand: unique symbol }
+>()("StepValueTooLarge", {
+  message: Schema.String,
+}) {}
+
+/** The size of `value`'s JSON in UTF-8 bytes. */
+function jsonBytes(value: JsonValue): number {
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
+
+/**
  * How a pass reads and marks its parks. Only a run's pass builds one, from
  * `ExecutionRepo.fenced`, so a pass over any other kind cannot park.
  */
@@ -468,6 +495,8 @@ export type StepMemoInput = {
   state: PassState;
   /** Where the lease ends if renewed now, which every memo write renews to. */
   leaseExpiresAt: () => Date;
+  /** The largest JSON, in bytes, one step's value may hold. */
+  maxValueBytes: number;
 };
 
 /**
@@ -512,37 +541,59 @@ function stepMemoBook(input: StepMemoInput) {
       return { kind: "run" };
     },
     /**
-     * Records `value` as the step's memo row. A write that fails stops the
-     * pass as a failure of that step would, unless a lost lease stopped it
-     * first.
+     * Records `value` as the step's memo row. A write that fails, or a value
+     * larger than `maxValueBytes` when `sized`, stops the pass as a failure of
+     * that step would, unless a lost lease stopped it first. A Wait's wake is
+     * recorded unsized: it carries an Event payload the inbox already took.
      */
-    remember: (step: PassStep, value: JsonValue) =>
-      input
-        .writeStepMemo({
-          stepId: step.stepId,
-          nodeId: step.nodeId,
-          value,
-          leaseExpiresAt: input.leaseExpiresAt(),
-        })
-        .pipe(
-          Effect.tapError((error) =>
-            Effect.sync(() => state.stepThrew(step, error))
-          ),
-          Effect.tap(() =>
-            Effect.sync(() => {
-              memo.set(step.stepId, {
-                status: "succeeded",
-                failures: memo.get(step.stepId)?.failures ?? 0,
-                value,
-              });
-            })
-          )
+    remember: (
+      step: PassStep,
+      value: JsonValue,
+      options: { sized: boolean } = { sized: true }
+    ) =>
+      Effect.suspend(
+        (): Effect.Effect<
+          void,
+          DatabaseError | LeaseLost | StepValueTooLarge
+        > => {
+          const bytes = options.sized ? jsonBytes(value) : 0;
+          if (bytes > input.maxValueBytes) {
+            return Effect.fail(
+              new StepValueTooLarge({
+                message: `Step ${step.stepId} answered ${bytes} bytes of JSON, more than the ${input.maxValueBytes} a step's value may hold`,
+              })
+            );
+          }
+          return input.writeStepMemo({
+            stepId: step.stepId,
+            nodeId: step.nodeId,
+            value,
+            leaseExpiresAt: input.leaseExpiresAt(),
+          });
+        }
+      ).pipe(
+        Effect.tapError((error) =>
+          Effect.sync(() => state.stepThrew(step, error))
         ),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            memo.set(step.stepId, {
+              status: "succeeded",
+              failures: memo.get(step.stepId)?.failures ?? 0,
+              value,
+            });
+          })
+        )
+      ),
   };
 }
 
 /** What a step run through `PassSteps` may fail with besides its own error. */
-export type PassStepFailure = EngineFailure | DatabaseError | LeaseLost;
+export type PassStepFailure =
+  | EngineFailure
+  | DatabaseError
+  | LeaseLost
+  | StepValueTooLarge;
 
 /**
  * The step port of a pass whose body is written as Effects: a delivery's.
@@ -747,7 +798,7 @@ export function createExecutorRuntime(
       // attempt still has to read what woke it.
       if (park.wake) {
         const wake = waitWakeOf(park.wake);
-        await runEffect(book.remember(passStep, wake));
+        await runEffect(book.remember(passStep, wake, { sized: false }));
         return { kind: "woke", wake };
       }
       if (park.parkStepId !== step.id) {

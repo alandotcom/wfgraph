@@ -80,6 +80,8 @@ export type DrainOptions<R> = {
   leaseMs: number;
   /** See `LeasedPassOptions.heartbeatMs`. */
   heartbeatMs?: number | undefined;
+  /** See `LeasedPassOptions.maxStepValueBytes`. */
+  maxStepValueBytes?: number | undefined;
   /** The clock claims, leases and releases are stamped with. */
   now: () => Date;
 };
@@ -302,6 +304,8 @@ type DrainSettings = {
   leaseMs?: number | undefined;
   /** Defaults to 20 s. */
   heartbeatMs?: number | undefined;
+  /** See `WfGraphRunnerOptions.maxStepValueBytes`. */
+  maxStepValueBytes?: number | undefined;
   /** Written on each row this loop or tick leases. Defaults to a fresh id. */
   workerId?: string | undefined;
   /**
@@ -369,6 +373,7 @@ function drainOptionsFor(
     workerId: settings.workerId ?? `worker_${generateId()}`,
     leaseMs: settings.leaseMs ?? DEFAULT_LEASE_MS,
     heartbeatMs: settings.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
+    maxStepValueBytes: settings.maxStepValueBytes,
     now: settings.now ?? (() => new Date()),
   };
 }
