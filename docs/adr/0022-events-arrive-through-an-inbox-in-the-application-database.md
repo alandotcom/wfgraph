@@ -192,3 +192,29 @@ payload fails the Inngest run with `NonRetriableError` and stores no inbox row, 
 forwarder used to store it for the delivery to mark failed. The check that two forwarded
 names slug to one Inngest function id moved from extension assembly to the entry. The
 example app, `pnpm run dev` and the reliability suite run without Inngest.
+
+## Amendment: Each workflow is a delivery's retry unit
+
+Date: 2026-11-11
+
+The fan-out ran every workflow's steps in one fiber, and a step that threw stopped the pass.
+A workflow whose step kept failing, such as one whose Entity resolver timed out, held back
+every workflow after it on each retry, and once its retries were spent the whole delivery
+settled `failed`. A Cancel Event then cancelled nothing in the workflows that came later, and
+their Waits timed out.
+
+A step of one workflow's delivery now holds its failure as its memoized value, so the pass
+goes on to every other workflow. The next pass tries that step again under an id of its own,
+`<step id>-retry-<n>`, while every other workflow is answered from the memo. A pass that
+still has a step to try again ends with `DeliveryStepsPending`, which the release counts
+against the delivery row and backs off, so the row's own retry limit bounds the retries of
+every workflow at once. A step that fails when the row has no retry left is recorded for its
+workflow alone: a lifecycle step writes a `run_refused` row for a Start Event or a
+`cancel_not_delivered` row for a Cancel Event, with `reason: "delivery_failed"`, and the
+Event still reaches that workflow's Waits.
+
+A delivery with a workflow that failed this way settles its row `failed`, with an error that
+counts the workflows the Event reached and names each one that failed, because the row's
+constraint keeps `delivered` free of an error and a resend of a `failed` row's key reopens
+it. A resend delivers the Event again, and every workflow that already received it answers
+from its committed decision.

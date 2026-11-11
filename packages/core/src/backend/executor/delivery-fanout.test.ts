@@ -13,6 +13,7 @@ import { defineEvent } from "#src/backend/extensions/define-event";
 import {
   type DecodedArrival,
   type DeliveryFanOutPorts,
+  DeliveryStepsPending,
   fanOutDelivery,
 } from "#src/backend/executor/delivery-fanout";
 import type { PassSteps } from "#src/backend/executor/runtime";
@@ -86,10 +87,13 @@ function memoizedStep(): { ids: string[]; steps: PassSteps } {
  * type names are stubs that die if anything reaches them.
  */
 function runFanOut(
-  input: Omit<Parameters<typeof fanOutDelivery>[0], "connectionId">
+  input: Omit<
+    Parameters<typeof fanOutDelivery>[0],
+    "connectionId" | "attempt"
+  > & { attempt?: number }
 ) {
   return Effect.runPromise(
-    fanOutDelivery({ connectionId: null, ...input }).pipe(
+    fanOutDelivery({ connectionId: null, attempt: 0, ...input }).pipe(
       Effect.provide(
         Layer.mergeAll(
           SilentAppLoggerLayer,
@@ -124,6 +128,7 @@ function fakeDeliver(): DeliveryFanOutPorts & {
   listWaitCandidates: ReturnType<typeof vi.fn>;
   deliverWaitCandidates: ReturnType<typeof vi.fn>;
   listSubscribers: ReturnType<typeof vi.fn>;
+  recordFailure: ReturnType<typeof vi.fn>;
 } {
   const listSubscribers = vi.fn(() => Effect.succeed([] as EventSubscriber[]));
   const applyLifecycle = vi.fn(() =>
@@ -139,12 +144,24 @@ function fakeDeliver(): DeliveryFanOutPorts & {
   const deliverWaitCandidates = vi.fn(() =>
     Effect.succeed({ workflowId: "wf_1", resumedWaits: 0 })
   );
+  const recordFailure = vi.fn(() => Effect.void);
   return {
     listSubscribers,
     applyLifecycle,
     listWaitCandidates,
     deliverWaitCandidates,
+    recordFailure,
   };
+}
+
+/**
+ * The workflow each call of a fake port named, in call order: its subscriber's
+ * id for the lifecycle port, and its `workflowId` for a wait port.
+ */
+function workflowIdsOf(port: ReturnType<typeof vi.fn>): unknown[] {
+  return port.mock.calls.map(
+    ([call]) => call?.subscriber?.id ?? call?.workflowId
+  );
 }
 
 describe("fanOutDelivery", () => {
@@ -212,6 +229,7 @@ describe("fanOutDelivery", () => {
       started: 2,
       canceled: 0,
       resumedWaits: 0,
+      failures: [],
     });
 
     // The run just started and the run it displaced both take no wait: one is
@@ -378,6 +396,7 @@ describe("fanOutDelivery", () => {
       started: 0,
       canceled: 0,
       resumedWaits: 1,
+      failures: [],
     });
 
     // The arrival travels with the delivery, so the audit row a start or a
@@ -452,7 +471,7 @@ describe("fanOutDelivery", () => {
       ports: deliver,
     };
 
-    await expect(runFanOut(input)).rejects.toBeInstanceOf(DatabaseError);
+    await expect(runFanOut(input)).rejects.toBeInstanceOf(DeliveryStepsPending);
 
     // The original Wait's action parks a second Wait before the delivery runs
     // this step again. The saved step result keeps the later row outside
@@ -463,24 +482,28 @@ describe("fanOutDelivery", () => {
       hasMore: false,
     };
 
-    const result = await runFanOut(input);
+    const result = await runFanOut({ ...input, attempt: 1 });
 
     expect(candidatePagesBeforeFirstDelivery).toBe(2);
     expect(deliver.listWaitCandidates).toHaveBeenCalledTimes(2);
+    // The page that failed is tried again under a new step id, and the page
+    // the first pass delivered is answered from its memo row.
     expect(deliveredCandidateIds).toEqual([
       ["wait_original"],
-      ["wait_original"],
       ["wait_other"],
+      ["wait_original"],
     ]);
     expect(recorder.ids).toEqual([
       "subscribers-app/appointment.created",
       "wait-candidates-wf_1-0",
       "wait-candidates-wf_1-1",
       "waits-wf_1-0",
+      "waits-wf_1-1",
       "subscribers-app/appointment.created",
       "wait-candidates-wf_1-0",
       "wait-candidates-wf_1-1",
       "waits-wf_1-0",
+      "waits-wf_1-0-retry-1",
       "waits-wf_1-1",
     ]);
     expect(result).toEqual({
@@ -488,7 +511,168 @@ describe("fanOutDelivery", () => {
       started: 0,
       canceled: 0,
       resumedWaits: 2,
+      failures: [],
     });
+  });
+
+  // One workflow's failing Lifecycle Rules must not keep the Event from the
+  // others: B's runs still owe their cancel, and C's parked runs their wake.
+  it("delivers to every other workflow while one workflow's lifecycle step keeps failing", async () => {
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
+      Effect.succeed([
+        subscriber({ id: "wf_a", roles: ["start"] }),
+        subscriber({ id: "wf_b", roles: ["cancel", "wait"] }),
+        subscriber({ id: "wf_c", roles: ["wait"] }),
+      ])
+    );
+    deliver.applyLifecycle.mockImplementation(
+      ({ subscriber: target }: { subscriber: EventSubscriber }) =>
+        target.id === "wf_a"
+          ? Effect.fail(
+              new DatabaseError({ cause: new Error("resolver timed out") })
+            )
+          : Effect.succeed({
+              kind: "canceled",
+              workflowId: target.id,
+              canceledExecutionIds: ["exec_b"],
+            })
+    );
+    deliver.deliverWaitCandidates.mockImplementation(
+      ({ workflowId }: { workflowId: string }) =>
+        Effect.succeed({ workflowId, resumedWaits: 1 })
+    );
+    const recorder = memoizedStep();
+    const input = {
+      arrival: created,
+      inboxId: "inbox_1",
+      steps: recorder.steps,
+      ports: deliver,
+    };
+
+    // Every pass but the last leaves a retry to the release; the first one
+    // has already delivered B and C.
+    for (const attempt of [0, 1, 2, 3]) {
+      await expect(runFanOut({ ...input, attempt })).rejects.toBeInstanceOf(
+        DeliveryStepsPending
+      );
+      if (attempt === 0) {
+        expect(workflowIdsOf(deliver.applyLifecycle)).toEqual(["wf_a", "wf_b"]);
+        expect(workflowIdsOf(deliver.deliverWaitCandidates)).toEqual([
+          "wf_b",
+          "wf_c",
+        ]);
+      }
+    }
+    const result = await runFanOut({ ...input, attempt: 4 });
+
+    expect(workflowIdsOf(deliver.applyLifecycle)).toEqual([
+      "wf_a",
+      "wf_b",
+      "wf_a",
+      "wf_a",
+      "wf_a",
+      "wf_a",
+    ]);
+    expect(deliver.deliverWaitCandidates).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({
+      workflows: 3,
+      started: 0,
+      canceled: 1,
+      resumedWaits: 2,
+      failures: [
+        { workflowId: "wf_a", stage: "lifecycle", error: expect.any(String) },
+      ],
+    });
+    expect(result.failures[0]?.error).toMatch(/resolver timed out/);
+    expect(deliver.recordFailure).toHaveBeenCalledTimes(1);
+    expect(deliver.recordFailure.mock.calls[0]?.[0]).toMatchObject({
+      subscriber: { id: "wf_a" },
+      eventName: appointmentCreated.name,
+      deliveryId: "inbox_1",
+      stage: "lifecycle",
+    });
+  });
+
+  it("tries a failed lifecycle step again on the next pass and settles once it succeeds", async () => {
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
+      Effect.succeed([
+        subscriber({ id: "wf_a", roles: ["start"] }),
+        subscriber({ id: "wf_b", roles: ["start"] }),
+      ])
+    );
+    let failuresLeft = 1;
+    deliver.applyLifecycle.mockImplementation(
+      ({ subscriber: target }: { subscriber: EventSubscriber }) =>
+        Effect.suspend(() => {
+          if (target.id === "wf_a" && failuresLeft > 0) {
+            failuresLeft -= 1;
+            return Effect.fail(
+              new DatabaseError({ cause: new Error("connection reset") })
+            );
+          }
+          return Effect.succeed({
+            kind: "started",
+            workflowId: target.id,
+            executionId: `exec_${target.id}`,
+            supersededExecutionIds: [],
+          });
+        })
+    );
+    const recorder = memoizedStep();
+    const input = {
+      arrival: created,
+      inboxId: "inbox_1",
+      steps: recorder.steps,
+      ports: deliver,
+    };
+
+    await expect(runFanOut(input)).rejects.toBeInstanceOf(DeliveryStepsPending);
+    const result = await runFanOut({ ...input, attempt: 1 });
+
+    expect(recorder.ids).toEqual([
+      "subscribers-app/appointment.created",
+      "lifecycle-wf_a",
+      "lifecycle-wf_b",
+      "subscribers-app/appointment.created",
+      "lifecycle-wf_a",
+      "lifecycle-wf_a-retry-1",
+      "lifecycle-wf_b",
+    ]);
+    expect(deliver.applyLifecycle).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({
+      workflows: 2,
+      started: 2,
+      canceled: 0,
+      resumedWaits: 0,
+      failures: [],
+    });
+    expect(deliver.recordFailure).not.toHaveBeenCalled();
+  });
+
+  // The release would end the whole delivery failed on its next body failure,
+  // so a step failing on the row's last retry is recorded for its workflow.
+  it("records a workflow failed when a step fails on the delivery's last retry", async () => {
+    const deliver = fakeDeliver();
+    deliver.listSubscribers.mockReturnValue(
+      Effect.succeed([subscriber({ id: "wf_a", roles: ["start"] })])
+    );
+    deliver.applyLifecycle.mockReturnValue(
+      Effect.fail(new DatabaseError({ cause: new Error("connection reset") }))
+    );
+
+    const result = await runFanOut({
+      arrival: created,
+      inboxId: "inbox_1",
+      steps: memoizedStep().steps,
+      ports: deliver,
+      attempt: 4,
+    });
+
+    expect(result.failures).toEqual([
+      { workflowId: "wf_a", stage: "lifecycle", error: expect.any(String) },
+    ]);
   });
 
   it("delivers no waits to a workflow that is gone", async () => {

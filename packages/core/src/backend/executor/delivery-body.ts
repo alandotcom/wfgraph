@@ -3,10 +3,11 @@
  * tell which catalog Event it is (`ExtensionSet.resolveArrival`, read from
  * the `Extensions` service), gate its data through that Event's schema, and
  * fan it out with `fanOutDelivery` on the pass's step port. A delivery that
- * ran to its end marks the inbox row `delivered` and writes the delivery's
- * one record. One whose row names no Event, whose data the Event refuses, or
- * whose step spent its retries marks the row `failed` with the reason, so the
- * poll never schedules it again. Each settling write deletes the schedule row.
+ * reached every workflow marks the inbox row `delivered` and writes the
+ * delivery's one record. One whose row names no Event, whose data the Event
+ * refuses, whose own step spent its retries, or that failed for good for some
+ * of its workflows marks the row `failed` with the reason, so the poll never
+ * schedules it again. Each settling write deletes the schedule row.
  */
 
 import { Effect } from "effect";
@@ -19,6 +20,7 @@ import { Extensions } from "#src/backend/lib/effect/extensions";
 import {
   decodeArrival,
   deliverEventPorts,
+  type DeliverySummary,
   fanOutDelivery,
 } from "#src/backend/executor/delivery-fanout";
 import {
@@ -45,6 +47,26 @@ function watchedSettle(
       })
     )
   );
+}
+
+/** How many failed workflows an inbox row's error names before it counts the rest. */
+const NAMED_FAILURES = 3;
+
+/**
+ * The error a partly delivered row settles with: how many workflows the Event
+ * reached, and each failed workflow with the step that failed and its error.
+ */
+function partialDeliveryError(summary: DeliverySummary): string {
+  const { failures } = summary;
+  const named = failures
+    .slice(0, NAMED_FAILURES)
+    .map(
+      (failure) =>
+        `workflow ${failure.workflowId} (${failure.stage === "lifecycle" ? "Lifecycle Rules" : "Waits"}): ${failure.error}`
+    );
+  const unnamed = failures.length - named.length;
+  const rest = unnamed > 0 ? `; and ${unnamed} more` : "";
+  return `Delivered to ${summary.workflows - failures.length} of ${summary.workflows} workflows. Failed on every retry: ${named.join("; ")}${rest}`;
 }
 
 /**
@@ -157,12 +179,22 @@ export function deliveryBody(): PassBody<DeliveryPass, DeliveryServices> {
                 arrival: decoded.success,
                 inboxId: inbox.id,
                 connectionId: inbox.connectionId,
+                attempt: pass.claimed.attempt,
                 steps,
                 ports: deliverEventPorts,
               });
-              yield* finishDelivery;
+              // A workflow that failed for good leaves the row `failed`, the
+              // status a resend of its key reopens, while every other
+              // workflow has received the Event.
+              yield* summary.failures.length > 0
+                ? failDelivery(partialDeliveryError(summary))
+                : finishDelivery;
               // The delivery's one record, written once its row has settled.
-              yield* Effect.logInfo("Delivered an event").pipe(
+              yield* (
+                summary.failures.length > 0
+                  ? Effect.logWarning("Delivered an event to some workflows")
+                  : Effect.logInfo("Delivered an event")
+              ).pipe(
                 Effect.annotateLogs({
                   ...passAnnotations(pass.claimed, pass.workerId),
                   event: { name: event.name },
@@ -171,6 +203,7 @@ export function deliveryBody(): PassBody<DeliveryPass, DeliveryServices> {
                     started: summary.started,
                     canceled: summary.canceled,
                     resumedWaits: summary.resumedWaits,
+                    failed: summary.failures.length,
                   },
                 })
               );

@@ -115,15 +115,13 @@ export function describeDeliveryCrashCases(
       "retry",
       "retry",
       "retry",
-      "retries_spent",
-      "subject_failed",
+      "ended",
     ]);
     expect(attempts).toBe(5);
     const row = await harness.inbox(sent.inboxId);
     expect(row).toMatchObject({ status: "failed" });
-    const last = results.at(-1);
-    expect(row?.status === "failed" && row.error).toBe(
-      last?.kind === "subject_failed" ? last.error : undefined
+    expect(row?.status === "failed" && row.error).toMatch(
+      /^Delivered to 0 of 1 workflows\. Failed on every retry: workflow wf_start \(Lifecycle Rules\): /
     );
     expect(
       await harness.connection.run(
@@ -133,6 +131,74 @@ export function describeDeliveryCrashCases(
       )
     ).toBeNull();
     expect(await harness.runs("wf_start")).toEqual([]);
+    const refusals = await harness.connection.run(
+      Effect.flatMap(ExecutionRepo, (executions) =>
+        executions.listWorkflowEvents({
+          workflowId: "wf_start",
+          eventType: "run_refused",
+        })
+      )
+    );
+    expect(refusals.map((refusal) => refusal.metadata)).toEqual([
+      expect.objectContaining({
+        reason: "delivery_failed",
+        deliveryId: sent.inboxId,
+      }),
+    ]);
+  });
+
+  // One workflow's Lifecycle Rules failing on every retry must not keep the
+  // Event from another workflow whose run it cancels.
+  it("cancels another workflow's run while one workflow's lifecycle step fails on every retry, and settles the row failed for that workflow alone", async () => {
+    const harness = await open();
+    await harness.publish("wf_cancel", holdsUntilCanceled);
+    await harness.publish("wf_failing", startsAndSends(START_EVENT));
+    await harness.send({
+      name: START_EVENT,
+      data: { appointmentId: "appt_11" },
+    });
+    await harness.drain();
+    const [parked] = await harness.runs("wf_cancel");
+    if (parked === undefined) throw new Error("No run was started");
+
+    const cancel = await harness.send({
+      name: CANCEL_EVENT,
+      data: { appointmentId: "appt_11" },
+    });
+    await harness.drain({
+      wrapWorkflows: (workflows) => ({
+        ...workflows,
+        findByIdWithPublishedVersionForRun: (workflowId) =>
+          workflowId === "wf_failing"
+            ? Effect.fail(
+                new DatabaseError({ cause: new Error("connection reset") })
+              )
+            : workflows.findByIdWithPublishedVersionForRun(workflowId),
+      }),
+    });
+
+    const termination = await harness.connection.run(
+      Effect.flatMap(ExecutionRepo, (executions) =>
+        executions.findTerminationState(parked.id)
+      )
+    );
+    expect(termination?.claim).toMatchObject({
+      kind: "cancel",
+      eventName: CANCEL_EVENT,
+    });
+    const row = await harness.inbox(cancel.inboxId);
+    expect(row?.status === "failed" && row.error).toMatch(
+      /^Delivered to 1 of 2 workflows\. Failed on every retry: workflow wf_failing \(Lifecycle Rules\): /
+    );
+    const cancellations = await harness.connection.run(
+      Effect.flatMap(ExecutionRepo, (executions) =>
+        executions.listWorkflowEvents({
+          workflowId: "wf_failing",
+          eventType: "cancel_not_delivered",
+        })
+      )
+    );
+    expect(cancellations).toHaveLength(1);
   });
 
   it("writes one record for a delivery once its inbox row has settled, with the pass's fields and what the delivery came to", async () => {

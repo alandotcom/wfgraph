@@ -268,7 +268,9 @@ export const applyLifecycleRules = Effect.fn("applyLifecycleRules")(
     // Cancel Events.
     const publishedRules = readPublishedRules(version.graph);
     if (publishedRules === null) {
-      yield* logger.warn("Skipped a workflow whose published graph will not parse");
+      yield* logger.warn(
+        "Skipped a workflow whose published graph will not parse"
+      );
       return skipped(input.subscriber.id, "graph_unrunnable");
     }
     const rules = publishedRules ?? emptyLifecycleRules;
@@ -594,6 +596,53 @@ const answerFromCommittedDecision = Effect.fn("answerFromCommittedDecision")(
       supersededExecutionIds: [],
     };
     return started;
+  }
+);
+
+/**
+ * Where a delivery to one workflow failed for good: the Lifecycle Rules it
+ * applies first, or the parked Waits it reaches after them.
+ */
+export type DeliveryFailureStage = "lifecycle" | "waits";
+
+/**
+ * Records that one workflow never received an arrival, because a step of its
+ * delivery failed on every retry while the other workflows received it.
+ *
+ * The row lands in the reader the workflow's role belongs to: a start that may
+ * have been missed is a Refused Start, and a cancel that may have been missed
+ * is a Cancellation Failure. A Wait that may not have woken has no reader of
+ * its own, so the inbox row's error and the delivery's record carry it alone.
+ */
+export const recordDeliveryFailure = Effect.fn("recordDeliveryFailure")(
+  function* (input: {
+    subscriber: EventSubscriber;
+    eventName: string;
+    deliveryId: string;
+    stage: DeliveryFailureStage;
+  }) {
+    const { subscriber, eventName, deliveryId } = input;
+    if (input.stage !== "lifecycle") return;
+    const role = subscriber.roles.includes("cancel") ? "cancel" : "start";
+    const metadata = {
+      reason: "delivery_failed",
+      eventName,
+      deliveryId,
+    };
+    const executionRepo = yield* ExecutionRepo;
+    yield* role === "cancel"
+      ? executionRepo.recordAuditEvent({
+          workflowId: subscriber.id,
+          eventType: "cancel_not_delivered",
+          message: `Cancel from ${eventName} was not applied: its Lifecycle Rules failed on every retry`,
+          metadata,
+        })
+      : executionRepo.recordAuditEvent({
+          workflowId: subscriber.id,
+          eventType: "run_refused",
+          message: `Start from ${eventName} was not applied: its Lifecycle Rules failed on every retry`,
+          metadata: { ...metadata, startSource: "event" },
+        });
   }
 );
 
