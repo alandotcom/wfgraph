@@ -374,4 +374,65 @@ describe("assessEvidenceUse", () => {
 
     expect(assessEvidenceUse(trajectory)).toMatchObject({ score: 1 });
   });
+
+  it("accepts a token a new connected step carries from an earlier list_references answer", () => {
+    const token = "{{@entry:Lifecycle.applicantId}}";
+    const trajectory = buildAgentTrajectory([
+      call("read", "read_workflow"),
+      result("read", "read_workflow"),
+      call("describe", "describe_action", { actionId: "score-applicant" }),
+      result("describe", "describe_action"),
+      call("references", "list_references", { nodeId: "notify" }),
+      valueResult("references", "list_references", {
+        references: [
+          {
+            token,
+            sourceNodeId: "entry",
+            sourceNodeLabel: "Lifecycle",
+            path: "applicantId",
+          },
+        ],
+      }),
+      call("batch", "apply_edits", {
+        operations: [
+          {
+            tool: "add_node",
+            key: "score",
+            actionId: "score-applicant",
+            label: "Score",
+            sourceNodeId: "entry",
+            config: [{ key: "applicantId", value: token }],
+          },
+          {
+            tool: "add_node",
+            actionId: "score-applicant",
+            label: "Rescore",
+            sourceNodeId: "$score",
+            config: [{ key: "applicantId", value: "{{@$score:Score.id}}" }],
+          },
+        ],
+      }),
+      result("batch", "apply_edits"),
+    ]);
+
+    expect(assessEvidenceUse(trajectory)).toMatchObject({ score: 1 });
+  });
+
+  it("still rejects a token a new step carries that no list_references answer held", () => {
+    const token = "{{@entry:Lifecycle.applicantId}}";
+    const trajectory = buildAgentTrajectory([
+      call("read", "read_workflow"),
+      result("read", "read_workflow"),
+      call("describe", "describe_action", { actionId: "score-applicant" }),
+      result("describe", "describe_action"),
+      call("add", "add_node", {
+        actionId: "score-applicant",
+        label: "Score",
+        sourceNodeId: "entry",
+        config: [{ key: "applicantId", value: token }],
+      }),
+    ]);
+
+    expect(assessEvidenceUse(trajectory)).toMatchObject({ score: 0 });
+  });
 });

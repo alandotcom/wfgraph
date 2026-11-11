@@ -352,14 +352,26 @@ export function assessEvidenceUse(
 
     const nodeId = call.input.nodeId;
     for (const token of referenceTokensIn(call)) {
+      // A call with no nodeId creates the step its tokens are for (add_node
+      // with sourceNodeId, or an apply_edits batch), so no list_references
+      // call could have named that step yet. The token must still be one a
+      // list_references answer returned, which the write tool then checks
+      // against what reaches the new step; a $key token names a step the
+      // same batch creates and is resolved by the tool.
+      const createsTarget = typeof nodeId !== "string";
       if (
-        typeof nodeId !== "string" ||
+        createsTarget &&
+        findTemplateTokens(token)[0]?.nodeId.startsWith("$")
+      ) {
+        continue;
+      }
+      if (
         !succeededBefore(
           trajectory.calls,
           call,
           (candidate) =>
             candidate.name === "list_references" &&
-            candidate.input.nodeId === nodeId &&
+            (createsTarget || candidate.input.nodeId === nodeId) &&
             referenceTokensReturnedBy(candidate).includes(token)
         )
       ) {
