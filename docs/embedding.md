@@ -749,13 +749,13 @@ The `runner` option controls the loop:
   advance. SQLite refuses `false` at startup, because the app that owns a SQLite file runs
   the only loop on it (see Persistence).
 
-| Field                 | PostgreSQL default | SQLite default | Description                                                                                 |
-| --------------------- | ------------------ | -------------- | ------------------------------------------------------------------------------------------- |
-| `concurrency`         | 10                 | 1              | How many runs the loop advances at once. On PostgreSQL, at most the pool's `maxConnections` |
-| `deliveryConcurrency` | 1                  | 1              | How many Event deliveries the loop runs at once, in slots of their own beside the runs'     |
-| `pollMs`              | 1,000              | 250            | How long the loop waits between checks for due runs when nothing wakes it, in milliseconds  |
-| `leaseMs`             | 60,000             | 60,000         | How long the loop holds a run before another loop can take it over, in milliseconds         |
-| `heartbeatMs`         | 20,000             | 20,000         | How often the loop renews its hold while a step runs, in milliseconds                       |
+| Field                 | PostgreSQL default | SQLite default | Description                                                                                |
+| --------------------- | ------------------ | -------------- | ------------------------------------------------------------------------------------------ |
+| `concurrency`         | 5, from the pool   | 1              | How many runs the loop advances at once. On PostgreSQL the default follows the pool size   |
+| `deliveryConcurrency` | 1                  | 1              | How many Event deliveries the loop runs at once, in slots of their own beside the runs'    |
+| `pollMs`              | 1,000              | 250            | How long the loop waits between checks for due runs when nothing wakes it, in milliseconds |
+| `leaseMs`             | 60,000             | 60,000         | How long the loop holds a run before another loop can take it over, in milliseconds        |
+| `heartbeatMs`         | 20,000             | 20,000         | How often the loop renews its hold while a step runs, in milliseconds                      |
 
 Each field must be a positive integer, and `heartbeatMs` must be shorter than `leaseMs`.
 `createWfGraphApp` refuses any other value at startup.
@@ -764,9 +764,11 @@ The loop claims runs, Event deliveries and cron schedule fires in three lanes. R
 deliveries are each limited by their own field, and fires take one slot. A delivery is the
 work that starts, cancels and wakes runs for one Event, so a Cancel is applied while every
 run slot is busy with a long step, and a schedule fires on time beside them. On PostgreSQL,
-the passes of every lane share the pool, so a loop at its defaults can hold 12 connections;
-give the pool a `maxConnections` above `concurrency` plus `deliveryConcurrency` plus one
-when the app also serves requests from it.
+the passes of every lane share the pool with the app's HTTP requests, so the default
+`concurrency` takes half of it: `min(10, max(1, floor(maxConnections / 2)))`, which is 5 for
+the default pool of 10. The other half serves the delivery and cron lanes and the requests.
+A `concurrency` you set is used as it is; give the pool a `maxConnections` above
+`concurrency` plus `deliveryConcurrency` plus one when the app also serves requests from it.
 
 ```ts
 const wfgraph = await createWfGraphApp({

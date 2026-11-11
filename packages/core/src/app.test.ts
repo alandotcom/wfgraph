@@ -828,6 +828,32 @@ describe("createWfGraphApp runner", () => {
     });
   });
 
+  // Half the pool runs workflows, so the other lanes and the app's requests
+  // keep connections of their own; an explicit setting is taken as written.
+  it("derives the default run concurrency from the PostgreSQL pool size", async () => {
+    const loops = vi
+      .spyOn(workerLoopModule, "runWorkerLoop")
+      .mockImplementation(() => Effect.succeed({ drained: 0, interrupted: 0 }));
+    const url = "postgresql://wfgraph:wfgraph@127.0.0.1:1/wfgraph_test";
+    const cases = [
+      { maxConnections: undefined, concurrency: undefined, run: 5 },
+      { maxConnections: 3, concurrency: undefined, run: 1 },
+      { maxConnections: 40, concurrency: undefined, run: 10 },
+      { maxConnections: 3, concurrency: 8, run: 8 },
+    ];
+    for (const { maxConnections, concurrency, run } of cases) {
+      // eslint-disable-next-line eslint/no-await-in-loop -- one app per pool
+      const app = await createWfGraphApp({
+        ...BASE_OPTIONS,
+        persistence: wfPostgres({ url, maxConnections }),
+        runner: { concurrency },
+      });
+      // eslint-disable-next-line eslint/no-await-in-loop -- one app per pool
+      await app.dispose();
+      expect(loops.mock.lastCall?.[0].concurrency.run).toBe(run);
+    }
+  });
+
   it("takes the backend's defaults when the host sets nothing", async () => {
     const loops = recordLoops();
     const app = await createWfGraphApp({

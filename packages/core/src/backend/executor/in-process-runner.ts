@@ -38,9 +38,12 @@ import type { WfGraphRuntime } from "#src/backend/runtime";
  */
 export type WfGraphRunnerOptions = {
   /**
-   * How many runs the loop advances at once. Defaults to 1 on SQLite, which
-   * allows one writer, and to 10 on PostgreSQL, or to the pool's
-   * `maxConnections` when that is lower.
+   * How many runs the loop advances at once. Defaults to half the backend's
+   * connections, rounded down and at least 1, capped at the backend's own
+   * default: `min(10, max(1, floor(maxConnections / 2)))` on PostgreSQL, which
+   * is 5 for the default pool of 10, and 1 on SQLite, which allows one writer.
+   * The other half serves the delivery and cron lanes and the HTTP requests
+   * that share the pool. A value set here is used as it is.
    */
   concurrency?: number | undefined;
   /**
@@ -129,6 +132,21 @@ export function assertValidRunnerOptions(
 }
 
 /**
+ * The run slots a loop takes when the host sets none: half the backend's
+ * connections, at least one, and at most the backend's own default. Every
+ * pass holds a connection while it writes, so a loop taking the whole pool
+ * would leave the delivery and cron lanes and the app's HTTP requests queued
+ * behind its runs.
+ */
+function defaultRunConcurrency(capabilities: WfGraphRunCapabilities): number {
+  const { loopDefaults, connectionLimit } = capabilities;
+  return Math.min(
+    loopDefaults.concurrency,
+    Math.max(1, Math.floor(connectionLimit / 2))
+  );
+}
+
+/**
  * Each lane's slots, the host's options over the backend's defaults: the
  * runs' from `concurrency`, the deliveries' from `deliveryConcurrency`, and
  * the cron fires' fixed at `CRON_CONCURRENCY`.
@@ -137,11 +155,8 @@ function resolveLaneConcurrency(
   capabilities: WfGraphRunCapabilities,
   options: Pick<WfGraphRunnerOptions, "concurrency" | "deliveryConcurrency">
 ): LaneConcurrency {
-  const { loopDefaults, connectionLimit } = capabilities;
   return {
-    run:
-      options.concurrency ??
-      Math.min(loopDefaults.concurrency, connectionLimit),
+    run: options.concurrency ?? defaultRunConcurrency(capabilities),
     delivery: options.deliveryConcurrency ?? DEFAULT_DELIVERY_CONCURRENCY,
     cron: CRON_CONCURRENCY,
   };
