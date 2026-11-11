@@ -405,6 +405,12 @@ export function createAgentMcpServer(
     { name: "workflow-graph", version: "1.0.0" },
     {
       instructions: AUTHORING_INSTRUCTIONS,
+      // The endpoint keeps no session and opens no listen stream, so it never
+      // sends a list-changed notification, and says so.
+      capabilities: {
+        tools: { listChanged: false },
+        prompts: { listChanged: false },
+      },
       maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
     }
   );
@@ -590,12 +596,19 @@ export function createAgentMcpServer(
   return server;
 }
 
-/** Creates a modern-only handler whose factory builds one server per request. */
+/**
+ * Creates a handler whose factory builds one server per request. A 2026-07-28
+ * request is served directly; a 2025-era request (protocol revisions
+ * 2024-10-07 through 2025-11-25) is served by the SDK's stateless legacy path,
+ * which answers `initialize` from a fresh server and refuses the session
+ * methods `GET` and `DELETE` with 405. The server keeps no state between calls
+ * in either era, so both serve the same tools against the same stored draft.
+ */
 export function createAgentMcpHandler(
   input: CreateAgentMcpServerInput & { readonly httpSecurity?: McpHttpSecurity }
 ): McpHttpHandler {
   const handler = createMcpHandler(() => createAgentMcpServer(input), {
-    legacy: "reject",
+    legacy: "stateless",
   });
 
   return {

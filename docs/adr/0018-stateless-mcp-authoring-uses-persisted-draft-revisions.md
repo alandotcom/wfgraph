@@ -77,3 +77,15 @@ The editor preserved unsaved browser edits and active built-in agent turns. If
 an external write advanced the persisted revision during local work, the editor
 reported the conflict and required the Workflow Builder to reload the persisted
 draft explicitly.
+
+## Amendment: 2025-era clients are served statelessly
+
+Date: 2026-11-11
+
+The endpoint began serving 2025-era protocol revisions through the MCP SDK's
+stateless legacy path. The SDK's default client opened with the 2025
+`initialize` handshake, so the strict endpoint refused it with an unsupported
+protocol version. The legacy path answered each request from a fresh server and
+kept no transport session, which matched the stateless design: the persisted
+draft revision remained the only cross-request state. `GET` and `DELETE`
+session operations still answered 405.

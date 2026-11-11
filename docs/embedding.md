@@ -641,12 +641,16 @@ List hostnames only, with no scheme or port. Every request must have an allowed
 Requests from non-browser MCP clients can omit the `Origin` header. Workflow
 Graph rejects an invalid host or origin with HTTP 403 before reading the body.
 
-The endpoint supports only MCP protocol revision `2026-07-28`. Each `POST`
-request contains one independent JSON-RPC message. Each request must set the
+The endpoint serves MCP protocol revision `2026-07-28` and the 2025-era
+revisions `2024-10-07` through `2025-11-25`. Each `POST` request contains one
+independent JSON-RPC message. A `2026-07-28` request must set the
 `MCP-Protocol-Version` and `Mcp-Method` headers, and include the client identity
 and capabilities in request `_meta`. A `tools/call` request must also set the
-`Mcp-Name` header. The endpoint doesn't support initialization, transport
-sessions, `Mcp-Session-Id`, `GET` streams, or `DELETE` session termination.
+`Mcp-Name` header. A 2025-era client opens with `initialize` as usual; each of
+its requests is answered by a fresh server, so the endpoint keeps no transport
+session, issues no `Mcp-Session-Id`, and answers `GET` and `DELETE` with 405.
+The server sends no list-changed notifications and advertises
+`listChanged: false`.
 
 The server's `instructions` carry the authoring rules the editor's build agent
 follows, such as creating the Lifecycle Node first and taking every reference

@@ -673,47 +673,86 @@ describe("createAgentMcpHandler", () => {
     }
   });
 
-  it("rejects legacy initialization and session methods", async () => {
-    const handler = createTestMcpHandler({
-      auth: allowAll,
-      execute: async () => {
-        throw new Error("unexpected");
+  it("serves a 2025-era client statelessly and refuses session methods", async () => {
+    const execute = vi.fn<DraftToolExecutor>(async () => ({
+      ok: true,
+      result: {
+        workflowId: "wf_1",
+        draftRevision: 4,
+        result: { nodes: [], edges: [], totalNodes: 0, totalEdges: 0 },
+        isFailure: false,
       },
-    });
+    }));
+    const handler = createTestMcpHandler({ auth: allowAll, execute });
+    const transport = new StreamableHTTPClientTransport(
+      new URL("http://localhost/mcp"),
+      {
+        fetch: async (input, init) =>
+          await handler.fetch(localMcpRequest(input, init)),
+      }
+    );
+    // The SDK client negotiates the 2025 handshake unless told otherwise.
+    const client = new Client({ name: "legacy", version: "1.0.0" });
+
+    await client.connect(transport);
     try {
-      const initialize = await handler.fetch(
-        localMcpRequest("http://localhost/mcp", {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "MCP-Protocol-Version": "2025-06-18",
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "initialize",
-            params: {
-              protocolVersion: "2025-06-18",
-              capabilities: {},
-              clientInfo: { name: "legacy", version: "1.0.0" },
-            },
-          }),
-        })
-      );
+      expect(client.getProtocolEra()).toBe("legacy");
+      expect(client.getInstructions()).toBe(buildAuthoringInstructions());
+      expect(client.getServerCapabilities()).toMatchObject({
+        tools: { listChanged: false },
+        prompts: { listChanged: false },
+      });
+      const { tools } = await client.listTools();
+      expect(tools.map((tool) => tool.name)).toContain("read_workflow");
+      const result = await client.callTool({
+        name: "read_workflow",
+        arguments: { workflowId: "wf_1" },
+      });
+      expect(result.isError).toBe(false);
+      expect(execute).toHaveBeenCalledOnce();
+
       const get = await handler.fetch(
         localMcpRequest("http://localhost/mcp", { method: "GET" })
       );
       const deleteResponse = await handler.fetch(
         localMcpRequest("http://localhost/mcp", { method: "DELETE" })
       );
-
-      expect(initialize.status).toBe(400);
-      expect(await initialize.json()).toMatchObject({
-        error: { code: -32022 },
-      });
       expect(get.status).toBe(405);
       expect(deleteResponse.status).toBe(405);
     } finally {
+      await client.close();
+      await handler.close();
+    }
+  });
+
+  it("advertises no list-change notifications to a modern client", async () => {
+    const handler = createTestMcpHandler({
+      auth: allowAll,
+      execute: async () => {
+        throw new Error("unexpected");
+      },
+    });
+    const transport = new StreamableHTTPClientTransport(
+      new URL("http://localhost/mcp"),
+      {
+        fetch: async (input, init) =>
+          await handler.fetch(localMcpRequest(input, init)),
+      }
+    );
+    const client = new Client(
+      { name: "wfgraph-test", version: "1.0.0" },
+      { versionNegotiation: { mode: "auto" } }
+    );
+
+    await client.connect(transport);
+    try {
+      expect(client.getProtocolEra()).toBe("modern");
+      expect(client.getServerCapabilities()).toMatchObject({
+        tools: { listChanged: false },
+        prompts: { listChanged: false },
+      });
+    } finally {
+      await client.close();
       await handler.close();
     }
   });
