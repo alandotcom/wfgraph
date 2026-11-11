@@ -42,7 +42,7 @@ export const recordAction = defineAction({
  */
 export async function openHost(
   options: Pick<WfGraphAppOptions, "auth"> &
-    Partial<Pick<WfGraphAppOptions, "logger">>
+    Partial<Pick<WfGraphAppOptions, "logger" | "mcp" | "agent">>
 ): Promise<WfGraphApp> {
   return await createWfGraphApp({
     persistence: wfSqlite(),
