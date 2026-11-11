@@ -640,6 +640,38 @@ List hostnames only, with no scheme or port. Every request must have an allowed
 `Host` header. Browser requests must also have an allowed `Origin` hostname.
 Requests from non-browser MCP clients can omit the `Origin` header. Workflow
 Graph rejects an invalid host or origin with HTTP 403 before reading the body.
+The 403 names the `mcp.allowedHostnames` or `mcp.allowedOriginHostnames` option
+that would admit the hostname.
+
+Every MCP request passes through the `auth` function, as an editor request
+does, so an MCP client must carry a credential that function accepts. A client
+sends it as `Authorization: Bearer <token>`, so `auth` reads that header beside
+the session cookie the editor uses, and verifies the token itself: Workflow
+Graph issues and checks no MCP token. A request `auth` answers with `null` or
+`undefined` gets a 401 carrying a `WWW-Authenticate` challenge. Without
+`mcp.authorization` the challenge is a bare `Bearer`. Name the OAuth
+authorization servers that issue your tokens, and an MCP client can discover
+where to obtain one:
+
+```ts
+const wfgraph = await createWfGraphApp({
+  // ...
+  mcp: {
+    allowedHostnames: ["workflows.example.com"],
+    allowedOriginHostnames: [],
+    authorization: {
+      authorizationServers: ["https://auth.example.com"],
+      scopesSupported: ["workflows"],
+    },
+  },
+});
+```
+
+With `authorization` set, Workflow Graph serves the RFC 9728 protected-resource
+metadata at `/.well-known/oauth-protected-resource{basePath}/api/mcp`, outside
+`auth`, and the 401 challenge carries `resource_metadata` with that document's
+URL, and `scope` when `scopesSupported` is set. The document names the endpoint
+under `publicUrl` when it is set, and under the request's own origin otherwise.
 
 The endpoint serves MCP protocol revision `2026-07-28` and the 2025-era
 revisions `2024-10-07` through `2025-11-25`. Each `POST` request contains one
@@ -683,6 +715,11 @@ stored, and the reason names the operation. A step an operation creates can
 carry a `key`, and a later operation in the same batch names it as `$key`. Every
 write, `apply_edits` included, answers `newIssues`: the validation issues the
 draft gained with that write.
+
+`validate_workflow` answers `canSave` with the `saveIssues` that refuse a save,
+`canPublish` with the `publishBlockers` that refuse a Publish, and `warnings`.
+`canPublish` is true only when the draft saves and has no publish blocker, so a
+client reads it, and never `canSave` alone, before it calls `publish_workflow`.
 
 A call whose arguments do not match the tool's input schema returns an error
 tool result (`isError: true`) that names each wrong field and what it expected,
