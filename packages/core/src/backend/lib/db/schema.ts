@@ -214,6 +214,11 @@ export const workflowVersions = pgTable(
     index("workflow_versions_draft_snapshot_last_pinned_at_idx")
       .on(table.lastPinnedAt)
       .where(sql`${table.kind} = 'draft_snapshot'`),
+    // A Draft run's freeze looks for an earlier snapshot of the same graph,
+    // and finds the candidates by digest before it compares any graph.
+    index("workflow_versions_draft_snapshot_digest_idx")
+      .on(table.workflowId, table.graphDigest)
+      .where(sql`${table.kind} = 'draft_snapshot'`),
   ]
 );
 

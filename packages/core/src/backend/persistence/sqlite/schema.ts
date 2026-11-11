@@ -105,6 +105,11 @@ export const workflowVersions = sqliteTable(
     index("versions_draft_snapshot_last_pinned_idx")
       .on(table.lastPinnedAt)
       .where(sql`${table.kind} = 'draft_snapshot'`),
+    // A Draft run's freeze looks for an earlier snapshot of the same graph,
+    // and finds the candidates by digest before it compares any graph text.
+    index("versions_draft_snapshot_digest_idx")
+      .on(table.workflowId, table.graphDigest)
+      .where(sql`${table.kind} = 'draft_snapshot'`),
   ]
 );
 

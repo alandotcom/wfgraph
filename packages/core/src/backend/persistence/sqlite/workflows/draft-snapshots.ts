@@ -27,7 +27,10 @@ export function makeSqliteDraftSnapshotMethods(
     freezeDraftSnapshot: (input) =>
       store.write((database) =>
         Effect.gen(function* () {
-          // Identical graphs encode to identical text. Reuse only a snapshot an
+          // Identical graphs encode to identical text and have equal digests,
+          // so the digest narrows the candidates through
+          // `versions_draft_snapshot_digest_idx` before any graph text is
+          // compared. Reuse only a snapshot an
           // Execution already references: an unreferenced snapshot is private
           // to another start that may still delete it after a refused gate.
           // The reuse moves `last_pinned_at` to now in the same statement, as
@@ -47,6 +50,7 @@ export function makeSqliteDraftSnapshotMethods(
                     and(
                       eq(workflowVersions.workflowId, input.workflowId),
                       eq(workflowVersions.kind, "draft_snapshot"),
+                      eq(workflowVersions.graphDigest, input.graphDigest),
                       eq(
                         workflowVersions.catalogFingerprint,
                         input.catalogFingerprint

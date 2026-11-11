@@ -81,7 +81,11 @@ export function makeDraftSnapshotMethods(
     freezeDraftSnapshot: (input) =>
       database.query(async (db) => {
         // jsonb equality is structural, so key order and whitespace in the
-        // stored column do not affect the match.
+        // stored column do not affect the match. Equal graphs have equal
+        // digests, so the digest narrows the candidates through
+        // `workflow_versions_draft_snapshot_digest_idx` before any graph is
+        // compared. A snapshot whose digest an older algorithm wrote is
+        // passed over, and the freeze inserts a new one.
         //
         // The EXISTS clause is what makes the reuse safe against a
         // concurrent start. A snapshot no Execution references yet is
@@ -108,7 +112,10 @@ export function makeDraftSnapshotMethods(
                 .where(
                   and(
                     eq(workflowVersions.workflowId, input.workflowId),
-                    eq(workflowVersions.kind, "draft_snapshot"),
+                    // A literal, so a generic plan still matches the
+                    // partial index's predicate.
+                    sql`${workflowVersions.kind} = 'draft_snapshot'`,
+                    eq(workflowVersions.graphDigest, input.graphDigest),
                     eq(
                       workflowVersions.catalogFingerprint,
                       input.catalogFingerprint
