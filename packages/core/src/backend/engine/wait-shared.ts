@@ -198,10 +198,21 @@ export type WaitAttempt = {
 /**
  * What a mode's resolution answers. It crosses a memoized step boundary, so
  * every field is JSON-safe.
+ *
+ * A resolution writes nothing. Its step id carries the Workflow Version, so a
+ * Migration resolves an attempt the run already prepared again, and only the
+ * prepare step, whose id carries the attempt alone, acts on the answer: it
+ * closes the log row for an error or a skip, and records a skip's timeline
+ * entry from `audit`.
  */
 export type WaitPreparation<Prepared> =
   | { status: "error"; error: string }
-  | { status: "skipped"; output: Record<string, unknown> }
+  | {
+      status: "skipped";
+      output: Record<string, unknown>;
+      /** The `run_skipped` timeline entry the skip records. */
+      audit: { message: string; metadata: JsonObject };
+    }
   | {
       status: "ready";
       /** The instant this attempt resolved against, as an ISO string. */
@@ -235,10 +246,14 @@ export type WaitResumeInput<Prepared> = {
  */
 export type WaitMode<Prepared, Resumed> = {
   readonly mode: "delay" | "event";
+  /**
+   * What the attempt parks with, or why it does not. Pure apart from the clock
+   * and a fresh resume token, both of which the driver's step memoizes.
+   */
   prepare: (
     branch: WaitBranchContext,
     attempt: WaitAttempt
-  ) => Effect.Effect<WaitPreparation<Prepared>, EngineFailure>;
+  ) => WaitPreparation<Prepared>;
   /** The body of the resume step. Its answer crosses a step boundary as JSON. */
   resume: (
     input: WaitResumeInput<Prepared>

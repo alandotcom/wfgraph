@@ -357,6 +357,20 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
     expect(run.executed.map((step) => step.stepId)).toContain(
       "wait-resume-wait_1-1"
     );
+
+    // Attempt 0 is resolved again under the new version on the replay, and its
+    // answer is a skip. The prepare step memoized the old version's park, so the
+    // skip writes nothing: no timeline entry, and no close of the Wait's row.
+    expect(
+      store.timeline.filter((entry) => entry.eventType === "run_skipped")
+    ).toEqual([]);
+    const waitLogId = store.logIdOf("wait_1");
+    const waitCloses = store
+      .callsOf("completeStepLog")
+      .filter((close) => close.logId === waitLogId);
+    expect(waitCloses).toHaveLength(1);
+    expect(waitCloses[0]).toMatchObject({ status: "success" });
+    expect(waitCloses[0]?.output).not.toHaveProperty("skipped");
   });
   it("does not apply maximum lateness after the Wait has already parked", async () => {
     const run = await runMigratedWait({
@@ -379,6 +393,9 @@ export function defineWaitMigrateReplayCases(executor: ReplayExecutor): void {
     expect(run.value.results.after_wait).toBeDefined();
     expect(waitOutput(run.value).skipped).toBeUndefined();
     expect(waitOutput(run.value).hops).toBe(1);
+    expect(
+      store.timeline.filter((entry) => entry.eventType === "run_skipped")
+    ).toEqual([]);
   });
 
   // Between a Migration's wake and the next park the row is still `waiting`, so

@@ -314,7 +314,7 @@ function runWaitAttempt<Prepared, Resumed>(
           stage: `resolve ${mode.mode}`,
         }),
       },
-      mode.prepare(branch, { index: attempt, anchorAt })
+      Effect.sync(() => mode.prepare(branch, { index: attempt, anchorAt }))
     );
     const prepared = yield* runDurable(
       runtime,
@@ -431,7 +431,11 @@ function runWaitAttempt<Prepared, Resumed>(
   });
 }
 
-/** Writes a memoized resolution, preserving the row identity across retries. */
+/**
+ * Acts on a memoized resolution: closes the log row for an error or a skip and
+ * records the skip, or writes the park, preserving the row identity across
+ * retries.
+ */
 function prepareWaitAttempt<Prepared>(
   branch: WaitBranchContext,
   preparation: WaitPreparation<Prepared>,
@@ -443,8 +447,25 @@ function prepareWaitAttempt<Prepared>(
   return Effect.gen(function* () {
     const { context, store, workflowId } = branch;
 
-    if (preparation.status !== "ready") {
-      return preparation;
+    if (preparation.status === "error") {
+      return yield* failPreparation<Prepared>(branch, preparation.error);
+    }
+
+    if (preparation.status === "skipped") {
+      yield* fromStore(
+        store.recordAuditEvent({
+          workflowId,
+          executionId: context.executionId,
+          eventType: "run_skipped",
+          message: preparation.audit.message,
+          metadata: preparation.audit.metadata,
+        })
+      );
+      yield* closeStepLog(store, branch.startLog, {
+        status: "success",
+        output: preparation.output,
+      });
+      return { status: "skipped", output: preparation.output };
     }
     const { park, prepared, anchorAtIso } = preparation;
     const metadata = {

@@ -23,7 +23,6 @@ import {
 import { Effect } from "effect";
 import { closeStepLog } from "#src/backend/engine/step-log";
 import {
-  fromStore,
   isClaimWake,
   readAllowedHoursConfig,
   readWaitGateMode,
@@ -159,40 +158,33 @@ function planDelayWait(
   };
 }
 
-const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
+function prepareDelayWait(
   branch: WaitBranchContext,
   attempt: WaitAttempt
-) {
-  const { context, store, startLog } = branch;
+): WaitPreparation<DelayPrepared> {
+  const { context } = branch;
   const plan = planDelayWait(branch.config, attempt);
 
   if (plan.status === "error") {
-    yield* closeStepLog(store, startLog, {
-      status: "error",
-      error: plan.error,
-    });
     return plan;
   }
 
   if (plan.status === "skipped") {
-    const output = omitUndefined({
-      waitType: "delay",
-      waitUntil: plan.waitUntilIso,
-      waitGateMode: plan.waitGateMode,
-      waitMaxLateness: plan.waitMaxLateness,
-      skipped: true,
-      skippedReason: plan.reason,
-      plannedWaitMs: plan.plannedWaitMs,
-      didActuallyWait: false,
-      hops: 0,
-      resumedAt: encodeIsoTimestamp(new Date()),
-    });
-
-    yield* fromStore(
-      store.recordAuditEvent({
-        workflowId: branch.workflowId,
-        executionId: context.executionId,
-        eventType: "run_skipped",
+    return {
+      status: "skipped",
+      output: omitUndefined({
+        waitType: "delay",
+        waitUntil: plan.waitUntilIso,
+        waitGateMode: plan.waitGateMode,
+        waitMaxLateness: plan.waitMaxLateness,
+        skipped: true,
+        skippedReason: plan.reason,
+        plannedWaitMs: plan.plannedWaitMs,
+        didActuallyWait: false,
+        hops: 0,
+        resumedAt: encodeIsoTimestamp(new Date()),
+      }),
+      audit: {
         message: `Skipped delay branch in node '${context.nodeName}' (${plan.auditMessage})`,
         metadata: omitUndefined({
           nodeId: context.nodeId,
@@ -202,14 +194,11 @@ const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
           maxLatenessMs: plan.maxLatenessMs,
           reason: plan.reason,
         }),
-      })
-    );
-
-    yield* closeStepLog(store, startLog, { status: "success", output });
-    return { status: "skipped" as const, output };
+      },
+    };
   }
 
-  const preparation: WaitPreparation<DelayPrepared> = {
+  return {
     status: "ready",
     anchorAtIso: encodeIsoTimestamp(plan.anchorAt),
     park: {
@@ -227,8 +216,7 @@ const prepareDelayWait = Effect.fn("prepareDelayWait")(function* (
     },
     prepared: { waitUntilIso: plan.waitUntilIso },
   };
-  return preparation;
-});
+}
 
 const resumeDelayWait = Effect.fn("resumeDelayWait")(function* (
   input: WaitResumeInput<DelayPrepared>

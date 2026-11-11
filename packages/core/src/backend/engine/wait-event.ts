@@ -47,17 +47,11 @@ type EventResumed = {
   skipOnTimeout: boolean;
 };
 
-const prepareEventWait = Effect.fn("prepareEventWait")(function* (
+function prepareEventWait(
   branch: WaitBranchContext,
   attempt: WaitAttempt
-) {
-  const { config, store, resolveTemplates, startLog } = branch;
-
-  const failWith = (error: string) =>
-    Effect.as(closeStepLog(store, startLog, { status: "error", error }), {
-      status: "error" as const,
-      error,
-    });
+): WaitPreparation<EventPrepared> {
+  const { config, resolveTemplates } = branch;
 
   // The timeout is what keeps a parked run mortal, so a wait that names none is
   // held to the default the editor writes rather than parking forever.
@@ -68,10 +62,12 @@ const prepareEventWait = Effect.fn("prepareEventWait")(function* (
     waitDuration: timeout,
   });
   if (waitTimeoutResolution.error || !waitTimeoutResolution.waitUntil) {
-    return yield* failWith(
-      waitTimeoutResolution.error ??
-        "Wait could not determine a timeout from waitTimeout."
-    );
+    return {
+      status: "error",
+      error:
+        waitTimeoutResolution.error ??
+        "Wait could not determine a timeout from waitTimeout.",
+    };
   }
 
   const compiled = compileWaitSubscriptions({
@@ -79,7 +75,7 @@ const prepareEventWait = Effect.fn("prepareEventWait")(function* (
     resolveTemplates,
   });
   if (!compiled.valid) {
-    return yield* failWith(compiled.error);
+    return { status: "error", error: compiled.error };
   }
 
   // A token names one park. Migration can change its match while retaining the
@@ -91,7 +87,7 @@ const prepareEventWait = Effect.fn("prepareEventWait")(function* (
   // that holds from here.
   const timeoutBehavior = config.waitTimeoutBehavior ?? "continue";
 
-  const preparation: WaitPreparation<EventPrepared> = {
+  return {
     status: "ready",
     anchorAtIso: encodeIsoTimestamp(anchorAt),
     park: {
@@ -115,8 +111,7 @@ const prepareEventWait = Effect.fn("prepareEventWait")(function* (
     },
     prepared: { resumeToken, timeoutBehavior },
   };
-  return preparation;
-});
+}
 
 /**
  * What the arriving Event carried, and nothing of the envelope it came in.
