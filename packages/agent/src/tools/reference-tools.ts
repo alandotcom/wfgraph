@@ -13,7 +13,7 @@
  * reference picker reads them.
  */
 
-import { Effect, Schema } from "effect";
+import { Array as Arr, Effect, Schema } from "effect";
 import { Tool } from "effect/ai";
 import {
   entityStateConditionPath,
@@ -74,7 +74,15 @@ const referenceSchema = Schema.Struct({
   ),
   /** True when a condition must provide a recordKey under this path. */
   openRecord: Schema.optionalKey(Schema.Boolean),
+  /**
+   * The named steps that can read this value, present only when some of the
+   * steps the call named cannot, or read it differently.
+   */
+  readableBy: Schema.optionalKey(Schema.Array(Schema.String)),
 });
+
+/** The most steps one `list_references` call may name. */
+export const MAX_REFERENCE_NODES = 25;
 
 /**
  * A field one upstream node offers, with the Events behind it where there are
@@ -134,10 +142,10 @@ function outputFieldsOf(input: {
 
 export const ListReferences = Tool.make("list_references", {
   description:
-    "Every value a given node's config may refer to, each as a finished {{@nodeId:Label.path}} token. Only nodes above this one in the graph can be referenced, so connect a node before filling in a config that reads from upstream. A tracked Entity is also available through the virtual $entity source, even without Entity Eligibility; use its token in text config and its path in set_condition. The Lifecycle Node offers the payload of the Arriving Event, which an event-mode Wait above this node replaces with the Events that Wait parks on: read declaredBy to see which Events a path came from, and expect the Start Event payload to be unavailable below such a Wait. Re-read this list after configuring any Wait above this node, because that edit changes what is addressable here.",
+    "Every value the named nodes' configs may refer to, each as a finished {{@nodeId:Label.path}} token. Name every step you are about to configure in one call. A reference with no readableBy is readable by every node you named; one with readableBy is readable only by the nodes it lists. Only nodes above a node in the graph can be referenced, so connect a node before asking what it can read. A tracked Entity is also available through the virtual $entity source, even without Entity Eligibility; use its token in text config and its path in set_condition. The Lifecycle Node offers the payload of the Arriving Event, which an event-mode Wait above a node replaces with the Events that Wait parks on: read declaredBy to see which Events a path came from, and expect the Start Event payload to be unavailable below such a Wait. Re-read this list after configuring any Wait above a node, because that edit changes what is addressable there.",
   parameters: Schema.Struct({
-    nodeId: Schema.String.annotate({
-      description: "The node whose config is being filled in.",
+    nodeIds: Schema.Array(Schema.String).annotate({
+      description: `The nodes whose configs are being filled in, at most ${MAX_REFERENCE_NODES}.`,
     }),
     query: Schema.optionalKey(Schema.String).annotate({
       description:
@@ -257,12 +265,50 @@ export function referencesForNode(input: {
   return [...upstreamReferences, ...entityReferences];
 }
 
+type NodeReference = NonNullable<ReturnType<typeof referencesForNode>>[number];
+
+/**
+ * The references of several nodes as one list, in first-seen order. A value
+ * two nodes read identically appears once. `readableBy` names the nodes that
+ * read an entry, and is left off an entry every named node reads, so the
+ * common case of a shared upstream costs no extra text.
+ */
+function mergeReferences(
+  perNode: readonly {
+    readonly nodeId: string;
+    readonly references: readonly NodeReference[];
+  }[]
+): (NodeReference & { readonly readableBy?: readonly string[] })[] {
+  // Keyed by the whole entry: the same token can be nullable for one node and
+  // not for another, or come from different Events, and those stay apart.
+  const merged = new Map<
+    string,
+    { reference: NodeReference; readableBy: string[] }
+  >();
+  for (const { nodeId, references } of perNode) {
+    for (const reference of references) {
+      const key = JSON.stringify(reference);
+      const entry = merged.get(key);
+      if (entry) {
+        entry.readableBy.push(nodeId);
+      } else {
+        merged.set(key, { reference, readableBy: [nodeId] });
+      }
+    }
+  }
+  return [...merged.values()].map(({ reference, readableBy }) =>
+    readableBy.length === perNode.length
+      ? reference
+      : { ...reference, readableBy }
+  );
+}
+
 export const referenceToolHandlers = Effect.gen(function* () {
   const draft = yield* WorkflowDraft;
 
   return {
     list_references: (input: {
-      readonly nodeId: string;
+      readonly nodeIds: readonly string[];
       readonly query?: string | undefined;
       readonly sourceNodeId?: string | undefined;
       readonly type?: string | undefined;
@@ -270,16 +316,39 @@ export const referenceToolHandlers = Effect.gen(function* () {
       readonly limit?: number | undefined;
     }) =>
       Effect.flatMap(draft.current, (document) => {
-        const references = referencesForNode({
-          nodeId: input.nodeId,
-          document,
-          catalog: draft.catalog,
-        });
-        if (!references) {
+        const nodeIds = Arr.dedupe(input.nodeIds);
+        if (nodeIds.length === 0) {
           return Effect.fail({
-            reason: `No node with id ${input.nodeId}. Call read_workflow to see what the graph holds.`,
+            reason: "list_references needs at least one node id in nodeIds.",
           });
         }
+        if (nodeIds.length > MAX_REFERENCE_NODES) {
+          return Effect.fail({
+            reason: `list_references takes at most ${MAX_REFERENCE_NODES} node ids; split the call.`,
+          });
+        }
+        const perNode = nodeIds.map((nodeId) => ({
+          nodeId,
+          references: referencesForNode({
+            nodeId,
+            document,
+            catalog: draft.catalog,
+          }),
+        }));
+        const missing = perNode
+          .filter((entry) => entry.references === undefined)
+          .map((entry) => entry.nodeId);
+        if (missing.length > 0) {
+          return Effect.fail({
+            reason: `No node with id ${missing.join(", ")}. Call read_workflow to see what the graph holds.`,
+          });
+        }
+        const references = mergeReferences(
+          perNode.map((entry) => ({
+            nodeId: entry.nodeId,
+            references: entry.references ?? [],
+          }))
+        );
 
         const needle = input.query?.trim().toLowerCase() ?? "";
         const matches = references.filter(

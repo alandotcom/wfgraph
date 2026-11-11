@@ -111,7 +111,7 @@ describe("summarizeAgentTrace", () => {
         step: 1,
         id: "call-1",
         name: "list_references",
-        input: { nodeId: "notify" },
+        input: { nodeIds: ["notify"] },
       },
       {
         type: "tool-result",

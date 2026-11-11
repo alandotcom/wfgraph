@@ -120,7 +120,7 @@ const successCases: readonly ConformanceCase[] = [
   { name: "read_workflow", arguments: {} },
   { name: "read_nodes", arguments: { nodeIds: ["score"] } },
   { name: "validate_workflow", arguments: {} },
-  { name: "list_references", arguments: { nodeId: "notify" } },
+  { name: "list_references", arguments: { nodeIds: ["notify"] } },
   {
     name: "add_node",
     arguments: { actionId: "score-applicant", label: "Added score" },
@@ -185,7 +185,7 @@ const refusalCases: readonly ConformanceCase[] = [
   { name: "describe_action", arguments: { actionId: "missing/action" } },
   { name: "describe_event", arguments: { eventName: "missing.event" } },
   { name: "read_nodes", arguments: { nodeIds: ["missing"] } },
-  { name: "list_references", arguments: { nodeId: "missing" } },
+  { name: "list_references", arguments: { nodeIds: ["missing"] } },
   {
     name: "add_node",
     arguments: { actionId: "missing/action", label: "Missing" },

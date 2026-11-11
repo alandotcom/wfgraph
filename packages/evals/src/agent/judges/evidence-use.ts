@@ -49,17 +49,37 @@ function referenceTokensIn(call: AgentTrajectoryToolCall): string[] {
   );
 }
 
-function referenceTokensReturnedBy(call: AgentTrajectoryToolCall): string[] {
+/**
+ * The tokens a list_references answer returned. With `nodeId`, only the ones
+ * that answer says the step can read: a reference with no `readableBy` is
+ * readable by every step the call named, and one with it by the steps listed.
+ */
+function referenceTokensReturnedBy(
+  call: AgentTrajectoryToolCall,
+  nodeId?: string
+): string[] {
   const result = call.result?.result;
   if (!isJsonObject(result) || !Array.isArray(result.references)) {
     return [];
   }
 
-  return result.references.flatMap((reference) =>
-    isJsonObject(reference) && typeof reference.token === "string"
+  return result.references.flatMap((reference) => {
+    if (!isJsonObject(reference) || typeof reference.token !== "string") {
+      return [];
+    }
+    const readableBy = reference.readableBy;
+    return nodeId === undefined ||
+      !Array.isArray(readableBy) ||
+      readableBy.includes(nodeId)
       ? [reference.token]
-      : []
-  );
+      : [];
+  });
+}
+
+/** Whether a list_references call named this step among its `nodeIds`. */
+function namesStep(call: AgentTrajectoryToolCall, nodeId: string): boolean {
+  const nodeIds = call.input.nodeIds;
+  return Array.isArray(nodeIds) && nodeIds.includes(nodeId);
 }
 
 function configuredEventNames(call: AgentTrajectoryToolCall): string[] {
@@ -371,8 +391,10 @@ export function assessEvidenceUse(
           call,
           (candidate) =>
             candidate.name === "list_references" &&
-            (createsTarget || candidate.input.nodeId === nodeId) &&
-            referenceTokensReturnedBy(candidate).includes(token)
+            (typeof nodeId === "string"
+              ? namesStep(candidate, nodeId) &&
+                referenceTokensReturnedBy(candidate, nodeId).includes(token)
+              : referenceTokensReturnedBy(candidate).includes(token))
         )
       ) {
         return {

@@ -67,7 +67,7 @@ describe("list_references", () => {
         edges: [entryToScore, scoreToSlack],
         catalog,
       });
-      const result = yield* tools.list_references({ nodeId: "notify" });
+      const result = yield* tools.list_references({ nodeIds: ["notify"] });
 
       expect(result.references).toContainEqual(
         expect.objectContaining({
@@ -108,7 +108,7 @@ describe("list_references", () => {
         catalog: catalogWithHiddenOutput,
       });
 
-      const result = yield* tools.list_references({ nodeId: "notify" });
+      const result = yield* tools.list_references({ nodeIds: ["notify"] });
 
       expect(
         result.references.some((reference) => reference.path === "hops")
@@ -164,7 +164,7 @@ describe("list_references", () => {
       });
 
       const result = yield* tools.list_references({
-        nodeId: "notify",
+        nodeIds: ["notify"],
         sourceNodeId: "$entity",
       });
 
@@ -230,7 +230,7 @@ describe("list_references", () => {
       });
 
       const result = yield* tools.list_references({
-        nodeId: "notify",
+        nodeIds: ["notify"],
         query: "field",
         limit: 3,
       });
@@ -267,7 +267,7 @@ describe("list_references", () => {
         catalog: catalogWithOpenRecord,
       });
 
-      const result = yield* tools.list_references({ nodeId: "notify" });
+      const result = yield* tools.list_references({ nodeIds: ["notify"] });
 
       expect(result.references).toContainEqual(
         expect.objectContaining({
@@ -286,7 +286,7 @@ describe("list_references", () => {
         edges: [entryToScore],
         catalog,
       });
-      const result = yield* tools.list_references({ nodeId: "score" });
+      const result = yield* tools.list_references({ nodeIds: ["score"] });
 
       // The Lifecycle Node carries no label of its own, so the token uses the
       // name the editor shows.
@@ -307,7 +307,7 @@ describe("list_references", () => {
       expect(email?.description).toBe("Contact address.");
 
       const byLabel = yield* tools.list_references({
-        nodeId: "score",
+        nodeIds: ["score"],
         query: "contact email",
       });
       expect(byLabel.references.map((reference) => reference.path)).toEqual([
@@ -326,7 +326,7 @@ describe("list_references", () => {
         edges: [entryToScore],
         catalog,
       });
-      const result = yield* tools.list_references({ nodeId: "score" });
+      const result = yield* tools.list_references({ nodeIds: ["score"] });
 
       const applicantId = result.references.find(
         (reference) => reference.path === "applicantId"
@@ -348,7 +348,7 @@ describe("list_references", () => {
         edges: [entryToScore, scoreToSlack],
         catalog,
       });
-      const result = yield* tools.list_references({ nodeId: "score" });
+      const result = yield* tools.list_references({ nodeIds: ["score"] });
 
       expect(
         result.references.some(
@@ -364,9 +364,66 @@ describe("list_references", () => {
         nodes: [lifecycleNode(["applicant.created"]), scoreNode],
         catalog,
       });
-      const result = yield* tools.list_references({ nodeId: "score" });
+      const result = yield* tools.list_references({ nodeIds: ["score"] });
 
       expect(result.references).toEqual([]);
+    })
+  );
+
+  it.effect(
+    "answers for several steps in one call, naming the steps that can read a value only where some cannot",
+    () =>
+      Effect.gen(function* () {
+        const { tools } = yield* agentToolsFor({
+          nodes: [lifecycleNode(["applicant.created"]), scoreNode, slackNode],
+          edges: [entryToScore, scoreToSlack],
+          catalog,
+        });
+        const result = yield* tools.list_references({
+          nodeIds: ["score", "notify"],
+        });
+
+        // Both steps sit below the Lifecycle Node, so its fields name no step.
+        const email = result.references.filter(
+          (reference) => reference.token === "{{@entry:Lifecycle.email}}"
+        );
+        expect(email).toHaveLength(1);
+        expect(email[0]?.readableBy).toBeUndefined();
+        // Only the step below "score" reads its output.
+        expect(
+          result.references.find(
+            (reference) =>
+              reference.token === "{{@score:Score applicant.score}}"
+          )?.readableBy
+        ).toEqual(["notify"]);
+      })
+  );
+
+  it.effect("names no step on a reference when one step is asked about", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [lifecycleNode(["applicant.created"]), scoreNode, slackNode],
+        edges: [entryToScore, scoreToSlack],
+        catalog,
+      });
+      const result = yield* tools.list_references({ nodeIds: ["notify"] });
+
+      expect(
+        result.references.every(
+          (reference) => reference.readableBy === undefined
+        )
+      ).toBe(true);
+    })
+  );
+
+  it.effect("refuses a call that names no step", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({ nodes: [scoreNode], catalog });
+      const failure = yield* Effect.flip(
+        tools.list_references({ nodeIds: [] })
+      );
+
+      expect(failure.reason).toContain("at least one");
     })
   );
 
@@ -374,7 +431,7 @@ describe("list_references", () => {
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({ nodes: [scoreNode], catalog });
       const failure = yield* Effect.flip(
-        tools.list_references({ nodeId: "ghost" })
+        tools.list_references({ nodeIds: ["ghost"] })
       );
 
       expect(failure.reason).toContain("ghost");
@@ -429,7 +486,7 @@ describe("list_references below an Event wait", () => {
   it.effect("names the Events a Lifecycle Node path came from", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor(belowTheWait(eventWait));
-      const result = yield* tools.list_references({ nodeId: "notify" });
+      const result = yield* tools.list_references({ nodeIds: ["notify"] });
 
       expect(result.references).toContainEqual(
         expect.objectContaining({
@@ -444,7 +501,7 @@ describe("list_references below an Event wait", () => {
   it.effect("drops the Start Event payload the wait replaced", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor(belowTheWait(eventWait));
-      const result = yield* tools.list_references({ nodeId: "notify" });
+      const result = yield* tools.list_references({ nodeIds: ["notify"] });
 
       // `email` belongs to applicant.created alone, which no longer reaches here.
       expect(
@@ -458,7 +515,7 @@ describe("list_references below an Event wait", () => {
     () =>
       Effect.gen(function* () {
         const { tools } = yield* agentToolsFor(belowTheWait(eventWait));
-        const result = yield* tools.list_references({ nodeId: "notify" });
+        const result = yield* tools.list_references({ nodeIds: ["notify"] });
 
         expect(
           result.references.find(
@@ -473,7 +530,7 @@ describe("list_references below an Event wait", () => {
   it.effect("leaves them as declared when the wait skips on timeout", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor(belowTheWait(skippingWait));
-      const result = yield* tools.list_references({ nodeId: "notify" });
+      const result = yield* tools.list_references({ nodeIds: ["notify"] });
 
       expect(
         result.references.find(
@@ -488,7 +545,7 @@ describe("list_references below an Event wait", () => {
   it.effect("names the Start Events above the wait", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor(belowTheWait(eventWait));
-      const result = yield* tools.list_references({ nodeId: "wait" });
+      const result = yield* tools.list_references({ nodeIds: ["wait"] });
 
       expect(result.references).toContainEqual(
         expect.objectContaining({
@@ -496,6 +553,26 @@ describe("list_references below an Event wait", () => {
           declaredBy: ["applicant.created"],
         })
       );
+    })
+  );
+
+  it.effect("keeps a value apart for the steps that read it differently", () =>
+    Effect.gen(function* () {
+      // "wait" reads the Start Event's applicantId. The step below the Event wait
+      // reads the waited-for Event's, which a timeout can leave absent.
+      const { tools } = yield* agentToolsFor(belowTheWait(eventWait));
+      const result = yield* tools.list_references({
+        nodeIds: ["wait", "notify"],
+      });
+
+      const applicantId = result.references.filter(
+        (reference) =>
+          reference.sourceNodeId === "entry" && reference.path === "applicantId"
+      );
+      expect(applicantId.map((reference) => reference.readableBy)).toEqual([
+        ["wait"],
+        ["notify"],
+      ]);
     })
   );
 });

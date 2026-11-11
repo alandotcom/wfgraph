@@ -317,7 +317,7 @@ describe("assessEvidenceUse", () => {
     const trajectory = buildAgentTrajectory([
       call("read", "read_workflow"),
       result("read", "read_workflow"),
-      call("references", "list_references", { nodeId: "score" }),
+      call("references", "list_references", { nodeIds: ["score"] }),
       valueResult("references", "list_references", {
         references: [
           {
@@ -355,7 +355,7 @@ describe("assessEvidenceUse", () => {
       call("insert", "insert_node_on_edge", {
         actionId: "score-applicant",
       }),
-      call("references", "list_references", { nodeId: "score" }),
+      call("references", "list_references", { nodeIds: ["score"] }),
       valueResult("references", "list_references", {
         references: [
           {
@@ -375,6 +375,54 @@ describe("assessEvidenceUse", () => {
     expect(assessEvidenceUse(trajectory)).toMatchObject({ score: 1 });
   });
 
+  it("reads a list_references answer for several steps by the steps each reference names", () => {
+    const shared = "{{@entry:Lifecycle.applicantId}}";
+    const scoreOnly = "{{@lookup:Look up.profileId}}";
+    const trajectoryWriting = (nodeId: string, token: string) =>
+      buildAgentTrajectory([
+        call("read", "read_workflow"),
+        result("read", "read_workflow"),
+        call("describe", "describe_action", { actionId: "score-applicant" }),
+        result("describe", "describe_action"),
+        call("references", "list_references", {
+          nodeIds: ["lookup", "score"],
+        }),
+        valueResult("references", "list_references", {
+          references: [
+            {
+              token: shared,
+              sourceNodeId: "entry",
+              sourceNodeLabel: "Lifecycle",
+              path: "applicantId",
+            },
+            {
+              token: scoreOnly,
+              sourceNodeId: "lookup",
+              sourceNodeLabel: "Look up",
+              path: "profileId",
+              readableBy: ["score"],
+            },
+          ],
+        }),
+        call("update", "update_node", {
+          nodeId,
+          config: [{ key: "applicantId", value: token }],
+        }),
+        result("update", "update_node"),
+      ]);
+
+    expect(
+      assessEvidenceUse(trajectoryWriting("lookup", shared))
+    ).toMatchObject({ score: 1 });
+    expect(
+      assessEvidenceUse(trajectoryWriting("score", scoreOnly))
+    ).toMatchObject({ score: 1 });
+    expect(assessEvidenceUse(trajectoryWriting("lookup", scoreOnly))).toEqual({
+      score: 0,
+      rationale: `${scoreOnly} was used before list_references returned that exact token for lookup.`,
+    });
+  });
+
   it("accepts a token a new connected step carries from an earlier list_references answer", () => {
     const token = "{{@entry:Lifecycle.applicantId}}";
     const trajectory = buildAgentTrajectory([
@@ -382,7 +430,7 @@ describe("assessEvidenceUse", () => {
       result("read", "read_workflow"),
       call("describe", "describe_action", { actionId: "score-applicant" }),
       result("describe", "describe_action"),
-      call("references", "list_references", { nodeId: "notify" }),
+      call("references", "list_references", { nodeIds: ["notify"] }),
       valueResult("references", "list_references", {
         references: [
           {

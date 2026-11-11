@@ -137,15 +137,20 @@ export function agentToolLabel(input: {
       return "Listed the integrations";
 
     case "list_references": {
-      // A read, so no server sentence follows it. The node is named by id
-      // rather than label: this file holds no canvas, and the id is what the
-      // model wrote.
-      const nodeId = text(args, "nodeId") ?? "a step";
+      // A read, so no server sentence follows it. A single step is named by
+      // id rather than label: this file holds no canvas, and the id is what
+      // the model wrote. Several steps are counted.
+      const nodeIds = args?.nodeIds;
+      const named = Array.isArray(nodeIds) ? nodeIds : [];
+      const subject =
+        named.length > 1
+          ? `${named.length} steps`
+          : (asNonEmptyString(named[0]) ?? "a step");
       const query = text(args, "query");
       if (query) {
-        return `Searched what ${nodeId} can read for ${quoted(query)}`;
+        return `Searched what ${subject} can read for ${quoted(query)}`;
       }
-      return `Read what ${nodeId} can reference`;
+      return `Read what ${subject} can reference`;
     }
 
     case "add_node": {
