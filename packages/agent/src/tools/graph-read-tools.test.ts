@@ -244,30 +244,57 @@ describe("validate_workflow", () => {
     })
   );
 
-  it.effect("forwards the injected full draft validation unchanged", () =>
+  it.effect("separates whether the draft saves from whether it publishes", () =>
     Effect.gen(function* () {
-      const validation = {
-        draftValid: false,
-        structuralIssues: ["Graph contains duplicate edge IDs"],
-        publishBlockers: [
-          {
-            kind: "missing_integration",
-            message: "Connect Slack before publication.",
-          },
-        ],
-        warnings: [
-          {
-            kind: "broken_reference",
-            message: "A template refers to a deleted node.",
-          },
-        ],
-      } as const;
+      const blockers = [
+        {
+          kind: "missing_integration",
+          message: "Connect Slack before publication.",
+        },
+      ];
+      const warnings = [
+        {
+          kind: "broken_reference",
+          message: "A template refers to a deleted node.",
+        },
+      ];
       const { tools } = yield* agentToolsFor({
         catalog,
-        validateDraft: () => validation,
+        validateDraft: () => ({
+          draftValid: true,
+          structuralIssues: [],
+          publishBlockers: blockers,
+          warnings,
+        }),
       });
 
-      expect(yield* tools.validate_workflow()).toBe(validation);
+      expect(yield* tools.validate_workflow()).toEqual({
+        canSave: true,
+        saveIssues: [],
+        canPublish: false,
+        publishBlockers: blockers,
+        warnings,
+      });
+    })
+  );
+
+  it.effect("reports a draft that cannot save as one that cannot publish", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        catalog,
+        validateDraft: () => ({
+          draftValid: false,
+          structuralIssues: ["Graph contains duplicate edge IDs"],
+          publishBlockers: [],
+          warnings: [],
+        }),
+      });
+
+      expect(yield* tools.validate_workflow()).toMatchObject({
+        canSave: false,
+        saveIssues: ["Graph contains duplicate edge IDs"],
+        canPublish: false,
+      });
     })
   );
 });

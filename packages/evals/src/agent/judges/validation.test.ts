@@ -59,8 +59,9 @@ function validationResult(id: string, result: JsonObject): AgentTraceEvent[] {
 
 function matchingValidationResult(): JsonObject {
   return {
-    draftValid: true,
-    structuralIssues: [],
+    canSave: true,
+    saveIssues: [],
+    canPublish: false,
     publishBlockers: [
       {
         kind: "missing_integration",
@@ -238,17 +239,17 @@ describe("assessValidation", () => {
 
   it.each([
     [
-      "draftValid",
+      "canSave",
       {
         ...matchingValidationResult(),
-        draftValid: false,
+        canSave: false,
       },
     ],
     [
-      "structuralIssues",
+      "saveIssues",
       {
         ...matchingValidationResult(),
-        structuralIssues: ["Unexpected structure"],
+        saveIssues: ["Unexpected structure"],
       },
     ],
     [

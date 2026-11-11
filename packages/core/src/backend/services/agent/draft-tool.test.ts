@@ -382,7 +382,8 @@ describe("executeDraftTool", () => {
       assert.isFalse(write.isFailure);
       assert.strictEqual(stored().draftRevision, 2);
       assert.strictEqual(stored().graph.edges.length, 5);
-      assert.isTrue(validation.result.draftValid);
+      assert.isTrue(validation.result.canSave);
+      assert.isFalse(validation.result.canPublish);
       assert.deepInclude(
         Array.isArray(validation.result.publishBlockers)
           ? validation.result.publishBlockers

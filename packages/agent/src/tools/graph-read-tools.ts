@@ -185,13 +185,18 @@ export const ReadNodes = Tool.make("read_nodes", {
 
 export const ValidateWorkflow = Tool.make("validate_workflow", {
   description:
-    "Check draft structure separately from the backend's canonical publication blockers and permitted warnings. Run this after edits and before describing completion.",
+    "Check the draft: whether it can be saved, and whether it can be published. Run this after edits and before describing completion.",
   success: Schema.Struct({
-    draftValid: Schema.Boolean.annotate({
-      description: "Whether the graph structure is valid enough to save.",
+    canSave: Schema.Boolean.annotate({
+      description:
+        "Whether the graph structure is valid enough to save. A draft that saves can still be unpublishable.",
     }),
-    structuralIssues: Schema.Array(Schema.String).annotate({
+    saveIssues: Schema.Array(Schema.String).annotate({
       description: "Graph structure problems that keep the draft from saving.",
+    }),
+    canPublish: Schema.Boolean.annotate({
+      description:
+        "Whether the draft can be published now: it saves and has no publish blockers.",
     }),
     publishBlockers: Schema.Array(issueSchema).annotate({
       description:
@@ -259,6 +264,17 @@ export const graphReadToolHandlers = Effect.gen(function* () {
         });
       }),
 
-    validate_workflow: () => Effect.map(draft.current, draft.validateDraft),
+    validate_workflow: () =>
+      Effect.map(draft.current, (document) => {
+        const validation = draft.validateDraft(document);
+        return {
+          canSave: validation.draftValid,
+          saveIssues: validation.structuralIssues,
+          canPublish:
+            validation.draftValid && validation.publishBlockers.length === 0,
+          publishBlockers: validation.publishBlockers,
+          warnings: validation.warnings,
+        };
+      }),
   };
 });

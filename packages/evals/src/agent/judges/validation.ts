@@ -29,14 +29,14 @@ function validationMismatch(
   if (!isJsonObject(result)) {
     return "validate_workflow returned an invalid result.";
   }
-  if (result.draftValid !== (facts.graphStatus !== "invalid")) {
-    return "validate_workflow draftValid does not match completion facts.";
+  if (result.canSave !== (facts.graphStatus !== "invalid")) {
+    return "validate_workflow canSave does not match completion facts.";
   }
   if (
-    !Array.isArray(result.structuralIssues) ||
-    !isEqual(result.structuralIssues, facts.structuralIssues)
+    !Array.isArray(result.saveIssues) ||
+    !isEqual(result.saveIssues, facts.structuralIssues)
   ) {
-    return "validate_workflow structuralIssues do not match completion facts.";
+    return "validate_workflow saveIssues do not match completion facts.";
   }
   if (!isEqual(result.publishBlockers, facts.publishBlockers)) {
     return "validate_workflow publishBlockers do not match completion facts.";
