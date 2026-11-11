@@ -86,6 +86,7 @@ Handler|pass-reads-no-log-rows|PassReadsLogRows == TRUE|PassReadsLogRows == FALS
 Siblings|sibling-memo-refused|AdmitRunningStepWrites == TRUE|AdmitRunningStepWrites == FALSE|SucceededStepRunsOnce
 Siblings|release-before-steps-settle|ReleaseWaitsForSteps == TRUE|ReleaseWaitsForSteps == FALSE|SucceededStepRunsOnce OneBodyAtATime
 Siblings|interrupted-row-due-at-once|DelayWhileStepsRun == TRUE|DelayWhileStepsRun == FALSE|OneBodyAtATime
+Siblings|success-never-ends-the-node|IF memoA = "ok" /\ memoB = "ok" THEN "gone"|IF FALSE THEN "gone"|NodeEnds
 Timing|heartbeat-slower-than-lease|NodeHeartbeat == 1|NodeHeartbeat == 3|LiveLeaseNeverExpires
 Timing|no-cron-sweep|WorkerUsesCron == TRUE|WorkerUsesCron == FALSE|DeadlineHonouredOnTime EveryRunEndsInTime
 Timing|claim-ignores-the-deadline|ClaimWaitsForTheDeadline == TRUE|ClaimWaitsForTheDeadline == FALSE|NoResumeBeforeTheDeadline
