@@ -5,6 +5,9 @@
  * only while the run is open, so a run that ended answers nothing. Neither
  * takes a lock or decides anything: `executorActivityOf` classifies the facts.
  * `readDueBacklog` counts the rows a claim would lease, for a health check.
+ * PostgreSQL keeps leases on its own clock (`lease-clock.ts`), so a hold's
+ * `leaseExpiresAt` is answered on the reading process's clock, the clock its
+ * caller compares it with.
  */
 
 import {
@@ -17,7 +20,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { Effect } from "effect";
+import { Effect } from "effect";
 import { compact } from "es-toolkit/array";
 import {
   workflowExecutionLogs,
@@ -46,6 +49,11 @@ import {
   unconsumedWakeFields,
   unconsumedWakesOf,
 } from "#src/backend/services/executions/repo/executor-activity";
+import {
+  databaseClockOffset,
+  onDatabaseClock,
+  onProcessClock,
+} from "#src/backend/services/executions/repo/lease-clock";
 
 /** The executor-state slice of `ExecutionRepo`. */
 export type ExecutorStateRepoMethods = {
@@ -88,7 +96,11 @@ export type DueBacklog = {
   readonly oldestWakeAt: Date | null;
 };
 
-/** Whether a claim lane of any kind leases this row at `now`. */
+/**
+ * Whether a claim lane of any kind leases this row at `now`, with `leaseNow`
+ * the same moment on the clock the backend keeps leases on, as `dueSchedule`
+ * takes it.
+ */
 export function dueOfAnyKind(
   columns: {
     kind: Column;
@@ -96,11 +108,12 @@ export function dueOfAnyKind(
     wakeAt: Column;
     leaseExpiresAt: Column;
   },
-  now: BoundInstant
+  now: BoundInstant,
+  leaseNow?: BoundInstant
 ): SQL | undefined {
   return or(
     ...EXECUTION_SCHEDULE_KINDS.map((kind) =>
-      dueSchedule(columns, { kind, now })
+      dueSchedule(columns, { kind, now, leaseNow })
     )
   );
 }
@@ -110,10 +123,14 @@ const runningLog = alias(workflowExecutionLogs, "running_log");
 /** The log rows that name the node of a failing step. */
 const failingLog = alias(workflowExecutionLogs, "failing_log");
 
-/** The holds of `executionIds`: their schedule rows, then those rows' failing steps. */
+/**
+ * The holds of `executionIds`: their schedule rows, then those rows' failing
+ * steps, with each lease expiry moved onto the process clock by `offsetMs`.
+ */
 async function readHolds(
   db: WfGraphDatabase,
-  executionIds: readonly string[]
+  executionIds: readonly string[],
+  offsetMs: number
 ): Promise<Map<string, ExecutorHold>> {
   if (executionIds.length === 0) return new Map();
   const schedules = await db
@@ -153,7 +170,19 @@ async function readHolds(
         schedules.map((row) => row.schedule.id)
       )
     );
-  return executorHolds(schedules, failing);
+  return executorHolds(
+    schedules.map((row) => ({
+      ...row,
+      schedule: {
+        ...row.schedule,
+        leaseExpiresAt:
+          row.schedule.leaseExpiresAt === null
+            ? null
+            : onProcessClock(row.schedule.leaseExpiresAt, offsetMs),
+      },
+    })),
+    failing
+  );
 }
 
 /** Builds the executor-state slice of `ExecutionRepo` over one database. */
@@ -162,25 +191,31 @@ export function makeExecutorStateMethods(
 ): ExecutorStateRepoMethods {
   return {
     findExecutorState: (executionId) =>
-      database.query(async (db): Promise<ExecutorState | null> => {
-        const hold = (await readHolds(db, [executionId])).get(executionId);
-        if (hold === undefined) return null;
-        const wakes = await db
-          .select(unconsumedWakeFields(workflowWaitStates))
-          .from(workflowWaitStates)
-          .where(unconsumedWakesOf(workflowWaitStates, executionId))
-          .orderBy(workflowWaitStates.createdAt, workflowWaitStates.id);
-        return {
-          ...hold,
-          unconsumedWakes: wakes.map((wake) => ({
-            ...wake,
-            kind: parkWakeKind(wake.kind),
-          })),
-        };
-      }),
+      Effect.flatMap(databaseClockOffset(database), (offsetMs) =>
+        database.query(async (db): Promise<ExecutorState | null> => {
+          const hold = (await readHolds(db, [executionId], offsetMs)).get(
+            executionId
+          );
+          if (hold === undefined) return null;
+          const wakes = await db
+            .select(unconsumedWakeFields(workflowWaitStates))
+            .from(workflowWaitStates)
+            .where(unconsumedWakesOf(workflowWaitStates, executionId))
+            .orderBy(workflowWaitStates.createdAt, workflowWaitStates.id);
+          return {
+            ...hold,
+            unconsumedWakes: wakes.map((wake) => ({
+              ...wake,
+              kind: parkWakeKind(wake.kind),
+            })),
+          };
+        })
+      ),
 
     listExecutorHolds: (executionIds) =>
-      database.query((db) => readHolds(db, executionIds)),
+      Effect.flatMap(databaseClockOffset(database), (offsetMs) =>
+        database.query((db) => readHolds(db, executionIds, offsetMs))
+      ),
 
     listFailingNodeIds: (executionId) =>
       database.query(async (db) => {
@@ -202,15 +237,26 @@ export function makeExecutorStateMethods(
       }),
 
     readDueBacklog: (now) =>
-      database.query(async (db): Promise<DueBacklog> => {
-        const [row] = await db
-          .select({
-            due: count(),
-            oldestWakeAt: min(workflowExecutionSchedule.wakeAt),
-          })
-          .from(workflowExecutionSchedule)
-          .where(dueOfAnyKind(workflowExecutionSchedule, now));
-        return { due: row?.due ?? 0, oldestWakeAt: row?.oldestWakeAt ?? null };
-      }),
+      Effect.flatMap(databaseClockOffset(database), (offsetMs) =>
+        database.query(async (db): Promise<DueBacklog> => {
+          const [row] = await db
+            .select({
+              due: count(),
+              oldestWakeAt: min(workflowExecutionSchedule.wakeAt),
+            })
+            .from(workflowExecutionSchedule)
+            .where(
+              dueOfAnyKind(
+                workflowExecutionSchedule,
+                now,
+                onDatabaseClock(now, offsetMs)
+              )
+            );
+          return {
+            due: row?.due ?? 0,
+            oldestWakeAt: row?.oldestWakeAt ?? null,
+          };
+        })
+      ),
   };
 }

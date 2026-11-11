@@ -2,7 +2,8 @@
  * PostgreSQL keeps leases on the database's clock, so a worker whose own
  * clock runs ahead of the database's cannot take a lease that is still live.
  * A worker's clock is faked through `Date`, which is what its default `now`
- * and the offset measurement both read.
+ * and the offset measurement both read. The Runs view's reads answer a lease
+ * on the reader's clock, so a reader whose clock runs ahead still sees it live.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +21,7 @@ import {
   sharedPostgresTestDatabase,
 } from "#src/backend/persistence/postgres-test-database";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
+import { executorActivityOf } from "#src/backend/services/executions/repo/executor-activity";
 
 const shared = sharedPostgresTestDatabase();
 const skip = postgresTestUrl()
@@ -98,6 +100,48 @@ function claimAll(workerId: string) {
       vi.useRealTimers();
 
       expect(claimed).toMatchObject([{ kind: "run", executionId }]);
+    });
+
+    it("answers a live lease as running to a Runs view reader whose clock runs ahead of the database's", async () => {
+      const database = await openDatabase();
+      const holder = await seeded(await database.open());
+      const executionId = await holder.run(
+        Effect.gen(function* () {
+          const run = yield* scheduledRun(new Date());
+          yield* claimRun(run, new Date());
+          return run;
+        })
+      );
+
+      const realNow = Date.now();
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(realNow + 2 * LEASE_MS);
+      const ahead = await database.open();
+      const read = await ahead.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const now = new Date();
+          const state = yield* executions.findExecutorState(executionId);
+          const holds = yield* executions.listExecutorHolds([executionId]);
+          const backlog = yield* executions.readDueBacklog(now);
+          return { now, state, hold: holds.get(executionId), backlog };
+        })
+      );
+      vi.useRealTimers();
+
+      if (read.state === null || read.hold === undefined) {
+        throw new Error("The leased run has no executor state");
+      }
+      expect(
+        executorActivityOf({ hold: read.state, wakes: [], now: read.now })
+      ).toMatchObject({ kind: "running" });
+      expect(
+        executorActivityOf({ hold: read.hold, wakes: [], now: read.now })
+      ).toMatchObject({ kind: "running" });
+      expect(read.state.leaseExpiresAt?.getTime()).toBeGreaterThan(
+        read.now.getTime()
+      );
+      expect(read.backlog.due).toBe(0);
     });
   }
 );
