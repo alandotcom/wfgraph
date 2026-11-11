@@ -521,6 +521,40 @@ operation calls `allows` once again when the operation runs. A custom asynchrono
 therefore tolerate concurrent bootstrap calls. The built-in roles and collection policies are
 local and perform no asynchronous fanout.
 
+## The build agent
+
+The editor's Agent panel is a chat that reads the catalog and edits the open
+workflow. It is off until `agent` names a model, and the editor then shows no
+panel. A turn runs on the server against the provider `agent.provider` names, through
+Effect's provider package for it. A turn's history, the graph the editor holds, and the
+canvas selection arrive with each request, and nothing about a conversation is stored
+on the server.
+
+```ts
+const wfgraph = await createWfGraphApp({
+  agent: { apiKey: process.env.OPENAI_API_KEY },
+  ...
+});
+```
+
+| `agent.provider`    | Endpoint `baseUrl` must implement                                | `model`                                       | `reasoningEffort`                                                                             |
+| ------------------- | ---------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `openai` (default)  | `POST {baseUrl}/responses`, OpenAI's Responses API               | Defaults to `gpt-6.1-terra`                   | Sent as `reasoning.effort`, with a reasoning summary. Defaults to `medium`                    |
+| `anthropic`         | `POST {baseUrl}/v1/messages`, Anthropic's Messages API           | Required                                      | `low` to `max`, sent as `output_config.effort` beside adaptive thinking. Defaults to `medium` |
+| `openrouter`        | `POST {baseUrl}/chat/completions`, OpenRouter's API              | Required, such as `anthropic/claude-opus-5-5` | Sent as `reasoning.effort` only when set                                                      |
+| `openai-compatible` | `POST {baseUrl}/chat/completions`, OpenAI's Chat Completions API | Required                                      | Sent as `reasoning_effort` only when set                                                      |
+
+- **Each endpoint streams.** Every request is a streaming request with function tools, so a
+  gateway in front of a provider must pass server-sent events through and accept a
+  `tools` array. A `baseUrl` for `openai` must serve the Responses API: a gateway that offers
+  Chat Completions alone, such as most self-hosted model servers, is `openai-compatible`.
+- **`anthropic` needs a Claude model from the 4.6 generation or later**, because the turn
+  asks for adaptive thinking, which earlier models refuse.
+- **A blank key is no agent.** `apiKey: process.env.ANTHROPIC_API_KEY` on a machine without
+  the variable leaves the agent off, where a blank `model` for a provider with no default
+  fails at startup. `openai-compatible` is the exception: its `baseUrl` turns it on, and the
+  key is sent as a bearer token only when one is set.
+
 ## MCP authoring
 
 Set `mcp: true` to expose the authenticated Model Context Protocol (MCP)
@@ -1470,10 +1504,11 @@ Cloudflare Workers and Hyperdrive.
 | `extensions.events`       | No                  | `defineEvent` values                                                                                                                                                                                                   |
 | `extensions.actions`      | No                  | `defineAction` values                                                                                                                                                                                                  |
 | `extensions.integrations` | No                  | `defineIntegration` values                                                                                                                                                                                             |
-| `agent.apiKey`            | No                  | OpenAI API key. Absent or blank turns the build agent off, and the editor then shows no chat panel                                                                                                                     |
-| `agent.model`             | No                  | Model id the agent runs against. Defaults to a current OpenAI model                                                                                                                                                    |
-| `agent.reasoningEffort`   | No                  | How hard the model thinks before answering: `none`, `low`, `medium`, `high`, `xhigh`, or `max`. Each model accepts its own subset. Defaults to `medium`                                                                |
-| `agent.baseUrl`           | No                  | An OpenAI-compatible endpoint that is not OpenAI's own                                                                                                                                                                 |
+| `agent.provider`          | No                  | `openai` (the default), `anthropic`, `openrouter`, or `openai-compatible`. See The build agent                                                                                                                         |
+| `agent.apiKey`            | No                  | The provider's API key. Absent or blank turns the build agent off, and the editor then shows no chat panel. Optional for `openai-compatible`                                                                           |
+| `agent.model`             | For some providers  | Model id the agent runs against. Defaults to a current OpenAI model for `openai`; required for every other provider                                                                                                    |
+| `agent.reasoningEffort`   | No                  | How hard the model thinks before answering. For `openai`: `none`, `low`, `medium`, `high`, `xhigh`, or `max`, defaulting to `medium`. See The build agent for the others                                               |
+| `agent.baseUrl`           | No                  | The provider endpoint to call in place of the provider's own. Required for `openai-compatible`, where it turns the agent on. See The build agent for what each provider's endpoint must implement                      |
 | `mcp`                     | No                  | Enables the authenticated stateless MCP authoring endpoint at `${basePath}/api/mcp`. Pass `true` for localhost development. For deployed hosts, configure allowed hostnames and origin hostnames. Disabled by default  |
 | `health`                  | No                  | `true` mounts `GET /api/health`, the readiness route outside `auth`. Off by default. See API endpoints                                                                                                                 |
 | `logger`                  | No                  | A `WfGraphLogger` that takes every record. See Logging below                                                                                                                                                           |

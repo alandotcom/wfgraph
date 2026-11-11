@@ -97,6 +97,7 @@ describe("postAgentChat", () => {
           Layer.mergeAll(
             makeAgentConfigLayer({
               enabled: true,
+              provider: "openai",
               apiKey: "test-key",
               model: "unused-built-in-model",
               reasoningEffort: "high",

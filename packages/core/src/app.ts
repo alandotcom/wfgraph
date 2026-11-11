@@ -58,7 +58,15 @@ export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
 export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
-export type { WfGraphAgentConfig } from "#src/backend/agent/config";
+export type {
+  AgentReasoningEffort,
+  AnthropicReasoningEffort,
+  WfGraphAgentConfig,
+  WfGraphAnthropicAgentConfig,
+  WfGraphOpenAiAgentConfig,
+  WfGraphOpenAiCompatibleAgentConfig,
+  WfGraphOpenRouterAgentConfig,
+} from "#src/backend/agent/config";
 export type { WfGraphRunnerOptions } from "#src/backend/executor/in-process-runner";
 export {
   WfGraphEventRefused,
@@ -153,8 +161,9 @@ export type WfGraphAppOptions = {
    * edits the open workflow.
    *
    * Absent, or with a blank `apiKey`, the agent is off: no model is called, and
-   * the editor shows no chat panel. A host passes its own key, conventionally
-   * `process.env.OPENAI_API_KEY`.
+   * the editor shows no chat panel. `provider` picks OpenAI (the default),
+   * Anthropic, OpenRouter or an OpenAI-compatible server, and a host passes its
+   * own key, conventionally `process.env.OPENAI_API_KEY` for OpenAI.
    */
   agent?: WfGraphAgentConfig | undefined;
   /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */

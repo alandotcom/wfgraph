@@ -30,8 +30,14 @@
         // These APIs are already used by the pinned Effect integration. Keep
         // new unstable exports visible instead of disabling the diagnostic.
         "allowedUnstableApis": [
+          "@effect/ai-anthropic/AnthropicClient#layer",
+          "@effect/ai-anthropic/AnthropicLanguageModel#model",
+          "@effect/ai-openai-compat/OpenAiClient#layer",
+          "@effect/ai-openai-compat/OpenAiLanguageModel#model",
           "@effect/ai-openai/OpenAiClient#layer",
           "@effect/ai-openai/OpenAiLanguageModel#model",
+          "@effect/ai-openrouter/OpenRouterClient#layer",
+          "@effect/ai-openrouter/OpenRouterLanguageModel#model",
           "@effect/opentelemetry/OtelTracer#OtelTracer",
           "@effect/opentelemetry/OtelTracer#layerWithoutOtelTracer",
           "@effect/sql-sqlite-node/SqliteClient#layer",

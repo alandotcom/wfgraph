@@ -101,7 +101,7 @@ export function makeBuiltInAgentRunner(
   settings: EnabledAgentSettings
 ): AgentRunner {
   return {
-    metadata: { provider: "openai", model: settings.model },
+    metadata: { provider: settings.provider, model: settings.model },
     run: (input) => runBuiltInAgentTurn(settings, input),
   };
 }

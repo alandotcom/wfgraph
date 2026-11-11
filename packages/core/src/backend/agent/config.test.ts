@@ -22,6 +22,7 @@ describe("readAgentSettings", () => {
   it("names a default model when the host names none", () => {
     expect(readAgentSettings({ apiKey: "sk-test" })).toEqual({
       enabled: true,
+      provider: "openai",
       apiKey: "sk-test",
       model: DEFAULT_AGENT_MODEL,
       reasoningEffort: DEFAULT_AGENT_REASONING_EFFORT,
@@ -33,6 +34,7 @@ describe("readAgentSettings", () => {
       readAgentSettings({ apiKey: "sk-test", reasoningEffort: "low" })
     ).toEqual({
       enabled: true,
+      provider: "openai",
       apiKey: "sk-test",
       model: DEFAULT_AGENT_MODEL,
       reasoningEffort: "low",
@@ -48,6 +50,7 @@ describe("readAgentSettings", () => {
       })
     ).toEqual({
       enabled: true,
+      provider: "openai",
       apiKey: "sk-test",
       model: "gpt-4.1",
       reasoningEffort: DEFAULT_AGENT_REASONING_EFFORT,
@@ -59,5 +62,68 @@ describe("readAgentSettings", () => {
     const settings = readAgentSettings({ apiKey: "sk-test", baseUrl: "" });
 
     expect(settings).not.toHaveProperty("baseUrl");
+  });
+
+  it("reads an Anthropic key, model and effort", () => {
+    expect(
+      readAgentSettings({
+        provider: "anthropic",
+        apiKey: " sk-ant ",
+        model: " claude-opus-5-5 ",
+      })
+    ).toEqual({
+      enabled: true,
+      provider: "anthropic",
+      apiKey: "sk-ant",
+      model: "claude-opus-5-5",
+      reasoningEffort: DEFAULT_AGENT_REASONING_EFFORT,
+    });
+  });
+
+  it("refuses a blank model for a provider with no default", () => {
+    expect(() =>
+      readAgentSettings({ provider: "anthropic", apiKey: "k", model: " " })
+    ).toThrow('agent.model is required for the "anthropic" provider');
+    expect(() =>
+      readAgentSettings({ provider: "openrouter", apiKey: "k", model: "" })
+    ).toThrow('agent.model is required for the "openrouter" provider');
+  });
+
+  it("sends OpenRouter no reasoning effort unless the host names one", () => {
+    expect(
+      readAgentSettings({
+        provider: "openrouter",
+        apiKey: "sk-or",
+        model: "anthropic/claude-opus-5-5",
+      })
+    ).toEqual({
+      enabled: true,
+      provider: "openrouter",
+      apiKey: "sk-or",
+      model: "anthropic/claude-opus-5-5",
+    });
+  });
+
+  it("turns an OpenAI-compatible server on by its base URL, with no key", () => {
+    expect(
+      readAgentSettings({
+        provider: "openai-compatible",
+        baseUrl: "http://localhost:11434/v1",
+        model: "qwen3",
+      })
+    ).toEqual({
+      enabled: true,
+      provider: "openai-compatible",
+      baseUrl: "http://localhost:11434/v1",
+      model: "qwen3",
+    });
+    expect(
+      readAgentSettings({
+        provider: "openai-compatible",
+        baseUrl: " ",
+        apiKey: "key",
+        model: "qwen3",
+      })
+    ).toEqual({ enabled: false });
   });
 });

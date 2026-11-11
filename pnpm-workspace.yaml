@@ -16,13 +16,16 @@ packages:
 # each other at exact versions, so a mismatched pair does not resolve; keeping the
 # version in one place is what makes "they move together" a fact rather than a rule
 # someone has to remember. A beta line also moves under you, hence the exact pin.
-# `effect` and the four `@effect/*` packages are here for the same reason: an
+# `effect` and the `@effect/*` packages are here for the same reason: an
 # @effect/* package names one exact core release as a peer, so the whole set moves
 # as one (ADR-0002).
 catalog:
-  # The build agent's model provider. The AI runtime itself is inside `effect`,
-  # at `effect/ai`; this package is the OpenAI half alone.
+  # The build agent's model providers. The AI runtime itself is inside `effect`,
+  # at `effect/ai`; each of these packages is one provider's half alone.
+  "@effect/ai-anthropic": 4.1.3
   "@effect/ai-openai": 4.1.3
+  "@effect/ai-openai-compat": 4.1.3
+  "@effect/ai-openrouter": 4.1.3
   "@effect/opentelemetry": 4.1.3
   "@effect/sql-sqlite-node": 4.1.3
   "@effect/vitest": 4.1.3
@@ -171,7 +174,10 @@ allowBuilds:
 # Security fixes and explicitly approved fresh releases can be installed normally.
 minimumReleaseAgeExclude:
   - "effect@4.1.3"
+  - "@effect/ai-anthropic@4.1.3"
   - "@effect/ai-openai@4.1.3"
+  - "@effect/ai-openai-compat@4.1.3"
+  - "@effect/ai-openrouter@4.1.3"
   - "@effect/opentelemetry@4.1.3"
   - "@effect/sql-sqlite-node@4.1.3"
   - "@effect/vitest@4.1.3"

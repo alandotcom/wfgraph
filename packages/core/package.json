@@ -73,7 +73,10 @@
     "build": "tsdown"
   },
   "dependencies": {
+    "@effect/ai-anthropic": "catalog:",
     "@effect/ai-openai": "catalog:",
+    "@effect/ai-openai-compat": "catalog:",
+    "@effect/ai-openrouter": "catalog:",
     "@effect/opentelemetry": "catalog:",
     "@effect/sql-sqlite-node": "catalog:",
     "@hono/node-server": "^2.1.6",

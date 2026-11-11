@@ -1,15 +1,17 @@
 /**
  * The host's agent configuration, and the service that carries it.
  *
- * The build agent is off until a host passes a key, which is how an adopter who
- * wants no AI in their editor gets none: nothing is called, nothing is billed,
- * and the chat panel is absent.
+ * The build agent is off until a host passes a key (or, for an
+ * OpenAI-compatible server, a base URL), which is how an adopter who wants no
+ * AI in their editor gets none: nothing is called, nothing is billed, and the
+ * chat panel is absent.
  *
  * The key arrives as an option and travels by argument, never as module state,
  * so a second app in the same process cannot read the first one's credential.
  */
 
 import { Context, Layer, Semaphore } from "effect";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 export const MAX_CONCURRENT_AGENT_TURNS = 4;
 
@@ -39,8 +41,8 @@ export const DEFAULT_AGENT_MODEL = "gpt-6.1-terra";
  * and `gpt-6-astra` refuse `none`, and the provider answers a refused value
  * with a message naming the ones that model takes.
  *
- * Hand-mirrored from `OpenAiLanguageModel.Config`, because `config.ts` names no
- * provider and `agent/model.ts` is the one file that does. Nothing checks the
+ * Hand-mirrored from `OpenAiLanguageModel.Config`, because `config.ts` builds
+ * no provider client and `agent/model.ts` is the one file that does. Nothing checks the
  * two against each other: the client sends the request body unencoded, so a
  * value this union carries and the provider has dropped fails at the API rather
  * than at the build. Re-read the provider's Config when it bumps.
@@ -75,28 +77,149 @@ export type AgentReasoningEffort = (typeof AGENT_REASONING_EFFORTS)[number];
  */
 export const DEFAULT_AGENT_REASONING_EFFORT: AgentReasoningEffort = "medium";
 
-export type WfGraphAgentConfig = {
+/** The same `medium`, under the type Anthropic's effort takes. */
+const DEFAULT_ANTHROPIC_REASONING_EFFORT: AnthropicReasoningEffort = "medium";
+
+/** The providers the built-in agent can run on, each through Effect's own package. */
+export const AGENT_PROVIDERS = [
+  "openai",
+  "anthropic",
+  "openrouter",
+  "openai-compatible",
+] as const;
+
+export type AgentProvider = (typeof AGENT_PROVIDERS)[number];
+
+/**
+ * The efforts Anthropic's `output_config.effort` takes. Anthropic has no
+ * `none`: a Claude model that thinks cannot be told not to, only how much.
+ */
+export type AnthropicReasoningEffort = Exclude<AgentReasoningEffort, "none">;
+
+/**
+ * OpenAI's Responses API, the default. `provider` may be left out.
+ *
+ * `baseUrl` replaces `https://api.openai.com/v1`, and the endpoint behind it
+ * must implement `POST {baseUrl}/responses` with streaming, function tools and
+ * reasoning items. A gateway offering Chat Completions alone takes
+ * `"openai-compatible"` instead.
+ */
+export type WfGraphOpenAiAgentConfig = {
+  readonly provider?: "openai" | undefined;
   /**
-   * The OpenAI API key. Optional in the type so a host can pass
-   * `process.env.OPENAI_API_KEY` straight through; a blank one turns the agent
-   * off rather than failing the app's start.
+   * Optional in the type so a host can pass `process.env.OPENAI_API_KEY`
+   * straight through; a blank one turns the agent off rather than failing the
+   * app's start.
    */
   readonly apiKey: string | undefined;
   /** Defaults to `DEFAULT_AGENT_MODEL`. */
   readonly model?: string | undefined;
   /** Defaults to `DEFAULT_AGENT_REASONING_EFFORT`. */
   readonly reasoningEffort?: AgentReasoningEffort | undefined;
-  /** For an OpenAI-compatible endpoint that is not OpenAI's own. */
   readonly baseUrl?: string | undefined;
 };
 
-/** The configuration a turn actually runs against. */
-export type EnabledAgentSettings = {
-  readonly enabled: true;
-  readonly apiKey: string;
+/**
+ * Anthropic's Messages API. The turn runs with adaptive thinking, which a
+ * Claude model from the 4.6 generation on accepts, and `reasoningEffort` sets
+ * `output_config.effort`. `baseUrl` replaces `https://api.anthropic.com` and
+ * must implement `POST {baseUrl}/v1/messages`.
+ */
+export type WfGraphAnthropicAgentConfig = {
+  readonly provider: "anthropic";
+  /** A blank key turns the agent off, as for OpenAI. */
+  readonly apiKey: string | undefined;
+  /**
+   * Required: no eval in this repository has measured a Claude model against
+   * the agent's tools, so there is no default to stand behind.
+   */
   readonly model: string;
-  readonly reasoningEffort: AgentReasoningEffort;
+  /** Defaults to `DEFAULT_AGENT_REASONING_EFFORT`. */
+  readonly reasoningEffort?: AnthropicReasoningEffort | undefined;
   readonly baseUrl?: string | undefined;
+};
+
+/**
+ * OpenRouter's Chat Completions API. `reasoningEffort` is sent as OpenRouter's
+ * `reasoning.effort` only when set, because the routed model may take none.
+ * `baseUrl` replaces `https://openrouter.ai/api/v1`.
+ */
+export type WfGraphOpenRouterAgentConfig = {
+  readonly provider: "openrouter";
+  /** A blank key turns the agent off, as for OpenAI. */
+  readonly apiKey: string | undefined;
+  /** Required: an OpenRouter model id such as `anthropic/claude-opus-5-5`. */
+  readonly model: string;
+  readonly reasoningEffort?: AgentReasoningEffort | undefined;
+  readonly baseUrl?: string | undefined;
+};
+
+/**
+ * Any server implementing OpenAI's Chat Completions API: `POST
+ * {baseUrl}/chat/completions` with `stream: true` and function tools. This is
+ * the provider for vLLM, Ollama, LiteLLM and most gateways. `reasoningEffort`
+ * is sent as the top-level `reasoning_effort` field only when set.
+ */
+export type WfGraphOpenAiCompatibleAgentConfig = {
+  readonly provider: "openai-compatible";
+  /**
+   * Required, and what turns the agent on: a blank one leaves it off. A
+   * conventional value ends in `/v1`.
+   */
+  readonly baseUrl: string | undefined;
+  /** Sent as a bearer token when non-blank. A local server may need none. */
+  readonly apiKey?: string | undefined;
+  /** Required: the server's own model id. */
+  readonly model: string;
+  readonly reasoningEffort?: string | undefined;
+};
+
+/** The `agent` option for a model the built-in agent runs against. */
+export type WfGraphModelAgentConfig =
+  | WfGraphOpenAiAgentConfig
+  | WfGraphAnthropicAgentConfig
+  | WfGraphOpenRouterAgentConfig
+  | WfGraphOpenAiCompatibleAgentConfig;
+
+export type WfGraphAgentConfig = WfGraphModelAgentConfig;
+
+/**
+ * The model one turn runs against, by provider. `agent/model.ts` is the one
+ * file that turns this into a provider client.
+ */
+export type AgentModelSettings =
+  | {
+      readonly provider: "openai";
+      readonly apiKey: string;
+      readonly model: string;
+      readonly reasoningEffort: AgentReasoningEffort;
+      readonly baseUrl?: string | undefined;
+    }
+  | {
+      readonly provider: "anthropic";
+      readonly apiKey: string;
+      readonly model: string;
+      readonly reasoningEffort: AnthropicReasoningEffort;
+      readonly baseUrl?: string | undefined;
+    }
+  | {
+      readonly provider: "openrouter";
+      readonly apiKey: string;
+      readonly model: string;
+      readonly reasoningEffort?: AgentReasoningEffort | undefined;
+      readonly baseUrl?: string | undefined;
+    }
+  | {
+      readonly provider: "openai-compatible";
+      readonly apiKey?: string | undefined;
+      readonly model: string;
+      readonly reasoningEffort?: string | undefined;
+      readonly baseUrl: string;
+    };
+
+/** The configuration a turn actually runs against. */
+export type EnabledAgentSettings = AgentModelSettings & {
+  readonly enabled: true;
 };
 
 /** The configuration as the runtime holds it, absent when the agent is off. */
@@ -112,29 +235,114 @@ export class AgentCapacity extends Context.Service<
   Semaphore.Semaphore
 >()("@wfgraph/core/AgentCapacity") {}
 
+const DISABLED: AgentSettings = { enabled: false };
+
+/** A trimmed value, or undefined for a blank or absent one. */
+function present(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/** A model the provider has no default for, refusing a blank one at startup. */
+function requiredModel(provider: AgentProvider, model: string): string {
+  const named = present(model);
+  if (!named) {
+    throw new Error(
+      `agent.model is required for the "${provider}" provider, which has no default model.`
+    );
+  }
+  return named;
+}
+
 /**
  * Reads the host's option into the settings the runtime carries.
  *
  * A key of whitespace is the same as no key. Saying so here means the chat
  * route answers the same way for a missing variable and an empty one, which is
- * what a half-filled `.env` produces.
+ * what a half-filled `.env` produces. A blank `model` for a provider with no
+ * default throws, because that is a host's mistake rather than an absent key.
  */
 export function readAgentSettings(
   config: WfGraphAgentConfig | undefined
 ): AgentSettings {
-  const apiKey = config?.apiKey?.trim();
-  if (!apiKey) {
-    return { enabled: false };
+  if (!config) {
+    return DISABLED;
   }
 
-  return {
-    enabled: true,
-    apiKey,
-    model: config?.model?.trim() || DEFAULT_AGENT_MODEL,
-    reasoningEffort: config?.reasoningEffort ?? DEFAULT_AGENT_REASONING_EFFORT,
-    // oxlint-disable-next-line wfgraph/no-conditional-spread -- an empty `baseUrl` counts as none, so the key is left off for both.
-    ...(config?.baseUrl ? { baseUrl: config.baseUrl } : {}),
-  };
+  switch (config.provider) {
+    case undefined:
+    case "openai": {
+      const apiKey = present(config.apiKey);
+      if (!apiKey) {
+        return DISABLED;
+      }
+      return omitUndefined({
+        enabled: true as const,
+        provider: "openai" as const,
+        apiKey,
+        model: present(config.model) ?? DEFAULT_AGENT_MODEL,
+        reasoningEffort:
+          config.reasoningEffort ?? DEFAULT_AGENT_REASONING_EFFORT,
+        baseUrl: present(config.baseUrl),
+      });
+    }
+
+    case "anthropic": {
+      const apiKey = present(config.apiKey);
+      if (!apiKey) {
+        return DISABLED;
+      }
+      return omitUndefined({
+        enabled: true as const,
+        provider: "anthropic" as const,
+        apiKey,
+        model: requiredModel(config.provider, config.model),
+        reasoningEffort:
+          config.reasoningEffort ?? DEFAULT_ANTHROPIC_REASONING_EFFORT,
+        baseUrl: present(config.baseUrl),
+      });
+    }
+
+    case "openrouter": {
+      const apiKey = present(config.apiKey);
+      if (!apiKey) {
+        return DISABLED;
+      }
+      return omitUndefined({
+        enabled: true as const,
+        provider: "openrouter" as const,
+        apiKey,
+        model: requiredModel(config.provider, config.model),
+        reasoningEffort: config.reasoningEffort,
+        baseUrl: present(config.baseUrl),
+      });
+    }
+
+    case "openai-compatible": {
+      const baseUrl = present(config.baseUrl);
+      if (!baseUrl) {
+        return DISABLED;
+      }
+      return omitUndefined({
+        enabled: true as const,
+        provider: "openai-compatible" as const,
+        apiKey: present(config.apiKey),
+        model: requiredModel(config.provider, config.model),
+        reasoningEffort: present(config.reasoningEffort),
+        baseUrl,
+      });
+    }
+
+    default:
+      return unknownProvider(config);
+  }
+}
+
+/** A provider the type does not name, from a JavaScript host. */
+function unknownProvider(_config: never): never {
+  throw new Error(
+    `agent.provider must be one of ${AGENT_PROVIDERS.join(", ")}.`
+  );
 }
 
 export function makeAgentConfigLayer(
@@ -148,5 +356,5 @@ export function makeAgentConfigLayer(
 
 /** What the chat route says when no key was configured. */
 export function agentDisabledMessage(): string {
-  return `The build agent is off because no model API key was configured. Pass agent.apiKey to createWfGraphApp, conventionally from ${API_KEY_ENV}.`;
+  return `The build agent is off because no model API key was configured. Pass agent.apiKey to createWfGraphApp, conventionally from ${API_KEY_ENV}, or agent.baseUrl for an "openai-compatible" server.`;
 }
