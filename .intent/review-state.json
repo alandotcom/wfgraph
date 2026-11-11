@@ -5918,29 +5918,29 @@
       ]
     },
     "source:packages/evals/src/agent/judges/completion.test.ts": {
-      "fingerprint": "6b420f110c037420fc662bce8c24fed2f415821c87967a06d956058cfd9709b7",
+      "fingerprint": "4278b1318db8fd578ef49de3aee8c593f96fa07b4dbdd3ef594a8d87d16558b9",
       "snapshot": {
-        "packages/evals/src/agent/judges/completion.test.ts": "6cf163ff9f1de4a23d2ec20f6a7df7706677f932f241407919eebe2607a993be"
+        "packages/evals/src/agent/judges/completion.test.ts": "8402eef3e135059ecb35e860aae14c7cce7f3ca697607af66c75ce2a1a3498a7"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "0054716e652a5fc2ee0c2b9d5eb6f274fe251f08",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
+      "reason": "The private eval harness's completion judge and its tests. It is neither built nor published.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "0054716e test(evals): read two more correct replies as correct",
+        "pnpm exec vitest run packages/evals passes"
       ]
     },
     "source:packages/evals/src/agent/judges/completion.ts": {
-      "fingerprint": "62bb17a21d6cb829d5834f4bdbb34bb8dfaee2459b96ac03ce8f2672f8ead24a",
+      "fingerprint": "87ebdb086a8f8942f49719c46178a1556b3bea7eb837e5528197da3692c7a11c",
       "snapshot": {
-        "packages/evals/src/agent/judges/completion.ts": "0eae6d5a77c89a10ac06cccbb6c577cb6accd845292868f849ed548b700e3b04"
+        "packages/evals/src/agent/judges/completion.ts": "aad9bfd812f968e75992a342a738b3a136aa2fe351a777ed9a838977f8b6cba4"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "0054716e652a5fc2ee0c2b9d5eb6f274fe251f08",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
+      "reason": "The private eval harness's completion judge and its tests. It is neither built nor published.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "0054716e test(evals): read two more correct replies as correct",
+        "pnpm exec vitest run packages/evals passes"
       ]
     },
     "source:packages/evals/src/agent/judges/evidence-use.test.ts": {
