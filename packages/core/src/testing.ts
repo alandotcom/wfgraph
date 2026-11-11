@@ -1,14 +1,17 @@
 /**
- * Running one action of an integration, the way a workflow runs it.
+ * Running one action the way a workflow runs it: an integration's action with
+ * `runAction`, which answers an Effect, and a host's `defineAction` with
+ * `runHostAction`, which answers a Promise.
  *
  * A separate entry from `@wfgraph/core/plugin` because nothing here runs in a
- * server: an integration's own suite imports it, and a server bundle never
- * reaches it. What it drives is the whole boundary `defineIntegration` builds,
- * so a case sees the config decode, the credential fetch, the handler, the
- * output encode and the envelope, rather than the handler alone.
+ * server: a test suite imports it, and a server bundle never reaches it. What
+ * it drives is the whole step boundary, so a case sees the config decode, the
+ * credential fetch, the handler, the output encode and the envelope, rather
+ * than the handler alone.
  */
 
 import { Effect } from "effect";
+import type { ActionDefinition } from "#src/backend/extensions/define-action";
 import type {
   CredentialsUnavailable,
   WorkflowCredentials,
@@ -18,6 +21,7 @@ import type { ActionStep } from "#src/backend/extensions/steps/define-step";
 import type { StepEnvironment } from "#src/backend/extensions/steps/step-runner";
 import { formatActionId } from "@wfgraph/shared/extensions/catalog";
 import type {
+  NodeSteps,
   StepError,
   StepResult,
 } from "@wfgraph/shared/actions/step-result";
@@ -119,6 +123,107 @@ export function runAction(
       executionId: run.node?.executionId,
     },
   });
+}
+
+/**
+ * One `step.run` a host action made, in call order. `replayed` is true when
+ * the case's `replay` answered it, the way the executor answers a step that
+ * ran on an earlier pass, and the work did not run.
+ */
+export type RecordedStep = {
+  readonly id: string;
+  readonly replayed: boolean;
+} & (
+  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: false; readonly error: string }
+);
+
+/** What `runHostAction` answers. */
+export type HostActionRun = {
+  /** The envelope the engine reads: the output, or the reason the node failed. */
+  readonly result: StepResult;
+  /** Every `step.run` the handler made, in order. */
+  readonly steps: readonly RecordedStep[];
+};
+
+/**
+ * Run a host action built with `defineAction` and answer the envelope the
+ * engine reads, beside every `step.run` its handler made.
+ *
+ * `input` is the resolved config as the engine builds it, which is the
+ * encoded side, as with `runAction`. `runMode` defaults to "live".
+ * `credentials` stands in for the Connection a node was configured with, and
+ * a case that passes none runs the action the way a node with no Connection
+ * does. `replay` answers a `step.run` whose id it holds with that value
+ * without running the work, which is how a case checks that a retried pass
+ * does not repeat a side effect.
+ *
+ * A handler that throws fails the node, so its message is in `result`, and
+ * the promise still resolves. It rejects only for a defect in the boundary.
+ */
+export async function runHostAction(
+  action: ActionDefinition,
+  run: {
+    readonly input: Readonly<Record<string, unknown>>;
+    readonly runMode?: "live" | "test" | undefined;
+    readonly credentials?:
+      | Readonly<Record<string, string | undefined>>
+      | undefined;
+    readonly replay?: Readonly<Record<string, unknown>> | undefined;
+    readonly node?: NodeUnderTest | undefined;
+  }
+): Promise<HostActionRun> {
+  const steps: RecordedStep[] = [];
+  const replay = run.replay ?? {};
+  const recording: NodeSteps = {
+    run: async (stepId, work) => {
+      if (Object.hasOwn(replay, stepId)) {
+        steps.push({
+          id: stepId,
+          replayed: true,
+          ok: true,
+          value: replay[stepId],
+        });
+        // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the case supplies what the step stored, as the executor's memo does
+        return replay[stepId] as Awaited<ReturnType<typeof work>>;
+      }
+      try {
+        const value = await work();
+        steps.push({ id: stepId, replayed: false, ok: true, value });
+        return value;
+      } catch (error) {
+        steps.push({
+          id: stepId,
+          replayed: false,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    },
+  };
+
+  const step = action.implement({
+    credentialsFor: () => toCredentialEffect(run.credentials),
+  });
+  const result = await Effect.runPromise(
+    step(
+      {
+        ...run.input,
+        integrationId:
+          run.credentials === undefined ? undefined : TEST_INTEGRATION_ID,
+        _context: {
+          runMode: run.runMode ?? "live",
+          nodeId: run.node?.nodeId ?? "node_1",
+          nodeName: run.node?.nodeName ?? action.label,
+          nodeType: run.node?.nodeType ?? "action",
+          executionId: run.node?.executionId,
+        },
+      },
+      recording
+    )
+  );
+  return { result, steps };
 }
 
 /**

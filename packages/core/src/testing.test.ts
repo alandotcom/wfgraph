@@ -1,13 +1,21 @@
 /**
- * What `runAction` covers, which is the whole boundary rather than the handler:
- * a case here is the shape every integration's own suite is written in.
+ * What `runAction` and `runHostAction` cover, which is the whole boundary
+ * rather than the handler: a case here is the shape every integration's own
+ * suite, and a host's suite for its own actions, is written in.
  */
 
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { describe, expect, it } from "vitest";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
 import { StepFailure } from "#src/backend/extensions/steps/define-step";
-import { actionData, actionError, runAction } from "#src/testing";
+import { z } from "zod";
+import { defineAction } from "#src/index";
+import {
+  actionData,
+  actionError,
+  runAction,
+  runHostAction,
+} from "#src/testing";
 
 /** Counts the reads, so a case can pin that a handler never asked. */
 function credentialsRead(values: Record<string, string | undefined>) {
@@ -182,6 +190,84 @@ describe("actionData and actionError", () => {
   it("throws for a step that did its work", () => {
     expect(() => actionError({ success: true, data: { ok: true } })).toThrow(
       "Expected the action to give up"
+    );
+  });
+});
+
+/**
+ * A host action the way an adopter writes one: Promise-first, with its side
+ * effect inside `step.run`, and a test run that sends nothing.
+ */
+function cancelAction(cancelled: string[]) {
+  return defineAction({
+    id: "appointments/cancel",
+    label: "Cancel Appointment",
+    description: "Cancels an appointment",
+    input: z.object({ appointmentId: z.string() }),
+    output: z.object({ appointmentId: z.string(), status: z.string() }),
+    handler: async ({ input, runMode, step }) => {
+      if (runMode === "test") {
+        return { appointmentId: input.appointmentId, status: "skipped" };
+      }
+      const status = await step.run("cancel", () => {
+        cancelled.push(input.appointmentId);
+        return Promise.resolve("cancelled");
+      });
+      if (input.appointmentId === "appt_locked") {
+        throw new Error("The appointment is locked");
+      }
+      return { appointmentId: input.appointmentId, status };
+    },
+  });
+}
+
+describe("runHostAction", () => {
+  it("answers the envelope and records each step the handler ran", async () => {
+    const cancelled: string[] = [];
+    const run = await runHostAction(cancelAction(cancelled), {
+      input: { appointmentId: "appt_1" },
+    });
+
+    expect(actionData(run.result)).toEqual({
+      appointmentId: "appt_1",
+      status: "cancelled",
+    });
+    expect(run.steps).toEqual([
+      { id: "cancel", replayed: false, ok: true, value: "cancelled" },
+    ]);
+    expect(cancelled).toEqual(["appt_1"]);
+  });
+
+  // The executor answers a step that ran on an earlier pass from its memo, so
+  // a retry repeats no side effect; `replay` is that memo.
+  it("answers a replayed step without running its work", async () => {
+    const cancelled: string[] = [];
+    const run = await runHostAction(cancelAction(cancelled), {
+      input: { appointmentId: "appt_1" },
+      replay: { cancel: "cancelled" },
+    });
+
+    expect(run.steps).toEqual([
+      { id: "cancel", replayed: true, ok: true, value: "cancelled" },
+    ]);
+    expect(cancelled).toEqual([]);
+  });
+
+  it("passes the run mode and resolves with the failure a throw makes", async () => {
+    const cancelled: string[] = [];
+    const action = cancelAction(cancelled);
+
+    const testRun = await runHostAction(action, {
+      input: { appointmentId: "appt_1" },
+      runMode: "test",
+    });
+    expect(actionData(testRun.result)).toMatchObject({ status: "skipped" });
+
+    const locked = await runHostAction(action, {
+      input: { appointmentId: "appt_locked" },
+    });
+    expect(actionError(locked.result).message).toContain(
+      "The appointment is locked"
     );
   });
 });
