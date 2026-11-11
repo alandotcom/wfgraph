@@ -19,6 +19,7 @@ import type {
   ExecutionScheduleKind,
   ExecutionScheduleState,
   ParkWake,
+  RunScheduleState,
 } from "@wfgraph/shared/lifecycle/execution-schedule";
 import type {
   JsonObject,
@@ -331,7 +332,6 @@ export type UnconsumedWake = {
  */
 export type ExecutorHold = Pick<
   ExecutionSchedule,
-  | "state"
   | "wakeAt"
   | "attempt"
   | "runningStepId"
@@ -340,6 +340,8 @@ export type ExecutorHold = Pick<
   | "workerId"
   | "lastError"
 > & {
+  /** The run's schedule row state. A run's row is never `settled`. */
+  state: RunScheduleState;
   /** The name of the node of `runningNodeId`, read as `FailingStep.nodeName` is. */
   runningNodeName: string | null;
   /** Every step of the run that failed and will run again, most failures first. */

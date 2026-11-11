@@ -76,7 +76,7 @@ vars == <<mode, sends, inbox, failed, cancelSet, lostResend, dsched, dholder, wr
 
 \* The guards the design depends on.
 InboxKeyIsUnique == TRUE                 \* unique (name, idempotency_key) on the inbox
-FailRecordsTheRow == TRUE                \* failDelivery marks the inbox row failed with the schedule row's deletion
+FailRecordsTheRow == TRUE                \* failDelivery marks the inbox row failed and settles its schedule row, which no claim takes
 ResendRedeliversFailed == TRUE           \* a send whose key holds a failed row resets it to pending and schedules it
 CancelDecisionIsRecorded == TRUE         \* a Cancel's claim records its decision, and a retried claim answers from it
 DeliveryIdIsUnique == TRUE               \* unique (workflow_id, delivery_id) on executions

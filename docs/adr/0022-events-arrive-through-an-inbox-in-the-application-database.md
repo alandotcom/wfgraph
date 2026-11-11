@@ -218,3 +218,25 @@ counts the workflows the Event reached and names each one that failed, because t
 constraint keeps `delivered` free of an error and a resend of a `failed` row's key reopens
 it. A resend delivers the Event again, and every workflow that already received it answers
 from its committed decision.
+
+## Amendment: A failed delivery keeps its memo for a resend
+
+Date: 2026-11-11
+
+Settling a delivery deleted its schedule row and its step memo whether it was delivered or
+failed. A resend of a failed row's key then reopened the row with a new schedule row and an
+empty memo, so the second fan-out ran every workflow's steps again. A start answered from its
+committed decision and a Cancel from its decision row, but a Wait page did not: the reopened
+delivery scanned each workflow's parked runs again, and a run the first delivery had woken and
+that had since parked on a second Wait on the same Event was woken a second time by one
+arrival.
+
+A delivery that fails for good now keeps its schedule row in a fourth state, `settled`, with
+its step memo. No claim takes a settled row and the poll never schedules a `failed` inbox row.
+A resend that reopens the row queues that same schedule row again with no failure counted, so
+the reopened delivery answers every step the first one memoized, including each Wait page it
+offered, and tries again only the steps of the workflows that failed. A failed workflow's
+retries on the reopened delivery are bounded by the row's own failure count alone, which the
+reopen resets, so each resend gives it a full set of retries. A delivered row still deletes its
+schedule row and memo, since a resend of its key is a duplicate. A settled row and its memo go
+with their inbox row when the retention sweep deletes it.

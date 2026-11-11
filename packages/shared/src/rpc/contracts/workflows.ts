@@ -27,7 +27,7 @@ import {
   WORKFLOW_EXECUTION_STATUSES,
 } from "#src/lifecycle/execution-contracts";
 import {
-  EXECUTION_SCHEDULE_STATES,
+  RUN_SCHEDULE_STATES,
   PARK_WAKE_KINDS,
 } from "#src/lifecycle/execution-schedule";
 import { jsonObjectSchema } from "#src/types/json";
@@ -407,7 +407,7 @@ const executionWaitSchema = Schema.Struct({
 const executorStateSchema = Schema.Struct({
   ...executorReadingFields,
   activity: Schema.NullOr(scheduleActivitySchema),
-  state: Schema.Literals(EXECUTION_SCHEDULE_STATES),
+  state: Schema.Literals(RUN_SCHEDULE_STATES),
   wakeAt: executorInstant,
   attempt: nonNegativeInteger,
   retryLimit: positiveInteger,

@@ -2,11 +2,13 @@
  * Event deliveries driven one pass at a time with `claimDue` and `leasedPass`
  * on a clock the case moves past a lease, as `pass-cases.ts` drives runs: a
  * refused payload, a lifecycle step that spends its retries, and a crash
- * between a step and its memo row, alone and under a Cancel claim.
+ * between a step and its memo row, alone and under a Cancel claim, and a
+ * failed delivery a resend of its key reopens.
  */
 
 import { expect, it } from "vitest";
 import { Effect } from "effect";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { DatabaseError } from "#src/backend/lib/effect/database";
 import { recordingLogger } from "#src/backend/executor/testing/recorded-logger";
 import {
@@ -14,11 +16,17 @@ import {
   type DeliveryHarness,
   holdsUntilCanceled,
   LEASE_MS,
+  type PassOptions,
   startsAndSends,
 } from "#src/backend/executor/testing/delivery-fixtures";
 import {
+  actionNode,
   CANCEL_EVENT,
+  edge,
+  lifecycleNode,
+  onEvent,
   START_EVENT,
+  waitNode,
 } from "#src/backend/executor/testing/run-fixtures";
 import { ExecutionRepo } from "#src/backend/services/executions/repo";
 
@@ -123,13 +131,14 @@ export function describeDeliveryCrashCases(
     expect(row?.status === "failed" && row.error).toMatch(
       /^Delivered to 0 of 1 workflows\. Failed on every retry: workflow wf_start \(Lifecycle Rules\): /
     );
+    // The schedule row is kept settled with its memo for a resend.
     expect(
       await harness.connection.run(
         Effect.flatMap(ExecutionRepo, (executions) =>
           executions.findSchedule({ inboxId: sent.inboxId })
         )
       )
-    ).toBeNull();
+    ).toMatchObject({ state: "settled", ownerToken: null });
     expect(await harness.runs("wf_start")).toEqual([]);
     const refusals = await harness.connection.run(
       Effect.flatMap(ExecutionRepo, (executions) =>
@@ -145,6 +154,41 @@ export function describeDeliveryCrashCases(
         deliveryId: sent.inboxId,
       }),
     ]);
+  });
+
+  it("gives a workflow that still fails a full set of retries when a resend reopens its failed delivery", async () => {
+    const harness = await open();
+    await harness.publish("wf_start", startsAndSends(START_EVENT));
+    const arrival = {
+      name: START_EVENT,
+      data: { appointmentId: "appt_31" },
+      idempotencyKey: "vendor_31",
+    };
+    let attempts = 0;
+    const failing: PassOptions = {
+      wrapWorkflows: (workflows) => ({
+        ...workflows,
+        findByIdWithPublishedVersionForRun: () =>
+          Effect.suspend(() => {
+            attempts += 1;
+            return Effect.fail(
+              new DatabaseError({ cause: new Error("connection reset") })
+            );
+          }),
+      }),
+    };
+    const sent = await harness.send(arrival);
+    const first = await harness.drain(failing);
+    await harness.send(arrival);
+    const second = await harness.drain(failing);
+
+    const passes = ["retry", "retry", "retry", "retry", "ended"];
+    expect(first.map((result) => result.kind)).toEqual(passes);
+    expect(second.map((result) => result.kind)).toEqual(passes);
+    expect(attempts).toBe(10);
+    expect(await harness.inbox(sent.inboxId)).toMatchObject({
+      status: "failed",
+    });
   });
 
   // One workflow's Lifecycle Rules failing on every retry must not keep the
@@ -199,6 +243,104 @@ export function describeDeliveryCrashCases(
       )
     );
     expect(cancellations).toHaveLength(1);
+  });
+
+  // A resend reopens a failed row. The workflows its first delivery reached
+  // are answered from that delivery's memo, so a run it woke and that has
+  // parked again on the same Event is left for the next arrival.
+  it("answers the workflows a failed delivery reached from its memo when a resend reopens it, and wakes no Wait a second time", async () => {
+    const harness = await open();
+    await harness.publish(
+      "wf_waits",
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode({
+            lifecycleRules: {
+              concurrency: "unlimited",
+              startEvents: [START_EVENT],
+              cancelEvents: [],
+              allowManualStart: true,
+            },
+          }),
+          waitNode("first", onEvent(CANCEL_EVENT, "1h")),
+          waitNode("second", onEvent(CANCEL_EVENT, "1h")),
+          actionNode("after", "test/mark"),
+        ],
+        edges: [
+          edge("entry", "first", "started"),
+          edge("first", "second"),
+          edge("second", "after"),
+        ],
+      })
+    );
+    await harness.publish(
+      "wf_failing",
+      createSerializedWorkflowGraph({
+        nodes: [
+          lifecycleNode({
+            lifecycleRules: {
+              concurrency: "unlimited",
+              startEvents: [CANCEL_EVENT],
+              cancelEvents: [],
+              allowManualStart: true,
+            },
+          }),
+          actionNode("send", "test/send"),
+        ],
+        edges: [edge("entry", "send", "started")],
+      })
+    );
+    await harness.send({
+      name: START_EVENT,
+      data: { appointmentId: "appt_30" },
+    });
+    await harness.drain();
+    const [parked] = await harness.runs("wf_waits");
+    if (parked === undefined) throw new Error("No run was started");
+
+    const arrival = {
+      name: CANCEL_EVENT,
+      data: { appointmentId: "appt_30" },
+      idempotencyKey: "vendor_30",
+    };
+    const first = await harness.send(arrival);
+    await harness.drain({
+      wrapWorkflows: (workflows) => ({
+        ...workflows,
+        findByIdWithPublishedVersionForRun: (workflowId) =>
+          workflowId === "wf_failing"
+            ? Effect.fail(
+                new DatabaseError({ cause: new Error("connection reset") })
+              )
+            : workflows.findByIdWithPublishedVersionForRun(workflowId),
+      }),
+    });
+    const failedRow = await harness.inbox(first.inboxId);
+    const waitingAfterFailure = await harness.connection.run(
+      Effect.flatMap(ExecutionRepo, (executions) =>
+        executions.listWaitingStates(parked.id)
+      )
+    );
+
+    const resent = await harness.send(arrival);
+    await harness.drain();
+
+    expect(failedRow).toMatchObject({ status: "failed" });
+    expect(waitingAfterFailure.map((wait) => wait.nodeId)).toEqual(["second"]);
+    expect(resent).toMatchObject({ inboxId: first.inboxId, duplicate: false });
+    expect(await harness.inbox(first.inboxId)).toMatchObject({
+      status: "delivered",
+    });
+    // The workflow whose lifecycle step failed receives the Event now.
+    expect(await harness.runs("wf_failing")).toHaveLength(1);
+    // The run the first delivery woke stays parked on its second Wait.
+    expect(harness.marks()).toEqual([]);
+    const waiting = await harness.connection.run(
+      Effect.flatMap(ExecutionRepo, (executions) =>
+        executions.listWaitingStates(parked.id)
+      )
+    );
+    expect(waiting.map((wait) => wait.nodeId)).toEqual(["second"]);
   });
 
   it("writes one record for a delivery once its inbox row has settled, with the pass's fields and what the delivery came to", async () => {

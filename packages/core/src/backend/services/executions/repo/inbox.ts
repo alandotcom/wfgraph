@@ -1,12 +1,14 @@
 /**
  * The `workflow_event_inbox` slice of `ExecutionRepo` over PostgreSQL: an
  * arrival's inbox row, its `delivery` schedule row, and how a delivery
- * settles. `inbox-policy.ts` makes the decisions; this file runs the
- * statements. A settling write takes the delivery's schedule row before its
+ * settles: a delivered row's schedule row is deleted with its step memo, and
+ * a failed row's is kept `settled` with its memo, which a resend that reopens
+ * the row queues again. `inbox-policy.ts` makes the decisions; this file runs
+ * the statements. A settling write takes the delivery's schedule row before its
  * inbox row, the order every fenced write takes a schedule row first.
  */
 
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
 import {
   workflowEventInbox,
@@ -32,6 +34,7 @@ import {
   inboxEventOf,
   resendOnHeldKey,
   settleableInbox,
+  settledDeliverySchedule,
   sweepableInbox,
 } from "#src/backend/services/executions/repo/inbox-policy";
 import { writeFenced } from "#src/backend/services/executions/repo/schedule";
@@ -69,9 +72,10 @@ export type InboxRepoMethods = {
   }) => Effect.Effect<void, DatabaseError | LeaseLost>;
   /**
    * Settle a delivery that failed for good: its inbox row becomes `failed`
-   * with `error` at `now`, and its schedule row is deleted with its step
-   * memo, in one transaction fenced on the pass's owner token. The poll never
-   * schedules a `failed` row again.
+   * with `error` at `now`, and its schedule row becomes `settled`, released
+   * and keeping its step memo, in one transaction fenced on the pass's owner
+   * token. No claim takes a settled row and the poll never schedules a
+   * `failed` row; only a resend of its key reopens it.
    */
   readonly failDelivery: (input: {
     fence: DeliveryFence;
@@ -113,6 +117,34 @@ async function insertDeliverySchedule(
     throw new Error("PostgreSQL returned no delivery schedule row");
   }
   return schedule.id;
+}
+
+/**
+ * Queues the `settled` schedule row of a failed delivery again, due at
+ * `wakeAt` with no failure counted, so the reopened delivery replays its body
+ * against the step memo the failed delivery kept. A failed row with no
+ * schedule row is given a new one.
+ */
+async function requeueDeliverySchedule(
+  tx: WfGraphTransaction,
+  input: { inboxId: string; wakeAt: Date }
+): Promise<string> {
+  const [requeued] = await tx
+    .update(workflowExecutionSchedule)
+    .set({
+      state: "queued",
+      wakeAt: input.wakeAt,
+      attempt: 0,
+      lastError: null,
+    })
+    .where(
+      and(
+        eq(workflowExecutionSchedule.inboxId, input.inboxId),
+        eq(workflowExecutionSchedule.state, "settled")
+      )
+    )
+    .returning({ id: workflowExecutionSchedule.id });
+  return requeued?.id ?? insertDeliverySchedule(tx, input);
 }
 
 /**
@@ -173,7 +205,7 @@ async function insertOrResend(
       scheduledAt: input.now,
     })
     .where(eq(workflowEventInbox.id, held.id));
-  const scheduleId = await insertDeliverySchedule(tx, {
+  const scheduleId = await requeueDeliverySchedule(tx, {
     inboxId: held.id,
     wakeAt: input.now,
   });
@@ -185,8 +217,8 @@ async function insertOrResend(
  * `delivery` schedule row, `queued` and due at `now`. When an inbox row
  * already holds the arrival's idempotency key, for the same Event name and
  * Connection, a `failed` row is reopened as `pending`, with its error and
- * settled time cleared, and given a new schedule row, keeping its id and its
- * data; a `pending` or `delivered` row writes nothing and is answered as a
+ * settled time cleared, keeping its id and its data, and its `settled`
+ * schedule row is queued again with the memo it kept; a `pending` or `delivered` row writes nothing and is answered as a
  * duplicate. When the row holding the key is swept between the insert and the
  * read, the insert runs once more.
  */
@@ -224,6 +256,13 @@ export function makeInboxMethods(
             settledAt: settled.now,
           })
           .where(settleableInbox(workflowEventInbox, fence.inboxId));
+        if (settled.status === "failed") {
+          await tx
+            .update(workflowExecutionSchedule)
+            .set(settledDeliverySchedule(settled))
+            .where(eq(workflowExecutionSchedule.id, fence.scheduleId));
+          return;
+        }
         // The memo rows go with the schedule row by cascade.
         await tx
           .delete(workflowExecutionSchedule)

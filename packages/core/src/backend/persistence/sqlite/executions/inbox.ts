@@ -6,7 +6,7 @@
  */
 
 import { Effect } from "effect";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type {
   DeliveryFence,
@@ -20,6 +20,7 @@ import {
   inboxEventOf,
   resendOnHeldKey,
   settleableInbox,
+  settledDeliverySchedule,
   sweepableInbox,
 } from "#src/backend/services/executions/repo/inbox-policy";
 import type {
@@ -64,6 +65,34 @@ function insertDeliverySchedule(
       wakeAt: input.wakeAt.getTime(),
     })
     .pipe(Effect.as(scheduleId));
+}
+
+/**
+ * Queues the `settled` schedule row of a failed delivery again, as
+ * `requeueDeliverySchedule` in `repo/inbox.ts` describes.
+ */
+function requeueDeliverySchedule(
+  database: SqliteExecutor,
+  input: { inboxId: string; wakeAt: Date }
+) {
+  return Effect.gen(function* () {
+    const [requeued] = yield* database
+      .update(workflowExecutionSchedule)
+      .set({
+        state: "queued",
+        wakeAt: input.wakeAt.getTime(),
+        attempt: 0,
+        lastError: null,
+      })
+      .where(
+        and(
+          eq(workflowExecutionSchedule.inboxId, input.inboxId),
+          eq(workflowExecutionSchedule.state, "settled")
+        )
+      )
+      .returning({ id: workflowExecutionSchedule.id });
+    return requeued?.id ?? (yield* insertDeliverySchedule(database, input));
+  });
 }
 
 /**
@@ -137,7 +166,7 @@ export function writeArrival(
         scheduledAt: input.now.getTime(),
       })
       .where(eq(workflowEventInbox.id, held.id));
-    const scheduleId = yield* insertDeliverySchedule(database, {
+    const scheduleId = yield* requeueDeliverySchedule(database, {
       inboxId: held.id,
       wakeAt: input.now,
     });
@@ -166,6 +195,14 @@ export function makeSqliteInboxMethods(
             settledAt: settled.now.getTime(),
           })
           .where(settleableInbox(workflowEventInbox, fence.inboxId));
+        if (settled.status === "failed") {
+          const columns = settledDeliverySchedule(settled);
+          yield* database
+            .update(workflowExecutionSchedule)
+            .set({ ...columns, wakeAt: columns.wakeAt.getTime() })
+            .where(eq(workflowExecutionSchedule.id, fence.scheduleId));
+          return;
+        }
         // The memo rows go with the schedule row by cascade.
         yield* database
           .delete(workflowExecutionSchedule)

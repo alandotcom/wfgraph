@@ -84,6 +84,39 @@ export function settleableInbox(
 }
 
 /**
+ * The columns a failed delivery's schedule row is settled with: `settled`,
+ * the lease released, due at `now` for the record, with no failure counted and
+ * the delivery's error as its last. Its step memo stays, so a resend that
+ * reopens the inbox row replays the body against it.
+ */
+export function settledDeliverySchedule(settled: {
+  error: string | null;
+  now: Date;
+}): {
+  state: "settled";
+  wakeAt: Date;
+  attempt: number;
+  lastError: string | null;
+  ownerToken: null;
+  leaseExpiresAt: null;
+  workerId: null;
+  runningStepId: null;
+  runningNodeId: null;
+} {
+  return {
+    state: "settled",
+    wakeAt: settled.now,
+    attempt: 0,
+    lastError: settled.error,
+    ownerToken: null,
+    leaseExpiresAt: null,
+    workerId: null,
+    runningStepId: null,
+    runningNodeId: null,
+  };
+}
+
+/**
  * Whether the retention sweep deletes this inbox row: its delivery settled,
  * as `delivered` or `failed`, and it arrived before `olderThan`. A `pending`
  * row is never swept, since its arrival has not been delivered yet.

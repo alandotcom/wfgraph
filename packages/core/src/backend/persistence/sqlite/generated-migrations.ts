@@ -442,4 +442,23 @@ export const sqliteMigrations = [
     hash: "f2b7678c246940f00e63231ea6a3dbe6202741214ecaaebd8b8bccfcd92fdb36",
     name: "20261111165849_inbox_scheduled_marker",
   },
+  {
+    sql: [
+      "-- Drizzle Kit cannot yet express SQLite STRICT tables. The rebuild below keeps\n-- the table STRICT as it was.\nPRAGMA foreign_keys=OFF;",
+      "\nCREATE TABLE `__new_workflow_execution_schedule` (\n\t`id` text PRIMARY KEY,\n\t`kind` text NOT NULL,\n\t`execution_id` text,\n\t`inbox_id` text,\n\t`workflow_id` text,\n\t`cron` text,\n\t`time_zone` text,\n\t`state` text NOT NULL,\n\t`wake_at` integer NOT NULL,\n\t`attempt` integer DEFAULT 0 NOT NULL,\n\t`running_step_id` text,\n\t`running_node_id` text,\n\t`lease_expires_at` integer,\n\t`owner_token` text,\n\t`worker_id` text,\n\t`last_error` text,\n\tCONSTRAINT `fk_workflow_execution_schedule_execution_id_workflow_executions_id_fk` FOREIGN KEY (`execution_id`) REFERENCES `workflow_executions`(`id`) ON DELETE CASCADE,\n\tCONSTRAINT `fk_workflow_execution_schedule_inbox_id_workflow_event_inbox_id_fk` FOREIGN KEY (`inbox_id`) REFERENCES `workflow_event_inbox`(`id`) ON DELETE CASCADE,\n\tCONSTRAINT `fk_workflow_execution_schedule_workflow_id_workflows_id_fk` FOREIGN KEY (`workflow_id`) REFERENCES `workflows`(`id`) ON DELETE CASCADE,\n\tCONSTRAINT \"workflow_execution_schedule_kind_check\" CHECK(\"kind\" in ('run', 'delivery', 'cron')),\n\tCONSTRAINT \"workflow_execution_schedule_state_check\" CHECK(\"state\" in ('queued', 'leased', 'waiting', 'settled')),\n\tCONSTRAINT \"workflow_execution_schedule_subject_check\" CHECK((\"kind\" = 'run' and \"execution_id\" is not null and \"inbox_id\" is null and \"workflow_id\" is null and \"cron\" is null and \"time_zone\" is null) or (\"kind\" = 'delivery' and \"inbox_id\" is not null and \"execution_id\" is null and \"workflow_id\" is null and \"cron\" is null and \"time_zone\" is null) or (\"kind\" = 'cron' and \"workflow_id\" is not null and \"cron\" is not null and \"time_zone\" is not null and \"execution_id\" is null and \"inbox_id\" is null)),\n\tCONSTRAINT \"workflow_execution_schedule_lease_check\" CHECK((\"state\" = 'leased' and \"owner_token\" is not null and \"lease_expires_at\" is not null and \"worker_id\" is not null) or (\"state\" <> 'leased' and \"owner_token\" is null and \"lease_expires_at\" is null and \"worker_id\" is null and \"running_step_id\" is null and \"running_node_id\" is null))\n) STRICT;\n",
+      "\nINSERT INTO `__new_workflow_execution_schedule`(`id`, `kind`, `execution_id`, `inbox_id`, `workflow_id`, `cron`, `time_zone`, `state`, `wake_at`, `attempt`, `running_step_id`, `running_node_id`, `lease_expires_at`, `owner_token`, `worker_id`, `last_error`) SELECT `id`, `kind`, `execution_id`, `inbox_id`, `workflow_id`, `cron`, `time_zone`, `state`, `wake_at`, `attempt`, `running_step_id`, `running_node_id`, `lease_expires_at`, `owner_token`, `worker_id`, `last_error` FROM `workflow_execution_schedule`;",
+      "\nDROP TABLE `workflow_execution_schedule`;",
+      "\nALTER TABLE `__new_workflow_execution_schedule` RENAME TO `workflow_execution_schedule`;",
+      "\nPRAGMA foreign_keys=ON;",
+      "\nCREATE UNIQUE INDEX `schedule_execution_uidx` ON `workflow_execution_schedule` (`execution_id`);",
+      "\nCREATE UNIQUE INDEX `schedule_inbox_uidx` ON `workflow_execution_schedule` (`inbox_id`);",
+      "\nCREATE UNIQUE INDEX `schedule_cron_uidx` ON `workflow_execution_schedule` (`workflow_id`,`cron`,`time_zone`);",
+      "\nCREATE INDEX `schedule_due_idx` ON `workflow_execution_schedule` (`wake_at`,`id`) WHERE \"workflow_execution_schedule\".\"state\" in ('queued', 'waiting');",
+      "\nCREATE INDEX `schedule_lease_idx` ON `workflow_execution_schedule` (`lease_expires_at`) WHERE \"workflow_execution_schedule\".\"state\" = 'leased';",
+    ],
+    bps: true,
+    folderMillis: 1794416838000,
+    hash: "6fe6b5bab16a5ccd8e2ebd571d018450d1201a37018f05e66208bcaf812f5ae7",
+    name: "20261111170718_delivery_settled_state",
+  },
 ] satisfies readonly MigrationMeta[];

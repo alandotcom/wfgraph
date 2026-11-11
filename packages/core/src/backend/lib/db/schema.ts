@@ -825,9 +825,11 @@ export const workflowCancelDecisions = pgTable(
  *
  * A worker claims a due row under a lease, replays the body against the step
  * memo the row owns, and releases the row as `queued` or `waiting`. A run's
- * terminal write deletes its row, and a settled delivery deletes its own, and
- * the memo rows go with each, so the table holds the working set and its
- * partial indexes stay small. A timer row lives while its schedule can fire:
+ * terminal write deletes its row, and a delivered Event's settling write
+ * deletes its own, and the memo rows go with each, so the table holds the
+ * working set and its partial indexes stay small. A delivery that failed for
+ * good keeps its row as `settled`, with its memo, until a resend of its key
+ * queues it again or the inbox row's retention sweep deletes it. A timer row lives while its schedule can fire:
  * Publish writes and deletes timer rows, pause deletes them, resume writes
  * them again, and each fire moves its row's `wake_at` to the next slot.
  */

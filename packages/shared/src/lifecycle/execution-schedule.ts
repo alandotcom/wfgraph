@@ -51,14 +51,22 @@ export const EXECUTION_SCHEDULE_KINDS = ["run", "delivery", "cron"] as const;
 export type ExecutionScheduleKind = (typeof EXECUTION_SCHEDULE_KINDS)[number];
 
 /**
- * Where a schedule row stands. `queued` is due at `wake_at`, `leased` is held by
- * one worker's pass until `lease_expires_at`, and `waiting` is a run with every
- * branch parked, due again at its earliest park deadline.
+ * Where a run's schedule row stands. `queued` is due at `wake_at`, `leased` is
+ * held by one worker's pass until `lease_expires_at`, and `waiting` is a run
+ * with every branch parked, due again at its earliest park deadline.
+ */
+export const RUN_SCHEDULE_STATES = ["queued", "leased", "waiting"] as const;
+export type RunScheduleState = (typeof RUN_SCHEDULE_STATES)[number];
+
+/**
+ * Where any schedule row stands: a run's states, and `settled`, a delivery
+ * that failed for good. A settled row keeps its step memo and is claimed by
+ * nothing; a resend that reopens its inbox row queues it again, so the
+ * workflows the first delivery reached are answered from that memo.
  */
 export const EXECUTION_SCHEDULE_STATES = [
-  "queued",
-  "leased",
-  "waiting",
+  ...RUN_SCHEDULE_STATES,
+  "settled",
 ] as const;
 export type ExecutionScheduleState = (typeof EXECUTION_SCHEDULE_STATES)[number];
 

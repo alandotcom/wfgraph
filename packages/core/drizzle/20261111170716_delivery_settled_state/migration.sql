@@ -1,0 +1,1 @@
+ALTER TABLE "workflow_execution_schedule" DROP CONSTRAINT "workflow_execution_schedule_state_check", ADD CONSTRAINT "workflow_execution_schedule_state_check" CHECK ("state" in ('queued', 'leased', 'waiting', 'settled'));

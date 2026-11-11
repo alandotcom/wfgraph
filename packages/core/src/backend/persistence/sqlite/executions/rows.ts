@@ -312,7 +312,12 @@ export function sqliteExecutionSchedule(
   if (kind !== "run" && kind !== "delivery" && kind !== "cron") {
     throw new Error("Invalid SQLite schedule kind");
   }
-  if (state !== "queued" && state !== "leased" && state !== "waiting") {
+  if (
+    state !== "queued" &&
+    state !== "leased" &&
+    state !== "waiting" &&
+    state !== "settled"
+  ) {
     throw new Error("Invalid SQLite schedule state");
   }
   return {

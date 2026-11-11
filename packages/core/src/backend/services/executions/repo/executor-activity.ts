@@ -127,7 +127,8 @@ type FailingStepRow = Omit<FailingStep, "error"> & {
 /**
  * One `ExecutorHold` per run among `schedules`, keyed by execution id, with
  * each run's failing steps from `failing` most failures first. A schedule row
- * that runs no Execution, which is a delivery's, is left out.
+ * that runs no Execution, which is a delivery's or a timer's, is left out, and
+ * so is a `settled` row, which only a delivery holds.
  */
 export function executorHolds(
   schedules: ReadonlyArray<{
@@ -142,7 +143,7 @@ export function executorHolds(
   );
   return new Map(
     schedules.flatMap(({ schedule, runningNodeName }) =>
-      schedule.executionId === null
+      schedule.executionId === null || schedule.state === "settled"
         ? []
         : [
             [

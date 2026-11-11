@@ -11,7 +11,9 @@
  * side. A step of one workflow that fails is memoized as that failure, so the
  * pass goes on to every other workflow, and the next pass tries that step
  * again under a new id. Once the delivery's retries are spent the workflow is
- * recorded as failed and the delivery settles with the others delivered.
+ * recorded as failed and the delivery settles with the others delivered. A
+ * failed delivery keeps its memo, so a resend that reopens it answers every
+ * workflow it reached from there and tries the failed ones again.
  */
 
 import { Cause, Data, Effect } from "effect";
@@ -22,10 +24,7 @@ import type {
 import { failureFromCause } from "#src/backend/engine/engine-failure";
 import { DEFAULT_QUERY_CONNECTIONS } from "#src/backend/lib/db/config";
 import type { PassSteps } from "#src/backend/executor/runtime";
-import {
-  retriesSpent,
-  STEP_RETRY_LIMIT,
-} from "#src/backend/services/executions/repo/release-policy";
+import { retriesSpent } from "#src/backend/services/executions/repo/release-policy";
 import {
   applyLifecycleRules,
   deliverWaitCandidates,
@@ -156,9 +155,13 @@ function tryStepId(stepId: string, tryIndex: number): string {
  *
  * A try an earlier pass recorded as failed is followed by the next try, under
  * an id of its own, so each pass makes at most one new try of a step. A try
- * that fails on this pass is `pending` while the delivery has a retry left
- * and the step has not reached `STEP_RETRY_LIMIT` retries, and `spent`
- * otherwise. An interruption is left to stop the pass, since nothing failed.
+ * that fails on this pass is `pending` while the delivery row has a retry
+ * left, and `spent` otherwise. The row's own count bounds the tries, since
+ * every pass that leaves a try pending counts one failure against it, and a
+ * resend that reopens a failed delivery resets that count: the reopened
+ * delivery answers each try a failed workflow made from the memo and gives
+ * it a full set of retries after them. An interruption is left to stop the
+ * pass, since nothing failed.
  */
 const tryStep = Effect.fnUntraced(function* <A, E, R>(input: {
   steps: PassSteps;
@@ -191,10 +194,9 @@ const tryStep = Effect.fnUntraced(function* <A, E, R>(input: {
       return tried;
     }
     if (!ranThisPass) continue;
-    const tried: Tried<A> =
-      input.mayRetry && tryIndex < STEP_RETRY_LIMIT
-        ? { kind: "pending", error: answer.error }
-        : { kind: "spent", error: answer.error };
+    const tried: Tried<A> = input.mayRetry
+      ? { kind: "pending", error: answer.error }
+      : { kind: "spent", error: answer.error };
     return tried;
   }
 });

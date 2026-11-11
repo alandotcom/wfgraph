@@ -205,11 +205,12 @@ export function describeExecutionInboxConformance({
       expect(result.scheduledByPoll).toEqual([]);
     });
 
-    it("reopens a failed row for a resend of its key, scheduling it again once, and keeps its id and data", async () => {
+    it("keeps a failed delivery's schedule row settled with its memo, and queues it again when a resend of its key reopens the row with its id and data", async () => {
       const database = await openDatabase();
       const connection = await database.open();
       const first = await connection.run(sendNew(arrival("vendor_1")));
       const fence = await leaseDelivery(database, first, "owner_1");
+      await memoStep(database, first.scheduleId);
 
       const result = await connection.run(
         Effect.gen(function* () {
@@ -219,12 +220,27 @@ export function describeExecutionInboxConformance({
             error: "The subscriber step failed",
             now: at(2_000),
           });
+          const settled = yield* executions.findSchedule({
+            inboxId: first.inboxId,
+          });
+          // No claim takes a settled row.
+          const claimed = yield* executions.claimDue({
+            lanes: [{ kind: "delivery", limit: 10 }],
+            workerId: "worker_2",
+            leaseMs: 60_000,
+            now: at(2_500),
+          });
           const resent = yield* send(
             { ...arrival("vendor_1"), data: { appointmentId: "appt_2" } },
             at(3_000)
           );
           return {
+            settled,
+            claimed,
             resent,
+            memo: yield* executions.listStepMemo({
+              scheduleId: first.scheduleId,
+            }),
             event: yield* executions.findInboxEvent(first.inboxId),
             schedule: yield* executions.findSchedule({
               inboxId: first.inboxId,
@@ -239,10 +255,23 @@ export function describeExecutionInboxConformance({
         })
       );
 
+      expect(result.settled).toMatchObject({
+        id: first.scheduleId,
+        state: "settled",
+        attempt: 0,
+        ownerToken: null,
+        leaseExpiresAt: null,
+        workerId: null,
+        lastError: "The subscriber step failed",
+      });
+      expect(result.claimed).toEqual([]);
       if (result.resent.duplicate)
         throw new Error("The resend was a duplicate");
       expect(result.resent.inboxId).toBe(first.inboxId);
-      expect(result.resent.scheduleId).not.toBe(first.scheduleId);
+      expect(result.resent.scheduleId).toBe(first.scheduleId);
+      expect(result.memo.map((entry) => entry.stepId)).toEqual([
+        "subscribers-0",
+      ]);
       expect(result.event).toEqual({
         id: first.inboxId,
         ...arrival("vendor_1"),
@@ -254,6 +283,8 @@ export function describeExecutionInboxConformance({
         kind: "delivery",
         state: "queued",
         wakeAt: at(3_000),
+        attempt: 0,
+        lastError: null,
         ownerToken: null,
       });
       expect(result.resentAgain).toEqual({
@@ -366,7 +397,7 @@ export function describeExecutionInboxConformance({
         error: "The subscriber step failed",
         settledAt: at(1_000),
       });
-      expect(result.failedSchedule).toBeNull();
+      expect(result.failedSchedule).toMatchObject({ state: "settled" });
     });
 
     it("marks every row it gives a schedule row, and marks without a second schedule row a pending row one already names", async () => {

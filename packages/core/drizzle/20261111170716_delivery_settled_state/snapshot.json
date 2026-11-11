@@ -1,0 +1,38 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "01f2eefb-bcb2-4b22-8d95-83928d224232",
+  "prevIds": [
+    "7eecdc4c-ceae-4a5b-8558-364082e6bdc4"
+  ],
+  "footprints": [
+    {
+      "statementType": "alter_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "workflow_execution_schedule"
+      ],
+      "writes": [
+        "s|ck|public.workflow_execution_schedule.workflow_execution_schedule_state_check"
+      ],
+      "reads": [
+        "n|tbl|public.workflow_execution_schedule",
+        "n|sch|public",
+        "n|col|public.workflow_execution_schedule.state",
+        "e|col|public.workflow_execution_schedule.state"
+      ],
+      "sqlHash": "4ee98924fb098068"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"workflow_execution_schedule\",\"workflow_execution_schedule_state_check\"]",
+      "set": {
+        "value": "\"state\" in ('queued', 'leased', 'waiting', 'settled')"
+      }
+    }
+  ]
+}
