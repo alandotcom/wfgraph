@@ -60,7 +60,7 @@ function claimsPublishReadiness(finalText: string): boolean {
   return publicationStatusClauses(finalText).some(
     (clause) =>
       !clauseClaimsPublishBlocker(clause) &&
-      !/\b(?:then|once|after|when)\b.*\b(?:will|would)\s+be\s+ready (?:to publish|for publication)\b/i.test(
+      !/\b(?:then|once|after|when)\b.*\b(?:(?:will|would|should)\s+be\s+ready (?:to publish|for publication)|can\s+be\s+published)\b/i.test(
         clause
       ) &&
       (/\bready (?:to publish|for publication)\b/i.test(clause) ||
@@ -77,7 +77,7 @@ function claimsPublishBlocker(finalText: string): boolean {
 }
 
 function hasUnsupportedExplanation(finalText: string): boolean {
-  return /\b(?:cannot|can['’]t|could not|couldn['’]t|unavailable|unsupported|not available|does not support|doesn['’]t support|does not have|doesn['’]t have|has no)\b|\bno\b[^.?!]*\baction is available\b/i.test(
+  return /\b(?:cannot|can['’]t|could not|couldn['’]t|unavailable|unsupported|not available|does not support|doesn['’]t support|does not have|doesn['’]t have|has no|no way to)\b|\bno\b[^.?!]*\baction is available\b/i.test(
     finalText
   );
 }

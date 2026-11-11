@@ -370,6 +370,8 @@ describe("assessExpectedCompletion", () => {
   it.each([
     "The Slack workflow is built, but it isn't ready to publish. It requires a connection.",
     "The Slack workflow is built, but it isn’t yet ready to publish. It requires a connection.",
+    "The Slack workflow is built, but it can't be published yet. Connect Slack, and then it can be published.",
+    "The Slack workflow requires a connection. Once Slack is connected, the step should be ready to publish.",
   ])("reads %s as naming a blocker", (finalText) => {
     expect(
       assess({
@@ -589,6 +591,7 @@ describe("assessExpectedCompletion", () => {
     "I couldn’t add SMS because this workspace has no SMS action.",
     "SMS doesn’t have a setting for that.",
     "This Group has no SMS setting.",
+    "I haven't built anything, because there's no way to send an SMS here.",
   ])("accepts unsupported explanations that say %s", (finalText) => {
     expect(
       assess({
