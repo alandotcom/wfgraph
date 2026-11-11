@@ -79,6 +79,16 @@ export const lastSavedAtAtom = atom<Date | null>(null);
 export const lastSaveErrorAtom = atom<Error | null>(null);
 
 /**
+ * Whether the last save was refused because the stored draft is newer than
+ * the one this editor holds. The refusal stands, and refuses every later save,
+ * until the workflow is loaded again.
+ */
+export const draftSaveRefusedAtom = atom((get) => {
+  const error = get(lastSaveErrorAtom);
+  return error instanceof ApiError && error.code === DRAFT_CONFLICT_CODE;
+});
+
+/**
  * Successful writes completed for each workflow during this editor lifetime.
  * A route loader captures the current number when it starts; hydration compares
  * that snapshot with the current number before replacing the graph. The map is

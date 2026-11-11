@@ -38,7 +38,10 @@ import {
   currentWorkflowIdAtom,
   currentWorkflowModeAtom,
   hasUnsavedChangesAtom,
+  lastSaveErrorAtom,
 } from "#src/lib/workflow-save-store";
+import { ApiError } from "#src/lib/rpc-client";
+import { DRAFT_CONFLICT_CODE } from "@wfgraph/shared/rpc/error-codes";
 import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
 import { authorizedWorkflowSearch } from "#src/lib/workflow-route-state";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
@@ -283,6 +286,33 @@ describe("WorkflowStatusStrip", () => {
     expect(
       view.getByRole("button", { name: "Reload agent edits" })
     ).toBeTruthy();
+  });
+
+  // The draft stream is how a tab normally learns of a newer draft. A tab the
+  // stream has not reached learns of it when its own save is refused, and the
+  // strip offers the same way out for as long as that refusal stands.
+  it("offers to reload when the server refused a save because the draft changed", async () => {
+    const { view, store } = await renderStrip();
+    expect(view.queryByText("Draft changed elsewhere")).toBeNull();
+
+    act(() =>
+      store.set(
+        lastSaveErrorAtom,
+        new ApiError(
+          409,
+          "The workflow draft changed. Reload it before saving again.",
+          DRAFT_CONFLICT_CODE
+        )
+      )
+    );
+
+    expect(view.getByText("Draft changed elsewhere")).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Reload agent edits" })
+    ).toBeTruthy();
+
+    act(() => store.set(lastSaveErrorAtom, new Error("The network dropped")));
+    expect(view.queryByText("Draft changed elsewhere")).toBeNull();
   });
 
   it("keeps execution mode out of the status row", async () => {

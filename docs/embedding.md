@@ -809,7 +809,9 @@ workflow switcher within one second.
 If the browser has unsaved edits when the persisted revision changes, the
 editor preserves those edits and shows **Draft changed elsewhere**. Select
 **Reload agent edits** to discard the browser edits and load the persisted
-draft.
+draft. The editor shows the same notice when the server refuses a save because
+the persisted draft is newer, which is how a browser the subscription has not
+reached learns of the change.
 
 ## Built-in integrations
 

@@ -62,7 +62,10 @@ import {
   runGraphRecipientsLabel,
   type WorkflowRunGraphIdentity,
 } from "#src/lib/workflow-run-labels";
-import { currentWorkflowModeAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowModeAtom,
+  draftSaveRefusedAtom,
+} from "#src/lib/workflow-save-store";
 import { remoteDraftChangeAtom } from "#src/lib/workflow-graph-store";
 import {
   comparisonSessionAtom,
@@ -296,7 +299,11 @@ function PublishedModeControl({
 
 function DraftStatus({ workflowId }: { workflowId?: string | undefined }) {
   const remoteDraftChange = useAtomValue(remoteDraftChangeAtom);
-  const hasRemoteDraftChange = remoteDraftChange?.workflowId === workflowId;
+  // A newer draft is learned of two ways: the draft stream observes it beside
+  // unsaved edits, or the server refuses this editor's save because of it.
+  const draftSaveRefused = useAtomValue(draftSaveRefusedAtom);
+  const hasRemoteDraftChange =
+    remoteDraftChange?.workflowId === workflowId || draftSaveRefused;
   const { data: publication } = useQuery({
     ...workflowPublicationQueryOptions(workflowId ?? ""),
     enabled: Boolean(workflowId),
