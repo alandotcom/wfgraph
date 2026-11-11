@@ -8,6 +8,7 @@
  */
 
 import { Option, Schema } from "effect";
+import { nonNegativeInteger } from "@wfgraph/shared/types/schema";
 import {
   type AgentUsagePart,
   agentTurnRecordSchema,
@@ -21,6 +22,11 @@ const turnMetadataSchema = Schema.Struct({
    * the message's status, so the record sent back adds that from there.
    */
   record: Schema.optionalKey(agentTurnRecordSchema),
+  /**
+   * How many of the oldest messages were left out of this turn's request to
+   * keep it inside the server's limits.
+   */
+  omittedMessages: Schema.optionalKey(nonNegativeInteger),
 });
 
 export type AgentTurnMetadata = typeof turnMetadataSchema.Type;
@@ -56,4 +62,11 @@ export function usageSummary(usage: AgentUsagePart): string {
     plural(usage.toolCalls, "tool call"),
     `${compactNumber.format(tokens)} tokens${cached}`,
   ].join(" · ");
+}
+
+/** The notice a thread shows once its oldest messages leave the request. */
+export function omittedMessagesNotice(omitted: number): string {
+  return omitted === 1
+    ? "The agent no longer sees the oldest message in this conversation."
+    : `The agent no longer sees the ${omitted} oldest messages in this conversation.`;
 }

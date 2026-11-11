@@ -34,6 +34,7 @@ import {
 import { useRef, useState } from "react";
 import { AgentMarkdown } from "#src/components/agent/agent-markdown";
 import {
+  omittedMessagesNotice,
   readTurnMetadata,
   usageSummary,
 } from "#src/components/agent/turn-metadata";
@@ -271,6 +272,26 @@ function AssistantMessage() {
 }
 
 /**
+ * Says so once the thread is long enough that its oldest messages no longer
+ * reach the model, read off the newest turn's request. Above the composer, so
+ * it is seen before the next message is written rather than lost up-thread.
+ */
+function OmittedMessagesNotice() {
+  const custom = useAuiState(
+    (state) => state.thread.messages.at(-1)?.metadata.custom
+  );
+  const omitted = readTurnMetadata(custom).omittedMessages ?? 0;
+  if (omitted === 0) {
+    return null;
+  }
+  return (
+    <p className="text-muted-foreground text-xs" role="status">
+      {omittedMessagesNotice(omitted)}
+    </p>
+  );
+}
+
+/**
  * The composer, pinned to the bottom of the card.
  *
  * It sits inside the scroll viewport rather than below it, so it is held to the
@@ -419,6 +440,7 @@ export function AgentThread() {
                 <ArrowDownIcon />
               </Button>
             </ThreadPrimitive.ScrollToBottom>
+            <OmittedMessagesNotice />
             <Composer />
           </ThreadPrimitive.ViewportFooter>
         </div>

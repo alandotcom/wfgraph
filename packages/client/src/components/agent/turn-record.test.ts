@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { ThreadMessage } from "@assistant-ui/react";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
+  MAX_AGENT_MESSAGE_CHARS,
+  MAX_AGENT_MESSAGES,
+  MAX_AGENT_REQUEST_CHARS,
+} from "@wfgraph/shared/rpc/contracts/agent";
+import {
+  fitAgentMessages,
   nodeChanges,
   recordedTools,
   toAgentMessages,
@@ -150,5 +156,69 @@ describe("toAgentMessages", () => {
         record: { ...record, error: "Rate limited" },
       },
     ]);
+  });
+});
+
+describe("fitAgentMessages", () => {
+  const turn = (index: number) => [
+    { role: "user" as const, content: `Ask ${index}` },
+    { role: "assistant" as const, content: `Answer ${index}` },
+  ];
+
+  it("keeps a short conversation whole", () => {
+    const messages = [...turn(1), { role: "user" as const, content: "Next" }];
+    expect(fitAgentMessages(messages, 1_000)).toEqual({
+      messages,
+      omitted: 0,
+    });
+  });
+
+  it("drops the oldest messages past the count limit and opens on a user message", () => {
+    const messages = [
+      ...Array.from({ length: MAX_AGENT_MESSAGES / 2 }, (_, index) =>
+        turn(index)
+      ).flat(),
+      { role: "user" as const, content: "Newest" },
+    ];
+
+    const fitted = fitAgentMessages(messages, 1_000);
+
+    expect(fitted.messages.length).toBeLessThanOrEqual(MAX_AGENT_MESSAGES);
+    expect(fitted.messages[0]?.role).toBe("user");
+    expect(fitted.messages.at(-1)?.content).toBe("Newest");
+    expect(fitted.omitted).toBe(messages.length - fitted.messages.length);
+  });
+
+  it("drops the oldest messages that do not fit beside a large graph", () => {
+    const long = "x".repeat(MAX_AGENT_MESSAGE_CHARS - 10);
+    const messages = [
+      { role: "user" as const, content: long },
+      { role: "assistant" as const, content: long },
+      { role: "user" as const, content: "Newest" },
+    ];
+
+    const fitted = fitAgentMessages(
+      messages,
+      MAX_AGENT_REQUEST_CHARS - MAX_AGENT_MESSAGE_CHARS
+    );
+
+    expect(fitted.messages).toEqual([{ role: "user", content: "Newest" }]);
+    expect(fitted.omitted).toBe(2);
+  });
+
+  it("clips an assistant message longer than the per-message limit", () => {
+    const fitted = fitAgentMessages(
+      [
+        { role: "user", content: "Explain" },
+        {
+          role: "assistant",
+          content: "y".repeat(MAX_AGENT_MESSAGE_CHARS + 50),
+        },
+        { role: "user", content: "Thanks" },
+      ],
+      1_000
+    );
+
+    expect(fitted.messages[1]?.content.length).toBe(MAX_AGENT_MESSAGE_CHARS);
   });
 });

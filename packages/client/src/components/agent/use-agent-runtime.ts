@@ -23,6 +23,7 @@ import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type { AgentTurnMetadata } from "#src/components/agent/turn-metadata";
 import {
   changedAnyNode,
+  fitAgentMessages,
   nodeChanges,
   recordedTools,
   toAgentMessages,
@@ -171,21 +172,29 @@ export function useAgentRuntime(workflowId: string) {
           });
         };
 
+        const selectedNodeIds = [...appStore.get(activeSelectionAtom).nodeIds];
+        const sent = fitAgentMessages(
+          toAgentMessages(messages),
+          JSON.stringify({ workflowId, selectedNodeIds, graph, messages: [] })
+            .length
+        );
+
         const turnId = Symbol("agent-turn");
         appStore.set(activeAgentTurnIdAtom, turnId);
         let content: TurnContent = [];
         let hasAppliedGraph = false;
         let failure: string | undefined;
-        let metadata: AgentTurnMetadata = {};
+        let metadata: AgentTurnMetadata =
+          sent.omitted > 0 ? { omittedMessages: sent.omitted } : {};
 
         try {
           const stream = await rpc.agent.chat(
             {
               workflowId,
-              messages: toAgentMessages(messages),
+              messages: sent.messages,
               graph,
               // What "this step" means in the message being sent.
-              selectedNodeIds: [...appStore.get(activeSelectionAtom).nodeIds],
+              selectedNodeIds,
             },
             { signal: abortSignal }
           );

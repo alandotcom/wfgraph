@@ -15,11 +15,17 @@ import type {
   ThreadMessage,
 } from "@assistant-ui/react";
 import { isEqual } from "es-toolkit/predicate";
+import { sumBy } from "es-toolkit/math";
 import {
   type AgentMessage,
   type AgentTurnRecord,
   MAX_AGENT_TURN_RECORD_ENTRIES,
 } from "@wfgraph/shared/rpc/agent-stream";
+import {
+  MAX_AGENT_MESSAGE_CHARS,
+  MAX_AGENT_MESSAGES,
+  MAX_AGENT_REQUEST_CHARS,
+} from "@wfgraph/shared/rpc/contracts/agent";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -142,4 +148,50 @@ export function toAgentMessages(
     }
     return [omitUndefined({ role: message.role, content, record })];
   });
+}
+
+/**
+ * The conversation trimmed to what one request may carry, and how many of the
+ * oldest messages that left out.
+ *
+ * The server refuses more than `MAX_AGENT_MESSAGES` messages, an assistant
+ * message longer than `MAX_AGENT_MESSAGE_CHARS`, and a request larger than
+ * `MAX_AGENT_REQUEST_CHARS`, so a long thread would otherwise stop working at
+ * its hundredth message. An assistant message is clipped to the per-message
+ * limit; then the oldest messages are dropped until the rest fit beside the
+ * `reservedChars` the graph and the rest of the request take, and the first
+ * one kept is a user message, which is how every provider wants a
+ * conversation to open. The newest message is always kept.
+ */
+export function fitAgentMessages(
+  messages: readonly AgentMessage[],
+  reservedChars: number
+): { messages: AgentMessage[]; omitted: number } {
+  const clippedMessages = messages.map((message) =>
+    message.role === "assistant" &&
+    message.content.length > MAX_AGENT_MESSAGE_CHARS
+      ? {
+          ...message,
+          content: `${message.content.slice(0, MAX_AGENT_MESSAGE_CHARS - 1)}…`,
+        }
+      : message
+  );
+  const budget = MAX_AGENT_REQUEST_CHARS - reservedChars;
+  // `JSON.stringify` of the array is the sum of each message's length plus a
+  // comma between them and the two brackets.
+  const sizes = clippedMessages.map(
+    (message) => JSON.stringify(message).length + 1
+  );
+
+  let start = Math.max(0, clippedMessages.length - MAX_AGENT_MESSAGES);
+  let total = sumBy(sizes.slice(start), (size) => size) + 1;
+  while (
+    start < clippedMessages.length - 1 &&
+    (total > budget || clippedMessages[start]?.role !== "user")
+  ) {
+    total -= sizes[start] ?? 0;
+    start += 1;
+  }
+
+  return { messages: clippedMessages.slice(start), omitted: start };
 }

@@ -229,4 +229,21 @@ describe("AgentThread", () => {
       await screen.findByText("2 model calls · 1 tool call · 1K tokens")
     ).toBeTruthy();
   });
+
+  it("says when the oldest messages have left the agent's context", async () => {
+    renderThread([
+      { role: "user", content: [{ type: "text", text: "Add a step" }] },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "Added it." }],
+        metadata: { custom: { omittedMessages: 4 } },
+      },
+    ]);
+
+    expect(
+      await screen.findByText(
+        "The agent no longer sees the 4 oldest messages in this conversation."
+      )
+    ).toBeTruthy();
+  });
 });
