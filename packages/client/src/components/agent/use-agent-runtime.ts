@@ -1,9 +1,10 @@
 /**
  * The chat runtime the agent panel renders, wired to the one streaming RPC.
  *
- * assistant-ui keeps the thread in the browser and asks this adapter to produce
- * one turn, so the whole conversation and the whole graph travel with each call
- * and the server holds nothing between turns.
+ * assistant-ui keeps the thread in the browser, stored per workflow by
+ * `thread-storage.ts`, and asks this adapter to produce one turn, so the whole
+ * conversation and the whole graph travel with each call and the server holds
+ * nothing between turns.
  *
  * The adapter yields cumulative content, which is what `useLocalRuntime` expects:
  * each tick replaces the assistant message rather than appending to it.
@@ -20,6 +21,7 @@ import { useMemo } from "react";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type { AgentTurnRecord } from "@wfgraph/shared/rpc/agent-stream";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { agentThreadHistory } from "#src/components/agent/thread-storage";
 import type { AgentTurnMetadata } from "#src/components/agent/turn-metadata";
 import {
   changedAnyNode,
@@ -295,5 +297,9 @@ export function useAgentRuntime(workflowId: string) {
     [applyGraph, catalog, workflowId]
   );
 
-  return useLocalRuntime(adapter);
+  // The thread is kept per workflow in this browser and loaded back when the
+  // panel mounts, so a reload or a trip to another workflow keeps it.
+  const history = useMemo(() => agentThreadHistory(workflowId), [workflowId]);
+
+  return useLocalRuntime(adapter, { adapters: { history } });
 }

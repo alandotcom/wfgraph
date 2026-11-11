@@ -21,12 +21,14 @@ import {
   Minimize2Icon,
   Maximize2Icon,
   SparklesIcon,
+  SquarePenIcon,
   XIcon,
 } from "lucide-react";
 import { useAtom, useAtomValue } from "jotai";
 import { useCallback, useRef, useState } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { AgentThread } from "#src/components/agent/agent-thread";
+import { forgetAgentThread } from "#src/components/agent/thread-storage";
 import { useAgentRuntime } from "#src/components/agent/use-agent-runtime";
 import { Button } from "#src/components/ui/button";
 import { CANVAS_OBSTACLE_SLOTS } from "#src/components/workflow/canvas-reveal/reveal-geometry";
@@ -138,7 +140,13 @@ function ResizeGrip({
   );
 }
 
-function AgentCard({ onClose }: { onClose: () => void }) {
+function AgentCard({
+  onClose,
+  onNewConversation,
+}: {
+  onClose: () => void;
+  onNewConversation: () => void;
+}) {
   const [size, setSize] = useAtom(agentPanelSizeAtom);
   const [dragged, setDragged] = useState<AgentPanelSize | null>(null);
   const [isExpanded, setIsExpanded] = useAtom(isAgentPanelExpandedAtom);
@@ -268,6 +276,16 @@ function AgentCard({ onClose }: { onClose: () => void }) {
           </h2>
           <span className="flex items-center gap-0.5">
             <Button
+              aria-label="New conversation"
+              disabled={isGenerating}
+              onClick={onNewConversation}
+              size="icon-sm"
+              title="New conversation"
+              variant="ghost"
+            >
+              <SquarePenIcon />
+            </Button>
+            <Button
               aria-label={
                 isExpanded
                   ? "Return the agent panel to the canvas"
@@ -309,6 +327,13 @@ function WorkflowAgentPanel({ workflowId }: { workflowId: string }) {
     requestAnimationFrame(() => trigger.current?.focus());
   }, [setIsOpen]);
 
+  // The stored copy goes first, so nothing the reset leaves behind can be
+  // loaded back into the new thread.
+  const onNewConversation = useCallback(() => {
+    forgetAgentThread(workflowId);
+    runtime.thread.reset();
+  }, [runtime, workflowId]);
+
   return (
     // Cleared to the right of the canvas controls. On a narrow viewport the
     // panel takes the width available inside the canvas.
@@ -328,14 +353,15 @@ function WorkflowAgentPanel({ workflowId }: { workflowId: string }) {
     >
       {/*
         The provider stays mounted whether the card is up or not. Closing the
-        panel hides a conversation; it does not end one. The agent's edits are
+        panel hides a conversation; it does not end one, and the thread is kept
+        in this browser per workflow until "New conversation" clears it. The agent's edits are
         already saved to the draft by the time anyone closes it, so throwing the
         record of what it changed away with the card would leave the workflow
         altered and nothing to read about why.
       */}
       <AssistantRuntimeProvider runtime={runtime}>
         {isOpen ? (
-          <AgentCard onClose={onClose} />
+          <AgentCard onClose={onClose} onNewConversation={onNewConversation} />
         ) : (
           <Button
             className="pointer-events-auto shadow-sm"
