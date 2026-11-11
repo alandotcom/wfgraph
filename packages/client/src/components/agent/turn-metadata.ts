@@ -10,6 +10,7 @@
 import { Option, Schema } from "effect";
 import { nonNegativeInteger } from "@wfgraph/shared/types/schema";
 import {
+  type AgentTurnRecord,
   type AgentUsagePart,
   agentTurnRecordSchema,
   agentUsagePartSchema,
@@ -27,6 +28,11 @@ const turnMetadataSchema = Schema.Struct({
    * keep it inside the server's limits.
    */
   omittedMessages: Schema.optionalKey(nonNegativeInteger),
+  /**
+   * Names the editor history entry the turn's first edit pushed, which
+   * `turn-undo.ts` holds in memory for the panel's "Undo changes".
+   */
+  undoKey: Schema.optionalKey(Schema.String),
 });
 
 export type AgentTurnMetadata = typeof turnMetadataSchema.Type;
@@ -69,4 +75,23 @@ export function omittedMessagesNotice(omitted: number): string {
   return omitted === 1
     ? "The agent no longer sees the oldest message in this conversation."
     : `The agent no longer sees the ${omitted} oldest messages in this conversation.`;
+}
+
+/**
+ * The one line under a turn that edited the workflow, such as "Added 2 steps,
+ * removed 1 step". Each count is capped where the record caps its lists.
+ */
+export function nodeChangeSummary(
+  nodes: NonNullable<AgentTurnRecord["nodes"]>
+): string {
+  const phrases = [
+    ["added", nodes.added.length],
+    ["changed", nodes.changed.length],
+    ["removed", nodes.removed.length],
+  ] as const;
+  const sentence = phrases
+    .filter(([, count]) => count > 0)
+    .map(([verb, count]) => `${verb} ${plural(count, "step")}`)
+    .join(", ");
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }

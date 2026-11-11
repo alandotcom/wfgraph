@@ -30,14 +30,21 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   SquareIcon,
+  Undo2Icon,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useAtomValue, useSetAtom } from "jotai";
+import { useMemo, useRef, useState } from "react";
 import { AgentMarkdown } from "#src/components/agent/agent-markdown";
 import {
+  nodeChangeSummary,
   omittedMessagesNotice,
   readTurnMetadata,
   usageSummary,
 } from "#src/components/agent/turn-metadata";
+import {
+  agentTurnUndoStateAtom,
+  undoAgentTurnAtom,
+} from "#src/components/agent/turn-undo";
 import {
   ReasoningPanel,
   type ReasoningStep,
@@ -230,6 +237,62 @@ function TurnUsage() {
   );
 }
 
+/**
+ * The editor's Undo for one turn. Disabled once other edits sit on top of the
+ * turn's, since the editor's Undo would then revert those first.
+ */
+function UndoTurnButton({ undoKey }: { undoKey: string }) {
+  const stateAtom = useMemo(() => agentTurnUndoStateAtom(undoKey), [undoKey]);
+  const state = useAtomValue(stateAtom);
+  const undoTurn = useSetAtom(undoAgentTurnAtom);
+
+  if (state === "unknown") {
+    return null;
+  }
+  if (state === "undone") {
+    return <span className="text-muted-foreground">Undone</span>;
+  }
+  return (
+    <Button
+      className="h-6 text-xs"
+      disabled={state === "superseded"}
+      onClick={() => undoTurn(undoKey)}
+      size="xs"
+      title={
+        state === "superseded"
+          ? "Other edits were made after this turn. Use the editor's Undo to step back through them."
+          : "Revert every change this turn made to the workflow"
+      }
+      variant="ghost"
+    >
+      <Undo2Icon />
+      Undo changes
+    </Button>
+  );
+}
+
+/**
+ * What a finished turn changed on the canvas, in one line, with the control
+ * that reverts it. A turn that edited nothing shows neither.
+ */
+function TurnChanges() {
+  const custom = useAuiState((state) => state.message.metadata.custom);
+  const running = useAuiState(
+    (state) => state.message.status?.type === "running"
+  );
+  const { record, undoKey } = readTurnMetadata(custom);
+  const nodes = record?.nodes;
+  if (running || !nodes) {
+    return null;
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 text-muted-foreground text-xs">
+      <span>{nodeChangeSummary(nodes)}</span>
+      {undoKey === undefined ? null : <UndoTurnButton undoKey={undoKey} />}
+    </div>
+  );
+}
+
 function AssistantMessage() {
   return (
     <MessagePrimitive.Root
@@ -266,6 +329,7 @@ function AssistantMessage() {
           <ErrorPrimitive.Message className="min-w-0 break-words" />
         </ErrorPrimitive.Root>
       </AuiIf>
+      <TurnChanges />
       <TurnUsage />
     </MessagePrimitive.Root>
   );

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  nodeChangeSummary,
   readTurnMetadata,
   usageSummary,
 } from "#src/components/agent/turn-metadata";
@@ -36,5 +37,22 @@ describe("usageSummary", () => {
     expect(
       usageSummary({ ...usage, modelCalls: 1, cachedInputTokens: 0 })
     ).toBe("1 model call · 1 tool call · 12.4K tokens");
+  });
+});
+
+describe("nodeChangeSummary", () => {
+  const node = (id: string) => ({ id, label: id });
+
+  it("names each kind of change the turn made, and only those", () => {
+    expect(
+      nodeChangeSummary({
+        added: [node("a"), node("b")],
+        changed: [],
+        removed: [node("c")],
+      })
+    ).toBe("Added 2 steps, removed 1 step");
+    expect(
+      nodeChangeSummary({ added: [], changed: [node("a")], removed: [] })
+    ).toBe("Changed 1 step");
   });
 });

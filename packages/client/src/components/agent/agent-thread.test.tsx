@@ -266,4 +266,31 @@ describe("AgentThread", () => {
     expect(container.querySelector("img")).toBeNull();
     expect(screen.getByText("[image: status]")).toBeTruthy();
   });
+
+  it("says what a turn changed, and offers no undo for a turn from before the page loaded", async () => {
+    renderThread([
+      { role: "user", content: [{ type: "text", text: "Add a step" }] },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "Added it." }],
+        metadata: {
+          custom: {
+            undoKey: "turn_from_storage",
+            record: {
+              nodes: {
+                added: [{ id: "n1", label: "Notify" }],
+                changed: [{ id: "n2", label: "Lifecycle" }],
+                removed: [],
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    expect(
+      await screen.findByText("Added 1 step, changed 1 step")
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo changes" })).toBeNull();
+  });
 });

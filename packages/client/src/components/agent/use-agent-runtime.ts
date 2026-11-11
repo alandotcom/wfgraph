@@ -20,8 +20,10 @@ import { useSetAtom } from "jotai";
 import { useMemo } from "react";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type { AgentTurnRecord } from "@wfgraph/shared/rpc/agent-stream";
+import { generateId } from "@wfgraph/shared/utils/id";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { agentThreadHistory } from "#src/components/agent/thread-storage";
+import { recordAgentTurnUndoPointAtom } from "#src/components/agent/turn-undo";
 import type { AgentTurnMetadata } from "#src/components/agent/turn-metadata";
 import {
   changedAnyNode,
@@ -252,6 +254,13 @@ export function useAgentRuntime(workflowId: string) {
                   edges: edges.map(toEditorEdge),
                   catalog,
                 });
+                if (applied && !hasAppliedGraph) {
+                  // The first edit pushed the turn's one history entry, which
+                  // the panel's "Undo changes" reverts to.
+                  const undoKey = generateId();
+                  appStore.set(recordAgentTurnUndoPointAtom, undoKey);
+                  metadata = { ...metadata, undoKey };
+                }
                 hasAppliedGraph ||= applied;
                 break;
               }
