@@ -96,6 +96,11 @@ describe("Workflow Graph authorization operations", () => {
     expect(WfGraphOperations.actionConfigOptions.permission).toBe(
       "workflow.write"
     );
+    // Answering it resolves the stored grant, can rotate its refresh token, and
+    // calls the vendor, so a read-only role must not reach it.
+    expect(WfGraphOperations.integrationConfigOptions.permission).toBe(
+      "workflow.write"
+    );
     expect(WfGraphOperations.workflowExecute.permission).toBe("run.manage");
     // The preview names run ids and reports what each run is parked on, so it
     // is a read of runs rather than a read of the workflow.

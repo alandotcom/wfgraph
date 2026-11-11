@@ -52,9 +52,11 @@ const operationDefinitions = {
     "integration.get",
     WfGraphPermissions.connectionRead
   ),
+  // The answer comes from the vendor through the stored grant, and the call can
+  // refresh that grant, so asking is a workflow edit, as `action.configOptions` is.
   integrationConfigOptions: operation(
     "integration.configOptions",
-    WfGraphPermissions.connectionRead
+    WfGraphPermissions.workflowWrite
   ),
   integrationCreate: operation(
     "integration.create",

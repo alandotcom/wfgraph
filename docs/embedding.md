@@ -365,27 +365,27 @@ Use the following static exports from `@wfgraph/core` or `@wfgraph/core/worker`:
 
 Workflow Graph's built-in permission vocabulary is fixed:
 
-| Permission         | Covers                                                            |
-| ------------------ | ----------------------------------------------------------------- |
-| `workflow.read`    | Reading workflows and version history                             |
-| `workflow.write`   | Creating, editing, publishing, restoring, and deleting workflows  |
-| `run.read`         | Reading runs, logs, events, status, and migration preflights      |
-| `run.manage`       | Starting, canceling, deleting, resuming, and migrating runs       |
-| `connection.read`  | Reading connections and connection configuration options          |
-| `connection.write` | Creating, editing, testing, deleting, and authorizing connections |
-| `agent.use`        | Using the build agent                                             |
+| Permission         | Covers                                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `workflow.read`    | Reading workflows and version history                                                                                    |
+| `workflow.write`   | Creating, editing, publishing, restoring, and deleting workflows, and loading the vendor options a workflow field offers |
+| `run.read`         | Reading runs, logs, events, status, and migration preflights                                                             |
+| `run.manage`       | Starting, canceling, deleting, resuming, and migrating runs                                                              |
+| `connection.read`  | Reading connections                                                                                                      |
+| `connection.write` | Creating, editing, testing, deleting, and authorizing connections                                                        |
+| `agent.use`        | Using the build agent                                                                                                    |
 
 The following table maps every operation ID to its permission:
 
-| Permission         | Operation IDs                                                                                                                                                                                                                      |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.subscribeList`, `workflow.subscribeDraft`, `workflow.getVersionHistory`, `workflow.getVersionUsage`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph` |
-| `workflow.write`   | `workflow.create`, `workflow.update`, `workflow.delete`, `workflow.duplicate`, `workflow.publish`, `workflow.restoreVersion`, `workflow.saveCurrent`, `workflow.bulkLifecycle`, `action.configOptions`                             |
-| `run.read`         | `workflow.getExecutions`, `workflow.getExecutionsGlobal`, `workflow.getExecutionLogs`, `workflow.getExecutionEvents`, `workflow.getExecutionStatus`, `workflow.previewMigration`                                                   |
-| `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`, `workflow.migrateExecutions`                                                                                                   |
-| `connection.read`  | `integration.getAll`, `integration.get`, `integration.configOptions`                                                                                                                                                               |
-| `connection.write` | `integration.create`, `integration.update`, `integration.delete`, `integration.disconnectOAuth`, `integration.testConnection`, `integration.testCredentials`, `oauth.start`, `oauth.status`, `oauth.callback`                      |
-| `agent.use`        | `agent.chat`                                                                                                                                                                                                                       |
+| Permission         | Operation IDs                                                                                                                                                                                                                       |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workflow.read`    | `workflow.getAll`, `workflow.getById`, `workflow.subscribeList`, `workflow.subscribeDraft`, `workflow.getVersionHistory`, `workflow.getVersionUsage`, `workflow.compareVersion`, `workflow.getCurrent`, `workflow.getVersionGraph`  |
+| `workflow.write`   | `workflow.create`, `workflow.update`, `workflow.delete`, `workflow.duplicate`, `workflow.publish`, `workflow.restoreVersion`, `workflow.saveCurrent`, `workflow.bulkLifecycle`, `action.configOptions`, `integration.configOptions` |
+| `run.read`         | `workflow.getExecutions`, `workflow.getExecutionsGlobal`, `workflow.getExecutionLogs`, `workflow.getExecutionEvents`, `workflow.getExecutionStatus`, `workflow.previewMigration`                                                    |
+| `run.manage`       | `workflow.execute`, `workflow.deleteExecutions`, `workflow.resumeWait`, `workflow.cancelExecution`, `workflow.migrateExecutions`                                                                                                    |
+| `connection.read`  | `integration.getAll`, `integration.get`                                                                                                                                                                                             |
+| `connection.write` | `integration.create`, `integration.update`, `integration.delete`, `integration.disconnectOAuth`, `integration.testConnection`, `integration.testCredentials`, `oauth.start`, `oauth.status`, `oauth.callback`                       |
+| `agent.use`        | `agent.chat`                                                                                                                                                                                                                        |
 
 The role policies contain these permissions:
 
