@@ -29,6 +29,16 @@ function hasRepeatedRefusal(
   );
 }
 
+/**
+ * Whether a refusal tells the model to read the workflow again, which a tool
+ * does when the call named a step or edge the graph does not hold. Any other
+ * refusal changed nothing and left what the model read true, so correcting
+ * the call needs no read.
+ */
+function asksForFreshRead(result: unknown): boolean {
+  return JSON.stringify(result ?? null).includes("read_workflow");
+}
+
 function hasLaterStepWriteWithoutFreshRead(
   calls: readonly AgentTrajectoryToolCall[]
 ): boolean {
@@ -43,6 +53,7 @@ function hasLaterStepWriteWithoutFreshRead(
       const refusalResult = refusal.result;
       return (
         refusalResult?.failed === true &&
+        asksForFreshRead(refusalResult.result) &&
         refusalResult.step < call.step &&
         !calls.some(
           (read) =>
@@ -122,7 +133,7 @@ export function assessRecovery(input: {
   }
   if (hasLaterStepWriteWithoutFreshRead(input.trajectory.calls)) {
     issues.push(
-      "a write was attempted after a refused tool call without a fresh read_workflow result"
+      "a write was attempted after a refusal that asked for read_workflow, without a fresh read_workflow result"
     );
   }
 

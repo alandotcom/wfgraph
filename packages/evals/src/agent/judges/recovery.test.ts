@@ -497,55 +497,65 @@ describe("assessRecovery", () => {
     );
   });
 
-  it("rejects a write in a later model step after a refusal without a fresh read", () => {
-    const trajectory = buildAgentTrajectory([
-      {
-        type: "tool-call",
-        step: 1,
-        id: "first-write",
-        name: "update_node",
-        input: { id: "notify", label: "First" },
-      },
-      {
-        type: "tool-result",
-        step: 1,
-        id: "first-write",
-        name: "update_node",
-        result: { reason: "invalid" },
-        failed: true,
-      },
-      {
-        type: "tool-call",
-        step: 2,
-        id: "second-write",
-        name: "update_node",
-        input: { id: "notify", label: "Second" },
-      },
-      {
-        type: "tool-result",
-        step: 2,
-        id: "second-write",
-        name: "update_node",
-        result: {},
-        failed: false,
-        graphRevision: 1,
-      },
-      {
-        type: "graph-revision",
-        step: 2,
-        toolCallId: "second-write",
-        revision: 1,
-        document: { nodes: [], edges: [] },
-      },
-    ]);
+  // A refusal that names a step the graph does not hold tells the model to
+  // read the workflow again. Any other refusal changed nothing and needs no
+  // read before the corrected call.
+  it.each([
+    {
+      reason:
+        "No node with id notify. Call read_workflow to see what the graph holds.",
+      score: 0,
+    },
+    { reason: "label must not be empty.", score: 1 },
+  ])(
+    "scores a write after the refusal $reason as $score when no read came between",
+    ({ reason, score }) => {
+      const trajectory = buildAgentTrajectory([
+        {
+          type: "tool-call",
+          step: 1,
+          id: "first-write",
+          name: "update_node",
+          input: { id: "notify", label: "First" },
+        },
+        {
+          type: "tool-result",
+          step: 1,
+          id: "first-write",
+          name: "update_node",
+          result: { reason },
+          failed: true,
+        },
+        {
+          type: "tool-call",
+          step: 2,
+          id: "second-write",
+          name: "update_node",
+          input: { id: "notify", label: "Second" },
+        },
+        {
+          type: "tool-result",
+          step: 2,
+          id: "second-write",
+          name: "update_node",
+          result: {},
+          failed: false,
+          graphRevision: 1,
+        },
+        {
+          type: "graph-revision",
+          step: 2,
+          toolCallId: "second-write",
+          revision: 1,
+          document: { nodes: [], edges: [] },
+        },
+      ]);
 
-    expect(assessRecovery({ facts: completedFacts, trajectory })).toMatchObject(
-      {
-        score: 0,
-        rationale: expect.stringContaining("fresh read_workflow"),
-      }
-    );
-  });
+      expect(
+        assessRecovery({ facts: completedFacts, trajectory })
+      ).toMatchObject({ score });
+    }
+  );
 
   it("accepts a write in a later model step after a fresh successful read", () => {
     const trajectory = buildAgentTrajectory([
@@ -625,7 +635,10 @@ describe("assessRecovery", () => {
         step: 1,
         id: "first-write",
         name: "update_node",
-        result: { reason: "invalid" },
+        result: {
+          reason:
+            "No node with id notify. Call read_workflow to see what the graph holds.",
+        },
         failed: true,
       },
       {
@@ -663,56 +676,6 @@ describe("assessRecovery", () => {
         type: "graph-revision",
         step: 3,
         toolCallId: "second-write",
-        revision: 1,
-        document: { nodes: [], edges: [] },
-      },
-    ]);
-
-    expect(assessRecovery({ facts: completedFacts, trajectory })).toMatchObject(
-      {
-        score: 0,
-        rationale: expect.stringContaining("fresh read_workflow"),
-      }
-    );
-  });
-
-  it("rejects a write after a failed describe_action without a fresh read", () => {
-    const trajectory = buildAgentTrajectory([
-      {
-        type: "tool-call",
-        step: 1,
-        id: "describe",
-        name: "describe_action",
-        input: { actionId: "slack/send-message" },
-      },
-      {
-        type: "tool-result",
-        step: 1,
-        id: "describe",
-        name: "describe_action",
-        result: { reason: "unavailable" },
-        failed: true,
-      },
-      {
-        type: "tool-call",
-        step: 2,
-        id: "write",
-        name: "add_node",
-        input: { actionId: "slack/send-message" },
-      },
-      {
-        type: "tool-result",
-        step: 2,
-        id: "write",
-        name: "add_node",
-        result: { nodeId: "notify" },
-        failed: false,
-        graphRevision: 1,
-      },
-      {
-        type: "graph-revision",
-        step: 2,
-        toolCallId: "write",
         revision: 1,
         document: { nodes: [], edges: [] },
       },

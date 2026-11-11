@@ -82,11 +82,20 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Add a lookup action only when");
   });
 
-  it("requires a fresh graph read before a write in a later response after a refusal", () => {
+  it("asks for a fresh graph read after a refusal only when the refusal asks for one", () => {
+    const prompt = unwrapped(buildSystemPrompt());
+
+    expect(prompt).toContain("A refused call changed nothing");
+    expect(prompt).toContain(
+      "When the reason tells you to call read_workflow, which it does when the call named a step or edge the graph does not hold, call it before any other write"
+    );
+  });
+
+  it("ends every turn that changed the graph with a validation", () => {
     const prompt = unwrapped(buildSystemPrompt());
 
     expect(prompt).toContain(
-      "After any refusal, call read_workflow before any write in a later response"
+      "End every turn that changed the graph with one validate_workflow call, made after your last write"
     );
   });
 
@@ -243,7 +252,9 @@ describe("buildAuthoringInstructions", () => {
     expect(instructions).toContain(
       "Every node with multiple incoming edges is an AND-join"
     );
-    expect(instructions).toContain("Call validate_workflow after your edits");
+    expect(instructions).toContain(
+      "End every turn that changed the graph with one validate_workflow call"
+    );
     expect(instructions).not.toContain("revert_draft");
     expect(instructions).not.toContain("watches the graph change");
   });
