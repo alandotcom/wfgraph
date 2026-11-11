@@ -83,7 +83,7 @@ export const ReadRun = Tool.make("read_run", {
 
 export const StartTestRun = Tool.make("start_test_run", {
   description:
-    "Start a Draft run of the saved draft with a payload, and answer its runId for read_run. A Draft run calls the real action handlers in test mode: integrations send to their test recipients, and a host action runs as written. Start one only when the person asks for a test run.",
+    "Start a Draft run of the saved draft with a payload, and answer its runId for read_run. A Draft run calls the real action handlers in test mode: an integration step does what its test-mode setting says, and a host action runs as written. Start one only when the person asks for a test run.",
   parameters: Schema.Struct({
     payload: Schema.String.annotate({
       description:
