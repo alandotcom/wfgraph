@@ -24,6 +24,7 @@ import {
   lastSavedAtAtom,
   outstandingGraph,
   recordLoadedDraftRevisionAtom,
+  resendHeldGraphAtom,
   successfulSaveGenerationAtom,
   workflowLoadErrorAtom,
   workflowNotFoundAtom,
@@ -212,22 +213,39 @@ export const hydrateWorkflowAtom = atom(
     set(currentWorkflowIdAtom, workflow.id);
 
     if (!clientIsAheadOfServer) {
-      // Leaving a workflow with its save queued or in flight leaves that graph
-      // in the queue, newer than a snapshot read before the save landed.
+      // Leaving a workflow with its save queued, in flight, or failed leaves
+      // that graph in the queue, newer than the snapshot the server returned.
       const outstanding = outstandingGraph(get, workflow.id);
       set(
         loadWorkflowGraphAtom,
-        outstanding ?? { nodes: workflow.nodes, edges: workflow.edges }
+        outstanding
+          ? { nodes: outstanding.nodes, edges: outstanding.edges }
+          : { nodes: workflow.nodes, edges: workflow.edges }
       );
       if (outstanding) {
         set(hasUnsavedChangesAtom, true);
       }
-      set(recordLoadedDraftRevisionAtom, {
-        workflowId: workflow.id,
-        draftRevision: workflow.draftRevision,
-      });
-      set(observedRemoteDraftRevisionStateAtom, null);
-      set(lastSaveErrorAtom, null);
+      if (outstanding?.failure) {
+        // The canvas holds an edit of the revision the failed request
+        // expected, and the queue sends it again expecting that revision. A
+        // newer snapshot is a draft written elsewhere since: it is recorded as
+        // observed, which the status strip reports as a conflict.
+        set(resendHeldGraphAtom, workflow.id);
+        set(
+          observedRemoteDraftRevisionStateAtom,
+          workflow.draftRevision > outstanding.failure.expectedDraftRevision
+            ? { workflowId: workflow.id, draftRevision: workflow.draftRevision }
+            : null
+        );
+        set(lastSaveErrorAtom, outstanding.failure.error);
+      } else {
+        set(recordLoadedDraftRevisionAtom, {
+          workflowId: workflow.id,
+          draftRevision: workflow.draftRevision,
+        });
+        set(observedRemoteDraftRevisionStateAtom, null);
+        set(lastSaveErrorAtom, null);
+      }
     }
 
     set(activeAgentTurnIdAtom, null);

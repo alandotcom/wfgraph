@@ -12,11 +12,24 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
+import { act } from "react";
 import {
+  WorkflowHeldSaveRetry,
   WorkflowSaveStatus,
   WorkflowUnloadGuard,
 } from "#src/components/workflow/workflow-save-status";
-import { hasUnsavedChangesAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowIdAtom,
+  hasHeldGraphSaveAtom,
+  hasUnsavedChangesAtom,
+  recordLoadedDraftRevisionAtom,
+  saveRetryBackoffAtom,
+  saveWorkflowAtom,
+  workflowApiAtom,
+} from "#src/lib/workflow-save-store";
+import { ApiError } from "#src/lib/rpc-client";
+import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
@@ -97,5 +110,66 @@ describe("WorkflowUnloadGuard", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(armedUnloadGuard).toBe(false);
+  });
+});
+
+describe("WorkflowHeldSaveRetry", () => {
+  /** A store holding workflow_a's graph after its save got no answer. */
+  async function storeWithHeldGraph() {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const update = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError(500, "network is down"))
+      .mockResolvedValue({ ...savedWorkflow("workflow_a"), draftRevision: 2 });
+    const store = createStore();
+    store.set(workflowApiAtom, { update });
+    store.set(saveRetryBackoffAtom, { initialMs: 600_000, maxMs: 600_000 });
+    store.set(currentWorkflowIdAtom, "workflow_a");
+    store.set(recordLoadedDraftRevisionAtom, {
+      workflowId: "workflow_a",
+      draftRevision: 1,
+    });
+    await store.set(
+      saveWorkflowAtom,
+      { nodes: [], edges: [] },
+      { immediate: true }
+    );
+    store.set(currentWorkflowIdAtom, "workflow_b");
+    store.set(hasUnsavedChangesAtom, false);
+    return { store, update };
+  }
+
+  it("resends a held graph when the browser comes back online", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const { store, update } = await storeWithHeldGraph();
+    render(
+      <Provider store={store}>
+        <WorkflowHeldSaveRetry />
+      </Provider>
+    );
+
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(store.get(hasHeldGraphSaveAtom)).toBe(false));
+  });
+
+  it("arms the reload prompt while the workflow left behind holds a graph", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const { store } = await storeWithHeldGraph();
+    const addEventListener = vi.spyOn(window, "addEventListener");
+    render(
+      <Provider store={store}>
+        <WorkflowHeldSaveRetry />
+      </Provider>
+    );
+
+    await waitFor(() =>
+      expect(
+        addEventListener.mock.calls.some(([type]) => type === "beforeunload")
+      ).toBe(true)
+    );
   });
 });

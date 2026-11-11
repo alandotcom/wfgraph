@@ -5,23 +5,27 @@
  * "something is unsaved" only to a reader who already knew the dot meant that.
  * A word says it instead.
  *
- * Two components, because they have different lifetimes. `WorkflowSaveStatus`
+ * Three components, because they have different lifetimes. `WorkflowSaveStatus`
  * is a label the status strip mounts inside whichever of its two states is up;
  * `WorkflowUnloadGuard` is headless and mounts once, outside them, because a
  * reload discards a pending patch whether or not the label reporting it happens
- * to be on screen.
+ * to be on screen. `WorkflowHeldSaveRetry` is headless and mounts at the app
+ * root, because a graph whose save failed is held for its workflow after the
+ * editor has left it.
  */
 
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { Loader2 } from "lucide-react";
 import { useDomEvent } from "#src/hooks/effects";
 import {
+  hasHeldGraphSaveAtom,
   hasUnsavedChangesAtom,
   isSavingAtom,
   lastSaveErrorAtom,
   lastSavedAtAtom,
+  retryHeldGraphSavesAtom,
 } from "#src/lib/workflow-save-store";
 import { cn } from "@wfgraph/shared/utils";
 import { formatClockTime } from "@wfgraph/shared/utils/time";
@@ -112,6 +116,32 @@ export function WorkflowUnloadGuard() {
       event.preventDefault();
     },
     { enabled: canUpdate && (hasUnsavedChanges || isSaving) }
+  );
+
+  return null;
+}
+
+/**
+ * Resends every held graph the moment the browser reports it is online again,
+ * rather than at the end of the save queue's backoff, and arms the browser's
+ * leave-confirmation while any workflow holds one, since a reload drops it.
+ * Owners only, for the reason `WorkflowUnloadGuard` gives.
+ */
+export function WorkflowHeldSaveRetry() {
+  const hasHeldGraphSave = useAtomValue(hasHeldGraphSaveAtom);
+  const retryHeldGraphSaves = useSetAtom(retryHeldGraphSavesAtom);
+  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
+
+  useDomEvent(window, "online", () => retryHeldGraphSaves(), {
+    enabled: canUpdate && hasHeldGraphSave,
+  });
+  useDomEvent(
+    window,
+    "beforeunload",
+    (event) => {
+      event.preventDefault();
+    },
+    { enabled: canUpdate && hasHeldGraphSave }
   );
 
   return null;

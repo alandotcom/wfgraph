@@ -1,4 +1,4 @@
-import { atom, type Getter } from "jotai";
+import { atom, type Getter, type Setter } from "jotai";
 import { toast } from "sonner";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { DRAFT_CONFLICT_CODE } from "@wfgraph/shared/rpc/error-codes";
@@ -114,6 +114,14 @@ function markWorkflowListStale() {
 export const autosaveDelayAtom = atom(1000);
 
 /**
+ * How long the queue waits before it resends a graph a request failed to
+ * store: `initialMs` after the first failure, doubling with each automatic
+ * resend that fails too, never longer than `maxMs`. Any successful save starts
+ * the doubling over.
+ */
+export const saveRetryBackoffAtom = atom({ initialMs: 2000, maxMs: 30_000 });
+
+/**
  * The fields one `update` call can carry. A later patch wins field by field.
  *
  * Nodes and edges travel together because the server takes one serialized graph:
@@ -170,7 +178,37 @@ type PendingSave = {
   expectedDraftRevision: number;
   /** Resolved once the `update` carrying this patch comes back. */
   waiters: Array<(outcome: SaveOutcome) => void>;
+  /**
+   * True while only the queue asked for this request, as a resend of a held
+   * graph. Its failure is reported by the status strip alone, so a server that
+   * stays down for a minute does not raise a toast per attempt.
+   */
+  automatic: boolean;
 };
+
+/**
+ * A graph a failed request did not store, held per workflow until a later
+ * request carries it. Opening the workflow again restores it on the canvas.
+ */
+type HeldGraph = {
+  graph: WorkflowGraphPatch;
+  /**
+   * The draft revision the failed request expected. A resend expects it again,
+   * so a draft another client saved in the meantime is refused as a conflict
+   * and never overwritten.
+   */
+  expectedDraftRevision: number;
+  /** Why the request failed, shown again when the workflow is reopened. */
+  error: Error;
+  /** Whether the queue resends the graph by itself, after a backoff or when asked. */
+  resend: boolean;
+};
+
+/** The failure a held graph carries, as hydration reads it. */
+export type HeldGraphFailure = Pick<
+  HeldGraph,
+  "expectedDraftRevision" | "error"
+>;
 
 type SaveQueue = {
   timeoutId: ReturnType<typeof setTimeout> | null;
@@ -184,14 +222,20 @@ type SaveQueue = {
   inFlight: PendingSave | null;
   /**
    * The graph a failed request did not persist, kept per workflow until
-   * another save for that workflow can carry it. Without this, a later partial
-   * save (for example a rename after a graph write) can succeed and make the
-   * editor look clean while the failed graph is still absent on the server.
+   * another save for that workflow carries it, and through any number of
+   * workflow switches. Without this, a later partial save (for example a
+   * rename after a graph write) can succeed and make the editor look clean
+   * while the failed graph is still absent on the server, and reopening the
+   * workflow would show the server's older graph as saved.
    * A failed name or mode is not kept: the caller that asked for it reports the
    * failure and shows the old value again, so sending it later would write a
    * value the editor no longer displays.
    */
-  failedGraphs: Map<string, WorkflowGraphPatch>;
+  failedGraphs: Map<string, HeldGraph>;
+  /** The timer that resends the held graphs marked `resend`, or null. */
+  retryTimeoutId: ReturnType<typeof setTimeout> | null;
+  /** Automatic resends that failed since the last successful save. */
+  retryFailureCount: number;
   /**
    * The newest graph `saveWorkflowAtom` refused before queueing it, per
    * workflow, held until an accepted graph for that workflow is queued or the
@@ -237,6 +281,8 @@ const saveQueueAtom = atom((): SaveQueue => ({
   pending: [],
   inFlight: null,
   failedGraphs: new Map(),
+  retryTimeoutId: null,
+  retryFailureCount: 0,
   refusedGraphs: new Map(),
   blockedConflicts: new Map(),
   renames: new Map(),
@@ -244,21 +290,79 @@ const saveQueueAtom = atom((): SaveQueue => ({
   isFlushing: false,
 }));
 
+/** The workflows holding a failed graph, mirrored from the queue so React can read it. */
+const heldGraphWorkflowIdsAtom = atom<ReadonlySet<string>>(new Set<string>());
+
 /**
- * The newest graph of a workflow the queue holds that the server has not
- * answered yet, queued or in flight, or null. A snapshot read while one is
+ * Whether any workflow, the open one or one the editor has left, holds a graph
+ * the server has not stored. Leaving the page while one does loses it.
+ */
+export const hasHeldGraphSaveAtom = atom(
+  (get) => get(heldGraphWorkflowIdsAtom).size > 0
+);
+
+function syncHeldGraphs(set: Setter, queue: SaveQueue) {
+  set(heldGraphWorkflowIdsAtom, new Set(queue.failedGraphs.keys()));
+}
+
+/** Take a workflow's held graph out of the queue, for a request that carries it. */
+function releaseHeldGraph(
+  set: Setter,
+  queue: SaveQueue,
+  workflowId: string
+): HeldGraph | undefined {
+  const held = queue.failedGraphs.get(workflowId);
+  if (held) {
+    queue.failedGraphs.delete(workflowId);
+    syncHeldGraphs(set, queue);
+  }
+  return held;
+}
+
+/**
+ * Whether a failed request could succeed unchanged later: no answer arrived,
+ * which the client reports as a 500, or the server said it could not take the
+ * request right now.
+ */
+function isTransientSaveFailure(error: unknown): boolean {
+  return (
+    !(error instanceof ApiError) ||
+    error.status >= 500 ||
+    error.status === 408 ||
+    error.status === 429
+  );
+}
+
+/**
+ * The newest graph of a workflow the server has not stored, or null: queued or
+ * in flight, or held after a failed request. A snapshot read while one is
  * outstanding is older than what the editor last showed for that workflow.
+ * `failure` is set when the graph is a held one.
  */
 export function outstandingGraph(
   get: Getter,
   workflowId: string
-): WorkflowGraphPatch | null {
+): (WorkflowGraphPatch & { failure: HeldGraphFailure | null }) | null {
   const queue = get(saveQueueAtom);
   const newest = [queue.inFlight, ...queue.pending].findLast(
     (entry) => entry?.workflowId === workflowId && entry.patch.nodes
   );
-  return newest?.patch.nodes
-    ? { nodes: newest.patch.nodes, edges: newest.patch.edges }
+  if (newest?.patch.nodes) {
+    return {
+      nodes: newest.patch.nodes,
+      edges: newest.patch.edges,
+      failure: null,
+    };
+  }
+  const held = queue.failedGraphs.get(workflowId);
+  return held
+    ? {
+        ...held.graph,
+        failure: {
+          expectedDraftRevision: held.expectedDraftRevision,
+          error: held.error,
+        },
+      }
     : null;
 }
 
@@ -275,10 +379,106 @@ export const recordLoadedDraftRevisionAtom = atom(
     );
     const queue = get(saveQueueAtom);
     queue.blockedConflicts.delete(input.workflowId);
-    queue.failedGraphs.delete(input.workflowId);
+    releaseHeldGraph(set, queue, input.workflowId);
     queue.refusedGraphs.delete(input.workflowId);
   }
 );
+
+/**
+ * Send a workflow's held graph again now, as the workflow is opened with it
+ * restored on the canvas. The workflow's revision goes back to the one the
+ * held graph was written against, which is what the editor's graph is based
+ * on, and a conflict that blocked it is lifted so the server answers again.
+ */
+export const resendHeldGraphAtom = atom(
+  null,
+  (get, set, workflowId: string) => {
+    const queue = get(saveQueueAtom);
+    const held = queue.failedGraphs.get(workflowId);
+    if (!held) {
+      return;
+    }
+    set(
+      workflowDraftRevisionsAtom,
+      new Map(get(workflowDraftRevisionsAtom)).set(
+        workflowId,
+        held.expectedDraftRevision
+      )
+    );
+    queue.blockedConflicts.delete(workflowId);
+    queue.refusedGraphs.delete(workflowId);
+    resendHeldGraphs(get, set, queue, workflowId);
+  }
+);
+
+/** Send every held graph marked `resend` now, as the browser coming back online asks. */
+export const retryHeldGraphSavesAtom = atom(null, (get, set) => {
+  resendHeldGraphs(get, set, get(saveQueueAtom));
+});
+
+/**
+ * Queue held graphs for another request: each one marked `resend`, and the one
+ * held for `onlyWorkflowId` whatever its mark. A held graph goes ahead of any
+ * newer patch queued for its workflow, which wins field by field.
+ */
+function resendHeldGraphs(
+  get: Getter,
+  set: Setter,
+  queue: SaveQueue,
+  onlyWorkflowId?: string
+) {
+  if (queue.retryTimeoutId) {
+    clearTimeout(queue.retryTimeoutId);
+    queue.retryTimeoutId = null;
+  }
+  const resent = [...queue.failedGraphs].filter(([workflowId, held]) =>
+    onlyWorkflowId === undefined ? held.resend : workflowId === onlyWorkflowId
+  );
+  for (const [workflowId, held] of resent) {
+    queue.failedGraphs.delete(workflowId);
+    const later = queue.pending.find(
+      (pending) => pending.workflowId === workflowId
+    );
+    if (later) {
+      later.patch = mergePatches(held.graph, later.patch);
+    } else {
+      queue.pending.push({
+        workflowId,
+        patch: held.graph,
+        expectedDraftRevision: held.expectedDraftRevision,
+        waiters: [],
+        automatic: true,
+      });
+    }
+  }
+  syncHeldGraphs(set, queue);
+  // A held graph not resent here keeps its timer.
+  scheduleHeldGraphResend(get, set, queue);
+  if (resent.length > 0) {
+    flushSaveQueue(get, set, queue).catch((error: unknown) => {
+      logger.error("Save flush failed", { error });
+    });
+  }
+}
+
+/** Start the backoff timer when a held graph is marked `resend` and none is running. */
+function scheduleHeldGraphResend(get: Getter, set: Setter, queue: SaveQueue) {
+  if (
+    queue.retryTimeoutId !== null ||
+    ![...queue.failedGraphs.values()].some((held) => held.resend)
+  ) {
+    return;
+  }
+  const backoff = get(saveRetryBackoffAtom);
+  const delay = Math.min(
+    backoff.initialMs * 2 ** queue.retryFailureCount,
+    backoff.maxMs
+  );
+  queue.retryTimeoutId = setTimeout(() => {
+    queue.retryTimeoutId = null;
+    resendHeldGraphs(get, set, queue);
+  }, delay);
+}
 
 function reportSaveFailure(error: Error) {
   toast.error(error.message || "Failed to save workflow");
@@ -325,6 +525,167 @@ function groupPatchRefusalReason(
     nodes: toPersistedNodes(nodes),
     edges: edges.map(toPersistedEdge),
   });
+}
+
+/**
+ * Send the queued patches one at a time, oldest first, until none is left.
+ * Single-flight: a call while a drain is running returns at once, and the
+ * running drain picks up what was queued meanwhile.
+ */
+async function flushSaveQueue(
+  get: Getter,
+  set: Setter,
+  queue: SaveQueue
+): Promise<void> {
+  if (queue.isFlushing) {
+    return;
+  }
+  queue.isFlushing = true;
+  set(isSavingAtom, true);
+
+  try {
+    while (queue.pending.length > 0) {
+      const next = queue.pending.shift();
+      if (!next) {
+        break;
+      }
+      queue.inFlight = next;
+
+      let outcome: SaveOutcome;
+      try {
+        const blockedConflict = queue.blockedConflicts.get(next.workflowId);
+        if (blockedConflict) {
+          throw blockedConflict;
+        }
+        // eslint-disable-next-line no-await-in-loop -- saves must remain sequential to preserve latest-write semantics.
+        const workflow = await get(workflowApiAtom).update(
+          next.workflowId,
+          toUpdatePayload(next.patch),
+          next.expectedDraftRevision
+        );
+        outcome = { ok: true, workflow };
+        queue.retryFailureCount = 0;
+        if (next.patch.nodes) {
+          const draftRevisions = get(workflowDraftRevisionsAtom);
+          set(
+            workflowDraftRevisionsAtom,
+            new Map(draftRevisions).set(next.workflowId, workflow.draftRevision)
+          );
+          for (const pending of queue.pending) {
+            if (pending.workflowId === next.workflowId) {
+              pending.expectedDraftRevision = workflow.draftRevision;
+            }
+          }
+        }
+        const saveGenerations = get(successfulSaveGenerationAtom);
+        set(
+          successfulSaveGenerationAtom,
+          new Map(saveGenerations).set(
+            next.workflowId,
+            (saveGenerations.get(next.workflowId) ?? 0) + 1
+          )
+        );
+        const rename = queue.renames.get(next.workflowId);
+        if (rename) {
+          rename.confirmedName = workflow.name;
+        }
+        markWorkflowListStale();
+        cacheWorkflowPublication(queryClient, workflow);
+
+        // The queue drains workflows the editor may already have left, so
+        // the clock reading and the failure are only true of the workflow
+        // on screen. Written under the same guard as the dirty flag below:
+        // without it, saving A at 12:04 and then opening B had B's strip
+        // claiming a write that never happened to it.
+        if (get(currentWorkflowIdAtom) === next.workflowId) {
+          set(lastSavedAtAtom, new Date());
+          set(
+            lastSaveErrorAtom,
+            queue.refusedGraphs.get(next.workflowId) ?? null
+          );
+        }
+
+        // Clear the dirty flag only when nothing newer is queued and the
+        // saved workflow is still the one on screen.
+        if (
+          !queue.pending.some(
+            (pending) => pending.workflowId === next.workflowId
+          ) &&
+          !queue.failedGraphs.has(next.workflowId) &&
+          !queue.refusedGraphs.has(next.workflowId) &&
+          get(currentWorkflowIdAtom) === next.workflowId
+        ) {
+          set(hasUnsavedChangesAtom, false);
+        }
+      } catch (error) {
+        const saveError = toError(error);
+        const blocked = queue.blockedConflicts.get(next.workflowId) === error;
+        // A refusal by a conflict already reported sends no request, so it
+        // is not a new failure to tell the operator about. Nor is the failure
+        // of a resend only the queue asked for: the status strip says it.
+        if (!(blocked || next.automatic)) {
+          reportSaveFailure(saveError);
+        }
+        const conflict =
+          error instanceof ApiError && error.code === DRAFT_CONFLICT_CODE;
+        if (conflict) {
+          queue.blockedConflicts.set(next.workflowId, saveError);
+        }
+        if (next.automatic) {
+          queue.retryFailureCount += 1;
+        }
+        outcome = { ok: false, error: saveError };
+        if (get(currentWorkflowIdAtom) === next.workflowId) {
+          set(lastSaveErrorAtom, saveError);
+        }
+
+        // A later partial patch must not make this failed graph
+        // disappear. Fold it into the next queued write for the same
+        // workflow when there is one; otherwise hold it until that
+        // workflow is edited or opened again, or the queue resends it. A
+        // later graph replaces it whole.
+        if (next.patch.nodes) {
+          const failedGraph = {
+            nodes: next.patch.nodes,
+            edges: next.patch.edges,
+          };
+          const later = queue.pending.find(
+            (pending) => pending.workflowId === next.workflowId
+          );
+          if (later) {
+            later.patch = mergePatches(failedGraph, later.patch);
+          } else {
+            queue.failedGraphs.set(next.workflowId, {
+              graph: failedGraph,
+              expectedDraftRevision: next.expectedDraftRevision,
+              error: saveError,
+              // A request that carried a name or mode may have been refused
+              // for that alone, and the resend carries the graph alone.
+              resend:
+                !(blocked || conflict) &&
+                (isTransientSaveFailure(error) ||
+                  next.patch.name !== undefined ||
+                  next.patch.mode !== undefined),
+            });
+            syncHeldGraphs(set, queue);
+            scheduleHeldGraphResend(get, set, queue);
+          }
+        }
+        logger.error("Save failed", {
+          workflowId: next.workflowId,
+          error,
+        });
+      }
+
+      queue.inFlight = null;
+      for (const resolve of next.waiters) {
+        resolve(outcome);
+      }
+    }
+  } finally {
+    queue.isFlushing = false;
+    set(isSavingAtom, false);
+  }
 }
 
 /**
@@ -381,156 +742,20 @@ export const saveWorkflowAtom = atom(
       queue.refusedGraphs.delete(workflowId);
     }
 
-    const flush = async (): Promise<void> => {
-      if (queue.isFlushing) {
-        return;
-      }
-      queue.isFlushing = true;
-      set(isSavingAtom, true);
-
-      try {
-        while (queue.pending.length > 0) {
-          const next = queue.pending.shift();
-          if (!next) {
-            break;
-          }
-          queue.inFlight = next;
-
-          let outcome: SaveOutcome;
-          try {
-            const blockedConflict = queue.blockedConflicts.get(next.workflowId);
-            if (blockedConflict) {
-              throw blockedConflict;
-            }
-            // eslint-disable-next-line no-await-in-loop -- saves must remain sequential to preserve latest-write semantics.
-            const workflow = await get(workflowApiAtom).update(
-              next.workflowId,
-              toUpdatePayload(next.patch),
-              next.expectedDraftRevision
-            );
-            outcome = { ok: true, workflow };
-            if (next.patch.nodes) {
-              const draftRevisions = get(workflowDraftRevisionsAtom);
-              set(
-                workflowDraftRevisionsAtom,
-                new Map(draftRevisions).set(
-                  next.workflowId,
-                  workflow.draftRevision
-                )
-              );
-              for (const pending of queue.pending) {
-                if (pending.workflowId === next.workflowId) {
-                  pending.expectedDraftRevision = workflow.draftRevision;
-                }
-              }
-            }
-            const saveGenerations = get(successfulSaveGenerationAtom);
-            set(
-              successfulSaveGenerationAtom,
-              new Map(saveGenerations).set(
-                next.workflowId,
-                (saveGenerations.get(next.workflowId) ?? 0) + 1
-              )
-            );
-            const rename = queue.renames.get(next.workflowId);
-            if (rename) {
-              rename.confirmedName = workflow.name;
-            }
-            markWorkflowListStale();
-            cacheWorkflowPublication(queryClient, workflow);
-
-            // The queue drains workflows the editor may already have left, so
-            // the clock reading and the failure are only true of the workflow
-            // on screen. Written under the same guard as the dirty flag below:
-            // without it, saving A at 12:04 and then opening B had B's strip
-            // claiming a write that never happened to it.
-            if (get(currentWorkflowIdAtom) === next.workflowId) {
-              set(lastSavedAtAtom, new Date());
-              set(
-                lastSaveErrorAtom,
-                queue.refusedGraphs.get(next.workflowId) ?? null
-              );
-            }
-
-            // Clear the dirty flag only when nothing newer is queued and the
-            // saved workflow is still the one on screen.
-            if (
-              !queue.pending.some(
-                (pending) => pending.workflowId === next.workflowId
-              ) &&
-              !queue.failedGraphs.has(next.workflowId) &&
-              !queue.refusedGraphs.has(next.workflowId) &&
-              get(currentWorkflowIdAtom) === next.workflowId
-            ) {
-              set(hasUnsavedChangesAtom, false);
-            }
-          } catch (error) {
-            const saveError = toError(error);
-            // A refusal by a conflict already reported sends no request, so it
-            // is not a new failure to tell the operator about.
-            if (queue.blockedConflicts.get(next.workflowId) !== error) {
-              reportSaveFailure(saveError);
-            }
-            if (
-              error instanceof ApiError &&
-              error.code === DRAFT_CONFLICT_CODE
-            ) {
-              queue.blockedConflicts.set(next.workflowId, saveError);
-            }
-            outcome = { ok: false, error: saveError };
-            if (get(currentWorkflowIdAtom) === next.workflowId) {
-              set(lastSaveErrorAtom, saveError);
-            }
-
-            // A later partial patch must not make this failed graph
-            // disappear. Fold it into the next queued write for the same
-            // workflow when there is one; otherwise remember it until that
-            // workflow is edited again. A later graph replaces it whole.
-            if (next.patch.nodes) {
-              const failedGraph = {
-                nodes: next.patch.nodes,
-                edges: next.patch.edges,
-              };
-              const later = queue.pending.find(
-                (pending) => pending.workflowId === next.workflowId
-              );
-              if (later) {
-                later.patch = mergePatches(failedGraph, later.patch);
-              } else {
-                queue.failedGraphs.set(next.workflowId, failedGraph);
-              }
-            }
-            logger.error("Save failed", {
-              workflowId: next.workflowId,
-              error,
-            });
-          }
-
-          queue.inFlight = null;
-          for (const resolve of next.waiters) {
-            resolve(outcome);
-          }
-        }
-      } finally {
-        queue.isFlushing = false;
-        set(isSavingAtom, false);
-      }
-    };
-
     const outcome = new Promise<SaveOutcome>((resolve) => {
       // Merge only into the newest entry, and only when it targets the same
       // workflow, so a rename typed during a node drag becomes one request
       // carrying both. An entry for a different workflow stays queued behind it.
-      const failedGraph = queue.failedGraphs.get(workflowId);
+      const failedGraph = releaseHeldGraph(set, queue, workflowId)?.graph;
       const patchWithRetry = failedGraph
         ? mergePatches(failedGraph, patch)
         : patch;
-      queue.failedGraphs.delete(workflowId);
 
       const newest = queue.pending.at(-1);
       if (newest?.workflowId === workflowId) {
         newest.patch = mergePatches(newest.patch, patchWithRetry);
         newest.waiters.push(resolve);
+        newest.automatic = false;
         return;
       }
 
@@ -540,6 +765,7 @@ export const saveWorkflowAtom = atom(
         expectedDraftRevision:
           get(workflowDraftRevisionsAtom).get(workflowId) ?? 0,
         waiters: [resolve],
+        automatic: false,
       });
     });
 
@@ -549,13 +775,13 @@ export const saveWorkflowAtom = atom(
     }
 
     if (options?.immediate) {
-      await flush();
+      await flushSaveQueue(get, set, queue);
       return await outcome;
     }
 
     queue.timeoutId = setTimeout(() => {
       queue.timeoutId = null;
-      flush().catch((error) => {
+      flushSaveQueue(get, set, queue).catch((error: unknown) => {
         logger.error("Save flush failed", { error });
       });
     }, get(autosaveDelayAtom));

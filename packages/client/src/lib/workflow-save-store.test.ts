@@ -11,13 +11,20 @@ import {
   isSavingAtom,
   lastSaveErrorAtom,
   recordLoadedDraftRevisionAtom,
+  hasHeldGraphSaveAtom,
   renameWorkflowAtom,
+  retryHeldGraphSavesAtom,
+  saveRetryBackoffAtom,
   saveWorkflowAtom,
   setWorkflowModeAtom,
   successfulSaveGenerationAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
-import { hydrateWorkflowAtom, nodesAtom } from "#src/lib/workflow-graph-store";
+import {
+  hydrateWorkflowAtom,
+  nodesAtom,
+  remoteDraftChangeAtom,
+} from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { savedWorkflow } from "./workflow-save-test-support";
 
@@ -57,6 +64,9 @@ const updateMock = vi.fn(
 function createSaveStore(workflowId: string | null = "workflow_1") {
   const store = createStore();
   store.set(workflowApiAtom, { update: updateMock as never });
+  // A failed graph is resent on a timer; a case that is not about that timer
+  // keeps it from firing inside a later case of this file.
+  store.set(saveRetryBackoffAtom, { initialMs: 600_000, maxMs: 600_000 });
   store.set(currentWorkflowIdAtom, workflowId);
   if (workflowId) {
     store.set(recordLoadedDraftRevisionAtom, {
@@ -636,6 +646,220 @@ describe("reopening a workflow whose save has not landed", () => {
 
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["after"]);
     expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+  });
+});
+
+describe("a graph whose save failed", () => {
+  function openWorkflowA() {
+    const store = createSaveStore(null);
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("workflow_a", { nodes: [actionNode("before")], edges: [] })
+    );
+    return store;
+  }
+
+  /** The route loader's snapshot of A: the server never stored the failed edit. */
+  function reopenA(
+    store: ReturnType<typeof createSaveStore>,
+    draftRevision = 1
+  ) {
+    store.set(hydrateWorkflowAtom, {
+      ...savedWorkflow("workflow_a", {
+        nodes: [actionNode("before")],
+        edges: [],
+      }),
+      draftRevision,
+      saveGeneration:
+        store.get(successfulSaveGenerationAtom).get("workflow_a") ?? 0,
+    });
+  }
+
+  async function failGraphSaveOfA(store: ReturnType<typeof createSaveStore>) {
+    const save = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("after")], edges: [] },
+      { immediate: true }
+    );
+    pending.shift()?.reject(new ApiError(500, "network is down"));
+    await save;
+  }
+
+  it("comes back with its failure when the workflow is reopened, and is sent again", async () => {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = openWorkflowA();
+    store.set(saveRetryBackoffAtom, { initialMs: 60_000, maxMs: 60_000 });
+    await failGraphSaveOfA(store);
+
+    store.set(hydrateWorkflowAtom, savedWorkflow("workflow_b"));
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    expect(store.get(hasHeldGraphSaveAtom)).toBe(true);
+
+    reopenA(store);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["after"]);
+    expect(store.get(hasUnsavedChangesAtom)).toBe(true);
+    expect(store.get(lastSaveErrorAtom)?.message).toBe("network is down");
+
+    await waitForCalls(2);
+    expect(updateMock.mock.calls[1]?.[0]).toBe("workflow_a");
+    expect(updateMock.mock.calls[1]?.[1]).toMatchObject({
+      nodes: [expect.objectContaining({ id: "after" })],
+    });
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_a", {
+        nodes: [actionNode("after")],
+        edges: [],
+      }),
+      draftRevision: 2,
+    });
+    await vi.waitFor(() => {
+      expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    });
+    expect(store.get(lastSaveErrorAtom)).toBeNull();
+    expect(store.get(hasHeldGraphSaveAtom)).toBe(false);
+  });
+
+  it("is sent again against the revision it was written on, so a newer server draft is a conflict", async () => {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = openWorkflowA();
+    store.set(saveRetryBackoffAtom, { initialMs: 60_000, maxMs: 60_000 });
+    await failGraphSaveOfA(store);
+    store.set(hydrateWorkflowAtom, savedWorkflow("workflow_b"));
+
+    // Another client wrote A at revision 2 while the editor was away.
+    reopenA(store, 2);
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["after"]);
+
+    await waitForCalls(2);
+    expect(updateMock.mock.calls[1]?.[2]).toBe(1);
+    pending
+      .shift()
+      ?.reject(
+        new ApiError(409, "The workflow draft changed", DRAFT_CONFLICT_CODE)
+      );
+    await vi.waitFor(() => {
+      expect(store.get(isSavingAtom)).toBe(false);
+    });
+
+    expect(store.get(remoteDraftChangeAtom)).toEqual({
+      workflowId: "workflow_a",
+      draftRevision: 2,
+    });
+    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["after"]);
+  });
+
+  it("is sent again on its own after a backoff", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(toast, "error").mockImplementation(() => "");
+      const store = openWorkflowA();
+      store.set(saveRetryBackoffAtom, { initialMs: 1000, maxMs: 30_000 });
+      await failGraphSaveOfA(store);
+      expect(updateMock).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(999);
+      expect(updateMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(updateMock).toHaveBeenCalledTimes(2);
+      expect(updateMock.mock.calls[1]?.[2]).toBe(1);
+
+      // A second failure doubles the wait.
+      pending.shift()?.reject(new ApiError(503, "unavailable"));
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(updateMock).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(updateMock).toHaveBeenCalledTimes(3);
+
+      pending.shift()?.resolve({
+        ...savedWorkflow("workflow_a"),
+        draftRevision: 2,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+      expect(store.get(lastSaveErrorAtom)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is sent again when asked, which is what the browser coming online does", async () => {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = openWorkflowA();
+    store.set(saveRetryBackoffAtom, { initialMs: 60_000, maxMs: 60_000 });
+    await failGraphSaveOfA(store);
+
+    store.set(retryHeldGraphSavesAtom);
+    await waitForCalls(2);
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_a"),
+      draftRevision: 2,
+    });
+    await vi.waitFor(() => {
+      expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    });
+  });
+
+  it("reports an automatic retry's failure in the status, not in another toast", async () => {
+    const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = openWorkflowA();
+    store.set(saveRetryBackoffAtom, { initialMs: 60_000, maxMs: 60_000 });
+    await failGraphSaveOfA(store);
+
+    store.set(retryHeldGraphSavesAtom);
+    await waitForCalls(2);
+    pending.shift()?.reject(new ApiError(500, "still down"));
+    await vi.waitFor(() => {
+      expect(store.get(isSavingAtom)).toBe(false);
+    });
+
+    expect(errorToast).toHaveBeenCalledTimes(1);
+    expect(store.get(lastSaveErrorAtom)?.message).toBe("still down");
+  });
+
+  it("is not sent again on its own when the server refused the graph itself", async () => {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = openWorkflowA();
+    store.set(saveRetryBackoffAtom, { initialMs: 0, maxMs: 0 });
+    const save = store.set(
+      saveWorkflowAtom,
+      { nodes: [actionNode("after")], edges: [] },
+      { immediate: true }
+    );
+    pending.shift()?.reject(new ApiError(400, "Invalid graph payload"));
+    await save;
+
+    store.set(retryHeldGraphSavesAtom);
+    await tick();
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(store.get(hasUnsavedChangesAtom)).toBe(true);
+  });
+
+  it("is sent again alone when the refusal may have been the rename it travelled with", async () => {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = openWorkflowA();
+    store.set(autosaveDelayAtom, 0);
+    store.set(saveRetryBackoffAtom, { initialMs: 0, maxMs: 0 });
+
+    store.set(saveWorkflowAtom, { nodes: [actionNode("after")], edges: [] });
+    const rename = store.set(renameWorkflowAtom, "Taken name");
+    await waitForCalls(1);
+    pending
+      .shift()
+      ?.reject(new ApiError(409, 'Workflow name "Taken name" already exists'));
+    expect(await rename).toBeInstanceOf(Error);
+
+    await waitForCalls(2);
+    expect(updateMock.mock.calls[1]?.[1]).toMatchObject({
+      nodes: [expect.objectContaining({ id: "after" })],
+    });
+    expect(updateMock.mock.calls[1]?.[1]).not.toHaveProperty("name");
+    pending.shift()?.resolve({
+      ...savedWorkflow("workflow_a"),
+      draftRevision: 2,
+    });
+    await vi.waitFor(() => {
+      expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    });
   });
 });
 

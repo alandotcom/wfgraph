@@ -9,6 +9,7 @@ import {
 import { ReactFlowProvider } from "@xyflow/react";
 import { Provider } from "jotai";
 import { GlobalModals } from "#src/components/global-modals";
+import { WorkflowHeldSaveRetry } from "#src/components/workflow/workflow-save-status";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { ThemeProvider } from "#src/components/theme-provider";
 import { Toaster } from "#src/components/ui/sonner";
@@ -77,6 +78,7 @@ function RootLayout() {
           <LayoutContent />
           <Toaster />
           <GlobalModals />
+          <WorkflowHeldSaveRetry />
         </OverlayProvider>
       </Provider>
     </ThemeProvider>
