@@ -1219,12 +1219,13 @@ describe("useWorkflowActions publication preflight", () => {
         }
         if (path === "workflow/publish") {
           publishInput = await parseRpcRequestInput(init);
-          return rpcJsonResponse(
-            savedWorkflowResponse({
+          return rpcJsonResponse({
+            ...savedWorkflowResponse({
               hasUnpublishedChanges: false,
               publishedVersionId: "version_8",
-            })
-          );
+            }),
+            warnings: [],
+          });
         }
         throw new Error(`Unexpected RPC procedure: ${path}`);
       }
@@ -1287,12 +1288,13 @@ describe("useWorkflowActions publication preflight", () => {
           );
         }
         if (path === "workflow/publish") {
-          return rpcJsonResponse(
-            savedWorkflowResponse({
+          return rpcJsonResponse({
+            ...savedWorkflowResponse({
               hasUnpublishedChanges: false,
               publishedVersionId: "version_1",
-            })
-          );
+            }),
+            warnings: [],
+          });
         }
         return rpcJsonResponse({
           baseVersion: null,
