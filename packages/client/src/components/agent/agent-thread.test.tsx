@@ -293,4 +293,28 @@ describe("AgentThread", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Undo changes" })).toBeNull();
   });
+
+  it("offers to copy and retry a finished reply", async () => {
+    renderThread([
+      { role: "user", content: [{ type: "text", text: "Add a step" }] },
+      { role: "assistant", content: [{ type: "text", text: "Added it." }] },
+    ]);
+
+    expect(await screen.findByRole("button", { name: "Copy" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("offers retry on the newest reply alone", async () => {
+    renderThread([
+      { role: "user", content: [{ type: "text", text: "Add a step" }] },
+      { role: "assistant", content: [{ type: "text", text: "Added it." }] },
+      { role: "user", content: [{ type: "text", text: "Rename it" }] },
+      { role: "assistant", content: [{ type: "text", text: "Renamed it." }] },
+    ]);
+
+    expect(await screen.findAllByRole("button", { name: "Copy" })).toHaveLength(
+      2
+    );
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+  });
 });

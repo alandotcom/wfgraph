@@ -15,6 +15,7 @@
  */
 
 import {
+  ActionBarPrimitive,
   AuiIf,
   ComposerPrimitive,
   ErrorPrimitive,
@@ -29,6 +30,9 @@ import {
   AlertCircleIcon,
   ArrowDownIcon,
   ArrowUpIcon,
+  CheckIcon,
+  CopyIcon,
+  RotateCcwIcon,
   SquareIcon,
   Undo2Icon,
 } from "lucide-react";
@@ -293,6 +297,44 @@ function TurnChanges() {
   );
 }
 
+/**
+ * Copy for every finished reply, and Retry for the newest one alone. Retry
+ * asks again from the message before it on a new branch of the thread; the
+ * edits the earlier attempt made stay on the canvas, where its "Undo changes"
+ * still reverts them.
+ */
+function AssistantActions() {
+  return (
+    <ActionBarPrimitive.Root
+      className="-ml-1.5 flex items-center gap-0.5 text-muted-foreground"
+      hideWhenRunning
+    >
+      <ActionBarPrimitive.Copy asChild>
+        <Button aria-label="Copy" size="icon-xs" title="Copy" variant="ghost">
+          <AuiIf condition={(state) => state.message.isCopied}>
+            <CheckIcon className="size-3" />
+          </AuiIf>
+          <AuiIf condition={(state) => !state.message.isCopied}>
+            <CopyIcon className="size-3" />
+          </AuiIf>
+        </Button>
+      </ActionBarPrimitive.Copy>
+      <AuiIf condition={(state) => state.message.isLast}>
+        <ActionBarPrimitive.Reload asChild>
+          <Button
+            aria-label="Retry"
+            size="icon-xs"
+            title="Retry"
+            variant="ghost"
+          >
+            <RotateCcwIcon className="size-3" />
+          </Button>
+        </ActionBarPrimitive.Reload>
+      </AuiIf>
+    </ActionBarPrimitive.Root>
+  );
+}
+
 function AssistantMessage() {
   return (
     <MessagePrimitive.Root
@@ -331,6 +373,7 @@ function AssistantMessage() {
       </AuiIf>
       <TurnChanges />
       <TurnUsage />
+      <AssistantActions />
     </MessagePrimitive.Root>
   );
 }
