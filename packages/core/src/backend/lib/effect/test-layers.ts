@@ -40,6 +40,7 @@ import {
   PASS_WRITE_NAMES,
 } from "#src/backend/services/executions/repo/fencing";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
+import { makeWorkflowStreamsLayer } from "#src/backend/services/workflows/workflow-streams";
 import type { WfGraphServices } from "#src/backend/runtime";
 import {
   makeAppContextLayer,
@@ -530,21 +531,26 @@ export function stubWfGraphRuntime(
     logger?: Layer.Layer<AppLogger> | undefined;
   } = {}
 ): ManagedRuntime.ManagedRuntime<WfGraphServices, never> {
+  const logger = overrides.logger ?? SilentAppLoggerLayer;
+  const workflowRepo = stubWorkflowRepo(overrides.workflowRepo);
   return ManagedRuntime.make(
     Layer.mergeAll(
-      overrides.logger ?? SilentAppLoggerLayer,
+      logger,
       makeAppContextLayer(
         overrides.appContext ?? {
           apiBasePath: "/api",
         }
       ),
       stubExtensions(overrides.extensions),
-      stubWorkflowRepo(overrides.workflowRepo),
+      workflowRepo,
       stubExecutionRepo(overrides.executionRepo),
       stubIntegrationRepo(overrides.integrationRepo),
       makeAgentConfigLayer(overrides.agent ?? { enabled: false }),
       makeAgentRunnerLayer(disabledAgentRunner),
-      stubExecutionDriver(overrides.executionDriver)
+      stubExecutionDriver(overrides.executionDriver),
+      makeWorkflowStreamsLayer().pipe(
+        Layer.provide(Layer.merge(logger, workflowRepo))
+      )
     )
   );
 }

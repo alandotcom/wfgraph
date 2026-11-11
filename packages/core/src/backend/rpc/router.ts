@@ -31,8 +31,11 @@ import {
   deleteWorkflow,
   getWorkflow,
   patchWorkflow,
-  streamWorkflowDraftRevisions,
 } from "#src/backend/services/workflows/workflow";
+import {
+  streamWorkflowDraftRevisions,
+  streamWorkflowSummaries,
+} from "#src/backend/services/workflows/workflow-streams";
 import { postWorkflowDuplicate } from "#src/backend/services/workflows/duplicate";
 import { migrateExecutions } from "#src/backend/services/workflows/migration/migrate";
 import { previewMigration } from "#src/backend/services/workflows/migration/preview";
@@ -49,10 +52,7 @@ import {
   getWorkflowExecutions,
 } from "#src/backend/services/executions/list";
 import { getWorkflowExecutionsGlobal } from "#src/backend/services/executions/global";
-import {
-  getWorkflows,
-  streamWorkflowSummaries,
-} from "#src/backend/services/workflows/list";
+import { getWorkflows } from "#src/backend/services/workflows/list";
 import { postWorkflowsBulkLifecycle } from "#src/backend/services/workflows/bulk-actions";
 import { postWorkflowsCreate } from "#src/backend/services/workflows/create";
 import {

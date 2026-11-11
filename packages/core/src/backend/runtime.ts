@@ -27,6 +27,10 @@ import {
 import type { RunWakeSink } from "#src/backend/services/executions/wakes";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
+  makeWorkflowStreamsLayer,
+  WorkflowStreams,
+} from "#src/backend/services/workflows/workflow-streams";
+import {
   makeAppContextLayer,
   WfGraphAppContext,
   type WfGraphAppContextValue,
@@ -53,7 +57,8 @@ export type WfGraphServices =
   | IntegrationRepo
   | WorkflowRepo
   | ExecutionRepo
-  | ExecutionDriver;
+  | ExecutionDriver
+  | WorkflowStreams;
 
 /** The storage-facing services supplied by one persistence backend. */
 export type WfGraphRepositories =
@@ -102,6 +107,10 @@ function buildWfGraphLayer(
     // repositories it was built on are offered to the services beside it.
     makeExecutionDriverLayer(parts.wakes).pipe(
       Layer.provideMerge(parts.repositories)
+    ),
+    // The editor's list and draft pollers, one per key for the whole process.
+    makeWorkflowStreamsLayer().pipe(
+      Layer.provide(Layer.merge(parts.repositories, AppLoggerLayer))
     )
   );
 }

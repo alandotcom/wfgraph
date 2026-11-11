@@ -557,8 +557,11 @@ Reads and writes both go through `orpcQuery` from `#src/lib/rpc-query`: a read i
 `workflow.subscribeDraft` streams persisted draft revisions, and
 `workflow.subscribeList` streams complete workflow-summary snapshots. The draft stream
 uses each revision as its SSE event ID, and `RetryLinkPlugin` reconnects from the last
-received ID. The list stream reads the database on each connection, suppresses unchanged
-snapshots, and emits the current list immediately. Its application-level browser subscriber
+received ID. Both polled streams come from `WorkflowStreams`
+(`services/workflows/workflow-streams.ts`), a Layer on the app's runtime that runs one
+poller per process for the list and one per workflow id, started by the first subscriber and
+stopped after the last leaves. The list stream suppresses unchanged snapshots and hands a new
+subscriber the current list immediately. Its application-level browser subscriber
 updates the `workflow.getAll` query cache and disconnects while the page is hidden. All three
 handlers return an oRPC `AsyncIteratorClass`. The application owns the request's
 `ManagedRuntime`, and its fiber supervision owns the producer. The request `AbortSignal`

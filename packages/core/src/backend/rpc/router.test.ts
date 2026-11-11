@@ -36,6 +36,7 @@ import {
   WfGraphAccess,
 } from "#src/backend/lib/http/authorize";
 import { rpcContract } from "@wfgraph/shared/rpc/contracts";
+import { makeWorkflowStreamsLayer } from "#src/backend/services/workflows/workflow-streams";
 
 /**
  * A runtime satisfying every service a procedure may ask for, all of them
@@ -61,6 +62,7 @@ function createStubRuntime({
   workflowRepo?: Parameters<typeof stubWorkflowRepo>[0] | undefined;
   executionRepo?: Parameters<typeof stubExecutionRepo>[0] | undefined;
 } = {}): WfGraphRuntime {
+  const workflows = stubWorkflowRepo(workflowRepo);
   return ManagedRuntime.make(
     Layer.mergeAll(
       SilentAppLoggerLayer,
@@ -69,11 +71,14 @@ function createStubRuntime({
       makeAppContextLayer(appContext),
       stubExtensions(),
       stubIntegrationRepo(integrationRepo),
-      stubWorkflowRepo(workflowRepo),
+      workflows,
       stubExecutionRepo(executionRepo),
       makeAgentConfigLayer({ enabled: false }),
       makeAgentRunnerLayer(disabledAgentRunner),
-      stubExecutionDriver()
+      stubExecutionDriver(),
+      makeWorkflowStreamsLayer().pipe(
+        Layer.provide(Layer.merge(SilentAppLoggerLayer, workflows))
+      )
     )
   );
 }

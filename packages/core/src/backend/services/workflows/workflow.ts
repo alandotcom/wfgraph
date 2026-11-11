@@ -1,4 +1,4 @@
-import { Duration, Effect, Stream } from "effect";
+import { Effect } from "effect";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import {
@@ -111,24 +111,6 @@ export const getWorkflowDraftRevision = Effect.fn("getWorkflowDraftRevision")(
       )
     )
 );
-
-/** Polls persisted state and emits each newer draft revision once. */
-export const streamWorkflowDraftRevisions = Effect.fn(
-  "streamWorkflowDraftRevisions"
-)(function* (
-  input: { readonly workflowId: string; readonly afterDraftRevision: number },
-  options: { readonly pollIntervalMs?: number } = {}
-) {
-  return yield* Effect.succeed(
-    Stream.tick(Duration.millis(options.pollIntervalMs ?? 500)).pipe(
-      Stream.mapEffect(() => getWorkflowDraftRevision(input.workflowId)),
-      Stream.changesWith(
-        (previous, current) => previous.draftRevision === current.draftRevision
-      ),
-      Stream.filter((event) => event.draftRevision > input.afterDraftRevision)
-    )
-  );
-});
 
 export const patchWorkflow = Effect.fn("patchWorkflow")(
   function* (

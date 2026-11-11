@@ -1,5 +1,5 @@
 import { assert, describe, it as effectIt, layer } from "@effect/vitest";
-import { Effect, Layer, Stream } from "effect";
+import { Effect, Layer } from "effect";
 import type { Workflow } from "#src/backend/lib/db/schema";
 import {
   DraftConflict,
@@ -16,7 +16,6 @@ import {
   getWorkflow,
   getWorkflowDraftRevision,
   patchWorkflow,
-  streamWorkflowDraftRevisions,
 } from "#src/backend/services/workflows/workflow";
 import { postWorkflowsCurrent } from "#src/backend/services/workflows/current";
 import type { WorkflowRepo } from "#src/backend/services/workflows/repo";
@@ -159,41 +158,6 @@ describe("getWorkflow", () => {
 
         assert.instanceOf(failure, InternalFailure);
       })
-  );
-});
-
-describe("streamWorkflowDraftRevisions", () => {
-  effectIt.live("emits only revisions newer than the connected client", () =>
-    Effect.gen(function* () {
-      const revisions = [1, 1, 2, 2, 3];
-      let read = 0;
-      const events = yield* streamWorkflowDraftRevisions(
-        {
-          workflowId: "wf_1",
-          afterDraftRevision: 1,
-        },
-        { pollIntervalMs: 1 }
-      ).pipe(
-        Effect.flatMap((stream) => Stream.runCollect(Stream.take(stream, 2))),
-        Effect.provide(
-          Layer.mergeAll(
-            SilentAppLoggerLayer,
-            stubWorkflowRepo({
-              findDraftRevisionById: () =>
-                Effect.succeed({
-                  id: "wf_1",
-                  draftRevision: revisions[read++] ?? 3,
-                }),
-            })
-          )
-        )
-      );
-
-      assert.deepStrictEqual(Array.from(events), [
-        { workflowId: "wf_1", draftRevision: 2 },
-        { workflowId: "wf_1", draftRevision: 3 },
-      ]);
-    })
   );
 });
 
