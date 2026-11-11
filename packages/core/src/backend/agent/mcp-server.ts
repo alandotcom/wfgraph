@@ -43,6 +43,7 @@ import {
   compactInputSchema,
   compactOutputSchema,
 } from "#src/backend/agent/mcp-schema-compaction";
+import { agentToolOperations } from "#src/backend/agent/tool-permissions";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import type { AuthContext } from "#src/backend/lib/http/authorize";
 import type {
@@ -681,22 +682,6 @@ function invalidParamsResponse(body: JsonObject, message: string): Response {
   );
 }
 
-/**
- * The grants a tool call needs. A catalog tool reads what the editor's
- * bootstrap gives every signed-in caller, except Connection IDs, which need
- * the integration list grant.
- */
-function requiredOperations(name: AgentToolName) {
-  const scope = scopeOf(name);
-  return [
-    ...(scope === "catalog" ? [] : [WfGraphOperations.workflowGetById]),
-    ...(scope === "write" ? [WfGraphOperations.workflowUpdate] : []),
-    ...(name === "list_integrations"
-      ? [WfGraphOperations.integrationGetAll]
-      : []),
-  ];
-}
-
 function toolResult(input: {
   workflowId?: string | undefined;
   draftRevision?: number | undefined;
@@ -963,7 +948,7 @@ export function createAgentMcpServer(
             : undefined;
 
         const grants = await Promise.all(
-          requiredOperations(name).map(async (operation) =>
+          agentToolOperations(name).map(async (operation) =>
             input.auth.allows(operation)
           )
         );

@@ -3,13 +3,18 @@
  *
  * One table for both doors into the toolkit: the MCP endpoint refuses a call
  * its caller lacks a grant for, and a chat turn hands the model a toolkit whose
- * ungranted tools answer a refusal. Every tool reads the workflow, a write tool
- * changes it, and `list_integrations` reveals the operator's Connection ids,
- * which is `integration.getAll`'s to grant.
+ * ungranted tools answer a refusal. A catalog tool reads what the editor's
+ * bootstrap gives every signed-in caller and needs no grant. Every other tool
+ * reads the workflow, a write tool changes it, and `list_integrations` reveals
+ * the operator's Connection ids, which is `integration.getAll`'s to grant.
  */
 
 import { uniq } from "es-toolkit/array";
-import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
+import {
+  agentToolkit,
+  CATALOG_TOOL_NAMES,
+  WRITE_TOOL_NAMES,
+} from "@wfgraph/agent/toolkit";
 import {
   type WfGraphOperation,
   WfGraphOperations,
@@ -21,7 +26,9 @@ export function agentToolOperations(
   name: AgentToolName
 ): readonly WfGraphOperation[] {
   return [
-    WfGraphOperations.workflowGetById,
+    ...(CATALOG_TOOL_NAMES.has(name)
+      ? []
+      : [WfGraphOperations.workflowGetById]),
     ...(WRITE_TOOL_NAMES.has(name) ? [WfGraphOperations.workflowUpdate] : []),
     ...(name === "list_integrations"
       ? [WfGraphOperations.integrationGetAll]
