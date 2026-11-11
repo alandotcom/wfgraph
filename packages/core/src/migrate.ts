@@ -25,9 +25,10 @@ export type { DatabaseRuntimeConfig } from "#src/backend/lib/db/config";
  * them.
  *
  * Flat, so `migrationsDir` sits beside the connection fields rather than under a
- * `migrations` key. `WfGraphAppOptions.database` nests it, and handing that object
- * straight to this function would otherwise typecheck while dropping the
- * directory it names, so `migrations` is refused here by name.
+ * `migrations` key. `wfPostgres`'s options nest it under `migrations`, and
+ * handing that object straight to this function would otherwise typecheck
+ * while dropping the directory it names, so `migrations` is refused here by
+ * name.
  */
 export type WfGraphMigrateOptions = DatabaseRuntimeConfig &
   Pick<MigrationsOptions, "migrationsDir"> & { migrations?: never };

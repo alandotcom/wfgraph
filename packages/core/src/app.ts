@@ -87,8 +87,11 @@ export type WfGraphAppOptions = {
    */
   auth: WfGraphAuth;
   /**
-   * Where Workflow Graph's own log lines go. Absent, Workflow Graph configures a console sink of
-   * its own; present, every line is handed to this instead.
+   * Where Workflow Graph's own log records go. Present, Workflow Graph installs a
+   * LogTape configuration that hands every record under the `wfgraph` category
+   * to this logger, replacing any other LogTape configuration in the process.
+   * Absent, Workflow Graph configures nothing, and when no LogTape sink receives
+   * the `wfgraph` category it prints a one-time notice naming the fix.
    */
   logger?: WfGraphLogger | undefined;
   /** The storage backend Workflow Graph uses for all durable state. */

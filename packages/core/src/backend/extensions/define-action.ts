@@ -65,8 +65,8 @@ export type ActionIdentity = {
   description: string;
 
   /**
-   * Grouping category in the action selector (e.g. `"Appointments"`).
-   * Defaults to `"Custom"` if omitted.
+   * The heading the action is listed under in the action selector (e.g.
+   * `"Appointments"`). Defaults to `"Custom"` when omitted or blank.
    */
   category?: string | undefined;
 
@@ -75,9 +75,11 @@ export type ActionIdentity = {
 
   /**
    * Whether running this action changes something outside the workflow: a
-   * message sent, a record written or removed. Defaults to `false`, and the
-   * editor keeps an action declaring `true` out of a Group. `ActionStepInput`
-   * separates this from the replay sense of the phrase.
+   * message sent, a record written or removed. Defaults to `false`. Before a
+   * published run starts in Live mode, the editor's run dialog counts the
+   * steps declaring `true`. Grouping does not read the field, so an action
+   * declaring it may sit in a Group. `ActionStepInput` separates this from the
+   * replay sense of the phrase.
    */
   sideEffect?: boolean | undefined;
 
