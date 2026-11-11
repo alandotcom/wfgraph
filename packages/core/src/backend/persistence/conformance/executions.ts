@@ -1589,5 +1589,45 @@ export function describeExecutionConformance({
       expect(paged).toEqual([...tied, third]);
       expect(listed).toEqual([...tied, third]);
     });
+
+    // The Runs view's poll counts superseded runs on every tick, and they
+    // accrue without bound on a newest-wins workflow, so the count stops at
+    // the bound its caller names.
+    it("counts a workflow's superseded runs up to the bound it is given", async () => {
+      const connection = await openConnection();
+      await seedPublishedWorkflow(connection);
+      for (const deliveryId of ["d_1", "d_2", "d_3", "d_4"]) {
+        // eslint-disable-next-line eslint/no-await-in-loop -- each start supersedes the run before it
+        const started = await attemptStart(connection, {
+          deliveryId,
+          concurrency: "newest-wins",
+        });
+        if (started.status !== "started") throw new Error("Start was refused");
+      }
+
+      const counts = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          return {
+            bounded: yield* executions.countSuperseded({
+              workflowId: "wf_1",
+              atMost: 2,
+            }),
+            unbounded: yield* executions.countSuperseded({
+              workflowId: "wf_1",
+              atMost: 10,
+            }),
+            listed: yield* executions.listByWorkflow({
+              workflowId: "wf_1",
+              includeSuperseded: false,
+            }),
+          };
+        })
+      );
+
+      expect(counts.bounded).toBe(2);
+      expect(counts.unbounded).toBe(3);
+      expect(counts.listed.map((row) => row.status)).toEqual(["running"]);
+    });
   });
 }

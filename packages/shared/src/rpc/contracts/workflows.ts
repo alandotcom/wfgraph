@@ -51,6 +51,14 @@ import {
 // invent a value or defend against `?? ""`. A consumer that feeds `id` straight
 // to a router as a workflow id would have an empty string resolve to a route
 // that redirects away.
+/**
+ * The most superseded runs one workflow's run list counts. `supersededCount`
+ * counts one run past this and stops, so an answer above it means "more than
+ * this many", and the two-second poll reading it costs the same however many
+ * runs newer starts displaced.
+ */
+export const SUPERSEDED_COUNT_LIMIT = 1000;
+
 export const workflowSummarySchema = Schema.Struct({
   id: idSchema,
   name: Schema.String,
@@ -759,6 +767,10 @@ export const workflowContract = {
           ...executorReadingFields,
           /** See `runRetentionFields`. */
           ...runRetentionFields,
+          /**
+           * How many of the workflow's runs newer starts displaced, counted
+           * up to one past `SUPERSEDED_COUNT_LIMIT`.
+           */
           supersededCount: Schema.Finite,
           /**
            * Up to 50 recent starts that opened no run. Concurrency, a missing

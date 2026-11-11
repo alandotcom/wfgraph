@@ -16,7 +16,6 @@ import {
   inArray,
   isNull,
   lt,
-  ne,
   or,
   type SQL,
   sql,
@@ -113,6 +112,14 @@ const pinnedVersion = eq(
 );
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
+
+/**
+ * The predicates of the two partial indexes the Runs view's poll reads,
+ * written as literals: a bound parameter in their place cannot be matched to
+ * an index predicate by a generic plan.
+ */
+const supersededRun = sql`${workflowExecutions.status} = 'superseded'`;
+const liveRun = sql`${workflowExecutions.status} <> 'superseded'`;
 
 /** The most recent runs one workflow's panel shows. */
 const WORKFLOW_EXECUTIONS_LIMIT = 50;
@@ -296,10 +303,15 @@ export type RunsRepoMethods = {
     workflowId: string;
     includeSuperseded: boolean;
   }) => Effect.Effect<WorkflowExecutionListRow[], DatabaseError>;
-  /** How many runs of this workflow a newer start displaced. */
-  readonly countSuperseded: (
-    workflowId: string
-  ) => Effect.Effect<number, DatabaseError>;
+  /**
+   * How many runs of this workflow a newer start displaced, counted up to
+   * `atMost` and no further, so the count reads at most that many index
+   * entries however many superseded runs have accrued.
+   */
+  readonly countSuperseded: (input: {
+    workflowId: string;
+    atMost: number;
+  }) => Effect.Effect<number, DatabaseError>;
   /**
    * One page of runs across every workflow, newest first, each row carrying
    * the name and paused flag of the workflow it belongs to.
@@ -468,9 +480,7 @@ export function makeRunsMethods(
           .where(
             and(
               eq(workflowExecutions.workflowId, workflowId),
-              includeSuperseded
-                ? undefined
-                : ne(workflowExecutions.status, "superseded")
+              includeSuperseded ? undefined : liveRun
             )
           )
           .orderBy(
@@ -480,17 +490,17 @@ export function makeRunsMethods(
           .limit(WORKFLOW_EXECUTIONS_LIMIT)
       ),
 
-    countSuperseded: (workflowId) =>
+    countSuperseded: ({ workflowId, atMost }) =>
       database.query(async (db) => {
-        const [row] = await db
-          .select({ total: count() })
+        const superseded = db
+          .select({ one: sql`1`.as("one") })
           .from(workflowExecutions)
           .where(
-            and(
-              eq(workflowExecutions.workflowId, workflowId),
-              eq(workflowExecutions.status, "superseded")
-            )
-          );
+            and(eq(workflowExecutions.workflowId, workflowId), supersededRun)
+          )
+          .limit(atMost)
+          .as("superseded");
+        const [row] = await db.select({ total: count() }).from(superseded);
 
         return row?.total ?? 0;
       }),

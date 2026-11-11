@@ -256,16 +256,22 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
           .limit(WORKFLOW_EXECUTIONS_LIMIT)
           .pipe(Effect.map((rows) => rows.map(sqliteExecutionListRow)))
       ),
-    countSuperseded: (workflowId) =>
+    countSuperseded: ({ workflowId, atMost }) =>
       store.read((database) =>
         database
           .select({ total: sql<number>`count(*)` })
-          .from(workflowExecutions)
-          .where(
-            and(
-              eq(workflowExecutions.workflowId, workflowId),
-              eq(workflowExecutions.status, "superseded")
-            )
+          .from(
+            database
+              .select({ one: sql`1`.as("one") })
+              .from(workflowExecutions)
+              .where(
+                and(
+                  eq(workflowExecutions.workflowId, workflowId),
+                  eq(workflowExecutions.status, "superseded")
+                )
+              )
+              .limit(atMost)
+              .as("superseded")
           )
           .get()
           .pipe(

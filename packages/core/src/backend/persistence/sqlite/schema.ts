@@ -180,6 +180,16 @@ export const workflowExecutions = sqliteTable(
       table.id
     ),
     index("executions_started_idx").on(table.startedAt, table.id),
+    // The Runs view's two-second poll, as on PostgreSQL: its bounded count
+    // of superseded runs, and its default list, which hides them. Superseded
+    // runs accrue without bound on a newest-wins workflow, and each read
+    // would otherwise walk every run the workflow has.
+    index("executions_superseded_by_workflow_idx")
+      .on(table.workflowId)
+      .where(sql`${table.status} = 'superseded'`),
+    index("executions_live_by_workflow_idx")
+      .on(table.workflowId, table.startedAt, table.id)
+      .where(sql`${table.status} <> 'superseded'`),
     index("executions_entity_idx").on(
       table.workflowId,
       table.entityValue,

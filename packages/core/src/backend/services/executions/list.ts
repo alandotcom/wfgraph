@@ -14,7 +14,10 @@ import {
   executorReading,
   readRunListActivities,
 } from "#src/backend/services/executions/executor-state";
-import type { RunListActivityView } from "@wfgraph/shared/rpc/contracts/workflows";
+import {
+  type RunListActivityView,
+  SUPERSEDED_COUNT_LIMIT,
+} from "@wfgraph/shared/rpc/contracts/workflows";
 import type {
   WorkflowExecutionStartSource,
   WorkflowExecutionStatus,
@@ -108,7 +111,8 @@ const loggerFor = (workflowId: string) =>
  * `getExecutionLogs` for the one open run.
  *
  * `supersededCount` is counted whether or not the rows are asked for, because a
- * builder deciding whether to look needs the number first.
+ * builder deciding whether to look needs the number first. It stops one past
+ * `SUPERSEDED_COUNT_LIMIT`, which the panel shows as "more than" that many.
  */
 export const getWorkflowExecutions = Effect.fn("getWorkflowExecutions")(
   function* (input: { workflowId: string; includeSuperseded: boolean }) {
@@ -131,7 +135,10 @@ export const getWorkflowExecutions = Effect.fn("getWorkflowExecutions")(
             workflowId,
             includeSuperseded: input.includeSuperseded,
           }),
-          executionRepo.countSuperseded(workflowId),
+          executionRepo.countSuperseded({
+            workflowId,
+            atMost: SUPERSEDED_COUNT_LIMIT + 1,
+          }),
           executionRepo.listWorkflowEvents({
             workflowId,
             eventType: "run_refused",

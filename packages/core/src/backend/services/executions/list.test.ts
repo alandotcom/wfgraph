@@ -12,6 +12,7 @@ import {
   stubWorkflowRepo,
 } from "#src/backend/lib/effect/test-layers";
 import { getWorkflowExecutions } from "#src/backend/services/executions/list";
+import { SUPERSEDED_COUNT_LIMIT } from "@wfgraph/shared/rpc/contracts/workflows";
 
 function execution(
   id: string,
@@ -43,9 +44,11 @@ function execution(
 function makeRepos(rows: WorkflowExecutionListRow[]) {
   const listCalls: Array<{ workflowId: string; includeSuperseded: boolean }> =
     [];
+  const countCalls: Array<{ workflowId: string; atMost: number }> = [];
 
   return {
     listCalls,
+    countCalls,
     layer: Layer.mergeAll(
       SilentAppLoggerLayer,
       stubWorkflowRepo({ existsById: () => Effect.succeed(true) }),
@@ -55,7 +58,11 @@ function makeRepos(rows: WorkflowExecutionListRow[]) {
             listCalls.push(input);
             return rows;
           }),
-        countSuperseded: () => Effect.succeed(3),
+        countSuperseded: (input) =>
+          Effect.sync(() => {
+            countCalls.push(input);
+            return 3;
+          }),
         listWorkflowEvents: () => Effect.succeed([]),
       })
     ),
@@ -89,6 +96,24 @@ describe("getWorkflowExecutions", () => {
           { workflowId: "wf_1", includeSuperseded: false },
         ]);
       })
+    );
+
+    // One past the limit is how the panel tells "this many" from "more".
+    it.effect(
+      "counts superseded runs to one past the limit the panel names",
+      () =>
+        Effect.gen(function* () {
+          const repos = makeRepos([]);
+
+          yield* getWorkflowExecutions({
+            workflowId: "wf_1",
+            includeSuperseded: false,
+          }).pipe(Effect.provide(repos.layer));
+
+          assert.deepStrictEqual(repos.countCalls, [
+            { workflowId: "wf_1", atMost: SUPERSEDED_COUNT_LIMIT + 1 },
+          ]);
+        })
     );
 
     it.effect("asks for the superseded rows when the toggle is on", () =>

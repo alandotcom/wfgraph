@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { SUPERSEDED_COUNT_LIMIT } from "@wfgraph/shared/rpc/contracts/workflows";
 import { Button } from "#src/components/ui/button";
 import { RunRetentionNote } from "#src/components/run-retention-note";
 import { WorkflowCancellationFailures } from "./workflow-cancellation-failures";
@@ -97,7 +98,9 @@ export function RunsListNotices({
           <p className="text-muted-foreground text-xs">
             {supersededCount === 1
               ? "1 run was superseded by a newer start"
-              : `${supersededCount} runs were superseded by newer starts`}
+              : supersededCount > SUPERSEDED_COUNT_LIMIT
+                ? `More than ${SUPERSEDED_COUNT_LIMIT.toLocaleString()} runs were superseded by newer starts`
+                : `${supersededCount} runs were superseded by newer starts`}
             {supersededCount > EXECUTIONS_PAGE_CAP
               ? `, of which the newest ${EXECUTIONS_PAGE_CAP} can be shown`
               : ""}
