@@ -14,7 +14,12 @@ import { Context, Layer, Semaphore } from "effect";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import type { WfGraphAgentRunner } from "#src/backend/agent/runner";
 
-export const MAX_CONCURRENT_AGENT_TURNS = 4;
+/**
+ * How many agent turns one application runtime streams at once when the host
+ * names no `agent.maxConcurrentTurns`. A turn past the limit is refused with a
+ * message asking the person to wait, rather than queued behind the others.
+ */
+export const DEFAULT_MAX_CONCURRENT_AGENT_TURNS = 4;
 
 /**
  * The environment variable a host conventionally reads this from. Named only in
@@ -190,9 +195,21 @@ export type WfGraphRunnerAgentConfig = {
   readonly runner: WfGraphAgentRunner;
 };
 
-export type WfGraphAgentConfig =
+/** What every form of the `agent` option takes beside its model or runner. */
+export type WfGraphAgentCapacityConfig = {
+  /**
+   * How many turns this process streams at once, across every person using
+   * the editor. A positive integer; defaults to
+   * `DEFAULT_MAX_CONCURRENT_AGENT_TURNS`.
+   */
+  readonly maxConcurrentTurns?: number | undefined;
+};
+
+export type WfGraphAgentConfig = (
   | WfGraphModelAgentConfig
-  | WfGraphRunnerAgentConfig;
+  | WfGraphRunnerAgentConfig
+) &
+  WfGraphAgentCapacityConfig;
 
 /**
  * The model one turn runs against, by provider. `agent/model.ts` is the one
@@ -231,12 +248,14 @@ export type AgentModelSettings =
 /** The configuration a turn actually runs against. */
 export type EnabledAgentSettings = AgentModelSettings & {
   readonly enabled: true;
+  readonly maxConcurrentTurns: number;
 };
 
 /** The configuration of a host's own runner. */
 export type HostRunnerAgentSettings = {
   readonly enabled: true;
   readonly runner: WfGraphAgentRunner;
+  readonly maxConcurrentTurns: number;
 };
 
 /** What a model config reads to: off, or one of the built-in providers. */
@@ -258,6 +277,17 @@ export class AgentCapacity extends Context.Service<
 >()("@wfgraph/core/AgentCapacity") {}
 
 const DISABLED = { enabled: false } as const;
+
+/** The turn limit, refusing anything but a positive integer at startup. */
+function readMaxConcurrentTurns(value: number | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_MAX_CONCURRENT_AGENT_TURNS;
+  }
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error("agent.maxConcurrentTurns must be a positive integer");
+  }
+  return value;
+}
 
 /** A trimmed value, or undefined for a blank or absent one. */
 function present(value: string | undefined): string | undefined {
@@ -285,7 +315,7 @@ function requiredModel(provider: AgentProvider, model: string): string {
  * default throws, because that is a host's mistake rather than an absent key.
  */
 export function readAgentSettings(
-  config: WfGraphModelAgentConfig | undefined
+  config: (WfGraphModelAgentConfig & WfGraphAgentCapacityConfig) | undefined
 ): ModelAgentSettings;
 export function readAgentSettings(
   config: WfGraphAgentConfig | undefined
@@ -296,8 +326,9 @@ export function readAgentSettings(
   if (!config) {
     return DISABLED;
   }
+  const maxConcurrentTurns = readMaxConcurrentTurns(config.maxConcurrentTurns);
   if ("runner" in config) {
-    return { enabled: true, runner: config.runner };
+    return { enabled: true, runner: config.runner, maxConcurrentTurns };
   }
 
   switch (config.provider) {
@@ -309,6 +340,7 @@ export function readAgentSettings(
       }
       return omitUndefined({
         enabled: true as const,
+        maxConcurrentTurns,
         provider: "openai" as const,
         apiKey,
         model: present(config.model) ?? DEFAULT_AGENT_MODEL,
@@ -325,6 +357,7 @@ export function readAgentSettings(
       }
       return omitUndefined({
         enabled: true as const,
+        maxConcurrentTurns,
         provider: "anthropic" as const,
         apiKey,
         model: requiredModel(config.provider, config.model),
@@ -341,6 +374,7 @@ export function readAgentSettings(
       }
       return omitUndefined({
         enabled: true as const,
+        maxConcurrentTurns,
         provider: "openrouter" as const,
         apiKey,
         model: requiredModel(config.provider, config.model),
@@ -356,6 +390,7 @@ export function readAgentSettings(
       }
       return omitUndefined({
         enabled: true as const,
+        maxConcurrentTurns,
         provider: "openai-compatible" as const,
         apiKey: present(config.apiKey),
         model: requiredModel(config.provider, config.model),
@@ -381,7 +416,14 @@ export function makeAgentConfigLayer(
 ): Layer.Layer<AgentConfig | AgentCapacity> {
   return Layer.merge(
     Layer.succeed(AgentConfig, settings),
-    Layer.effect(AgentCapacity, Semaphore.make(MAX_CONCURRENT_AGENT_TURNS))
+    Layer.effect(
+      AgentCapacity,
+      Semaphore.make(
+        settings.enabled
+          ? settings.maxConcurrentTurns
+          : DEFAULT_MAX_CONCURRENT_AGENT_TURNS
+      )
+    )
   );
 }
 

@@ -99,6 +99,7 @@ describe("postAgentChat", () => {
           Layer.mergeAll(
             makeAgentConfigLayer({
               enabled: true,
+              maxConcurrentTurns: 4,
               provider: "openai",
               apiKey: "test-key",
               model: "unused-built-in-model",
@@ -175,6 +176,7 @@ describe("postAgentChat tool grants", () => {
             Layer.mergeAll(
               makeAgentConfigLayer({
                 enabled: true,
+                maxConcurrentTurns: 4,
                 provider: "openai",
                 apiKey: "test-key",
                 model: "unused-built-in-model",

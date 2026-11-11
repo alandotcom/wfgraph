@@ -76,6 +76,7 @@ export {
   type WfGraphQueueHealth,
   type AgentReasoningEffort,
   type AnthropicReasoningEffort,
+  type WfGraphAgentCapacityConfig,
   type WfGraphAgentConfig,
   type WfGraphAnthropicAgentConfig,
   type WfGraphModelAgentConfig,

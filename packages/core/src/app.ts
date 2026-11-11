@@ -61,6 +61,7 @@ export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
 export type {
   AgentReasoningEffort,
   AnthropicReasoningEffort,
+  WfGraphAgentCapacityConfig,
   WfGraphAgentConfig,
   WfGraphAnthropicAgentConfig,
   WfGraphModelAgentConfig,
