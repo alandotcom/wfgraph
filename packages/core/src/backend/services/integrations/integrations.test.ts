@@ -640,23 +640,19 @@ describe("integration connection test failures", () => {
       })
     );
 
-    it.effect(
-      "answers with the database message when the row cannot be read",
-      () =>
-        Effect.gen(function* () {
-          const failure = yield* postIntegrationTest("int_1").pipe(
-            Effect.provide(
-              Layer.mergeAll(unreadableIntegrationRepo, assembledSlack)
-            ),
-            Effect.flip
-          );
+    it.effect("answers a fixed sentence when the row cannot be read", () =>
+      Effect.gen(function* () {
+        const failure = yield* postIntegrationTest("int_1").pipe(
+          Effect.provide(
+            Layer.mergeAll(unreadableIntegrationRepo, assembledSlack)
+          ),
+          Effect.flip
+        );
 
-          assert.instanceOf(failure, InternalFailure);
-          assert.strictEqual(
-            failure.error,
-            "terminating connection due to administrator command"
-          );
-        })
+        assert.instanceOf(failure, InternalFailure);
+        // The database's own text stays in the operator log.
+        assert.strictEqual(failure.error, "Failed to read integration");
+      })
     );
   });
 });

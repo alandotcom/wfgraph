@@ -5,9 +5,9 @@ import {
   type IntegrationMetadata,
 } from "@wfgraph/shared/extensions/catalog";
 import type { IntegrationConfig } from "@wfgraph/shared/types/integration";
-import { getErrorMessage } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
+import { internalFailure } from "#src/backend/lib/effect/internal-failure";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import {
@@ -119,10 +119,14 @@ const readIntegration = Effect.fn("readIntegration")(function* (
   integrationId: string
 ) {
   const repo = yield* IntegrationRepo;
+  const logger = (yield* AppLogger).get("integrations").with({ integrationId });
   const integration = yield* repo.findById(integrationId).pipe(
     Effect.catchTags({
-      DatabaseError: ({ cause }) => internal(getErrorMessage(cause)),
-      EncryptionKeyMismatch: () => internal(ENCRYPTION_KEY_MISMATCH_MESSAGE),
+      DatabaseError: internalFailure(logger, "Failed to read integration"),
+      EncryptionKeyMismatch: internalFailure(
+        logger,
+        ENCRYPTION_KEY_MISMATCH_MESSAGE
+      ),
     })
   );
   if (!integration) {

@@ -149,6 +149,44 @@ describe("resolveIntegrationCredentials", () => {
     });
   });
 
+  it("answers a failed read with a fixed sentence and logs the database text", async () => {
+    const recording = makeRecordingLogger();
+    const databaseText =
+      'Failed query: select "config" from "integrations" where "id" = $1 params: int_1';
+
+    const outcome = await Effect.runPromise(
+      Effect.result(resolveIntegrationCredentials(integrationId)).pipe(
+        Effect.provide(
+          layerFor(
+            {
+              findById: () =>
+                Effect.fail(
+                  new DatabaseError({ cause: new Error(databaseText) })
+                ),
+            },
+            undefined,
+            recording.layer
+          )
+        )
+      )
+    );
+
+    // The answer reaches an RPC caller, and query text with bound values is not
+    // a public error contract, so only the operator log carries it.
+    expect(outcome).toMatchObject({
+      failure: {
+        _tag: "InternalFailure",
+        error: "Failed to read integration",
+      },
+    });
+    expect(Result.isFailure(outcome) && outcome.failure.payload).toEqual({
+      error: "Failed to read integration",
+    });
+    expect(recording.lines.map((line) => line.message)).toEqual([
+      `Failed to read integration: ${databaseText}`,
+    ]);
+  });
+
   it("overlays a long-lived OAuth grant and makes no refresh request", async () => {
     let refreshCalls = 0;
     const integration = row({
