@@ -82,7 +82,7 @@ describe("readAgentSettings", () => {
       provider: "anthropic",
       apiKey: "sk-ant",
       model: "claude-opus-5-5",
-      reasoningEffort: DEFAULT_AGENT_REASONING_EFFORT,
+      reasoningEffort: "high",
     });
   });
 

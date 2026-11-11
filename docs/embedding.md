@@ -537,12 +537,12 @@ const wfgraph = await createWfGraphApp({
 });
 ```
 
-| `agent.provider`    | Endpoint `baseUrl` must implement                                | `model`                                       | `reasoningEffort`                                                                             |
-| ------------------- | ---------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `openai` (default)  | `POST {baseUrl}/responses`, OpenAI's Responses API               | Defaults to `gpt-6.1-terra`                   | Sent as `reasoning.effort`, with a reasoning summary. Defaults to `medium`                    |
-| `anthropic`         | `POST {baseUrl}/v1/messages`, Anthropic's Messages API           | Required                                      | `low` to `max`, sent as `output_config.effort` beside adaptive thinking. Defaults to `medium` |
-| `openrouter`        | `POST {baseUrl}/chat/completions`, OpenRouter's API              | Required, such as `anthropic/claude-opus-5-5` | Sent as `reasoning.effort` only when set                                                      |
-| `openai-compatible` | `POST {baseUrl}/chat/completions`, OpenAI's Chat Completions API | Required                                      | Sent as `reasoning_effort` only when set                                                      |
+| `agent.provider`    | Endpoint `baseUrl` must implement                                | `model`                                       | `reasoningEffort`                                                                           |
+| ------------------- | ---------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `openai` (default)  | `POST {baseUrl}/responses`, OpenAI's Responses API               | Defaults to `gpt-6.1-terra`                   | Sent as `reasoning.effort`, with a reasoning summary. Defaults to `medium`                  |
+| `anthropic`         | `POST {baseUrl}/v1/messages`, Anthropic's Messages API           | Required                                      | `low` to `max`, sent as `output_config.effort` beside adaptive thinking. Defaults to `high` |
+| `openrouter`        | `POST {baseUrl}/chat/completions`, OpenRouter's API              | Required, such as `anthropic/claude-opus-5-5` | Sent as `reasoning.effort` only when set                                                    |
+| `openai-compatible` | `POST {baseUrl}/chat/completions`, OpenAI's Chat Completions API | Required                                      | Sent as `reasoning_effort` only when set                                                    |
 
 - **Each endpoint streams.** Every request is a streaming request with function tools, so a
   gateway in front of a provider must pass server-sent events through and accept a

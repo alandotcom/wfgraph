@@ -104,8 +104,8 @@ sets `store: false`, so the provider keeps no copy of the turn.
 
 ### Reasoning effort
 
-`agent.reasoningEffort` defaults to `medium` for `openai` and `anthropic`, and
-is sent to `openrouter` and `openai-compatible` only when set. OpenAI takes
+`agent.reasoningEffort` defaults to `medium` for `openai` and `high` for
+`anthropic`, and is sent to `openrouter` and `openai-compatible` only when set. OpenAI takes
 `none`, `low`, `medium`, `high`, `xhigh` and `max`; `minimal` is refused by the
 type and by every GPT-6 model. Anthropic takes `low` to `max`.
 

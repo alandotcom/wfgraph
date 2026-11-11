@@ -83,8 +83,17 @@ export type AgentReasoningEffort = (typeof AGENT_REASONING_EFFORTS)[number];
  */
 export const DEFAULT_AGENT_REASONING_EFFORT: AgentReasoningEffort = "medium";
 
-/** The same `medium`, under the type Anthropic's effort takes. */
-const DEFAULT_ANTHROPIC_REASONING_EFFORT: AnthropicReasoningEffort = "medium";
+/**
+ * The effort an Anthropic turn runs at when the host names none.
+ *
+ * `high`, which is also Anthropic's own default for the model measured. On
+ * the 78-run eval suite `claude-sonnet-5-5` built the right graph in every
+ * run at `medium` and at `high`, and at `medium` it skipped the steps the
+ * authoring rules ask for around the edit far more often: 30 runs failed on
+ * those rules alone against 12 at `high` (Fisher's exact test, p = 0.002).
+ * The mean turn took 12.9 seconds at `high` against 11.8.
+ */
+const DEFAULT_ANTHROPIC_REASONING_EFFORT: AnthropicReasoningEffort = "high";
 
 /** The providers the built-in agent can run on, each through Effect's own package. */
 export const AGENT_PROVIDERS = [
@@ -140,7 +149,7 @@ export type WfGraphAnthropicAgentConfig = {
    * the agent's tools, so there is no default to stand behind.
    */
   readonly model: string;
-  /** Defaults to `DEFAULT_AGENT_REASONING_EFFORT`. */
+  /** Defaults to `high`. */
   readonly reasoningEffort?: AnthropicReasoningEffort | undefined;
   readonly baseUrl?: string | undefined;
 };
