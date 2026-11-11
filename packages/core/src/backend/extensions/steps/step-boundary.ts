@@ -30,13 +30,35 @@ export type HandlerBag<TInput> = {
   readonly input: TInput;
   /** `"test"` when the editor is running the workflow, `"live"` otherwise. */
   readonly runMode: "live" | "test";
-  readonly executionId?: string | undefined;
+  readonly executionId: string;
   readonly nodeId: string;
   readonly nodeName: string;
   readonly nodeType: string;
   /** The integration the node was configured with, if any. */
   readonly integrationId?: string | undefined;
+  /**
+   * A key for this node of this run, the same on every pass and every retry,
+   * to hand a vendor that deduplicates requests by key. `step.run` hands each
+   * named step a key of its own.
+   */
+  readonly idempotencyKey: string;
 };
+
+/**
+ * The idempotency key of a node of a run, or of one named step within it.
+ *
+ * Built from the run's id and the node's id alone, so it holds across passes,
+ * retries and a Migration, and differs between two nodes running the same
+ * action. A step name is at most 64 characters, which keeps the key within the
+ * 255 characters vendors commonly accept.
+ */
+export function idempotencyKeyFor(
+  context: Pick<StepContext, "executionId" | "nodeId">,
+  stepName?: string
+): string {
+  const nodeKey = `${context.executionId}:${context.nodeId}`;
+  return stepName === undefined ? nodeKey : `${nodeKey}:${stepName}`;
+}
 
 /**
  * The bag a handler reads, out of the decoded config and the context the engine
@@ -59,6 +81,7 @@ export function toHandlerBag<TInput>(
     nodeName: context.nodeName,
     nodeType: context.nodeType,
     integrationId,
+    idempotencyKey: idempotencyKeyFor(context),
   };
 }
 

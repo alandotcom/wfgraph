@@ -230,7 +230,7 @@ export const twilio = defineIntegration({
       ],
       handler: Effect.fn(function* (bag) {
         const { input } = bag;
-        const executionId = bag.executionId ?? "no_execution";
+        const { executionId } = bag;
         const testBehavior = resolveTwilioTestBehavior(input.testBehavior);
 
         // A test run either sends nothing at all or sends to one number the

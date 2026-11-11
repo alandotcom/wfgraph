@@ -86,7 +86,7 @@ describe("the send-sms action", () => {
       );
 
       expect(result).toEqual({
-        sid: "twilio:test-log-only:no_execution",
+        sid: "twilio:test-log-only:execution_test",
         status: "queued",
         to: "+15550001111",
         reasonCode: "test_mode_log_only",
@@ -206,7 +206,7 @@ describe("the send-sms action", () => {
       );
 
       expect(result).toEqual({
-        sid: "twilio:test-log-fallback:no_execution",
+        sid: "twilio:test-log-fallback:execution_test",
         status: "queued",
         to: "+15550001111",
         reasonCode: "test_mode_log_fallback_invalid_test_phone",

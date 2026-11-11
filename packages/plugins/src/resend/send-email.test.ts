@@ -79,7 +79,7 @@ describe("the send-email action", () => {
       );
 
       expect(result).toEqual({
-        id: "resend:test-log-only:no_execution",
+        id: "resend:test-log-only:execution_test",
         reasonCode: "test_mode_log_only",
       });
       expect(reads.count).toBe(0);
@@ -113,7 +113,7 @@ describe("the send-email action", () => {
       expect(payload.to).toBe("qa@example.com");
       expect(payload.cc).toBeUndefined();
       expect(payload.bcc).toBeUndefined();
-      expect(idempotencyKey).toBeUndefined();
+      expect(idempotencyKey).toBe("execution_test");
       expect(result).toEqual({ id: "email_123" });
     })
   );
@@ -206,7 +206,7 @@ describe("the send-email action", () => {
       );
 
       expect(result).toEqual({
-        id: "resend:test-log-only:no_execution",
+        id: "resend:test-log-only:execution_test",
         reasonCode: "test_mode_log_only",
         tags: { order_id: "ord_7" },
       });
@@ -305,7 +305,7 @@ describe("the send-email action", () => {
       );
 
       expect(result).toEqual({
-        id: "resend:test-log-fallback:no_execution",
+        id: "resend:test-log-fallback:execution_test",
         reasonCode: "test_mode_log_fallback_invalid_test_email",
       });
       expect(reads.count).toBe(0);

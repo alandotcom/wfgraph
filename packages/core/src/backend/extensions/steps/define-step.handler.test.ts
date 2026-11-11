@@ -451,3 +451,68 @@ describe("step.run names", () => {
     });
   });
 });
+
+/**
+ * The keys a handler hands a vendor so that a call repeated after a crash is
+ * applied once: one per node of a run, and one per named step within it.
+ */
+describe("idempotency keys", () => {
+  it("hands the handler a key for its node of this run, and each step a key of its own", async () => {
+    const seen: Record<string, string> = {};
+    const step = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.null(),
+      handler: async ({ idempotencyKey, step: nodeStep }) => {
+        seen.handler = idempotencyKey;
+        seen.named = nodeStep.idempotencyKey("charge");
+        await nodeStep.run("charge", async (call) => {
+          seen.charge = call.idempotencyKey;
+          return null;
+        });
+        await nodeStep.run("notify", async (call) => {
+          seen.notify = call.idempotencyKey;
+          return null;
+        });
+        return null;
+      },
+    });
+    const run = runStep(step.implement("demo/keys")(runner));
+
+    await run({ to: "someone", _context: CONTEXT });
+
+    expect(seen).toEqual({
+      handler: "exec_1:n1",
+      named: "exec_1:n1:charge",
+      charge: "exec_1:n1:charge",
+      notify: "exec_1:n1:notify",
+    });
+  });
+
+  it("hands every pass of the same node the same keys", async () => {
+    const keys: string[] = [];
+    const step = defineStep({
+      ...METADATA,
+      input: z.object({ to: z.string() }),
+      output: z.null(),
+      handler: async ({ idempotencyKey, step: nodeStep }) => {
+        keys.push(idempotencyKey, nodeStep.idempotencyKey("charge"));
+        return null;
+      },
+    });
+    const run = runStep(step.implement("demo/keys")(runner));
+
+    await run({ to: "someone", _context: CONTEXT });
+    await run({ to: "someone", _context: { ...CONTEXT } });
+    await run({ to: "someone", _context: { ...CONTEXT, nodeId: "n2" } });
+
+    expect(keys).toEqual([
+      "exec_1:n1",
+      "exec_1:n1:charge",
+      "exec_1:n1",
+      "exec_1:n1:charge",
+      "exec_1:n2",
+      "exec_1:n2:charge",
+    ]);
+  });
+});

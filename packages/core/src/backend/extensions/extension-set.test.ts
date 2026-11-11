@@ -280,6 +280,7 @@ describe("assembleExtensions", () => {
             step({
               appointmentId: "appt_1",
               _context: {
+                executionId: "exec_1",
                 nodeId: "action_1",
                 nodeName: "Cancel",
                 nodeType: "action",

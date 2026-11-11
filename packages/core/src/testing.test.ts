@@ -270,4 +270,37 @@ describe("runHostAction", () => {
       "The appointment is locked"
     );
   });
+
+  // A Draft run and a case alike hand the handler a key, so a handler passing
+  // it to a vendor runs the same way under test as in a run.
+  it("hands the handler an idempotency key, from the node a case names", async () => {
+    const keys: string[] = [];
+    const action = defineAction({
+      id: "appointments/charge",
+      label: "Charge",
+      description: "Records the key it was handed",
+      input: z.object({}),
+      handler: async ({ idempotencyKey, step }) => {
+        keys.push(idempotencyKey);
+        await step.run("charge", async (call) => {
+          keys.push(call.idempotencyKey);
+          return null;
+        });
+        return {};
+      },
+    });
+
+    await runHostAction(action, { input: {} });
+    await runHostAction(action, {
+      input: {},
+      node: { executionId: "exec_9", nodeId: "charge_1" },
+    });
+
+    expect(keys).toEqual([
+      "execution_test:node_1",
+      "execution_test:node_1:charge",
+      "exec_9:charge_1",
+      "exec_9:charge_1:charge",
+    ]);
+  });
 });

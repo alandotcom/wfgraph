@@ -16,15 +16,16 @@ import { readAs } from "@wfgraph/shared/types/schema";
  * schema is that path: `readStepContext` below decodes the field, and
  * `defineStep` hands what comes out to the handler.
  *
- * `optional`, not `optionalKey`, for the two fields the engine may leave empty.
- * A decode that fails answers with no context at all rather than with a context
- * missing one field, so a caller that spelled an empty value as a key holding
- * `undefined` would lose the whole thing, and `runMode` would fall back to
- * `"live"`, which for a step that sends an SMS is a test run reaching a real
- * phone.
+ * `optional`, not `optionalKey`, for `runMode`, which the engine may leave
+ * empty. A decode that fails answers with no context at all rather than with a
+ * context missing one field, so a caller that spelled an empty value as a key
+ * holding `undefined` would lose the whole thing, and `runMode` would fall back
+ * to `"live"`, which for a step that sends an SMS is a test run reaching a real
+ * phone. `executionId` is required: the handler's idempotency key is derived
+ * from it, and a context without it fails the node as a missing context does.
  */
 const stepContextSchema = Schema.Struct({
-  executionId: Schema.optional(Schema.String),
+  executionId: Schema.String,
   nodeId: Schema.String,
   nodeName: Schema.String,
   nodeType: Schema.String,

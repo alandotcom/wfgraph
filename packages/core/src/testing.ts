@@ -51,6 +51,11 @@ type NodeUnderTest = {
 };
 
 const TEST_INTEGRATION_ID = "int_test";
+/**
+ * The run a case stands in for when its `node` names none. A handler's
+ * idempotency key is derived from it, so the key is always present.
+ */
+const TEST_EXECUTION_ID = "execution_test";
 
 /**
  * Run one action of an integration and answer the envelope the engine reads.
@@ -120,7 +125,7 @@ export function runAction(
       nodeId: run.node?.nodeId ?? "node_1",
       nodeName: run.node?.nodeName ?? integration.label,
       nodeType: run.node?.nodeType ?? "action",
-      executionId: run.node?.executionId,
+      executionId: run.node?.executionId ?? TEST_EXECUTION_ID,
     },
   });
 }
@@ -217,7 +222,7 @@ export async function runHostAction(
           nodeId: run.node?.nodeId ?? "node_1",
           nodeName: run.node?.nodeName ?? action.label,
           nodeType: run.node?.nodeType ?? "action",
-          executionId: run.node?.executionId,
+          executionId: run.node?.executionId ?? TEST_EXECUTION_ID,
         },
       },
       recording

@@ -394,9 +394,10 @@ describe("defineAction as the engine calls it", () => {
       input: { actionId: "billing/notify", to: "someone" },
       ...stepContext,
       integrationId: "int_9",
+      idempotencyKey: "exec_1:node_1",
       credentials: expect.anything(),
       readCredentials: expect.any(Function),
-      step: { run: expect.any(Function) },
+      step: { run: expect.any(Function), idempotencyKey: expect.any(Function) },
     });
   });
 
@@ -419,10 +420,31 @@ describe("defineAction as the engine calls it", () => {
     const action = notify();
 
     await run(action)({
-      _context: { nodeId: "n1", nodeName: "Notify", nodeType: "action" },
+      _context: {
+        executionId: "exec_1",
+        nodeId: "n1",
+        nodeName: "Notify",
+        nodeType: "action",
+      },
     });
 
     expect(handler.mock.calls[0]?.[0].runMode).toBe("live");
+  });
+
+  // The idempotency key is derived from the run and the node, so a context
+  // naming no run cannot give a handler the key it was promised.
+  it("fails the node rather than calling the handler without a run id", async () => {
+    const action = notify();
+
+    const answer = await run(action)({
+      _context: { nodeId: "n1", nodeName: "Notify", nodeType: "action" },
+    });
+
+    expect(answer).toMatchObject({
+      success: false,
+      error: { message: expect.stringContaining("without a step context") },
+    });
+    expect(handler).not.toHaveBeenCalled();
   });
 });
 

@@ -26,6 +26,7 @@ import {
   failedStep,
   type HandlerBag,
   handlerErrorMessage,
+  idempotencyKeyFor,
   invalidConfigMessage,
   missingContextMessage,
   toHandlerBag,
@@ -95,9 +96,26 @@ export class StepFailure extends Schema.TaggedError<
  * storage, and `JsonSafe` is the compiler holding both forms to that. A `Date`,
  * `Map` or `Set` in the answer is refused where it is written, with the offending
  * field named.
+ *
+ * A step is at-least-once: a process that dies while the work runs, before its
+ * value is stored, leaves the step to run again on the next pass. The key
+ * `idempotencyKey` answers for a step's name, which the Promise form's work is
+ * also handed, is what makes a vendor call safe to repeat.
  */
 export type NodeStepApi = {
   run: StepRunner;
+  /**
+   * The idempotency key of the step `stepName` names in this node of this
+   * run: the same on every pass and retry, and different for every other step
+   * name and node.
+   */
+  idempotencyKey: (stepName: string) => string;
+};
+
+/** What the work of a Promise `step.run` is handed. */
+export type StepRunCall = {
+  /** The step's own idempotency key, as `NodeStepApi.idempotencyKey` answers it. */
+  readonly idempotencyKey: string;
 };
 
 type StepRunner = {
@@ -105,7 +123,10 @@ type StepRunner = {
     stepId: string,
     work: Effect.Effect<A & JsonSafe<A>, StepFailure, HttpClient.HttpClient>
   ): Effect.Effect<A, StepFailure, HttpClient.HttpClient>;
-  <A>(stepId: string, work: () => Promise<A & JsonSafe<A>>): Promise<A>;
+  <A>(
+    stepId: string,
+    work: (call: StepRunCall) => Promise<A & JsonSafe<A>>
+  ): Promise<A>;
 };
 
 /** What a memoized step stores, which has to be JSON. */
@@ -161,8 +182,11 @@ function stepNameRefusal(subject: string, name: string): string | undefined {
  */
 export function nodeStepApi(
   steps: NodeSteps | undefined,
-  subject: string
+  subject: string,
+  context: StepContext
 ): NodeStepApi {
+  const idempotencyKey = (stepName: string) =>
+    idempotencyKeyFor(context, stepName);
   // eslint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- JsonSafe was enforced on the author's value at `run`
   const memoize = steps?.run as DurableRemember | undefined;
 
@@ -223,12 +247,15 @@ export function nodeStepApi(
     stepId: string,
     work: Effect.Effect<A, StepFailure, HttpClient.HttpClient>
   ): Effect.Effect<A, StepFailure, HttpClient.HttpClient>;
-  function run<A>(stepId: string, work: () => Promise<A>): Promise<A>;
+  function run<A>(
+    stepId: string,
+    work: (call: StepRunCall) => Promise<A>
+  ): Promise<A>;
   function run<A>(
     stepId: string,
     work:
       | Effect.Effect<A, StepFailure, HttpClient.HttpClient>
-      | (() => Promise<A>)
+      | ((call: StepRunCall) => Promise<A>)
   ): Effect.Effect<A, StepFailure, HttpClient.HttpClient> | Promise<A> {
     if (typeof work === "function") {
       const refusal = stepNameRefusal(subject, stepId);
@@ -238,13 +265,14 @@ export function nodeStepApi(
       // Bare-value memoization: a throw must not leave a stored value, or the
       // executor's retry would replay the failure instead of running the step
       // again.
-      return remember(stepId, work);
+      const call: StepRunCall = { idempotencyKey: idempotencyKey(stepId) };
+      return remember(stepId, () => work(call));
     }
 
     return runEffect(stepId, work);
   }
 
-  return { run };
+  return { run, idempotencyKey };
 }
 
 /**
@@ -619,7 +647,7 @@ export function buildStep<TInput, TOutput>(
               ...toHandlerBag(input, context, integrationId),
               credentials,
               readCredentials: () => runToPromise(credentials),
-              step: nodeStepApi(steps, subject),
+              step: nodeStepApi(steps, subject, context),
             }),
             toFailure
           ),

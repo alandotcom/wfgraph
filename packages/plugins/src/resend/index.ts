@@ -569,7 +569,7 @@ export const resend = defineIntegration({
         // re-runs sends the same key, and Resend replays its first answer
         // rather than sending a second email.
         const idempotencyKey = bag.executionId;
-        const syntheticIdSuffix = idempotencyKey ?? "no_execution";
+        const syntheticIdSuffix = idempotencyKey;
         const testBehavior = input.testBehavior ?? "log_only";
 
         // Parsed once, up here, because both the wire body and this step's own
