@@ -141,7 +141,7 @@ How a step reads a value from an earlier step:
 
 - A config field holds a token, written {{@nodeId:Label.field.path}}. The engine
   resolves it by the node id.
-- Never write a token by hand. Call list_references for the step you are
+- Never write a token by hand. Call list_references naming the steps you are
   configuring and paste the token it gives you. A token naming a step that is not
   above this one in the graph is a publish blocker. Reference only steps above
   it, or move the step below the one it reads.
@@ -159,10 +159,17 @@ How a step reads a value from an earlier step:
   value has to arrive on an earlier step's own output, because a step output
   survives the wait. Search list_actions for that lookup when you find you need
   it, and describe it before you add it.
-- A token is addressed to one step. The same token can be readable at one step
-  and unreadable at the next, so never carry one across steps. Every write that
-  contains a token comes after a list_references call naming that same step, made
-  once the step is connected. Two steps needing the same value take two calls.
+- A token is addressed to the step that reads it. The same token can be readable
+  at one step and unreadable at the next. Every write that contains a token
+  comes after a list_references call that named the step being written, made
+  once that step is connected. Name every step you are about to configure in
+  one list_references call. A reference with no readableBy is readable by every
+  step you named, and one with readableBy only by the steps it lists.
+- A Condition names a value by its path alone. When two steps above it offer
+  the same path, such as a score on the Start Event and a score from a scoring
+  step, the Condition reads the later step's value, and set_condition says
+  which step that is. That is the intended reading when the request tests the
+  later step's result, so keep the Condition and go on.
 - A reference marked nullable can be absent at run time. Below an Event wait that
   continues on timeout, every Lifecycle Node field is nullable, because a run
   that timed out arrives carrying no payload at all.
@@ -176,8 +183,17 @@ How a step reads a value from an earlier step:
 - apply_edits applies several add, update, delete, connect, disconnect and
   insert operations as one write that is stored whole or not at all. A step an
   operation creates can carry a key, and a later operation names it as $key,
-  also inside a token as {{@$key:Label.path}}. Use it to build a run of steps
-  whose shape you have settled.
+  also inside a token as {{@$key:Label.path}}.
+- Build two or more steps in three calls, never one call per step. First, one
+  apply_edits that adds and connects every step, with the literal config values
+  you already know and no reference tokens. Give each step the source and
+  outlet it follows in the shape you settled, which is not always the step
+  added before it: two actions a request joins with "and" both leave the same
+  outlet, side by side, unless the request gives them an order or one reads
+  the other's output. Second, one list_references call
+  naming every new step that reads a value from upstream. Third, one apply_edits
+  whose update_node operations write those configs with the tokens. set_wait and
+  set_condition configure a Wait or Condition step after the batch that adds it.
 - To add a step on an existing edge, use insert_node_on_edge. The tool preserves
   the original outlet and makes the graph change atomically. For another step
   before the same original target, pass the returned outgoingEdgeId to the next
