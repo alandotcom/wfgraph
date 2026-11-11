@@ -12,6 +12,10 @@ import { Extensions } from "#src/backend/lib/effect/extensions";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
 import { readCappedText } from "#src/backend/lib/http/capped-body";
 import { bearerKeyMatches } from "#src/backend/lib/http/bearer-key";
+import {
+  CROSS_SITE_BODY,
+  isCrossSiteWrite,
+} from "#src/backend/lib/http/cross-site";
 import { getAppLogger } from "#src/backend/lib/logger";
 import { createRequestEvent } from "#src/backend/lib/http/request-event";
 import {
@@ -344,6 +348,37 @@ export function createApiApp(options: CreateApiAppOptions) {
       await next();
     });
   }
+
+  // A write a browser sends from another site is refused before the host's
+  // session is consulted (`lib/http/cross-site.ts` holds the rule). Machine
+  // routes carry their own credential, the public route writes nothing, and MCP
+  // checks Host and Origin itself.
+  const mcpPath = `${basePath}/mcp`;
+  // The app context is fixed for the runtime's life, so it is read once.
+  let publicUrlRead: Promise<string | undefined> | undefined;
+  app.use("*", async (c, next) => {
+    if (
+      c.get("wfgraphMachineRoute") ||
+      c.get("wfgraphPublicRoute") ||
+      c.req.path === mcpPath
+    ) {
+      await next();
+      return undefined;
+    }
+    publicUrlRead ??= runtime
+      .runPromise(WfGraphAppContext)
+      .then((context) => context.publicUrl);
+    const publicUrl = await publicUrlRead;
+    const allowedOrigins = [new URL(c.req.url).origin];
+    if (publicUrl !== undefined) {
+      allowedOrigins.push(publicUrl);
+    }
+    if (isCrossSiteWrite(c.req.raw, allowedOrigins)) {
+      return c.json(CROSS_SITE_BODY, 403);
+    }
+    await next();
+    return undefined;
+  });
 
   app.use("*", async (c, next) => {
     if (c.get("wfgraphMachineRoute") || c.get("wfgraphPublicRoute")) {

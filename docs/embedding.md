@@ -419,6 +419,17 @@ Three route classes have different authorization behavior:
 - The OAuth client metadata endpoint is public provider-discovery data and bypasses host
   authentication.
 
+Operator routes refuse a write that a browser sends from another site, before host
+authentication runs. A `POST`, `PUT`, `PATCH` or `DELETE` to the RPC, REST or OAuth routes
+answers `403` when its `Sec-Fetch-Site` header is `cross-site` or `same-site`, unless its
+`Origin` header equals the configured `publicUrl` or the origin the request was addressed
+to. A request carrying `Origin` but no `Sec-Fetch-Site` is held to the same two origins. A
+request carrying neither header is a non-browser client and passes to host
+authentication. The rule covers a form posted from a sibling subdomain, which a
+`SameSite=Lax` session cookie does not stop, and any site when the cookie is
+`SameSite=None`. Machine routes and the MCP endpoint are outside the rule, and
+`POST /api/integrations/oauth/start` also requires `Content-Type: application/json`.
+
 The authenticated, boot-blocking `GET /api/extensions` response contains an
 `authorization.operationIds` snapshot beside `catalog` and `agent`. Workflow Graph evaluates
 every canonical `WfGraphOperation` through `allows` concurrently to build the snapshot. A

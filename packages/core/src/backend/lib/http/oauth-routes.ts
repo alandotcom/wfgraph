@@ -143,6 +143,19 @@ export function createOAuthRoutes(options: {
       "/integrations/oauth/start",
       requireOperation(WfGraphOperations.oauthStart),
       async (c) => {
+        // A form or text body is what a page on another site can post without
+        // a preflight, so this route reads JSON alone.
+        const mediaType = c.req
+          .header("content-type")
+          ?.split(";")[0]
+          ?.trim()
+          .toLowerCase();
+        if (mediaType !== "application/json") {
+          return c.json(
+            { error: "Request body must be sent as application/json" },
+            415
+          );
+        }
         let raw: unknown;
         try {
           raw = await c.req.raw.json();
