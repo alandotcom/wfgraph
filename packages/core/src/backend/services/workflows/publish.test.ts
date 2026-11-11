@@ -237,6 +237,86 @@ describe("publishWorkflow", () => {
         })
     );
 
+    // A version with no Lifecycle Rules starts runs by hand, and those runs
+    // hold the untracked identity form, as a version whose rules track no
+    // Entity does.
+    it.effect(
+      "reads a version with no Lifecycle Rules as one that tracks no Entity when it warns",
+      () =>
+        Effect.gen(function* () {
+          const manualGraph = createSerializedWorkflowGraph({
+            nodes: [
+              {
+                id: "lifecycle-1",
+                type: "lifecycle",
+                position: { x: 0, y: 0 },
+                data: { label: "Start", type: "lifecycle", config: {} },
+              },
+            ],
+            edges: [],
+          });
+          const trackedGraph = graphWith({
+            ...rules,
+            trackedEntity: {
+              type: "appointment",
+              bindings: { "app/appointment.created": "appointment" },
+            },
+          });
+          const tracked: PublishedWorkflowVersion = {
+            id: "ver_1",
+            workflowId: "wf_1",
+            version: 1,
+            kind: "published",
+            graph: trackedGraph,
+            catalogFingerprint: catalogFingerprint(catalog),
+            graphDigest: "tracked",
+            publishedAt: new Date("2026-08-03T00:00:00.000Z"),
+            lastPinnedAt: null,
+          };
+          const repo = stubWorkflowRepo({
+            findById: () =>
+              Effect.succeed({
+                ...draft,
+                graph: manualGraph,
+                publishedVersionId: "ver_1",
+              }),
+            findPublishedVersion: () => Effect.succeed(tracked),
+            findLatestVersion: () => Effect.succeed(tracked),
+            insertPublishedVersion: (input) =>
+              Effect.succeed(mintedFrom(input)),
+            listVersionUsage: () =>
+              Effect.succeed([
+                {
+                  id: "ver_1",
+                  graph: trackedGraph,
+                  catalogFingerprint: "fingerprint",
+                  publishedAt: new Date("2026-08-03T00:00:00.000Z"),
+                  isCurrent: false,
+                  activeRunCount: 2,
+                  oldestActiveRunAt: null,
+                  kind: "published" as const,
+                  version: 1,
+                },
+              ]),
+          });
+
+          const published = yield* publishWorkflow({
+            workflowId: "wf_1",
+            graph: manualGraph,
+            expectedPublishedVersionId: "ver_1",
+            expectedDraftRevision: 1,
+          }).pipe(Effect.provide(repo));
+
+          assert.deepStrictEqual(published.warnings, [
+            {
+              code: "entity_tracking_changed",
+              tracksEntity: false,
+              inFlightRuns: 2,
+            },
+          ]);
+        })
+    );
+
     // A version that tracks an Entity identifies a run by its type and ID,
     // and one that does not by its Entity Value. Runs the older form started
     // still finish on their version, which the builder is told about without

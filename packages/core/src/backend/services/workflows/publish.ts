@@ -46,14 +46,15 @@ const stalePublish = () =>
 
 /**
  * Whether a published graph's Lifecycle Rules track an Entity, which decides
- * the form its runs store their identity in, or null when the graph holds no
- * rules it can read.
+ * the form its runs store their identity in. A graph with no rules starts
+ * runs by hand, and those runs hold the untracked form. Null is a graph that
+ * cannot be read.
  */
 function tracksEntity(graph: SerializedWorkflowGraph): boolean | null {
   try {
     const entry = toWorkflowGraphData(graph).nodes.find(isLifecycleNode);
     const rules = readLifecycleRules(entry?.data.config);
-    return rules === undefined ? null : rules.trackedEntity !== undefined;
+    return rules?.trackedEntity !== undefined;
   } catch {
     return null;
   }
