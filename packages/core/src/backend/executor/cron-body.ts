@@ -3,6 +3,8 @@
  * and write the fire's one record. The fire's own transaction releases the
  * lease, so a body that fired ends its pass with no release to write. A body
  * whose retries are spent skips the slot it was firing, with a Refused Start.
+ * The clock the fire reads its slot from is never earlier than the slot the
+ * timer was claimed at, so a clock stepped back cannot fire a slot again.
  */
 
 import { Effect } from "effect";
@@ -93,6 +95,16 @@ function logFire(pass: CronPass, outcome: ScheduleFireOutcome) {
   );
 }
 
+/**
+ * The pass's clock, held to no earlier than the slot the timer was claimed
+ * at. That slot has not fired, and every earlier one has, so a fire never
+ * reads a slot before it.
+ */
+function fireClock(pass: CronPass): Date {
+  const now = pass.now();
+  return now < pass.claimed.wakeAt ? pass.claimed.wakeAt : now;
+}
+
 export function cronBody(): PassBody<CronPass, CronServices> {
   return {
     open: (pass) =>
@@ -103,7 +115,7 @@ export function cronBody(): PassBody<CronPass, CronServices> {
             writes: pass.writes,
             workflowId: pass.claimed.workflowId,
             schedule: pass.claimed.schedule,
-            now: pass.now,
+            now: () => fireClock(pass),
           }).pipe(
             Effect.tap((outcome) => logFire(pass, outcome)),
             Effect.as({ kind: "ended" as const })
@@ -115,7 +127,7 @@ export function cronBody(): PassBody<CronPass, CronServices> {
         workflowId: pass.claimed.workflowId,
         schedule: pass.claimed.schedule,
         error,
-        now: pass.now(),
+        now: fireClock(pass),
       }).pipe(
         Effect.tap((outcome) => logFire(pass, outcome)),
         Effect.asVoid

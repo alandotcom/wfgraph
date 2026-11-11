@@ -471,6 +471,12 @@ many are live for `workflow:<id>`. About 68,000 states.
   `Timing` a timeout is "the deadline passed", and the model uses the design's
   ratios, not its seconds, and models no retry backoff. In `Cron` the clock
   numbers the slots a schedule fires at.
+- `Timing` has one clock that every worker reads. On PostgreSQL that holds for
+  leases: every lease instant a worker writes or compares is moved onto the
+  database's clock by the worker's measured offset from it, once that offset
+  passes one second (`databaseClockOffset` in `repo/schedule.ts`). Wake times
+  and park deadlines stay on each worker's own clock, so a skew between
+  workers moves a wake by that skew. SQLite has one process and one clock.
 
 ## Coverage record
 
@@ -681,7 +687,10 @@ back to show the rule still catches it:
   which `Cron` replaces with two expressions on an integer clock.
 - The fire's clock. `Cron` treats a fire as one atomic step at the current
   instant, while `fireSchedule` reads `now` once, before the fire's
-  transaction, and computes the slot and the next wake from it. A fire whose
+  transaction, and computes the slot and the next wake from it. The cron
+  body holds that clock to no earlier than the slot the timer was claimed at
+  (`fireClock` in `executor/cron-body.ts`), so a worker whose clock stepped
+  back cannot read a slot that already fired. A fire whose
   transaction waits across a slot boundary therefore fires the earlier slot,
   and the next pass finds the timer due and fires the later one at once. Two
   distinct slots fire, and no slot fires twice, so the consequence is benign.

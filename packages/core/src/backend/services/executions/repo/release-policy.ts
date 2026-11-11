@@ -262,13 +262,18 @@ function expiredLease(
 /**
  * Whether a claim lane for `kind` leases this row at `now`: the row is of that kind,
  * and it is `queued` or `waiting` with `wake_at` at or before `now`, or its
- * lease expired (`expiredLease`).
+ * lease expired (`expiredLease`) by `leaseNow`, the same moment on the clock
+ * the backend writes leases with, which defaults to `now`.
  */
 export function dueSchedule(
   columns: ScheduleColumns,
-  claim: { kind: ExecutionScheduleKind; now: BoundInstant }
+  claim: {
+    kind: ExecutionScheduleKind;
+    now: BoundInstant;
+    leaseNow?: BoundInstant | undefined;
+  }
 ): SQL {
-  return sql`(${columns.kind} = ${claim.kind} and ((${columns.state} in ('queued', 'waiting') and ${columns.wakeAt} <= ${instantOf(columns.wakeAt, claim.now)}) or ${expiredLease(columns, claim.now)}))`;
+  return sql`(${columns.kind} = ${claim.kind} and ((${columns.state} in ('queued', 'waiting') and ${columns.wakeAt} <= ${instantOf(columns.wakeAt, claim.now)}) or ${expiredLease(columns, claim.leaseNow ?? claim.now)}))`;
 }
 
 /**
@@ -780,6 +785,7 @@ function claimedSchedule(
         kind: "cron",
         workflowId,
         schedule: { cron: row.cron, timeZone: row.timeZone },
+        wakeAt: row.wakeAt,
         ...lease,
       });
     }

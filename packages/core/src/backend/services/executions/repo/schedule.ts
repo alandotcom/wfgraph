@@ -4,6 +4,11 @@
  * locking a fenced write stands on. `release-policy.ts` makes the decisions;
  * this file runs the statements they call for.
  *
+ * Leases are kept on the database's clock: every lease instant a caller hands
+ * in, on its own clock, is moved by that clock's offset from PostgreSQL's
+ * (`databaseClockOffset`), so workers whose clocks disagree still agree on
+ * when a lease expires. Wake times stay on the callers' clocks.
+ *
  * Lock order: every transaction here, and every fenced or terminal write and
  * producer in the sibling slices, takes the run's schedule row before its
  * execution row and its wait rows. The producers (`wakeExecutions`) and the
@@ -70,6 +75,63 @@ import { ownershipLost } from "#src/backend/services/executions/repo/fencing";
 import type { JsonValue } from "@wfgraph/shared/types/json";
 
 type Executor = WfGraphDatabase | WfGraphTransaction;
+
+/**
+ * How far this process's clock may stand from the database's before lease
+ * instants are moved onto the database's clock. A skew inside it is far
+ * inside a lease's margin over its heartbeat, and leaving it alone keeps an
+ * instant the caller computed exactly as it wrote it.
+ */
+const CLOCK_SKEW_TOLERANCE_MS = 1_000;
+
+/** How long a measured clock offset is used before it is measured again. */
+const CLOCK_OFFSET_TTL_MS = 60_000;
+
+/** The offset last measured on one database, and when, on the process clock. */
+const measuredOffsets = new WeakMap<
+  Database["Service"],
+  { offsetMs: number; measuredAt: number }
+>();
+
+/**
+ * How far PostgreSQL's clock stands ahead of this process's, in milliseconds,
+ * or 0 inside `CLOCK_SKEW_TOLERANCE_MS`. Measured with one `clock_timestamp()`
+ * read against the midpoint of its round trip, and measured again once
+ * `CLOCK_OFFSET_TTL_MS` has passed on the process clock either way.
+ */
+function databaseClockOffset(
+  database: Database["Service"]
+): Effect.Effect<number, DatabaseError> {
+  return Effect.suspend(() => {
+    const cached = measuredOffsets.get(database);
+    if (
+      cached !== undefined &&
+      Math.abs(Date.now() - cached.measuredAt) < CLOCK_OFFSET_TTL_MS
+    ) {
+      return Effect.succeed(cached.offsetMs);
+    }
+    return database.query(async (db) => {
+      const sentAt = Date.now();
+      const [row] = await db.execute<{ now: Date | string }>(
+        sql`select clock_timestamp() as now`
+      );
+      const answeredAt = Date.now();
+      const measured =
+        row === undefined
+          ? 0
+          : new Date(row.now).getTime() - (sentAt + answeredAt) / 2;
+      const offsetMs =
+        Math.abs(measured) < CLOCK_SKEW_TOLERANCE_MS ? 0 : Math.round(measured);
+      measuredOffsets.set(database, { offsetMs, measuredAt: answeredAt });
+      return offsetMs;
+    });
+  });
+}
+
+/** `at`, an instant on the process clock, moved onto the database's clock. */
+function onDatabaseClock(at: Date, offsetMs: number): Date {
+  return new Date(at.getTime() + offsetMs);
+}
 
 /** How strongly a fenced write holds the schedule row it stands on. */
 export type LeaseLock = "share" | "update";
@@ -503,7 +565,7 @@ async function countFailureOnStep(
 async function lockDueRows(
   tx: Executor,
   lanes: readonly ClaimLane[],
-  now: Date
+  clock: { now: Date; leaseNow: Date }
 ): Promise<DueRow[]> {
   if (lanes.length === 0) return [];
   const locked = lanes.map((lane) => {
@@ -516,7 +578,9 @@ async function lockDueRows(
         runningNodeId: workflowExecutionSchedule.runningNodeId,
       })
       .from(workflowExecutionSchedule)
-      .where(dueSchedule(workflowExecutionSchedule, { kind: lane.kind, now }))
+      .where(
+        dueSchedule(workflowExecutionSchedule, { kind: lane.kind, ...clock })
+      )
       .orderBy(
         asc(workflowExecutionSchedule.wakeAt),
         asc(workflowExecutionSchedule.id)
@@ -569,51 +633,61 @@ export function makeScheduleMethods(
       }),
 
     claimDue: (input) =>
-      database
-        .query((db) =>
-          db.transaction(async (tx) => {
-            const lanes = input.lanes.filter((lane) => lane.limit > 0);
-            if (lanes.length === 0) return [];
-            const due = await lockDueRows(tx, lanes, input.now);
-            if (due.length === 0) return [];
+      databaseClockOffset(database)
+        .pipe(
+          Effect.flatMap((offsetMs) =>
+            database.query((db) =>
+              db.transaction(async (tx) => {
+                const lanes = input.lanes.filter((lane) => lane.limit > 0);
+                if (lanes.length === 0) return [];
+                const due = await lockDueRows(tx, lanes, {
+                  now: input.now,
+                  leaseNow: onDatabaseClock(input.now, offsetMs),
+                });
+                if (due.length === 0) return [];
 
-            // A swept step whose memo row already settled counts against the
-            // run instead, so no expired lease goes uncounted.
-            const uncounted: string[] = [];
-            for (const swept of sweptStepFailures(due)) {
-              // eslint-disable-next-line eslint/no-await-in-loop -- one transaction runs one statement at a time
-              const counted = await countFailureOnStep(tx, swept);
-              if (counted === null) uncounted.push(swept.scheduleId);
-            }
+                // A swept step whose memo row already settled counts against the
+                // run instead, so no expired lease goes uncounted.
+                const uncounted: string[] = [];
+                for (const swept of sweptStepFailures(due)) {
+                  // eslint-disable-next-line eslint/no-await-in-loop -- one transaction runs one statement at a time
+                  const counted = await countFailureOnStep(tx, swept);
+                  if (counted === null) uncounted.push(swept.scheduleId);
+                }
 
-            const claimed = await tx
-              .update(workflowExecutionSchedule)
-              .set({
-                state: "leased",
-                ownerToken: sql`gen_random_uuid()::text`,
-                leaseExpiresAt: new Date(input.now.getTime() + input.leaseMs),
-                workerId: input.workerId,
-                attempt: claimAttempt(workflowExecutionSchedule, uncounted),
-                runningStepId: null,
-                runningNodeId: null,
+                const claimed = await tx
+                  .update(workflowExecutionSchedule)
+                  .set({
+                    state: "leased",
+                    ownerToken: sql`gen_random_uuid()::text`,
+                    leaseExpiresAt: onDatabaseClock(
+                      new Date(input.now.getTime() + input.leaseMs),
+                      offsetMs
+                    ),
+                    workerId: input.workerId,
+                    attempt: claimAttempt(workflowExecutionSchedule, uncounted),
+                    runningStepId: null,
+                    runningNodeId: null,
+                  })
+                  .where(
+                    inArray(
+                      workflowExecutionSchedule.id,
+                      due.map((row) => row.id)
+                    )
+                  )
+                  .returning();
+
+                await resolveOverdueParks(
+                  tx,
+                  claimed.flatMap((row) =>
+                    row.executionId === null ? [] : [row.executionId]
+                  ),
+                  input.now
+                );
+                return claimed;
               })
-              .where(
-                inArray(
-                  workflowExecutionSchedule.id,
-                  due.map((row) => row.id)
-                )
-              )
-              .returning();
-
-            await resolveOverdueParks(
-              tx,
-              claimed.flatMap((row) =>
-                row.executionId === null ? [] : [row.executionId]
-              ),
-              input.now
-            );
-            return claimed;
-          })
+            )
+          )
         )
         .pipe(Effect.flatMap(claimedSchedules)),
 
@@ -682,70 +756,84 @@ export function makePassWrites(
   const thisSchedule = eq(workflowExecutionSchedule.id, scheduleId);
   return {
     renewLease: (input) =>
-      writeFenced(
-        database,
-        fence,
-        async (tx) => {
-          await tx
-            .update(workflowExecutionSchedule)
-            .set({
-              leaseExpiresAt: input.leaseExpiresAt,
-              ...runningOnRenew(
-                {
-                  table: workflowExecutionSteps,
-                  scheduleId: workflowExecutionSteps.scheduleId,
-                  stepId: workflowExecutionSteps.stepId,
-                  status: workflowExecutionSteps.status,
-                },
-                scheduleId,
-                input.runningStepId === null
-                  ? null
-                  : {
-                      stepId: input.runningStepId,
-                      nodeId: input.runningNodeId,
-                    }
-              ),
-            })
-            .where(thisSchedule);
-        },
-        "update"
+      databaseClockOffset(database).pipe(
+        Effect.flatMap((offsetMs) =>
+          writeFenced(
+            database,
+            fence,
+            async (tx) => {
+              await tx
+                .update(workflowExecutionSchedule)
+                .set({
+                  leaseExpiresAt: onDatabaseClock(
+                    input.leaseExpiresAt,
+                    offsetMs
+                  ),
+                  ...runningOnRenew(
+                    {
+                      table: workflowExecutionSteps,
+                      scheduleId: workflowExecutionSteps.scheduleId,
+                      stepId: workflowExecutionSteps.stepId,
+                      status: workflowExecutionSteps.status,
+                    },
+                    scheduleId,
+                    input.runningStepId === null
+                      ? null
+                      : {
+                          stepId: input.runningStepId,
+                          nodeId: input.runningNodeId,
+                        }
+                  ),
+                })
+                .where(thisSchedule);
+            },
+            "update"
+          )
+        )
       ),
 
     writeStepMemo: (input) =>
-      writeFenced(
-        database,
-        fence,
-        async (tx) => {
-          await tx
-            .insert(workflowExecutionSteps)
-            .values({
-              scheduleId,
-              stepId: input.stepId,
-              nodeId: input.nodeId,
-              status: "succeeded",
-              value: memoJson(input.value),
-            })
-            .onConflictDoUpdate({
-              target: [
-                workflowExecutionSteps.scheduleId,
-                workflowExecutionSteps.stepId,
-              ],
-              set: {
-                status: "succeeded",
-                value: sql`excluded.value`,
-                error: null,
-              },
-              setWhere: eq(workflowExecutionSteps.status, "failing"),
-            });
-          await tx
-            .update(workflowExecutionSchedule)
-            .set({
-              leaseExpiresAt: input.leaseExpiresAt,
-              ...runningAfterMemo(workflowExecutionSchedule, input.stepId),
-            })
-            .where(thisSchedule);
-        },
-        "update"
+      databaseClockOffset(database).pipe(
+        Effect.flatMap((offsetMs) =>
+          writeFenced(
+            database,
+            fence,
+            async (tx) => {
+              await tx
+                .insert(workflowExecutionSteps)
+                .values({
+                  scheduleId,
+                  stepId: input.stepId,
+                  nodeId: input.nodeId,
+                  status: "succeeded",
+                  value: memoJson(input.value),
+                })
+                .onConflictDoUpdate({
+                  target: [
+                    workflowExecutionSteps.scheduleId,
+                    workflowExecutionSteps.stepId,
+                  ],
+                  set: {
+                    status: "succeeded",
+                    value: sql`excluded.value`,
+                    error: null,
+                  },
+                  setWhere: eq(workflowExecutionSteps.status, "failing"),
+                });
+              await tx
+                .update(workflowExecutionSchedule)
+                .set({
+                  leaseExpiresAt: onDatabaseClock(
+                    input.leaseExpiresAt,
+                    offsetMs
+                  ),
+                  ...runningAfterMemo(workflowExecutionSchedule, input.stepId),
+                })
+                .where(thisSchedule);
+            },
+            "update"
+          )
+        )
       ),
 
     releasePass: (input) =>

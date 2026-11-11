@@ -161,6 +161,11 @@ export type ClaimedCron = ScheduleLease & {
   kind: "cron";
   workflowId: string;
   schedule: CronSchedule;
+  /**
+   * The slot the timer was due at when the claim leased it. Every slot before
+   * it has fired or been skipped.
+   */
+  wakeAt: Date;
 };
 
 /**

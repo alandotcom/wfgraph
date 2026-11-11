@@ -74,7 +74,7 @@ const VERSION: PublishedWorkflowVersion = {
   lastPinnedAt: null,
 };
 
-function claimed(attempt: number): ClaimedCron {
+function claimed(attempt: number, wakeAt: Date): ClaimedCron {
   return {
     kind: "cron",
     scheduleId: "sched_1",
@@ -83,8 +83,12 @@ function claimed(attempt: number): ClaimedCron {
     leaseExpiresAt: new Date(NOW.getTime() + 60_000),
     workflowId: "wf_1",
     schedule: EVERY_FIVE,
+    wakeAt,
   };
 }
+
+/** The slot `NOW` falls in, which a timer claimed at `NOW` was due at. */
+const DUE_SLOT = new Date("2026-03-01T09:05:00.000Z");
 
 /** A body for a kind of row these cases never claim. */
 function unclaimed<P>(): PassBody<P, never> {
@@ -112,6 +116,8 @@ async function runPass(input: {
   fire: () => Effect.Effect<CronFire, DatabaseError | LeaseLost>;
   loadFails?: boolean | undefined;
   deleted?: boolean | undefined;
+  /** The slot the timer was due at; `DUE_SLOT` when omitted. */
+  wakeAt?: Date | undefined;
 }) {
   const fires: number[] = [];
   const releases: PassOutcome[] = [];
@@ -176,7 +182,7 @@ async function runPass(input: {
     recording.layer
   );
   const result = await Effect.runPromise(
-    leasedPass(claimed(input.attempt), bodies, {
+    leasedPass(claimed(input.attempt, input.wakeAt ?? DUE_SLOT), bodies, {
       workerId: "worker_1",
       now: () => NOW,
       leaseMs: 60_000,
@@ -186,6 +192,29 @@ async function runPass(input: {
 }
 
 describe("cron pass", () => {
+  // The timer last fired 09:05 and moved on to 09:10, and the worker that
+  // claimed it at 09:10 reads 09:05:30 when it fires, as a clock stepped back
+  // would.
+  it("never reads a slot earlier than the one the timer was claimed at", async () => {
+    const pass = await runPass({
+      attempt: STEP_RETRY_LIMIT,
+      fire: () => Effect.die(new Error("No fire was expected")),
+      loadFails: true,
+      wakeAt: new Date("2026-03-01T09:10:00.000Z"),
+    });
+
+    expect(pass.skips).toEqual([
+      expect.objectContaining({
+        nextWakeAt: new Date("2026-03-01T09:15:00.000Z"),
+        refusedEntry: expect.objectContaining({
+          metadata: expect.objectContaining({
+            scheduledFor: "2026-03-01T09:10:00.000Z",
+          }),
+        }),
+      }),
+    ]);
+  });
+
   it("fails a fire whose publication moved on every check, and releases the row after a backoff", async () => {
     const pass = await runPass({
       attempt: 0,
