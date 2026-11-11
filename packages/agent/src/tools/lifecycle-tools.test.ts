@@ -1352,6 +1352,39 @@ describe("set_condition", () => {
   );
 
   it.effect(
+    "names the step a Condition reads a path from when two steps above it offer that path",
+    () =>
+      Effect.gen(function* () {
+        // The Start Event and the scoring step both carry a `score`.
+        const { tools } = yield* agentToolsFor({
+          nodes: [conditionLifecycle, score, condition],
+          edges: conditionEdges,
+          catalog,
+        });
+        const result = yield* tools.set_condition({
+          nodeId: "branch",
+          groups: [
+            {
+              rules: [
+                {
+                  field: "score",
+                  fieldType: "number",
+                  operator: "greater_or_equal",
+                  value: "80",
+                },
+              ],
+            },
+          ],
+        });
+
+        expect(result.summary).toContain(
+          'this Condition reads the value from "Score applicant"'
+        );
+        expect(result.summary).toContain('offered by "Lifecycle"');
+      })
+  );
+
+  it.effect(
     "refuses a token-derived field when list_references gives a path",
     () =>
       Effect.gen(function* () {

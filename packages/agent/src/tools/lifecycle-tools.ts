@@ -8,7 +8,7 @@
  * one call so they cannot disagree.
  */
 
-import { Effect, Schema } from "effect";
+import { Array as Arr, Effect, Schema } from "effect";
 import { Tool } from "effect/ai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { findEvent } from "@wfgraph/shared/extensions/catalog";
@@ -1022,8 +1022,61 @@ export const lifecycleToolHandlers = Effect.gen(function* () {
               candidate.id === input.nodeId ? updated : candidate
             ),
           })),
-          { summary: `Set the test on ${nodeName(node)}.` }
+          {
+            summary: [
+              `Set the test on ${nodeName(node)}.`,
+              ...sharedPathNotes({
+                fields: input.groups.flatMap((group) =>
+                  group.rules.map((rule) => rule.field)
+                ),
+                references: availableReferences,
+                nodeOrder: document.nodes.map((candidate) => candidate.id),
+              }),
+            ].join(" "),
+          }
         );
       }),
   };
 });
+
+/**
+ * One sentence per tested path that more than one step above the Condition
+ * offers, naming the step whose value the Condition reads. A Condition names
+ * a value by its path alone, and the engine folds every finished step's
+ * output into one namespace in the graph's node order, so the step latest in
+ * that order supplies a shared path.
+ */
+function sharedPathNotes(input: {
+  readonly fields: readonly string[];
+  readonly references: readonly {
+    readonly path: string;
+    readonly sourceNodeId: string;
+    readonly sourceNodeLabel: string;
+  }[];
+  readonly nodeOrder: readonly string[];
+}): string[] {
+  return Arr.dedupe(input.fields).flatMap((field) => {
+    const sources = input.references
+      .filter(
+        (reference) =>
+          reference.path === field &&
+          input.nodeOrder.includes(reference.sourceNodeId)
+      )
+      .toSorted(
+        (a, b) =>
+          input.nodeOrder.indexOf(a.sourceNodeId) -
+          input.nodeOrder.indexOf(b.sourceNodeId)
+      );
+    const read = sources.at(-1);
+    if (sources.length < 2 || read === undefined) {
+      return [];
+    }
+    const others = sources
+      .slice(0, -1)
+      .map((source) => `"${source.sourceNodeLabel}"`)
+      .join(" and ");
+    return [
+      `The path ${field} is offered by ${others} and "${read.sourceNodeLabel}"; this Condition reads the value from "${read.sourceNodeLabel}", the later step, which is what the engine does with a shared path.`,
+    ];
+  });
+}
