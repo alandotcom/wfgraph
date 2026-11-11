@@ -145,8 +145,8 @@ export type WfGraphAnthropicAgentConfig = {
   /** A blank key turns the agent off, as for OpenAI. */
   readonly apiKey: string | undefined;
   /**
-   * Required: no eval in this repository has measured a Claude model against
-   * the agent's tools, so there is no default to stand behind.
+   * Required: a host chooses its Claude model. `claude-sonnet-5-5` is the one
+   * this repository's eval suite has measured against the agent's tools.
    */
   readonly model: string;
   /** Defaults to `high`. */

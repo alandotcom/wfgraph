@@ -563,7 +563,9 @@ const wfgraph = await createWfGraphApp({
   prompt caching, and an OpenAI request sets `store: false`, so the Responses API keeps no
   copy of a turn. A gateway in front of OpenAI must pass both fields through.
 - **`anthropic` needs a Claude model from the 4.6 generation or later**, because the turn
-  asks for adaptive thinking, which earlier models refuse.
+  asks for adaptive thinking, which earlier models refuse. The repository's eval suite has
+  measured `claude-sonnet-5-5`, at the default `high` effort. The tools are sent without
+  `strict`, since Anthropic accepts at most 20 strict tools in one request.
 - **A turn's tools follow the caller's grants.** `agent.chat` needs `agent.use`, and each tool
   the model calls also needs what the MCP endpoint asks of it: `workflow.getById` for every
   tool, `workflow.update` for a write tool, and `integration.getAll` for
