@@ -375,4 +375,131 @@ describe("useOAuthConnection", () => {
       }),
     });
   });
+
+  it("keeps the popup open through a status read that failed in transit", async () => {
+    vi.useFakeTimers();
+    const reservedPopup = popup();
+    vi.spyOn(window, "open").mockReturnValue(
+      reservedPopup as unknown as Window
+    );
+    let statusReads = 0;
+    stubOAuthFetch(async (input) => {
+      if (String(input).endsWith("/api/integrations/oauth/start")) {
+        return jsonResponse({
+          attemptId: "attempt_1",
+          authorizeUrl: "https://provider.example/authorize",
+        });
+      }
+      statusReads += 1;
+      if (statusReads === 1) {
+        throw new TypeError("Failed to fetch");
+      }
+      return jsonResponse({ status: "succeeded", integrationId: "conn_1" });
+    });
+    const queryClient = new QueryClient();
+    vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    const onConnected = vi.fn();
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useOAuthConnection({ onConnected }), {
+      wrapper,
+    });
+
+    let started: Promise<void> | undefined;
+    act(() => {
+      started = result.current.startExisting("conn_1");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(statusReads).toBe(1);
+    expect(reservedPopup.close).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await started;
+    });
+
+    expect(onConnected).toHaveBeenCalledWith("conn_1");
+    expect(statusReads).toBe(2);
+  });
+
+  it("refreshes the connections when the status check stops on a refusal", async () => {
+    const reservedPopup = popup();
+    vi.spyOn(window, "open").mockReturnValue(
+      reservedPopup as unknown as Window
+    );
+    stubOAuthFetch(async (input) => {
+      if (String(input).endsWith("/api/integrations/oauth/start")) {
+        return jsonResponse({
+          attemptId: "attempt_1",
+          authorizeUrl: "https://provider.example/authorize",
+        });
+      }
+      return new Response(JSON.stringify({ error: "Not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const queryClient = new QueryClient();
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => useOAuthConnection({ onConnected: vi.fn() }),
+      { wrapper }
+    );
+
+    await act(() => result.current.startExisting("connection_1"));
+
+    expect(reservedPopup.close).toHaveBeenCalled();
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: orpcQuery.integration.getAll.key(),
+    });
+  });
+
+  it("refreshes the connections when the authorization times out", async () => {
+    vi.useFakeTimers();
+    const reservedPopup = popup();
+    vi.spyOn(window, "open").mockReturnValue(
+      reservedPopup as unknown as Window
+    );
+    stubOAuthFetch(async (input) => {
+      if (String(input).endsWith("/api/integrations/oauth/start")) {
+        return jsonResponse({
+          attemptId: "attempt_1",
+          authorizeUrl: "https://provider.example/authorize",
+        });
+      }
+      return jsonResponse({ status: "pending" });
+    });
+    const queryClient = new QueryClient();
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => useOAuthConnection({ onConnected: vi.fn() }),
+      { wrapper }
+    );
+
+    let started: Promise<void> | undefined;
+    act(() => {
+      started = result.current.startExisting("connection_1");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000 + 1_000);
+      await started;
+    });
+
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: orpcQuery.integration.getAll.key(),
+    });
+  });
 });

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "#src/lib/rpc-client";
 import {
   pollOAuthAttempt,
   readOAuthAttemptStatus,
@@ -225,5 +226,64 @@ describe("OAuth connection helpers", () => {
 
     await expect(polling).rejects.toMatchObject({ name: "AbortError" });
     expect(getStatus).toHaveBeenCalledWith("attempt_1", controller.signal);
+  });
+
+  it("keeps polling through a dropped connection and a 5xx answer", async () => {
+    const getStatus = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockRejectedValueOnce(new ApiError(503, "Service unavailable"))
+      .mockResolvedValueOnce({
+        status: "succeeded",
+        integrationId: "connection_1",
+      });
+    const sleep = vi.fn(async () => undefined);
+
+    const result = await pollOAuthAttempt({
+      attemptId: "attempt_1",
+      getStatus,
+      sleep,
+    });
+
+    expect(result).toEqual({
+      status: "succeeded",
+      integrationId: "connection_1",
+    });
+    expect(getStatus).toHaveBeenCalledTimes(3);
+  });
+
+  it("times out while the status keeps failing to arrive", async () => {
+    const getStatus = vi
+      .fn()
+      .mockRejectedValue(new TypeError("Failed to fetch"));
+    let elapsed = 0;
+
+    const result = await pollOAuthAttempt({
+      attemptId: "attempt_1",
+      getStatus,
+      sleep: vi.fn(async () => undefined),
+      timeoutMs: 100,
+      now: () => {
+        const reading = elapsed;
+        elapsed += 50;
+        return reading;
+      },
+    });
+
+    expect(result).toEqual({ status: "timed_out" });
+  });
+
+  it("stops on a refusal waiting will not change", async () => {
+    const refusal = new ApiError(404, "OAuth attempt not found");
+    const getStatus = vi.fn().mockRejectedValue(refusal);
+
+    await expect(
+      pollOAuthAttempt({
+        attemptId: "attempt_1",
+        getStatus,
+        sleep: vi.fn(async () => undefined),
+      })
+    ).rejects.toBe(refusal);
+    expect(getStatus).toHaveBeenCalledOnce();
   });
 });

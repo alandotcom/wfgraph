@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useUnmountCleanup } from "#src/hooks/effects";
 import {
+  isAbortError,
   type NewOAuthConnectionInput,
   type OAuthPopup,
   type OAuthStartInput,
@@ -22,10 +23,6 @@ type ActiveAttempt = {
 type OAuthConnectionControllerOptions = {
   onConnected: (integrationId: string) => void;
 };
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
-}
 
 /** Owns one popup, status poll, cache refresh, and cancellation lifecycle. */
 export function useOAuthConnection({
@@ -82,6 +79,11 @@ export function useOAuthConnection({
     activeAttempt.current = attempt;
     setPending(true);
     let authorizationStarted = false;
+    let refreshed = false;
+    // The connection the attempt reconnects, whose provider options a grant
+    // changes; a created connection is named only by a successful result.
+    const reconnectedId =
+      input.mode === "reconnect" ? input.integrationId : undefined;
 
     try {
       const authorization = await startOAuthConnection(
@@ -102,9 +104,10 @@ export function useOAuthConnection({
         return;
       }
 
-      // A timeout is not the server's verdict, so nothing has changed and
-      // there is nothing to refresh. Closing the overlay aborts instead of
-      // treating a severed popup handle as a cancelled authorization.
+      // A timeout is not the server's verdict: the grant may still have
+      // landed after the last read, which `finally` refreshes for. Closing the
+      // overlay aborts instead of treating a severed popup handle as a
+      // cancelled authorization.
       if (result.status === "timed_out") {
         toast.error("Authorization timed out. Try connecting again.");
         return;
@@ -112,13 +115,10 @@ export function useOAuthConnection({
 
       // A terminal status may have changed the integration even on failure, so
       // refresh once before announcing or closing any surface that reads it.
+      refreshed = true;
       await refreshIntegrations(
         queryClient,
-        result.status === "succeeded"
-          ? result.integrationId
-          : input.mode === "reconnect"
-            ? input.integrationId
-            : undefined
+        result.status === "succeeded" ? result.integrationId : reconnectedId
       );
       if (activeAttempt.current !== attempt) {
         return;
@@ -139,6 +139,11 @@ export function useOAuthConnection({
         );
       }
     } finally {
+      // Once the popup was sent to the provider, any exit may follow a grant
+      // the poll never read, so the connection list is read again.
+      if (authorizationStarted && !refreshed) {
+        void refreshIntegrations(queryClient, reconnectedId);
+      }
       if (activeAttempt.current === attempt) {
         cancel(true);
       }

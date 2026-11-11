@@ -79,6 +79,24 @@ function sleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** Whether a failure is the cancellation this module raises or passes through. */
+export function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+/**
+ * Whether a status read failed in a way the next read can get past: the
+ * request never got an answer (`fetch` rejects with a `TypeError`), or the
+ * server could not answer right now. A 4xx is the server refusing the attempt
+ * and ends the poll.
+ */
+function isTransientStatusFailure(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return error.status >= 500 || error.status === 408 || error.status === 429;
+  }
+  return !isAbortError(error);
+}
+
 function waitUnlessAborted<T>(
   pending: Promise<T>,
   signal: AbortSignal | undefined
@@ -191,7 +209,11 @@ export function reserveOAuthPopup(): OAuthPopup | null {
   return popup;
 }
 
-/** Polls durable attempt state until it becomes terminal or times out. */
+/**
+ * Polls durable attempt state until it becomes terminal or times out. A read
+ * that fails in transit counts as `pending`: the operator may be mid-consent in
+ * the popup, and the timeout still bounds the wait.
+ */
 export async function pollOAuthAttempt({
   attemptId,
   intervalMs = OAUTH_POLL_INTERVAL_MS,
@@ -217,11 +239,16 @@ export async function pollOAuthAttempt({
       return { status: "timed_out" };
     }
 
-    // eslint-disable-next-line no-await-in-loop -- each status determines whether another request is needed.
-    const status = await waitUnlessAborted(
-      getStatus(attemptId, signal),
-      signal
-    );
+    let status: OAuthAttemptStatus;
+    try {
+      // eslint-disable-next-line no-await-in-loop -- each status determines whether another request is needed.
+      status = await waitUnlessAborted(getStatus(attemptId, signal), signal);
+    } catch (error) {
+      if (signal?.aborted || !isTransientStatusFailure(error)) {
+        throw error;
+      }
+      status = { status: "pending" };
+    }
     throwIfAborted(signal);
     if (status.status !== "pending") {
       return status;
