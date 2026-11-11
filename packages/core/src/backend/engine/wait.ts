@@ -533,11 +533,9 @@ function prepareWaitAttempt<Prepared>(
         // terminal status, and the step fails instead of halting.
         const claim = yield* readClaimWake(branch);
         if (claim !== null) {
+          // The Wait did not do its work, so its row stays open, which the
+          // Runs view reads as cancelled once the run has ended.
           const output = { waitType: park.waitType, haltedBy: claim.kind };
-          yield* closeStepLog(store, branch.startLog, {
-            status: "success",
-            output,
-          });
           const halted: WaitAttemptPreparation<Prepared> = {
             status: "skipped",
             output,

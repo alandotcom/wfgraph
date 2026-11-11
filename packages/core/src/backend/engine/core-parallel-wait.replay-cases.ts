@@ -181,6 +181,14 @@ export function waitNode(id: string, waitDuration: string): WorkflowNode {
   });
 }
 
+/** The closes the run wrote to the log rows of `nodeIds`. */
+function closesOf(store: RecordingWorkflowStore, nodeIds: readonly string[]) {
+  const rows = new Set(nodeIds.map((nodeId) => store.logIdOf(nodeId)));
+  return store
+    .callsOf("completeStepLog")
+    .filter((close) => rows.has(close.logId));
+}
+
 /** The clock at which a node's own step ran, or undefined if it never did. */
 export function dispatchClock(
   executed: ReadonlyArray<{ stepId: string; at: number }>,
@@ -594,6 +602,7 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
         .callsOf("markWaitStateStatus")
         .filter((call) => call.status === "cancelled")
     ).toHaveLength(1);
+    expect(closesOf(store, ["long_wait"])).toEqual([]);
     expect(
       store.timeline.find((event) => event.eventType === "run_exited")?.metadata
     ).toMatchObject({
@@ -784,6 +793,10 @@ export function defineParallelWaitReplayCases(executor: ReplayExecutor): void {
     expect(
       store.callsOf("completeRun").map((call) => call.verdict.status)
     ).toEqual(["canceled"]);
+    // Neither Wait finished its work, so neither row is closed as a success.
+    // Each stays open, which the Runs view reads as cancelled once the run has
+    // ended (`nodeStatusInRun`).
+    expect(closesOf(store, ["short_wait", "long_wait"])).toEqual([]);
     // One pass parks both Waits, and the pass after the Cancel Event ends it.
     expect(run.invocations).toBe(2);
   });

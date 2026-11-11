@@ -166,7 +166,11 @@ const resumeEventWait = Effect.fn("resumeEventWait")(function* (
         }),
       };
 
-  yield* closeStepLog(store, startLog, { status: "success", output });
+  // A Wait a Cancel or Exit claim stopped did not finish its work, so its row
+  // stays open, which the Runs view reads as cancelled once the run has ended.
+  if (!isClaimWake(wake)) {
+    yield* closeStepLog(store, startLog, { status: "success", output });
+  }
 
   const resumed: EventResumed = { output, skipOnTimeout };
   return resumed;

@@ -333,9 +333,9 @@ describe("wait node - delay mode", () => {
             event.eventType === "run_resumed"
         )
       ).toEqual([]);
-      expect(waitStepLogs(store).closed).toEqual([
-        expect.objectContaining({ status: "success" }),
-      ]);
+      // The Wait did not do its work, so its row stays open, which the Runs
+      // view reads as cancelled once the run has ended.
+      expect(waitStepLogs(store).closed).toEqual([]);
     }
   );
 

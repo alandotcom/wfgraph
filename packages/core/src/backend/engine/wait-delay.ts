@@ -236,7 +236,11 @@ const resumeDelayWait = Effect.fn("resumeDelayWait")(function* (
     resumedAt: encodeIsoTimestamp(new Date()),
   };
 
-  yield* closeStepLog(store, startLog, { status: "success", output });
+  // A Wait a claim stopped did not finish its work, so its row stays open,
+  // which the Runs view reads as cancelled once the run has ended.
+  if (!canceled) {
+    yield* closeStepLog(store, startLog, { status: "success", output });
+  }
 
   const resumed: DelayResumed = { output, canceled };
   return resumed;
