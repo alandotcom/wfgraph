@@ -111,6 +111,9 @@ No tool returns or decrypts a Connection's credentials.
 - `apply_edits` applies an ordered list of node and edge operations as one
   write under one revision. A refused operation stores nothing, and a step an
   operation creates can carry a `key` that later operations name as `$key`.
+- `list_references` names its steps in `nodeIds` and answers for all of them,
+  so a batch of new steps needs one reference read between two `apply_edits`
+  calls. A reference with `readableBy` is readable only by the steps it lists.
 - `validate_workflow` answers `canSave`, `canPublish`, `saveIssues`,
   `publishBlockers` and `warnings`. `publish_workflow` refuses a draft with
   blockers and lists every one.

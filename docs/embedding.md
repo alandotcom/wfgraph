@@ -716,6 +716,15 @@ carry a `key`, and a later operation in the same batch names it as `$key`. Every
 write, `apply_edits` included, answers `newIssues`: the validation issues the
 draft gained with that write.
 
+`list_references` answers the reference tokens the steps named in `nodeIds`
+can read, for up to 25 steps in one call. A reference every named step can read
+carries no `readableBy`, and a reference only some can read lists those steps
+there. A build of several steps therefore takes three calls: one `apply_edits`
+that adds and connects the steps, one `list_references`, and one `apply_edits`
+that writes the tokens. `set_condition` names a value by its path alone; when
+two steps above the Condition offer the same path, the Condition reads the
+later step's value, and the tool's summary names that step.
+
 `validate_workflow` answers `canSave` with the `saveIssues` that refuse a save,
 `canPublish` with the `publishBlockers` that refuse a Publish, and `warnings`.
 `canPublish` is true only when the draft saves and has no publish blocker, so a
