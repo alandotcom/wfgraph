@@ -11,6 +11,7 @@ import {
   workflowComparisonInputSchema,
   workflowComparisonPayloadSchema,
   workflowPublishInputSchema,
+  workflowPublishWarningSchema,
   workflowRestoreVersionInputSchema,
   workflowVersionHistoryInputSchema,
   workflowVersionHistoryPayloadSchema,
@@ -103,6 +104,7 @@ const workflowPublishPayloadSchema = Schema.Struct({
     Schema.isGreaterThan(0)
   ),
   publishedAt: isoTimestampString(),
+  warnings: listOf(workflowPublishWarningSchema),
 });
 
 /**

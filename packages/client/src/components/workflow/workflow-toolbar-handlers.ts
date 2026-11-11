@@ -22,6 +22,7 @@ import {
   useWorkflowIssuePreflight,
 } from "#src/hooks/use-workflow-issue-preflight";
 import { isTextEntry } from "#src/lib/is-text-entry";
+import { publishWarningMessage } from "#src/lib/publish-warnings";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   cacheWorkflowPublication,
@@ -430,6 +431,11 @@ export function useWorkflowActions(
           // still open, and any route load ends every review. Only closing
           // the review is held to its epoch.
           toast.success(`Published version ${payload.publishedVersion}`);
+          // A warning never stops a publish, so each one follows the success.
+          for (const warning of payload.warnings) {
+            const message = publishWarningMessage(warning);
+            toast.warning(message.title, { description: message.description });
+          }
           recordLoadedDraftRevision({
             workflowId: payload.id,
             draftRevision: payload.draftRevision,

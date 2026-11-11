@@ -162,3 +162,21 @@ export type WorkflowNodeChange = typeof workflowNodeChangeSchema.Type;
 export type WorkflowEdgeChange = typeof workflowEdgeChangeSchema.Type;
 export type WorkflowComparisonPayload =
   typeof workflowComparisonPayloadSchema.Type;
+
+/**
+ * Something a confirmed Publish wants the builder to know, which did not stop
+ * it. `entity_tracking_changed`: the published version identifies a run's
+ * Entity in another form than the versions that still have runs in flight, a
+ * tracked Entity's type and ID on one side and a legacy Entity Value on the
+ * other. `tracksEntity` says which form the new version uses, and
+ * `inFlightRuns` counts the runs of the versions in the other form. A Cancel
+ * Event and Concurrency still reach those runs in their own form, and a
+ * Migration refuses them, so they finish on their old version.
+ */
+export const workflowPublishWarningSchema = Schema.Struct({
+  code: Schema.Literal("entity_tracking_changed"),
+  tracksEntity: Schema.Boolean,
+  inFlightRuns: positiveInteger,
+});
+
+export type WorkflowPublishWarning = typeof workflowPublishWarningSchema.Type;

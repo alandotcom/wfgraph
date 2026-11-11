@@ -1055,7 +1055,8 @@ describe("useWorkflowActions publication preflight", () => {
     errorToast.mockRestore();
   });
 
-  it("compares the exact editor snapshot before confirmation publishes that snapshot", async () => {
+  it("compares the exact editor snapshot before confirmation publishes that snapshot, and shows the warnings the publish answered with", async () => {
+    const warningToast = vi.spyOn(toast, "warning");
     const requests: Array<{ path: string; input: unknown }> = [];
     const queryClient = testQueryClient();
     const versionHistoryKey = orpcQuery.workflow.getVersionHistory.infiniteKey({
@@ -1113,6 +1114,13 @@ describe("useWorkflowActions publication preflight", () => {
             publishedVersionId: "version_8",
             publishedVersion: 8,
             publishedAt: "2026-08-23T16:00:00.000Z",
+            warnings: [
+              {
+                code: "entity_tracking_changed",
+                tracksEntity: true,
+                inFlightRuns: 2,
+              },
+            ],
           });
         }
 
@@ -1166,6 +1174,10 @@ describe("useWorkflowActions publication preflight", () => {
       )
     );
     expect(store.get(currentWorkflowDraftRevisionAtom)).toBe(2);
+    expect(warningToast).toHaveBeenCalledWith(
+      "2 runs started by an earlier version",
+      { description: expect.stringContaining("This version tracks an Entity") }
+    );
   });
 
   it("locks edits and publishes the revision returned after an in-flight autosave", async () => {
@@ -1518,6 +1530,7 @@ describe("useWorkflowActions publication preflight", () => {
           draftRevision: 3,
           publishedVersion: 8,
           publishedAt: "2026-08-23T16:00:00.000Z",
+          warnings: [],
         })
       );
     });

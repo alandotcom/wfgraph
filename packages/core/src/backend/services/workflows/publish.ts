@@ -17,7 +17,15 @@ import { annotateServiceSpan } from "#src/backend/lib/telemetry";
 import { prepareGraphSave } from "#src/backend/services/workflows/graph-save";
 import { toWorkflowApiPayload } from "#src/backend/services/workflows/mappers";
 import type { WorkflowPublishPayload } from "@wfgraph/shared/graph/api-contracts";
-import type { WorkflowPublishInput } from "@wfgraph/shared/graph/publication-contracts";
+import type {
+  WorkflowPublishInput,
+  WorkflowPublishWarning,
+} from "@wfgraph/shared/graph/publication-contracts";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
+import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { isLifecycleNode } from "@wfgraph/shared/graph/node-config";
+import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
+import { sumBy } from "es-toolkit/math";
 import { checkPublishReadiness } from "#src/backend/services/workflows/publish-checks";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
 import {
@@ -35,6 +43,60 @@ const stalePublish = () =>
     error: "This workflow was published elsewhere. Refresh and try again.",
     code: PUBLICATION_CONFLICT_CODES.stale,
   });
+
+/**
+ * Whether a published graph's Lifecycle Rules track an Entity, which decides
+ * the form its runs store their identity in, or null when the graph holds no
+ * rules it can read.
+ */
+function tracksEntity(graph: SerializedWorkflowGraph): boolean | null {
+  try {
+    const entry = toWorkflowGraphData(graph).nodes.find(isLifecycleNode);
+    const rules = readLifecycleRules(entry?.data.config);
+    return rules === undefined ? null : rules.trackedEntity !== undefined;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The warnings a confirmed publish answers with. When the new version
+ * identifies a run's Entity in another form than the version it replaced, the
+ * runs every version in the old form still has in flight are counted, since
+ * they finish on that version and Migration refuses them. A failed read costs
+ * the warning and never the publish, which has already committed.
+ */
+const publishWarnings = Effect.fn("publishWarnings")(function* (input: {
+  workflowId: string;
+  replaced: SerializedWorkflowGraph | undefined;
+  published: SerializedWorkflowGraph;
+}) {
+  const none: WorkflowPublishWarning[] = [];
+  const tracksNow = tracksEntity(input.published);
+  if (input.replaced === undefined || tracksNow === null) return none;
+  if (tracksEntity(input.replaced) !== !tracksNow) return none;
+  const repo = yield* WorkflowRepo;
+  const usage = yield* repo.listVersionUsage(input.workflowId).pipe(
+    Effect.tapError((error) =>
+      Effect.flatMap(loggerFor(input.workflowId), (logger) =>
+        logger.warn("Could not count runs for a publish warning", { error })
+      )
+    ),
+    Effect.orElseSucceed(() => [])
+  );
+  const inFlightRuns = sumBy(
+    usage.filter((row) => tracksEntity(row.graph) === !tracksNow),
+    (row) => row.activeRunCount
+  );
+  if (inFlightRuns === 0) return none;
+  return [
+    {
+      code: "entity_tracking_changed" as const,
+      tracksEntity: tracksNow,
+      inFlightRuns,
+    },
+  ];
+});
 
 const loggerFor = (workflowId: string) =>
   Effect.map(AppLogger, (appLogger) =>
@@ -147,11 +209,23 @@ export const publishWorkflow = Effect.fn("wfgraph.workflow.publish")(
       },
     });
 
+    const warnings = yield* publishWarnings({
+      workflowId,
+      replaced: current?.graph,
+      published: prepared.graph,
+    });
+    if (warnings.length > 0) {
+      yield* logger.info("Published with warnings", {
+        warnings: warnings.map((warning) => warning.code),
+      });
+    }
+
     const payload: WorkflowPublishPayload = {
       ...toWorkflowApiPayload(published.workflow, published.version),
       publishedVersionId: published.version.id,
       publishedVersion: published.version.version,
       publishedAt: published.version.publishedAt.toISOString(),
+      warnings,
     };
     return payload;
   },

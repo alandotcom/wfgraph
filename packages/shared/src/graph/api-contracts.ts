@@ -3,6 +3,7 @@ import type {
   WorkflowMode,
   WorkflowVisibility,
 } from "#src/graph/types";
+import type { WorkflowPublishWarning } from "#src/graph/publication-contracts";
 
 /**
  * One workflow without its graph, which is what the list procedure answers with:
@@ -36,9 +37,13 @@ export type WorkflowApiPayload = WorkflowSummaryPayload & {
   hasUnpublishedChanges: boolean;
 };
 
-/** What publish answers with: the draft payload plus the version it just pinned. */
+/**
+ * What publish answers with: the draft payload plus the version it just
+ * pinned, and what the builder should know about it, empty for most publishes.
+ */
 export type WorkflowPublishPayload = WorkflowApiPayload & {
   publishedVersionId: string;
   publishedVersion: number;
   publishedAt: string;
+  warnings: WorkflowPublishWarning[];
 };

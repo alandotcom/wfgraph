@@ -237,6 +237,79 @@ describe("publishWorkflow", () => {
         })
     );
 
+    // A version that tracks an Entity identifies a run by its type and ID,
+    // and one that does not by its Entity Value. Runs the older form started
+    // still finish on their version, which the builder is told about without
+    // the publish being stopped.
+    it.effect(
+      "warns when the published identity form differs from the form runs in flight were started in",
+      () =>
+        Effect.gen(function* () {
+          const trackedGraph = graphWith({
+            ...rules,
+            trackedEntity: {
+              type: "appointment",
+              bindings: { "app/appointment.created": "appointment" },
+            },
+          });
+          const tracked: PublishedWorkflowVersion = {
+            id: "ver_1",
+            workflowId: "wf_1",
+            version: 1,
+            kind: "published",
+            graph: trackedGraph,
+            catalogFingerprint: catalogFingerprint(catalog),
+            graphDigest: "tracked",
+            publishedAt: new Date("2026-08-03T00:00:00.000Z"),
+            lastPinnedAt: null,
+          };
+          const usage = (graph: Workflow["graph"], activeRunCount: number) => ({
+            id: `ver_${activeRunCount}`,
+            graph,
+            catalogFingerprint: "fingerprint",
+            publishedAt: new Date("2026-08-03T00:00:00.000Z"),
+            isCurrent: false,
+            activeRunCount,
+            oldestActiveRunAt: null,
+            kind: "published" as const,
+            version: activeRunCount,
+          });
+          const repo = (activeRuns: number) =>
+            stubWorkflowRepo({
+              findById: () =>
+                Effect.succeed({ ...draft, publishedVersionId: "ver_1" }),
+              findPublishedVersion: () => Effect.succeed(tracked),
+              findLatestVersion: () => Effect.succeed(tracked),
+              insertPublishedVersion: (input) =>
+                Effect.succeed(mintedFrom(input)),
+              listVersionUsage: () =>
+                Effect.succeed([
+                  usage(trackedGraph, activeRuns),
+                  usage(draft.graph, 4),
+                ]),
+            });
+          const publish = (activeRuns: number) =>
+            publishWorkflow({
+              workflowId: "wf_1",
+              graph: draft.graph,
+              expectedPublishedVersionId: "ver_1",
+              expectedDraftRevision: 1,
+            }).pipe(Effect.provide(repo(activeRuns)));
+
+          const withRuns = yield* publish(3);
+          const withoutRuns = yield* publish(0);
+
+          assert.deepStrictEqual(withRuns.warnings, [
+            {
+              code: "entity_tracking_changed",
+              tracksEntity: false,
+              inFlightRuns: 3,
+            },
+          ]);
+          assert.deepStrictEqual(withoutRuns.warnings, []);
+        })
+    );
+
     it.effect("mints a new chronological version when content repeats", () =>
       Effect.gen(function* () {
         let workflow = draft;
