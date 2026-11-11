@@ -193,10 +193,7 @@ function readAllows(access: unknown): ReadAllowsResult {
  * when it is neither a function nor an object with an `authenticate`
  * function, and answers the gate every operator route goes through.
  */
-export function resolveAuth(
-  auth: WfGraphAuth,
-  caller?: string
-): ResolvedAuth {
+export function resolveAuth(auth: WfGraphAuth, caller?: string): ResolvedAuth {
   const authenticate = readAuthenticate(auth, caller);
   return {
     authenticate: async (request, reportFailure = () => undefined) => {
