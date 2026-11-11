@@ -1,3 +1,4 @@
+import { Stream } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_AGENT_MODEL,
@@ -125,5 +126,15 @@ describe("readAgentSettings", () => {
         model: "qwen3",
       })
     ).toEqual({ enabled: false });
+  });
+
+  it("carries a host's runner and turns the agent on for it", () => {
+    const runner = {
+      provider: "host",
+      model: "host-model",
+      run: () => Stream.empty,
+    };
+
+    expect(readAgentSettings({ runner })).toEqual({ enabled: true, runner });
   });
 });

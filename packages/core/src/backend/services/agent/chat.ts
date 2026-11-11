@@ -217,6 +217,7 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
       }),
   });
   const stream = runAgentRunner(runner, {
+    workflowId: input.workflowId,
     messages: input.messages,
     session,
     observeTrace: trace.observe,

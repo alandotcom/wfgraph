@@ -63,10 +63,22 @@ export type {
   AnthropicReasoningEffort,
   WfGraphAgentConfig,
   WfGraphAnthropicAgentConfig,
+  WfGraphModelAgentConfig,
   WfGraphOpenAiAgentConfig,
   WfGraphOpenAiCompatibleAgentConfig,
   WfGraphOpenRouterAgentConfig,
+  WfGraphRunnerAgentConfig,
 } from "#src/backend/agent/config";
+export type {
+  WfGraphAgentRunner,
+  WfGraphAgentToolkit,
+  WfGraphAgentTurn,
+} from "#src/backend/agent/runner";
+export { streamAgentTurn } from "#src/backend/agent/chat";
+export type {
+  AgentMessage as WfGraphAgentMessage,
+  AgentStreamPart as WfGraphAgentStreamPart,
+} from "@wfgraph/shared/rpc/agent-stream";
 export type { WfGraphRunnerOptions } from "#src/backend/executor/in-process-runner";
 export {
   WfGraphEventRefused,

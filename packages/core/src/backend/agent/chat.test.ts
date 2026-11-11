@@ -8,7 +8,18 @@ import type {
 import { layerFromDraft } from "@wfgraph/agent/document";
 import { agentToolkit, agentToolkitLayer } from "@wfgraph/agent/toolkit";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
-import { agenticSteps, withGraphParts } from "#src/backend/agent/chat";
+import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
+import {
+  agentPrompt,
+  agenticSteps,
+  hostAgentRunner,
+  streamAgentTurn,
+  withGraphParts,
+} from "#src/backend/agent/chat";
+import {
+  runAgentRunner,
+  type WfGraphAgentTurn,
+} from "#src/backend/agent/runner";
 import { makeAgentToolSession } from "#src/backend/agent/tool-session";
 import {
   finishReasonFailure,
@@ -494,5 +505,135 @@ describe("withGraphParts", () => {
           },
         ]);
       })
+  );
+});
+
+describe("hostAgentRunner", () => {
+  it.effect(
+    "draws the draft after a host's successful write and drops its own graph parts",
+    () =>
+      Effect.gen(function* () {
+        const session = yield* makeAgentToolSession({
+          document,
+          catalog: { actions: [], entities: [], events: [], integrations: [] },
+          integrations: [],
+          validateDraft: () => ({
+            draftValid: true,
+            structuralIssues: [],
+            publishBlockers: [],
+            warnings: [],
+          }),
+        });
+        const trace: AgentTraceEvent[] = [];
+        let received: WfGraphAgentTurn | undefined;
+        const runner = hostAgentRunner({
+          provider: "host",
+          model: "host-model",
+          run: (turn) => {
+            received = turn;
+            return Stream.fromIterable<AgentStreamPart>([
+              {
+                type: "graph",
+                graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+              },
+              { type: "tool-call", id: "c1", name: "add_node", input: {} },
+              {
+                type: "tool-result",
+                id: "c1",
+                name: "add_node",
+                summary: "Added a step.",
+                failed: false,
+              },
+              {
+                type: "tool-result",
+                id: "c2",
+                name: "read_workflow",
+                failed: false,
+              },
+            ]);
+          },
+        });
+
+        const parts = yield* Stream.runCollect(
+          runAgentRunner(runner, {
+            workflowId: "workflow-1",
+            messages: [{ role: "user", content: "Add a step" }],
+            session,
+            observeTrace: (event) => trace.push(event),
+          })
+        );
+
+        expect(Array.from(parts).map((streamed) => streamed.type)).toEqual([
+          "tool-call",
+          "tool-result",
+          "graph",
+          "tool-result",
+        ]);
+        expect(received?.workflowId).toBe("workflow-1");
+        expect(received?.toolkit).toBe(session.toolkit);
+        expect(received?.prompt.content.at(-1)).toMatchObject({
+          role: "user",
+        });
+        expect(trace.map((event) => event.type)).toEqual([
+          "tool-call",
+          "tool-result",
+          "graph-revision",
+          "tool-result",
+        ]);
+      })
+  );
+});
+
+describe("streamAgentTurn", () => {
+  it.effect("runs the built-in loop on a model the host supplies", () =>
+    Effect.gen(function* () {
+      const session = yield* makeAgentToolSession({
+        document,
+        catalog: { actions: [], entities: [], events: [], integrations: [] },
+        integrations: [],
+        validateDraft: () => ({
+          draftValid: true,
+          structuralIssues: [],
+          publishBlockers: [],
+          warnings: [],
+        }),
+      });
+      const model = Layer.effect(
+        LanguageModel.LanguageModel,
+        LanguageModel.make({
+          generateText: () => Effect.succeed([]),
+          streamText: () =>
+            Stream.fromIterable([
+              part("text-delta", { id: "t1", delta: "Done" }),
+              part("finish", {
+                reason: "stop",
+                usage: new Response.Usage({
+                  inputTokens: { total: 3 },
+                  outputTokens: { total: 1 },
+                }),
+              }),
+            ]),
+        })
+      );
+
+      const parts = yield* Stream.runCollect(
+        streamAgentTurn(
+          {
+            workflowId: "workflow-1",
+            messages: [{ role: "user", content: "Hello" }],
+            prompt: agentPrompt({
+              messages: [{ role: "user", content: "Hello" }],
+            }),
+            toolkit: session.toolkit,
+            signal: yield* Effect.abortSignal,
+          },
+          model
+        )
+      );
+
+      expect(Array.from(parts)).toEqual([
+        { type: "text-delta", id: "t1", delta: "Done" },
+      ]);
+    })
   );
 });

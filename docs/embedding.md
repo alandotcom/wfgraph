@@ -555,6 +555,47 @@ const wfgraph = await createWfGraphApp({
   fails at startup. `openai-compatible` is the exception: its `baseUrl` turns it on, and the
   key is sent as a bearer token only when one is set.
 
+### Run turns on your own gateway or model
+
+`agent: { runner }` replaces the built-in provider client. A `WfGraphAgentRunner` names a
+`provider` and a `model` for the turn's log record, and its `run` receives a
+`WfGraphAgentTurn` and answers an Effect `Stream` of `WfGraphAgentStreamPart`s, the parts the
+panel renders. The turn carries the `workflowId`, the `messages` as the browser sent them,
+the same conversation as an Effect AI `prompt` under the built-in system prompt, the
+authoring `toolkit` bound to this turn's draft, and the `signal` that aborts when the editor
+stops the turn.
+
+`streamAgentTurn(turn, model)` runs the built-in loop on a `LanguageModel` layer you build,
+which is the short path to a gateway the provider table does not cover:
+
+```ts
+import { OpenAiClient, OpenAiLanguageModel } from "@effect/ai-openai";
+import { Layer, Redacted } from "effect";
+import { FetchHttpClient } from "effect/http";
+import { createWfGraphApp, streamAgentTurn } from "@wfgraph/core";
+
+const model = OpenAiLanguageModel.model("my-model").pipe(
+  Layer.provide(OpenAiClient.layer({ apiKey: Redacted.make(key), apiUrl: gatewayUrl })),
+  Layer.provide(FetchHttpClient.layer)
+);
+
+const wfgraph = await createWfGraphApp({
+  agent: {
+    runner: { provider: "gateway", model: "my-model", run: (turn) => streamAgentTurn(turn, model) },
+  },
+  ...
+});
+```
+
+- **The server draws the canvas.** After a `tool-result` part for a write tool that did not
+  fail, Workflow Graph reads the turn's draft and sends the editor a `graph` part. A runner
+  never sends one, and one it sends is dropped.
+- **A failure ends the turn with one `error` part.** A stream that fails reaches the panel
+  as an `error` part carrying the failure's message, so a runner's own errors should say
+  something a person can act on.
+- **The toolkit is the turn's only way to change the workflow.** Its handlers validate each
+  edit against the catalog and the Connections, exactly as for the built-in agent.
+
 ## MCP authoring
 
 Set `mcp: true` to expose the authenticated Model Context Protocol (MCP)
@@ -1508,6 +1549,7 @@ Cloudflare Workers and Hyperdrive.
 | `agent.apiKey`            | No                  | The provider's API key. Absent or blank turns the build agent off, and the editor then shows no chat panel. Optional for `openai-compatible`                                                                           |
 | `agent.model`             | For some providers  | Model id the agent runs against. Defaults to a current OpenAI model for `openai`; required for every other provider                                                                                                    |
 | `agent.reasoningEffort`   | No                  | How hard the model thinks before answering. For `openai`: `none`, `low`, `medium`, `high`, `xhigh`, or `max`, defaulting to `medium`. See The build agent for the others                                               |
+| `agent.runner`            | No                  | A `WfGraphAgentRunner` that runs each turn in place of the built-in provider client. The other `agent` fields do not apply. See Run turns on your own gateway or model                                                 |
 | `agent.baseUrl`           | No                  | The provider endpoint to call in place of the provider's own. Required for `openai-compatible`, where it turns the agent on. See The build agent for what each provider's endpoint must implement                      |
 | `mcp`                     | No                  | Enables the authenticated stateless MCP authoring endpoint at `${basePath}/api/mcp`. Pass `true` for localhost development. For deployed hosts, configure allowed hostnames and origin hostnames. Disabled by default  |
 | `health`                  | No                  | `true` mounts `GET /api/health`, the readiness route outside `auth`. Off by default. See API endpoints                                                                                                                 |

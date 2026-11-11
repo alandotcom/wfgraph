@@ -5,7 +5,10 @@ import {
   type AgentSettings,
   makeAgentConfigLayer,
 } from "#src/backend/agent/config";
-import { makeBuiltInAgentRunner } from "#src/backend/agent/chat";
+import {
+  hostAgentRunner,
+  makeBuiltInAgentRunner,
+} from "#src/backend/agent/chat";
 import {
   AgentRunnerService,
   disabledAgentRunner,
@@ -99,9 +102,11 @@ function buildWfGraphLayer(
     makeExtensionsLayer(parts.extensions),
     makeAgentConfigLayer(parts.agent),
     makeAgentRunnerLayer(
-      parts.agent.enabled
-        ? makeBuiltInAgentRunner(parts.agent)
-        : disabledAgentRunner
+      !parts.agent.enabled
+        ? disabledAgentRunner
+        : "runner" in parts.agent
+          ? hostAgentRunner(parts.agent.runner)
+          : makeBuiltInAgentRunner(parts.agent)
     ),
     // The driver writes through the backend's `ExecutionRepo`, and the
     // repositories it was built on are offered to the services beside it.

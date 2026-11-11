@@ -12,6 +12,7 @@
 
 import { Context, Layer, Semaphore } from "effect";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import type { WfGraphAgentRunner } from "#src/backend/agent/runner";
 
 export const MAX_CONCURRENT_AGENT_TURNS = 4;
 
@@ -181,7 +182,17 @@ export type WfGraphModelAgentConfig =
   | WfGraphOpenRouterAgentConfig
   | WfGraphOpenAiCompatibleAgentConfig;
 
-export type WfGraphAgentConfig = WfGraphModelAgentConfig;
+/**
+ * The `agent` option for a host that runs turns itself, on its own gateway or
+ * model. The built-in model settings do not apply.
+ */
+export type WfGraphRunnerAgentConfig = {
+  readonly runner: WfGraphAgentRunner;
+};
+
+export type WfGraphAgentConfig =
+  | WfGraphModelAgentConfig
+  | WfGraphRunnerAgentConfig;
 
 /**
  * The model one turn runs against, by provider. `agent/model.ts` is the one
@@ -222,8 +233,19 @@ export type EnabledAgentSettings = AgentModelSettings & {
   readonly enabled: true;
 };
 
+/** The configuration of a host's own runner. */
+export type HostRunnerAgentSettings = {
+  readonly enabled: true;
+  readonly runner: WfGraphAgentRunner;
+};
+
+/** What a model config reads to: off, or one of the built-in providers. */
+export type ModelAgentSettings =
+  | { readonly enabled: false }
+  | EnabledAgentSettings;
+
 /** The configuration as the runtime holds it, absent when the agent is off. */
-export type AgentSettings = { readonly enabled: false } | EnabledAgentSettings;
+export type AgentSettings = ModelAgentSettings | HostRunnerAgentSettings;
 
 export class AgentConfig extends Context.Service<AgentConfig, AgentSettings>()(
   "@wfgraph/core/AgentConfig"
@@ -235,7 +257,7 @@ export class AgentCapacity extends Context.Service<
   Semaphore.Semaphore
 >()("@wfgraph/core/AgentCapacity") {}
 
-const DISABLED: AgentSettings = { enabled: false };
+const DISABLED = { enabled: false } as const;
 
 /** A trimmed value, or undefined for a blank or absent one. */
 function present(value: string | undefined): string | undefined {
@@ -263,10 +285,19 @@ function requiredModel(provider: AgentProvider, model: string): string {
  * default throws, because that is a host's mistake rather than an absent key.
  */
 export function readAgentSettings(
+  config: WfGraphModelAgentConfig | undefined
+): ModelAgentSettings;
+export function readAgentSettings(
+  config: WfGraphAgentConfig | undefined
+): AgentSettings;
+export function readAgentSettings(
   config: WfGraphAgentConfig | undefined
 ): AgentSettings {
   if (!config) {
     return DISABLED;
+  }
+  if ("runner" in config) {
+    return { enabled: true, runner: config.runner };
   }
 
   switch (config.provider) {

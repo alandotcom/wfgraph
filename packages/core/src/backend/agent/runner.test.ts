@@ -40,6 +40,7 @@ describe("runAgentRunner", () => {
 
       const parts = yield* Stream.runCollect(
         runAgentRunner(runner, {
+          workflowId: "workflow-1",
           messages: [{ role: "user", content: "Build it" }],
           session,
           observeTrace: () => undefined,
@@ -62,6 +63,7 @@ describe("runAgentRunner", () => {
       const exit = yield* Effect.exit(
         Stream.runDrain(
           runAgentRunner(runner, {
+            workflowId: "workflow-1",
             messages: [],
             session,
             observeTrace: () => undefined,
@@ -97,6 +99,7 @@ describe("runAgentRunner", () => {
             limitAgentStream(
               observeAgentStream(
                 runAgentRunner(runner, {
+                  workflowId: "workflow-1",
                   messages: [],
                   session,
                   observeTrace: () => undefined,

@@ -12,7 +12,7 @@
  * even when a tool reports one sentence.
  */
 
-import { Effect, Stream } from "effect";
+import { Effect, type Layer, Stream } from "effect";
 import { Chat, type LanguageModel, Prompt, type Toolkit } from "effect/ai";
 import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
 import type { AgentDocument } from "@wfgraph/agent/document";
@@ -24,13 +24,19 @@ import type {
 } from "@wfgraph/shared/rpc/agent-stream";
 import type { EnabledAgentSettings } from "#src/backend/agent/config";
 import { agentModelLayer } from "#src/backend/agent/model";
-import type { AgentRunner, AgentRunnerInput } from "#src/backend/agent/runner";
+import type {
+  AgentRunner,
+  AgentRunnerInput,
+  WfGraphAgentRunner,
+  WfGraphAgentTurn,
+} from "#src/backend/agent/runner";
 import type { AgentToolSession } from "#src/backend/agent/tool-session";
 import {
   AGENT_TURN_STEP_LIMIT,
   runAgentStepLoop,
 } from "#src/backend/agent/step-loop";
 import { toAgentStreamPart } from "#src/backend/agent/stream";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   finishReasonFailure,
   traceResponsePart,
@@ -40,21 +46,21 @@ import {
 type AgentStreamPartIn = Parameters<typeof toAgentStreamPart>[0];
 
 /**
- * The conversation, in the shape the language model takes it.
+ * The conversation, in the shape the language model takes it, under the
+ * built-in system prompt.
  *
  * The system prompt rides on the prompt rather than beside it, because
  * `LanguageModel.streamText` takes no separate system option.
  */
-function toPrompt(input: {
+export function agentPrompt(input: {
   readonly messages: readonly AgentMessage[];
-  readonly system: string;
 }): Prompt.Prompt {
   return Prompt.make(
     input.messages.map((message) => ({
       role: message.role,
       content: message.content,
     }))
-  ).pipe(Prompt.setSystem(input.system));
+  ).pipe(Prompt.setSystem(buildSystemPrompt()));
 }
 
 /** The draft as the editor reads a graph, for a `graph` part. */
@@ -80,10 +86,7 @@ function runBuiltInAgentTurn(
 ): Effect.Effect<Stream.Stream<AgentStreamPart, unknown>> {
   return Effect.gen(function* () {
     const session = yield* Chat.fromPrompt(
-      toPrompt({
-        messages: input.messages,
-        system: buildSystemPrompt(),
-      })
+      agentPrompt({ messages: input.messages })
     ).pipe(Effect.provide(agentModelLayer(settings)));
 
     const parts = agenticSteps({
@@ -205,6 +208,128 @@ export function withGraphParts(
         }
 
         return [mapped];
+      })
+    ),
+    Stream.flattenIterable
+  );
+}
+
+/**
+ * The built-in turn loop on a model the host supplies, as the parts the panel
+ * renders.
+ *
+ * This is what a host's `agent.runner` calls to run the agent's own loop on a
+ * gateway or model of its choosing: the steps, the tool calls and the stream
+ * mapping are the built-in agent's, and only the `LanguageModel` is the host's.
+ */
+export function streamAgentTurn(
+  turn: WfGraphAgentTurn,
+  model: Layer.Layer<LanguageModel.LanguageModel>
+): Stream.Stream<AgentStreamPart, unknown> {
+  return Stream.unwrap(
+    Effect.gen(function* () {
+      const session = yield* Chat.fromPrompt(turn.prompt);
+      return agenticSteps({
+        session,
+        toolkit: turn.toolkit,
+        observeTrace: () => undefined,
+      }).pipe(
+        // The step loop fails the stream on a provider error, so the
+        // provider's own part stays out of the browser stream.
+        Stream.map(({ part }) => {
+          const mapped =
+            part.type === "error" ? undefined : toAgentStreamPart(part);
+          return mapped ? [mapped] : [];
+        }),
+        Stream.flattenIterable
+      );
+    })
+  ).pipe(Stream.provide(model));
+}
+
+/**
+ * A host's runner, under the internal contract.
+ *
+ * The host's stream says which tool calls ran; the draft says what they
+ * changed. So the `graph` part after each successful write, and the trace
+ * events the turn's log record counts, are added here from the parts the host
+ * emitted, and a `graph` part of the host's own is dropped.
+ */
+export function hostAgentRunner(runner: WfGraphAgentRunner): AgentRunner {
+  return {
+    metadata: { provider: runner.provider, model: runner.model },
+    run: (input) =>
+      Effect.sync(() =>
+        withHostGraphParts(
+          runner.run({
+            workflowId: input.workflowId,
+            messages: input.messages,
+            prompt: agentPrompt({ messages: input.messages }),
+            toolkit: input.session.toolkit,
+            signal: input.signal,
+          }),
+          input.session,
+          input.observeTrace
+        )
+      ),
+  };
+}
+
+/** The canvas parts and trace counts for a stream a host's runner produced. */
+export function withHostGraphParts(
+  parts: Stream.Stream<AgentStreamPart, unknown>,
+  session: Pick<AgentToolSession, "draft">,
+  observeTrace: AgentTraceObserver
+): Stream.Stream<AgentStreamPart, unknown> {
+  // A host's stream carries no model steps, so every event is counted as the
+  // turn's first.
+  const step = 1;
+  return parts.pipe(
+    Stream.mapEffect((part) =>
+      Effect.gen(function* () {
+        switch (part.type) {
+          case "graph":
+            return [];
+          case "tool-call":
+            observeTrace({
+              type: "tool-call",
+              step,
+              id: part.id,
+              name: part.name,
+              input: part.input,
+            });
+            return [part];
+          case "tool-result": {
+            const writesGraph = !part.failed && WRITE_TOOL_NAMES.has(part.name);
+            const graphRevision = writesGraph
+              ? yield* session.draft.latest
+              : undefined;
+            observeTrace(
+              omitUndefined({
+                type: "tool-result" as const,
+                step,
+                id: part.id,
+                name: part.name,
+                result: part.summary ?? null,
+                failed: part.failed,
+                graphRevision: graphRevision?.revision,
+              })
+            );
+            if (graphRevision === undefined) {
+              return [part];
+            }
+            observeTrace({
+              type: "graph-revision",
+              step,
+              toolCallId: part.id,
+              revision: graphRevision.revision,
+              document: graphRevision.document,
+            });
+            return [part, graphPartOf(graphRevision.document)];
+          }
+          default:
+            return [part];
+        }
       })
     ),
     Stream.flattenIterable
