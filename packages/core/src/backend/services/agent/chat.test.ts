@@ -12,6 +12,7 @@ import {
 import { describe, expect, it } from "@effect/vitest";
 import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { makeAgentConfigLayer } from "#src/backend/agent/config";
 import {
   makeAgentRunnerLayer,
@@ -90,6 +91,7 @@ describe("postAgentChat", () => {
 
       const parts = yield* postAgentChat({
         workflowId: "workflow-1",
+        auth: { allows: async () => true },
         messages: [{ role: "user", content: "Build it" }],
         graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
       }).pipe(
@@ -117,6 +119,80 @@ describe("postAgentChat", () => {
         model: { id: "custom-runner" },
       });
     })
+  );
+});
+
+describe("postAgentChat tool grants", () => {
+  it.effect(
+    "refuses list_integrations to a caller without integration.getAll",
+    () =>
+      Effect.gen(function* () {
+        const answers: { name: string; isFailure: boolean; result: unknown }[] =
+          [];
+        const runner: AgentRunner = {
+          metadata: { provider: "test", model: "custom-runner" },
+          run: (input) =>
+            Effect.gen(function* () {
+              for (const name of [
+                "list_integrations",
+                "list_actions",
+              ] as const) {
+                const results = yield* input.session.toolkit
+                  .handle(name, {})
+                  .pipe(Effect.flatMap(Stream.runCollect));
+                const last = Array.from(results).at(-1);
+                answers.push({
+                  name,
+                  isFailure: last?.isFailure ?? false,
+                  result: last?.encodedResult,
+                });
+              }
+              return Stream.succeed(reply);
+            }).pipe(Effect.orDie),
+        };
+
+        yield* postAgentChat({
+          workflowId: "workflow-1",
+          auth: {
+            allows: async (operation) =>
+              operation.id !== WfGraphOperations.integrationGetAll.id,
+          },
+          messages: [{ role: "user", content: "Which connections exist?" }],
+          graph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              makeAgentConfigLayer({
+                enabled: true,
+                provider: "openai",
+                apiKey: "test-key",
+                model: "unused-built-in-model",
+                reasoningEffort: "high",
+              }),
+              makeAgentRunnerLayer(runner),
+              stubExtensions(),
+              stubIntegrationRepo({
+                listIdentities: Effect.succeed([
+                  { id: "conn-secret", type: "slack" },
+                ]),
+              }),
+              makeRecordingLogger().layer
+            )
+          ),
+          Effect.flatMap(Stream.runCollect)
+        );
+
+        expect(answers[0]).toMatchObject({
+          name: "list_integrations",
+          isFailure: true,
+          result: { reason: expect.stringContaining("permission") },
+        });
+        expect(JSON.stringify(answers[0])).not.toContain("conn-secret");
+        expect(answers[1]).toMatchObject({
+          name: "list_actions",
+          isFailure: false,
+        });
+      })
   );
 });
 

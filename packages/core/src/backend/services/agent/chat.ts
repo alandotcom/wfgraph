@@ -22,7 +22,12 @@ import {
   agentDisabledMessage,
 } from "#src/backend/agent/config";
 import { AgentRunnerService, runAgentRunner } from "#src/backend/agent/runner";
-import { makeAgentToolSession } from "#src/backend/agent/tool-session";
+import {
+  makeAgentToolSession,
+  withRefusedTools,
+} from "#src/backend/agent/tool-session";
+import { deniedAgentTools } from "#src/backend/agent/tool-permissions";
+import type { AuthContext } from "#src/backend/lib/http/authorize";
 import {
   finishReasonFailure,
   makeAgentTraceAccumulator,
@@ -39,6 +44,9 @@ import { IntegrationRepo } from "#src/backend/services/integrations/repo";
 import { getErrorMessage } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { validateAgentDraft } from "#src/backend/agent/publication-validation";
+
+const TOOL_FORBIDDEN_REASON =
+  "The person using the editor does not have permission for this tool. Tell them what it would need, and continue without it.";
 
 const AGENT_BUSY_MESSAGE =
   "The build agent is busy with other turns. Wait for one to finish and try again.";
@@ -168,6 +176,8 @@ export function limitAgentStream(
 
 export type PostAgentChatInput = {
   readonly workflowId: string;
+  /** The caller's grants, which decide the tools this turn may run. */
+  readonly auth: Pick<AuthContext, "allows">;
   readonly messages: readonly AgentMessage[];
   readonly graph: SerializedWorkflowGraph;
 };
@@ -203,9 +213,13 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
     )
   );
 
+  const refused = yield* Effect.promise(() =>
+    deniedAgentTools(input.auth.allows)
+  );
+
   const startedAt = Date.now();
   const trace = makeAgentTraceAccumulator();
-  const session = yield* makeAgentToolSession({
+  const draftSession = yield* makeAgentToolSession({
     catalog,
     integrations,
     document: toDocument(input.graph),
@@ -216,6 +230,13 @@ export const postAgentChat = Effect.fn("postAgentChat")(function* (
         integrations,
       }),
   });
+  // The same grants the MCP endpoint asks of a tool call, so a chat turn
+  // shows a caller nothing that endpoint would refuse them.
+  const session = withRefusedTools(
+    draftSession,
+    refused,
+    TOOL_FORBIDDEN_REASON
+  );
   const stream = runAgentRunner(runner, {
     workflowId: input.workflowId,
     messages: input.messages,

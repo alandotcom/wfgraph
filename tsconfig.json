@@ -54,6 +54,8 @@
           "effect/ai/Response#StreamPart",
           "effect/ai/Response#Usage",
           "effect/ai/Response#makePart",
+          "effect/ai/Tool#Any",
+          "effect/ai/Tool#HandlerResult",
           "effect/ai/Tool#getJsonSchema",
           "effect/ai/Tool#getJsonSchemaFromSchema",
           "effect/ai/Tool#make",

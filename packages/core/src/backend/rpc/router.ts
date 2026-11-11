@@ -439,9 +439,10 @@ export const rpcRouter = rpc.router({
   },
   agent: {
     chat: rpc.agent.chat.handler(
-      rpcStreamHandler(({ input }) =>
+      rpcStreamHandler(({ input, context }) =>
         postAgentChat({
           workflowId: input.workflowId,
+          auth: context.auth,
           messages: input.messages,
           graph: input.graph,
         })

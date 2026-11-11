@@ -550,6 +550,10 @@ const wfgraph = await createWfGraphApp({
   Chat Completions alone, such as most self-hosted model servers, is `openai-compatible`.
 - **`anthropic` needs a Claude model from the 4.6 generation or later**, because the turn
   asks for adaptive thinking, which earlier models refuse.
+- **A turn's tools follow the caller's grants.** `agent.chat` needs `agent.use`, and each tool
+  the model calls also needs what the MCP endpoint asks of it: `workflow.getById` for every
+  tool, `workflow.update` for a write tool, and `integration.getAll` for
+  `list_integrations`. A tool the caller lacks a grant for answers the model a refusal.
 - **A blank key is no agent.** `apiKey: process.env.ANTHROPIC_API_KEY` on a machine without
   the variable leaves the agent off, where a blank `model` for a provider with no default
   fails at startup. `openai-compatible` is the exception: its `baseUrl` turns it on, and the

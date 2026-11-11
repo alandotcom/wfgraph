@@ -5,8 +5,8 @@
  * The session keeps the draft and handlers under one owner and one lifetime.
  */
 
-import { Effect, Layer } from "effect";
-import type { Toolkit } from "effect/ai";
+import { Effect, Layer, Stream } from "effect";
+import type { Tool, Toolkit } from "effect/ai";
 import {
   layerFromDraft,
   makeWorkflowDraft,
@@ -44,3 +44,52 @@ export const makeAgentToolSession = Effect.fn("makeAgentToolSession")(
     return { draft, toolkit } satisfies AgentToolSession;
   }
 );
+
+type AgentTools = Toolkit.Tools<typeof agentToolkit>;
+
+/**
+ * A refusal in the shape a handler answers, for a tool the caller may not use.
+ *
+ * Built here rather than by the tool, because the refusal is the caller's and
+ * not the tool's: the model reads `{ reason }` as it reads any refused call,
+ * and the panel shows the reason.
+ */
+function refusedToolResult<Name extends keyof AgentTools>(
+  reason: string
+): Tool.HandlerResult<AgentTools[Name]> {
+  const refusal = { reason };
+  const answer: Tool.HandlerResult<Tool.Any> = {
+    result: refusal,
+    encodedResult: refusal,
+    isFailure: true,
+    preliminary: false,
+  };
+  return answer;
+}
+
+/**
+ * The session with each named tool answering a refusal instead of running.
+ *
+ * The model still sees every tool, so the system prompt's references to one
+ * stay true; calling a refused one tells it why, and it can say so.
+ */
+export function withRefusedTools(
+  session: AgentToolSession,
+  refused: ReadonlySet<string>,
+  reason: string
+): AgentToolSession {
+  if (refused.size === 0) {
+    return session;
+  }
+  const { toolkit } = session;
+  return {
+    ...session,
+    toolkit: {
+      ...toolkit,
+      handle: (name, parameters, toolCallId, options) =>
+        refused.has(name)
+          ? Effect.succeed(Stream.succeed(refusedToolResult(reason)))
+          : toolkit.handle(name, parameters, toolCallId, options),
+    },
+  };
+}

@@ -26,6 +26,7 @@ import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts
 import { workflowSummarySchema } from "@wfgraph/shared/rpc/contracts/workflows";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import type { AuthContext } from "#src/backend/lib/http/authorize";
+import { agentToolOperations } from "#src/backend/agent/tool-permissions";
 import type {
   DraftToolResult,
   ExecuteDraftToolInput,
@@ -312,16 +313,6 @@ function invalidParamsResponse(body: JsonObject, message: string): Response {
   );
 }
 
-function requiredOperations(name: AgentToolName) {
-  return [
-    WfGraphOperations.workflowGetById,
-    ...(WRITE_TOOL_NAMES.has(name) ? [WfGraphOperations.workflowUpdate] : []),
-    ...(name === "list_integrations"
-      ? [WfGraphOperations.integrationGetAll]
-      : []),
-  ];
-}
-
 function toolResult(input: {
   workflowId: string;
   draftRevision?: number | undefined;
@@ -496,7 +487,7 @@ export function createAgentMcpServer(
         }
 
         const grants = await Promise.all(
-          requiredOperations(name).map(async (operation) =>
+          agentToolOperations(name).map(async (operation) =>
             input.auth.allows(operation)
           )
         );
