@@ -12,7 +12,10 @@ import {
   workflowEventInbox,
   workflowExecutions,
 } from "#src/backend/lib/db/schema";
-import type { WfGraphTransaction } from "#src/backend/lib/db/index";
+import type {
+  WfGraphDatabase,
+  WfGraphTransaction,
+} from "#src/backend/lib/db/index";
 import { recordAuditEventsWrite } from "#src/backend/services/executions/repo/audit";
 import {
   cancelReceivedNoEarlier,
@@ -98,10 +101,10 @@ export async function lockEventStart(
 
 /** When the inbox row `inboxId` was received, or null when there is none. */
 export async function receivedAtOf(
-  tx: WfGraphTransaction,
+  db: WfGraphDatabase | WfGraphTransaction,
   inboxId: string
 ): Promise<Date | null> {
-  const [arrival] = await tx
+  const [arrival] = await db
     .select({ receivedAt: workflowEventInbox.receivedAt })
     .from(workflowEventInbox)
     .where(eq(workflowEventInbox.id, inboxId));
@@ -109,28 +112,25 @@ export async function receivedAtOf(
 }
 
 /**
- * Claims the run an Event start just opened for the earliest Cancel decision
- * of its workflow and Entity received no earlier than its start Event, when
- * one was recorded: the Cancel was received after the start, so it would have
- * claimed the run had the two been delivered in arrival order. The claim is
- * the one `requestCancelForEntity` writes, with its timeline entry; the run
- * opened with no parks, so it resolves none.
+ * The earliest Cancel decision of a run's workflow and Entity received no
+ * earlier than the run's start Event, with that Cancel Event's payload, or
+ * undefined when none is recorded, the run names no Entity, or no Event
+ * started it.
  */
-export async function claimForCancelDeliveredFirst(
-  tx: WfGraphTransaction,
-  run: WorkflowExecution,
-  now: Date
-): Promise<void> {
-  if (run.deliveryId === null || run.deliveryId === undefined) return;
-  const startReceivedAt = await receivedAtOf(tx, run.deliveryId);
-  if (startReceivedAt === null) return;
+export async function findCancelReceivedNoEarlier(
+  db: WfGraphDatabase | WfGraphTransaction,
+  run: WorkflowExecution
+) {
+  if (run.deliveryId === null || run.deliveryId === undefined) return undefined;
+  const startReceivedAt = await receivedAtOf(db, run.deliveryId);
+  if (startReceivedAt === null) return undefined;
   const later = cancelReceivedNoEarlier(workflowCancelDecisions, {
     workflowId: run.workflowId,
     run,
     startReceivedAt,
   });
-  if (later === undefined) return;
-  const [decision] = await tx
+  if (later === undefined) return undefined;
+  const [decision] = await db
     .select({
       deliveryId: workflowCancelDecisions.deliveryId,
       eventName: workflowCancelDecisions.eventName,
@@ -147,7 +147,26 @@ export async function claimForCancelDeliveredFirst(
       asc(workflowCancelDecisions.deliveryId)
     )
     .limit(1);
-  if (decision === undefined || decision.eventName === null) return;
+  return decision === undefined || decision.eventName === null
+    ? undefined
+    : { ...decision, eventName: decision.eventName };
+}
+
+/**
+ * Claims the run an Event start just opened for the Cancel decision
+ * `findCancelReceivedNoEarlier` answers, when one was recorded: the Cancel
+ * was received after the start, so it would have claimed the run had the two
+ * been delivered in arrival order. The claim is the one
+ * `requestCancelForEntity` writes, with its timeline entry; the run opened
+ * with no parks, so it resolves none.
+ */
+export async function claimForCancelDeliveredFirst(
+  tx: WfGraphTransaction,
+  run: WorkflowExecution,
+  now: Date
+): Promise<void> {
+  const decision = await findCancelReceivedNoEarlier(tx, run);
+  if (decision === undefined) return;
   await tx
     .update(workflowExecutions)
     .set({

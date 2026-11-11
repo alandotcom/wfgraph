@@ -526,6 +526,69 @@ describePostgres("PostgreSQL concurrency", () => {
     }
   );
 
+  // A serializable start reads Cancel decisions from the snapshot its first
+  // statement took, so a Cancel that commits just after that snapshot leaves
+  // a decision the start cannot see and a run the Cancel's own scan was too
+  // early for. The case writes that decision as the Cancel left it, and the
+  // start, called again as a retried delivery calls it, claims the run from
+  // the decisions as they now stand.
+  it("claims a run for a Cancel decision its serializable start could not see", async () => {
+    const database = await openDatabase();
+    const connection = await database.open();
+    await seedPublishedWorkflow(connection);
+    const arrive = (name: string, at: number) =>
+      connection.run(
+        Effect.flatMap(ExecutionRepo, (executions) =>
+          executions.insertInboxEvent({
+            name,
+            data: {},
+            connectionId: null,
+            idempotencyKey: null,
+            now: new Date(Date.UTC(2026, 0, 1, 0, 0, 0, at)),
+          })
+        )
+      );
+    const startArrival = await arrive("appointment/booked", 0);
+    const cancelArrival = await arrive("appointment/cancelled", 1);
+    const start = () =>
+      connection.run(
+        Effect.flatMap(ExecutionRepo, (executions) =>
+          executions.startForEntity({
+            execution: {
+              workflowId: "wf_1",
+              workflowVersionId: "ver_1",
+              startSource: "event",
+              runMode: "live",
+              entityValue: "appointment_1",
+              deliveryId: startArrival.inboxId,
+              input: {},
+            },
+            concurrency: "newest-wins",
+            ...notYetDue,
+          })
+        )
+      );
+    const claimOf = (executionId: string) =>
+      connection.run(
+        Effect.flatMap(ExecutionRepo, (executions) =>
+          executions.findTerminationState(executionId)
+        )
+      );
+
+    const started = await start();
+    if (started.status !== "started") throw new Error("Start refused");
+    expect((await claimOf(started.execution.id))?.claim ?? null).toBeNull();
+
+    await database.execute(
+      `insert into workflow_cancel_decisions (delivery_id, workflow_id, decided_at, event_name, entity_value, received_at) values ('${cancelArrival.inboxId}', 'wf_1', now(), 'appointment/cancelled', 'appointment_1', '2026-01-01T00:00:00.001')`
+    );
+
+    const retried = await start();
+    if (retried.status !== "started") throw new Error("Retry refused");
+    expect(retried.execution.id).toBe(started.execution.id);
+    expect((await claimOf(started.execution.id))?.claim?.kind).toBe("cancel");
+  });
+
   // newest-wins lets every start through and displaces the runs it found, so
   // the invariant is that exactly one survives and no run is displaced twice.
   // Every racer writes the row the others read, so about one decision commits

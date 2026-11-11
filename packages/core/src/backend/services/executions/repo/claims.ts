@@ -26,6 +26,7 @@ import {
 } from "#src/backend/lib/db/schema";
 import { recordAuditEventsWrite } from "#src/backend/services/executions/repo/audit";
 import {
+  findCancelReceivedNoEarlier,
   lockCancelScope,
   receivedAtOf,
 } from "#src/backend/services/executions/repo/cancel-order";
@@ -42,6 +43,7 @@ import type {
   CanceledOutletClaim,
   RepinOutcome,
   WaitResumeClaim,
+  WorkflowExecution,
 } from "#src/backend/services/executions/repo/contracts";
 import {
   type CancelClaimWrite,
@@ -435,6 +437,66 @@ async function requestCancelForEntityWrite(
     }
   );
   return canceledOutletClaims(produced);
+}
+
+/**
+ * Claims a run for a Cancel decision its start could not read, in a
+ * transaction of its own, after the start committed.
+ *
+ * A serializable start reads from the snapshot its first statement took, and
+ * that statement is the one that takes the Entity's lock. A Cancel claim that
+ * commits between the snapshot and the lock is therefore invisible to the
+ * start, and the Cancel's own run scan ran before the run existed. This reads
+ * the decisions as they stand now and writes the claim
+ * `requestCancelForEntity` would have: the flag, the wake on each open park,
+ * the timeline entry, and the schedule row made due. A run that is already
+ * claimed or has ended is left alone, so a retried delivery repeats it safely.
+ */
+export async function claimRunForCancelItsStartMissed(
+  db: WfGraphDatabase,
+  run: WorkflowExecution,
+  now: Date
+): Promise<void> {
+  const decision = await findCancelReceivedNoEarlier(db, run);
+  if (decision === undefined) return;
+  await wakeExecutions(
+    db,
+    { now, candidates: () => Promise.resolve([run.id]) },
+    async (tx) => {
+      const flagged = await tx
+        .update(workflowExecutions)
+        .set({
+          terminationKind: "cancel",
+          terminationRequestedAt: now,
+          cancelEventName: decision.eventName,
+          cancelPayload: decision.payload,
+          cancelDeliveryId: decision.deliveryId,
+        })
+        .where(
+          and(
+            eq(workflowExecutions.id, run.id),
+            inArray(workflowExecutions.status, [
+              ...IN_FLIGHT_EXECUTION_STATUSES,
+            ]),
+            isNull(workflowExecutions.terminationKind)
+          )
+        )
+        .returning({ id: workflowExecutions.id });
+      if (flagged.length === 0) return { result: undefined, woken: [] };
+      const resolved = await resolveOpenParks(tx, [run.id], {
+        kind: "cancel",
+      });
+      await recordAuditEventsWrite(
+        cancelRequestedEntries({
+          workflowId: run.workflowId,
+          eventName: decision.eventName,
+          flagged: [run.id],
+          resolved,
+        })
+      )(tx);
+      return { result: undefined, woken: [run.id] };
+    }
+  );
 }
 
 /** Builds the producers' slice of `ExecutionRepo` over one database. */

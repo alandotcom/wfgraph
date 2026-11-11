@@ -19,6 +19,7 @@ import {
 import { lockEventStart } from "#src/backend/services/executions/repo/cancel-order";
 import {
   type ClaimsRepoMethods,
+  claimRunForCancelItsStartMissed,
   makeClaimsMethods,
 } from "#src/backend/services/executions/repo/claims";
 import {
@@ -224,7 +225,23 @@ export const ExecutionRepoLayer: Layer.Layer<ExecutionRepo, never, Database> =
 
         startForEntity: (input) =>
           admissionReads(input)
-            ? serializableTransaction(database, (tx) => admitStart(tx, input))
+            ? serializableTransaction(database, (tx) =>
+                admitStart(tx, input)
+              ).pipe(
+                // The serializable start reads Cancel decisions from its
+                // snapshot, which a Cancel committing beside it can postdate.
+                Effect.tap((outcome) =>
+                  outcome.status === "started"
+                    ? database.query((db) =>
+                        claimRunForCancelItsStartMissed(
+                          db,
+                          outcome.execution,
+                          input.now
+                        )
+                      )
+                    : Effect.void
+                )
+              )
             : database.query((db) =>
                 db.transaction(async (tx) => {
                   await lockEventStart(tx, input.execution, "read committed");
