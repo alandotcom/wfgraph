@@ -3,10 +3,10 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "234c9b387d41a1e29d7ed8d5a110f1e6ac5002725fc05e0cdbb8a47720070dfa",
+      "fingerprint": "a4d34ae26a4153e116d8df5b2e04a84277ce61d912143b9cb76e37d3af740e4f",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
-        "docs/embedding.md": "e183ee9d7e7b626f509cb044c5b70c910f1d4ada1ba1766ab392af333d6606b3",
+        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
         "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "ac2b3fc55bb55741bb59cf50aa5de80684a2c74a439443419a4ea438d598e848",
@@ -14,16 +14,15 @@
         "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "45656429549e5ddab3d00815e3d9d9610f0ba8b99d0c2dcd195eae6ee37d9162",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "da8caeef519f57e953822ef0f3afc95c40219d7dbbdbd4bf7515aa22422bfa36",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "f7b926ca29fb3a4eb2637a72f83ba67f5304662d4d3c777d80441e33e85c9c7d",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
-      "outcome": "updated",
-      "reason": "The skill gained two rules with the code that introduced them: a Cancel Event follows the order Events were received in, and an event-mode Wait that first parks after a matching Event was delivered wakes at once with it.",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "outcome": "no-change",
+      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
       "evidence": [
-        "0f1d0ad3 fix(core): let a Cancel Event follow arrival order, not delivery order",
-        "2dee4785 feat(core): wake an event-mode Wait at its first park with an arrival it missed",
-        "pnpm run skills:validate passed for ten skills"
+        "Read the skill against docs/embedding.md at HEAD",
+        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -41,20 +40,18 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "dc667a2a6ffb07e61966855e9a39c3bf9c788039c1864b71e857ebf7e3e4d597",
+      "fingerprint": "2d2f87c18d190db751707c460668ecbb7aaa5660f4effeb01e66fac78f4d4c77",
       "snapshot": {
-        "docs/embedding.md": "e183ee9d7e7b626f509cb044c5b70c910f1d4ada1ba1766ab392af333d6606b3",
+        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "A defineAction handler now runs once per node of a run inside one durable step, the bag and each step carry idempotency keys, step names are 1 to 64 characters, Draft and Test-mode runs call every handler with runMode test, and runHostAction takes memo and answers handlerRan. The skill described none of this and wrongly said the run dialog counts host actions marked sideEffect; it now states each and adds three mistakes.",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "outcome": "no-change",
+      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
       "evidence": [
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "Checked against packages/core/src/testing.ts (runHostAction, HostActionMemo) and docs/embedding.md (A handler runs once per node of a run; Test runs call your handler)",
-        "packages/evals/src/skills/host-actions/refund-action.test.ts: the recommended action passes; a handler ignoring runMode and one with both calls in one step are rejected",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "Read the skill against docs/embedding.md at HEAD",
+        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
@@ -73,29 +70,28 @@
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "b31cf87a8469e833480db735dfe17c2e70751650e9a2cd59ffbaa10c11395d38",
+      "fingerprint": "6ec45ecec0e16b70d489f5137cf9ab20401064dbc0a961147a0ed8643c92c589",
       "snapshot": {
-        "docs/embedding.md": "e183ee9d7e7b626f509cb044c5b70c910f1d4ada1ba1766ab392af333d6606b3",
+        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "b7a92179cb4b08dd4aa4a559e9caa2e63d3187be94a11a2d5a7f2daaa0a54628"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "Deleting an OAuth connection now always removes it and answers oauthRevocation, Slack's already-uninstalled answers count as revoked, test runs call every built-in action, POSTHOG_HOST must be https, and Resend sends a per-node idempotency key. The skill now covers each, including the per-step test settings that default to logging.",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "outcome": "no-change",
+      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
       "evidence": [
-        "55e6fcd6 docs(skills): cover test settings and OAuth delete in wfgraph-plugins",
-        "Checked against packages/plugins/src/{slack,posthog,twilio,resend}/index.ts (resolve*TestBehavior defaults to log_only) and packages/plugins/src/posthog/test.ts",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "Read the skill against docs/embedding.md at HEAD",
+        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "eed7f5f6a1e37bb56d8ecab605cdd3c8c9b2ac5b5f4700d4098d32eb45d1f8b8",
+      "fingerprint": "8f58797e57a88561b4ea329c16e8bdcd071952fdb2353eb0ecc536cf1a897b0d",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
         "_artifacts/domain_map.yaml": "c0c37dffbc738e3b15b2b1370e969bb4a574c2e39ef61054e2b252d048c7d746",
         "_artifacts/skill_spec.md": "a73b6c1289b3321ca97cc0b489b84f2c6b33ba1c027597509bd578101f045ad9",
         "_artifacts/skill_tree.yaml": "0d7d9f2fd93f3844a71191892ab9574e5fb8f43e26d8dc0292b488ad443bd352",
-        "docs/embedding.md": "e183ee9d7e7b626f509cb044c5b70c910f1d4ada1ba1766ab392af333d6606b3",
+        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
@@ -105,7 +101,7 @@
         "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "45656429549e5ddab3d00815e3d9d9610f0ba8b99d0c2dcd195eae6ee37d9162",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "da8caeef519f57e953822ef0f3afc95c40219d7dbbdbd4bf7515aa22422bfa36",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "f7b926ca29fb3a4eb2637a72f83ba67f5304662d4d3c777d80441e33e85c9c7d",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d",
         "packages/core/src/backend/agent/config.ts": "0007c555287f0e56f81b60dd57d3fa75fd5f8e09fcc67366fca4ee83765be545",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca",
@@ -120,12 +116,12 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "b7a92179cb4b08dd4aa4a559e9caa2e63d3187be94a11a2d5a7f2daaa0a54628",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "no-change",
-      "reason": "The schema follow-up changes add no skill and no developer task. The two new rules extend the existing events domain of wfgraph-core, which domain_map.yaml and skill_tree.yaml already cover.",
+      "reason": "No skill and no developer task was added. The mcp skill's existing task, authoring over MCP, covers the reference read.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists wfgraph-core and its events skill",
-        "No skill path was added or removed since the batch 5 record"
+        "_artifacts/skill_tree.yaml lists wfgraph-core/mcp",
+        "No skill path added or removed"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -142,21 +138,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "a56abfed7934c8e91643f3c224a2a506f12c31383a0a4b78d35af49bc1d72d9e",
+      "fingerprint": "97fbb692a72fa8d24b95a3d437f535cfa6083cafcc48354a094aba7e2e2c0a55",
       "snapshot": {
-        "docs/embedding.md": "e183ee9d7e7b626f509cb044c5b70c910f1d4ada1ba1766ab392af333d6606b3",
+        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "auth now takes the authenticate function itself, reads undefined as signed out (401 where it was 500), and createWfGraphApp refuses any other value at startup; operator routes refuse cross-site browser writes with 403 and bodies over 8 MiB with 413 before the callback. The skill said the callback returns null alone and had neither refusal; it now states all of them, the health and MCP metadata routes outside the callback, and a new mistake for writes from a sibling subdomain.",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "outcome": "no-change",
+      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
       "evidence": [
-        "75abc778 fix(skills): teach the auth skill the function form and the new refusals",
-        "Checked against packages/core/src/backend/lib/http/authorize.ts and packages/core/src/backend/api-app.ts (isCrossSiteWrite, the MCP challenge)",
-        "packages/evals/src/skills/auth/access-policy.test.ts still passes",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "Read the skill against docs/embedding.md at HEAD",
+        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
       ]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
@@ -188,22 +182,20 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "0d45b1900cfc2e12cc2777b25d12edec2be3456ec5b8a78b593f13b966b2c96d",
+      "fingerprint": "f5e64cbd086670d143fc8b2ced6a72d8364a90da002480463e307ec91c4e94bd",
       "snapshot": {
-        "docs/embedding.md": "e183ee9d7e7b626f509cb044c5b70c910f1d4ada1ba1766ab392af333d6606b3",
+        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "app.health() now answers queue (due, oldestDueAt, lagMs) for a host to export as a metric, refused RPC records mask credential-named inputs, and the readiness probe's request record is written at trace level. The skill's span names and logging setups are unchanged; it now adds those three facts.",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "outcome": "no-change",
+      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
       "evidence": [
-        "7bc7efe3 docs(skills): add queue metrics and record masking to observability",
-        "Checked against docs/embedding.md (Readiness) and packages/core/src/backend/host-health.ts",
-        "The twelve service spans in docs/embedding.md (Tracing) were recounted and still number twelve",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "Read the skill against docs/embedding.md at HEAD",
+        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
       ]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
@@ -245,21 +237,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "17a23f8f4f3ab24ce612a1f8256056164b00468d3a910bd5d12e2e57072c4160",
+      "fingerprint": "4dbe1e0f733654514d928e65edeb548b902f96bf5d76d750ac9fd574815a80fe",
       "snapshot": {
-        "docs/embedding.md": "e183ee9d7e7b626f509cb044c5b70c910f1d4ada1ba1766ab392af333d6606b3",
+        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "A cut pass whose running step is a plain Promise is now released one lease later rather than due at once, and encryption.key stays required on wfWorker while it became optional elsewhere. The skill now says both; the tick constants, Queue and Hyperdrive guidance were checked and are unchanged.",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "outcome": "no-change",
+      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
       "evidence": [
-        "23153426 fix(skills): correct how a Worker tick releases a cut plain Promise step",
-        "Checked against docs/embedding.md (Ticks and the platform limits) and the tick record messages in packages/core/src/backend/worker.ts",
-        "packages/evals/src/skills/cloudflare-worker/worker.test.ts still passes",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "Read the skill against docs/embedding.md at HEAD",
+        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
       ]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
@@ -1750,16 +1740,16 @@
       ]
     },
     "source:packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": {
-      "fingerprint": "6ab4c9a68c8848aa7ab0b9b06d8c258f1600e1e2d469c559f7c44a5ca142975b",
+      "fingerprint": "8a46dc81989666713bb4df24e2755682c8ce8acc9f187aada4fd32af23221066",
       "snapshot": {
-        "packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": "11f3bd3780731ffac5c7dc6855b561740d275b34349b34d3c6076e5ea470a335"
+        "packages/core/src/backend/persistence/postgres-concurrency.pg.test.ts": "0cf129263ee6713a64805f114b6ae976463547fa214fa5fdac973ff22d718816"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "reason": "Repository internals of the Cancel claim fix. The adopter-visible rule, a Cancel follows arrival order, is unchanged and already in the wfgraph-core skill.",
       "evidence": [
-        "git log 0570e6c6^..HEAD for the path",
-        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/postgres-migrations.pg.test.ts": {
@@ -2956,17 +2946,16 @@
       ]
     },
     "source:packages/agent/src/prompt.ts": {
-      "fingerprint": "c5888aa3c9a03ddf9ff63a976360203e8aee6dc709ec20c4fe86d9c6d638442e",
+      "fingerprint": "f99b69a046e0f2fc8eb5b85b021ea53eb9dd54b268bb806158b08e95b1fcb939",
       "snapshot": {
-        "packages/agent/src/prompt.ts": "be2c08d4d1b7d2860c7eb80cdae86bb584dc31ff97043f24430b51dccca9a740"
+        "packages/agent/src/prompt.ts": "d6c4f0231a4f2625025251a52d7b2c2aacf18c88ac9e145612d7173c14bbff95"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools, toolkit and system prompt: apply_edits, the run tools, newIssues, validate_workflow's canSave and canPublish, label-and-id names in results, placement that keeps positions, and prompt rules. A host neither calls nor configures these; mcp and build-agent describe the tool contract an MCP client or a host runner sees, and docs/embedding.md (MCP authoring) now names canSave and canPublish.",
+      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "4f1d4fec docs(embedding): document mcp.authorization and validate_workflow's answer",
-        "@wfgraph/agent is private and inlined into core; no published entry exports its modules"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/changes-summary.ts": {
@@ -3126,38 +3115,35 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "ef26eeca724c04cf742b50b69eacae4233280e4c3b36f155a83e0bb736e13f62",
+      "fingerprint": "6a64b4a8b0e0342ebd1d3b821632da500d167373df4152d994d6d6939cb8b769",
       "snapshot": {
-        "docs/embedding.md": "e183ee9d7e7b626f509cb044c5b70c910f1d4ada1ba1766ab392af333d6606b3",
+        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "ac2b3fc55bb55741bb59cf50aa5de80684a2c74a439443419a4ea438d598e848",
         "packages/core/src/backend/agent/config.ts": "0007c555287f0e56f81b60dd57d3fa75fd5f8e09fcc67366fca4ee83765be545",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "New skill. The agent option gained four providers, a host runner with streamAgentTurn, maxConcurrentTurns and per-tool grants, which made configuring the agent a task of its own and resolved the spec's open question about agent guidance.",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "outcome": "no-change",
+      "reason": "The skill's sources changed for the MCP reference read and the Cancel claim fix. Nothing this skill states about them became wrong: the reference read is taught by the mcp skill and docs/embedding.md, and the Cancel arrival-order rule in wfgraph-core is unchanged by a fix that makes the code honour it.",
       "evidence": [
-        "9bec1944 feat(skills): add a wfgraph-core/build-agent skill",
-        "Checked against packages/core/src/backend/agent/config.ts (readAgentSettings) and packages/core/src/backend/agent/runner.ts",
-        "packages/evals/src/skills/build-agent/agent-config.test.ts: 6 cases pass; the no-model, blank-key and zero-limit mistakes fail at their named assertions",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "Read the skill against docs/embedding.md at HEAD",
+        "0c2e698b fix(core): claim a run for a Cancel that commits between its start's snapshot and lock"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
-      "fingerprint": "af6d153030b81a30f2270e125d445ea50e23869ef1a186149384648141c1aaf8",
+      "fingerprint": "7b9bbd8f38d5598df8e926d3e02a479c5c1aebc9d76db050f1debe6a9870e87d",
       "snapshot": {
-        "docs/embedding.md": "e183ee9d7e7b626f509cb044c5b70c910f1d4ada1ba1766ab392af333d6606b3",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "da8caeef519f57e953822ef0f3afc95c40219d7dbbdbd4bf7515aa22422bfa36",
+        "docs/embedding.md": "cd70002a3e1ac854c30a9dff06194c028a7f8ece9fbc21dd025cb7b34258ec02",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "f7b926ca29fb3a4eb2637a72f83ba67f5304662d4d3c777d80441e33e85c9c7d",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "updated",
-      "reason": "New skill. The MCP endpoint gained mcp.authorization with RFC 9728 metadata and a 401 challenge, 2025-era protocol revisions, per-tool grants, catalog tools without a workflowId, publish and version tools and validate_workflow's canSave and canPublish, which made connecting an MCP client a task of its own.",
+      "reason": "list_references takes nodeIds and answers for several steps in one call. The mcp skill gained one invariant: a batch of new steps needs one reference read between two apply_edits calls, and readableBy names the steps that can read an entry.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "Checked against packages/core/src/backend/agent/mcp-server.ts and packages/core/src/backend/api-app.ts",
-        "packages/evals/src/skills/mcp/mcp-endpoint.test.ts: the recommended setup passes; cookie-only auth fails at expected 401 to be 200, any-bearer auth at expected 200 to be 401, mcp: true at expected 403 to be 200",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "a7dc88de feat(agent): let list_references answer for several steps in one call",
+        "878e9d88 docs: teach the multi-step reference read to MCP clients",
+        "pnpm run skills:validate passed for ten skills"
       ]
     },
     "source:.agents/behaviors/workflow-authoring/BEHAVIOR.md": {
@@ -3484,31 +3470,29 @@
       ]
     },
     "source:packages/agent/src/tools/lifecycle-tools.test.ts": {
-      "fingerprint": "581a363a0816277208158f7320307e3eac028953a52e3d39bcb7d6fdf1bd89bf",
+      "fingerprint": "848c33192a69ad8b6eacd04ec5ca9083758e9bc5aae88bf4fae5900e116680cf",
       "snapshot": {
-        "packages/agent/src/tools/lifecycle-tools.test.ts": "52c42ea6d3dd2300ee631742719ec2a809bb9a67bbfd901b74042c949f6c96ed"
+        "packages/agent/src/tools/lifecycle-tools.test.ts": "9e2eb38944c7e7c835ceb41980d76971ab0c74b128e62dc244f74f3738e01dfc"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools, toolkit and system prompt: apply_edits, the run tools, newIssues, validate_workflow's canSave and canPublish, label-and-id names in results, placement that keeps positions, and prompt rules. A host neither calls nor configures these; mcp and build-agent describe the tool contract an MCP client or a host runner sees, and docs/embedding.md (MCP authoring) now names canSave and canPublish.",
+      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "4f1d4fec docs(embedding): document mcp.authorization and validate_workflow's answer",
-        "@wfgraph/agent is private and inlined into core; no published entry exports its modules"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/agent/src/tools/lifecycle-tools.ts": {
-      "fingerprint": "6ccdcb7ecc2c9678265401c962fde12a8125664342f0d38c0635021580307f6e",
+      "fingerprint": "11d545241ff9f08c527adf8600ca5958e20ac0b145c261a28ef2d080453a68a3",
       "snapshot": {
-        "packages/agent/src/tools/lifecycle-tools.ts": "326d8ac6b7acfee67620e9947f0ade45cd686de3f36cc10b5df9a390372cb3be"
+        "packages/agent/src/tools/lifecycle-tools.ts": "1d706faa6b4dfcec0b86a8ba1f7a672656b58104c45bf2a483c01a63791e71e6"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools, toolkit and system prompt: apply_edits, the run tools, newIssues, validate_workflow's canSave and canPublish, label-and-id names in results, placement that keeps positions, and prompt rules. A host neither calls nor configures these; mcp and build-agent describe the tool contract an MCP client or a host runner sees, and docs/embedding.md (MCP authoring) now names canSave and canPublish.",
+      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "4f1d4fec docs(embedding): document mcp.authorization and validate_workflow's answer",
-        "@wfgraph/agent is private and inlined into core; no published entry exports its modules"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/agent/src/tools/new-issues.ts": {
@@ -3540,17 +3524,16 @@
       ]
     },
     "source:packages/agent/src/tools/reference-tools.ts": {
-      "fingerprint": "8f674e362b133ef33f888a714f2c54f92c25d44bf7c456c79dbee3179b03f06a",
+      "fingerprint": "d5ef5febf6653f7ef4054a5afea6d515583dee1f81678d60a8c2ce7aa4a7d9ec",
       "snapshot": {
-        "packages/agent/src/tools/reference-tools.ts": "48914feca34865500bd316f5662b878410974c0ad81023d2d9a596ed86c801ad"
+        "packages/agent/src/tools/reference-tools.ts": "36cc1dea797d3eac01df425cae23366d5ca863b14594dbc4ea97d2da9e794869"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools, toolkit and system prompt: apply_edits, the run tools, newIssues, validate_workflow's canSave and canPublish, label-and-id names in results, placement that keeps positions, and prompt rules. A host neither calls nor configures these; mcp and build-agent describe the tool contract an MCP client or a host runner sees, and docs/embedding.md (MCP authoring) now names canSave and canPublish.",
+      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "4f1d4fec docs(embedding): document mcp.authorization and validate_workflow's answer",
-        "@wfgraph/agent is private and inlined into core; no published entry exports its modules"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/agent/src/tools/run-tools.test.ts": {
@@ -4152,16 +4135,16 @@
       ]
     },
     "source:packages/core/src/backend/agent/mcp-conformance.test.ts": {
-      "fingerprint": "45038791f964b080f5a2980a23a8814cf70c0073a2b0cebfa74e6cbb6b9a3927",
+      "fingerprint": "1b60c3acede83c52618b949df6c82b8c6bc9faba308b1cc1ef2d17207c762ba4",
       "snapshot": {
-        "packages/core/src/backend/agent/mcp-conformance.test.ts": "34b18362d2d6f98a38a887cb033b6dd79fa5049c2a463cf7ba8f86ae96edf263"
+        "packages/core/src/backend/agent/mcp-conformance.test.ts": "9f06c5e3ff4c4b99471420779f31a9556ba4b0494fd5910206bc9b33b3604018"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "Tests of the agent, the MCP server, the HTTP boundary, the RPC router and the extension set. They assert the contracts the updated auth, mcp, build-agent and host-actions skills state, and add no guidance of their own.",
+      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "pnpm run test passed: 510 files, 6590 tests"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/core/src/backend/agent/mcp-schema-compaction.test.ts": {
@@ -4259,16 +4242,16 @@
       ]
     },
     "source:packages/core/src/backend/agent/trace.test.ts": {
-      "fingerprint": "a346143b259e96a6a57f06944e9c912947bfae36735b312cfc5e2cfc15445d0f",
+      "fingerprint": "ba18ce20fcda879d625cc2dc05c7151c1fd22646b8d4c6acdbfd90e14c4c75e4",
       "snapshot": {
-        "packages/core/src/backend/agent/trace.test.ts": "d35c08d5237aece0e32d77a21a2da28d38daab51b52a0bbe28276e7389a27c79"
+        "packages/core/src/backend/agent/trace.test.ts": "ae1695ffc28088c2b754796e1853a0869bfc141cc56b2c9db2e73e4c3f6f7ec4"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "Tests of the agent, the MCP server, the HTTP boundary, the RPC router and the extension set. They assert the contracts the updated auth, mcp, build-agent and host-actions skills state, and add no guidance of their own.",
+      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "pnpm run test passed: 510 files, 6590 tests"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/core/src/backend/agent/trace.ts": {
@@ -5414,16 +5397,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/claims.ts": {
-      "fingerprint": "431f244c315af39232bb7ee5d059f800252503bebb7a791e5de68bb3232a4aea",
+      "fingerprint": "d8db472bcf0665daa5ab4334ca3177adfdae11e9e93aa2bea6967ca321406915",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/claims.ts": "7d2b9c095ad6025164451acc3fec5c24e7810c5f44a1b02bc8c5e9d85c115947"
+        "packages/core/src/backend/services/executions/repo/claims.ts": "338ab6a25dda50026d03b4d15d8b59760b3d3a0bacb326b8130cdd2d17424b83"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "reason": "Repository internals of the Cancel claim fix. The adopter-visible rule, a Cancel follows arrival order, is unchanged and already in the wfgraph-core skill.",
       "evidence": [
-        "git log 0570e6c6^..HEAD for the path",
-        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/cron.ts": {
@@ -5481,16 +5464,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/index.ts": {
-      "fingerprint": "4fb4bce964f5a42c893ffd638ca708d28496b7273c6669c9fe6e009f32b71ec6",
+      "fingerprint": "dfb53d620bd9d12cd83c2ae6f2869e0757a7f08c339de923bd44f2b70bdb2c9b",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/index.ts": "7d79b3646c11ed480211b3f57de650162101db6ca1f7a395b37ee91ff2642c63"
+        "packages/core/src/backend/services/executions/repo/index.ts": "afc8b367c3613d41da19c468305755f7ce0e5360fd172af8414a3f03d7bcb644"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "reason": "Repository internals of the Cancel claim fix. The adopter-visible rule, a Cancel follows arrival order, is unchanged and already in the wfgraph-core skill.",
       "evidence": [
-        "git log 0570e6c6^..HEAD for the path",
-        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/lease-clock.pg.test.ts": {
@@ -5936,15 +5919,16 @@
       ]
     },
     "source:packages/evals/src/agent/authoring-scenarios.ts": {
-      "fingerprint": "b87a71dafeb48d0504571eeea528bcf8fd319fa0be730bc9a6bc86b8ee6c8458",
+      "fingerprint": "9f1ba62598939a64ae54bef0b39c7b2de15e5368e0ff5a07b94ef15544faa962",
       "snapshot": {
-        "packages/evals/src/agent/authoring-scenarios.ts": "72326d4f9be1519206b6d1b06ec8bd8a5526c7e798e23f94ceddcd369f45adae"
+        "packages/evals/src/agent/authoring-scenarios.ts": "c34695c5c0d11421a0da456fbbca467239e638a37c61b0a33411bf47a9c942d9"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios for the build agent. @wfgraph/evals is neither built nor published, and no adopter task touches it.",
+      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
       "evidence": [
-        "packages/evals/package.json is private and in the changesets ignore list"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/evals/src/agent/harness.ts": {
@@ -5960,51 +5944,55 @@
       ]
     },
     "source:packages/evals/src/agent/judges/completion.test.ts": {
-      "fingerprint": "cf9b6e08780360cea75a9b186407adc3c7f4f09b8e2717fae1df65a7b3d33728",
+      "fingerprint": "902ae56b69a102a64d91c820cc3f29b0ce5d026591e846ed9feeff0f55e098b4",
       "snapshot": {
-        "packages/evals/src/agent/judges/completion.test.ts": "2c29ec4dcbfefe946665379adfc55e275a51cae112962c488e64a6bb573c48f3"
+        "packages/evals/src/agent/judges/completion.test.ts": "3769784744929a7e2fd6cc6370a62b4b278e869b39a18c5daca902ad00a63bea"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios for the build agent. @wfgraph/evals is neither built nor published, and no adopter task touches it.",
+      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
       "evidence": [
-        "packages/evals/package.json is private and in the changesets ignore list"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/evals/src/agent/judges/completion.ts": {
-      "fingerprint": "11d0bfe74d026727e27c39410c300796d19d1594b19dbdc5cd8a66e10446d12f",
+      "fingerprint": "97992bdfd46e26272259a12d5c0bf07ac7fb14ed71c4d91de021f0c9df8ecd2f",
       "snapshot": {
-        "packages/evals/src/agent/judges/completion.ts": "5e2fb53c695e1d512ae985e031c9fe8552355aa7ba3ec04971807208cd7001b3"
+        "packages/evals/src/agent/judges/completion.ts": "194128b3e33fa31786d38dd73a82e0fb7080d35ddf479706ecdb5c819f3c08f1"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios for the build agent. @wfgraph/evals is neither built nor published, and no adopter task touches it.",
+      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
       "evidence": [
-        "packages/evals/package.json is private and in the changesets ignore list"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/evals/src/agent/judges/evidence-use.test.ts": {
-      "fingerprint": "3fe8a4a37f47c48871f7b67470d9c6e3e8f71ae328877ae8a7ece938adffa9d2",
+      "fingerprint": "0a8c95f1a424f04c766f18a92acdcdefec3d2f4de7e481305036fb7b7c2f4a56",
       "snapshot": {
-        "packages/evals/src/agent/judges/evidence-use.test.ts": "9c6edc00615ee04af193d00a6e781a1ba1404a2fb5fbd47a26d9f2d50eb97cb7"
+        "packages/evals/src/agent/judges/evidence-use.test.ts": "59b0ddfddb99d2232c37c1856675eb4bc20ad8eddaf350be495f79fd30ec7449"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios for the build agent. @wfgraph/evals is neither built nor published, and no adopter task touches it.",
+      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
       "evidence": [
-        "packages/evals/package.json is private and in the changesets ignore list"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/evals/src/agent/judges/evidence-use.ts": {
-      "fingerprint": "939147df233a6aaf5d44578894c63b51fda9d6412cd2d5a1d597a8a78d69a57c",
+      "fingerprint": "e1ebd1be4351d3d0ab95881db707d78e573ae5cb9854de1aff71a1e6c365fcef",
       "snapshot": {
-        "packages/evals/src/agent/judges/evidence-use.ts": "445b771ff3514443384e571b741bbadf5d283931d4db2379b285f6e130a6a538"
+        "packages/evals/src/agent/judges/evidence-use.ts": "d67f1f3e90d82e70d13c4ba1392d93e89b848f896e5fb80a3f6ca96437403d9a"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios for the build agent. @wfgraph/evals is neither built nor published, and no adopter task touches it.",
+      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
       "evidence": [
-        "packages/evals/package.json is private and in the changesets ignore list"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/evals/src/agent/judges/graph.ts": {
@@ -6748,16 +6736,16 @@
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/cancel-order.ts": {
-      "fingerprint": "c6b2697cbfe74c21d70dc8702b7b3a55929b69340f53881aa81cf9956b026a21",
+      "fingerprint": "b18fe259f06464e0f58c2fb48218b4bba4210af16220b72ccf32bac1bbf15ef1",
       "snapshot": {
-        "packages/core/src/backend/services/executions/repo/cancel-order.ts": "37516afbecf8a31e20e21cbcb83783a491f476872aa0375826621ac4b3bca7c5"
+        "packages/core/src/backend/services/executions/repo/cancel-order.ts": "6f46403d0234821c6789a51622d5f7adb8435e5e10ebb903957a15cd1749c910"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
       "outcome": "out-of-scope",
-      "reason": "Executor, engine and persistence internals behind the Cancel arrival-order rule, the Wait catch-up rule, the settled delivery state and the inbox poll marker. The two adopter-visible rules are in the wfgraph-core skill, and the rest is unobservable to a host.",
+      "reason": "Repository internals of the Cancel claim fix. The adopter-visible rule, a Cancel follows arrival order, is unchanged and already in the wfgraph-core skill.",
       "evidence": [
-        "git log 0570e6c6^..HEAD for the path",
-        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/core/src/backend/services/executions/repo/executor-activity.ts": {
@@ -6862,6 +6850,58 @@
       "evidence": [
         "git log 0570e6c6^..HEAD for the path",
         "pnpm run test, test:postgres and test:reliability pass at HEAD"
+      ]
+    },
+    "source:packages/agent/src/tools/reference-tools.test.ts": {
+      "fingerprint": "e7bf9fe42974f61c125f691f1de1f6de4943bee3df348841b84fe455a7969d47",
+      "snapshot": {
+        "packages/agent/src/tools/reference-tools.test.ts": "4d7f335eb2b701c0822675764252ee110355a97cc68e086f3bf9579bf4087803"
+      },
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "outcome": "out-of-scope",
+      "reason": "The build agent's tools and prompt. The one contract an MCP client sees, list_references taking nodeIds, is in the mcp skill and docs/embedding.md; the prompt text reaches a client as the server's instructions and is not skill content.",
+      "evidence": [
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/client/src/lib/agent-tool-labels.ts": {
+      "fingerprint": "0f74001f9aa8a3ba9c301cb7f6e99090a4ecfa17a92ab6efc6e7a7f072079be1",
+      "snapshot": {
+        "packages/client/src/lib/agent-tool-labels.ts": "1886d52d5b52e66dea2600787e22ba261d0afb3ee15a0a7d3bc1951427d7882f"
+      },
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "outcome": "out-of-scope",
+      "reason": "The chat panel's row label for a tool call. No published skill teaches the editor's panel.",
+      "evidence": [
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/evals/src/agent/focused-scenarios.test.ts": {
+      "fingerprint": "a6a058f251b447bc41fb151a407a0182988e1a101eaa58def4a2f4ed73e03223",
+      "snapshot": {
+        "packages/evals/src/agent/focused-scenarios.test.ts": "1a1516a4499b776a71300e1aa29735390853fe09416e7ba023e64ac92f4dea54"
+      },
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "outcome": "out-of-scope",
+      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
+      "evidence": [
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/evals/src/agent/focused-scenarios.ts": {
+      "fingerprint": "8c6d724a1ff48faca22bc813df6a56cb55f3afdccdcccc2c7fcb0109aed067af",
+      "snapshot": {
+        "packages/evals/src/agent/focused-scenarios.ts": "e8d7276bcc8c8fb972969fd8adb5741acc9bf1128996fe2600d73793439431fa"
+      },
+      "head": "878e9d88c0b8eb29851b405ba047a7bf19383831",
+      "outcome": "out-of-scope",
+      "reason": "The private eval harness, its judges and scenarios. It is neither built nor published.",
+      "evidence": [
+        "git log 3fa8dc9e..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     }
   }
