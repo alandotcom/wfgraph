@@ -2,9 +2,7 @@
   "version": "7",
   "dialect": "sqlite",
   "id": "9a3e884f-4576-4e28-9305-9eb32c8d180a",
-  "prevIds": [
-    "f141e99e-2894-43db-a4e9-e26a5c07413c"
-  ],
+  "prevIds": ["f141e99e-2894-43db-a4e9-e26a5c07413c"],
   "ddl": [
     {
       "name": "integrations",
@@ -2151,13 +2149,9 @@
     {
       "table": "oauth_authorization_attempts",
       "name": "fk_oauth_authorization_attempts_integration_id_integrations_id_fk",
-      "columns": [
-        "integration_id"
-      ],
+      "columns": ["integration_id"],
       "tableTo": "integrations",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2166,13 +2160,9 @@
     {
       "table": "workflow_cancel_decisions",
       "name": "fk_workflow_cancel_decisions_delivery_id_workflow_event_inbox_id_fk",
-      "columns": [
-        "delivery_id"
-      ],
+      "columns": ["delivery_id"],
       "tableTo": "workflow_event_inbox",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2181,13 +2171,9 @@
     {
       "table": "workflow_event_subscriptions",
       "name": "fk_workflow_event_subscriptions_workflow_id_workflows_id_fk",
-      "columns": [
-        "workflow_id"
-      ],
+      "columns": ["workflow_id"],
       "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2196,13 +2182,9 @@
     {
       "table": "workflow_execution_events",
       "name": "fk_workflow_execution_events_workflow_id_workflows_id_fk",
-      "columns": [
-        "workflow_id"
-      ],
+      "columns": ["workflow_id"],
       "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2211,13 +2193,9 @@
     {
       "table": "workflow_execution_events",
       "name": "fk_workflow_execution_events_execution_id_workflow_executions_id_fk",
-      "columns": [
-        "execution_id"
-      ],
+      "columns": ["execution_id"],
       "tableTo": "workflow_executions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2226,13 +2204,9 @@
     {
       "table": "workflow_execution_logs",
       "name": "fk_workflow_execution_logs_execution_id_workflow_executions_id_fk",
-      "columns": [
-        "execution_id"
-      ],
+      "columns": ["execution_id"],
       "tableTo": "workflow_executions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2241,13 +2215,9 @@
     {
       "table": "workflow_execution_schedule",
       "name": "fk_workflow_execution_schedule_execution_id_workflow_executions_id_fk",
-      "columns": [
-        "execution_id"
-      ],
+      "columns": ["execution_id"],
       "tableTo": "workflow_executions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2256,13 +2226,9 @@
     {
       "table": "workflow_execution_schedule",
       "name": "fk_workflow_execution_schedule_inbox_id_workflow_event_inbox_id_fk",
-      "columns": [
-        "inbox_id"
-      ],
+      "columns": ["inbox_id"],
       "tableTo": "workflow_event_inbox",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2271,13 +2237,9 @@
     {
       "table": "workflow_execution_schedule",
       "name": "fk_workflow_execution_schedule_workflow_id_workflows_id_fk",
-      "columns": [
-        "workflow_id"
-      ],
+      "columns": ["workflow_id"],
       "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2286,13 +2248,9 @@
     {
       "table": "workflow_execution_steps",
       "name": "fk_workflow_execution_steps_schedule_id_workflow_execution_schedule_id_fk",
-      "columns": [
-        "schedule_id"
-      ],
+      "columns": ["schedule_id"],
       "tableTo": "workflow_execution_schedule",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2301,13 +2259,9 @@
     {
       "table": "workflow_executions",
       "name": "fk_workflow_executions_workflow_id_workflows_id_fk",
-      "columns": [
-        "workflow_id"
-      ],
+      "columns": ["workflow_id"],
       "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2316,13 +2270,9 @@
     {
       "table": "workflow_executions",
       "name": "fk_workflow_executions_workflow_version_id_workflow_versions_id_fk",
-      "columns": [
-        "workflow_version_id"
-      ],
+      "columns": ["workflow_version_id"],
       "tableTo": "workflow_versions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2331,13 +2281,9 @@
     {
       "table": "workflow_versions",
       "name": "fk_workflow_versions_workflow_id_workflows_id_fk",
-      "columns": [
-        "workflow_id"
-      ],
+      "columns": ["workflow_id"],
       "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2346,13 +2292,9 @@
     {
       "table": "workflow_wait_states",
       "name": "fk_workflow_wait_states_execution_id_workflow_executions_id_fk",
-      "columns": [
-        "execution_id"
-      ],
+      "columns": ["execution_id"],
       "tableTo": "workflow_executions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2361,13 +2303,9 @@
     {
       "table": "workflow_wait_states",
       "name": "fk_workflow_wait_states_workflow_id_workflows_id_fk",
-      "columns": [
-        "workflow_id"
-      ],
+      "columns": ["workflow_id"],
       "tableTo": "workflows",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
@@ -2376,13 +2314,9 @@
     {
       "table": "workflows",
       "name": "fk_workflows_published_version_id_workflow_versions_id_fk",
-      "columns": [
-        "published_version_id"
-      ],
+      "columns": ["published_version_id"],
       "tableTo": "workflow_versions",
-      "columnsTo": [
-        "id"
-      ],
+      "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
       "onDelete": "RESTRICT",
       "nameExplicit": false,
@@ -2391,139 +2325,105 @@
     {
       "table": "workflow_cancel_decisions",
       "name": "workflow_cancel_decisions_pk",
-      "columns": [
-        "delivery_id",
-        "workflow_id"
-      ],
+      "columns": ["delivery_id", "workflow_id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "workflow_event_subscriptions",
       "name": "workflow_event_subscriptions_pk",
-      "columns": [
-        "workflow_id",
-        "event_name",
-        "role"
-      ],
+      "columns": ["workflow_id", "event_name", "role"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "workflow_execution_steps",
       "name": "workflow_execution_steps_pk",
-      "columns": [
-        "schedule_id",
-        "step_id"
-      ],
+      "columns": ["schedule_id", "step_id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "integrations",
       "name": "integrations_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "oauth_authorization_attempts",
       "name": "oauth_authorization_attempts_pk",
-      "columns": [
-        "state_hash"
-      ],
+      "columns": ["state_hash"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "workflow_event_inbox",
       "name": "workflow_event_inbox_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "workflow_execution_events",
       "name": "workflow_execution_events_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "workflow_execution_logs",
       "name": "workflow_execution_logs_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "workflow_execution_schedule",
       "name": "workflow_execution_schedule_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "workflow_executions",
       "name": "workflow_executions_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "workflow_versions",
       "name": "workflow_versions_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "workflow_wait_states",
       "name": "workflow_wait_states_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "workflows",
       "name": "workflows_pk",
-      "columns": [
-        "id"
-      ],
+      "columns": ["id"],
       "nameExplicit": false,
       "entityType": "pks"
     },
     {
       "table": "workflow_wait_states",
       "name": "workflow_wait_states_resume_token_unique",
-      "columns": [
-        "resume_token"
-      ],
+      "columns": ["resume_token"],
       "nameExplicit": false,
       "entityType": "uniques"
     },
     {
       "table": "workflows",
       "name": "workflows_name_unique",
-      "columns": [
-        "name"
-      ],
+      "columns": ["name"],
       "nameExplicit": false,
       "entityType": "uniques"
     },
