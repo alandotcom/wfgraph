@@ -28,7 +28,12 @@ import type { StepResult } from "@wfgraph/shared/actions/step-result";
 export type HandlerBag<TInput> = {
   /** The node's resolved config, decoded through the schema the author declared. */
   readonly input: TInput;
-  /** `"test"` when the editor is running the workflow, `"live"` otherwise. */
+  /**
+   * `"test"` for a Draft run, and for a run of a published version whose
+   * workflow is in Test mode; `"live"` otherwise. Every run calls the handler,
+   * so a handler that must not reach a real system during a test run checks
+   * this.
+   */
   readonly runMode: "live" | "test";
   readonly executionId: string;
   readonly nodeId: string;

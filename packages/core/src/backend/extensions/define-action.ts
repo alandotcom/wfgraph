@@ -75,11 +75,14 @@ export type ActionIdentity = {
 
   /**
    * Whether running this action changes something outside the workflow: a
-   * message sent, a record written or removed. Defaults to `false`. Before a
-   * published run starts in Live mode, the editor's run dialog counts the
-   * steps declaring `true`. Grouping does not read the field, so an action
-   * declaring it may sit in a Group. `ActionStepInput` separates this from the
-   * replay sense of the phrase.
+   * message sent, a record written or removed. Defaults to `false`. The
+   * catalog carries it to the editor, whose Live-mode run dialog counts the
+   * integration steps declaring `true`. It changes nothing about how the
+   * handler runs: a Draft run and a Test-mode run call the handler as a Live
+   * run does, with `runMode: "test"`, so a handler that must not reach a real
+   * system checks `runMode` itself. Grouping does not read the field, so an
+   * action declaring it may sit in a Group. `ActionStepInput` separates this
+   * from the replay sense of the phrase.
    */
   sideEffect?: boolean | undefined;
 

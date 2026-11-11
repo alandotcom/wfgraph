@@ -64,7 +64,15 @@ const cancelAppointment = defineAction({
     cancelledAt: z.iso.datetime(),
   }),
   // A throw fails the node. The run log shows the message.
-  handler({ input }) {
+  handler({ input, runMode }) {
+    // A Draft run calls this handler too. See "Test runs call your handler".
+    if (runMode === "test") {
+      return {
+        appointmentId: input.appointmentId,
+        status: "skipped",
+        cancelledAt: new Date().toISOString(),
+      };
+    }
     return {
       appointmentId: input.appointmentId,
       status: "cancelled",
@@ -106,6 +114,23 @@ await wfgraph.events.send(appointmentCreated, {
 
 `examples/app.ts` is the same call with four Events and one custom action. That file is
 correct. If this file disagrees with it, this file is wrong.
+
+## Test runs call your handler
+
+A Draft run started from the editor runs with `runMode: "test"`, and so does a run of a
+published version while its workflow is in Test mode. Every run calls the handler of every
+action node it reaches. Workflow Graph does not skip or stub a host action in a test run, so a
+Workflow Builder's Draft run of a refund workflow issues a real refund unless the handler
+checks `runMode`. An action that charges, cancels, deletes or sends answers without doing so
+when `runMode` is `"test"`, or does it against a sandbox. The Run draft dialog tells the
+Workflow Builder that a Draft run sends to test recipients, which holds only for handlers that
+check `runMode`.
+
+`sideEffect: true` declares that an action changes something outside the workflow. The
+catalog carries it to the editor, and the run dialog of a Live-mode published run counts the
+integration steps that declare it; a host action is not counted there. It does not change
+whether or how the handler runs: a step declaring it is called in a test run exactly as a step
+declaring nothing is.
 
 ## Dynamic host action fields
 

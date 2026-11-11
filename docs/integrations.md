@@ -116,8 +116,10 @@ heading in the selector still writes one.
 message sent, a record written or removed. It defaults to `false`, which says the action
 only reads. Before a published run starts in Live mode, the run dialog counts the steps
 carrying it and names their integrations, so the Workflow Builder sees what the run will
-reach outside the workflow. Grouping does not read the field, and an action carrying it
-may sit in a Group. Note that this is a narrower question than the replay sense of the
+reach outside the workflow. It does not change whether the handler runs: a Draft run and a
+Test-mode run call every handler, declaring it or not, with `runMode: "test"`, and the
+handler decides what a test run does. Grouping does not read the field, and an action
+carrying it may sit in a Group. Note that this is a narrower question than the replay sense of the
 phrase the next section uses, where a lookup's own HTTP call counts too because `step.run`
 has to memoize it. `defineAction` takes the same field.
 
@@ -194,6 +196,12 @@ handler — those are the host bridge.
 grant issued; it is empty for the form an operator is still filling in. A grant asks for the
 narrow scopes its actions need, so a provider's permission refusal on a wider read can be
 what proves the credential valid. `packages/plugins/src/resend/test.ts` is the worked case.
+
+**A test run calls the handler.** A Draft run, and a run of a published version whose
+workflow is in Test mode, carries `runMode: "test"` and calls every handler it reaches. A
+handler that would reach a real person or a real record checks `runMode` and answers without
+doing so, as the built-in Twilio and Resend actions do. This holds for a host action exactly
+as for an integration.
 
 **Host `defineAction` stays Promise-first.** An adopter needs no Effect. An `async` handler
 fails by a throw, and the message becomes the sentence in the run log. Durable work is
