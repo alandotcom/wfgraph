@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { unreadableDraft } from "#src/lib/workflow-save-test-support";
 import { toast } from "sonner";
 import { createStore } from "jotai";
 import {
@@ -53,7 +54,10 @@ describe("rememberTestPayload", () => {
     const store = createStore();
     // The edit queues a debounced save. A save that never answers keeps it off
     // the global fetch a later file in this worker stubs.
-    store.set(workflowApiAtom, { update: () => new Promise(() => undefined) });
+    store.set(workflowApiAtom, {
+      update: () => new Promise(() => undefined),
+      read: unreadableDraft,
+    });
     store.set(currentWorkflowIdAtom, "workflow_1");
     store.set(loadWorkflowGraphAtom, {
       nodes: [lifecycleNode("t"), actionNode("a")],

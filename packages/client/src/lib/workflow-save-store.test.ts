@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "jotai";
 import { toast } from "sonner";
-import { ApiError, type SavedWorkflow } from "#src/lib/rpc-client";
+import {
+  ApiError,
+  type SavedWorkflow,
+  toEditorGraph,
+  toSerializedGraph,
+} from "#src/lib/rpc-client";
 import { DRAFT_CONFLICT_CODE } from "@wfgraph/shared/rpc/error-codes";
 import {
   autosaveDelayAtom,
@@ -23,6 +28,7 @@ import {
 import {
   hydrateWorkflowAtom,
   nodesAtom,
+  recordObservedRemoteDraftRevisionAtom,
   remoteDraftChangeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -60,10 +66,34 @@ const updateMock = vi.fn(
   }
 );
 
+/**
+ * Reads back the stored draft after a request whose answer was lost. By
+ * default the read fails as well, as it does while the network is down.
+ */
+const readMock = vi.fn((_workflowId: string): Promise<SavedWorkflow> =>
+  Promise.reject(new ApiError(500, "network is down"))
+);
+
+/** What reading the draft back returns once the server stored `graph`. */
+function storedDraft(
+  workflowId: string,
+  graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+  draftRevision: number
+): SavedWorkflow {
+  return {
+    ...savedWorkflow(workflowId),
+    ...toEditorGraph(toSerializedGraph(graph)),
+    draftRevision,
+  };
+}
+
 /** A store wired to the mock API, which is the only thing tests substitute. */
 function createSaveStore(workflowId: string | null = "workflow_1") {
   const store = createStore();
-  store.set(workflowApiAtom, { update: updateMock as never });
+  store.set(workflowApiAtom, {
+    update: updateMock as never,
+    read: readMock,
+  });
   // A failed graph is resent on a timer; a case that is not about that timer
   // keeps it from firing inside a later case of this file.
   store.set(saveRetryBackoffAtom, { initialMs: 600_000, maxMs: 600_000 });
@@ -118,6 +148,8 @@ async function waitForCalls(count: number) {
 
 beforeEach(() => {
   pending.length = 0;
+  updateMock.mockClear();
+  readMock.mockClear();
 });
 
 afterEach(() => {
@@ -860,6 +892,138 @@ describe("a graph whose save failed", () => {
     await vi.waitFor(() => {
       expect(store.get(hasUnsavedChangesAtom)).toBe(false);
     });
+  });
+});
+
+describe("a write whose answer was lost", () => {
+  const conflict = () =>
+    new ApiError(409, "The workflow draft changed", DRAFT_CONFLICT_CODE);
+  const firstGraph = { nodes: [actionNode("first")], edges: [] };
+  const secondGraph = { nodes: [actionNode("second")], edges: [] };
+
+  it("is saved when the stored draft holds it", async () => {
+    const errorToast = vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = createSaveStore();
+    readMock.mockResolvedValueOnce(storedDraft("workflow_1", firstGraph, 2));
+
+    const save = store.set(saveWorkflowAtom, firstGraph, { immediate: true });
+    pending.shift()?.reject(new ApiError(500, "Request failed"));
+
+    expect(await save).toMatchObject({ ok: true });
+    expect(readMock).toHaveBeenCalledWith("workflow_1");
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    expect(store.get(lastSaveErrorAtom)).toBeNull();
+    expect(store.get(hasHeldGraphSaveAtom)).toBe(false);
+    expect(errorToast).not.toHaveBeenCalled();
+
+    const next = store.set(saveWorkflowAtom, secondGraph, { immediate: true });
+    expect(updateMock.mock.calls[1]?.[2]).toBe(2);
+    pending
+      .shift()
+      ?.resolve({ ...savedWorkflow("workflow_1"), draftRevision: 3 });
+    await next;
+  });
+
+  it("is adopted on the conflict that follows it, and the newer edit is saved on top", async () => {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = createSaveStore();
+
+    // The write commits as revision 2, but the answer never arrives and the
+    // read-back fails too.
+    const first = store.set(saveWorkflowAtom, firstGraph, { immediate: true });
+    pending.shift()?.reject(new ApiError(500, "Request failed"));
+    expect(await first).toMatchObject({ ok: false });
+
+    // The next edit still expects revision 1.
+    readMock.mockResolvedValueOnce(storedDraft("workflow_1", firstGraph, 2));
+    const second = store.set(saveWorkflowAtom, secondGraph, {
+      immediate: true,
+    });
+    expect(updateMock.mock.calls[1]?.[2]).toBe(1);
+    pending.shift()?.reject(conflict());
+
+    await waitForCalls(3);
+    expect(updateMock.mock.calls[2]?.[1]).toMatchObject({
+      nodes: [expect.objectContaining({ id: "second" })],
+    });
+    expect(updateMock.mock.calls[2]?.[2]).toBe(2);
+    pending
+      .shift()
+      ?.resolve({ ...savedWorkflow("workflow_1"), draftRevision: 3 });
+
+    expect(await second).toMatchObject({ ok: true });
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    expect(store.get(lastSaveErrorAtom)).toBeNull();
+  });
+
+  it("keeps the conflict when the stored draft holds a graph written elsewhere", async () => {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = createSaveStore();
+    readMock.mockResolvedValueOnce(
+      storedDraft("workflow_1", { nodes: [actionNode("theirs")], edges: [] }, 2)
+    );
+
+    const save = store.set(saveWorkflowAtom, secondGraph, { immediate: true });
+    const refusal = conflict();
+    pending.shift()?.reject(refusal);
+    expect(await save).toMatchObject({ ok: false, error: refusal });
+
+    const blocked = await store.set(saveWorkflowAtom, firstGraph, {
+      immediate: true,
+    });
+    expect(blocked).toMatchObject({ ok: false, error: refusal });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads back once per request, so a second conflict blocks", async () => {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = createSaveStore();
+    const first = store.set(saveWorkflowAtom, firstGraph, { immediate: true });
+    pending.shift()?.reject(new ApiError(500, "Request failed"));
+    await first;
+
+    readMock.mockResolvedValueOnce(storedDraft("workflow_1", firstGraph, 2));
+    const second = store.set(saveWorkflowAtom, secondGraph, {
+      immediate: true,
+    });
+    pending.shift()?.reject(conflict());
+    await waitForCalls(3);
+    pending.shift()?.reject(conflict());
+
+    expect(await second).toMatchObject({ ok: false });
+    expect(updateMock).toHaveBeenCalledTimes(3);
+    // One read after the lost answer, one after the first conflict.
+    expect(readMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("is not reported as a draft changed elsewhere while its resend is pending", async () => {
+    vi.spyOn(toast, "error").mockImplementation(() => "");
+    const store = createSaveStore(null);
+    store.set(
+      hydrateWorkflowAtom,
+      savedWorkflow("workflow_a", { nodes: [actionNode("before")], edges: [] })
+    );
+    store.set(saveRetryBackoffAtom, { initialMs: 60_000, maxMs: 60_000 });
+
+    const save = store.set(saveWorkflowAtom, firstGraph, { immediate: true });
+    pending.shift()?.reject(new ApiError(500, "Request failed"));
+    await save;
+
+    // The draft stream reports the revision the lost write committed.
+    store.set(recordObservedRemoteDraftRevisionAtom, {
+      workflowId: "workflow_a",
+      draftRevision: 2,
+    });
+    expect(store.get(remoteDraftChangeAtom)).toBeNull();
+
+    readMock.mockResolvedValueOnce(storedDraft("workflow_a", firstGraph, 2));
+    store.set(retryHeldGraphSavesAtom);
+    await waitForCalls(2);
+    pending.shift()?.reject(conflict());
+    await vi.waitFor(() => {
+      expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    });
+    expect(store.get(remoteDraftChangeAtom)).toBeNull();
   });
 });
 

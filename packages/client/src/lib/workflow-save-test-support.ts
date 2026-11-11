@@ -21,3 +21,12 @@ export function savedWorkflow(
     hasUnpublishedChanges: false,
   };
 }
+
+/**
+ * A draft read-back that fails, as it does while the network is down. The save
+ * queue reads the draft back only after a request with no usable answer or a
+ * draft conflict, so a case about neither never observes it.
+ */
+export function unreadableDraft(_workflowId: string): Promise<SavedWorkflow> {
+  return Promise.reject(new Error("The draft read-back is not under test"));
+}

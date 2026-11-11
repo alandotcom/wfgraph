@@ -69,7 +69,7 @@ import {
   type WorkflowEdge,
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
-import { savedWorkflow } from "./workflow-save-test-support";
+import { savedWorkflow, unreadableDraft } from "./workflow-save-test-support";
 import { PASTE_OFFSET } from "#src/lib/copy-selection";
 import { formatTemplateToken } from "@wfgraph/shared/graph/node-references";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
@@ -97,7 +97,10 @@ const updateMock = vi.fn(() => Promise.resolve(savedWorkflow("workflow_1")));
  */
 function createGraphStore(nodes: WorkflowNode[], edges: WorkflowEdge[] = []) {
   const store = createStore();
-  store.set(workflowApiAtom, { update: updateMock as never });
+  store.set(workflowApiAtom, {
+    update: updateMock as never,
+    read: unreadableDraft,
+  });
   store.set(autosaveDelayAtom, 0);
   store.set(currentWorkflowIdAtom, "workflow_1");
   store.set(loadWorkflowGraphAtom, { nodes, edges });
@@ -1120,7 +1123,10 @@ describe("installRemoteWorkflowAtom", () => {
   it("puts a drag an agent turn interrupted back instead of saving it", async () => {
     const update = vi.fn(() => Promise.resolve(savedWorkflow("workflow_1")));
     const store = createGraphStore(...standardGraph());
-    store.set(workflowApiAtom, { update: update as never });
+    store.set(workflowApiAtom, {
+      update: update as never,
+      read: unreadableDraft,
+    });
     store.set(onNodesChangeAtom, [
       {
         type: "position",

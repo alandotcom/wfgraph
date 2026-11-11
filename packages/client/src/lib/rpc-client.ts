@@ -256,14 +256,20 @@ export type ExecutionLogsResult = RpcOutput<
   typeof rpc.workflow.getExecutionLogs
 >;
 
-export function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
-  const graphData = toWorkflowGraphData(payload.graph);
-
+/** The editor's nodes and edges for a wire graph, as a load hands them to the canvas. */
+export function toEditorGraph(graph: SerializedWorkflowGraph): {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+} {
+  const graphData = toWorkflowGraphData(graph);
   return {
-    ...payload,
     nodes: graphData.nodes.map(toEditorNode),
     edges: graphData.edges.map(toEditorEdge),
   };
+}
+
+export function toSavedWorkflow(payload: WorkflowApiPayload): SavedWorkflow {
+  return { ...payload, ...toEditorGraph(payload.graph) };
 }
 
 function toGraphPayload(input: {
@@ -295,7 +301,7 @@ export type ConfigOptionField = Extract<
 >["fields"][number];
 
 /**
- * Saving a workflow, for the save store.
+ * Saving a workflow and reading back what a save stored, for the save store.
  *
  * Everything a component writes goes through `orpcQuery`, where the cache
  * consequences of a write live beside the write. This one stays because the
@@ -306,6 +312,9 @@ export type ConfigOptionField = Extract<
  * rather than a bare function.
  */
 export const workflowApi = {
+  /** The stored workflow, read past the query cache. */
+  read: (id: string): Promise<SavedWorkflow> =>
+    rpc.workflow.getById({ workflowId: id }).then(toSavedWorkflow),
   update: (
     id: string,
     workflow: Partial<WorkflowData>,

@@ -30,7 +30,7 @@ import {
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import type { WorkflowData } from "#src/lib/rpc-client";
-import { savedWorkflow } from "./workflow-save-test-support";
+import { savedWorkflow, unreadableDraft } from "./workflow-save-test-support";
 
 export type { Store };
 export type Graph = { nodes: WorkflowNode[]; edges: WorkflowEdge[] };
@@ -115,7 +115,7 @@ export function ungroupedGraph(): Graph {
 
 export function createGraphStore(graph: Graph): Store {
   const store = createStore();
-  store.set(workflowApiAtom, { update: updateMock });
+  store.set(workflowApiAtom, { update: updateMock, read: unreadableDraft });
   store.set(autosaveDelayAtom, 0);
   store.set(currentWorkflowIdAtom, "workflow_1");
   store.set(recordLoadedDraftRevisionAtom, {

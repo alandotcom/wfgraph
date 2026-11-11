@@ -41,7 +41,7 @@ import {
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
-import { savedWorkflow } from "./workflow-save-test-support";
+import { savedWorkflow, unreadableDraft } from "./workflow-save-test-support";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 
 function node(id: string, x: number): PersistedWorkflowNode {
@@ -461,7 +461,10 @@ describe("comparison session store", () => {
     const store = createStore();
     store.set(currentWorkflowIdAtom, "workflow_1");
     store.set(autosaveDelayAtom, 0);
-    store.set(workflowApiAtom, { update: update as never });
+    store.set(workflowApiAtom, {
+      update: update as never,
+      read: unreadableDraft,
+    });
     installComparison(store, {
       workflowId: "workflow_1",
       payload: comparison,

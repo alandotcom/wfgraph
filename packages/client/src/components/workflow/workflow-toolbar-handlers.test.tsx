@@ -470,10 +470,12 @@ describe("useWorkflowActions Run graph selection", () => {
     await confirmRun(view);
 
     await waitFor(() => expect(errorToast).toHaveBeenCalledTimes(1));
-    // Only the refused save happens. Running would execute the graph the server
-    // last accepted while the canvas paints statuses on the newer one.
+    // Only the refused save happens, and the read-back of the draft that tells
+    // a 500 apart from a write that committed. Running would execute the graph
+    // the server last accepted while the canvas paints statuses on the newer one.
     expect(requests.map((request) => request.path)).toEqual([
       "workflow/update",
+      "workflow/getById",
     ]);
   });
 

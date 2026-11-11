@@ -11,7 +11,10 @@ import { toast } from "sonner";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useSetPublishedMode } from "#src/hooks/use-set-published-mode";
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
-import { savedWorkflow } from "#src/lib/workflow-save-test-support";
+import {
+  savedWorkflow,
+  unreadableDraft,
+} from "#src/lib/workflow-save-test-support";
 import {
   currentWorkflowIdAtom,
   currentWorkflowModeAtom,
@@ -42,7 +45,10 @@ function renderProbe(options: {
     mode: options.ask,
   }));
 
-  store.set(workflowApiAtom, { update: update as never });
+  store.set(workflowApiAtom, {
+    update: update as never,
+    read: unreadableDraft,
+  });
   store.set(currentWorkflowIdAtom, WORKFLOW_ID);
   store.set(currentWorkflowModeAtom, options.currentMode ?? "test");
   store.set(currentWorkflowNameAtom, "Appointment reminders");

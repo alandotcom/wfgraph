@@ -11,7 +11,7 @@ import {
   nodesAtom,
   undoAtom,
 } from "#src/lib/workflow-graph-store";
-import { savedWorkflow } from "./workflow-save-test-support";
+import { savedWorkflow, unreadableDraft } from "./workflow-save-test-support";
 import {
   autosaveDelayAtom,
   currentWorkflowIdAtom,
@@ -41,6 +41,7 @@ function createGraphStore(nodes: WorkflowNode[]) {
   const store = createStore();
   store.set(workflowApiAtom, {
     update: vi.fn(() => Promise.resolve(savedWorkflow("workflow_1"))) as never,
+    read: unreadableDraft,
   });
   store.set(autosaveDelayAtom, 0);
   store.set(currentWorkflowIdAtom, "workflow_1");

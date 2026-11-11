@@ -22,6 +22,7 @@ import {
   isSavingAtom,
   lastSaveErrorAtom,
   lastSavedAtAtom,
+  openWorkflowResendPendingAtom,
   outstandingGraph,
   recordLoadedDraftRevisionAtom,
   resendHeldGraphAtom,
@@ -98,7 +99,9 @@ function remoteWorkflowUpdateDisposition(
   get: Getter
 ): RemoteWorkflowUpdateDisposition {
   const browserWorkIsIdle =
-    !get(isSavingAtom) && get(activeAgentTurnIdAtom) === null;
+    !get(isSavingAtom) &&
+    !get(openWorkflowResendPendingAtom) &&
+    get(activeAgentTurnIdAtom) === null;
 
   if (browserWorkIsIdle && get(hasUnsavedChangesAtom) && draftEditable(get)) {
     return "conflict";

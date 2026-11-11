@@ -30,7 +30,10 @@ import {
   successfulSaveGenerationAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
-import { savedWorkflow } from "#src/lib/workflow-save-test-support";
+import {
+  savedWorkflow,
+  unreadableDraft,
+} from "#src/lib/workflow-save-test-support";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
@@ -138,7 +141,10 @@ function renderPanel({
 } = {}) {
   const store = createStore();
   store.set(autosaveDelayAtom, 0);
-  store.set(workflowApiAtom, { update: async () => savedWorkflow("wf_1") });
+  store.set(workflowApiAtom, {
+    update: async () => savedWorkflow("wf_1"),
+    read: unreadableDraft,
+  });
   store.set(loadWorkflowGraphAtom, { nodes, edges });
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(currentWorkflowNameAtom, "Appointment reminders");

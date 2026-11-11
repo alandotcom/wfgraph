@@ -7,6 +7,7 @@ import { queryClient } from "#src/lib/query-client";
 import { ApiError, type SavedWorkflow, workflowApi } from "#src/lib/rpc-client";
 import { cacheWorkflowPublication, orpcQuery } from "#src/lib/rpc-query";
 import { groupStructureRefusalReason } from "@wfgraph/shared/graph/group-structure";
+import { storedDraftHoldsGraph } from "#src/lib/stored-draft-match";
 import {
   toPersistedEdge,
   toPersistedNodes,
@@ -90,7 +91,7 @@ export const successfulSaveGenerationAtom = atom(new Map<string, number>());
  * The subset of the workflow API this module calls, as an atom so a test can
  * substitute it per store rather than reassigning the shared client singleton.
  */
-type WorkflowSaveApi = Pick<typeof workflowApi, "update">;
+type WorkflowSaveApi = Pick<typeof workflowApi, "read" | "update">;
 export const workflowApiAtom = atom<WorkflowSaveApi>(workflowApi);
 
 /**
@@ -184,6 +185,13 @@ type PendingSave = {
    * stays down for a minute does not raise a toast per attempt.
    */
   automatic: boolean;
+  /**
+   * True once this request's failure was checked against the stored draft and
+   * the request was sent again on the revision found there. A second failure
+   * is then final, so a draft that keeps changing cannot hold the queue in a
+   * loop of reads.
+   */
+  reconciled: boolean;
 };
 
 /**
@@ -232,6 +240,14 @@ type SaveQueue = {
    * value the editor no longer displays.
    */
   failedGraphs: Map<string, HeldGraph>;
+  /**
+   * Graphs sent per workflow whose request got no usable answer, so whether
+   * the server stored them is unknown. Kept until a save of that workflow
+   * succeeds or it loads again. A draft conflict is checked against them: the
+   * stored draft holding one means the conflicting revision is the editor's
+   * own lost write rather than a write made elsewhere.
+   */
+  uncertainGraphs: Map<string, WorkflowGraphPatch[]>;
   /** The timer that resends the held graphs marked `resend`, or null. */
   retryTimeoutId: ReturnType<typeof setTimeout> | null;
   /** Automatic resends that failed since the last successful save. */
@@ -281,6 +297,7 @@ const saveQueueAtom = atom((): SaveQueue => ({
   pending: [],
   inFlight: null,
   failedGraphs: new Map(),
+  uncertainGraphs: new Map(),
   retryTimeoutId: null,
   retryFailureCount: 0,
   refusedGraphs: new Map(),
@@ -290,19 +307,44 @@ const saveQueueAtom = atom((): SaveQueue => ({
   isFlushing: false,
 }));
 
-/** The workflows holding a failed graph, mirrored from the queue so React can read it. */
-const heldGraphWorkflowIdsAtom = atom<ReadonlySet<string>>(new Set<string>());
+/**
+ * Each workflow holding a failed graph, mapped to whether the queue resends it
+ * by itself. Mirrored from the queue so React and derived atoms can read it.
+ */
+const heldGraphResendsAtom = atom<ReadonlyMap<string, boolean>>(
+  new Map<string, boolean>()
+);
 
 /**
  * Whether any workflow, the open one or one the editor has left, holds a graph
  * the server has not stored. Leaving the page while one does loses it.
  */
 export const hasHeldGraphSaveAtom = atom(
-  (get) => get(heldGraphWorkflowIdsAtom).size > 0
+  (get) => get(heldGraphResendsAtom).size > 0
 );
 
+/**
+ * Whether the open workflow holds a graph the queue is about to send again.
+ * Until that request answers, a newer revision on the server may be the
+ * editor's own write whose answer was lost, so it is not yet a conflict.
+ */
+export const openWorkflowResendPendingAtom = atom((get) => {
+  const workflowId = get(currentWorkflowIdAtom);
+  return (
+    workflowId !== null && get(heldGraphResendsAtom).get(workflowId) === true
+  );
+});
+
 function syncHeldGraphs(set: Setter, queue: SaveQueue) {
-  set(heldGraphWorkflowIdsAtom, new Set(queue.failedGraphs.keys()));
+  set(
+    heldGraphResendsAtom,
+    new Map(
+      [...queue.failedGraphs].map(([workflowId, held]) => [
+        workflowId,
+        held.resend,
+      ])
+    )
+  );
 }
 
 /** Take a workflow's held graph out of the queue, for a request that carries it. */
@@ -379,6 +421,7 @@ export const recordLoadedDraftRevisionAtom = atom(
     );
     const queue = get(saveQueueAtom);
     queue.blockedConflicts.delete(input.workflowId);
+    queue.uncertainGraphs.delete(input.workflowId);
     releaseHeldGraph(set, queue, input.workflowId);
     queue.refusedGraphs.delete(input.workflowId);
   }
@@ -448,6 +491,7 @@ function resendHeldGraphs(
         expectedDraftRevision: held.expectedDraftRevision,
         waiters: [],
         automatic: true,
+        reconciled: false,
       });
     }
   }
@@ -527,6 +571,144 @@ function groupPatchRefusalReason(
   });
 }
 
+/** How many graphs of unknown outcome a workflow keeps, newest last. */
+const UNCERTAIN_GRAPH_LIMIT = 8;
+
+/** Set a workflow's draft revision, and the revision its queued patches expect. */
+function adoptDraftRevision(
+  get: Getter,
+  set: Setter,
+  queue: SaveQueue,
+  workflowId: string,
+  draftRevision: number
+) {
+  set(
+    workflowDraftRevisionsAtom,
+    new Map(get(workflowDraftRevisionsAtom)).set(workflowId, draftRevision)
+  );
+  for (const pending of queue.pending) {
+    if (pending.workflowId === workflowId) {
+      pending.expectedDraftRevision = draftRevision;
+    }
+  }
+}
+
+/** Record a request the server stored, whether it answered or a read-back showed it. */
+function recordSaveSuccess(
+  get: Getter,
+  set: Setter,
+  queue: SaveQueue,
+  next: PendingSave,
+  workflow: SavedWorkflow
+) {
+  queue.retryFailureCount = 0;
+  queue.uncertainGraphs.delete(next.workflowId);
+  if (next.patch.nodes) {
+    adoptDraftRevision(
+      get,
+      set,
+      queue,
+      next.workflowId,
+      workflow.draftRevision
+    );
+  }
+  const saveGenerations = get(successfulSaveGenerationAtom);
+  set(
+    successfulSaveGenerationAtom,
+    new Map(saveGenerations).set(
+      next.workflowId,
+      (saveGenerations.get(next.workflowId) ?? 0) + 1
+    )
+  );
+  const rename = queue.renames.get(next.workflowId);
+  if (rename) {
+    rename.confirmedName = workflow.name;
+  }
+  markWorkflowListStale();
+  cacheWorkflowPublication(queryClient, workflow);
+
+  // The queue drains workflows the editor may already have left, so
+  // the clock reading and the failure are only true of the workflow
+  // on screen. Written under the same guard as the dirty flag below:
+  // without it, saving A at 12:04 and then opening B had B's strip
+  // claiming a write that never happened to it.
+  if (get(currentWorkflowIdAtom) === next.workflowId) {
+    set(lastSavedAtAtom, new Date());
+    set(lastSaveErrorAtom, queue.refusedGraphs.get(next.workflowId) ?? null);
+  }
+
+  // Clear the dirty flag only when nothing newer is queued and the
+  // saved workflow is still the one on screen.
+  if (
+    !queue.pending.some((pending) => pending.workflowId === next.workflowId) &&
+    !queue.failedGraphs.has(next.workflowId) &&
+    !queue.refusedGraphs.has(next.workflowId) &&
+    get(currentWorkflowIdAtom) === next.workflowId
+  ) {
+    set(hasUnsavedChangesAtom, false);
+  }
+}
+
+/**
+ * What reading the draft back says about a failed graph request: the server
+ * stored this very request (`saved`), or it stored an earlier request of the
+ * editor's whose answer was lost and this one can be sent again on top
+ * (`resend`), or nothing the editor can claim (null).
+ */
+type ReadBack =
+  | { kind: "saved"; workflow: SavedWorkflow }
+  | { kind: "resend"; draftRevision: number }
+  | null;
+
+/**
+ * Read the stored draft after a graph request that met a draft conflict or got
+ * no usable answer, and compare it with the graphs this editor sent. A read
+ * that fails, or a stored revision no newer than the one the request expected,
+ * claims nothing.
+ */
+async function readBackOwnWrite(
+  get: Getter,
+  queue: SaveQueue,
+  next: PendingSave,
+  conflict: boolean
+): Promise<ReadBack> {
+  if (!next.patch.nodes || next.reconciled) {
+    return null;
+  }
+  const sent = { nodes: next.patch.nodes, edges: next.patch.edges };
+  const uncertain = queue.uncertainGraphs.get(next.workflowId) ?? [];
+  if (!conflict) {
+    queue.uncertainGraphs.set(
+      next.workflowId,
+      [...uncertain.filter((graph) => graph !== sent), sent].slice(
+        -UNCERTAIN_GRAPH_LIMIT
+      )
+    );
+  }
+
+  let stored: SavedWorkflow;
+  try {
+    stored = await get(workflowApiAtom).read(next.workflowId);
+  } catch {
+    return null;
+  }
+  if (stored.draftRevision <= next.expectedDraftRevision) {
+    return null;
+  }
+  const storedThisRequest =
+    storedDraftHoldsGraph(stored, sent) &&
+    (next.patch.name === undefined || next.patch.name === stored.name) &&
+    (next.patch.mode === undefined || next.patch.mode === stored.mode);
+  if (storedThisRequest) {
+    return { kind: "saved", workflow: stored };
+  }
+  return [sent, ...uncertain].some((graph) =>
+    storedDraftHoldsGraph(stored, graph)
+  )
+    ? { kind: "resend", draftRevision: stored.draftRevision }
+    : null;
+}
+
 /**
  * Send the queued patches one at a time, oldest first, until none is left.
  * Single-flight: a call while a drain is running returns at once, and the
@@ -564,70 +746,55 @@ async function flushSaveQueue(
           next.expectedDraftRevision
         );
         outcome = { ok: true, workflow };
-        queue.retryFailureCount = 0;
-        if (next.patch.nodes) {
-          const draftRevisions = get(workflowDraftRevisionsAtom);
-          set(
-            workflowDraftRevisionsAtom,
-            new Map(draftRevisions).set(next.workflowId, workflow.draftRevision)
-          );
-          for (const pending of queue.pending) {
-            if (pending.workflowId === next.workflowId) {
-              pending.expectedDraftRevision = workflow.draftRevision;
-            }
-          }
-        }
-        const saveGenerations = get(successfulSaveGenerationAtom);
-        set(
-          successfulSaveGenerationAtom,
-          new Map(saveGenerations).set(
-            next.workflowId,
-            (saveGenerations.get(next.workflowId) ?? 0) + 1
-          )
-        );
-        const rename = queue.renames.get(next.workflowId);
-        if (rename) {
-          rename.confirmedName = workflow.name;
-        }
-        markWorkflowListStale();
-        cacheWorkflowPublication(queryClient, workflow);
-
-        // The queue drains workflows the editor may already have left, so
-        // the clock reading and the failure are only true of the workflow
-        // on screen. Written under the same guard as the dirty flag below:
-        // without it, saving A at 12:04 and then opening B had B's strip
-        // claiming a write that never happened to it.
-        if (get(currentWorkflowIdAtom) === next.workflowId) {
-          set(lastSavedAtAtom, new Date());
-          set(
-            lastSaveErrorAtom,
-            queue.refusedGraphs.get(next.workflowId) ?? null
-          );
-        }
-
-        // Clear the dirty flag only when nothing newer is queued and the
-        // saved workflow is still the one on screen.
-        if (
-          !queue.pending.some(
-            (pending) => pending.workflowId === next.workflowId
-          ) &&
-          !queue.failedGraphs.has(next.workflowId) &&
-          !queue.refusedGraphs.has(next.workflowId) &&
-          get(currentWorkflowIdAtom) === next.workflowId
-        ) {
-          set(hasUnsavedChangesAtom, false);
-        }
+        recordSaveSuccess(get, set, queue, next, workflow);
       } catch (error) {
         const saveError = toError(error);
         const blocked = queue.blockedConflicts.get(next.workflowId) === error;
+        const conflict =
+          error instanceof ApiError && error.code === DRAFT_CONFLICT_CODE;
+
+        // A conflict, or a request with no usable answer, may be this
+        // editor's own write: a request that committed and lost its answer
+        // advanced the revision every later request expects. A refusal by a
+        // blocked conflict sent nothing, so there is nothing to read back.
+        const readBack =
+          !blocked && (conflict || isTransientSaveFailure(error))
+            ? // eslint-disable-next-line no-await-in-loop -- the read decides whether this request is sent again, ahead of the rest of the queue.
+              await readBackOwnWrite(get, queue, next, conflict)
+            : null;
+        if (readBack?.kind === "saved") {
+          outcome = { ok: true, workflow: readBack.workflow };
+          recordSaveSuccess(get, set, queue, next, readBack.workflow);
+          queue.inFlight = null;
+          for (const resolve of next.waiters) {
+            resolve(outcome);
+          }
+          continue;
+        }
+        if (readBack?.kind === "resend") {
+          queue.uncertainGraphs.delete(next.workflowId);
+          adoptDraftRevision(
+            get,
+            set,
+            queue,
+            next.workflowId,
+            readBack.draftRevision
+          );
+          queue.pending.unshift({
+            ...next,
+            expectedDraftRevision: readBack.draftRevision,
+            reconciled: true,
+          });
+          queue.inFlight = null;
+          continue;
+        }
+
         // A refusal by a conflict already reported sends no request, so it
         // is not a new failure to tell the operator about. Nor is the failure
         // of a resend only the queue asked for: the status strip says it.
         if (!(blocked || next.automatic)) {
           reportSaveFailure(saveError);
         }
-        const conflict =
-          error instanceof ApiError && error.code === DRAFT_CONFLICT_CODE;
         if (conflict) {
           queue.blockedConflicts.set(next.workflowId, saveError);
         }
@@ -766,6 +933,7 @@ export const saveWorkflowAtom = atom(
           get(workflowDraftRevisionsAtom).get(workflowId) ?? 0,
         waiters: [resolve],
         automatic: false,
+        reconciled: false,
       });
     });
 
