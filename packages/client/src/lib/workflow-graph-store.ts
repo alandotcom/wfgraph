@@ -984,16 +984,28 @@ export const applyAgentGraphAtom = atom(
       get(nodesStateAtom).map((node) => [node.id, node] as const)
     );
 
-    // Only a step the agent added in this turn is placed, beside its
-    // neighbours; a step on the canvas keeps the position the person gave it.
-    // A step the agent added sits at the origin until then, while one a revert
-    // brought back carries the position it had.
+    // The turn's document never learns where the editor places a step, so
+    // every later write of the turn sends an added step at the origin again.
+    // A step already on the canvas therefore keeps the canvas's position.
+    const arriving = repair.nodes.map((node) => {
+      const existing = existingById.get(node.id);
+      return existing !== undefined &&
+        node.position.x === 0 &&
+        node.position.y === 0
+        ? { ...node, position: existing.position }
+        : node;
+    });
+
+    // Only a step the agent added is placed, beside its neighbours; a step on
+    // the canvas keeps the position the person gave it. A step the agent
+    // added arrives at the origin, while one a revert brought back carries
+    // the position it had.
     const laidOut = placeNewWorkflowNodes({
-      nodes: repair.nodes,
+      nodes: arriving,
       edges: input.edges,
       catalog: input.catalog,
       unplacedIds: new Set(
-        repair.nodes
+        arriving
           .filter(
             (node) =>
               !existingById.has(node.id) &&

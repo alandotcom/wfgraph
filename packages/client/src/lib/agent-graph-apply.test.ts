@@ -255,6 +255,45 @@ describe("applyAgentGraphAtom", () => {
     });
   });
 
+  it("keeps the place it gave an added node when a later write of the turn sends that node at the origin again", () => {
+    const positioned = {
+      ...actionNode("a"),
+      position: { x: 725, y: 315 },
+    };
+    const store = createGraphStore([positioned]);
+    const apply = (nodes: WorkflowNode[], recordHistory: boolean) =>
+      store.set(applyAgentGraphAtom, {
+        workflowId: "workflow_1",
+        turnId,
+        recordHistory,
+        nodes,
+        edges: nodes.slice(1).map((node, index) => ({
+          id: `e${index}`,
+          source: nodes[index]?.id ?? "",
+          target: node.id,
+        })),
+        catalog,
+      });
+
+    apply([positioned, actionNode("b")], true);
+    const firstPlace = store
+      .get(nodesAtom)
+      .find((node) => node.id === "b")?.position;
+
+    // The turn's document never learns where the editor placed "b", so the
+    // next write tool sends it at the origin beside the step it adds.
+    apply([positioned, actionNode("b"), actionNode("c")], false);
+
+    const placed = store.get(nodesAtom);
+    expect(firstPlace).not.toEqual({ x: 0, y: 0 });
+    expect(placed.find((node) => node.id === "b")?.position).toEqual(
+      firstPlace
+    );
+    const third = placed.find((node) => node.id === "c")?.position;
+    expect(third).not.toEqual({ x: 0, y: 0 });
+    expect(third?.y).toBeGreaterThan(firstPlace?.y ?? 0);
+  });
+
   it("refuses a graph from a turn that has already been replaced", () => {
     const store = createGraphStore([actionNode("current")]);
     store.set(activeAgentTurnIdAtom, Symbol("newer-turn"));
