@@ -50,6 +50,7 @@ import {
   explainArrivingEventChange,
   referencesBrokenBetween,
 } from "#src/tools/reference-diagnosis";
+import { writeHints } from "#src/tools/tool-hints";
 
 const failureSchema = Schema.Struct({ reason: Schema.String });
 const writeResultSchema = Schema.Struct({
@@ -189,7 +190,13 @@ export const SetWait = Tool.make("set_wait", {
   success: writeResultSchema,
   failure: failureSchema,
   failureMode: "return",
-});
+}).annotateMerge(
+  writeHints({
+    title: "Configure a Wait",
+    destructive: false,
+    idempotent: true,
+  })
+);
 
 type SetWaitInput = typeof setWaitInputSchema.Type;
 

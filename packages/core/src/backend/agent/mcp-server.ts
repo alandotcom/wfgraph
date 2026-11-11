@@ -17,7 +17,7 @@ import {
   type StandardSchemaWithJSON,
 } from "@modelcontextprotocol/server";
 import { Tool } from "effect/ai";
-import { Result, Schema, type SchemaAST } from "effect";
+import { Context, Option, Result, Schema, type SchemaAST } from "effect";
 import { buildAuthoringInstructions } from "@wfgraph/agent/prompt";
 import { agentToolkit, WRITE_TOOL_NAMES } from "@wfgraph/agent/toolkit";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
@@ -203,11 +203,11 @@ function argumentProblems(input: {
   const transport =
     input.transport === undefined
       ? undefined
-      : Schema.decodeUnknownResult(Schema.toCodecJson(input.transport))(
+      : Schema.decodeResult(Schema.toCodecJson(input.transport))(
           value,
           ARGUMENT_DECODE_OPTIONS
         );
-  const declared = Schema.decodeUnknownResult(Schema.toCodecJson(input.own))(
+  const declared = Schema.decodeResult(Schema.toCodecJson(input.own))(
     input.transport === undefined ? value : own,
     ARGUMENT_DECODE_OPTIONS
   );
@@ -471,6 +471,21 @@ function collectionToolResult(result: JsonObject, isError: boolean) {
   };
 }
 
+/** The title and behaviour hints the canonical tool carries, as MCP spells them. */
+function toolAnnotations(tool: (typeof agentToolkit.tools)[AgentToolName]) {
+  const title = Context.getOption(tool.annotations, Tool.Title);
+  return {
+    ...(Option.isSome(title) ? { title: title.value } : {}),
+    annotations: omitUndefined({
+      title: Option.getOrUndefined(title),
+      readOnlyHint: Context.get(tool.annotations, Tool.Readonly),
+      destructiveHint: Context.get(tool.annotations, Tool.Destructive),
+      idempotentHint: Context.get(tool.annotations, Tool.Idempotent),
+      openWorldHint: Context.get(tool.annotations, Tool.OpenWorld),
+    }),
+  };
+}
+
 /**
  * The authoring rules, fixed at module load. The built-in agent reads the same
  * text as its system prompt, so an MCP client and the chat panel build to one
@@ -549,7 +564,14 @@ export function createAgentMcpServer(
         "List the workflows visible to the authenticated caller. Use a returned workflow ID with workflow authoring tools.",
       inputSchema: listWorkflows.input,
       outputSchema: listWorkflows.output,
-      annotations: { readOnlyHint: true, idempotentHint: true },
+      title: "List workflows",
+      annotations: {
+        title: "List workflows",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
     },
     async (_arguments, context) => {
       if (!(await input.auth.allows(WfGraphOperations.workflowGetAll))) {
@@ -588,10 +610,13 @@ export function createAgentMcpServer(
         "Create a workflow draft with the default Lifecycle node. Use the returned workflow ID and draft revision with workflow authoring tools.",
       inputSchema: createWorkflow.input,
       outputSchema: createWorkflow.output,
+      title: "Create a workflow",
       annotations: {
+        title: "Create a workflow",
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: false,
+        openWorldHint: false,
       },
     },
     async (arguments_, context) => {
@@ -649,10 +674,7 @@ export function createAgentMcpServer(
         description: toolDescription(name, tool.description ?? ""),
         inputSchema: schemas.input,
         outputSchema: schemas.output,
-        annotations: {
-          readOnlyHint: !WRITE_TOOL_NAMES.has(name),
-          idempotentHint: !WRITE_TOOL_NAMES.has(name),
-        },
+        ...toolAnnotations(tool),
       },
       async (arguments_, context) => {
         const argumentsObject = readJsonObject(arguments_) ?? {};

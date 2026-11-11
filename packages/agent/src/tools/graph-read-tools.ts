@@ -25,6 +25,7 @@ import {
   resultLimitSchema,
   resultOffsetSchema,
 } from "#src/tools/result-page";
+import { readHints } from "#src/tools/tool-hints";
 
 const graphNodeSummarySchema = Schema.Struct({
   id: Schema.String,
@@ -167,7 +168,7 @@ export const ReadWorkflow = Tool.make("read_workflow", {
     nextNodeOffset: Schema.optionalKey(Schema.Number),
     nextEdgeOffset: Schema.optionalKey(Schema.Number),
   }),
-});
+}).annotateMerge(readHints("Read the workflow"));
 
 export const ReadNodes = Tool.make("read_nodes", {
   description:
@@ -180,7 +181,7 @@ export const ReadNodes = Tool.make("read_nodes", {
   success: Schema.Struct({ nodes: Schema.Array(graphNodeDetailSchema) }),
   failure: Schema.Struct({ reason: Schema.String }),
   failureMode: "return",
-});
+}).annotateMerge(readHints("Read node config"));
 
 export const ValidateWorkflow = Tool.make("validate_workflow", {
   description:
@@ -201,7 +202,7 @@ export const ValidateWorkflow = Tool.make("validate_workflow", {
         "Problems worth fixing that the canonical publication gate permits.",
     }),
   }),
-});
+}).annotateMerge(readHints("Validate the workflow"));
 
 export const graphReadToolHandlers = Effect.gen(function* () {
   const draft = yield* WorkflowDraft;

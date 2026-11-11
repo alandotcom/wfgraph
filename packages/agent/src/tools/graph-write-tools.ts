@@ -39,6 +39,7 @@ import {
   WorkflowDraft,
 } from "#src/document";
 import { referencesForNode } from "#src/tools/reference-tools";
+import { writeHints } from "#src/tools/tool-hints";
 /**
  * A config bag as the model fills it in: a list of entries, not a record.
  *
@@ -155,7 +156,9 @@ export const AddNode = Tool.make("add_node", {
   success: addNodeResultSchema,
   failure: failureSchema,
   failureMode: "return",
-});
+}).annotateMerge(
+  writeHints({ title: "Add a step", destructive: false, idempotent: false })
+);
 
 export const UpdateNode = Tool.make("update_node", {
   description:
@@ -183,7 +186,9 @@ export const UpdateNode = Tool.make("update_node", {
   success: writeResultSchema,
   failure: failureSchema,
   failureMode: "return",
-});
+}).annotateMerge(
+  writeHints({ title: "Update a step", destructive: false, idempotent: true })
+);
 
 export const RevertDraft = Tool.make("revert_draft", {
   description:
@@ -197,7 +202,9 @@ export const RevertDraft = Tool.make("revert_draft", {
   success: writeResultSchema,
   failure: failureSchema,
   failureMode: "return",
-});
+}).annotateMerge(
+  writeHints({ title: "Revert this turn", destructive: true, idempotent: true })
+);
 
 export const DeleteNode = Tool.make("delete_node", {
   description:
@@ -210,7 +217,9 @@ export const DeleteNode = Tool.make("delete_node", {
   success: writeResultSchema,
   failure: failureSchema,
   failureMode: "return",
-});
+}).annotateMerge(
+  writeHints({ title: "Delete a step", destructive: true, idempotent: true })
+);
 
 export const ConnectNodes = Tool.make("connect_nodes", {
   description:
@@ -230,7 +239,13 @@ export const ConnectNodes = Tool.make("connect_nodes", {
   success: writeResultSchema,
   failure: failureSchema,
   failureMode: "return",
-});
+}).annotateMerge(
+  writeHints({
+    title: "Connect two steps",
+    destructive: false,
+    idempotent: true,
+  })
+);
 
 export const DisconnectNodes = Tool.make("disconnect_nodes", {
   description: "Remove one edge, leaving both steps in place.",
@@ -242,7 +257,9 @@ export const DisconnectNodes = Tool.make("disconnect_nodes", {
   success: writeResultSchema,
   failure: failureSchema,
   failureMode: "return",
-});
+}).annotateMerge(
+  writeHints({ title: "Remove an edge", destructive: true, idempotent: true })
+);
 
 export const InsertNodeOnEdge = Tool.make("insert_node_on_edge", {
   description:
@@ -273,7 +290,13 @@ export const InsertNodeOnEdge = Tool.make("insert_node_on_edge", {
   success: insertNodeResultSchema,
   failure: failureSchema,
   failureMode: "return",
-});
+}).annotateMerge(
+  writeHints({
+    title: "Insert a step on an edge",
+    destructive: false,
+    idempotent: false,
+  })
+);
 
 /**
  * The outlet rule an edge is held to, stated as the refusal a builder would

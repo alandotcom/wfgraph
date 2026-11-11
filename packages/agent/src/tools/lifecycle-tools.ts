@@ -61,6 +61,7 @@ import {
   brokenReferenceWarning,
   referencesBrokenBetween,
 } from "#src/tools/reference-diagnosis";
+import { writeHints } from "#src/tools/tool-hints";
 
 const failureSchema = Schema.Struct({ reason: Schema.String });
 const writeResultSchema = Schema.Struct({ summary: Schema.String });
@@ -375,7 +376,13 @@ export const SetLifecycleRules = Tool.make("set_lifecycle_rules", {
   success: lifecycleWriteResultSchema,
   failure: failureSchema,
   failureMode: "return",
-});
+}).annotateMerge(
+  writeHints({
+    title: "Set Lifecycle Rules",
+    destructive: false,
+    idempotent: false,
+  })
+);
 
 export const SetCondition = Tool.make("set_condition", {
   description:
@@ -392,7 +399,9 @@ export const SetCondition = Tool.make("set_condition", {
   success: writeResultSchema,
   failure: failureSchema,
   failureMode: "return",
-});
+}).annotateMerge(
+  writeHints({ title: "Set a Condition", destructive: false, idempotent: true })
+);
 
 type LifecycleFilterInput = {
   readonly event: string;

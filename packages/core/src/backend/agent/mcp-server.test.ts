@@ -217,6 +217,49 @@ describe("createAgentMcpServer", () => {
     }
   });
 
+  it("annotates each tool with a title and every behaviour hint", async () => {
+    const { client, server } = await makeSubject();
+    try {
+      const { tools } = await client.listTools();
+      const hintsOf = (name: string) =>
+        tools.find((tool) => tool.name === name)?.annotations;
+      for (const tool of tools) {
+        expect(tool.title ?? tool.annotations?.title, tool.name).toBeTruthy();
+        expect(tool.annotations, tool.name).toMatchObject({
+          readOnlyHint: expect.any(Boolean),
+          destructiveHint: expect.any(Boolean),
+          idempotentHint: expect.any(Boolean),
+          openWorldHint: false,
+        });
+      }
+      expect(hintsOf("read_workflow")).toMatchObject({
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      });
+      expect(hintsOf("add_node")).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+      });
+      expect(hintsOf("delete_node")).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+      });
+      expect(hintsOf("disconnect_nodes")).toMatchObject({
+        destructiveHint: true,
+      });
+      expect(hintsOf("update_node")).toMatchObject({
+        destructiveHint: false,
+        idempotentHint: true,
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("lists workflows visible through the authenticated workflow list", async () => {
     const checked: string[] = [];
     const listWorkflows = vi.fn<WorkflowListExecutor>(async () => ({

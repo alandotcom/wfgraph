@@ -47,6 +47,7 @@ import {
   resultLimitSchema,
   resultOffsetSchema,
 } from "#src/tools/result-page";
+import { readHints } from "#src/tools/tool-hints";
 
 const referenceSchema = Schema.Struct({
   /** Paste this straight into a config field. */
@@ -159,7 +160,7 @@ export const ListReferences = Tool.make("list_references", {
   }),
   failure: Schema.Struct({ reason: Schema.String }),
   failureMode: "return",
-});
+}).annotateMerge(readHints("List references"));
 
 /** Every addressable reference, including hidden fields kept for compatibility. */
 export function referencesForNode(input: {

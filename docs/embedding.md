@@ -684,6 +684,11 @@ A stale write returns an error tool result with code
 again, evaluate the edit against the returned graph, and then send a new write
 with the updated revision. Don't automatically repeat the stale mutation.
 
+Every tool carries a `title` and all four behaviour hints. Read tools are
+read-only and idempotent. `delete_node` and `disconnect_nodes` are marked
+destructive. Every tool sets `openWorldHint: false`, because it reaches only
+the workflow store and the host's catalog.
+
 Host and Origin validation protects the HTTP boundary from DNS rebinding. The
 host authentication callback authenticates the caller. MCP tool calls use the
 following operation grants:

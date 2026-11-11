@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Layer, Stream } from "effect";
+import { Context, Effect, Layer, Option, Stream } from "effect";
 import { Tool } from "effect/ai";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";
 import { agentToolsFor } from "#src/testing";
@@ -116,6 +116,21 @@ describe("the toolkit", () => {
       clearStartFilters: expect.any(Object),
       eventConnections: expect.any(Object),
     });
+  });
+
+  it("titles every tool and marks exactly the write tools as writes", () => {
+    for (const tool of tools) {
+      expect(
+        Option.isSome(Context.getOption(tool.annotations, Tool.Title)),
+        tool.name
+      ).toBe(true);
+      expect(Context.get(tool.annotations, Tool.Readonly), tool.name).toBe(
+        !WRITE_TOOL_NAMES.has(tool.name)
+      );
+      expect(Context.get(tool.annotations, Tool.OpenWorld), tool.name).toBe(
+        false
+      );
+    }
   });
 
   it("names only real tools as the ones that change the graph", () => {

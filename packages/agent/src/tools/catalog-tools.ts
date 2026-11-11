@@ -37,6 +37,7 @@ import {
   resultLimitSchema,
   resultOffsetSchema,
 } from "#src/tools/result-page";
+import { readHints } from "#src/tools/tool-hints";
 
 const actionSummarySchema = Schema.Struct({
   id: Schema.String,
@@ -249,7 +250,7 @@ export const ListActions = Tool.make("list_actions", {
     truncated: Schema.Boolean,
     nextOffset: Schema.optionalKey(Schema.Number),
   }),
-});
+}).annotateMerge(readHints("List actions"));
 
 export const DescribeAction = Tool.make("describe_action", {
   description:
@@ -271,7 +272,7 @@ export const DescribeAction = Tool.make("describe_action", {
   }),
   failure: Schema.Struct({ reason: Schema.String }),
   failureMode: "return",
-});
+}).annotateMerge(readHints("Describe an action"));
 
 export const ListEvents = Tool.make("list_events", {
   description:
@@ -293,7 +294,7 @@ export const ListEvents = Tool.make("list_events", {
     truncated: Schema.Boolean,
     nextOffset: Schema.optionalKey(Schema.Number),
   }),
-});
+}).annotateMerge(readHints("List Events"));
 
 export const DescribeEvent = Tool.make("describe_event", {
   description:
@@ -314,7 +315,7 @@ export const DescribeEvent = Tool.make("describe_event", {
   }),
   failure: Schema.Struct({ reason: Schema.String }),
   failureMode: "return",
-});
+}).annotateMerge(readHints("Describe an Event"));
 
 export const ListIntegrations = Tool.make("list_integrations", {
   description:
@@ -330,7 +331,7 @@ export const ListIntegrations = Tool.make("list_integrations", {
       })
     ),
   }),
-});
+}).annotateMerge(readHints("List connections"));
 
 export const catalogToolHandlers = Effect.gen(function* () {
   const draft = yield* WorkflowDraft;
