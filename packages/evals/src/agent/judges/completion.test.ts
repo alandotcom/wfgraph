@@ -345,6 +345,19 @@ describe("assessExpectedCompletion", () => {
     ).toMatchObject({ score: 1 });
   });
 
+  // Publishing is the person's to do in the editor, and the agent saying so
+  // names no blocker.
+  it("reads the agent saying it cannot publish as no claim of a blocker", () => {
+    expect(
+      assess({
+        expected: { outcome: "ready" },
+        finalText:
+          "It has no publish blockers, so it's ready to publish. I can't publish it myself, so you'll need to do that in the editor.",
+        facts: readyFacts,
+      })
+    ).toMatchObject({ score: 1 });
+  });
+
   it("rejects a blocked answer that claims publish readiness", () => {
     expect(
       assess({
@@ -592,6 +605,7 @@ describe("assessExpectedCompletion", () => {
     "SMS doesn’t have a setting for that.",
     "This Group has no SMS setting.",
     "I haven't built anything, because there's no way to send an SMS here.",
+    "I haven't built anything, because there's no action for sending an SMS.",
   ])("accepts unsupported explanations that say %s", (finalText) => {
     expect(
       assess({

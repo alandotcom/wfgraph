@@ -41,7 +41,7 @@ function answerRequirementFailure(
 
 function clauseClaimsPublishBlocker(clause: string): boolean {
   return (
-    /\b(?:cannot|can't|unable to)\s+(?:be\s+)?publish(?:ed)?\b|(?:\bnot|n['’]t)\s+(?:yet\s+)?ready (?:to publish|for publication)\b|\bnot publishable\b/i.test(
+    /(?<!\bI )\b(?:cannot|can['’]t|unable to)\s+(?:be\s+)?publish(?:ed)?\b|(?:\bnot|n['’]t)\s+(?:yet\s+)?ready (?:to publish|for publication)\b|\bnot publishable\b/i.test(
       clause
     ) ||
     /\b(?:publishing|publication) (?:is|remains|has been) blocked\b/i.test(
@@ -77,7 +77,7 @@ function claimsPublishBlocker(finalText: string): boolean {
 }
 
 function hasUnsupportedExplanation(finalText: string): boolean {
-  return /\b(?:cannot|can['’]t|could not|couldn['’]t|unavailable|unsupported|not available|does not support|doesn['’]t support|does not have|doesn['’]t have|has no|no way to)\b|\bno\b[^.?!]*\baction is available\b/i.test(
+  return /\b(?:cannot|can['’]t|could not|couldn['’]t|unavailable|unsupported|not available|does not support|doesn['’]t support|does not have|doesn['’]t have|has no|no way to)\b|\bno\b[^.?!]*\baction\b/i.test(
     finalText
   );
 }
