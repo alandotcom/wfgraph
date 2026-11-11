@@ -114,6 +114,10 @@ No tool returns or decrypts a Connection's credentials.
 - `list_references` names its steps in `nodeIds` and answers for all of them,
   so a batch of new steps needs one reference read between two `apply_edits`
   calls. A reference with `readableBy` is readable only by the steps it lists.
+- A `set_condition` rule takes a reference's `path` as `field` and its
+  `sourceNodeId`, and is stored naming that step. A rule without
+  `sourceNodeId` is refused when more than one step above the Condition offers
+  its path.
 - `validate_workflow` answers `canSave`, `canPublish`, `saveIssues`,
   `publishBlockers` and `warnings`. `publish_workflow` refuses a draft with
   blockers and lists every one.
