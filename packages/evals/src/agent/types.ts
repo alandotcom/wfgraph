@@ -1,6 +1,7 @@
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { AgentMessage } from "@wfgraph/shared/rpc/agent-stream";
 import type { AgentDocument } from "@wfgraph/agent/document";
+import type { WorkflowOperationsService } from "@wfgraph/agent/operations";
 import type { AgentPublicationBlockerKind } from "@wfgraph/core/backend/agent/publication-validation";
 import type { AgentTraceSummary } from "@wfgraph/core/backend/agent/trace";
 import type {
@@ -209,6 +210,8 @@ export type AgentEvalExpectedCompletion =
       outcome: "ready";
       /** Terms the answer must contain, for a reply that has to report a fact. */
       answerMustMention?: string[];
+      /** Terms of which the answer must contain at least one. */
+      answerMustMentionOneOf?: string[];
     }
   | { outcome: "clarification"; questionMustMention: string[] }
   | {
@@ -246,6 +249,11 @@ export type AgentEvalInput = {
    */
   intentCriteria: string[];
   model?: string;
+  /**
+   * The runs, test runs and field choices the session answers from. Absent,
+   * those tools refuse, as they do in a session with no host services.
+   */
+  operations?: WorkflowOperationsService;
 };
 
 export type AgentEvalEvidenceDocument = JsonNormalized<AgentEvalDocument>;

@@ -117,6 +117,7 @@ export function createWorkflowAgentHarness(
           catalog: input.catalog,
           integrations: input.integrations,
           document: input.document,
+          operations: input.operations,
           validateDraft: (document) =>
             validateAgentDraft({
               document,

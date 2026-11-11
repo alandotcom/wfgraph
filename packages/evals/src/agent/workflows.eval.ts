@@ -15,6 +15,7 @@ import {
   ValidationJudge,
 } from "#src/agent/judges/index";
 import {
+  authoringScenarios,
   capabilityScenarios,
   complexScenarios,
   focusedScenarios,
@@ -84,4 +85,10 @@ describeEval("workflow build agent capability behavior", suiteOptions, (it) => {
       await run(input);
     }
   );
+});
+
+describeEval("workflow build agent authoring behavior", suiteOptions, (it) => {
+  it.for(authoringScenarios)("$name", async ({ input }, { run }) => {
+    await run(input);
+  });
 });
