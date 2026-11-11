@@ -38,6 +38,10 @@ import {
   type ConnectedIntegration,
   WorkflowDraft,
 } from "#src/document";
+import {
+  brokenReferenceWarning,
+  referencesBrokenBetween,
+} from "#src/tools/reference-diagnosis";
 import { referencesForNode } from "#src/tools/reference-tools";
 import { writeHints } from "#src/tools/tool-hints";
 /**
@@ -208,7 +212,7 @@ export const RevertDraft = Tool.make("revert_draft", {
 
 export const DeleteNode = Tool.make("delete_node", {
   description:
-    "Remove a step and every edge touching it. Steps below it are left connected to nothing, so reconnect them afterwards. When the step was in a Group and fewer than two steps remain in that Group, the Group is removed and its remaining step stays in the graph. An Event Split does not count toward that minimum. A Group itself cannot be deleted.",
+    "Remove a step and every edge touching it. Steps below it are left connected to nothing, so reconnect them afterwards. The result names every step left holding a reference it can no longer read. When the step was in a Group and fewer than two steps remain in that Group, the Group is removed and its remaining step stays in the graph. An Event Split does not count toward that minimum. A Group itself cannot be deleted.",
   parameters: Schema.Struct({
     nodeId: Schema.String.annotate({
       description: "The node to remove, from read_workflow.",
@@ -526,6 +530,21 @@ function dissolvedGroupsSentence(
 export const graphWriteToolHandlers = Effect.gen(function* () {
   const draft = yield* WorkflowDraft;
 
+  /**
+   * The sentence naming each step a removal left holding a token it can no
+   * longer read, or "" when it left none. Removing a step or an edge is what
+   * takes a value out of reach of the steps below it.
+   */
+  const brokenReferencesSentence = (input: {
+    readonly before: AgentDocument;
+    readonly after: AgentDocument;
+  }): string => {
+    const warning = brokenReferenceWarning(
+      referencesBrokenBetween({ ...input, catalog: draft.catalog })
+    );
+    return warning === undefined ? "" : ` ${warning}`;
+  };
+
   return {
     /**
      * The turn's opening graph is revision 0, which `update` stores before any
@@ -711,7 +730,9 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
             ),
           })),
           (result) => ({
-            summary: `Removed ${node.data.label || input.nodeId} and ${removedEdges} edge(s).${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+            summary: `Removed ${node.data.label || input.nodeId} and ${removedEdges} edge(s).${dissolvedGroupsSentence(result.dissolvedGroups)}${brokenReferencesSentence(
+              { before: document, after: result.document }
+            )}`,
           })
         );
       }),
@@ -805,7 +826,9 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
             ),
           })),
           (result) => ({
-            summary: `Disconnected ${edge.source} from ${edge.target}.${dissolvedGroupsSentence(result.dissolvedGroups)}`,
+            summary: `Disconnected ${edge.source} from ${edge.target}.${dissolvedGroupsSentence(result.dissolvedGroups)}${brokenReferencesSentence(
+              { before: document, after: result.document }
+            )}`,
           })
         );
       }),

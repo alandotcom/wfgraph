@@ -663,6 +663,71 @@ describe("delete_node", () => {
     })
   );
 
+  it.effect("names the steps a deletion leaves reading a missing step", () =>
+    Effect.gen(function* () {
+      const token = formatTemplateToken({
+        nodeId: "first",
+        nodeLabel: "first",
+        fieldPath: "score",
+      });
+      const reader: WorkflowNode = {
+        ...second,
+        data: {
+          ...second.data,
+          label: "Notify team",
+          config: { actionType: "slack/send-message", text: token },
+        },
+      };
+      const { tools } = yield* agentToolsFor({
+        nodes: [entry, first, reader],
+        edges: [
+          {
+            id: "started",
+            source: "entry",
+            target: "first",
+            sourceHandle: LIFECYCLE_STARTED_HANDLE,
+          },
+          firstToSecond,
+        ],
+        catalog,
+      });
+
+      const result = yield* tools.delete_node({ nodeId: "first" });
+
+      expect(result.summary).toContain("Notify team.text");
+      expect(result.summary).toContain("no longer resolve");
+    })
+  );
+
+  it.effect(
+    "names the steps a removed edge leaves reading an unreachable step",
+    () =>
+      Effect.gen(function* () {
+        const token = formatTemplateToken({
+          nodeId: "first",
+          nodeLabel: "first",
+          fieldPath: "score",
+        });
+        const reader: WorkflowNode = {
+          ...second,
+          data: {
+            ...second.data,
+            label: "Notify team",
+            config: { actionType: "slack/send-message", text: token },
+          },
+        };
+        const { tools } = yield* agentToolsFor({
+          nodes: [entry, first, reader],
+          edges: [firstToSecond],
+          catalog,
+        });
+
+        const result = yield* tools.disconnect_nodes({ edgeId: "e1" });
+
+        expect(result.summary).toContain("Notify team.text");
+      })
+  );
+
   it.effect("refuses a node the graph does not hold", () =>
     Effect.gen(function* () {
       const { tools } = yield* agentToolsFor({ nodes: [first], catalog });
