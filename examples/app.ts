@@ -207,6 +207,9 @@ const cancelAppointmentAction = defineAction({
   label: "Cancel Appointment",
   description: "Cancels an appointment and records the cancellation reason.",
   category: "Appointments",
+  // Cancelling changes the appointment outside the workflow, which is what
+  // the editor and the build agent read this flag for.
+  sideEffect: true,
   input: z.object({
     appointmentId: appointmentIdSchema,
     reason: z.string().min(1),
