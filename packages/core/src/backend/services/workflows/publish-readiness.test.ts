@@ -20,6 +20,12 @@ import {
 } from "#src/backend/lib/effect/test-layers";
 import { checkPublishReadiness } from "#src/backend/services/workflows/publish-checks";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
+import {
+  compileConditionModel,
+  type ConditionModel,
+  nodeOutputConditionPath,
+  serializeConditionModel,
+} from "@wfgraph/shared/conditions/conditions";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 
@@ -159,6 +165,47 @@ describe("checkPublishReadiness", () => {
 
         assert.instanceOf(failure, IntegrationValidationFailed);
         assert.deepStrictEqual(failure.invalidIntegrationIds, ["gone"]);
+      })
+    );
+
+    // A rule naming a step the graph no longer holds reads nothing and
+    // answers false on every run, so Publish refuses it where a draft saves.
+    it.effect("refuses a Condition rule naming a step the graph lacks", () =>
+      Effect.gen(function* () {
+        const model: ConditionModel = {
+          version: 2,
+          groupLogic: "and",
+          groups: [
+            {
+              id: "group",
+              logic: "and",
+              conditions: [
+                {
+                  id: "rule",
+                  field: nodeOutputConditionPath("deleted", "score") ?? "",
+                  fieldType: "number",
+                  operator: "greater_or_equal",
+                  value: 80,
+                },
+              ],
+            },
+          ],
+        };
+        const compiled = compileConditionModel(model);
+        assert.isTrue(compiled.valid);
+        const failure = yield* checkPublishReadiness(
+          decoded({
+            actionType: "Condition",
+            conditionModel: serializeConditionModel(model),
+            condition: compiled.valid ? compiled.expression : "",
+          })
+        ).pipe(Effect.flip);
+
+        assert.instanceOf(failure, InvalidInput);
+        assert.strictEqual(
+          failure.error,
+          'Node "Notify" tests score from a step that is no longer in the workflow, in Continue when. Pick the field again from a node upstream of "Notify".'
+        );
       })
     );
 

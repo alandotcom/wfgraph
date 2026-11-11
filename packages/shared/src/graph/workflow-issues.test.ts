@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import {
   entityStateConditionPath,
+  nodeOutputConditionPath,
   serializeConditionModel,
 } from "#src/conditions/conditions";
 import type { ExtensionCatalog } from "#src/extensions/catalog";
@@ -708,6 +709,216 @@ describe("collectWorkflowIssues references to a node that is not upstream", () =
         [fromEntry("lookup"), fromEntry("notify")]
       )
     ).toEqual([]);
+  });
+});
+
+describe("collectWorkflowIssues Condition rules and their source nodes", () => {
+  // The Start Event and the scoring step both offer `score`, which is the case
+  // a rule naming no node cannot tell apart.
+  const scoringCatalog: ExtensionCatalog = {
+    ...catalog,
+    events: [
+      {
+        name: "app/applicant.created",
+        label: "Applicant created",
+        correlationPath: "applicant.id",
+        payloadFields: [
+          { path: "applicant.id", type: "string" },
+          { path: "score", type: "number" },
+        ],
+      },
+    ],
+    actions: [
+      ...catalog.actions,
+      {
+        id: "custom/score",
+        label: "Score Applicant",
+        description: "Scores an applicant",
+        category: "Custom",
+        configFields: [],
+        outputFields: [{ path: "score", type: "number" }],
+      },
+    ],
+  };
+
+  const lifecycle: WorkflowNode = {
+    id: "life",
+    type: "lifecycle",
+    position: { x: 0, y: 0 },
+    data: {
+      type: "lifecycle",
+      label: "Lifecycle",
+      config: {
+        lifecycleRules: {
+          startEvents: ["app/applicant.created"],
+          cancelEvents: [],
+          concurrency: "unlimited",
+        },
+      },
+    },
+  };
+  const scorer = actionNode("scorer", { actionType: "custom/score" }, "Score");
+
+  function route(fields: readonly string[]): WorkflowNode {
+    return actionNode(
+      "route",
+      {
+        actionType: "Condition",
+        conditionModel: serializeConditionModel({
+          version: 2,
+          groupLogic: "and",
+          groups: [
+            {
+              id: "group",
+              logic: "and",
+              conditions: fields.map((field, index) => ({
+                id: `rule-${index}`,
+                field,
+                fieldType: "number",
+                operator: "greater_or_equal",
+                value: 80,
+              })),
+            },
+          ],
+        }),
+      },
+      "Route"
+    );
+  }
+
+  const chain: WorkflowEdge[] = [
+    {
+      id: "life-scorer",
+      source: "life",
+      target: "scorer",
+      sourceHandle: LIFECYCLE_STARTED_HANDLE,
+    },
+    { id: "scorer-route", source: "scorer", target: "route" },
+  ];
+
+  function issuesFor(nodes: WorkflowNode[], edges: WorkflowEdge[]) {
+    return collectWorkflowIssues({
+      nodes,
+      edges,
+      catalog: scoringCatalog,
+      integrations: [],
+    }).filter(
+      (issue) =>
+        issue.kind === "shared_condition_path" ||
+        issue.kind === "reference_not_upstream"
+    );
+  }
+
+  it("warns on a rule naming no node whose path two steps above offer", () => {
+    const issues = issuesFor(
+      [lifecycle, scorer, route(["score", "score"])],
+      chain
+    );
+
+    expect(issues).toEqual([
+      {
+        kind: "shared_condition_path",
+        severity: "warning",
+        nodeId: "route",
+        nodeLabel: "Route",
+        fieldKey: "conditionModel",
+        fieldLabel: "Continue when",
+        path: "score",
+        readNodeId: "scorer",
+        message:
+          'Node "Route" tests score, which "Lifecycle" and "Score" all offer, and reads it from "Score". Pick the field again to name the step it comes from.',
+      },
+    ]);
+    expect(hasBlockingWorkflowIssues(issues)).toBe(false);
+    expect(groupWorkflowIssuesForOverlay(issues).sharedConditionPaths).toEqual([
+      {
+        nodeId: "route",
+        nodeLabel: "Route",
+        problems: [{ path: "score", message: issues[0]?.message }],
+      },
+    ]);
+  });
+
+  it("accepts a rule naming its source node, or a path one step offers", () => {
+    expect(
+      issuesFor(
+        [
+          lifecycle,
+          scorer,
+          route([
+            nodeOutputConditionPath("life", "score") ?? "",
+            nodeOutputConditionPath("scorer", "score") ?? "",
+            "applicant.id",
+          ]),
+        ],
+        chain
+      )
+    ).toEqual([]);
+  });
+
+  it("blocks a rule naming a step that is not above the Condition", () => {
+    const issues = issuesFor(
+      [
+        lifecycle,
+        scorer,
+        route([nodeOutputConditionPath("scorer", "score") ?? ""]),
+      ],
+      [
+        {
+          id: "life-scorer",
+          source: "life",
+          target: "scorer",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        },
+        {
+          id: "life-route",
+          source: "life",
+          target: "route",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        },
+      ]
+    );
+
+    expect(issues).toEqual([
+      {
+        kind: "reference_not_upstream",
+        severity: "blocking",
+        nodeId: "route",
+        nodeLabel: "Route",
+        fieldKey: "conditionModel",
+        fieldLabel: "Continue when",
+        referencedNodeId: "scorer",
+        displayText: "Score.score",
+        message:
+          'Node "Route" reads "Score" in Continue when, but no path leads from "Score" to "Route". Test only a node upstream of "Route", or move "Route" below "Score".',
+      },
+    ]);
+    expect(hasDraftRunBlockingIssues(issues)).toBe(true);
+  });
+
+  it("blocks a rule naming a step the workflow no longer holds", () => {
+    const issues = issuesFor(
+      [lifecycle, route([nodeOutputConditionPath("deleted", "score") ?? ""])],
+      [
+        {
+          id: "life-route",
+          source: "life",
+          target: "route",
+          sourceHandle: LIFECYCLE_STARTED_HANDLE,
+        },
+      ]
+    );
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        kind: "reference_not_upstream",
+        severity: "blocking",
+        referencedNodeId: "deleted",
+        displayText: "score",
+        message:
+          'Node "Route" tests score from a step that is no longer in the workflow, in Continue when. Pick the field again from a node upstream of "Route".',
+      }),
+    ]);
   });
 });
 

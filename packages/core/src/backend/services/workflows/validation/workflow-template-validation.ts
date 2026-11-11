@@ -113,9 +113,11 @@ function valueTargets(
 /**
  * Refuse a template naming another node of the graph that is not upstream of
  * the node holding it. Such a node may not have run when the template resolves,
- * and on a parallel branch whether it has depends on scheduler order. The
- * error is the first reference's sentence with a count of the rest, and
- * `collectReferenceNotUpstreamIssues` returns the full list.
+ * and on a parallel branch whether it has depends on scheduler order. A
+ * Condition rule naming its source node is held to the same rule, and also
+ * refused when that node is gone. The error is the first reference's sentence
+ * with a count of the rest, and `collectReferenceNotUpstreamIssues` returns the
+ * full list.
  */
 export function validateUpstreamTemplateReferences(input: {
   nodes: readonly WorkflowNode[];

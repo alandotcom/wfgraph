@@ -51,6 +51,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
     missingRequiredFields,
     missingIntegrations,
     unverifiedProviderFields,
+    sharedConditionPaths,
   } = issues;
 
   const totalIssues = workflowIssueCount(issues);
@@ -303,6 +304,43 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
                     </div>
                   ))}
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Shared Condition Paths Section */}
+        {sharedConditionPaths.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="font-medium text-muted-foreground text-sm">
+              Fields Offered by Several Steps
+            </h4>
+            {sharedConditionPaths.map((condition) => (
+              <div className="flex items-start gap-3" key={condition.nodeId}>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm">{condition.nodeLabel}</p>
+                  <ul className="mt-1 space-y-0.5 pl-3">
+                    {condition.problems.map((problem) => (
+                      <li
+                        className="text-muted-foreground text-sm"
+                        key={problem.path}
+                      >
+                        {problem.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <Button
+                  aria-label={`Review the rules in ${condition.nodeLabel}`}
+                  className="shrink-0"
+                  onClick={() =>
+                    handleGoToStep(condition.nodeId, "conditionModel")
+                  }
+                  size="sm"
+                  variant="outline"
+                >
+                  Review
+                </Button>
               </div>
             ))}
           </div>

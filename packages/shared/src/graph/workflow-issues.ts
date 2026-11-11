@@ -13,8 +13,14 @@ import {
 } from "#src/actions/action-config-validation";
 import {
   collectEntityStateConditionReferences,
+  collectNodeOutputConditionReferences,
+  type ConditionModel,
   parseConditionModel,
+  parseEntityStateConditionPath,
+  parseNodeOutputConditionPath,
 } from "#src/conditions/conditions";
+import { EVENT_NAME_FIELD_PATH } from "#src/conditions/condition-model";
+import { nodesOfferingOutputPath } from "#src/graph/condition-sources";
 import { conditionTypeOf } from "#src/conditions/condition-field-type";
 import {
   type ActionMetadata,
@@ -130,6 +136,11 @@ export type BrokenReferenceIssue = {
  * A node behind the Canceled outlet may read a node behind the Started outlet.
  * The Canceled Branch runs once the Started side has stopped at a boundary,
  * and it reads whatever outputs the run had produced by then.
+ *
+ * A Condition rule naming its source node (`$node:<id>.<path>`) is held to the
+ * same rule, and a rule naming a node the graph no longer holds is reported
+ * here too: such a rule reads nothing and answers false on every run, so it
+ * blocks where a template naming a deleted node only warns.
  */
 export type ReferenceNotUpstreamIssue = {
   kind: "reference_not_upstream";
@@ -184,6 +195,25 @@ export type InvalidLifecycleRulesIssue = {
   message: string;
 };
 
+/**
+ * A Condition rule naming no node, on a path more than one node above the
+ * Condition offers. Such a rule reads the value of the node latest in the
+ * graph's node order, named by `readNodeId`, and cannot read the others.
+ * It runs as it always has, so this is a warning; picking the field again in
+ * the editor writes the rule naming its node.
+ */
+export type SharedConditionPathIssue = {
+  kind: "shared_condition_path";
+  severity: "warning";
+  nodeId: string;
+  nodeLabel: string;
+  fieldKey: string;
+  fieldLabel: string;
+  path: string;
+  readNodeId: string;
+  message: string;
+};
+
 export type WorkflowIssue =
   | MissingRequiredFieldIssue
   | InvalidGroupIssue
@@ -191,7 +221,8 @@ export type WorkflowIssue =
   | MissingIntegrationIssue
   | UnverifiedProviderFieldIssue
   | BrokenReferenceIssue
-  | ReferenceNotUpstreamIssue;
+  | ReferenceNotUpstreamIssue
+  | SharedConditionPathIssue;
 
 export type CollectWorkflowIssuesInput = {
   nodes: WorkflowNode[];
@@ -230,6 +261,12 @@ export type MissingIntegrationGroup = {
   integrationType: string;
   integrationLabel: string;
   nodeNames: string[];
+};
+
+export type SharedConditionPathGroup = {
+  nodeId: string;
+  nodeLabel: string;
+  problems: Array<{ path: string; message: string }>;
 };
 
 export type UnverifiedProviderFieldGroup = {
@@ -272,6 +309,7 @@ export type WorkflowIssuesOverlayModel = {
   missingRequiredFields: MissingRequiredFieldGroup[];
   missingIntegrations: MissingIntegrationGroup[];
   unverifiedProviderFields: UnverifiedProviderFieldGroup[];
+  sharedConditionPaths: SharedConditionPathGroup[];
 };
 
 type IntegrationLike = { id: string; type: string };
@@ -444,6 +482,16 @@ function collectMissingIntegrationIssues(input: {
   return issues;
 }
 
+/** The config key a Condition node stores its rules under, and its label. */
+const CONDITION_MODEL_FIELD_KEY = "conditionModel";
+const CONDITION_MODEL_FIELD_LABEL = "Continue when";
+
+/** A Condition node's stored model, or undefined where it does not parse. */
+function conditionModelOf(config: JsonObject): ConditionModel | undefined {
+  const parsed = parseConditionModel(config.conditionModel);
+  return parsed.valid ? parsed.model : undefined;
+}
+
 /**
  * The template references in a node's config that the engine resolves. A key
  * the action declares literal is handed over as authored, and a Wait's key its
@@ -560,8 +608,8 @@ function collectBrokenReferenceIssues(input: {
         severity: "blocking",
         nodeId: node.id,
         nodeLabel,
-        fieldKey: "conditionModel",
-        fieldLabel: "Continue when",
+        fieldKey: CONDITION_MODEL_FIELD_KEY,
+        fieldLabel: CONDITION_MODEL_FIELD_LABEL,
         referencedNodeId: "$entity",
         displayText: `${reference.entityType}.${reference.fieldPath}`,
         message: `Node "${nodeLabel}" references unavailable Entity data in Continue when`,
@@ -651,20 +699,26 @@ export function collectReferenceNotUpstreamIssues(input: {
       (reference) =>
         reference.nodeId !== node.id && nodeById.has(reference.nodeId)
     );
-    if (crossNode.length === 0) {
+    const conditionSources =
+      actionType === BUILT_IN_ACTION_IDS.condition
+        ? conditionModelOf(config)
+        : undefined;
+    const conditionReferences = conditionSources
+      ? collectNodeOutputConditionReferences(conditionSources)
+      : [];
+    if (crossNode.length === 0 && conditionReferences.length === 0) {
       return [];
     }
 
     const upstream = upstreamOf(node.id);
     const readsStartedSide = canceledSide.has(node.id);
     const nodeLabel = labelOf(node);
-    return crossNode.flatMap((reference) => {
+    const readable = (referenced: WorkflowNode) =>
+      upstream.has(referenced.id) ||
+      (readsStartedSide && startedSide.has(referenced.id));
+    const templateIssues = crossNode.flatMap((reference) => {
       const referenced = nodeById.get(reference.nodeId);
-      if (
-        !referenced ||
-        upstream.has(referenced.id) ||
-        (readsStartedSide && startedSide.has(referenced.id))
-      ) {
+      if (!referenced || readable(referenced)) {
         return [];
       }
       const referencedLabel = labelOf(referenced);
@@ -680,6 +734,125 @@ export function collectReferenceNotUpstreamIssues(input: {
           referencedNodeId: referenced.id,
           displayText: reference.displayText,
           message: `Node "${nodeLabel}" reads "${referencedLabel}" in ${fieldLabel}, but no path leads from "${referencedLabel}" to "${nodeLabel}". Reference only a node upstream of "${nodeLabel}", or move "${nodeLabel}" below "${referencedLabel}".`,
+        },
+      ];
+    });
+    const conditionIssues = uniqBy(
+      conditionReferences,
+      (reference) => `${reference.nodeId}\u0000${reference.fieldPath}`
+    ).flatMap((reference): ReferenceNotUpstreamIssue[] => {
+      const referenced = nodeById.get(reference.nodeId);
+      if (referenced && readable(referenced)) {
+        return [];
+      }
+      const base = {
+        kind: "reference_not_upstream" as const,
+        severity: "blocking" as const,
+        nodeId: node.id,
+        nodeLabel,
+        fieldKey: CONDITION_MODEL_FIELD_KEY,
+        fieldLabel: CONDITION_MODEL_FIELD_LABEL,
+        referencedNodeId: reference.nodeId,
+      };
+      if (!referenced) {
+        return [
+          {
+            ...base,
+            displayText: reference.fieldPath,
+            message: `Node "${nodeLabel}" tests ${reference.fieldPath} from a step that is no longer in the workflow, in ${CONDITION_MODEL_FIELD_LABEL}. Pick the field again from a node upstream of "${nodeLabel}".`,
+          },
+        ];
+      }
+      const referencedLabel = labelOf(referenced);
+      return [
+        {
+          ...base,
+          displayText: `${referencedLabel}.${reference.fieldPath}`,
+          message: `Node "${nodeLabel}" reads "${referencedLabel}" in ${CONDITION_MODEL_FIELD_LABEL}, but no path leads from "${referencedLabel}" to "${nodeLabel}". Test only a node upstream of "${nodeLabel}", or move "${nodeLabel}" below "${referencedLabel}".`,
+        },
+      ];
+    });
+    return [...templateIssues, ...conditionIssues];
+  });
+}
+
+/**
+ * Every unqualified Condition rule on a path more than one node above its
+ * Condition offers, naming the node whose value the rule reads. Rules on the
+ * Arriving Event's name and on Entity State name no node and offer no choice,
+ * so they are left out.
+ */
+function collectSharedConditionPathIssues(input: {
+  nodes: WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  catalog: ExtensionCatalog;
+}): SharedConditionPathIssue[] {
+  return input.nodes.flatMap((node) => {
+    const config = readJsonObjectLeniently(node.data.config);
+    const actionType = config
+      ? readConfigTrimmedString(config, "actionType")
+      : undefined;
+    const model =
+      config &&
+      node.data.enabled !== false &&
+      actionType === BUILT_IN_ACTION_IDS.condition
+        ? conditionModelOf(config)
+        : undefined;
+    if (!model) {
+      return [];
+    }
+
+    const paths = uniq(
+      model.groups.flatMap((group) =>
+        group.conditions
+          .map((rule) => rule.field.trim())
+          .filter(
+            (field) =>
+              field !== "" &&
+              field !== EVENT_NAME_FIELD_PATH &&
+              !parseEntityStateConditionPath(field) &&
+              !parseNodeOutputConditionPath(field)
+          )
+      )
+    );
+    const nodeLabel = workflowNodeLabel({
+      node,
+      actionLabel: findAction(input.catalog, BUILT_IN_ACTION_IDS.condition)
+        ?.label,
+      actionType,
+    });
+    return paths.flatMap((path) => {
+      const sources = nodesOfferingOutputPath({
+        targetNodeId: node.id,
+        path,
+        nodes: input.nodes,
+        edges: input.edges,
+        catalog: input.catalog,
+      });
+      const read = sources.at(-1);
+      if (sources.length < 2 || !read) {
+        return [];
+      }
+      const labelOf = (source: WorkflowNode) =>
+        `"${workflowNodeLabel({
+          node: source,
+          actionLabel: findAction(
+            input.catalog,
+            readConfigTrimmedString(source.data.config, "actionType") ?? ""
+          )?.label,
+        })}"`;
+      const others = sources.slice(0, -1).map(labelOf).join(" and ");
+      return [
+        {
+          kind: "shared_condition_path" as const,
+          severity: "warning" as const,
+          nodeId: node.id,
+          nodeLabel,
+          fieldKey: CONDITION_MODEL_FIELD_KEY,
+          fieldLabel: CONDITION_MODEL_FIELD_LABEL,
+          path,
+          readNodeId: read.id,
+          message: `Node "${nodeLabel}" tests ${path}, which ${others} and ${labelOf(read)} all offer, and reads it from ${labelOf(read)}. Pick the field again to name the step it comes from.`,
         },
       ];
     });
@@ -762,6 +935,7 @@ export function collectWorkflowIssues(
     ...collectMissingIntegrationIssues(input),
     ...collectBrokenReferenceIssues(input),
     ...collectReferenceNotUpstreamIssues(input),
+    ...collectSharedConditionPathIssues(input),
     ...collectInvalidGroupIssues(input),
     ...collectInvalidLifecycleRulesIssues(input),
   ];
@@ -834,6 +1008,7 @@ function issuesByKind(issues: readonly WorkflowIssue[]): IssuesByKind {
       issues,
       "unverified_provider_field"
     ),
+    shared_condition_path: issuesOfKind(issues, "shared_condition_path"),
   };
 }
 
@@ -954,6 +1129,16 @@ export function groupWorkflowIssuesForOverlay(
       (node, nodeIssues) => ({
         ...node,
         fields: nodeIssues.map(issueFieldEntry),
+      })
+    ),
+    sharedConditionPaths: groupIssuesByNode(
+      byKind.shared_condition_path,
+      (node, nodeIssues) => ({
+        ...node,
+        problems: nodeIssues.map((issue) => ({
+          path: issue.path,
+          message: issue.message,
+        })),
       })
     ),
   };

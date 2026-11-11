@@ -791,6 +791,9 @@ export function issueIdentity(issue: WorkflowIssue): string {
   if (issue.kind === "invalid_group") {
     return `${issue.kind}|${issue.rule}`;
   }
+  if (issue.kind === "shared_condition_path") {
+    return `${issue.kind}|${issue.path}|${issue.readNodeId}`;
+  }
   return `${issue.kind}|${issue.check}`;
 }
 

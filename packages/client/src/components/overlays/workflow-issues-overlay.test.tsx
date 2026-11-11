@@ -130,6 +130,7 @@ describe("workflowIssueCount", () => {
             fields: [{ fieldKey: "fields", fieldLabel: "Fields" }],
           },
         ],
+        sharedConditionPaths: [],
       })
     ).toBe(6);
   });
@@ -149,6 +150,7 @@ function issuesModel(
     brokenReferences: [],
     missingRequiredFields: [],
     unverifiedProviderFields: [],
+    sharedConditionPaths: [],
     ...overrides,
   };
 }
@@ -380,5 +382,29 @@ describe("WorkflowIssuesOverlay", () => {
       getByRole("button", { name: "Review Fields in Create issue" })
     );
     expect(onGoToStep).toHaveBeenCalledWith("create", "fields");
+  });
+
+  it("opens the rules of a Condition testing a path several steps offer", () => {
+    const onGoToStep = vi.fn();
+    const message =
+      'Node "Route" tests score, which "Lifecycle" and "Score" all offer, and reads it from "Score". Pick the field again to name the step it comes from.';
+    const { getByRole, getByText } = renderIssues(
+      issuesModel({
+        totalIssues: 1,
+        sharedConditionPaths: [
+          {
+            nodeId: "route",
+            nodeLabel: "Route",
+            problems: [{ path: "score", message }],
+          },
+        ],
+      }),
+      { onGoToStep }
+    );
+
+    expect(getByText("Fields Offered by Several Steps")).toBeTruthy();
+    expect(getByText(message)).toBeTruthy();
+    fireEvent.click(getByRole("button", { name: "Review the rules in Route" }));
+    expect(onGoToStep).toHaveBeenCalledWith("route", "conditionModel");
   });
 });
