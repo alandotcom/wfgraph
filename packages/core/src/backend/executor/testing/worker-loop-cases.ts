@@ -7,11 +7,13 @@
  * `describeWorkerLoopCases`, so every backend answers the same assertions.
  *
  * Every case runs loops on the wall clock with short leases and polls, and
- * waits for the database to reach a state rather than for a fixed time.
+ * waits for the database to reach a state rather than for a fixed time. The
+ * budget-cut cases run their tick on a TestClock instead; see `cutWhileHeld`.
  */
 
 import { describe, expect, it } from "vitest";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Fiber, Layer, Schema } from "effect";
+import { TestClock } from "effect/testing";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { IN_FLIGHT_EXECUTION_STATUSES } from "@wfgraph/shared/lifecycle/execution-contracts";
@@ -50,9 +52,11 @@ import {
   DEFAULT_LEASE_MS,
   runWorkerLoop,
   tick,
+  type TickOutcome,
   type WorkerLoopOptions,
   type WorkerLoopOutcome,
 } from "#src/backend/executor/worker-loop";
+import { INTERRUPTED_STEP_WAIT_MS } from "#src/backend/executor/pass";
 import { createWorkerWake } from "#src/backend/executor/worker-wake";
 import {
   type CaseDatabase,
@@ -154,6 +158,42 @@ function oneActionThenMark(actionType: string): SerializedWorkflowGraph {
     ],
     edges: [edge("entry", "work", "started"), edge("work", "after")],
   });
+}
+
+/** The budget of a tick `cutWhileHeld` runs, in TestClock milliseconds. */
+const CUT_BUDGET_MS = 100;
+
+/**
+ * Runs a tick of `CUT_BUDGET_MS` on a TestClock set to the wall clock's time,
+ * which also stamps the tick's claims and releases, and advances it by
+ * `advanceMs` once `heldStep` has entered. The budget therefore runs out while
+ * that step runs, however long the claim and the pass's opening took.
+ * Answers the tick's outcome and the TestClock time the tick started at.
+ */
+function cutWhileHeld(
+  connection: ConformanceConnection,
+  advanceMs: number
+): Promise<{ outcome: TickOutcome; startedAt: number }> {
+  return connection.run(
+    Effect.gen(function* () {
+      const startedAt = Date.now();
+      yield* TestClock.setTime(startedAt);
+      const clock = yield* TestClock.testClockWith(Effect.succeed);
+      const ticking = yield* Effect.forkChild(
+        tick({
+          actions: () => actions,
+          ...LOOP_SETTINGS,
+          budgetMs: CUT_BUDGET_MS,
+          sweep: false,
+          now: () => new Date(clock.currentTimeMillisUnsafe()),
+        }).pipe(Effect.provide(noDeliveryServices))
+      );
+      yield* Effect.promise(() => heldStep.entered);
+      yield* TestClock.adjust(advanceMs);
+      const outcome = yield* Fiber.join(ticking);
+      return { outcome, startedAt };
+    }).pipe(Effect.provide(TestClock.layer()))
+  );
 }
 
 export function describeWorkerLoopCases(
@@ -692,13 +732,9 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     const harness = await open();
     const held = await harness.start(oneActionThenMark("test/held-effect"));
 
-    const outcome = await harness.connection.run(
-      tick({
-        actions: () => actions,
-        ...LOOP_SETTINGS,
-        budgetMs: 100,
-        sweep: false,
-      }).pipe(Effect.provide(noDeliveryServices))
+    const { outcome, startedAt } = await cutWhileHeld(
+      harness.connection,
+      CUT_BUDGET_MS
     );
 
     expect(outcome).toMatchObject({
@@ -713,7 +749,10 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       workerId: null,
       lastError: BUDGET_CUT_ERROR,
     });
-    expect(schedule?.wakeAt.getTime()).toBeLessThanOrEqual(Date.now());
+    // Due at the moment of the cut, on the tick's TestClock.
+    expect(schedule?.wakeAt.getTime()).toBeLessThanOrEqual(
+      startedAt + CUT_BUDGET_MS
+    );
     const memo = await harness.connection.run(
       Effect.gen(function* () {
         const executions = yield* ExecutionRepo;
@@ -747,14 +786,11 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
     const harness = await open();
     const held = await harness.start(oneActionThenMark("test/held"));
 
-    const cutAt = Date.now();
-    const outcome = await harness.connection.run(
-      tick({
-        actions: () => actions,
-        ...LOOP_SETTINGS,
-        budgetMs: 100,
-        sweep: false,
-      }).pipe(Effect.provide(noDeliveryServices))
+    // Past the cut, the pass waits `INTERRUPTED_STEP_WAIT_MS` on the same
+    // TestClock for the step to stop before it releases the run.
+    const { outcome, startedAt } = await cutWhileHeld(
+      harness.connection,
+      CUT_BUDGET_MS + INTERRUPTED_STEP_WAIT_MS
     );
     heldStep.release();
 
@@ -766,7 +802,7 @@ function describeCases(openDatabase: () => Promise<CaseDatabase>): void {
       lastError: BUDGET_CUT_ERROR,
     });
     expect(schedule?.wakeAt.getTime()).toBeGreaterThanOrEqual(
-      cutAt + DEFAULT_LEASE_MS
+      startedAt + CUT_BUDGET_MS + DEFAULT_LEASE_MS
     );
   });
 
