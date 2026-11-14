@@ -2220,34 +2220,40 @@
       ]
     },
     "source:packages/agent/CHANGELOG.md": {
-      "fingerprint": "aacc9c9b5b3dd83ef093136725f41cb7efa22933c8424e55525ae3cb2667ac79",
+      "fingerprint": "fa93b02d1d1e7cf04eff12ba0c56b54b3ac3a2c80041aed6d4de88efaab63337",
       "snapshot": {
-        "packages/agent/CHANGELOG.md": "5bd1fc8788c33b470ba4539e4fb7066247c15c29645742abc3f847a132670873"
+        "packages/agent/CHANGELOG.md": "bb4e6a12afe87cf8958e9e2c49d30763a0c8162a40e75adb259368c3583c01e5"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "6449fb8793147142f902ddd28ab168a86438d320",
       "outcome": "out-of-scope",
-      "reason": "Generated release notes that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+      "reason": "Generated release notes from the version-packages commit; each change they list was reviewed against the skills when its changeset landed.",
+      "evidence": [
+        "commit 6449fb87 (chore: version packages) only moves .changeset entries into CHANGELOG.md"
+      ]
     },
     "source:packages/client/CHANGELOG.md": {
-      "fingerprint": "d22e3f835880f80b38975641b06e35e85821e6202db33f116b5ed26322b525cc",
+      "fingerprint": "4704eb1a950c828970e25e020e04bbad0c6659d56abed81f96353c087fc2756a",
       "snapshot": {
-        "packages/client/CHANGELOG.md": "410e644b945a836641b78ab53c50606c2ed9e3735c64c9ae61943f9dc88fa7bb"
+        "packages/client/CHANGELOG.md": "5ca583903f83ce385c2d9ed8eecb8face54141025974d5919aea6f0ddc0cca6d"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "6449fb8793147142f902ddd28ab168a86438d320",
       "outcome": "out-of-scope",
-      "reason": "Generated release notes that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+      "reason": "Generated release notes from the version-packages commit; each change they list was reviewed against the skills when its changeset landed.",
+      "evidence": [
+        "commit 6449fb87 (chore: version packages) only moves .changeset entries into CHANGELOG.md"
+      ]
     },
     "source:packages/core/CHANGELOG.md": {
-      "fingerprint": "ba7f5437ef115d1a8e92614e7270069d2babc10bccc6f162e743b973798b6f38",
+      "fingerprint": "0fe083fc94dcd8e88842bb56a89247f5c4380400c6b5d399bcd7cb39163d1ddd",
       "snapshot": {
-        "packages/core/CHANGELOG.md": "08b917b8bfbd008493c83aef8425ceda0d3fb436344717114f48aa4c48e76e80"
+        "packages/core/CHANGELOG.md": "b00384aab2fa8919c69cbc991753e5cf41bc61fdbc03a7a802f9cfc211565f64"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "6449fb8793147142f902ddd28ab168a86438d320",
       "outcome": "out-of-scope",
-      "reason": "Generated release notes that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+      "reason": "Generated release notes from the version-packages commit; each change they list was reviewed against the skills when its changeset landed.",
+      "evidence": [
+        "commit 6449fb87 (chore: version packages) only moves .changeset entries into CHANGELOG.md"
+      ]
     },
     "source:packages/core/src/backend/engine/core-replay.test.ts": {
       "fingerprint": "13a13ef7ce28d1f5ac2cd5ea6b103f5eaefa50e25ec003e4de3c7b0169b75589",
@@ -2595,24 +2601,28 @@
       ]
     },
     "source:packages/plugins/CHANGELOG.md": {
-      "fingerprint": "69541d2229c1606afaf0389ebfe91319b8a75435ee26d694627b9be36a558947",
+      "fingerprint": "ca206254ea41578424e1fa845a8fde26d094bbe300dcfb6152282b60b4d71605",
       "snapshot": {
-        "packages/plugins/CHANGELOG.md": "89ccab71eab530ddec14fa3afa71e3b2c781b2dcc868e0a4d17b3bf386525eea"
+        "packages/plugins/CHANGELOG.md": "c5d2fc807a55815ca920c4b54fcf61a40c94a8e95ec24ad5b4da6c17a514b06b"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "6449fb8793147142f902ddd28ab168a86438d320",
       "outcome": "out-of-scope",
-      "reason": "Generated release notes that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+      "reason": "Generated release notes from the version-packages commit; each change they list was reviewed against the skills when its changeset landed.",
+      "evidence": [
+        "commit 6449fb87 (chore: version packages) only moves .changeset entries into CHANGELOG.md"
+      ]
     },
     "source:packages/shared/CHANGELOG.md": {
-      "fingerprint": "226dbd5fa65bc1b71aba862b8afd1c845ec7e4486e366f3950da8fe6b276c13f",
+      "fingerprint": "720a0e219301d107638dcf56595d8efad9b81e572fbd43210cd852df07c003c6",
       "snapshot": {
-        "packages/shared/CHANGELOG.md": "3142a7abd2fbc5fc93aa357745fc1af13597de99610e32cbea492d7709c0415c"
+        "packages/shared/CHANGELOG.md": "ad56e5cdfc3266400a5f89620bded5a9c080b60ccfc0c52b0363769950c242d9"
       },
-      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
+      "head": "6449fb8793147142f902ddd28ab168a86438d320",
       "outcome": "out-of-scope",
-      "reason": "Generated release notes that no published skill teaches.",
-      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
+      "reason": "Generated release notes from the version-packages commit; each change they list was reviewed against the skills when its changeset landed.",
+      "evidence": [
+        "commit 6449fb87 (chore: version packages) only moves .changeset entries into CHANGELOG.md"
+      ]
     },
     "source:packages/shared/src/lifecycle/run-ending.test.ts": {
       "fingerprint": "a6a4d52e43e21d9a894d7fc1502aba1fe6af4a72440c3f77ced6779a6218bbfb",
@@ -3237,16 +3247,15 @@
       ]
     },
     "source:examples/app.ts": {
-      "fingerprint": "291cfee715995781a5f1d56afaf0b396463be845698291fc193aad56084d369b",
+      "fingerprint": "63267acadb68a275b7d3ce3c5f36f1043b1508709f4666b22d66d55946b10dd9",
       "snapshot": {
-        "examples/app.ts": "d7d6543de24006b6240e4105eda900acda5cb966ddc5e117f4081c4016ab4fdf"
+        "examples/app.ts": "7c3fabcd258d6030205e13e5e3d1d640879aa952d63f89037c6ece8209182ac1"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
-      "outcome": "out-of-scope",
-      "reason": "The example app's demo authentication for /api/mcp. The mcp skill already tells a host to verify the bearer token inside auth.",
+      "head": "6449fb8793147142f902ddd28ab168a86438d320",
+      "outcome": "no-change",
+      "reason": "The example app now passes model \"gpt-6-luna\" to the build agent. The build-agent skill already names gpt-6-luna as an OpenAI choice and the published default stays gpt-6.1-terra, so no skill statement changed.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md line 53; commit 001aa28b diff adds one model line"
       ]
     },
     "source:examples/demo-auth.ts": {
@@ -4682,17 +4691,15 @@
       ]
     },
     "source:packages/core/src/backend/executor/testing/worker-loop-cases.ts": {
-      "fingerprint": "34a8b0d0bfb13aa8ec9039974ecc2503974866ec8faf14b65d2bb65322f2c664",
+      "fingerprint": "7b1f6f2e86d4851a2f21a640b38dc24a23b82cf5d4ca1efdcb459de31f0efe87",
       "snapshot": {
-        "packages/core/src/backend/executor/testing/worker-loop-cases.ts": "60fc2437f6bec9be07a5d7546a1b1ef45dede96b64dff42dfb0e6c924ec9aa00"
+        "packages/core/src/backend/executor/testing/worker-loop-cases.ts": "9dc8f3f81cf022015079d7c924f3986b0d9474f4cdfc406e141faa052bd80907"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "head": "6449fb8793147142f902ddd28ab168a86438d320",
+      "outcome": "no-change",
+      "reason": "Test-only change: the two budget-cut worker-loop cases now run their tick on a TestClock gated on the held step. No published entry reaches this testing module and no executor behaviour changed.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "packages/core/src/backend/executor/testing/worker-loop-cases.ts is imported only by worker-loop.test.ts and worker-loop.pg.test.ts"
       ]
     },
     "source:packages/core/src/backend/executor/upkeep.ts": {
