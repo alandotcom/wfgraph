@@ -4694,17 +4694,15 @@
       ]
     },
     "source:packages/core/src/backend/executor/testing/worker-loop-cases.ts": {
-      "fingerprint": "34a8b0d0bfb13aa8ec9039974ecc2503974866ec8faf14b65d2bb65322f2c664",
+      "fingerprint": "7b1f6f2e86d4851a2f21a640b38dc24a23b82cf5d4ca1efdcb459de31f0efe87",
       "snapshot": {
-        "packages/core/src/backend/executor/testing/worker-loop-cases.ts": "60fc2437f6bec9be07a5d7546a1b1ef45dede96b64dff42dfb0e6c924ec9aa00"
+        "packages/core/src/backend/executor/testing/worker-loop-cases.ts": "9dc8f3f81cf022015079d7c924f3986b0d9474f4cdfc406e141faa052bd80907"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "head": "8814cbd6264298e968f14f1a18d29c1b46192ad1",
+      "outcome": "no-change",
+      "reason": "Test-only change: the two budget-cut worker-loop cases now run their tick on a TestClock gated on the held step. No published entry reaches this testing module and no executor behaviour changed.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "packages/core/src/backend/executor/testing/worker-loop-cases.ts is imported only by worker-loop.test.ts and worker-loop.pg.test.ts"
       ]
     },
     "source:packages/core/src/backend/executor/upkeep.ts": {
