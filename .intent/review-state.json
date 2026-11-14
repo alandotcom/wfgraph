@@ -3,106 +3,110 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "fe1154f9a99105627290d82f9a49ae978e7a8fe6911144a333bae6cd85797a87",
+      "fingerprint": "e2497d24bff27efe11fe47dc4c495fd1fcfe7a69526db80d755840f1a4de3a5f",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
-        "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
-        "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "d58ce1e275c60a8028294699bc95c68bbdae8eb65e12149a4a034df5a1901384",
-        "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
-        "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1",
-        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "45656429549e5ddab3d00815e3d9d9610f0ba8b99d0c2dcd195eae6ee37d9162",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "52b4d08d03e1e8e5d001d6b43ef7cfc4bdba8d7cada7156b300f654c3e455da0",
-        "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d"
+        "packages/core/skills/wfgraph-core/SKILL.md": "eae042030469f9e1ea72a246fd1335500e0c353c75d76de04bd6265adfa6868d",
+        "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
+        "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
+        "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "672228640ea6133d7ca5fee8016cfa2a5d63895f60d1042cc6c86bb39e45725f",
+        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
+        "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b"
       },
-      "head": "db0e0f9c43b3e7188c69e81e4b32cc15be06ddcc",
-      "outcome": "no-change",
-      "reason": "The build-agent skill it is loaded beside changed one table cell about gpt-6-luna. Nothing this skill states concerns the model choice.",
+      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "outcome": "updated",
+      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
       "evidence": [
-        "git show HEAD -- packages/core/skills",
-        "pnpm run skills:validate passed"
+        "git diff shows only the library_version line",
+        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
+        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
-      "fingerprint": "154b978b7963a83f706f7f64e5ff02647c990f4b58a1333589f91cd982d16773",
+      "fingerprint": "13c32b7096ee573305bfcb31e99446c9bf1ea13f64f5c3ec9eed98c797b0c903",
       "snapshot": {
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
-        "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03"
+        "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
-      "outcome": "no-change",
-      "reason": "docs/events.md gained the Cancel arrival-order rule and the Wait catch-up rule. Both rules are stated once in the wfgraph-core skill, which the events skill is loaded beside, and nothing the events skill says about Cancel Events or Waits became wrong.",
+      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "outcome": "updated",
+      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
       "evidence": [
-        "Read packages/core/skills/wfgraph-core/events/SKILL.md lines mentioning Cancel and Wait against docs/events.md at HEAD",
-        "git diff of packages/core/skills/wfgraph-core/SKILL.md shows the two rules"
+        "git diff shows only the library_version line",
+        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
+        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "38212bbda55f7ac7174c83da4be23535219091c3652b2103df23f16e21f465ab",
+      "fingerprint": "915875281a077a8afa803f3d17a1da19b225d55416dfdb86214cbda26f86100d",
       "snapshot": {
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1"
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "672228640ea6133d7ca5fee8016cfa2a5d63895f60d1042cc6c86bb39e45725f"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
+      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "outcome": "updated",
+      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
       "evidence": [
-        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
-        "pnpm run skills:validate passed"
+        "git diff shows only the library_version line",
+        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
+        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
-      "fingerprint": "caa1831accb1fd9c199bbba5bcd3649002b1d2af13f3ea43d4a68c88f02371ed",
+      "fingerprint": "1d4cf512c2c5c3c9a40558e38fa1d495cc32aef6ecf53db699dc329789e6c071",
       "snapshot": {
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
-        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "45656429549e5ddab3d00815e3d9d9610f0ba8b99d0c2dcd195eae6ee37d9162"
+        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
       "outcome": "updated",
-      "reason": "Step names are now 1 to 64 characters in a namespace per node, step.idempotencyKey(name) and the bag's idempotencyKey exist, step answers are capped by runner.maxStepValueBytes, test runs call every handler with runMode test, url credentials resist retargeting, and a connection delete removes the connection even when revoke throws. The skill now states each and adds a mistake for a revoke that throws on an already revoked token.",
+      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
       "evidence": [
-        "de816c1d fix(skills): add step keys, test runs and revoke on delete to integrations",
-        "Checked against docs/integrations.md (What is remembered across a replay; Core owns the browser flow) and packages/core/src/testing.ts (runAction runMode, TEST_EXECUTION_ID)",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff shows only the library_version line",
+        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
+        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "b64aeda6ba11495b3f59928960d57133f9c1ca8eaea18e4842013488f0874d12",
+      "fingerprint": "5f606afa6e81b41c0f50341d9568c340c2e73d0ce23b7ae66504f1d7d131377f",
       "snapshot": {
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
-        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "b7a92179cb4b08dd4aa4a559e9caa2e63d3187be94a11a2d5a7f2daaa0a54628"
+        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
+      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "outcome": "updated",
+      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
       "evidence": [
-        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
-        "pnpm run skills:validate passed"
+        "git diff shows only the library_version line",
+        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
+        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "4a6d8705eb2c6c1a512b5cb1c976316249586d617443269fece0058af8c1b996",
+      "fingerprint": "54b1d00a00e2d9ef1566114c89ad7ac7d0a98e8c059fdb764f82d7284c7e42ed",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
-        "_artifacts/domain_map.yaml": "c0c37dffbc738e3b15b2b1370e969bb4a574c2e39ef61054e2b252d048c7d746",
-        "_artifacts/skill_spec.md": "a73b6c1289b3321ca97cc0b489b84f2c6b33ba1c027597509bd578101f045ad9",
-        "_artifacts/skill_tree.yaml": "0d7d9f2fd93f3844a71191892ab9574e5fb8f43e26d8dc0292b488ad443bd352",
+        "_artifacts/domain_map.yaml": "a63f795ed190b09024679672de15b156ff4d43b490e89eaf004122f017f4cedd",
+        "_artifacts/skill_spec.md": "6fc0594f9442ce0e07624142cfd70865ec2bbbfbebe3da072369198d7049adf1",
+        "_artifacts/skill_tree.yaml": "a6fabcb2d412ccc31cba127dbac4c7e103ddb9d3b8d9f71069e011fe46d47f91",
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
-        "packages/core/skills/wfgraph-core/SKILL.md": "3727550614ec1b6bc19d0066ec686808fc15d8b9de240aeb432858c7ed2aeee8",
-        "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "d58ce1e275c60a8028294699bc95c68bbdae8eb65e12149a4a034df5a1901384",
-        "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
-        "packages/core/skills/wfgraph-core/events/SKILL.md": "ab9dba1f30223b5e38b8448e37e008756a7c08a6d5cce8f5834e65198fe90d03",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "c8975799a03fc340676e4aa5f321cf63fd76a6a72a8bb80fc64b0bc224aa08e1",
-        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "45656429549e5ddab3d00815e3d9d9610f0ba8b99d0c2dcd195eae6ee37d9162",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "52b4d08d03e1e8e5d001d6b43ef7cfc4bdba8d7cada7156b300f654c3e455da0",
-        "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d",
+        "packages/core/skills/wfgraph-core/SKILL.md": "eae042030469f9e1ea72a246fd1335500e0c353c75d76de04bd6265adfa6868d",
+        "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
+        "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
+        "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "672228640ea6133d7ca5fee8016cfa2a5d63895f60d1042cc6c86bb39e45725f",
+        "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
+        "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
         "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f",
@@ -113,13 +117,17 @@
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
-        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "b7a92179cb4b08dd4aa4a559e9caa2e63d3187be94a11a2d5a7f2daaa0a54628",
+        "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "db0e0f9c43b3e7188c69e81e4b32cc15be06ddcc",
-      "outcome": "no-change",
-      "reason": "No skill and no developer task was added or removed.",
-      "evidence": ["_artifacts/skill_tree.yaml unchanged"]
+      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "outcome": "updated",
+      "reason": "The planning records now name 4.1.1 as the target version, matching the skills. No domain, task, or skill was added or removed.",
+      "evidence": [
+        "_artifacts/domain_map.yaml library.version",
+        "_artifacts/skill_tree.yaml library.version",
+        "_artifacts/skill_spec.md target version sentence"
+      ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
       "fingerprint": "29663a0b9cb91e8ef3bc2e8a3d1c1ce4408390528deec93cf2bebfc1f0dee648",
@@ -135,19 +143,20 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "b00bf3e7be4d41992133346f0c32c2ad431a2f8a3e6c4e9e99b6bf54ddee7484",
+      "fingerprint": "dba54287721246160c6cf0518bc3a5548403765eb36a727731e1690f40975f6a",
       "snapshot": {
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
-        "packages/core/skills/wfgraph-core/auth/SKILL.md": "20162949df33eb295c1e6d7e6aba7bc90d2f3fc5e3f2cf8cc98959dbddd37f36",
+        "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
+      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "outcome": "updated",
+      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
       "evidence": [
-        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
-        "pnpm run skills:validate passed"
+        "git diff shows only the library_version line",
+        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
+        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
       ]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
@@ -179,20 +188,21 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "8c3c303a092991c068b9e96e9898f9b99a37358de31e0733f6b4e2d47420c510",
+      "fingerprint": "a58e6e627407beeaf023d401e370ed8fc27e6dc002845e0b90f9d54db686c7b4",
       "snapshot": {
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
-        "packages/core/skills/wfgraph-core/observability/SKILL.md": "535f72561c103bb2c9a5804d2463b356245f1c47c9d5629f89b90e645b77395d",
+        "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
+      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "outcome": "updated",
+      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
       "evidence": [
-        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
-        "pnpm run skills:validate passed"
+        "git diff shows only the library_version line",
+        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
+        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
       ]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
@@ -234,19 +244,20 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "77d7ba65e86d8a5ffb224f13d10857adefa7e3daeab6751d11b6a82f4b47eaae",
+      "fingerprint": "cd0fbfe3c3457c8f305f410d5979c829b096cbadce7cf3f345a4bf9641d99c68",
       "snapshot": {
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
-        "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "646f66531d8c0286b751110a9ef67a6c9c6e4b8fc12b70763b3f7735b1170db4",
+        "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
+      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "outcome": "updated",
+      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
       "evidence": [
-        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
-        "pnpm run skills:validate passed"
+        "git diff shows only the library_version line",
+        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
+        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
       ]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
@@ -2220,40 +2231,34 @@
       ]
     },
     "source:packages/agent/CHANGELOG.md": {
-      "fingerprint": "fa93b02d1d1e7cf04eff12ba0c56b54b3ac3a2c80041aed6d4de88efaab63337",
+      "fingerprint": "aacc9c9b5b3dd83ef093136725f41cb7efa22933c8424e55525ae3cb2667ac79",
       "snapshot": {
-        "packages/agent/CHANGELOG.md": "bb4e6a12afe87cf8958e9e2c49d30763a0c8162a40e75adb259368c3583c01e5"
+        "packages/agent/CHANGELOG.md": "5bd1fc8788c33b470ba4539e4fb7066247c15c29645742abc3f847a132670873"
       },
-      "head": "6449fb8793147142f902ddd28ab168a86438d320",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Generated release notes from the version-packages commit; each change they list was reviewed against the skills when its changeset landed.",
-      "evidence": [
-        "commit 6449fb87 (chore: version packages) only moves .changeset entries into CHANGELOG.md"
-      ]
+      "reason": "Generated release notes that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/client/CHANGELOG.md": {
-      "fingerprint": "4704eb1a950c828970e25e020e04bbad0c6659d56abed81f96353c087fc2756a",
+      "fingerprint": "d22e3f835880f80b38975641b06e35e85821e6202db33f116b5ed26322b525cc",
       "snapshot": {
-        "packages/client/CHANGELOG.md": "5ca583903f83ce385c2d9ed8eecb8face54141025974d5919aea6f0ddc0cca6d"
+        "packages/client/CHANGELOG.md": "410e644b945a836641b78ab53c50606c2ed9e3735c64c9ae61943f9dc88fa7bb"
       },
-      "head": "6449fb8793147142f902ddd28ab168a86438d320",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Generated release notes from the version-packages commit; each change they list was reviewed against the skills when its changeset landed.",
-      "evidence": [
-        "commit 6449fb87 (chore: version packages) only moves .changeset entries into CHANGELOG.md"
-      ]
+      "reason": "Generated release notes that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/core/CHANGELOG.md": {
-      "fingerprint": "0fe083fc94dcd8e88842bb56a89247f5c4380400c6b5d399bcd7cb39163d1ddd",
+      "fingerprint": "ba7f5437ef115d1a8e92614e7270069d2babc10bccc6f162e743b973798b6f38",
       "snapshot": {
-        "packages/core/CHANGELOG.md": "b00384aab2fa8919c69cbc991753e5cf41bc61fdbc03a7a802f9cfc211565f64"
+        "packages/core/CHANGELOG.md": "08b917b8bfbd008493c83aef8425ceda0d3fb436344717114f48aa4c48e76e80"
       },
-      "head": "6449fb8793147142f902ddd28ab168a86438d320",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Generated release notes from the version-packages commit; each change they list was reviewed against the skills when its changeset landed.",
-      "evidence": [
-        "commit 6449fb87 (chore: version packages) only moves .changeset entries into CHANGELOG.md"
-      ]
+      "reason": "Generated release notes that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/core/src/backend/engine/core-replay.test.ts": {
       "fingerprint": "13a13ef7ce28d1f5ac2cd5ea6b103f5eaefa50e25ec003e4de3c7b0169b75589",
@@ -2601,28 +2606,24 @@
       ]
     },
     "source:packages/plugins/CHANGELOG.md": {
-      "fingerprint": "ca206254ea41578424e1fa845a8fde26d094bbe300dcfb6152282b60b4d71605",
+      "fingerprint": "69541d2229c1606afaf0389ebfe91319b8a75435ee26d694627b9be36a558947",
       "snapshot": {
-        "packages/plugins/CHANGELOG.md": "c5d2fc807a55815ca920c4b54fcf61a40c94a8e95ec24ad5b4da6c17a514b06b"
+        "packages/plugins/CHANGELOG.md": "89ccab71eab530ddec14fa3afa71e3b2c781b2dcc868e0a4d17b3bf386525eea"
       },
-      "head": "6449fb8793147142f902ddd28ab168a86438d320",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Generated release notes from the version-packages commit; each change they list was reviewed against the skills when its changeset landed.",
-      "evidence": [
-        "commit 6449fb87 (chore: version packages) only moves .changeset entries into CHANGELOG.md"
-      ]
+      "reason": "Generated release notes that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/shared/CHANGELOG.md": {
-      "fingerprint": "720a0e219301d107638dcf56595d8efad9b81e572fbd43210cd852df07c003c6",
+      "fingerprint": "226dbd5fa65bc1b71aba862b8afd1c845ec7e4486e366f3950da8fe6b276c13f",
       "snapshot": {
-        "packages/shared/CHANGELOG.md": "ad56e5cdfc3266400a5f89620bded5a9c080b60ccfc0c52b0363769950c242d9"
+        "packages/shared/CHANGELOG.md": "3142a7abd2fbc5fc93aa357745fc1af13597de99610e32cbea492d7709c0415c"
       },
-      "head": "6449fb8793147142f902ddd28ab168a86438d320",
+      "head": "b9c13e43fe35484c7d69726d9d334bd036198a33",
       "outcome": "out-of-scope",
-      "reason": "Generated release notes from the version-packages commit; each change they list was reviewed against the skills when its changeset landed.",
-      "evidence": [
-        "commit 6449fb87 (chore: version packages) only moves .changeset entries into CHANGELOG.md"
-      ]
+      "reason": "Generated release notes that no published skill teaches.",
+      "evidence": ["_artifacts/skill_tree.yaml lists no CHANGELOG sources."]
     },
     "source:packages/shared/src/lifecycle/run-ending.test.ts": {
       "fingerprint": "a6a4d52e43e21d9a894d7fc1502aba1fe6af4a72440c3f77ced6779a6218bbfb",
@@ -3107,35 +3108,36 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "939c9cbf4506925db5bbe1ce38f38f4b7cb7c34ec20f8b5865d54090e8d84a32",
+      "fingerprint": "2bb7c20c7c9d8176d2f5080cfc32877a2bfb940f8e8d36545dda61c718f42de6",
       "snapshot": {
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "d58ce1e275c60a8028294699bc95c68bbdae8eb65e12149a4a034df5a1901384",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "db0e0f9c43b3e7188c69e81e4b32cc15be06ddcc",
+      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
       "outcome": "updated",
-      "reason": "The skill's provider table called gpt-6-luna the lowest cost per turn with no word on quality. Three passes of the eval suite measured it at 213 of 234 against 152 of 156 for the default, so the table now says it passes fewer eval runs.",
+      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
       "evidence": [
-        "eval-results luna-full-final, -2, -3: 74, 71 and 68 of 78",
-        "terra-full-v3 and full-after-v2: 76 and 76 of 78",
-        "pnpm run skills:validate passed for ten skills"
+        "git diff shows only the library_version line",
+        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
+        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
-      "fingerprint": "88e5273e3a5cb734756784e87ebcadfc50667c2328a5fe261f6150a79d05f5c9",
+      "fingerprint": "010cfdaff3447b77a9dcb3b898f88f984770fde7d650e1bb21472b8f28b0b173",
       "snapshot": {
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "52b4d08d03e1e8e5d001d6b43ef7cfc4bdba8d7cada7156b300f654c3e455da0",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md changed in the build agent section (Anthropic effort default, measured model, strict tools) and in the draft-change notice. Nothing this skill states is about either, and its claims still hold.",
+      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "outcome": "updated",
+      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
       "evidence": [
-        "git diff c93db484..HEAD -- docs/embedding.md read against the skill",
-        "pnpm run skills:validate passed"
+        "git diff shows only the library_version line",
+        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
+        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
       ]
     },
     "source:.agents/behaviors/workflow-authoring/BEHAVIOR.md": {
@@ -3251,11 +3253,12 @@
       "snapshot": {
         "examples/app.ts": "7c3fabcd258d6030205e13e5e3d1d640879aa952d63f89037c6ece8209182ac1"
       },
-      "head": "6449fb8793147142f902ddd28ab168a86438d320",
-      "outcome": "no-change",
-      "reason": "The example app now passes model \"gpt-6-luna\" to the build agent. The build-agent skill already names gpt-6-luna as an OpenAI choice and the published default stays gpt-6.1-terra, so no skill statement changed.",
+      "head": "001aa28b6b09e4a8202154e7fbdf4d23fe4c2cdc",
+      "outcome": "out-of-scope",
+      "reason": "The example app now names gpt-6-luna as its build agent model. The build-agent skill already lists gpt-6-luna and the agent.model option in its provider table.",
       "evidence": [
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md line 53; commit 001aa28b diff adds one model line"
+        "git show 001aa28 -- examples/app.ts",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md provider table"
       ]
     },
     "source:examples/demo-auth.ts": {
@@ -4691,15 +4694,17 @@
       ]
     },
     "source:packages/core/src/backend/executor/testing/worker-loop-cases.ts": {
-      "fingerprint": "7b1f6f2e86d4851a2f21a640b38dc24a23b82cf5d4ca1efdcb459de31f0efe87",
+      "fingerprint": "34a8b0d0bfb13aa8ec9039974ecc2503974866ec8faf14b65d2bb65322f2c664",
       "snapshot": {
-        "packages/core/src/backend/executor/testing/worker-loop-cases.ts": "9dc8f3f81cf022015079d7c924f3986b0d9474f4cdfc406e141faa052bd80907"
+        "packages/core/src/backend/executor/testing/worker-loop-cases.ts": "60fc2437f6bec9be07a5d7546a1b1ef45dede96b64dff42dfb0e6c924ec9aa00"
       },
-      "head": "6449fb8793147142f902ddd28ab168a86438d320",
-      "outcome": "no-change",
-      "reason": "Test-only change: the two budget-cut worker-loop cases now run their tick on a TestClock gated on the held step. No published entry reaches this testing module and no executor behaviour changed.",
+      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "outcome": "out-of-scope",
+      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
       "evidence": [
-        "packages/core/src/backend/executor/testing/worker-loop-cases.ts is imported only by worker-loop.test.ts and worker-loop.pg.test.ts"
+        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
+        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
+        "The changesets for these files name no new option or export"
       ]
     },
     "source:packages/core/src/backend/executor/upkeep.ts": {

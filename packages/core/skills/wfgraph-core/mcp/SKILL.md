@@ -22,7 +22,7 @@ metadata:
     publishing it.
   type: sub-skill
   library: wfgraph
-  library_version: "3.1.1"
+  library_version: "4.1.1"
 requires:
   - wfgraph-core
 sources:

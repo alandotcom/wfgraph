@@ -21,7 +21,7 @@ metadata:
     integrations. Not for defineIntegration (Effect plugin path).
   type: sub-skill
   library: wfgraph
-  library_version: "3.1.1"
+  library_version: "4.1.1"
 sources:
   - alandotcom/wfgraph:docs/embedding.md
   - alandotcom/wfgraph:docs/integrations.md
