@@ -5,7 +5,7 @@ application embeds. It is published as three npm packages that share one version
 `@wfgraph/core` (the engine, the authoring vocabulary and `createWfGraphApp`),
 `@wfgraph/client` (the built editor) and `@wfgraph/plugins` (six built-in
 integrations). The published skills ship inside the `@wfgraph/core` and
-`@wfgraph/plugins` tarballs and target version 3.1.1.
+`@wfgraph/plugins` tarballs and target version 4.1.1.
 
 ## Maintainer decisions
 

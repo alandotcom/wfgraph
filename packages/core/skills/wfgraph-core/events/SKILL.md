@@ -23,7 +23,7 @@ metadata:
     Lifecycle start/cancel behavior, or deciding between payload and current-state rules.
   type: sub-skill
   library: wfgraph
-  library_version: "3.1.1"
+  library_version: "4.1.1"
 sources:
   - alandotcom/wfgraph:docs/events.md
 ---

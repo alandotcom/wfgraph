@@ -1,12 +1,12 @@
 # domain_map.yaml
 # Library: wfgraph (the published packages @wfgraph/core, @wfgraph/client and @wfgraph/plugins)
-# Version: 3.1.1
-# Date: 2026-11-11
+# Version: 4.1.1
+# Date: 2026-11-14
 # Status: reviewed
 
 library:
   name: wfgraph
-  version: "3.1.1"
+  version: "4.1.1"
   repository: https://github.com/alandotcom/wfgraph
   description: >-
     Workflow Graph, a self-hosted workflow engine and visual editor that a host
