@@ -85,12 +85,12 @@
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "4a6d8705eb2c6c1a512b5cb1c976316249586d617443269fece0058af8c1b996",
+      "fingerprint": "7ba44a041185e9bbc1f779cff17d0213cc1f9b7456d07c9e92f37896ba62c1ca",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
         "_artifacts/domain_map.yaml": "c0c37dffbc738e3b15b2b1370e969bb4a574c2e39ef61054e2b252d048c7d746",
         "_artifacts/skill_spec.md": "a73b6c1289b3321ca97cc0b489b84f2c6b33ba1c027597509bd578101f045ad9",
-        "_artifacts/skill_tree.yaml": "0d7d9f2fd93f3844a71191892ab9574e5fb8f43e26d8dc0292b488ad443bd352",
+        "_artifacts/skill_tree.yaml": "6711f91055b4d179cf6417149e0b6ad533afa27afe569b5e42c8b1956d7c8bfc",
         "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
@@ -116,10 +116,13 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "b7a92179cb4b08dd4aa4a559e9caa2e63d3187be94a11a2d5a7f2daaa0a54628",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "db0e0f9c43b3e7188c69e81e4b32cc15be06ddcc",
+      "head": "001aa28b6b09e4a8202154e7fbdf4d23fe4c2cdc",
       "outcome": "no-change",
-      "reason": "No skill and no developer task was added or removed.",
-      "evidence": ["_artifacts/skill_tree.yaml unchanged"]
+      "reason": "review.ignore gained packages/*/CHANGELOG.md, so the release PR changelogs Changesets regenerates are no longer review items. No skill, domain, or developer task changed.",
+      "evidence": [
+        "_artifacts/skill_tree.yaml review.ignore",
+        "intent maintainer check on changeset-release/main lists no CHANGELOG items with the pattern"
+      ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
       "fingerprint": "29663a0b9cb91e8ef3bc2e8a3d1c1ce4408390528deec93cf2bebfc1f0dee648",
@@ -3237,16 +3240,16 @@
       ]
     },
     "source:examples/app.ts": {
-      "fingerprint": "291cfee715995781a5f1d56afaf0b396463be845698291fc193aad56084d369b",
+      "fingerprint": "63267acadb68a275b7d3ce3c5f36f1043b1508709f4666b22d66d55946b10dd9",
       "snapshot": {
-        "examples/app.ts": "d7d6543de24006b6240e4105eda900acda5cb966ddc5e117f4081c4016ab4fdf"
+        "examples/app.ts": "7c3fabcd258d6030205e13e5e3d1d640879aa952d63f89037c6ece8209182ac1"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "001aa28b6b09e4a8202154e7fbdf4d23fe4c2cdc",
       "outcome": "out-of-scope",
-      "reason": "The example app's demo authentication for /api/mcp. The mcp skill already tells a host to verify the bearer token inside auth.",
+      "reason": "The example app now names gpt-6-luna as its build agent model. The build-agent skill already lists gpt-6-luna and the agent.model option in its provider table.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "git show 001aa28 -- examples/app.ts",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md provider table"
       ]
     },
     "source:examples/demo-auth.ts": {
