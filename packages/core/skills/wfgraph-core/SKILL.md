@@ -28,7 +28,7 @@ metadata:
     defineEntity, defineAction, or defineIntegration (those are sub-skills).
   type: core
   library: wfgraph
-  library_version: "3.1.1"
+  library_version: "4.1.1"
 sources:
   - alandotcom/wfgraph:README.md
   - alandotcom/wfgraph:docs/embedding.md

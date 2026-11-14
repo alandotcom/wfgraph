@@ -20,7 +20,7 @@ metadata:
     or PostHog OAuth in the host.
   type: core
   library: wfgraph
-  library_version: "3.1.1"
+  library_version: "4.1.1"
 sources:
   - alandotcom/wfgraph:docs/embedding.md
   - alandotcom/wfgraph:packages/plugins/README.md
