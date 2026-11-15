@@ -41,6 +41,7 @@ import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
 import {
   currentWorkflowIdAtom,
   recordLoadedDraftRevisionAtom,
+  saveRetryBackoffAtom,
 } from "#src/lib/workflow-save-store";
 import { toEditorNode } from "#src/lib/workflow-graph-types";
 import {
@@ -75,8 +76,16 @@ export const catalog: ExtensionCatalog = {
   integrations: [],
 };
 
+/**
+ * A store for one toolbar case. A refused save holds its graph and schedules a
+ * resend through the global `fetch`, and that timer outlives the case. The
+ * suite shares a worker across files, so a resend firing after the case ends
+ * would send `workflow/update` into a later file's fetch stub. The backoff is
+ * longer than the suite, so the resend never fires while it runs.
+ */
 export function workflowStore(id = workflowId) {
   const store = createStore();
+  store.set(saveRetryBackoffAtom, { initialMs: 600_000, maxMs: 600_000 });
   store.set(currentWorkflowIdAtom, id);
   store.set(recordLoadedDraftRevisionAtom, {
     workflowId: id,
