@@ -1,5 +1,11 @@
 # @wfgraph/core
 
+## 4.1.1
+
+### Patch Changes
+
+- [#349](https://github.com/alandotcom/wfgraph/pull/349) [`94be756`](https://github.com/alandotcom/wfgraph/commit/94be75649ae70350f49f8c58e61b1e485c0a95f6) Thanks [@alandotcom](https://github.com/alandotcom)! - The published Agent Skills now declare `library_version` 4.1.1, the version they ship in. The 4.1.0 tarballs carried skills that still declared 3.1.1, so `intent stale` reported them as out of date against the installed package. The skill content is unchanged.
+
 ## 4.1.0
 
 ### Minor Changes
