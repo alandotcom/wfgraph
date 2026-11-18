@@ -232,16 +232,16 @@
       ]
     },
     "source:pnpm-workspace.yaml": {
-      "fingerprint": "599167e5329f3a7d81092d3d9002244c407f579193028d278dd63f82f55cfdac",
+      "fingerprint": "3724d69456b223fe4085f58876157307b09d12df31d860925ba9944c968d2e33",
       "snapshot": {
-        "pnpm-workspace.yaml": "f774780051f0f6a554511f98558d7a69cec8549fcd9cbce168f724b7aabb2e97"
+        "pnpm-workspace.yaml": "e0d979246a0f258ecaf5031bc14c37ecfce7fcd71a1a22cf116b02673177a7fc"
       },
-      "head": "6f8dbf90ef51f4d63f895bcab8ebab8b15da845a",
+      "head": "c45666c6d1e87c0c5912318a90450fdf8b842dfd",
       "outcome": "out-of-scope",
-      "reason": "Workspace build configuration: the Effect 4.1.4 catalog, the provider packages for the agent, tsrs and @effect/tsgo pins, and allowed Effect AI annotation keys. The effect version a host installs is a changeset note, and no skill names a dependency version.",
+      "reason": "Workspace build configuration: the Effect 4.1.4 catalog, the provider packages for the agent, pnpm release-age exclusions (none needed for tsrs 0.25.0 or @effect/tsgo 0.70.0), and allowed Effect AI annotation keys. No published skill names a dependency or tool version.",
       "evidence": [
-        "git grep finds no effect version in packages/core/skills or packages/plugins/skills.",
-        ".changeset/effect-4-1-4.md carries the effect 4.1.4 note for hosts."
+        "git grep finds no effect, tsrs or @effect/tsgo version in packages/core/skills or packages/plugins/skills.",
+        "tsrs and @effect/tsgo are root devDependencies in package.json and reach no published tarball."
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
