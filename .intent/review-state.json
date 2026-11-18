@@ -232,15 +232,16 @@
       ]
     },
     "source:pnpm-workspace.yaml": {
-      "fingerprint": "92f45b150eb9218291d4bfdc02578ef393def6cee499c3f849c53798bf2e16f2",
+      "fingerprint": "599167e5329f3a7d81092d3d9002244c407f579193028d278dd63f82f55cfdac",
       "snapshot": {
-        "pnpm-workspace.yaml": "254fb452e0bd2310c4a9b218a897ee3bc265d1eeb6a5fb12b86f988c58a9c9f8"
+        "pnpm-workspace.yaml": "f774780051f0f6a554511f98558d7a69cec8549fcd9cbce168f724b7aabb2e97"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "6f8dbf90ef51f4d63f895bcab8ebab8b15da845a",
       "outcome": "out-of-scope",
-      "reason": "Workspace build configuration: the Effect 4.1.3 catalog, the provider packages for the agent, tsrs and @effect/tsgo pins, and allowed Effect AI annotation keys. The effect version a host installs is a changeset note, and no skill names a dependency version.",
+      "reason": "Workspace build configuration: the Effect 4.1.4 catalog, the provider packages for the agent, tsrs and @effect/tsgo pins, and allowed Effect AI annotation keys. The effect version a host installs is a changeset note, and no skill names a dependency version.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6"
+        "git grep finds no effect version in packages/core/skills or packages/plugins/skills.",
+        ".changeset/effect-4-1-4.md carries the effect 4.1.4 note for hosts."
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
@@ -552,11 +553,11 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-toolbar-test-support.tsx": {
-      "fingerprint": "fd61cf28d4f90135ad986a9afc048e9bbb84b82c5ed507ae4d7285aa93042481",
+      "fingerprint": "06ced6e4906d8a7ea789244d4c3a7cf8be3c4ab707da7ebbe3be94656969b4e6",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-toolbar-test-support.tsx": "5265147f17ea012960953f4150bf249afe54e58a0012f00b1729f972b8124ac6"
+        "packages/client/src/components/workflow/workflow-toolbar-test-support.tsx": "ce131e49f4e7cd5abb880eaf37ac0243c7088cb3a2180d5966befe7ef6092457"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "6f8dbf90ef51f4d63f895bcab8ebab8b15da845a",
       "outcome": "out-of-scope",
       "reason": "Test, editor, eval or CI code that no published skill teaches.",
       "evidence": [
