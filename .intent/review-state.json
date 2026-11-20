@@ -232,15 +232,16 @@
       ]
     },
     "source:pnpm-workspace.yaml": {
-      "fingerprint": "92f45b150eb9218291d4bfdc02578ef393def6cee499c3f849c53798bf2e16f2",
+      "fingerprint": "20bccd7a9a6e46eebcb7054e7ac077c7cefad8879f8cb590bc5cf163b84c85bf",
       "snapshot": {
-        "pnpm-workspace.yaml": "254fb452e0bd2310c4a9b218a897ee3bc265d1eeb6a5fb12b86f988c58a9c9f8"
+        "pnpm-workspace.yaml": "edddeda2af9a8e912612a83c6799e2d51812764f6cdb3b4319d64fbad6ff5756"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
       "outcome": "out-of-scope",
-      "reason": "Workspace build configuration: the Effect 4.1.3 catalog, the provider packages for the agent, tsrs and @effect/tsgo pins, and allowed Effect AI annotation keys. The effect version a host installs is a changeset note, and no skill names a dependency version.",
+      "reason": "Release-age exclusions for drizzle-orm and drizzle-kit rc.6. Workspace tooling that no published skill teaches.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6"
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
@@ -552,15 +553,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-toolbar-test-support.tsx": {
-      "fingerprint": "fd61cf28d4f90135ad986a9afc048e9bbb84b82c5ed507ae4d7285aa93042481",
+      "fingerprint": "06ced6e4906d8a7ea789244d4c3a7cf8be3c4ab707da7ebbe3be94656969b4e6",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-toolbar-test-support.tsx": "5265147f17ea012960953f4150bf249afe54e58a0012f00b1729f972b8124ac6"
+        "packages/client/src/components/workflow/workflow-toolbar-test-support.tsx": "ce131e49f4e7cd5abb880eaf37ac0243c7088cb3a2180d5966befe7ef6092457"
       },
-      "head": "519887a2b9e8233fb6f7b141fe70912165f8e52b",
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
       "outcome": "out-of-scope",
-      "reason": "Test, editor, eval or CI code that no published skill teaches.",
+      "reason": "A client test helper that answers a stubbed Publish with a warnings list. No published skill teaches the editor.",
       "evidence": [
-        "packages/core/skills and packages/plugins/skills cover host embedding, events, integrations and the Worker only (_artifacts/skill_tree.yaml)."
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD"
       ]
     },
     "source:packages/client/src/hooks/effects.ts": {
@@ -1107,17 +1109,17 @@
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/executions/runs.ts": {
-      "fingerprint": "ab414bef07aec7685a53e3a85bd5dca4bc614f2170329f1a1f30420ad2d45758",
+      "fingerprint": "9da9be1e3627b840a7f5114c1554c59de596c22036aee7937d996a10e519c4d4",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/executions/runs.ts": "9e4638168319086061b9c8b714ac3c7c443d2cc78471c93705e05ffc0ac5a95a"
+        "packages/core/src/backend/persistence/sqlite/executions/runs.ts": "34e0030cfddc8630cc8ef53e40733bdb50c3a879f86c07f1c7957a2c87cb93ec"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "The native SQLite backend decodes integer SQL expressions as numbers under drizzle-orm rc.6. Repository internals with an unchanged contract; the wfgraph-core skill mentions drizzle only for applying migrations.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "sqlite.conformance.test.ts passes at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/integrations.ts": {
@@ -1849,15 +1851,17 @@
       ]
     },
     "source:packages/core/drizzle/20261108202253_row_state_constraints/snapshot.json": {
-      "fingerprint": "4d5e88f0f53f16b09e348440d4235805fcb54d5c1b89f6fe8c1ffafa6f968ddd",
+      "fingerprint": "fe1355413de7cd48e8a1730b3b8fe7210dbef369b89611accfc652522ce9c0f9",
       "snapshot": {
-        "packages/core/drizzle/20261108202253_row_state_constraints/snapshot.json": "21e7b7078853d9a32e64ad9694228064cbf6726e6f68691f1a1a4b851e3b9d12"
+        "packages/core/drizzle/20261108202253_row_state_constraints/snapshot.json": "0ecb941f64df3dfa28c4fecf0dc2bd3819453d8ae7b5e771037716c26d25096e"
       },
-      "head": "37019c249e7d347664b953176acec31bebebb334",
-      "outcome": "no-change",
-      "reason": "The terminal timeline entry now commits with the terminal row, and PostgreSQL gains four vocabulary checks SQLite had; no published skill describes either, and timelines appear in the skills only for retention.",
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
       "evidence": [
-        "grep of packages/core/skills for run_completed, timeline, audit and migrat: only retention and migration-running steps in wfgraph-core/SKILL.md, unchanged in meaning."
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
       ]
     },
     "source:packages/core/src/backend/engine/core-cancel.replay-cases.ts": {
@@ -2886,16 +2890,17 @@
       ]
     },
     "source:packages/core/drizzle/20261109062647_schedule_leased_index/snapshot.json": {
-      "fingerprint": "2cadcdaa4aeb1f1846a9d80a0285464bf43b1d5af9606d6b229a6cf378c8e360",
+      "fingerprint": "b2dec31dee3d0303e8a87a906f689df0adfc651c7cb35ea4e75cfc66be63c09b",
       "snapshot": {
-        "packages/core/drizzle/20261109062647_schedule_leased_index/snapshot.json": "d3f2adaca64368fe26484a8295737aabc638071cfc063be406328592e9546366"
+        "packages/core/drizzle/20261109062647_schedule_leased_index/snapshot.json": "8dda183a5f92f9f93428c870cf900c2633fa920799de122e8feb13f2ae106ba8"
       },
-      "head": "07828907a53d619677923d6fdc2deffc109f144e",
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
       "outcome": "out-of-scope",
-      "reason": "The PostgreSQL migration replaces the schedule table's lease index with one on the id of leased rows. Hosts run it as any other Workflow Graph migration, and no published skill teaches the executor's indexes.",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no schema or drizzle migration sources.",
-        "packages/core/skills mention migrations only as the step a host runs, which is unchanged."
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
       ]
     },
     "source:packages/core/src/backend/engine/wait-shared.ts": {
@@ -4036,17 +4041,17 @@
       ]
     },
     "source:packages/core/drizzle/20261111153154_run_list_indexes_and_run_checks/snapshot.json": {
-      "fingerprint": "fea66b5ec8298046c88290970b608364d7ec7c53ff5957e38781244ae193b2a4",
+      "fingerprint": "bc6012f1ad349d1d9d35804b46e0c1afd66a5c7cdbbcfbdc86e9cd583e3a1e34",
       "snapshot": {
-        "packages/core/drizzle/20261111153154_run_list_indexes_and_run_checks/snapshot.json": "acec67f4f15ed7d6e37f65d03a1abc68c3c21e59201962c7a227da5a87ba5f0b"
+        "packages/core/drizzle/20261111153154_run_list_indexes_and_run_checks/snapshot.json": "d87ee3d1f44b23367a0d1196242f6e44f65c8493acd5b4817fa515bda5c45458"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
       ]
     },
     "source:packages/core/src/app.events.test.ts": {
@@ -5136,17 +5141,17 @@
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/workflows.ts": {
-      "fingerprint": "bc7f9ca0ef6e082db766192c2ec9a509b069f1563d0ce5861d4e3ff7b27e5f84",
+      "fingerprint": "d7b98d53fa3aac5fef812a5cadb9b44cc09b9dbd9672163ae5c7ee9835cbd574",
       "snapshot": {
-        "packages/core/src/backend/persistence/sqlite/workflows.ts": "1c5c7d4c3c432757f0497eca40fba49400d2a7ddf43d769b08f1945aa76af49a"
+        "packages/core/src/backend/persistence/sqlite/workflows.ts": "9779d38aa808d87c43d89cbfe71bbf5cfeeabbb65a298289be2cf710a31711b2"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "The native SQLite backend decodes integer SQL expressions as numbers under drizzle-orm rc.6. Repository internals with an unchanged contract; the wfgraph-core skill mentions drizzle only for applying migrations.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "sqlite.conformance.test.ts passes at HEAD"
       ]
     },
     "source:packages/core/src/backend/persistence/sqlite/workflows/draft-snapshots.ts": {
@@ -6562,16 +6567,17 @@
       ]
     },
     "source:packages/core/drizzle/20261111165848_inbox_scheduled_marker/snapshot.json": {
-      "fingerprint": "cd57f53f8037c4ab1f1b4f6ee7913a38c1e122a578f67d622cc94ac8ba3ca462",
+      "fingerprint": "2aabcc6a726a40557106adab67da5b47032f6387484f44f35c53b6577dbb61dd",
       "snapshot": {
-        "packages/core/drizzle/20261111165848_inbox_scheduled_marker/snapshot.json": "9068ec4ed0a649aee2cbb307a59e97e81a532508fc2d667e2b07738df11a6f1e"
+        "packages/core/drizzle/20261111165848_inbox_scheduled_marker/snapshot.json": "1b717f3b5c07f5aedfc7c93f12466e90dc9eb529b2774bf2fb51017f6abe7412"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
       "outcome": "out-of-scope",
-      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
       "evidence": [
-        "git log 0570e6c6^..HEAD for the path",
-        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
       ]
     },
     "source:packages/core/drizzle/20261111170716_delivery_settled_state/migration.sql": {
@@ -6588,16 +6594,17 @@
       ]
     },
     "source:packages/core/drizzle/20261111170716_delivery_settled_state/snapshot.json": {
-      "fingerprint": "5ef7659fdd0a3171b088386ed62cf379d1ac29a7b3fbdff3d9640cabad521e65",
+      "fingerprint": "ef18f7a3cdc4e7675cf61ddae8ec9aaef17ba184421a3618103aa4a53d2054d7",
       "snapshot": {
-        "packages/core/drizzle/20261111170716_delivery_settled_state/snapshot.json": "a9f06a1140d4f93369d3cedc30b14f27f5dc3c63567d5df1988221219ceb1ef8"
+        "packages/core/drizzle/20261111170716_delivery_settled_state/snapshot.json": "a9cd57527cb0454e3c0151b1c7038f0aa491973900f22738a9d12634072b760a"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
       "outcome": "out-of-scope",
-      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
       "evidence": [
-        "git log 0570e6c6^..HEAD for the path",
-        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
       ]
     },
     "source:packages/core/drizzle/20261111171946_cancel_decision_arrival/migration.sql": {
@@ -6614,16 +6621,17 @@
       ]
     },
     "source:packages/core/drizzle/20261111171946_cancel_decision_arrival/snapshot.json": {
-      "fingerprint": "164c4c39f46170715880d0d171328056ca93c6a5d2b15325e81bc15f4a69895e",
+      "fingerprint": "f68e8b0c7ab7735b8ebbc2bb0e51a8ec8050fcb0b2a5b0f1707edc3460aa4f6c",
       "snapshot": {
-        "packages/core/drizzle/20261111171946_cancel_decision_arrival/snapshot.json": "23f33de588d3ffd1420d052a90f5027a01de3c7baede6237bce0957cc7b1c117"
+        "packages/core/drizzle/20261111171946_cancel_decision_arrival/snapshot.json": "92429b2407e3cd44582db181e297e86be5d04c1d0df298dab4f85189f59ac58d"
       },
-      "head": "c128d5b9636f52750bc21166c81b69b168d890f5",
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
       "outcome": "out-of-scope",
-      "reason": "Generated migrations and schema for three additive changes. The documented host INSERT into workflow_event_inbox is unchanged, and the core skill already tells a PostgreSQL host to run migrations through @wfgraph/core/migrate.",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
       "evidence": [
-        "git log 0570e6c6^..HEAD for the path",
-        "pnpm run test, test:postgres and test:reliability pass at HEAD"
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
       ]
     },
     "source:packages/core/src/backend/executor/testing/delivery-cases.ts": {
@@ -7365,6 +7373,454 @@
       "evidence": [
         "git log bc8a556e..HEAD for the path",
         "pnpm run test passes at HEAD"
+      ]
+    },
+    "source:packages/core/drizzle/20260806044337_peaceful_blacklash/snapshot.json": {
+      "fingerprint": "2b60be433a0bd7b2a66faf868abd692ab3f7d43c42ba8e7aaaf80094bc703f7a",
+      "snapshot": {
+        "packages/core/drizzle/20260806044337_peaceful_blacklash/snapshot.json": "74b68ba47dbd6df07a2e374fda9e5a4e6b7414e8c8170096e5eb437b857d07af"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260807144334_breezy_miracleman/snapshot.json": {
+      "fingerprint": "acc047620f31c2a0fb2c05fe56c3debd4f4d8a98321ceceaf1f765f6162eda13",
+      "snapshot": {
+        "packages/core/drizzle/20260807144334_breezy_miracleman/snapshot.json": "4d07405d694fdde98313af9d2e8e90ad3e0f13d4f7ac4527dc73a829f0baa138"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260807184135_exotic_eternity/snapshot.json": {
+      "fingerprint": "0e3cabcc899aceb2442da4b5470ba08aa395d31a5564f97823cc7b45fa9d5c9b",
+      "snapshot": {
+        "packages/core/drizzle/20260807184135_exotic_eternity/snapshot.json": "8b23b4b6ee2e8c6226ffb42877ba9826b0080b5bc9961946421eb118139f517d"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260824184216_blushing_human_robot/snapshot.json": {
+      "fingerprint": "a3f652be9f61f304be13f2a021129ca291606514794e470ac4031374ce09e4d9",
+      "snapshot": {
+        "packages/core/drizzle/20260824184216_blushing_human_robot/snapshot.json": "5e3b4188ede0563661f2af19e4bdd2958a1420526040772ede4398dd49e67178"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260824215903_colorful_agent_zero/snapshot.json": {
+      "fingerprint": "23a19150af0c2e10a09ca4833dd5d628e4b0a5ccabbcf43d0fa3658af1bcaf5e",
+      "snapshot": {
+        "packages/core/drizzle/20260824215903_colorful_agent_zero/snapshot.json": "9fe93e6a13e0526e7690f644bceca12fd0bcc095c2fae029e03e73a1e8d67510"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260825000402_medical_skrulls/snapshot.json": {
+      "fingerprint": "991c138c9909b8b9856b2e24eae1446533e57e5aed5f610d1bc2adf36139123f",
+      "snapshot": {
+        "packages/core/drizzle/20260825000402_medical_skrulls/snapshot.json": "3f47086ff5dbf8e79c143526dfa268d250ad08851a24a00030a0db468279d865"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260828225037_tearful_quasimodo/snapshot.json": {
+      "fingerprint": "98fe8f822a86e95335994f99881c3ff40275b82df75db94574e4124eaeb49a9f",
+      "snapshot": {
+        "packages/core/drizzle/20260828225037_tearful_quasimodo/snapshot.json": "0099555e9bdc7f11b979a0fd6b19b7513a2374e38580ef1fe930b856df0aa545"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260829184723_futuristic_phalanx/snapshot.json": {
+      "fingerprint": "d803ff4a0206797625556ce4c6214592b2ab5dc3de58e83ae96fc7d653e85ad4",
+      "snapshot": {
+        "packages/core/drizzle/20260829184723_futuristic_phalanx/snapshot.json": "fc77708991ee03044675aa9ef55e0052f9de17fb83bfe95eb33e336409b36f76"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260829192615_lonely_luminals/snapshot.json": {
+      "fingerprint": "4f213eb7bd4f45bc41cdec4b1c4610123c12c440bf2767eb4ad092aad68b2e67",
+      "snapshot": {
+        "packages/core/drizzle/20260829192615_lonely_luminals/snapshot.json": "31e012181ac143cac31c6cd90a74af0639b96a306ab41f45e64c728ebe36297a"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260830201635_noisy_doorman/snapshot.json": {
+      "fingerprint": "4dc6539a39b6b382de716b492a8d1ab7f552cc9984812a4fd0e882b70c071008",
+      "snapshot": {
+        "packages/core/drizzle/20260830201635_noisy_doorman/snapshot.json": "54166096d0322aeb7f264bc43f6a9c6c7f0b52b775e257e3affd4e2882f81c20"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260903064059_glamorous_lethal_legion/snapshot.json": {
+      "fingerprint": "711e75f5e49abdb92582f2742791a5ebbe73be632754da0ed8ef3c6ee7bb4577",
+      "snapshot": {
+        "packages/core/drizzle/20260903064059_glamorous_lethal_legion/snapshot.json": "b57a86b940893dd7b09a81f8fcadeab326bd46f85c2443e530b6ba6393937c23"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260903221647_black_odin/snapshot.json": {
+      "fingerprint": "bbc33f2e7fa192d690063d4fb008f9143d4cbe04fed47f2017bd9c566e411781",
+      "snapshot": {
+        "packages/core/drizzle/20260903221647_black_odin/snapshot.json": "472112a356834f35bdf1df5a0aa9cdfd3c219382289dce92ff711f5a4a9ca664"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260904233428_even_starhawk/snapshot.json": {
+      "fingerprint": "cfa81891de33efab37a996c352d3c42748517c24b864343c5ab6e3c4a9db02f4",
+      "snapshot": {
+        "packages/core/drizzle/20260904233428_even_starhawk/snapshot.json": "7fb6498be4e0b9267ab9bfb1b71400ee419d2c7458f48300e19613c7452a0fb1"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260910120958_complete_annihilus/snapshot.json": {
+      "fingerprint": "889923e62b7f354d51e268308b7ceac44ff834bd4f6887395722bbba933ae96f",
+      "snapshot": {
+        "packages/core/drizzle/20260910120958_complete_annihilus/snapshot.json": "cd7d2b23f54727692c4b6f1b149ce9447400adc730e4112c5e7ebe3160b67c08"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260910121023_backfill-termination-claims/snapshot.json": {
+      "fingerprint": "d6ca14d8d5d5ba8c0aaedf5bcf1123f3dffbddf509825e6e74b9312b88193071",
+      "snapshot": {
+        "packages/core/drizzle/20260910121023_backfill-termination-claims/snapshot.json": "213248657b390bf137d5d0256a2271b0596ac75da698b463b8f4bc2aff6d414b"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260910121146_unknown_nightmare/snapshot.json": {
+      "fingerprint": "81dd1ed7126264e81aa62e45468af40d406ee828160141526af4587c0f148f0d",
+      "snapshot": {
+        "packages/core/drizzle/20260910121146_unknown_nightmare/snapshot.json": "67a1b2c5e916307eab9a4f3eeab9d6a16322f4c5eedc1cc7e1a27ca690c99699"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260911033815_old_onslaught/snapshot.json": {
+      "fingerprint": "c29086436d69ac907545176a5c4daca8da43559d19f2e3363c999d3886bc021b",
+      "snapshot": {
+        "packages/core/drizzle/20260911033815_old_onslaught/snapshot.json": "2eb9deb34c0827e1db7dbdb15e17feb72b2207f76bf69fda6b2e183b78d998f4"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20260911050737_neat_cyclops/snapshot.json": {
+      "fingerprint": "2ee0945cf8b11976992a36e32fb158b9c69bab744feb42160c1d5f7e29bcbd9d",
+      "snapshot": {
+        "packages/core/drizzle/20260911050737_neat_cyclops/snapshot.json": "270365c633ce084aec1b0e20b9a4d61d55bee85a33cde1a867d6ee78dfbbc327"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261105212313_bizarre_cerise/snapshot.json": {
+      "fingerprint": "98afaf1fa3190e9666282c7c870a868771e600fc51de01952805d4ed8d91a5d0",
+      "snapshot": {
+        "packages/core/drizzle/20261105212313_bizarre_cerise/snapshot.json": "dbd05a79160ce74e47eb8da6786ac5e90acc1a8dc2fd9584465f6885641b04c2"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261106010339_real_luckman/snapshot.json": {
+      "fingerprint": "c8e761f5f3ac32e55344663f10c108e7a7f9247c617e46f8d3caacc329d8f52c",
+      "snapshot": {
+        "packages/core/drizzle/20261106010339_real_luckman/snapshot.json": "b946f9fd99bd90c7a064db9eed59001556ebd685a0be012a4c65703711a017a2"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261106035229_acoustic_nova/snapshot.json": {
+      "fingerprint": "655b80120bf1c23551e7b755589660add55ab7b8e2f1d0fbdd15adaabdf5a659",
+      "snapshot": {
+        "packages/core/drizzle/20261106035229_acoustic_nova/snapshot.json": "1629a0e6554bf6b563d5ef2939c34eb532bc508262cb4b24e3c6c47a0b028587"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261106041820_amusing_sister_grimm/snapshot.json": {
+      "fingerprint": "59cbd9712bf20839646c0fd46ae0d49703e016c2341b4b93ceba0f5bc751e1b5",
+      "snapshot": {
+        "packages/core/drizzle/20261106041820_amusing_sister_grimm/snapshot.json": "82a728bd7e7f0fc35d4a8204cb9015719894c0482df74182dad36e5ee7bcc759"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261106062048_minor_black_widow/snapshot.json": {
+      "fingerprint": "7509f35ee80b010a1d76ff99335a052e1ce0c8b7986955e28f283d9f415a9f4f",
+      "snapshot": {
+        "packages/core/drizzle/20261106062048_minor_black_widow/snapshot.json": "09fb50fe53a5a843e61819da2e7e6587eb2e6b8083c46347f8bde493c7741a09"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261106172016_left_thaddeus_ross/snapshot.json": {
+      "fingerprint": "33075cee4763e5b2f17ea952a5300268395f207e085f5066a9512d9fa033fb0a",
+      "snapshot": {
+        "packages/core/drizzle/20261106172016_left_thaddeus_ross/snapshot.json": "793fd5ea8a9abfba0db8a8d332701f0e76250265bb24a890991360c40e477938"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261106190629_nosy_gauntlet/snapshot.json": {
+      "fingerprint": "d1af09dff84436affb254a8fca57c899c8341aa33f36f2eafce7471d175086a6",
+      "snapshot": {
+        "packages/core/drizzle/20261106190629_nosy_gauntlet/snapshot.json": "fa99182c6b6415eb28dab3c02b4823c67c9a3caccbdc7844f5b18c9aba3d8011"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261106235436_unknown_tombstone/snapshot.json": {
+      "fingerprint": "6d6b5ff6158e31610c3b4933445d67509e88d2b55007e8bc1e36eef4662e2cf9",
+      "snapshot": {
+        "packages/core/drizzle/20261106235436_unknown_tombstone/snapshot.json": "80e39b194a518b7e47eabadd1becbd265fa950cc32577ec2ffdcee04d9a82313"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261107010610_nervous_sister_grimm/snapshot.json": {
+      "fingerprint": "19fed52e4b0d264fdd4ab3ab76f3a8f6293a3687f2352c1df3e12f290a6e1530",
+      "snapshot": {
+        "packages/core/drizzle/20261107010610_nervous_sister_grimm/snapshot.json": "6921442cbe6b4755a884a53db9f3d3a70cea4806862264f138b839aa39a68ac0"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261107010621_backfill-last-pinned-at/snapshot.json": {
+      "fingerprint": "5c19c644d5feaa8fd5ff7c2cadfe070039bde584324e2b541ee282014bcd3eda",
+      "snapshot": {
+        "packages/core/drizzle/20261107010621_backfill-last-pinned-at/snapshot.json": "1463b08f6d43a7843d10370c0ceedc449514f12b28d6423f96bb755151f732f1"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261107010635_redundant_lucky_pierre/snapshot.json": {
+      "fingerprint": "20955ac8ba07626bdc380bd2a63c2ebb936de42d5913cd04115052b2aa7d61fa",
+      "snapshot": {
+        "packages/core/drizzle/20261107010635_redundant_lucky_pierre/snapshot.json": "3a604fc73f72d067f6b1d0e190a1cb367f60948489f1d60b9e7d15130b827e87"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261107020549_quick_angel/snapshot.json": {
+      "fingerprint": "c24b4117b2f09943724d9f1723d7949558ef6688c6e42dcad084d01705b9178e",
+      "snapshot": {
+        "packages/core/drizzle/20261107020549_quick_angel/snapshot.json": "86c6e66a6facea0f794c607439c8ddcbaa1b321cb48848f52a1ba3d7004ae25c"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261107030525_thin_misty_knight/snapshot.json": {
+      "fingerprint": "644a712b4c8fb71e318e98609b7dfa44022f4b8d6ae712d3ce01f4dc30dc687a",
+      "snapshot": {
+        "packages/core/drizzle/20261107030525_thin_misty_knight/snapshot.json": "cf48e13600dfa2d693f6316bcf98d70c528ca19c057485ba1b4d73d5cdc880c7"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
+      ]
+    },
+    "source:packages/core/drizzle/20261107041301_ordinary_invisible_woman/snapshot.json": {
+      "fingerprint": "3d8cdd0a298a659ba36e42b877cef14bd032b979d5937048a27c437ddefcb886",
+      "snapshot": {
+        "packages/core/drizzle/20261107041301_ordinary_invisible_woman/snapshot.json": "75243e95ea46efcb100b00247c0a7a1ff76c69c835a5c43b2b8bde923e2a0d24"
+      },
+      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "outcome": "out-of-scope",
+      "reason": "drizzle-kit up moved the PostgreSQL snapshot to format 10 and dropped the concurrently index key. The migration SQL that adopters apply is unchanged, and no published skill teaches the snapshot format.",
+      "evidence": [
+        "git log 3ba18087..HEAD for the path",
+        "pnpm run test passes at HEAD",
+        "pnpm run db:generate reports no schema changes"
       ]
     }
   }
