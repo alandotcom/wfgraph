@@ -1,6 +1,6 @@
 {
   "type": "diff",
-  "version": "9",
+  "version": "10",
   "dialect": "postgres",
   "id": "9aa09868-28f0-43a9-91b3-5e749105611d",
   "prevIds": [
@@ -70,7 +70,6 @@
         "where": "\"state\" = 'leased'",
         "with": "",
         "method": "btree",
-        "concurrently": false,
         "entityType": "indexes"
       }
     },

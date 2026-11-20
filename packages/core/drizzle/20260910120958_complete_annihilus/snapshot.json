@@ -1,6 +1,6 @@
 {
   "type": "diff",
-  "version": "9",
+  "version": "10",
   "dialect": "postgres",
   "id": "cfb40b95-92a7-4052-ac02-91b3eb32843f",
   "prevIds": [
@@ -319,7 +319,6 @@
         "where": "\"status\" in ('pending', 'running', 'waiting')",
         "with": "",
         "method": "btree",
-        "concurrently": false,
         "entityType": "indexes"
       }
     },

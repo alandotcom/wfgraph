@@ -1,6 +1,6 @@
 {
   "type": "base",
-  "version": "9",
+  "version": "10",
   "dialect": "postgres",
   "id": "f4c6fefe-87a1-42b6-8f27-b386e48846d7",
   "prevIds": [
@@ -2098,7 +2098,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2119,7 +2118,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2147,7 +2145,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2175,7 +2172,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2203,7 +2199,6 @@
       "where": "\"workflow_execution_events\".\"event_type\" in ('run_refused', 'cancel_not_delivered')",
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2224,7 +2219,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2252,7 +2246,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2273,7 +2266,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2301,7 +2293,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2336,7 +2327,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2364,7 +2354,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2385,7 +2374,6 @@
       "where": "\"workflow_executions\".\"status\" = 'superseded'",
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2413,7 +2401,6 @@
       "where": "\"workflow_executions\".\"status\" <> 'superseded'",
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2448,7 +2435,6 @@
       "where": "\"workflow_executions\".\"status\" in ('pending', 'running', 'waiting')",
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2476,7 +2462,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2504,7 +2489,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2525,7 +2509,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2553,7 +2536,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2574,7 +2556,6 @@
       "where": "\"workflow_wait_states\".\"status\" = 'waiting'",
       "with": "",
       "method": "gin",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2595,7 +2576,6 @@
       "where": "\"workflow_wait_states\".\"status\" = 'waiting'",
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {
@@ -2616,7 +2596,6 @@
       "where": null,
       "with": "",
       "method": "btree",
-      "concurrently": false,
       "entityType": "indexes"
     },
     {

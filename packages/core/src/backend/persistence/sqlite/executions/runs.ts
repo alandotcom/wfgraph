@@ -259,7 +259,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
     countSuperseded: ({ workflowId, atMost }) =>
       store.read((database) =>
         database
-          .select({ total: sql<number>`count(*)` })
+          .select({ total: sql<number>`count(*)`.mapWith(Number) })
           .from(
             database
               .select({ one: sql`1`.as("one") })
