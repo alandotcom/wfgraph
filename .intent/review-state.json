@@ -232,16 +232,16 @@
       ]
     },
     "source:pnpm-workspace.yaml": {
-      "fingerprint": "20bccd7a9a6e46eebcb7054e7ac077c7cefad8879f8cb590bc5cf163b84c85bf",
+      "fingerprint": "79adfdaca85c42a18659875da86c1b51a7dfd8ce2f49d8f4684fe054d09d67ae",
       "snapshot": {
-        "pnpm-workspace.yaml": "edddeda2af9a8e912612a83c6799e2d51812764f6cdb3b4319d64fbad6ff5756"
+        "pnpm-workspace.yaml": "4e2d919293a4260474109101dc8d807736effe43ea87d22e43e52c3cab3eedcb"
       },
-      "head": "1519e89fbf0052fe152b963e4cba9316d689d02b",
+      "head": "a79f0e26fc89c8637a642b143a5c761cb172622e",
       "outcome": "out-of-scope",
-      "reason": "Release-age exclusions for drizzle-orm and drizzle-kit rc.6. Workspace tooling that no published skill teaches.",
+      "reason": "Workspace build configuration: the Effect 4.1.4 catalog, the provider packages for the agent, pnpm release-age exclusions (drizzle-orm and drizzle-kit rc.6; none needed for Effect 4.1.4, tsrs 0.25.0 or @effect/tsgo 0.70.0), and allowed Effect AI annotation keys. No published skill names a dependency or tool version.",
       "evidence": [
-        "git log 3ba18087..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "git grep finds no effect, tsrs, @effect/tsgo or drizzle version in packages/core/skills or packages/plugins/skills.",
+        "tsrs and @effect/tsgo are root devDependencies in package.json and reach no published tarball."
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
