@@ -7822,6 +7822,19 @@
         "pnpm run test passes at HEAD",
         "pnpm run db:generate reports no schema changes"
       ]
+    },
+    "source:docs/adr/0005-keep-drizzle-held-by-a-database-service-layer.md": {
+      "fingerprint": "0d2758c70c75662491f5c3b2571962d5cd581700170bcf44d8549680d4df0bf1",
+      "snapshot": {
+        "docs/adr/0005-keep-drizzle-held-by-a-database-service-layer.md": "4d4b2208ba7235c882265414e11d211dcb0d6e108f11a83e2418bd155882a173"
+      },
+      "head": "f45105e62d3359918292de12972ab11113808e48",
+      "outcome": "out-of-scope",
+      "reason": "An ADR amendment recording why the PostgreSQL backend stayed on postgres.js. It changes no contract a published skill teaches, and adopters keep the same driver.",
+      "evidence": [
+        "git log for the path",
+        "pnpm run skills:validate passes at HEAD"
+      ]
     }
   }
 }
