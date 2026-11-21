@@ -1,6 +1,6 @@
 {
   "type": "diff",
-  "version": "9",
+  "version": "10",
   "dialect": "postgres",
   "id": "5eba541c-c5e1-4183-b525-94c6589219d5",
   "prevIds": [
@@ -582,7 +582,6 @@
         "where": null,
         "with": "",
         "method": "btree",
-        "concurrently": false,
         "entityType": "indexes"
       }
     },
@@ -613,7 +612,6 @@
         "where": "\"state\" in ('queued', 'waiting')",
         "with": "",
         "method": "btree",
-        "concurrently": false,
         "entityType": "indexes"
       }
     },
@@ -637,7 +635,6 @@
         "where": "\"state\" = 'leased'",
         "with": "",
         "method": "btree",
-        "concurrently": false,
         "entityType": "indexes"
       }
     },

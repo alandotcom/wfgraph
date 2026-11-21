@@ -469,7 +469,10 @@ export function makeSqliteWorkflowRepo(
       ),
     listVersionHistoryPage: ({ workflowId, limit, cursor }) =>
       store.read((database) => {
-        const isCurrent = sql<number>`coalesce(${workflowVersions.id} = ${workflows.publishedVersionId}, 0)`;
+        const isCurrent =
+          sql<number>`coalesce(${workflowVersions.id} = ${workflows.publishedVersionId}, 0)`.mapWith(
+            Number
+          );
         return database
           .select({
             id: workflowVersions.id,
@@ -509,10 +512,14 @@ export function makeSqliteWorkflowRepo(
         const activeRuns = database
           .select({
             workflowVersionId: workflowExecutions.workflowVersionId,
-            activeRunCount: sql<number>`count(*)`.as("active_run_count"),
+            activeRunCount: sql<number>`count(*)`
+              .mapWith(Number)
+              .as("active_run_count"),
             oldestActiveRunAt: sql<
               number | null
-            >`min(${workflowExecutions.startedAt})`.as("oldest_active_run_at"),
+            >`min(${workflowExecutions.startedAt})`
+              .mapWith(Number)
+              .as("oldest_active_run_at"),
           })
           .from(workflowExecutions)
           .where(
@@ -525,7 +532,10 @@ export function makeSqliteWorkflowRepo(
           )
           .groupBy(workflowExecutions.workflowVersionId)
           .as("active_runs");
-        const isCurrent = sql<number>`coalesce(${workflowVersions.id} = ${workflows.publishedVersionId}, 0)`;
+        const isCurrent =
+          sql<number>`coalesce(${workflowVersions.id} = ${workflows.publishedVersionId}, 0)`.mapWith(
+            Number
+          );
         const publishedVersion = sql<
           number | null
         >`case when ${workflowVersions.kind} = 'published' then ${workflowVersions.version} end`;
@@ -539,7 +549,10 @@ export function makeSqliteWorkflowRepo(
           .select({
             version: workflowVersions,
             isCurrent,
-            activeRunCount: sql<number>`coalesce(${activeRuns.activeRunCount}, 0)`,
+            activeRunCount:
+              sql<number>`coalesce(${activeRuns.activeRunCount}, 0)`.mapWith(
+                Number
+              ),
             oldestActiveRunAt: activeRuns.oldestActiveRunAt,
           })
           .from(workflowVersions)
