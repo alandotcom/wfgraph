@@ -205,3 +205,65 @@ nothing left to remove, so it was deleted. `db/migrations-sql.test.ts` still hol
 every committed statement to qualifying nothing but Workflow Graph's own table names, so
 a release that brings the qualifier back fails the suite rather than reaching a
 database.
+
+## Amendment: Drizzle's own Effect driver arrived, and postgres.js stayed (2026-11-21)
+
+`drizzle-orm@1.0.0-rc.6` shipped `drizzle-orm/postgres/effect`, an Effect driver on
+Drizzle's own PostgreSQL client (formerly `@drizzle-team/minipg`), which now ships inside
+`drizzle-orm` and needs `effect` 4.1.3. It does not depend on `@effect/sql-pg`, so the
+conditions in the 2026-08-30 amendment do not describe it. It was evaluated against a
+local PostgreSQL 16 and the installed type declarations when this repository moved to rc.6,
+and Workflow Graph stayed on postgres.js.
+
+The client meets the startup-packet requirement only through a pool built outside the
+Effect layer. `createPool` takes `options` (`-c search_path=<schema>`) and
+`applicationName`, and `current_schema()` reported the configured schema on its
+connections. The layer's own config, `DrizzlePostgresClientConfig`, has no `options` field,
+so the Effect client has to be built with `layerFromPool` over that pool.
+
+Two parts of the current arrangement have no equivalent in it:
+
+- **It cannot listen.** The client has no `listen` call, and its protocol handler never
+  decodes `NotificationResponse`. `backend/persistence/postgres-run-wakes.ts` announces due
+  rows to other processes with postgres.js `listen` and `notify`. Without it, another
+  process finds the rows on its next poll, up to a second later on PostgreSQL. The other
+  path is to keep postgres.js for one listening connection, which leaves two drivers and
+  two connection configs in production.
+- **It discards server notices**, as `@effect/sql-pg`'s rewritten client does. The bundle
+  under `drizzle-orm/postgres/client` handles no notice at all.
+
+A third difference changes the public config. The client's `ssl` option takes `true`,
+`require`, `verify-ca`, `verify-full`, `disable` or a TLS options object, while
+`DatabaseRuntimeConfig.ssl` also accepts `allow` and `prefer`.
+
+The payoff is still the one the 2026-08-30 amendment named: queries arriving as Effects
+retire the `Effect.tryPromise` wrapper in `backend/lib/effect/database.ts`. The cost is a
+rewrite of the 19 files that take `WfGraphDatabase` or `WfGraphTransaction`, about 7,200
+lines and most of them the executions repository, whose fenced writes the
+`verify-durable-executor` models check. Six source files now import postgres.js, with
+`backend/testing/reliability/host.ts` added to the five that amendment listed. The driver
+had shipped in one release.
+
+A migration has to handle three behaviours the spike found, none of which a type error
+reports:
+
+- `execute` answers `{ rows, columns, rowCount, command }` where postgres.js answers the
+  row array, so destructuring the result as `const [row]` throws, since the object is not
+  iterable.
+- `int8` values arrive as `bigint` where postgres.js answers strings, which covers
+  `count(*)` and any other raw `sql` field without a decoder.
+- A failed query is an `EffectDrizzleQueryError` that carries the bound `params`, holding
+  an Effect `Cause` whose squash is a `SqlError`, whose `reason` holds the `PgError` with
+  the SQLSTATE `code`. Its fields are named `schema`, `table`, `column` and `constraint`,
+  and its `detail` quotes the key that failed. `withoutBoundValues`, `withoutQueryParams`
+  and `hasDatabaseErrorCode` are written against postgres.js's error and would each need
+  rewriting.
+
+Four things have to be true before this is worth reopening:
+
+- The client can `LISTEN`, or keeping postgres.js for the listening connection is accepted.
+- The client exposes server notices, or losing them is accepted.
+- Startup `options` are reachable from the Effect layer's config, or `layerFromPool` is
+  accepted as the construction path.
+- The client takes a TLS mode matching `allow` and `prefer`, or narrowing
+  `DatabaseRuntimeConfig.ssl` is accepted as a breaking change for adopters.
