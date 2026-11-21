@@ -1,5 +1,9 @@
 # @wfgraph/shared
 
+## 4.1.2
+
+No changes in this release.
+
 ## 4.1.1
 
 No changes in this release.
