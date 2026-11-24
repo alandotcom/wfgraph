@@ -866,6 +866,18 @@ async function flushSaveQueue(
 }
 
 /**
+ * Retire the autosave timer and drain `queue` without waiting for the drain,
+ * which logs a failure since no caller is left to receive it. Called when the
+ * timer fires and when `flushPendingSaveAtom` sends the patch early.
+ */
+function startTimedFlush(get: Getter, set: Setter, queue: SaveQueue): void {
+  queue.timeoutId = null;
+  flushSaveQueue(get, set, queue).catch((error: unknown) => {
+    logger.error("Save flush failed", { error });
+  });
+}
+
+/**
  * Queue a patch against the open workflow.
  *
  * `immediate` skips the debounce and waits for the write; otherwise the patch
@@ -958,15 +970,26 @@ export const saveWorkflowAtom = atom(
     }
 
     queue.timeoutId = setTimeout(() => {
-      queue.timeoutId = null;
-      flushSaveQueue(get, set, queue).catch((error: unknown) => {
-        logger.error("Save flush failed", { error });
-      });
+      startTimedFlush(get, set, queue);
     }, get(autosaveDelayAtom));
 
     return await outcome;
   }
 );
+
+/**
+ * Send the patch waiting on the autosave timer now rather than when the timer
+ * fires, without waiting for the answer. Does nothing when no patch is
+ * waiting, so a caller with nothing to save sends no request.
+ */
+export const flushPendingSaveAtom = atom(null, (get, set) => {
+  const queue = get(saveQueueAtom);
+  if (queue.timeoutId === null) {
+    return;
+  }
+  clearTimeout(queue.timeoutId);
+  startTimedFlush(get, set, queue);
+});
 
 /**
  * Persist a rename, and put the old name back if the server refuses the new one.
