@@ -455,6 +455,14 @@ An application may hold several for the same system, which is two Slack
 workspaces or two Twilio accounts. An action node names the one it runs as.
 An integration-owned Event names the one it arrives through.
 
+**Action Link**:
+A labelled URL a host action declares, naming a page the host serves, such as a
+preview of the email a node will send. The editor shows it in Canvas Reveal, at
+Browse and at Focus, and fills in the open workflow's id and the node's id.
+Workflow Graph renders nothing behind it and calls no host code when it is
+followed; the host's page reads the node's saved draft with `readDraftNode`
+after its own authorization.
+
 ### Editor
 
 **Canvas Reveal**:

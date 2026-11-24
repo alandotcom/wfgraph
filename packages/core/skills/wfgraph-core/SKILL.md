@@ -70,8 +70,9 @@ its own `serve` or `connect`: see wfgraph-core/events.
 
 ## Embedding pitfalls
 
-- `createWfGraphApp` returns `{ fetch, basePath, events, health, dispose, [Symbol.asyncDispose] }`.
-  `fetch` is `(request: Request) => Promise<Response>`. Use `await using` for a lexical
+- `createWfGraphApp` returns `{ fetch, basePath, events, workflows, health, dispose, [Symbol.asyncDispose] }`.
+  `fetch` is `(request: Request) => Promise<Response>`. `workflows.readDraftNode`
+  applies no `auth`; wfgraph-core/host-actions covers it. Use `await using` for a lexical
   lifetime; call `dispose()` from a long-running host's shutdown handler.
 - `auth` is required: a function of the request that returns an access policy
   for its session, or `null` or `undefined` for a request with none, or an
