@@ -3,10 +3,10 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "24254367ad9c1c22f87dc5252f8e1aa37720ceaa7508cb1c9d160a726dceda27",
+      "fingerprint": "2c0383d71809c4360ec6d5e77dca84bfa43e8c0cd017f47190ee169dcecff28a",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
-        "docs/embedding.md": "80d0ce9de2f38e279fad9c8a17073616d476ea500713452446ddbf4a92ef29b8",
+        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
         "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
@@ -17,12 +17,11 @@
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
+      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only the url rules in 'Action links and draft reads', which host-actions alone teaches. This skill states no url rule.",
+      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
       "evidence": [
-        "git diff -- docs/embedding.md",
-        "pnpm run skills:validate passed for 10 skill files"
+        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -41,19 +40,17 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "0cf9de35cd2a2a55119c767b376f440d1ef0749adea1699fc81ce8ded7a51ebb",
+      "fingerprint": "9e60e30bf00f3187051b630c53f0439cd435547c113d6b873e8b8c15f2c744e8",
       "snapshot": {
-        "docs/embedding.md": "80d0ce9de2f38e279fad9c8a17073616d476ea500713452446ddbf4a92ef29b8",
+        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "ee1aa65397d61483402b3cac130781d91275469b7af17814defdd7b54d7a608a"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
-      "outcome": "updated",
-      "reason": "The links paragraph and the relative-url mistake now state the url rules actionLinkUrlProblem checks: a path or a URL starting http:// or https://, no control character, a placeholder only after the host, and no link for a node whose id is . or ..",
+      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
       "evidence": [
-        "git diff -- packages/core/skills/wfgraph-core/host-actions/SKILL.md docs/embedding.md",
-        "pnpm exec vitest run packages/shared/src/extensions/action-links.test.ts packages/core/src/backend/extensions/define-action.test.ts passed",
-        "pnpm run skills:validate passed for 10 skill files"
+        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
@@ -72,28 +69,27 @@
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "aa1244c572fa6ae8ac5419e87d473bc0d8905cbd1b0f82a2468252e4e75568dd",
+      "fingerprint": "c468b4133e29638e9c315bd44f07d3d9aa6894fa578837a633a95858b83c371c",
       "snapshot": {
-        "docs/embedding.md": "80d0ce9de2f38e279fad9c8a17073616d476ea500713452446ddbf4a92ef29b8",
+        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
+      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only the url rules in 'Action links and draft reads', which host-actions alone teaches. This skill states no url rule.",
+      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
       "evidence": [
-        "git diff -- docs/embedding.md",
-        "pnpm run skills:validate passed for 10 skill files"
+        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "f7b00f9d85fd869d25412407a507434f51738de75001723f64245454a1737ca7",
+      "fingerprint": "31798324a77f6d71046211e4b17607c13fde61c2aca0aec694a186761e4495f7",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
         "_artifacts/domain_map.yaml": "a61d29ad57fa9330221398ce5f052d818d44951414b0cdf25a20189696561f49",
         "_artifacts/skill_spec.md": "6bae5638645be75eca143d21660dbc43650148e32d23a89519ee81b62a01d638",
         "_artifacts/skill_tree.yaml": "e0a056cca913fffb97d6f028fa1532565d3cbf55e190937771a623d4ecedbabf",
-        "docs/embedding.md": "80d0ce9de2f38e279fad9c8a17073616d476ea500713452446ddbf4a92ef29b8",
+        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
@@ -118,12 +114,11 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
-      "outcome": "updated",
-      "reason": "skill_spec.md batch 6 records the url rules the host-actions skill now states and names action-links.test.ts as the test of them. domain_map.yaml and skill_tree.yaml stay accurate.",
+      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
       "evidence": [
-        "git diff -- _artifacts/skill_spec.md",
-        "pnpm run skills:validate passed for 10 skill files"
+        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -140,19 +135,18 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "8dc4459b7306892bc7a7008e78899ea29c247d14e94852c745e8faaf8070e4a9",
+      "fingerprint": "bb612597d0fed458e8fe55c7390be8fdcf9cc6e48e01dc452f5c7d9da8d82b3f",
       "snapshot": {
-        "docs/embedding.md": "80d0ce9de2f38e279fad9c8a17073616d476ea500713452446ddbf4a92ef29b8",
+        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
+      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only the url rules in 'Action links and draft reads', which host-actions alone teaches. This skill states no url rule.",
+      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
       "evidence": [
-        "git diff -- docs/embedding.md",
-        "pnpm run skills:validate passed for 10 skill files"
+        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
       ]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
@@ -184,20 +178,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "5917d6f176483c3a8fb0565bf139826b4a63b92248805099ae066ebf36403f28",
+      "fingerprint": "8b0f2e16b33b37349f181a137f8b7412c42a92f1c53b51fcbb1c79e284314bee",
       "snapshot": {
-        "docs/embedding.md": "80d0ce9de2f38e279fad9c8a17073616d476ea500713452446ddbf4a92ef29b8",
+        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
+      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only the url rules in 'Action links and draft reads', which host-actions alone teaches. This skill states no url rule.",
+      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
       "evidence": [
-        "git diff -- docs/embedding.md",
-        "pnpm run skills:validate passed for 10 skill files"
+        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
       ]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
@@ -240,19 +233,18 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "880f6d49b99177de8d7b09a5214c83c6852e81c858d8a0cf3a84e3ec7acd5d36",
+      "fingerprint": "dfca6a56d78a1b6d56c8b904626cf79e9e17cb048c78c571bd1ba45650dc9146",
       "snapshot": {
-        "docs/embedding.md": "80d0ce9de2f38e279fad9c8a17073616d476ea500713452446ddbf4a92ef29b8",
+        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
+      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only the url rules in 'Action links and draft reads', which host-actions alone teaches. This skill states no url rule.",
+      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
       "evidence": [
-        "git diff -- docs/embedding.md",
-        "pnpm run skills:validate passed for 10 skill files"
+        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
       ]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
@@ -3107,34 +3099,32 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "346207a968c3f26ad27452c1da387a0d9beeb432dbec277f8d34cacb70e96eec",
+      "fingerprint": "8e0a87b6b79c954b3fcdec735c39678b9014ee97b65c62a786e04178fe22b328",
       "snapshot": {
-        "docs/embedding.md": "80d0ce9de2f38e279fad9c8a17073616d476ea500713452446ddbf4a92ef29b8",
+        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
+      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only the url rules in 'Action links and draft reads', which host-actions alone teaches. This skill states no url rule.",
+      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
       "evidence": [
-        "git diff -- docs/embedding.md",
-        "pnpm run skills:validate passed for 10 skill files"
+        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
-      "fingerprint": "7f384eef2576d66645a94ae2573257c5a86a7dc28025ae5f8faf888b1ff1f0c6",
+      "fingerprint": "202627f6643cc5d383244987fb3636e938a84d43e472069bce9dda92306b35eb",
       "snapshot": {
-        "docs/embedding.md": "80d0ce9de2f38e279fad9c8a17073616d476ea500713452446ddbf4a92ef29b8",
+        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
+      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only the url rules in 'Action links and draft reads', which host-actions alone teaches. This skill states no url rule.",
+      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
       "evidence": [
-        "git diff -- docs/embedding.md",
-        "pnpm run skills:validate passed for 10 skill files"
+        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
       ]
     },
     "source:.agents/behaviors/workflow-authoring/BEHAVIOR.md": {
