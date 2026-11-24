@@ -7,16 +7,19 @@
  * link. Workflow Graph never requests the URL itself.
  */
 
-/** One link a host action declares. `url` may hold the placeholders below. */
+/**
+ * One link a host action declares. `url` may hold the placeholders
+ * `{workflowId}` and `{nodeId}`.
+ */
 export type ActionLink = {
   readonly label: string;
   readonly url: string;
 };
 
 /**
- * The placeholders an Action Link's URL may hold, each mapped to the value the
- * editor writes in its place: the id of the open workflow and the id of the
- * selected node.
+ * The placeholders an Action Link's URL may hold, each paired with the id the
+ * editor writes in its place: the open workflow's id for `{workflowId}` and
+ * the selected node's id for `{nodeId}`.
  */
 const ACTION_LINK_PLACEHOLDERS = [
   ["{workflowId}", "workflowId"],

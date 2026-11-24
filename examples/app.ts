@@ -243,8 +243,8 @@ const cancelAppointmentAction = defineAction({
 
 /**
  * A message whose subject and body reference the run's values. Its link opens
- * this app's own preview page, below, in a new tab, with the open workflow's
- * id and the node's id filled in by the editor.
+ * this app's own page at /message-preview in a new tab, with the open
+ * workflow's id and the node's id filled in by the editor.
  */
 const sendPatientMessageAction = defineAction({
   id: "patients/send-message",

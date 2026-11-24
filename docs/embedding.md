@@ -328,8 +328,8 @@ editor holds unsaved.
 
 `readDraftNode` rejects with an `Error` whose `cause` holds the storage failure, and its
 message quotes nothing stored. `createWfGraphRunner` answers the same `workflows` member. The
-Cloudflare `wfWorker` host has no app object to carry it, so a Worker deployment reads drafts
-through neither.
+Cloudflare `wfWorker` host has no app object to carry it, so a Worker deployment has no
+`readDraftNode`.
 
 ## Mounting on Node
 
