@@ -6,6 +6,7 @@ import { normalizeBasePath } from "#src/backend/lib/http/mount-path";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
 import { assertEncryptionFor } from "#src/backend/services/integrations/cipher";
 import type { WfGraphEvents } from "#src/backend/host-events";
+import type { WfGraphWorkflows } from "#src/backend/host-workflows";
 import { resolveRetention } from "#src/backend/host-retention";
 import { openWfGraphSetup } from "#src/backend/setup";
 
@@ -29,6 +30,8 @@ export type CreateWfGraphRunnerOptions = Omit<WfGraphAppOptions, "auth"> & {
 export type WfGraphRunner = {
   /** Raises an Event into the event inbox, as `app.events` does. */
   events: WfGraphEvents;
+  /** Reads saved workflows with no `auth`, as `app.workflows` does. */
+  workflows: WfGraphWorkflows;
   /**
    * Stops the loop, waiting up to ten seconds for the runs it is advancing,
    * then disposes the runtime and closes the database.
@@ -96,5 +99,10 @@ export async function createWfGraphRunner(
   };
   let disposal: Promise<void> | undefined;
   const dispose = (): Promise<void> => (disposal ??= disposeOnce());
-  return { events: setup.events, dispose, [Symbol.asyncDispose]: dispose };
+  return {
+    events: setup.events,
+    workflows: setup.workflows,
+    dispose,
+    [Symbol.asyncDispose]: dispose,
+  };
 }

@@ -229,6 +229,48 @@ describePostgres("createWfGraphApp runner on PostgreSQL", () => {
     }
   });
 
+  // The runner answers the same workflow reads as the app, over its own
+  // connection to the database the two share.
+  it("reads a draft node the app saved through createWfGraphRunner", async () => {
+    const options: WfGraphAppOptions = {
+      auth: trustWfGraphUpstream(),
+      persistence: wfPostgres({ url, schema }),
+      encryption: ENCRYPTION,
+      extensions: { actions: [markAction] },
+    };
+    await using app = await createWfGraphApp({ ...options, runner: false });
+    const response = await app.fetch(
+      new Request("http://localhost/api/rest/workflows/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Runner read",
+          graph: createSerializedWorkflowGraph({
+            nodes: [lifecycleNode(), actionNode("mark", markAction.id)],
+            edges: [edge("entry", "mark", "started")],
+          }),
+        }),
+      })
+    );
+    expect(response.ok).toBe(true);
+    const created = (await response.json()) as {
+      id: string;
+      draftRevision: number;
+    };
+
+    await using runner = await createWfGraphRunner(options);
+    await expect(
+      runner.workflows.readDraftNode({ workflowId: created.id, nodeId: "mark" })
+    ).resolves.toEqual({
+      workflowId: created.id,
+      nodeId: "mark",
+      label: "mark",
+      actionId: markAction.id,
+      revision: created.draftRevision,
+      fields: {},
+    });
+  });
+
   // The statement inboxInsert answers is the documented one, qualified with
   // the app's schema, and a host's own transaction on its own connection
   // stores an arrival the app's loop then delivers.
