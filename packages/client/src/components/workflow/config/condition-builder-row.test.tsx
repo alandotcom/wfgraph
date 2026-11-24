@@ -1194,18 +1194,20 @@ describe("ConditionBuilderRow removal", () => {
 
   it("keeps a disabled row on its summary, with no removal to reach", () => {
     const view = render(
-      <ConditionBuilderRow
-        currentNodeId="condition-1"
-        defaultEditing
-        description="Build a condition"
-        disabled
-        editActionName="condition"
-        emptyFieldsMessage="No fields"
-        fields={APPOINTMENT_FIELDS}
-        label="Continue when"
-        onChange={vi.fn()}
-        value={storedModel("appointment.id")}
-      />
+      <ExtensionCatalogProvider value={emptyExtensionCatalog}>
+        <ConditionBuilderRow
+          currentNodeId="condition-1"
+          defaultEditing
+          description="Build a condition"
+          disabled
+          editActionName="condition"
+          emptyFieldsMessage="No fields"
+          fields={APPOINTMENT_FIELDS}
+          label="Continue when"
+          onChange={vi.fn()}
+          value={storedModel("appointment.id")}
+        />
+      </ExtensionCatalogProvider>
     );
 
     // `editable` is the verdict over the mode the caller asked for, so a row

@@ -418,6 +418,7 @@ export function ComparisonValue({ value }: { value: unknown }) {
         compact
         fields={value.fields}
         model={value.model}
+        nodes={value.nodes}
         setOperatorsRequireEnumValues={value.setOperatorsRequireEnumValues}
       />
     );

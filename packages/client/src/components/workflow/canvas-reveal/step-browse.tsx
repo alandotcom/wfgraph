@@ -102,6 +102,7 @@ function WaitEventsSummary({ node }: { node: WorkflowNode }) {
                     nodes
                   )}
                   model={parsed.model}
+                  nodes={nodes}
                 />
               </div>
             ) : (
@@ -194,7 +195,7 @@ export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
 
       {isWait ? (
         <Section title="Wait">
-          <SummaryRows rows={summarizeWait(config)} />
+          <SummaryRows rows={summarizeWait(config, { nodes, catalog })} />
           {readConfigString(config, "waitMode") === "event" ? (
             <div className="pt-2">
               <h4 className="pb-1 font-medium text-xs">Continue when</h4>
@@ -205,7 +206,10 @@ export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
       ) : action && action.configFields.length > 0 ? (
         <Section title="Settings">
           <SummaryRows
-            rows={summarizeActionFields(action.configFields, config)}
+            rows={summarizeActionFields(action.configFields, config, {
+              nodes,
+              catalog,
+            })}
           />
         </Section>
       ) : null}

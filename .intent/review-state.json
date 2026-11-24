@@ -6913,16 +6913,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/condition-builder-row.test.tsx": {
-      "fingerprint": "c20efba687900ecd5835836c5eb6399f025690b556d46f8ba375ffbabb965ad0",
+      "fingerprint": "b37c50f6215bebe25c35aa6d472a138c575bf22136ee5907654029ea227ca314",
       "snapshot": {
-        "packages/client/src/components/workflow/config/condition-builder-row.test.tsx": "133a9c43d3f5f4685f8fb12996f216bd0b321e9cdf7615bb20096a6924c079de"
+        "packages/client/src/components/workflow/config/condition-builder-row.test.tsx": "884e8a3da6334c730a423a1035f6a2a089daeb6da630fdd88888e48a6df3c10b"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
       "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
       ]
     },
     "source:packages/client/src/components/workflow/config/condition-field-combobox.tsx": {
@@ -7225,16 +7225,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-run-detail.tsx": {
-      "fingerprint": "f75985370b127c8e7c5ff0cb3bfed31019d82978666d22a2540131549c6d318e",
+      "fingerprint": "a74d257f4f041a54dc9d10953d82970afe23217157b70d894f74cde65a314f80",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-run-detail.tsx": "fc4ec54d7cc7d9fd1db253950f2424f6821abee3328c58216bb314f3266adb70"
+        "packages/client/src/components/workflow/workflow-run-detail.tsx": "131f35bfb986c9b58fa19285c2d79aec36aa1acffa13e017fb52ed5cd8308a78"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
       "outcome": "out-of-scope",
-      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-run-timeline.tsx": {
@@ -7920,16 +7920,16 @@
       ]
     },
     "source:packages/core/src/backend/services/workflows/draft-node.ts": {
-      "fingerprint": "2135cdf03730ef9c9afdfee27c7ae414a6e07dee27d525b2bd3484139fbacf3b",
+      "fingerprint": "d77e94f0bbb0f0368f8d76e876a41c6f468020267f764d3f98a370fb0c0ba972",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/draft-node.ts": "9aa9f4d948ce31fb91e58e17fd9c4a99d58b4bd3606645562acc89340bb520b6"
+        "packages/core/src/backend/services/workflows/draft-node.ts": "2ee45ac2443e9e736329a743ff5fe20c0235fa029934d69b020a773af700fd1a"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
-      "outcome": "out-of-scope",
-      "reason": "Implementation and tests behind the url rules, the draft read's logging and rejections, and the editor's links. The guidance they back is host-actions, reviewed in this record; no skill reads these files.",
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "no-change",
+      "reason": "readDraftNode now calls the shared currentTokenSourceLabel; its output and published contract are unchanged, so no skill or host manual changes.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions/action-links.test.ts packages/core/src/backend/extensions/define-action.test.ts passed",
-        "pnpm exec vitest run packages/core/src/app.workflows.test.ts packages/core/src/backend/services/workflows/draft-node.test.ts packages/client/src/components/workflow/config/action-links.test.tsx passed"
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
       ]
     },
     "source:packages/shared/src/extensions/action-links.test.ts": {
@@ -8019,6 +8019,227 @@
       "evidence": [
         "pnpm exec vitest run packages/shared/src/extensions/action-links.test.ts packages/core/src/backend/extensions/define-action.test.ts passed",
         "pnpm exec vitest run packages/core/src/app.workflows.test.ts packages/core/src/backend/services/workflows/draft-node.test.ts packages/client/src/components/workflow/config/action-links.test.tsx passed"
+      ]
+    },
+    "source:packages/client/src/components/ui/template-badge-dom.ts": {
+      "fingerprint": "3b667bb3f0b88055b8220a1d61cb8bc5752bf24ce14f97d261eb4c5b4e524a43",
+      "snapshot": {
+        "packages/client/src/components/ui/template-badge-dom.ts": "246604062f6499b328dd75592ee9ecc3d07f34b3af47f3551ddf3e692b184f1c"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/canvas-reveal/canvas-reveal.test.tsx": {
+      "fingerprint": "c55b18d1327ff23144bf724a0cbe1e15236acdddae798a0eaa6a9f065c80a6cf",
+      "snapshot": {
+        "packages/client/src/components/workflow/canvas-reveal/canvas-reveal.test.tsx": "a57bf6b0cd025677fad0e2b5ab4c24cfd35a2edeb8407cbbb2fb0c930649e160"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/canvas-reveal/condition-reveal.tsx": {
+      "fingerprint": "9dc3d856208d0201fc5c052d786e9a3581babd42190455f372eedb463cffe4f4",
+      "snapshot": {
+        "packages/client/src/components/workflow/canvas-reveal/condition-reveal.tsx": "e6c0bb08404443ddc08723a5ac530bdacf9df3778d18f55415c5ebdc3f9e2bd4"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/canvas-reveal/lifecycle-browse.tsx": {
+      "fingerprint": "2ca82fbc95d9bdcd65d772012f4feb84d629c4d2da1b17132d6713b9e3a638a4",
+      "snapshot": {
+        "packages/client/src/components/workflow/canvas-reveal/lifecycle-browse.tsx": "cd04e690e3a197ba5239b659c80d07a8fff13104db3ec1b4012612cc130c3cf2"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": {
+      "fingerprint": "efc4ebf9cee1f26c1527e78e7229359728f695166b52d78e833f97e87e5f1e36",
+      "snapshot": {
+        "packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": "2b9124b06ef0803c613d8e71f0b3be9a540b99f4ee47ac2beb4426a5f7a960a1"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/canvas-reveal/step-summary.test.ts": {
+      "fingerprint": "e63a5b5c0d3e26baeb909d1af5a91a3d1e2f75cbb4a422c6e0394d96dfbcb51e",
+      "snapshot": {
+        "packages/client/src/components/workflow/canvas-reveal/step-summary.test.ts": "588dceb69488795dabfb988d4066d4612570551673ff54b6c38dd1a03103afc9"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/canvas-reveal/step-summary.ts": {
+      "fingerprint": "7d3f770168b3eb3057e03bf48dad5cf7bceb4aade9410e865369eba5a1afb14a",
+      "snapshot": {
+        "packages/client/src/components/workflow/canvas-reveal/step-summary.ts": "49e42c77c61619de6267973e27a778369fb712b186da4944c8d325b80d7999c3"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/comparison-field-labels.ts": {
+      "fingerprint": "0343e1aeb7f022ba1b354a45ada0458e370f90993f114391d91f1637f599d4cb",
+      "snapshot": {
+        "packages/client/src/components/workflow/comparison-field-labels.ts": "a553a580996a204ac756c4ca85d83e069a2d23eccbec0a4864fe700fd384b6c8"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/comparison-properties.tsx": {
+      "fingerprint": "0d893a4ced6ddf19b4b3ffdf68c6d70c922b24d9c8147354cf7191381d66a5a0",
+      "snapshot": {
+        "packages/client/src/components/workflow/comparison-properties.tsx": "6834377713924f313b98792e03191dac6de61d22ff040af419f30f88ab58b50e"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/config/condition-builder-row.tsx": {
+      "fingerprint": "eb51587ae7ad542dfd6647354d3f05bd05966bb04c71037de6d6d0f3a6c0b460",
+      "snapshot": {
+        "packages/client/src/components/workflow/config/condition-builder-row.tsx": "633e0e796f36f07fb24b31b4d632b6dc4917a9fd6fc8435d228ba69245c6419b"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/config/condition-set-value-input.test.tsx": {
+      "fingerprint": "074e5765695efe7e979e769bfc4dd540fcf3551c267a12dcdfb133320e3c963a",
+      "snapshot": {
+        "packages/client/src/components/workflow/config/condition-set-value-input.test.tsx": "5fccaf64b0a33e09ff6dad13a15c9576ef5cd5f3ba560bef01aa66e8b72f30bd"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/config/condition-set-value-input.tsx": {
+      "fingerprint": "a13625d2615ac84ba00e7dd903cd687616cf06a4a7968403730faf9de360a9e7",
+      "snapshot": {
+        "packages/client/src/components/workflow/config/condition-set-value-input.tsx": "f739814b6425b7c404a7aadaac46a83d10a14d9a972b7e311ba9c63b6c4d0d31"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/client/src/components/workflow/config/condition-summary.tsx": {
+      "fingerprint": "5633467eebab3294426f83870cc9aab74faa9a77b24a7e979d6d874d74e49431",
+      "snapshot": {
+        "packages/client/src/components/workflow/config/condition-summary.tsx": "6b9a6d6d24e03dca217dd50204efa86f2d7b5712cb686ace7572ec6c78dabd2f"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/shared/src/graph/node-display.test.ts": {
+      "fingerprint": "020bd137d6aa411d175edcc7fe6183ea0498980c8387c4b3b5caeae8c6183580",
+      "snapshot": {
+        "packages/shared/src/graph/node-display.test.ts": "ffb8757aba8b9f0e30130f9d482bf2761c88fbb1b168c1e337d267265414c080"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/shared/src/graph/node-display.ts": {
+      "fingerprint": "15bbfb7dc88648b8b28ddaf41c22a08654b2279444507f1958d26b5d70b75a7a",
+      "snapshot": {
+        "packages/shared/src/graph/node-display.ts": "8c863d8cf4d7f9880e689eb4d592dfa1bc728695815b6524643fc872ee7e05f6"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/shared/src/graph/node-references.test.ts": {
+      "fingerprint": "51cfed29ebfc84e843cc38a02d8ccf269a953b7966249e64bbbfe07ea40342ee",
+      "snapshot": {
+        "packages/shared/src/graph/node-references.test.ts": "6185e00ceafa47261b2aed87ea1a1194f716813943030c069a2cf92aa6afd543"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "f7e2a668: fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
+      ]
+    },
+    "source:packages/shared/src/graph/node-references.ts": {
+      "fingerprint": "8941feae6d613398e45911fcd165b2872cb281a1e70353e33f10dec5e924390e",
+      "snapshot": {
+        "packages/shared/src/graph/node-references.ts": "5884d2b4f9ede90a522a74841909eb81211f279899bfe8add26313b49e7dacc4"
+      },
+      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "outcome": "out-of-scope",
+      "reason": "Editor display fix: displayTemplateText removed and templateTokenDisplayText's comment reworded. No published API, skill or host manual describes this text.",
+      "evidence": [
+        "fix(client): name references by the source step's current name in summaries",
+        "pnpm run skills:validate passed"
       ]
     }
   }

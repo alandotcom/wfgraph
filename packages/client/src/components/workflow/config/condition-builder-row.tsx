@@ -1,3 +1,4 @@
+import { useAtomValue } from "jotai";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
@@ -13,6 +14,7 @@ import {
 import { whenChosen } from "#src/lib/select-choice";
 import { TemplateBadgeInput } from "#src/components/ui/template-badge-input";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
+import { nodesAtom } from "#src/lib/workflow-graph-store";
 import { ConditionFieldCombobox } from "./condition-field-combobox";
 import {
   enumOptionLabel,
@@ -363,6 +365,9 @@ export function ConditionBuilderRow({
   setOperatorsRequireEnumValues = false,
   disabled,
 }: ConditionBuilderRowProps) {
+  // The live draft's nodes name the source of any template reference a rule's
+  // value holds in the summary.
+  const nodes = useAtomValue(nodesAtom);
   const seedField = availableFields[0] ?? null;
   // The mode is this row's own, and it belongs to no workflow: a fresh open
   // starts where `defaultEditing` says, whatever the last one was left in.
@@ -555,6 +560,7 @@ export function ConditionBuilderRow({
           <ConditionSummary
             fields={availableFields}
             model={parsedModel}
+            nodes={nodes}
             setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
           />
         ) : (

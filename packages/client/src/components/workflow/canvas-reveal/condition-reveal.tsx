@@ -156,6 +156,7 @@ function RulesSummary({
   config: Record<string, unknown> | undefined;
   fields: ConditionSelectableField[];
 }) {
+  const nodes = useAtomValue(nodesAtom);
   const rules = readStoredConditionRules(config);
   if (rules.kind === "empty") {
     return <p className="text-muted-foreground text-xs">No rules yet.</p>;
@@ -174,7 +175,7 @@ function RulesSummary({
   return (
     <div className="space-y-2">
       <p className="text-sm">{conditionLogicSentence(model)}</p>
-      <ConditionSummary fields={fields} model={model} />
+      <ConditionSummary fields={fields} model={model} nodes={nodes} />
     </div>
   );
 }

@@ -2,6 +2,8 @@ import { fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   EnumMultiValueInput,
   TextSetValueInput,
@@ -37,16 +39,18 @@ function EnumMultiValueHarness({
 }) {
   const [values, setValues] = useState(initialValues);
   return (
-    <EnumMultiValueInput
-      disabled={false}
-      field={fieldDef}
-      name={name}
-      onValueChange={(next) => {
-        setValues(next);
-        onValueChange(next);
-      }}
-      values={values}
-    />
+    <ExtensionCatalogProvider value={emptyExtensionCatalog}>
+      <EnumMultiValueInput
+        disabled={false}
+        field={fieldDef}
+        name={name}
+        onValueChange={(next) => {
+          setValues(next);
+          onValueChange(next);
+        }}
+        values={values}
+      />
+    </ExtensionCatalogProvider>
   );
 }
 
@@ -61,15 +65,17 @@ function TextSetValueHarness({
 }) {
   const [values, setValues] = useState(initialValues);
   return (
-    <TextSetValueInput
-      disabled={false}
-      name={name}
-      onValueChange={(next) => {
-        setValues(next);
-        onValueChange(next);
-      }}
-      values={values}
-    />
+    <ExtensionCatalogProvider value={emptyExtensionCatalog}>
+      <TextSetValueInput
+        disabled={false}
+        name={name}
+        onValueChange={(next) => {
+          setValues(next);
+          onValueChange(next);
+        }}
+        values={values}
+      />
+    </ExtensionCatalogProvider>
   );
 }
 
