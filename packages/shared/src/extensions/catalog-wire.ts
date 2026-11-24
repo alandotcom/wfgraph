@@ -196,6 +196,9 @@ const actionMetadataSchema = Schema.Struct({
   logoUrl: Schema.optionalKey(Schema.String),
   sideEffect: Schema.optionalKey(Schema.Boolean),
   hidden: Schema.optionalKey(Schema.Boolean),
+  links: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ label: Schema.String, url: Schema.String }))
+  ),
   configFields: Schema.Array(actionConfigFieldWireSchema),
   outputFields: Schema.Array(referenceFieldWireSchema),
 });

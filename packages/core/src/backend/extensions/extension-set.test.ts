@@ -224,6 +224,34 @@ describe("assembleExtensions", () => {
     expect(stepFor("appointments/cancel-legacy")).toBeDefined();
   });
 
+  it("carries a host action's links into the catalog", () => {
+    const links = [{ label: "Preview email", url: "/preview?node={nodeId}" }];
+    const { catalog } = assembleExtensions({
+      actions: [
+        defineAction({
+          id: "donors/send-email",
+          label: "Send Email to Donor",
+          description: "Sends an email",
+          links,
+          input: Schema.Struct({ subject: Schema.String }),
+          handler: () => ({}),
+        }),
+        defineAction({
+          id: "donors/tag",
+          label: "Tag Donor",
+          description: "Tags a donor",
+          input: Schema.Struct({ tag: Schema.String }),
+          handler: () => ({}),
+        }),
+      ],
+    });
+
+    const byId = (id: string) =>
+      catalog.actions.find((action) => action.id === id);
+    expect(byId("donors/send-email")?.links).toEqual(links);
+    expect(byId("donors/tag")).not.toHaveProperty("links");
+  });
+
   it("carries hidden on an integration action the picker omits", () => {
     const { catalog, stepFor } = assembleExtensions({
       integrations: [
