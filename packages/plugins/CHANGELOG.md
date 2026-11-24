@@ -1,5 +1,11 @@
 # @wfgraph/plugins
 
+## 4.1.2
+
+### Patch Changes
+
+- [#352](https://github.com/alandotcom/wfgraph/pull/352) [`91576c1`](https://github.com/alandotcom/wfgraph/commit/91576c1afe86f5234d97394dae4da83083c3646f) Thanks [@alandotcom](https://github.com/alandotcom)! - `@wfgraph/core` and `@wfgraph/plugins` now depend on `effect` 4.1.4, and `@wfgraph/core` depends on `@effect/ai-anthropic`, `@effect/ai-openai`, `@effect/ai-openai-compat`, `@effect/ai-openrouter`, `@effect/opentelemetry` and `@effect/sql-sqlite-node` 4.1.4. A host that installs its own copy of `effect` should move it to 4.1.4 so the host and Workflow Graph share one copy.
+
 ## 4.1.1
 
 ### Patch Changes
