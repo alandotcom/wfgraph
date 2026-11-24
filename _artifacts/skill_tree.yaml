@@ -84,19 +84,21 @@ skills:
       autocomplete, configFields presentation, options callbacks for
       application-owned pickers, step.run and idempotency keys so a retry
       repeats no write, runMode checks so a Draft or Test-mode run touches
-      nothing real, readCredentials, sideEffect, or testing the action with
-      runHostAction. Also use for requests such as "let workflows call our
-      cancel-appointment API", "a retry must not refund twice" or "show a
-      dropdown of our message templates in a workflow step". For packaging a
-      vendor API as an integration with Effect handlers, credential forms or
-      OAuth use wfgraph-core/integrations; for turning on the built-in vendors
-      use wfgraph-plugins.
+      nothing real, readCredentials, sideEffect, links from the editor to a page
+      of the host's own that reads the node with app.workflows.readDraftNode, or
+      testing the action with runHostAction. Also use for requests such as "let
+      workflows call our cancel-appointment API", "a retry must not refund
+      twice", "show a dropdown of our message templates in a workflow step" or
+      "let builders preview the email this step sends". For packaging a vendor
+      API as an integration with Effect handlers, credential forms or OAuth use
+      wfgraph-core/integrations; for turning on the built-in vendors use
+      wfgraph-plugins.
     purpose:
       "defineAction for host-owned steps: Promise handlers, Standard Schema
       input and output, authored config forms, dependent option callbacks,
-      step.run, readCredentials, sideEffect. Load when adding application
-      actions beside integrations. Not for defineIntegration (Effect plugin
-      path).\n"
+      step.run, readCredentials, sideEffect, Action Links with readDraftNode.
+      Load when adding application actions beside integrations. Not for
+      defineIntegration (Effect plugin path).\n"
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:docs/integrations.md

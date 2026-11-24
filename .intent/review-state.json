@@ -3,27 +3,28 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "e2497d24bff27efe11fe47dc4c495fd1fcfe7a69526db80d755840f1a4de3a5f",
+      "fingerprint": "11c6919c680483e9f92702c59404dea3228f274b967703a5953388a481794e2b",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
-        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
-        "packages/core/skills/wfgraph-core/SKILL.md": "eae042030469f9e1ea72a246fd1335500e0c353c75d76de04bd6265adfa6868d",
+        "docs/embedding.md": "d283c170f29eadcdb72cf53510869f575203a77ae68eda548b9dd255fea96bde",
+        "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "672228640ea6133d7ca5fee8016cfa2a5d63895f60d1042cc6c86bb39e45725f",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "2c36d0014f724d7381e84ef588ffccc85bb7a505aa6013617512707676e9d25f",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b"
       },
-      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
       "outcome": "updated",
-      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
+      "reason": "createWfGraphApp now answers a workflows member, so the return shape in Embedding pitfalls names workflows and routes readDraftNode, which applies no auth, to wfgraph-core/host-actions.",
       "evidence": [
-        "git diff shows only the library_version line",
-        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
-        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
+        "packages/core/src/app.ts WfGraphApp.workflows",
+        "pnpm run skills:validate: intent validate passed for 10 skill files",
+        "pnpm run test passed, including define-action.test.ts, action-links.test.tsx, draft-node.test.ts and app.workflows.test.ts",
+        "No eval task check or fresh consumer session was run for this change; discovery and consumer behavior are unverified"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -42,19 +43,23 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "915875281a077a8afa803f3d17a1da19b225d55416dfdb86214cbda26f86100d",
+      "fingerprint": "8d40ed7d37ccfff1d981657864e739164eebf5af5393afd0bec40e2e47baea1a",
       "snapshot": {
-        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
+        "docs/embedding.md": "d283c170f29eadcdb72cf53510869f575203a77ae68eda548b9dd255fea96bde",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "672228640ea6133d7ca5fee8016cfa2a5d63895f60d1042cc6c86bb39e45725f"
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "2c36d0014f724d7381e84ef588ffccc85bb7a505aa6013617512707676e9d25f"
       },
-      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
       "outcome": "updated",
-      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
+      "reason": "defineAction gained links (Action Links) and the app and runner gained workflows.readDraftNode for the page a link opens. The skill now teaches the url rules, who sees the links, the read's answer, that it applies no auth, and re-reading when the page's tab is shown, with two new mistakes. The description names the preview task and metadata.purpose kept its prior text with Action Links appended.",
       "evidence": [
-        "git diff shows only the library_version line",
-        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
-        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
+        "packages/core/src/backend/extensions/define-action.ts",
+        "packages/shared/src/extensions/action-links.ts",
+        "packages/core/src/backend/host-workflows.ts",
+        "packages/core/src/backend/services/workflows/draft-node.ts",
+        "pnpm run skills:validate: intent validate passed for 10 skill files",
+        "pnpm run test passed, including define-action.test.ts, action-links.test.tsx, draft-node.test.ts and app.workflows.test.ts",
+        "No eval task check or fresh consumer session was run for this change; discovery and consumer behavior are unverified"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
@@ -73,37 +78,33 @@
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "5f606afa6e81b41c0f50341d9568c340c2e73d0ce23b7ae66504f1d7d131377f",
+      "fingerprint": "d4aacc73125d00532fff5549ca9f7cd68b871bea9337e02432e94299fa9ce075",
       "snapshot": {
-        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
+        "docs/embedding.md": "d283c170f29eadcdb72cf53510869f575203a77ae68eda548b9dd255fea96bde",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf"
       },
-      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
-      "outcome": "updated",
-      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
-      "evidence": [
-        "git diff shows only the library_version line",
-        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
-        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
-      ]
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md gained the section 'Action links and draft reads' and now names workflows in the app's and the runner's member lists. This skill teaches none of defineAction's links, readDraftNode or the app's member list, and every claim it makes from docs/embedding.md still matches the manual.",
+      "evidence": ["git diff c0f1fe00 -- docs/embedding.md"]
     },
     "planning:_artifacts": {
-      "fingerprint": "54b1d00a00e2d9ef1566114c89ad7ac7d0a98e8c059fdb764f82d7284c7e42ed",
+      "fingerprint": "d81ab6a1a8fad3992564f8faa67b29fade58ff1680baad7adf4871f91533187f",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
-        "_artifacts/domain_map.yaml": "a63f795ed190b09024679672de15b156ff4d43b490e89eaf004122f017f4cedd",
-        "_artifacts/skill_spec.md": "6fc0594f9442ce0e07624142cfd70865ec2bbbfbebe3da072369198d7049adf1",
-        "_artifacts/skill_tree.yaml": "a6fabcb2d412ccc31cba127dbac4c7e103ddb9d3b8d9f71069e011fe46d47f91",
-        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
+        "_artifacts/domain_map.yaml": "a61d29ad57fa9330221398ce5f052d818d44951414b0cdf25a20189696561f49",
+        "_artifacts/skill_spec.md": "6a5a0f678d2884694cf2db227a09e33146c80a75218ba44166b254135000b63d",
+        "_artifacts/skill_tree.yaml": "e0a056cca913fffb97d6f028fa1532565d3cbf55e190937771a623d4ecedbabf",
+        "docs/embedding.md": "d283c170f29eadcdb72cf53510869f575203a77ae68eda548b9dd255fea96bde",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
-        "packages/core/skills/wfgraph-core/SKILL.md": "eae042030469f9e1ea72a246fd1335500e0c353c75d76de04bd6265adfa6868d",
+        "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "672228640ea6133d7ca5fee8016cfa2a5d63895f60d1042cc6c86bb39e45725f",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "2c36d0014f724d7381e84ef588ffccc85bb7a505aa6013617512707676e9d25f",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
@@ -120,13 +121,14 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
       "outcome": "updated",
-      "reason": "The planning records now name 4.1.1 as the target version, matching the skills. No domain, task, or skill was added or removed.",
+      "reason": "domain_map.yaml records the new host-actions coverage, task and two failure modes; skill_spec.md records the failure-mode table and Batch 6 with its decision to teach links in host-actions; skill_tree.yaml was synchronized with the changed host-actions and wfgraph-core frontmatter by intent maintainer sync.",
       "evidence": [
-        "_artifacts/domain_map.yaml library.version",
-        "_artifacts/skill_tree.yaml library.version",
-        "_artifacts/skill_spec.md target version sentence"
+        "_artifacts/domain_map.yaml",
+        "_artifacts/skill_spec.md",
+        "_artifacts/skill_tree.yaml",
+        "intent maintainer sync: Synchronized _artifacts/skill_tree.yaml"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -143,21 +145,17 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "dba54287721246160c6cf0518bc3a5548403765eb36a727731e1690f40975f6a",
+      "fingerprint": "b29ba050ae7fec8d18517aae95affab24358a07734bc0b429fdbdea5de7faf46",
       "snapshot": {
-        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
+        "docs/embedding.md": "d283c170f29eadcdb72cf53510869f575203a77ae68eda548b9dd255fea96bde",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
-      "outcome": "updated",
-      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
-      "evidence": [
-        "git diff shows only the library_version line",
-        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
-        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
-      ]
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md gained the section 'Action links and draft reads' and now names workflows in the app's and the runner's member lists. This skill teaches none of defineAction's links, readDraftNode or the app's member list, and every claim it makes from docs/embedding.md still matches the manual.",
+      "evidence": ["git diff c0f1fe00 -- docs/embedding.md"]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
       "fingerprint": "3ee0533adfeac10df9fefff86d8615bebf429b7b1a61076fcf0440caab43de0d",
@@ -188,22 +186,18 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "a58e6e627407beeaf023d401e370ed8fc27e6dc002845e0b90f9d54db686c7b4",
+      "fingerprint": "25adeb89045c8e8e762ce3e3a57ff01d7700fd078f4684682fcab345e4ccdb2a",
       "snapshot": {
-        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
+        "docs/embedding.md": "d283c170f29eadcdb72cf53510869f575203a77ae68eda548b9dd255fea96bde",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
-      "outcome": "updated",
-      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
-      "evidence": [
-        "git diff shows only the library_version line",
-        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
-        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
-      ]
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md gained the section 'Action links and draft reads' and now names workflows in the app's and the runner's member lists. This skill teaches none of defineAction's links, readDraftNode or the app's member list, and every claim it makes from docs/embedding.md still matches the manual.",
+      "evidence": ["git diff c0f1fe00 -- docs/embedding.md"]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
       "fingerprint": "f7b9e4046cfb3c14d3e427344152b7e5c4b475bd530b856e7e1e993bf6476543",
@@ -245,20 +239,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "cd0fbfe3c3457c8f305f410d5979c829b096cbadce7cf3f345a4bf9641d99c68",
+      "fingerprint": "2ca16957a2addde9fb058d719e5fe90f8c52d10e97b473fa697a753f3c67385f",
       "snapshot": {
-        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
+        "docs/embedding.md": "d283c170f29eadcdb72cf53510869f575203a77ae68eda548b9dd255fea96bde",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb"
       },
-      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
-      "outcome": "updated",
-      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "no-change",
+      "reason": "wfWorker exposes no app object, so it gains no workflows member, and the manual says a Worker deployment reads drafts through neither. docs/embedding.md gained the section 'Action links and draft reads' and now names workflows in the app's and the runner's member lists. This skill teaches none of defineAction's links, readDraftNode or the app's member list, and every claim it makes from docs/embedding.md still matches the manual.",
       "evidence": [
-        "git diff shows only the library_version line",
-        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
-        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
+        "packages/core/src/worker.ts unchanged",
+        "docs/embedding.md Action links and draft reads"
       ]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
@@ -799,16 +792,16 @@
       ]
     },
     "source:packages/client/src/lib/workflow-save-store.ts": {
-      "fingerprint": "21e3d19daff4776a4a451c7a2af19e7bded873505f984cb9fd0581de48b33cce",
+      "fingerprint": "1107274261e742c0f471dcca1066de227bdfe0119bcf6f939b4d4a9b794a9a46",
       "snapshot": {
-        "packages/client/src/lib/workflow-save-store.ts": "e30c4c0be3b8a62338f4d5198722a550b6e6702dcb728238acaed47afd54913a"
+        "packages/client/src/lib/workflow-save-store.ts": "11141873223885dc79ccafb74294d2dee7dc02f3096b3654f947da3f846f863e"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
       "outcome": "out-of-scope",
-      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "git diff c0f1fe00 -- packages/client/src/lib/workflow-save-store.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     },
     "source:packages/client/src/lib/workflow-ui-store.test.ts": {
@@ -2931,16 +2924,16 @@
       ]
     },
     "source:CONTEXT.md": {
-      "fingerprint": "4c1615f308e6a07849c22085e6fa6d4669329571fff23bed747538c07faf4c7f",
+      "fingerprint": "031000b549edfb472fc1fb97c8fa0cc79e0fec86686a84ae037281f8ec11aa7f",
       "snapshot": {
-        "CONTEXT.md": "5c27b18e4e2248ea5b2a31a7dca8cb91a03a2cbd19da57e361df56f4c94385ae"
+        "CONTEXT.md": "a3b27688f5832b064dd634b197680d37df23bc6989b7ecd29d2aca166585a15a"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
       "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "reason": "CONTEXT.md gained the domain term Action Link. It is repository vocabulary, and the published host-actions skill teaches the contract the term names.",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "git diff c0f1fe00 -- CONTEXT.md",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     },
     "source:packages/agent/src/prompt.ts": {
@@ -3113,37 +3106,29 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "2bb7c20c7c9d8176d2f5080cfc32877a2bfb940f8e8d36545dda61c718f42de6",
+      "fingerprint": "6e44b49fb5c0935ed8b53201329015c2491c46bd78efdc4e3ec3c21bdffeabfc",
       "snapshot": {
-        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
+        "docs/embedding.md": "d283c170f29eadcdb72cf53510869f575203a77ae68eda548b9dd255fea96bde",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
-      "outcome": "updated",
-      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
-      "evidence": [
-        "git diff shows only the library_version line",
-        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
-        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
-      ]
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md gained the section 'Action links and draft reads' and now names workflows in the app's and the runner's member lists. This skill teaches none of defineAction's links, readDraftNode or the app's member list, and every claim it makes from docs/embedding.md still matches the manual.",
+      "evidence": ["git diff c0f1fe00 -- docs/embedding.md"]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
-      "fingerprint": "010cfdaff3447b77a9dcb3b898f88f984770fde7d650e1bb21472b8f28b0b173",
+      "fingerprint": "380441fb551b176ed29fc5eeac86cad560a38561e41382be366f099803216076",
       "snapshot": {
-        "docs/embedding.md": "0e052de78db5d45e3fb37b2126561a204854cc94a36da6e9b005df69d3d1e2a0",
+        "docs/embedding.md": "d283c170f29eadcdb72cf53510869f575203a77ae68eda548b9dd255fea96bde",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca"
       },
-      "head": "016d26d1184b1f53f78b0d834a9322c58b2a879c",
-      "outcome": "updated",
-      "reason": "library_version moved from 3.1.1 to 4.1.1, the patch release this change ships in. The guidance text is unchanged.",
-      "evidence": [
-        "git diff shows only the library_version line",
-        "intent maintainer check reported 0 pending items at 6449fb87 before the bump",
-        "changeset status plans @wfgraph/core and @wfgraph/plugins at 4.1.1"
-      ]
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md gained the section 'Action links and draft reads' and now names workflows in the app's and the runner's member lists. This skill teaches none of defineAction's links, readDraftNode or the app's member list, and every claim it makes from docs/embedding.md still matches the manual.",
+      "evidence": ["git diff c0f1fe00 -- docs/embedding.md"]
     },
     "source:.agents/behaviors/workflow-authoring/BEHAVIOR.md": {
       "fingerprint": "a9593fc154a998f98c5a0ae696eeee810b317bcbe9119d69bf1532fdd447285a",
@@ -3254,29 +3239,29 @@
       ]
     },
     "source:examples/app.ts": {
-      "fingerprint": "63267acadb68a275b7d3ce3c5f36f1043b1508709f4666b22d66d55946b10dd9",
+      "fingerprint": "293227f70481e8c7f032c2cdae685da37b9fb59cafa8bb5c70f7ec7e73c8a718",
       "snapshot": {
-        "examples/app.ts": "7c3fabcd258d6030205e13e5e3d1d640879aa952d63f89037c6ece8209182ac1"
+        "examples/app.ts": "02f88f1112b4637addb602e5bc1575ac506b538c554331153abd2e309747e320"
       },
-      "head": "001aa28b6b09e4a8202154e7fbdf4d23fe4c2cdc",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
       "outcome": "out-of-scope",
-      "reason": "The example app now names gpt-6-luna as its build agent model. The build-agent skill already lists gpt-6-luna and the agent.model option in its provider table.",
+      "reason": "The example app demonstrates an Action Link and a preview page that calls readDraftNode, and Vite's dev server proxies that page. The repository's dev harness is not a published contract; host-actions teaches the contract from docs/embedding.md.",
       "evidence": [
-        "git show 001aa28 -- examples/app.ts",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md provider table"
+        "git diff c0f1fe00 -- examples/app.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     },
     "source:examples/demo-auth.ts": {
-      "fingerprint": "8024e9b06adbd18302e0bc7576db8d500f93ea5fb8aaa3060fb269a51ed46f3c",
+      "fingerprint": "746d9495f81ff2d0b6749ad826ae0882469b17055ba3a02f28c01de36adffd01",
       "snapshot": {
-        "examples/demo-auth.ts": "1bfaef73d2702dc68db556b2e8a06d9eb752a26399948bb88c9bbdf29910cdbb"
+        "examples/demo-auth.ts": "63524060b5a746f4238e9a0476e86f6e6f85d81b1011a96210c62f2590f99494"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
       "outcome": "out-of-scope",
-      "reason": "The example app's demo authentication for /api/mcp. The mcp skill already tells a host to verify the bearer token inside auth.",
+      "reason": "The example app demonstrates an Action Link and a preview page that calls readDraftNode, and Vite's dev server proxies that page. The repository's dev harness is not a published contract; host-actions teaches the contract from docs/embedding.md.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "git diff c0f1fe00 -- examples/demo-auth.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     },
     "source:packages/agent/src/operations.ts": {
@@ -4094,20 +4079,16 @@
       ]
     },
     "source:packages/core/src/app.ts": {
-      "fingerprint": "2ea37390da13a89d136b923d17e5d5ad9ca2957665d3e4acab34e7428a558c20",
+      "fingerprint": "811504d46ee5143d4821a66de6fcfac3734c94fc7c221d3ba91cc4aea228374d",
       "snapshot": {
-        "packages/core/src/app.ts": "f01a871d43f39b68f54e261eb282c430c75c9e6c194d51eca001d27d52984b87"
+        "packages/core/src/app.ts": "2986c4c28ace29ce1db348009c9513a214eb83eae45d6115c4dd414982033b8a"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The host entry points: auth as a function with a startup refusal, optional encryption, health() with queue and the health option, createWfGraphRunner taking the app's options, the typed events.send and events.inboxInsert, the exported agent and MCP types, and runHostAction with memo and handlerRan. wfgraph-core, auth, events, host-actions, observability, build-agent and mcp now state these.",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
       "evidence": [
-        "e476cb51 fix(skills): bring wfgraph-core up to date with the app's options",
-        "75abc778 fix(skills): teach the auth skill the function form and the new refusals",
-        "8b56c5a5 fix(skills): teach events the typed send, inboxInsert and delivery settlement",
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "7bc7efe3 docs(skills): add queue metrics and record masking to observability",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff c0f1fe00 -- packages/core/src/app.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     },
     "source:packages/core/src/backend/agent/config.test.ts": {
@@ -4739,44 +4720,42 @@
       ]
     },
     "source:packages/core/src/backend/extensions/define-action.test.ts": {
-      "fingerprint": "ba97e4b9d648eae17d3c4b70cb16cd6a733dcc2b5b6c051130020dbd0df0baf6",
+      "fingerprint": "e77282eb11777d084a889f39a1044b6d43b49f769a3acfce2c1944a1eacf3642",
       "snapshot": {
-        "packages/core/src/backend/extensions/define-action.test.ts": "648b5a6cce9ec1db3914f2c944b9409d2645c019a120ce36a3d7204a2f756c61"
+        "packages/core/src/backend/extensions/define-action.test.ts": "395292b18933bb0a46a52f0cc98fe370b71c44bea30b8c05f81e20e7161d1f94"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The step boundary: a host handler running inside one durable step of its node, step names namespaced under node:<id>:step:<name> and held to 1 to 64 characters, the per-node and per-step idempotency keys, and executionId always a string. host-actions and integrations now state these.",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "A test of the Action Link and readDraftNode behavior that host-actions now teaches. Tests are not adopter guidance.",
       "evidence": [
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "de816c1d fix(skills): add step keys, test runs and revoke on delete to integrations",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff c0f1fe00 -- packages/core/src/backend/extensions/define-action.test.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     },
     "source:packages/core/src/backend/extensions/define-action.ts": {
-      "fingerprint": "e79630756a49a03401ad52f8e4b7d8489935a047f982dd7949f46f6417202b11",
+      "fingerprint": "0555573476226b76cc10350bfa20ec71064630f86e82b221ddf83120b93367af",
       "snapshot": {
-        "packages/core/src/backend/extensions/define-action.ts": "4e0b8dcc08c5e95a414977819343b31b7cf1f125960bfc8a4cd94a0d9b60ca08"
+        "packages/core/src/backend/extensions/define-action.ts": "e43f4232b291d9be1950f5b4251b0f3ffa3e1a61868bd6f8c668ca26ef98521b"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The step boundary: a host handler running inside one durable step of its node, step names namespaced under node:<id>:step:<name> and held to 1 to 64 characters, the per-node and per-step idempotency keys, and executionId always a string. host-actions and integrations now state these.",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
       "evidence": [
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "de816c1d fix(skills): add step keys, test runs and revoke on delete to integrations",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff c0f1fe00 -- packages/core/src/backend/extensions/define-action.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     },
     "source:packages/core/src/backend/extensions/extension-set.test.ts": {
-      "fingerprint": "7fc75ab6e8ae1569d94738fb1c9d2300e008f6a57987c5574527ab6102f5b6e8",
+      "fingerprint": "8d4780cdccbe34d65001da679688170f2155e66d9db9c8ec928392d118198507",
       "snapshot": {
-        "packages/core/src/backend/extensions/extension-set.test.ts": "a1ce684c5ffa2e4010cd4764557a284e34074fc9e407924fc180ff23752e29d1"
+        "packages/core/src/backend/extensions/extension-set.test.ts": "f34e4264523a019a266119f09fd1055045700e1d79e36e926402fc651c04c558"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
       "outcome": "out-of-scope",
-      "reason": "Tests of the agent, the MCP server, the HTTP boundary, the RPC router and the extension set. They assert the contracts the updated auth, mcp, build-agent and host-actions skills state, and add no guidance of their own.",
+      "reason": "A test of the Action Link and readDraftNode behavior that host-actions now teaches. Tests are not adopter guidance.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "pnpm run test passed: 510 files, 6590 tests"
+        "git diff c0f1fe00 -- packages/core/src/backend/extensions/extension-set.test.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     },
     "source:packages/core/src/backend/extensions/steps/define-step.handler.test.ts": {
@@ -5740,20 +5719,16 @@
       ]
     },
     "source:packages/core/src/backend/setup.ts": {
-      "fingerprint": "d6d3bdf8aa5b85055c0f0aa4cbd91f969263006e4a04a526dcd8d72941e3fe9b",
+      "fingerprint": "7b920d44793b7c7cd7ced04deb936ea7202d9ae6b722b451af82c47f4814ec44",
       "snapshot": {
-        "packages/core/src/backend/setup.ts": "442e8e13d74346d0cc117c6e767b28314ef06d5fddff543933f380e578460a93"
+        "packages/core/src/backend/setup.ts": "bf59d4d894ee7e805e4393cdbdfdfeb2539737e0c59e09709ae049445e902677"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The host entry points: auth as a function with a startup refusal, optional encryption, health() with queue and the health option, createWfGraphRunner taking the app's options, the typed events.send and events.inboxInsert, the exported agent and MCP types, and runHostAction with memo and handlerRan. wfgraph-core, auth, events, host-actions, observability, build-agent and mcp now state these.",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
       "evidence": [
-        "e476cb51 fix(skills): bring wfgraph-core up to date with the app's options",
-        "75abc778 fix(skills): teach the auth skill the function form and the new refusals",
-        "8b56c5a5 fix(skills): teach events the typed send, inboxInsert and delivery settlement",
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "7bc7efe3 docs(skills): add queue metrics and record masking to observability",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff c0f1fe00 -- packages/core/src/backend/setup.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     },
     "source:packages/core/src/backend/testing/reliability/assertions.ts": {
@@ -5784,20 +5759,16 @@
       ]
     },
     "source:packages/core/src/index.ts": {
-      "fingerprint": "8f5f4b9286ce06e44bc8a9bd325356a9f800d0bc5489bb9c902c91748bdb669d",
+      "fingerprint": "167c1474b15b00d6f81b9573c7e6d883144274e9ce76f479fada3ab0c66b43dc",
       "snapshot": {
-        "packages/core/src/index.ts": "5d72ffd9206c895b987100bbab527ee2d9af10950aa041162f01c9bc04df3198"
+        "packages/core/src/index.ts": "0b777360bddb8f920e7fb8a15175d7e3a39e106d0b7d7e51d6351ad39a910469"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The host entry points: auth as a function with a startup refusal, optional encryption, health() with queue and the health option, createWfGraphRunner taking the app's options, the typed events.send and events.inboxInsert, the exported agent and MCP types, and runHostAction with memo and handlerRan. wfgraph-core, auth, events, host-actions, observability, build-agent and mcp now state these.",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
       "evidence": [
-        "e476cb51 fix(skills): bring wfgraph-core up to date with the app's options",
-        "75abc778 fix(skills): teach the auth skill the function form and the new refusals",
-        "8b56c5a5 fix(skills): teach events the typed send, inboxInsert and delivery settlement",
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "7bc7efe3 docs(skills): add queue metrics and record masking to observability",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff c0f1fe00 -- packages/core/src/index.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     },
     "source:packages/core/src/mcp-authoring.test.ts": {
@@ -5827,20 +5798,16 @@
       ]
     },
     "source:packages/core/src/runner.ts": {
-      "fingerprint": "518af202284febd706fe79ff314c63dd72a0e37a8b70bdefdc1050582b1d9868",
+      "fingerprint": "c1ae1d1e1b553387e0d47d83969cb16ee610e12afe15a32f72150a5e858e2b4f",
       "snapshot": {
-        "packages/core/src/runner.ts": "e5ceb3cb237fbb8f52031b163d1c71da5a4da2a3036bfd0cd636445c2852e29c"
+        "packages/core/src/runner.ts": "f883544c0213445b1b17541434b577ed365d6cdfcad687379b46d70652b7d7a9"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The host entry points: auth as a function with a startup refusal, optional encryption, health() with queue and the health option, createWfGraphRunner taking the app's options, the typed events.send and events.inboxInsert, the exported agent and MCP types, and runHostAction with memo and handlerRan. wfgraph-core, auth, events, host-actions, observability, build-agent and mcp now state these.",
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
       "evidence": [
-        "e476cb51 fix(skills): bring wfgraph-core up to date with the app's options",
-        "75abc778 fix(skills): teach the auth skill the function form and the new refusals",
-        "8b56c5a5 fix(skills): teach events the typed send, inboxInsert and delivery settlement",
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "7bc7efe3 docs(skills): add queue metrics and record masking to observability",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff c0f1fe00 -- packages/core/src/runner.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     },
     "source:packages/core/src/testing.test.ts": {
@@ -7834,6 +7801,201 @@
       "evidence": [
         "git log for the path",
         "pnpm run skills:validate passes at HEAD"
+      ]
+    },
+    "source:examples/message-preview-page.tsx": {
+      "fingerprint": "645c537ea81fdda1794485f4ab1e303e32fba27c47624e4a280e57441c7d02d5",
+      "snapshot": {
+        "examples/message-preview-page.tsx": "ac15ad7f51a1c27c5fa5d060e56729150bf539738583de5bce68976f552a7a65"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "The example app demonstrates an Action Link and a preview page that calls readDraftNode, and Vite's dev server proxies that page. The repository's dev harness is not a published contract; host-actions teaches the contract from docs/embedding.md.",
+      "evidence": [
+        "git diff c0f1fe00 -- examples/message-preview-page.tsx",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/client/src/components/workflow/config/action-links.test.tsx": {
+      "fingerprint": "7a21002bc6f651e01ac0dcf16b06490df0ca735be11d5eedfbd8b060bc4ca62c",
+      "snapshot": {
+        "packages/client/src/components/workflow/config/action-links.test.tsx": "d0e7e76734710a78237483318d6db4e9d1ad297aa263211c73b10905dedc8d14"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "A test of the Action Link and readDraftNode behavior that host-actions now teaches. Tests are not adopter guidance.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/client/src/components/workflow/config/action-links.test.tsx",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/client/src/components/workflow/config/action-links.tsx": {
+      "fingerprint": "6b304de9fdc751bbbe3ffb780968f63d627a38e4be72d86d02142283d1477f76",
+      "snapshot": {
+        "packages/client/src/components/workflow/config/action-links.tsx": "9c37e60c4553b628fa69e580a76473bc10ce5da0e797aac528c2c482b0bf72bf"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/client/src/components/workflow/config/action-links.tsx",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/client/src/components/workflow/node-properties-form.tsx": {
+      "fingerprint": "6471264819ed2b013d05b79ae3534d1b19474ff1f19c9a2fb065771949396b1a",
+      "snapshot": {
+        "packages/client/src/components/workflow/node-properties-form.tsx": "dd5958fde1929876c8600d5fc6469ee21e1c5e51bca3027fe8d54e07b630972c"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/client/src/components/workflow/node-properties-form.tsx",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/client/vite.config.ts": {
+      "fingerprint": "fde51e898c4d7c8e74cf68cdfd49c28349d52d7133974e046c1c1ea66397f86f",
+      "snapshot": {
+        "packages/client/vite.config.ts": "3b3773427f66f152004621c9c581b994fbd0bd1cb84705d2d17f6657c354d95c"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "The example app demonstrates an Action Link and a preview page that calls readDraftNode, and Vite's dev server proxies that page. The repository's dev harness is not a published contract; host-actions teaches the contract from docs/embedding.md.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/client/vite.config.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/core/src/app.workflows.test.ts": {
+      "fingerprint": "763a3cb244cf72c6582e9694276df622962d0ab105df48cf00951b1816eaa208",
+      "snapshot": {
+        "packages/core/src/app.workflows.test.ts": "4ee80e4ef1be959f42575f4abc44d8d2cee477aad8f9e39da1b027d964a4aa72"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "A test of the Action Link and readDraftNode behavior that host-actions now teaches. Tests are not adopter guidance.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/core/src/app.workflows.test.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/core/src/backend/extensions/extension-set.ts": {
+      "fingerprint": "b7e97ea64aff1a797d778bfc9fc31510f88a0fe5c3e44adfaf0da19f26fdbd95",
+      "snapshot": {
+        "packages/core/src/backend/extensions/extension-set.ts": "56bd9cb80eb02cd1bb2bf32002468ab649ab7738f146e1a5cdce752c259eb29d"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/core/src/backend/extensions/extension-set.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/core/src/backend/host-workflows.ts": {
+      "fingerprint": "7205b626c93e788edc856c0ae109aeddfee8dfaf3afce240e6ff4837220817d9",
+      "snapshot": {
+        "packages/core/src/backend/host-workflows.ts": "d202b8bce51c1ec50006a6f23b34b190f2a59ffc601aee3d8e631a886788cb34"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/core/src/backend/host-workflows.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/draft-node.test.ts": {
+      "fingerprint": "5396d7d4bc6e713b270d2e6348fee75e290e93bb8bbc50d1a67e1a6fba808c09",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/draft-node.test.ts": "ee4bb273d8c6fc837825eaa3d2f7eddd9cb928ee845c897a5381855bc8a955eb"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "A test of the Action Link and readDraftNode behavior that host-actions now teaches. Tests are not adopter guidance.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/core/src/backend/services/workflows/draft-node.test.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/draft-node.ts": {
+      "fingerprint": "b97a533fe085a5487b8e686479476e9b56d21287bec19da9c53c948b1d478c6b",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/draft-node.ts": "3c7ceca986c448fba1ac308f0893b3811892c801ae2a8cd45e514a4909096b5d"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/core/src/backend/services/workflows/draft-node.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/shared/src/extensions/action-links.test.ts": {
+      "fingerprint": "df6585eae673cfbbc4890aff6600c236d5fe184c35fda0d7dd9a3d4d898b3735",
+      "snapshot": {
+        "packages/shared/src/extensions/action-links.test.ts": "ff513225485b1153cae1ec30ce695898111e5667aa5c378d142a8eae2d58aa0c"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "A test of the Action Link and readDraftNode behavior that host-actions now teaches. Tests are not adopter guidance.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/shared/src/extensions/action-links.test.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/shared/src/extensions/action-links.ts": {
+      "fingerprint": "139316d0b14a7826ce70afbe4806e39a43ee0a1bfdcc809ad13fca049a01c772",
+      "snapshot": {
+        "packages/shared/src/extensions/action-links.ts": "8f9a78fb1acc7c5b453e82634ea5cfe3b51f3efdc598cc4df2d0ff5f5936581a"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/shared/src/extensions/action-links.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/shared/src/extensions/catalog-wire.test.ts": {
+      "fingerprint": "c2b42b66d1efa78c2e2866925e66a55affb016cc136c5e82e7041e6b8f9f9f70",
+      "snapshot": {
+        "packages/shared/src/extensions/catalog-wire.test.ts": "175b53db59bdfd86de45a01a5bbc630628ec0f5401fc1caf47d3c34f239f0227"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "A test of the Action Link and readDraftNode behavior that host-actions now teaches. Tests are not adopter guidance.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/shared/src/extensions/catalog-wire.test.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/shared/src/extensions/catalog-wire.ts": {
+      "fingerprint": "1936ef3a3640034041067a80c2d55c42a0bb426ebca164e7341f1d6e06f14549",
+      "snapshot": {
+        "packages/shared/src/extensions/catalog-wire.ts": "754c8e8c0dbb711544efb9111cefad808f3b01ade1b3ad65d0ed9a45c4a643a6"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/shared/src/extensions/catalog-wire.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
+      ]
+    },
+    "source:packages/shared/src/extensions/catalog.ts": {
+      "fingerprint": "21bee8e88808aa20655120428bd6a622725e7f967c410370a9f09487338c351f",
+      "snapshot": {
+        "packages/shared/src/extensions/catalog.ts": "8b2d1c98506451acf85f5e51841a077972303db7b8c9fb4ddf0551a2152142b5"
+      },
+      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "outcome": "out-of-scope",
+      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "evidence": [
+        "git diff c0f1fe00 -- packages/shared/src/extensions/catalog.ts",
+        "wfgraph-core/host-actions SKILL.md updated in the same change"
       ]
     }
   }
