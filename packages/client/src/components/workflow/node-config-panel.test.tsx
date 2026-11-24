@@ -10,7 +10,7 @@ import {
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { useMemo, useState } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
@@ -39,6 +39,7 @@ import {
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
 import { orpcQuery } from "#src/lib/rpc-query";
+import type { workflowApi } from "#src/lib/rpc-client";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
@@ -132,7 +133,13 @@ function renderPanel({
   selected = null,
   hasPublishedVersion = false,
   workspaceView = "draft",
+  extensionCatalog = catalog,
+  autosaveDelay = 0,
+  update = async () => savedWorkflow("wf_1"),
 }: {
+  extensionCatalog?: ExtensionCatalog;
+  autosaveDelay?: number;
+  update?: (typeof workflowApi)["update"];
   nodes?: WorkflowNode[];
   edges?: WorkflowEdge[];
   selected?: string | null;
@@ -140,11 +147,8 @@ function renderPanel({
   workspaceView?: "draft" | "runs" | "changes";
 } = {}) {
   const store = createStore();
-  store.set(autosaveDelayAtom, 0);
-  store.set(workflowApiAtom, {
-    update: async () => savedWorkflow("wf_1"),
-    read: unreadableDraft,
-  });
+  store.set(autosaveDelayAtom, autosaveDelay);
+  store.set(workflowApiAtom, { update, read: unreadableDraft });
   store.set(loadWorkflowGraphAtom, { nodes, edges });
   store.set(currentWorkflowIdAtom, "wf_1");
   store.set(currentWorkflowNameAtom, "Appointment reminders");
@@ -217,7 +221,7 @@ function renderPanel({
   });
 
   const view = render(
-    <ExtensionCatalogProvider value={catalog}>
+    <ExtensionCatalogProvider value={extensionCatalog}>
       <QueryClientProvider client={queryClient}>
         <JotaiProvider store={store}>
           <OverlayProvider>
@@ -665,5 +669,70 @@ describe("NodeConfigPanel Wait mode", () => {
     await waitFor(() => {
       expect(store.get(successfulSaveGenerationAtom).get("wf_1")).toBe(1);
     });
+  });
+});
+
+describe("NodeConfigPanel Action Links", () => {
+  const linkCatalog: ExtensionCatalog = {
+    ...catalog,
+    actions: [
+      {
+        id: "members/send-email",
+        label: "Send Email to Member",
+        description: "Sends an email",
+        category: "Members",
+        links: [
+          {
+            label: "Preview email",
+            url: "/email-preview?workflow={workflowId}&node={nodeId}",
+          },
+        ],
+        configFields: [{ key: "subject", label: "Subject", type: "text" }],
+        outputFields: [],
+      },
+    ],
+  };
+
+  function emailNode(): WorkflowNode {
+    return {
+      id: "send_1",
+      type: "action",
+      position: { x: 0, y: 100 },
+      data: {
+        label: "Welcome email",
+        type: "action",
+        config: { actionType: "members/send-email", subject: "Hello" },
+      },
+    };
+  }
+
+  // The edit lands on the autosave timer, and the link's click is what sends
+  // it, so the host's page reads the subject the builder just typed.
+  it("sends the field edit the builder just made when the link is clicked", async () => {
+    const update = vi.fn(async () => savedWorkflow("wf_1"));
+    const { view } = renderPanel({
+      nodes: [lifecycleNode(), emailNode()],
+      selected: "send_1",
+      extensionCatalog: linkCatalog,
+      autosaveDelay: 60_000,
+      update,
+    });
+
+    const link = await view.findByRole("link", { name: "Preview email" });
+    fireEvent.change(view.getByLabelText("Subject"), {
+      target: { value: "Welcome aboard" },
+    });
+    expect(update).not.toHaveBeenCalled();
+
+    // The document prevents the navigation, so happy-dom opens no window.
+    const stop = (event: Event) => event.preventDefault();
+    document.addEventListener("click", stop);
+    fireEvent.click(link);
+    document.removeEventListener("click", stop);
+
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledTimes(1);
+    });
+    expect(JSON.stringify(update.mock.calls[0])).toContain("Welcome aboard");
   });
 });
