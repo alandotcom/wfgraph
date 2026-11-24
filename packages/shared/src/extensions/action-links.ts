@@ -96,3 +96,43 @@ function fillPlaceholdersWith(url: string, value: string): string {
     url
   );
 }
+
+/**
+ * Ids a browser would read as a step within the path when one fills a whole
+ * path segment. The URL parser also reads `%2E` as a dot, so no encoding of
+ * these ids survives as the id itself.
+ */
+const DOT_SEGMENT_IDS: ReadonlySet<string> = new Set([".", ".."]);
+
+/** Whether `fillActionLinkUrl` can write `id` into a URL intact. */
+function fillableId(id: string): boolean {
+  return id !== "" && !DOT_SEGMENT_IDS.has(id) && id.isWellFormed();
+}
+
+/**
+ * An Action Link's URL with `{workflowId}` and `{nodeId}` replaced by the
+ * given ids, each encoded with `encodeURIComponent`, so an id holding `/`,
+ * `?`, `#` or `&` cannot add a path segment or a query parameter of its own.
+ *
+ * Answers undefined, and the editor then draws no link, when either id:
+ *
+ * - is `.` or `..`, because in a path such as `/a/{nodeId}/b` that id would
+ *   move the link to `/b`;
+ * - is empty, because in a path such as `/{nodeId}/b` it would leave `//b`,
+ *   which a browser reads as another origin;
+ * - is not well-formed UTF-16, because `encodeURIComponent` throws on a lone
+ *   surrogate.
+ */
+export function fillActionLinkUrl(
+  url: string,
+  ids: { workflowId: string; nodeId: string }
+): string | undefined {
+  if (!(fillableId(ids.workflowId) && fillableId(ids.nodeId))) {
+    return undefined;
+  }
+  return ACTION_LINK_PLACEHOLDERS.reduce(
+    (remaining, [placeholder, key]) =>
+      remaining.replaceAll(placeholder, encodeURIComponent(ids[key])),
+    url
+  );
+}

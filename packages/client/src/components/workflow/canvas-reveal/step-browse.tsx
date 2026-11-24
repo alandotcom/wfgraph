@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
+import { ActionLinks } from "#src/components/workflow/config/action-links";
 import { ConditionSummary } from "#src/components/workflow/config/condition-summary";
 import { NodePropertiesForm } from "#src/components/workflow/node-properties-form";
 import { NodeControls } from "#src/components/workflow/step-controls";
@@ -186,6 +187,9 @@ export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
               : "Not set"}
           </p>
         ) : null}
+        {/* Browse shows the action's links as well as Focus, since following
+            one needs no editing. */}
+        <ActionLinks actionId={actionType} className="pt-2" nodeId={nodeId} />
       </Section>
 
       {isWait ? (

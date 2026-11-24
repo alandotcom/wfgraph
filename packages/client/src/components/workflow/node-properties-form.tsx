@@ -11,8 +11,10 @@ import {
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { ActionConfig } from "./config/action-config";
 import { ActionGrid } from "./config/action-grid";
+import { ActionLinks } from "./config/action-links";
 import { LifecyclePanel } from "./config/lifecycle-panel";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import type { NodeConfigFrame } from "./node-config-panel";
@@ -92,6 +94,7 @@ export function NodePropertiesForm({
   if (!selectedNode) {
     return null;
   }
+  const selectedActionId = actionTypeOf(selectedNode);
 
   // An action node with no action chosen yet gets the picker instead of a
   // config form, and the picker is the whole screen while it is up.
@@ -175,6 +178,10 @@ export function NodePropertiesForm({
           onUpdateConfig={handleUpdateConfig}
         />
       ) : null}
+
+      {selectedActionId === undefined ? null : (
+        <ActionLinks actionId={selectedActionId} nodeId={selectedNode.id} />
+      )}
 
       {children}
 

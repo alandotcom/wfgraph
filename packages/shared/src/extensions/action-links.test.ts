@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { actionLinkUrlProblem } from "#src/extensions/action-links";
+import {
+  actionLinkUrlProblem,
+  fillActionLinkUrl,
+} from "#src/extensions/action-links";
 
 describe("actionLinkUrlProblem", () => {
   it.each([
@@ -73,5 +76,65 @@ describe("actionLinkUrlProblem", () => {
   it("never quotes the url it refused", () => {
     const url = "/preview?secret=hunter2&x={other}";
     expect(actionLinkUrlProblem(url)).not.toContain("hunter2");
+  });
+});
+
+describe("fillActionLinkUrl", () => {
+  it("writes each id in place of its placeholder, every time it appears", () => {
+    expect(
+      fillActionLinkUrl("/w/{workflowId}/n/{nodeId}?again={nodeId}", {
+        workflowId: "wf_1",
+        nodeId: "node_1",
+      })
+    ).toBe("/w/wf_1/n/node_1?again=node_1");
+  });
+
+  it("encodes an id so it cannot add a segment or a parameter", () => {
+    expect(
+      fillActionLinkUrl("/preview?node={nodeId}", {
+        workflowId: "wf_1",
+        nodeId: "a/b&c=d e",
+      })
+    ).toBe("/preview?node=a%2Fb%26c%3Dd%20e");
+  });
+
+  // A browser resolves `.` and `..` path segments, and their `%2E` spellings,
+  // before it requests the page, so the check is on the path it resolves to.
+  it.each([".", ".."])("draws no url for a node id of %s", (nodeId) => {
+    expect(
+      fillActionLinkUrl("/a/{nodeId}/b", { workflowId: "wf_1", nodeId })
+    ).toBeUndefined();
+    expect(
+      fillActionLinkUrl("/a/{workflowId}/b", {
+        workflowId: nodeId,
+        nodeId: "n",
+      })
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ["an empty workflow id", { workflowId: "", nodeId: "n" }],
+    ["an empty node id", { workflowId: "wf_1", nodeId: "" }],
+    [
+      "a node id holding a lone surrogate",
+      { workflowId: "wf_1", nodeId: "n\ud800" },
+    ],
+    [
+      "a workflow id holding a lone surrogate",
+      { workflowId: "\udc00", nodeId: "n" },
+    ],
+  ])("draws no url for %s", (_case, ids) => {
+    expect(fillActionLinkUrl("/{workflowId}/{nodeId}", ids)).toBeUndefined();
+  });
+
+  it("keeps an id holding dots among other characters in its segment", () => {
+    const filled = fillActionLinkUrl("/a/{nodeId}/b", {
+      workflowId: "wf_1",
+      nodeId: "...",
+    });
+    expect(filled).toBeDefined();
+    expect(new URL(filled ?? "", "https://host.example").pathname).toBe(
+      "/a/.../b"
+    );
   });
 });
