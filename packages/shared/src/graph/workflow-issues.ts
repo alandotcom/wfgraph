@@ -59,6 +59,7 @@ import {
   type ConfigTemplateReference,
   isEntityStateSourceId,
   referenceFieldForPath,
+  templateTokenDisplayText,
 } from "#src/graph/node-references";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
 import { upstreamNodeIdsOver } from "#src/graph/upstream-nodes";
@@ -732,7 +733,12 @@ export function collectReferenceNotUpstreamIssues(input: {
           fieldKey: reference.field,
           fieldLabel,
           referencedNodeId: referenced.id,
-          displayText: reference.displayText,
+          // The step's current name, which the message also uses. The label
+          // saved inside the reference is stale once the step is renamed.
+          displayText: templateTokenDisplayText({
+            nodeLabel: referencedLabel,
+            fieldPath: reference.fieldPath,
+          }),
           message: `Node "${nodeLabel}" reads "${referencedLabel}" in ${fieldLabel}, but no path leads from "${referencedLabel}" to "${nodeLabel}". Reference only a node upstream of "${nodeLabel}", or move "${nodeLabel}" below "${referencedLabel}".`,
         },
       ];

@@ -530,6 +530,21 @@ describe("collectWorkflowIssues references to a node that is not upstream", () =
     );
   }
 
+  it("names a renamed step by its current name in a not-upstream issue", () => {
+    const issues = notUpstream(
+      [
+        entry,
+        sender("lookup", "Find donor"),
+        sender("notify", "Notify", "Hi {{@lookup:Lookup.name}}"),
+      ],
+      [fromEntry("lookup"), fromEntry("notify")]
+    );
+
+    expect(issues.map((issue) => issue.displayText)).toEqual([
+      "Find donor.name",
+    ]);
+  });
+
   // Both branches leave the entry node together, so whether Lookup has run
   // when Notify resolves its Message depends on which branch finishes first.
   it("blocks a reference to a node on a parallel branch", () => {
