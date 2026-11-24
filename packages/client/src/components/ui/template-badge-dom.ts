@@ -1,17 +1,11 @@
-import type {
-  EntityMetadata,
-  ExtensionCatalog,
-} from "@wfgraph/shared/extensions/catalog";
-import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
-  isEntityStateSourceId,
-  parseTemplate,
-  templateTokenDisplayText,
-  type TemplateToken,
-} from "@wfgraph/shared/graph/node-references";
+  currentTokenDisplayText,
+  tokenSourceIsLive,
+  trackedEntityTypeOf,
+} from "@wfgraph/shared/graph/node-display";
+import { parseTemplate } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { findTrackedEntityStateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
-import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
 /**
  * The contentEditable behind the template fields, as plain DOM.
@@ -101,38 +95,6 @@ const BADGE_BASE_CLASS =
   "inline-flex h-[calc(--spacing(4.75))] items-center gap-1 rounded px-1.5 font-mono text-xs border mx-0.5";
 const LIVE_BADGE_CLASS = `${BADGE_BASE_CLASS} bg-info/10 text-info border-info/20`;
 const BROKEN_BADGE_CLASS = `${BADGE_BASE_CLASS} bg-destructive/10 text-destructive border-destructive/20`;
-
-/**
- * Badge text for a token. The label baked into the token can be stale, so the
- * node's current display name wins whenever the node is still around.
- */
-function getDisplayTextForToken(
-  token: TemplateToken,
-  nodes: WorkflowNode[],
-  catalog: ExtensionCatalog,
-  entitySource: EntityMetadata | undefined
-): string {
-  if (
-    isEntityStateSourceId(token.nodeId) &&
-    entitySource &&
-    entitySource.type === token.sourceType
-  ) {
-    return templateTokenDisplayText({
-      nodeLabel: entitySource.label,
-      fieldPath: token.fieldPath,
-    });
-  }
-
-  const node = nodes.find((candidate) => candidate.id === token.nodeId);
-  if (!node) {
-    return templateTokenDisplayText(token);
-  }
-
-  return templateTokenDisplayText({
-    nodeLabel: getNodeDisplayName(catalog, node),
-    fieldPath: token.fieldPath,
-  });
-}
 
 /** The raw token a badge stands for, or null for anything that is not a badge. */
 function templateOf(node: Node): string | null {
@@ -417,13 +379,9 @@ export function createBadgeEditor(
       return;
     }
 
-    const lifecycle = renderOptions.nodes.find(
-      (node) => node.data.type === "lifecycle"
-    );
-    const entitySource = findTrackedEntityStateSource({
-      rules: readLifecycleRules(lifecycle?.data.config),
-      catalog,
-    });
+    // An Entity token reads the workflow's tracked Entity alone, so a token
+    // naming another Entity type draws broken and keeps its stored label.
+    const trackedEntityType = trackedEntityTypeOf(renderOptions.nodes);
 
     for (const segment of parseTemplate(text)) {
       if (segment.kind === "literal") {
@@ -432,18 +390,22 @@ export function createBadgeEditor(
       }
 
       const badge = document.createElement("span");
-      const sourceExists = isEntityStateSourceId(segment.token.nodeId)
-        ? entitySource?.type === segment.token.sourceType
-        : renderOptions.nodes.some((node) => node.id === segment.token.nodeId);
-      badge.className = sourceExists ? LIVE_BADGE_CLASS : BROKEN_BADGE_CLASS;
-      badge.contentEditable = "false";
-      // The raw token is what `readText` reads back out of the DOM.
-      badge.setAttribute("data-template", segment.token.raw);
-      badge.textContent = getDisplayTextForToken(
+      badge.className = tokenSourceIsLive(
         segment.token,
         renderOptions.nodes,
         catalog,
-        entitySource
+        trackedEntityType
+      )
+        ? LIVE_BADGE_CLASS
+        : BROKEN_BADGE_CLASS;
+      badge.contentEditable = "false";
+      // The raw token is what `readText` reads back out of the DOM.
+      badge.setAttribute("data-template", segment.token.raw);
+      badge.textContent = currentTokenDisplayText(
+        segment.token,
+        renderOptions.nodes,
+        catalog,
+        trackedEntityType
       );
       appendCaretStop();
       container.appendChild(badge);

@@ -198,6 +198,28 @@ describe("readDraftNode", () => {
       })
   );
 
+  // The editor draws such a token as a broken badge holding its stored label,
+  // since the run has no state of that Entity type to read.
+  effectIt.effect(
+    "keeps the written label for an Entity the workflow does not track",
+    () =>
+      Effect.gen(function* () {
+        const node = yield* read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
+          Effect.succeed(stored([lookup, sendEmail]))
+        );
+
+        const body = node?.fields.body;
+        const reference =
+          body?.kind === "template" ? body.segments[1] : undefined;
+        assert.deepStrictEqual(reference, {
+          kind: "reference",
+          source: { kind: "entity", entityType: "donor" },
+          fieldPath: "firstName",
+          display: "Member.firstName",
+        });
+      })
+  );
+
   effectIt.effect(
     "answers an Entity reference with no readable type as its raw text",
     () =>

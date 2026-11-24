@@ -70,13 +70,16 @@ export function isHiddenComparisonValue(value: unknown): boolean {
 
 /**
  * A stored condition shown as sentences. `fields` names what its rules read,
- * and `setOperatorsRequireEnumValues` is set for Entity eligibility.
+ * and `setOperatorsRequireEnumValues` is set for Entity eligibility. `nodes`
+ * is the graph of the side the condition comes from, which names the source of
+ * a template reference in a rule's value.
  */
 export class ConditionValue {
   constructor(
     readonly model: ConditionModel,
     readonly fields: readonly ConditionSelectableField[],
-    readonly setOperatorsRequireEnumValues: boolean
+    readonly setOperatorsRequireEnumValues: boolean,
+    readonly nodes: readonly ComparisonNode[]
   ) {}
 }
 
@@ -261,17 +264,24 @@ export function comparisonFieldLabel(
 
 /**
  * A stored condition model as sentences reading `fields`, a note when the
- * model does not decode, and undefined when nothing is stored.
+ * model does not decode, and undefined when nothing is stored. `nodes` is the
+ * graph of the side the condition comes from.
  */
-function readableCondition(
-  stored: string,
-  fields: () => readonly ConditionSelectableField[],
-  setOperatorsRequireEnumValues: boolean
-): ConditionValue | ValueNote | undefined {
-  if (isBlank(stored)) return undefined;
-  const parsed = parseConditionModel(stored);
+function readableCondition(input: {
+  stored: string;
+  fields: () => readonly ConditionSelectableField[];
+  setOperatorsRequireEnumValues: boolean;
+  nodes: ReadonlyMap<string, ComparisonNode>;
+}): ConditionValue | ValueNote | undefined {
+  if (isBlank(input.stored)) return undefined;
+  const parsed = parseConditionModel(input.stored);
   return parsed.valid
-    ? new ConditionValue(parsed.model, fields(), setOperatorsRequireEnumValues)
+    ? new ConditionValue(
+        parsed.model,
+        input.fields(),
+        input.setOperatorsRequireEnumValues,
+        [...input.nodes.values()]
+      )
     : new ValueNote("Filter changed");
 }
 
@@ -303,16 +313,17 @@ function readableLifecycleValue(input: {
     case "cancelFilters":
       return second === undefined
         ? value
-        : readableCondition(
-            value,
-            () =>
+        : readableCondition({
+            stored: value,
+            fields: () =>
               getEventConditionFields(
                 catalog,
                 second,
                 [...input.nodes.values()].map(toEditorNode)
               ),
-            false
-          );
+            setOperatorsRequireEnumValues: false,
+            nodes: input.nodes,
+          });
     case "connectionIds": {
       const name = input.connections?.find(
         (connection) => connection.id === value
@@ -332,14 +343,15 @@ function readableLifecycleValue(input: {
       if (second !== "condition") return value;
       const entityType = readLifecycleRules(input.node?.data.config)
         ?.trackedEntity?.type;
-      return readableCondition(
-        value,
-        () =>
+      return readableCondition({
+        stored: value,
+        fields: () =>
           entityType === undefined
             ? []
             : getEntityConditionFields(catalog, entityType),
-        true
-      );
+        setOperatorsRequireEnumValues: true,
+        nodes: input.nodes,
+      });
     }
     default:
       return value;

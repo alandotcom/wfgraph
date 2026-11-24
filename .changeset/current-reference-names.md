@@ -1,0 +1,5 @@
+---
+"@wfgraph/client": patch
+---
+
+Settings summaries in Canvas Reveal's Browse level, condition summaries, and the value chips of a set comparison name a template reference by its source step's current name, or by the catalog label of the workflow's tracked Entity. A reference to an Entity the workflow does not track keeps its stored label, as its badge in the editor does. They used to show the label stored inside the reference, which still held a step's old name after the step was renamed.

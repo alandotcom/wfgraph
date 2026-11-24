@@ -1,3 +1,4 @@
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { WarningCallout } from "#src/components/ui/callout";
 import {
   conditionFieldForPath,
@@ -20,10 +21,10 @@ import {
   TIME_UNIT_OPTIONS,
   TIMESTAMP_OPERATOR_OPTIONS,
 } from "@wfgraph/shared/conditions/conditions";
-import {
-  displayTemplateText,
-  matchTemplateToken,
-} from "@wfgraph/shared/graph/node-references";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { currentTemplateDisplayText } from "@wfgraph/shared/graph/node-display";
+import { matchTemplateToken } from "@wfgraph/shared/graph/node-references";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
   enumOptionLabel,
   unavailableFieldLabel,
@@ -42,15 +43,21 @@ import {
  * This is the only surface some of those reach: a half-built Wait match is
  * saved without complaint on purpose, and a rule opened here and never edited
  * would otherwise read exactly like a finished one.
+ *
+ * A value holding a template reference reads as its source's current name,
+ * looked up in `nodes`, the whole graph the condition belongs to, which can be
+ * a run's or a version's rather than the live draft.
  */
 export function ConditionSummary({
   model,
   fields,
+  nodes,
   compact = false,
   setOperatorsRequireEnumValues = false,
 }: {
   model: ConditionModel;
   fields: readonly ConditionSelectableField[];
+  nodes: readonly WorkflowNode[];
   compact?: boolean;
   /**
    * Refuses a set comparison on a string field with no enum values, as Entity
@@ -69,6 +76,7 @@ export function ConditionSummary({
           condition={onlyCondition}
           field={conditionFieldForPath(fields, onlyCondition.field)}
           joiner={null}
+          nodes={nodes}
           setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
         />
       </ul>
@@ -100,6 +108,7 @@ export function ConditionSummary({
                 field={conditionFieldForPath(fields, condition.field)}
                 joiner={conditionIndex > 0 ? logicLabel(group.logic) : null}
                 key={condition.id}
+                nodes={nodes}
                 setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
               />
             ))}
@@ -131,13 +140,16 @@ function RuleLine({
   condition,
   field,
   joiner,
+  nodes,
   setOperatorsRequireEnumValues,
 }: {
   condition: ConditionRule;
   field: ConditionSelectableField | undefined;
   joiner: string | null;
+  nodes: readonly WorkflowNode[];
   setOperatorsRequireEnumValues: boolean;
 }) {
+  const catalog = useExtensionCatalog();
   const refusal = ruleRefusal(condition, field, {
     setOperatorsRequireEnumValues,
   });
@@ -153,7 +165,7 @@ function RuleLine({
         <span className="mx-1.5 text-muted-foreground">
           {operatorLabel(condition)}
         </span>
-        {valueLabel(condition, field)}
+        {valueLabel(condition, field, nodes, catalog)}
       </p>
       {refusal ? (
         <WarningCallout variant="text">{refusal}</WarningCallout>
@@ -270,11 +282,14 @@ function operatorTable(
  * whole comparison, as `is true` and `is set` do.
  *
  * A value the builder has not filled in renders as nothing, and the line under
- * it is what names the gap.
+ * it is what names the gap. A template reference reads as its source's current
+ * name in `nodes`.
  */
 function valueLabel(
   rule: ConditionRule,
-  field: ConditionSelectableField | undefined
+  field: ConditionSelectableField | undefined,
+  nodes: readonly WorkflowNode[],
+  catalog: ExtensionCatalog
 ): string {
   if (isNullCheckConditionRule(rule)) {
     return "";
@@ -301,10 +316,20 @@ function valueLabel(
   if (rule.fieldType === "string") {
     if (isStringSetConditionRule(rule)) {
       return rule.values
-        .map((value) => displayTemplateText(enumOptionLabel(field, value)))
+        .map((value) =>
+          currentTemplateDisplayText(
+            enumOptionLabel(field, value),
+            nodes,
+            catalog
+          )
+        )
         .join(", ");
     }
-    return displayTemplateText(enumOptionLabel(field, rule.value));
+    return currentTemplateDisplayText(
+      enumOptionLabel(field, rule.value),
+      nodes,
+      catalog
+    );
   }
 
   if (rule.fieldType === "number") {

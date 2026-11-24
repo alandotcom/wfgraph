@@ -10,21 +10,21 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import {
-  findEntity,
-  type ExtensionCatalog,
-} from "@wfgraph/shared/extensions/catalog";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import {
   ACTION_TYPE_CONFIG_KEY,
   actionTypeOf,
 } from "@wfgraph/shared/graph/node-config";
-import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
+import {
+  currentTokenDisplayText,
+  getNodeDisplayName,
+  trackedEntityTypeOf,
+} from "@wfgraph/shared/graph/node-display";
 import {
   isEntityStateSourceId,
   parseTemplate,
   type TemplateToken,
-  templateTokenDisplayText,
 } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
@@ -70,6 +70,13 @@ export type WfGraphDraftField =
   | { kind: "template"; segments: readonly WfGraphDraftSegment[] }
   | { kind: "value"; value: JsonValue };
 
+/** The saved draft a node's references are named against. */
+type DraftWorkflow = {
+  nodes: readonly WorkflowNode[];
+  catalog: ExtensionCatalog;
+  trackedEntityType: string | undefined;
+};
+
 /** One node of a workflow's saved draft. */
 export type WfGraphDraftNode = {
   workflowId: string;
@@ -103,31 +110,12 @@ function referenceSource(
 }
 
 /**
- * The name the editor's badge shows for a reference's source: the step's
- * current name, or the Entity's catalog label, falling back to the label
- * written into the token when the step or the Entity type is gone.
- */
-function sourceLabel(
-  token: TemplateToken,
-  source: WfGraphDraftReferenceSource,
-  nodes: readonly WorkflowNode[],
-  catalog: ExtensionCatalog
-): string {
-  if (source.kind === "entity") {
-    return findEntity(catalog, source.entityType)?.label ?? token.nodeLabel;
-  }
-  const node = nodes.find((candidate) => candidate.id === source.nodeId);
-  return node ? getNodeDisplayName(catalog, node) : token.nodeLabel;
-}
-
-/**
  * A reference as the editor's badge shows it, or a text segment holding the
  * raw token when no source can be named for it.
  */
 function referenceSegment(
   token: TemplateToken,
-  nodes: readonly WorkflowNode[],
-  catalog: ExtensionCatalog
+  workflow: DraftWorkflow
 ): WfGraphDraftSegment {
   const source = referenceSource(token);
   if (!source) {
@@ -137,17 +125,18 @@ function referenceSegment(
     kind: "reference",
     source,
     fieldPath: token.fieldPath,
-    display: templateTokenDisplayText({
-      nodeLabel: sourceLabel(token, source, nodes, catalog),
-      fieldPath: token.fieldPath,
-    }),
+    display: currentTokenDisplayText(
+      token,
+      workflow.nodes,
+      workflow.catalog,
+      workflow.trackedEntityType
+    ),
   };
 }
 
 function draftField(
   value: JsonValue,
-  nodes: readonly WorkflowNode[],
-  catalog: ExtensionCatalog
+  workflow: DraftWorkflow
 ): WfGraphDraftField {
   if (typeof value !== "string") {
     return { kind: "value", value };
@@ -157,7 +146,7 @@ function draftField(
     segments: parseTemplate(value).map((segment) =>
       segment.kind === "literal"
         ? { kind: "text", text: segment.text }
-        : referenceSegment(segment.token, nodes, catalog)
+        : referenceSegment(segment.token, workflow)
     ),
   };
 }
@@ -205,11 +194,16 @@ export const readDraftNode = Effect.fn("readDraftNode")(
       return null;
     }
 
+    const draftWorkflow: DraftWorkflow = {
+      nodes,
+      catalog,
+      trackedEntityType: trackedEntityTypeOf(nodes),
+    };
     const config = readJsonObjectLeniently(node.data.config) ?? {};
     const fields = Object.fromEntries(
       Object.entries(config)
         .filter(([key]) => key !== ACTION_TYPE_CONFIG_KEY)
-        .map(([key, value]) => [key, draftField(value, nodes, catalog)])
+        .map(([key, value]) => [key, draftField(value, draftWorkflow)])
     );
 
     const draftNode: WfGraphDraftNode = omitUndefined({

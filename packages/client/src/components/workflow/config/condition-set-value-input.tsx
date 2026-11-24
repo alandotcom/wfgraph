@@ -1,9 +1,12 @@
 /**
  * The two value lists of a set comparison on a string field. The row picks one
- * by whether the field declares enum values.
+ * by whether the field declares enum values. Both run in the live editor, so a
+ * template reference reads as its source's current name in the open draft.
  */
 
+import { useAtomValue } from "jotai";
 import { useRef, useState } from "react";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import {
   Combobox,
   ComboboxChip,
@@ -17,7 +20,8 @@ import {
   ComboboxValue,
 } from "#src/components/ui/combobox";
 import type { ConditionSelectableField } from "#src/lib/upstream-node-fields";
-import { displayTemplateText } from "@wfgraph/shared/graph/node-references";
+import { nodesAtom } from "#src/lib/workflow-graph-store";
+import { currentTemplateDisplayText } from "@wfgraph/shared/graph/node-display";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { uniq } from "es-toolkit/array";
 import { enumOptionLabel } from "./condition-field-label";
@@ -52,6 +56,8 @@ export function EnumMultiValueInput({
   onValueChange: (values: string[]) => void;
   values: string[];
 }) {
+  const catalog = useExtensionCatalog();
+  const nodes = useAtomValue(nodesAtom);
   const choices = (field?.enumValues ?? []).map((value) => ({
     value,
     label: enumOptionLabel(field, value),
@@ -60,7 +66,7 @@ export function EnumMultiValueInput({
     (value) =>
       choices.find((choice) => choice.value === value) ?? {
         value,
-        label: displayTemplateText(value),
+        label: currentTemplateDisplayText(value, nodes, catalog),
       }
   );
 
@@ -139,6 +145,8 @@ export function TextSetValueInput({
   onValueChange: (values: string[]) => void;
   values: string[];
 }) {
+  const catalog = useExtensionCatalog();
+  const nodes = useAtomValue(nodesAtom);
   const [query, setQuery] = useState("");
   // The entry Enter would pick, if any. Base UI handles Enter on a highlighted
   // entry itself, so the input's own Enter handler acts only when none is.
@@ -146,7 +154,7 @@ export function TextSetValueInput({
   const typed = query.trim();
   const selected = values.map((value) => ({
     value,
-    label: displayTemplateText(value),
+    label: currentTemplateDisplayText(value, nodes, catalog),
     adding: false,
   }));
   const addable =
