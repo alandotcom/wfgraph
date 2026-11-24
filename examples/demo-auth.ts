@@ -12,7 +12,7 @@ import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, setCookie } from "hono/cookie";
 import {
   type WfGraphAccess,
-  type WfGraphAuth,
+  type WfGraphAuthenticate,
   WfGraphRoles,
 } from "@wfgraph/core";
 import { DemoLoginPage } from "./demo-login-page";
@@ -239,8 +239,9 @@ export function createDemoAuth(options: DemoAuthOptions) {
 
   // A request with no session answers undefined, which Workflow Graph reads
   // as not signed in. An MCP client with no browser session authenticates
-  // with the configured bearer token instead.
-  const auth: WfGraphAuth = (request) => {
+  // with the configured bearer token instead. The app's own pages call it
+  // too, which is why it is typed as the function rather than as the option.
+  const auth: WfGraphAuthenticate = (request) => {
     const isMcp = new URL(request.url).pathname === "/api/mcp";
     if (demoAutoLoginAccess && !isMcp) return demoAutoLoginAccess;
     if (
