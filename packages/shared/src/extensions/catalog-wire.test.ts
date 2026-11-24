@@ -179,6 +179,34 @@ describe("readExtensionCatalog", () => {
     expect(readExtensionCatalog(catalog)).toEqual(catalog);
   });
 
+  // The decode drops a key the schema does not name, so a missing `links`
+  // entry would leave the editor drawing no links and reporting nothing.
+  it("carries a host action's links across the wire", () => {
+    const catalog: ExtensionCatalog = {
+      entities: [],
+      events: [],
+      actions: [
+        {
+          id: "members/send-email",
+          label: "Send Email to Member",
+          description: "Sends an email",
+          category: "Members",
+          links: [
+            {
+              label: "Preview email",
+              url: "/email-preview?workflow={workflowId}&node={nodeId}",
+            },
+          ],
+          configFields: [],
+          outputFields: [],
+        },
+      ],
+      integrations: [],
+    };
+
+    expect(readExtensionCatalog(catalog)).toEqual(catalog);
+  });
+
   it("carries sanitized OAuth capability metadata across the wire", () => {
     const catalog: ExtensionCatalog = {
       entities: [],
