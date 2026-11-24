@@ -3073,29 +3073,27 @@
       ]
     },
     "source:packages/shared/src/graph/workflow-issues.test.ts": {
-      "fingerprint": "da6a1583ceddc4bce0a4f61133a9c9c69a0b1a65d6a32ccf5895562c3f1c6fd6",
+      "fingerprint": "0293a37d0d5b8c648a6ac657ac421ce927ef6bd95b875f89e31ffb7856e316f4",
       "snapshot": {
-        "packages/shared/src/graph/workflow-issues.test.ts": "651c9bc12d73ec9adee2307f5436f8b15d0ca933366e9e17430f3cd5cf65ee97"
+        "packages/shared/src/graph/workflow-issues.test.ts": "4a54f7c0d5d21a3b9f985e9ec52240ea94f9fe757122fffca38a4bb8ef9db87e"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
-      "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "head": "3eaa5c66043de2995c8ffa21a3a4bfeb952d5b96",
+      "outcome": "no-change",
+      "reason": "workflow-issues.ts now takes a not-upstream issue's displayText from the referenced step's current name; no published skill describes issue display text",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "Changed: packages/shared/src/graph/workflow-issues.test.ts at 3eaa5c66043de2995c8ffa21a3a4bfeb952d5b96"
       ]
     },
     "source:packages/shared/src/graph/workflow-issues.ts": {
-      "fingerprint": "510e82da330eed8c4de7f4733cc76fef0929bc515ea7ff2c9c984af6b6effd61",
+      "fingerprint": "4e72ad39f5046d2661908fe3af8f4eab2b3dacd47055fb2596665ca8aa365914",
       "snapshot": {
-        "packages/shared/src/graph/workflow-issues.ts": "d7ea3a6f4f212a728387ace954c34fa1bcc86c8ba599d7cc97eec6568d0592d3"
+        "packages/shared/src/graph/workflow-issues.ts": "50c7ad94b705c58ab54144a9964c22fab835abfd2e7ae81e1f8ee864b0f56150"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
-      "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "head": "3eaa5c66043de2995c8ffa21a3a4bfeb952d5b96",
+      "outcome": "no-change",
+      "reason": "workflow-issues.ts now takes a not-upstream issue's displayText from the referenced step's current name; no published skill describes issue display text",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "Changed: packages/shared/src/graph/workflow-issues.ts at 3eaa5c66043de2995c8ffa21a3a4bfeb952d5b96"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
