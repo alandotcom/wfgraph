@@ -42,6 +42,7 @@ import {
   createHealthCheck,
   type WfGraphHealth,
 } from "#src/backend/host-health";
+import type { WfGraphWorkflows } from "#src/backend/host-workflows";
 import { resolveRetention } from "#src/backend/host-retention";
 import type { WfGraphRunsOptions } from "#src/backend/host-runs";
 
@@ -95,6 +96,13 @@ export {
   type WfGraphInboxInsert,
 } from "#src/backend/host-events";
 export type { WfGraphRunsOptions } from "#src/backend/host-runs";
+export type {
+  WfGraphDraftField,
+  WfGraphDraftNode,
+  WfGraphDraftReferenceSource,
+  WfGraphDraftSegment,
+  WfGraphWorkflows,
+} from "#src/backend/host-workflows";
 export type {
   WfGraphHealth,
   WfGraphQueueHealth,
@@ -224,6 +232,11 @@ export type WfGraphApp = {
   basePath: "" | `/${string}`;
   /** Raises an Event into this app's event inbox from the host's own code. */
   events: WfGraphEvents;
+  /**
+   * Reads saved workflows from the host's own server code, such as the page an
+   * Action Link opens, with no `auth`.
+   */
+  workflows: WfGraphWorkflows;
   /**
    * Checks that the database answers a one-row read and, when this app runs
    * a worker loop, that the loop finished a turn recently. Never rejects, so
@@ -399,6 +412,7 @@ async function assembleWfGraphApp(
     fetch: async (request) => await fullApp.fetch(request),
     basePath,
     events: setup.events,
+    workflows: setup.workflows,
     health,
     dispose,
     [Symbol.asyncDispose]: dispose,
