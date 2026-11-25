@@ -1,7 +1,9 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { compact } from "es-toolkit/array";
-import { useAtomValue, useSetAtom } from "jotai";
-import { Eraser, MousePointerClick, RefreshCw, Trash2 } from "lucide-react";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { MousePointerClick, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
+import { ControlTooltip } from "#src/components/ui/control-tooltip";
 import { Label } from "#src/components/ui/label";
 import {
   deleteEdgeAtom,
@@ -17,6 +19,13 @@ import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import { activeShowSupersededAtom } from "#src/lib/workflow-workspace-navigation";
+import { isRunInProgress } from "#src/lib/execution-logs";
+import { orpcQuery } from "#src/lib/rpc-query";
+import {
+  SUPERSEDED_COUNT_LIMIT,
+  WORKFLOW_RUN_LIST_LIMIT,
+} from "@wfgraph/shared/rpc/contracts/workflows";
 import { useTopologyCapabilities } from "./canvas-interaction";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import { NodePropertiesForm } from "./node-properties-form";
@@ -73,9 +82,9 @@ export function useNodeConfigTitle(): string {
 }
 
 /**
- * Refresh and Clear All for the Runs surface, above the run list in Canvas
- * Reveal and in the mobile run list sheet. The confirm callback is the frame's,
- * so each frame asks in its own way.
+ * Refresh and Delete all runs for the Runs surface, above the run list in
+ * Canvas Reveal and in the mobile run list sheet. The confirm callback is the
+ * frame's, so each frame asks in its own way.
  */
 export function RunsListActions({
   confirm,
@@ -84,9 +93,41 @@ export function RunsListActions({
 }) {
   const { refreshRuns, deleteRuns } = useNodeConfigWriter(null);
   const currentWorkflowId = useAtomValue(currentWorkflowIdAtom);
+  const queryClient = useQueryClient();
+  const store = useStore();
   const canDeleteExecutions = can(
     WfGraphOperations.workflowDeleteExecutions.id
   );
+
+  // The counts come from the run list this control sits above, as it was
+  // last read, so the question names the runs the reader is looking at.
+  const askToDeleteAll = () => {
+    if (!currentWorkflowId) {
+      return;
+    }
+    const showSuperseded = store.get(activeShowSupersededAtom);
+    const list = queryClient.getQueryData(
+      orpcQuery.workflow.getExecutions.queryKey({
+        input: {
+          workflowId: currentWorkflowId,
+          includeSuperseded: showSuperseded,
+        },
+      })
+    );
+    confirm({
+      ...deleteAllRunsPrompt(
+        list && {
+          statuses: list.items.map((item) => item.status),
+          hiddenSupersededCount: showSuperseded ? 0 : list.supersededCount,
+        }
+      ),
+      onConfirm: () => {
+        if (canDeleteExecutions) {
+          deleteRuns.mutate({ workflowId: currentWorkflowId });
+        }
+      },
+    });
+  };
 
   return (
     <div className="flex shrink-0 items-center">
@@ -100,30 +141,67 @@ export function RunsListActions({
         <RefreshCw />
       </Button>
       {canDeleteExecutions ? (
-        <Button
-          aria-label="Clear All"
-          onClick={() => {
-            confirm({
-              title: "Delete All Runs",
-              message:
-                "Are you sure you want to delete all workflow runs? This action cannot be undone.",
-              confirmLabel: "Delete",
-              onConfirm: () => {
-                if (currentWorkflowId && canDeleteExecutions) {
-                  deleteRuns.mutate({ workflowId: currentWorkflowId });
-                }
-              },
-            });
-          }}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <Eraser />
-        </Button>
+        <ControlTooltip label="Delete all runs">
+          <Button
+            aria-label="Delete all runs"
+            onClick={askToDeleteAll}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <Trash2 />
+          </Button>
+        </ControlTooltip>
       ) : null}
     </div>
   );
+}
+
+/**
+ * The question Delete all runs asks, from the run list as last read: the
+ * status of each listed run, and how many superseded runs the list hides.
+ * Deleting removes every run of the workflow, active ones included, and an
+ * active run stops where it is. A list holding
+ * `WORKFLOW_RUN_LIST_LIMIT` runs may have left older ones out, so its counts
+ * are stated as "or more". With no list read yet the question names no count.
+ */
+export function deleteAllRunsPrompt(
+  list:
+    | { statuses: readonly string[]; hiddenSupersededCount: number }
+    | undefined
+): Omit<ConfirmRequest, "onConfirm"> {
+  const irreversible = "This cannot be undone.";
+  const total =
+    list === undefined
+      ? 0
+      : list.statuses.length +
+        Math.min(list.hiddenSupersededCount, SUPERSEDED_COUNT_LIMIT);
+  if (list === undefined || total === 0) {
+    return {
+      title: "Delete all runs?",
+      message: `This deletes every run of this workflow and its history. Deleting stops any run that is still active. ${irreversible}`,
+      confirmLabel: "Delete all runs",
+    };
+  }
+  const complete =
+    list.statuses.length < WORKFLOW_RUN_LIST_LIMIT &&
+    list.hiddenSupersededCount <= SUPERSEDED_COUNT_LIMIT;
+  const active = list.statuses.filter(isRunInProgress).length;
+  const activeSentence =
+    active === 0
+      ? ""
+      : ` Deleting stops ${complete ? "" : "at least "}${runs(active)} that ${active === 1 ? "is" : "are"} still active.`;
+  const count = complete ? runs(total) : `${total} or more runs`;
+  return {
+    title: `Delete ${count}?`,
+    message: `This deletes every run of this workflow and its history, ${count} in all.${activeSentence} ${irreversible}`,
+    confirmLabel: complete ? `Delete ${count}` : "Delete all runs",
+  };
+}
+
+/** "1 run" or "2 runs". */
+function runs(count: number): string {
+  return `${count} ${count === 1 ? "run" : "runs"}`;
 }
 
 /** "1 step", "2 steps", or undefined for none. */

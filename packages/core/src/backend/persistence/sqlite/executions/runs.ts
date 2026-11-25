@@ -1,3 +1,4 @@
+import { WORKFLOW_RUN_LIST_LIMIT } from "@wfgraph/shared/rpc/contracts/workflows";
 import { Effect } from "effect";
 import {
   and,
@@ -63,8 +64,6 @@ import {
   recordAuditEventsWrite,
   recordAuditEventWrite,
 } from "#src/backend/persistence/sqlite/executions/audit";
-
-const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
 /** The payload-free fields painted by the two polling run lists. */
 const executionListSelection = {
@@ -253,7 +252,7 @@ export function makeSqliteRunsMethods(store: SqliteDatabase): RunsRepoMethods {
             desc(workflowExecutions.startedAt),
             desc(workflowExecutions.id)
           )
-          .limit(WORKFLOW_EXECUTIONS_LIMIT)
+          .limit(WORKFLOW_RUN_LIST_LIMIT)
           .pipe(Effect.map((rows) => rows.map(sqliteExecutionListRow)))
       ),
     countSuperseded: ({ workflowId, atMost }) =>

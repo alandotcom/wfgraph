@@ -60,6 +60,12 @@ import {
  */
 export const SUPERSEDED_COUNT_LIMIT = 1000;
 
+/**
+ * The most runs one workflow's run list returns, newest first. A list holding
+ * this many may have left older runs out.
+ */
+export const WORKFLOW_RUN_LIST_LIMIT = 50;
+
 export const workflowSummarySchema = Schema.Struct({
   id: idSchema,
   name: Schema.String,

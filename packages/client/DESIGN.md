@@ -439,7 +439,7 @@ still fits inside the usable canvas.
 
 **Runs** has a Browse of its own and shows a run node's evidence in Focus. On
 the run list the header path names the workflow and Runs, and **Refresh** and
-**Clear All** sit above the superseded count, the Refused Starts, the
+**Delete all runs** sit above the superseded count, the Refused Starts, the
 Cancellation Failures, a muted line naming the host's run retention window when
 the host deletes old runs, and the run rows. The All Runs list on the workflows
 page states the same window under its title. Selecting a run adds a browser history

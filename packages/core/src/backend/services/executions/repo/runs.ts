@@ -6,6 +6,7 @@
  * still requires an unclaimed row, and an Exit claim reaches no side at all.
  */
 
+import { WORKFLOW_RUN_LIST_LIMIT } from "@wfgraph/shared/rpc/contracts/workflows";
 import {
   and,
   asc,
@@ -120,9 +121,6 @@ type Executor = WfGraphDatabase | WfGraphTransaction;
  */
 const supersededRun = sql`${workflowExecutions.status} = 'superseded'`;
 const liveRun = sql`${workflowExecutions.status} <> 'superseded'`;
-
-/** The most recent runs one workflow's panel shows. */
-const WORKFLOW_EXECUTIONS_LIMIT = 50;
 
 /**
  * `claimKindAdmits` as a condition on the execution row, which is where every
@@ -487,7 +485,7 @@ export function makeRunsMethods(
             desc(workflowExecutions.startedAt),
             desc(workflowExecutions.id)
           )
-          .limit(WORKFLOW_EXECUTIONS_LIMIT)
+          .limit(WORKFLOW_RUN_LIST_LIMIT)
       ),
 
     countSuperseded: ({ workflowId, atMost }) =>

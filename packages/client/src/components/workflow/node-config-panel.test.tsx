@@ -15,8 +15,10 @@ import { ExtensionCatalogProvider } from "#src/components/extension-catalog-prov
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import {
   type ConfirmRequest,
+  deleteAllRunsPrompt,
   type NodeConfigFrame,
   NodeConfigPanel,
+  RunsListActions,
 } from "#src/components/workflow/node-config-panel";
 import {
   edgesAtom,
@@ -821,5 +823,111 @@ describe("NodeConfigPanel Action Links", () => {
       expect(update).toHaveBeenCalledTimes(1);
     });
     expect(JSON.stringify(update.mock.calls[0])).toContain("Welcome aboard");
+  });
+});
+
+describe("RunsListActions", () => {
+  function renderActions(statuses: string[]) {
+    installAuthorizationGrantsForTests([
+      WfGraphOperations.workflowDeleteExecutions.id,
+    ]);
+    const store = createStore();
+    store.set(currentWorkflowIdAtom, "wf_1");
+    showWorkspaceRoute(store, { view: "runs" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(
+      orpcQuery.workflow.getExecutions.queryKey({
+        input: { workflowId: "wf_1", includeSuperseded: false },
+      }),
+      {
+        items: statuses.map((status, index) => ({
+          id: `run_${index}`,
+          status,
+        })),
+        supersededCount: 2,
+      } as never
+    );
+    const confirmed: ConfirmRequest[] = [];
+    const rootRoute = createRootRoute({ component: () => <Outlet /> });
+    const workflowRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/workflows/$workflowId",
+      component: () => (
+        <RunsListActions confirm={(request) => confirmed.push(request)} />
+      ),
+    });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([workflowRoute]),
+      history: createMemoryHistory({
+        initialEntries: ["/workflows/wf_1?view=runs"],
+      }),
+    });
+    const view = render(
+      <ExtensionCatalogProvider value={catalog}>
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={store}>
+            <RouterProvider router={router} />
+          </JotaiProvider>
+        </QueryClientProvider>
+      </ExtensionCatalogProvider>
+    );
+    return { view, confirmed };
+  }
+
+  it("names the control Delete all runs and asks with the count before deleting", async () => {
+    const { view, confirmed } = renderActions(["running", "success"]);
+
+    fireEvent.click(
+      await view.findByRole("button", { name: "Delete all runs" })
+    );
+
+    expect(confirmed).toHaveLength(1);
+    expect(confirmed[0]).toMatchObject({
+      title: "Delete 4 runs?",
+      message:
+        "This deletes every run of this workflow and its history, 4 runs in all. Deleting stops 1 run that is still active. This cannot be undone.",
+      confirmLabel: "Delete 4 runs",
+    });
+  });
+});
+
+describe("deleteAllRunsPrompt", () => {
+  it("names no count before the run list has been read", () => {
+    expect(deleteAllRunsPrompt(undefined)).toEqual({
+      title: "Delete all runs?",
+      message:
+        "This deletes every run of this workflow and its history. Deleting stops any run that is still active. This cannot be undone.",
+      confirmLabel: "Delete all runs",
+    });
+  });
+
+  it("states an exact count with no active sentence when every run has ended", () => {
+    expect(
+      deleteAllRunsPrompt({ statuses: ["success"], hiddenSupersededCount: 0 })
+    ).toEqual({
+      title: "Delete 1 run?",
+      message:
+        "This deletes every run of this workflow and its history, 1 run in all. This cannot be undone.",
+      confirmLabel: "Delete 1 run",
+    });
+  });
+
+  // The list returns at most its newest 50 runs, so a full list is a floor.
+  it("states a floor when the list is full", () => {
+    const statuses = [
+      "waiting",
+      "running",
+      ...Array.from({ length: 48 }, () => "success"),
+    ];
+    expect(deleteAllRunsPrompt({ statuses, hiddenSupersededCount: 3 })).toEqual(
+      {
+        title: "Delete 53 or more runs?",
+        message:
+          "This deletes every run of this workflow and its history, 53 or more runs in all. Deleting stops at least 2 runs that are still active. This cannot be undone.",
+        confirmLabel: "Delete all runs",
+      }
+    );
   });
 });
