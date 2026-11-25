@@ -1,9 +1,8 @@
 /**
  * One node of a workflow's saved draft, for a host's own page; like every
  * `app.workflows` read it applies no `auth`. Answers null when the workflow or
- * the node does not exist. Only a host action's declared inputs become fields,
- * each read the way the engine reads it. Fails with `InternalFailure`, after
- * one error record, when storage refuses the read or the graph does not decode.
+ * the node does not exist. Fails with `InternalFailure`, after one error
+ * record, when storage refuses the read or the stored graph does not decode.
  */
 
 import { Effect } from "effect";
@@ -85,8 +84,8 @@ export type WfGraphDraftRow = {
  * One input of a host action, read the way the engine reads it when the step
  * runs. `template` is a string the engine resolves references in, `rows` is a
  * `key-value` field whose row values it resolves one at a time, and `value` is
- * handed to the step as stored: a value that is not a string, or a string
- * under a `literal` field.
+ * handed to the step as stored, such as a value that is not a string or a
+ * string under a `literal` field.
  */
 export type WfGraphDraftField =
   | { kind: "template"; segments: readonly WfGraphDraftSegment[] }
@@ -190,16 +189,11 @@ function draftField(
       })),
     };
   }
-  // The `stored` reading, and the `provider-fields` one, which no host action
-  // input reads as: a host action's `configFields` type has no such field. The
-  // stored value is answered as is.
+  // The `stored` reading. The `provider-fields` reading needs a field type
+  // that a host action's `configFields` type excludes.
   return { kind: "value", value };
 }
 
-/**
- * The fields of a node running `actionId`: the host action's declared inputs
- * the node stores, and none for a node running anything else.
- */
 function draftFields(
   actionId: string | undefined,
   config: JsonObject,

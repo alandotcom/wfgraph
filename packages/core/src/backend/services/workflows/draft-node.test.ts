@@ -149,8 +149,8 @@ const integrationAction: ActionMetadata = {
 };
 
 /**
- * A Wait entry that declares a key, so a Wait node answering no fields shows
- * the built-in check at work rather than an empty field list.
+ * A Wait entry declaring the `duration` key the Wait node stores, so the Wait
+ * node's empty fields come from the built-in action check.
  */
 const waitAction: ActionMetadata = {
   id: BUILT_IN_ACTION_IDS.wait,
@@ -454,7 +454,7 @@ describe("readDraftNode", () => {
   );
 
   // The engine hands both keys to the step as authored, so token text in
-  // them is text the step receives rather than a reference.
+  // them reaches the step as text.
   effectIt.effect(
     "answers a literal field and a condition input as stored values",
     () =>

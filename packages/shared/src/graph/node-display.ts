@@ -96,10 +96,8 @@ function liveTokenSourceLabel(
 
 /**
  * Whether the workflow made of `nodes` still offers the source a token reads
- * from: a step token's node is in `nodes`, or an Entity token names the
- * Entity the workflow tracks and the catalog holds that type. A token this
- * answers false for is the one `currentTokenDisplayText` shows by its stored
- * label.
+ * from. `currentTokenDisplayText` shows a token this answers false for by its
+ * stored label.
  */
 export function tokenSourceIsLive(
   token: Pick<TemplateToken, "nodeId" | "sourceType">,

@@ -74,10 +74,9 @@ export type ConfigValueReading =
   | { kind: "provider-fields"; entries: ProviderFieldValues };
 
 /**
- * How the action runtime reads the value stored under one top-level config
- * key. A value that is inactive, literal, or not a string is stored. A
- * JSON-backed value whose text its shape's reader refuses is one template,
- * matching the runtime's recovery path.
+ * The reading of the value under the top-level config key `key`. A value under
+ * an inactive or literal key, or one that is not a string, is `stored`. A
+ * JSON-backed string its shape's reader refuses is one `template`.
  */
 export function readConfigValue(
   key: string,

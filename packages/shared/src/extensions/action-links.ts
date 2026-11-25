@@ -2,10 +2,9 @@
  * Action Links: pages of the host's own that a host action names for the
  * editor to link to from Canvas Reveal, at Browse and at Focus.
  *
- * `actionLinksProblem` holds every rule for a valid list of links, and
- * `defineAction` calls it when the host declares the action. The editor fills
- * the URL's placeholders when it draws the link. Workflow Graph never
- * requests the URL itself.
+ * `defineAction` checks a host action's links with `actionLinksProblem`. The
+ * editor fills the URL's placeholders when it draws the link. Workflow Graph
+ * never requests the URL itself.
  */
 
 import { isBlank } from "#src/types/string";
@@ -41,16 +40,13 @@ const PLACEHOLDER_BEFORE_PATH =
   "the url holds a placeholder before its path, in the host, the port or the user info";
 
 /**
- * The first rule a link in `links` breaks, with the link's zero-based
- * position, or undefined when every link is valid. Each sentence names the
- * rule and never quotes the url. A sentence naming an earlier link gives that
- * link's position counted from 1.
- *
- * It checks each link in order for a blank label, then a label an earlier
- * link already has, then a url `actionLinkUrlProblem` refuses. Labels must
- * differ because the editor keys each link by its label, and a reader tells
- * two links apart by nothing else. It compares labels and urls exactly as
- * given, so the caller trims them first.
+ * The first rule a link in `links` breaks, as the link's zero-based `index`
+ * and a `problem` sentence that never quotes the url, or undefined when every
+ * link is valid. Each link is checked in order for a blank label, a label an
+ * earlier link has, which the sentence names by its position counted from 1,
+ * and a url `actionLinkUrlProblem` refuses. Labels must differ because the
+ * editor keys each link by its label. Labels and urls are compared as given,
+ * so the caller trims them first.
  */
 export function actionLinksProblem(
   links: readonly ActionLink[]
