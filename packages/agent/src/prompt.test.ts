@@ -48,6 +48,20 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("label it carries on the canvas");
   });
 
+  it("names steps by the numbers the editor prints", () => {
+    const prompt = unwrapped(buildSystemPrompt());
+
+    expect(prompt).toContain(
+      'A person who says "step 7" means the step whose stepNumber is 7.'
+    );
+    expect(prompt).toContain(
+      "Name a step by its number and the label it carries on the canvas"
+    );
+    expect(prompt).toContain(
+      "after a write take a number from a read_workflow made after it"
+    );
+  });
+
   it("distinguishes a useful blocked draft from publish readiness", () => {
     const prompt = unwrapped(buildSystemPrompt());
 

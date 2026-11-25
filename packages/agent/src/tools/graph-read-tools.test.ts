@@ -1,6 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect } from "effect";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
+import {
+  heroGraph,
+  outlineTestCatalog,
+} from "@wfgraph/shared/graph/workflow-outline-test-support";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";
 import { agentToolsFor } from "#src/testing";
@@ -68,6 +73,7 @@ describe("read_workflow", () => {
           id: "notify",
           label: "Notify the team",
           type: "action",
+          stepNumber: 1,
           actionType: "slack/send-message",
           description: "Tell #hiring about the applicant.",
         },
@@ -180,6 +186,70 @@ describe("read_workflow", () => {
   );
 });
 
+describe("step numbers", () => {
+  // The seeded "Appointment reminders" workflow stores its nodes in an order
+  // that differs from run order, which is how a person once asked about step 7
+  // and was answered about the outline's step 3.
+  it.effect("give each step the number the editor's outline prints", () =>
+    Effect.gen(function* () {
+      const { nodes, edges } = heroGraph();
+      const { tools } = yield* agentToolsFor({
+        nodes,
+        edges,
+        catalog: outlineTestCatalog,
+      });
+
+      const topology = yield* tools.read_workflow({ limit: 50 });
+      const byNumber = new Map(
+        topology.nodes.flatMap((node) =>
+          node.stepNumber === undefined ? [] : [[node.stepNumber, node.label]]
+        )
+      );
+
+      expect(byNumber.get(3)).toBe("Wait until 24 hours before");
+      expect(byNumber.get(7)).toBe("Wait for deposit or reschedule");
+      expect(byNumber.get(16)).toBe("Send cancellation notice");
+      expect(byNumber.size).toBe(16);
+      expect(
+        topology.nodes.find((node) => node.type === "lifecycle")?.stepNumber
+      ).toBeUndefined();
+      expect(
+        topology.nodes.find((node) => node.type === "group")?.stepNumber
+      ).toBeUndefined();
+
+      const detail = yield* tools.read_nodes({
+        nodeIds: ["Wait for deposit or reschedule"],
+      });
+      expect(detail.nodes[0]?.stepNumber).toBe(7);
+    })
+  );
+
+  it.effect("renumber the steps after a write moves them in run order", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [lifecycle, slackNode],
+        edges: [entryToSlack],
+        catalog,
+      });
+
+      yield* tools.insert_node_on_edge({
+        edgeId: entryToSlack.id,
+        actionId: BUILT_IN_ACTION_IDS.wait,
+        label: "Wait a day",
+      });
+      const topology = yield* tools.read_workflow({});
+
+      expect(
+        topology.nodes.map(({ label, stepNumber }) => ({ label, stepNumber }))
+      ).toEqual([
+        { label: "Lifecycle" },
+        { label: "Notify the team", stepNumber: 2 },
+        { label: "Wait a day", stepNumber: 1 },
+      ]);
+    })
+  );
+});
+
 describe("read_nodes", () => {
   it.effect("returns full config for selected nodes", () =>
     Effect.gen(function* () {
@@ -196,6 +266,7 @@ describe("read_nodes", () => {
           id: "notify",
           label: "Notify the team",
           type: "action",
+          stepNumber: 1,
           actionType: "slack/send-message",
           description: "Tell #hiring about the applicant.",
           config: {

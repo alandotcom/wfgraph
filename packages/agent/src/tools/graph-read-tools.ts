@@ -3,23 +3,27 @@
  *
  * `read_workflow` speaks the vocabulary a tool writes back in: node ids, the
  * four node types, the action id a node's config carries, and Group membership.
- * Positions are left out on purpose, because the editor lays the graph out and
- * the agent never chooses coordinates.
+ * It also gives each step the number the editor prints on its outline row and
+ * canvas card, which is how a person names a step ("step 7"). Positions are
+ * left out on purpose, because the editor lays the graph out and the agent
+ * never chooses coordinates.
  */
 
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/ai";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { persistedNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import { workflowStepNumbers } from "@wfgraph/shared/graph/workflow-outline";
 import {
   type JsonObject,
   jsonObjectSchema,
   readJsonObject,
 } from "@wfgraph/shared/types/json";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import { WorkflowDraft } from "#src/document";
+import { type AgentDocument, WorkflowDraft } from "#src/document";
 import {
   pageResults,
   resultLimitSchema,
@@ -32,6 +36,11 @@ const graphNodeSummarySchema = Schema.Struct({
   label: Schema.String,
   /** One of lifecycle, action, add or group. */
   type: Schema.String,
+  /**
+   * The step's number in run order, as the editor's outline row and canvas
+   * card show it. Absent on the Lifecycle Node, a Group and an Add node.
+   */
+  stepNumber: Schema.optionalKey(Schema.Number),
   /** The action a node runs, present on action nodes alone. */
   actionType: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
@@ -48,6 +57,11 @@ const graphNodeDetailSchema = Schema.Struct({
   label: Schema.String,
   /** One of lifecycle, action, add or group. */
   type: Schema.String,
+  /**
+   * The step's number in run order, as the editor's outline row and canvas
+   * card show it. Absent on the Lifecycle Node, a Group and an Add node.
+   */
+  stepNumber: Schema.optionalKey(Schema.Number),
   /** The action a node runs, present on action nodes alone. */
   actionType: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
@@ -95,17 +109,42 @@ function readableConfig(node: WorkflowNode): JsonObject {
 }
 
 /**
- * A node as the read tools answer it. `nodes` is the whole graph, which a Group
- * node reads its member ids from, in graph order.
+ * What the read tools need from the whole graph to describe one node: every
+ * node, which a Group node reads its member ids from in graph order, and each
+ * step's number in run order.
  */
-function readableNodeSummary(
-  node: WorkflowNode,
-  nodes: readonly WorkflowNode[]
-) {
+type GraphContext = {
+  readonly nodes: readonly WorkflowNode[];
+  readonly stepNumbers: ReadonlyMap<string, number>;
+};
+
+/**
+ * The graph context of `document`. The numbers come from `workflowStepNumbers`
+ * over the same graph and catalog the editor numbers, so "step 7" here is the
+ * step the outline prints as 7.
+ */
+function graphContextOf(
+  document: AgentDocument,
+  catalog: ExtensionCatalog
+): GraphContext {
+  return {
+    nodes: document.nodes,
+    stepNumbers: workflowStepNumbers({
+      nodes: document.nodes,
+      edges: document.edges,
+      catalog,
+    }),
+  };
+}
+
+/** A node as the read tools answer it. */
+function readableNodeSummary(node: WorkflowNode, graph: GraphContext) {
+  const { nodes } = graph;
   return omitUndefined({
     id: node.id,
     label: node.data.label,
     type: node.data.type,
+    stepNumber: graph.stepNumbers.get(node.id),
     actionType: actionTypeOf(node),
     description: node.data.description,
     enabled: persistedNodeEnabled(node.data.enabled),
@@ -118,11 +157,8 @@ function readableNodeSummary(
   });
 }
 
-function readableNodeDetail(
-  node: WorkflowNode,
-  nodes: readonly WorkflowNode[]
-) {
-  return { ...readableNodeSummary(node, nodes), config: readableConfig(node) };
+function readableNodeDetail(node: WorkflowNode, graph: GraphContext) {
+  return { ...readableNodeSummary(node, graph), config: readableConfig(node) };
 }
 
 function readableEdge(edge: {
@@ -141,7 +177,7 @@ function readableEdge(edge: {
 
 export const ReadWorkflow = Tool.make("read_workflow", {
   description:
-    "Read the workflow topology in bounded pages: compact node identities and edges. A step inside a Group carries groupId, and a Group node carries memberIds. Use read_nodes for selected node config. Node positions are omitted because the editor owns layout.",
+    "Read the workflow topology in bounded pages: compact node identities and edges. Nodes come in stored order. Each step carries stepNumber, its number in run order as the editor's outline and canvas show it, so the step a person calls step 7 is the node whose stepNumber is 7. A step inside a Group carries groupId, and a Group node carries memberIds. Use read_nodes for selected node config. Node positions are omitted because the editor owns layout.",
   parameters: Schema.Struct({
     nodeOffset: Schema.optionalKey(
       resultOffsetSchema.annotate({
@@ -227,10 +263,9 @@ export const graphReadToolHandlers = Effect.gen(function* () {
           offset: input.edgeOffset,
           limit: input.limit,
         });
+        const graph = graphContextOf(document, draft.catalog);
         return omitUndefined({
-          nodes: nodes.items.map((node) =>
-            readableNodeSummary(node, document.nodes)
-          ),
+          nodes: nodes.items.map((node) => readableNodeSummary(node, graph)),
           edges: edges.items.map(readableEdge),
           totalNodes: nodes.total,
           totalEdges: edges.total,
@@ -256,10 +291,11 @@ export const graphReadToolHandlers = Effect.gen(function* () {
           });
         }
 
+        const graph = graphContextOf(document, draft.catalog);
         return Effect.succeed({
           nodes: input.nodeIds.flatMap((nodeId) => {
             const node = nodesById.get(nodeId);
-            return node ? [readableNodeDetail(node, document.nodes)] : [];
+            return node ? [readableNodeDetail(node, graph)] : [];
           }),
         });
       }),
