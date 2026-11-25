@@ -31,7 +31,6 @@ import {
 } from "#src/components/workflow/workflow-viewport";
 import {
   COMPACT_MARK_PX,
-  NUMBER_TIER_PX,
   COMPACT_TITLE_BOX,
   COMPACT_TITLE_LINE_HEIGHT,
   type CompactTitleFit,
@@ -407,51 +406,22 @@ export function useCompactCard(): boolean {
   return useStore((state) => cardTierAtZoom(state.transform[2]) !== "full");
 }
 
-/**
- * The whole content of a card at the lowest tier: the kind's `glyph` beside
- * the step's number, or the glyph alone for a card with no number, at
- * `NUMBER_TIER_PX` and grown against the zoom so it never draws under 11px on
- * screen. `marks` keep the issue badge or the disabled mark in the card's top
- * left. The card keeps its size, so its handles and connections stay put.
- */
-export const NodeNumberBody = ({
-  glyph,
-  value,
-  marks,
-}: {
-  glyph: ReactNode;
-  value: number | undefined;
-  marks?: ReactNode;
-}) => (
-  <div
-    className="flex h-full w-full items-center justify-center"
-    data-slot="node-number-body"
-  >
-    {marks ? (
-      <div
-        className="absolute top-1.5 left-2 flex items-center gap-1"
-        data-slot="node-number-marks"
-      >
-        {marks}
-      </div>
-    ) : null}
-    <span
-      className="flex items-center gap-2 font-semibold leading-none tabular-nums"
-      data-slot="node-number-mark"
-      style={{ fontSize: NUMBER_TIER_PX }}
-    >
-      {glyph}
-      {value === undefined ? null : (
-        <span data-slot="node-step-number">{value}</span>
-      )}
-    </span>
-  </div>
-);
+/** The type size of a card's lead row at each tier, in canvas pixels. */
+const LEAD_PX: Readonly<Record<CardTier, number>> = {
+  full: 14,
+  compact: COMPACT_MARK_PX,
+  number: COMPACT_MARK_PX,
+};
 
 /**
- * A step's number in run order, set before its title on a full card and in
- * the top-left corner of a compact one. Nothing draws when the step has no
- * number.
+ * The class a kind's glyph wears in a card's lead row, sized against the
+ * row's type so it grows with the tier.
+ */
+export const LEAD_GLYPH_CLASS = "size-[1.15em] shrink-0";
+
+/**
+ * A step's number in run order, in a card's lead row or a Group header.
+ * Nothing draws when the step has no number.
  */
 export const NodeStepNumber = ({
   value,
@@ -462,15 +432,70 @@ export const NodeStepNumber = ({
 }) =>
   value === undefined ? null : (
     <span
-      className={cn(
-        "font-medium text-muted-foreground tabular-nums",
-        className
-      )}
+      className={cn("font-medium tabular-nums", className)}
       data-slot="node-step-number"
     >
       {value}
     </span>
   );
+
+/**
+ * A card's content, one anatomy at every tier. The lead row in the top-left
+ * corner holds the kind's `glyph`, the step's number when it has one, and
+ * `marks` such as the issue badge, and it keeps that place at every zoom. The
+ * full card adds the title and `description` below it; the compact card
+ * keeps the title at the size `fitCompactTitle` finds; the number tier keeps
+ * the lead row alone, which `globals.css` holds at 14px on screen. The run
+ * status stays in the card's top-right corner, as a chip on the full card and
+ * a mark below it. The card keeps its size, so its handles, connections and
+ * hit area stay where they are.
+ */
+export const NodeContent = ({
+  tier,
+  glyph,
+  value,
+  marks,
+  title,
+  description,
+}: {
+  tier: CardTier;
+  glyph: ReactNode;
+  value: number | undefined;
+  marks?: ReactNode;
+  title: string;
+  description?: ReactNode;
+}) => (
+  <div
+    className={cn(
+      "flex h-full w-full min-w-0 flex-col text-left",
+      tier === "full" ? "gap-1 px-3 py-2" : "px-3 py-1"
+    )}
+    data-slot="node-content"
+  >
+    <div
+      className="flex shrink-0 items-center gap-1.5 leading-none"
+      data-slot="node-lead"
+      style={{
+        fontSize: LEAD_PX[tier],
+        height: tier === "full" ? undefined : COMPACT_MARK_PX + 2,
+      }}
+    >
+      {glyph}
+      <NodeStepNumber value={value} />
+      {marks}
+    </div>
+    {tier === "full" ? (
+      <div className="flex min-h-0 flex-1 flex-col justify-center gap-1">
+        <NodeTitle title={title}>
+          {title}
+        </NodeTitle>
+        {description}
+      </div>
+    ) : tier === "compact" ? (
+      <NodeCompactTitle title={title} />
+    ) : null}
+  </div>
+);
 
 let fontsLoaded =
   typeof document === "undefined" || document.fonts?.status !== "loading";
@@ -499,24 +524,11 @@ const TITLE_LINE_CLAMP: Readonly<Record<number, string>> = {
 };
 
 /**
- * The whole content of a card in its compact form. A top row holds `lead`,
- * the step's number or a glyph standing in for one, and `marks`, such as the
- * issue badge. Below it the title takes the card's full width at the largest
- * size `fitCompactTitle` finds where it breaks only between words. The card
- * keeps its size, so its handles, connections and hit area stay where they
- * are. The title is measured again once the page's fonts finish loading.
+ * A compact card's title, below its lead row. It takes the card's full width
+ * at the largest size `fitCompactTitle` finds where it breaks only between
+ * words. The title is measured again once the page's fonts finish loading.
  */
-export const NodeCompactBody = ({
-  lead,
-  marks,
-  title,
-  className,
-}: {
-  lead: ReactNode;
-  marks?: ReactNode;
-  title: string;
-  className?: string | undefined;
-}) => {
+const NodeCompactTitle = ({ title }: { title: string }) => {
   // Subscribed so the card draws again, and measures again, once the page's
   // fonts finish loading.
   useSyncExternalStore(subscribeToFonts, () => fontsLoaded, () => true);
@@ -546,44 +558,26 @@ export const NodeCompactBody = ({
   });
   return (
     <div
-      className={cn(
-        "flex h-full w-full min-w-0 flex-col px-3 py-1 text-left",
-        className
-      )}
-      data-slot="node-compact-body"
+      className="flex min-h-0 flex-1 items-center"
+      style={{ maxHeight: COMPACT_TITLE_BOX.height }}
     >
-      <div
-        className="flex shrink-0 items-center gap-1.5 leading-none"
+      <span
+        className={cn(
+          "w-full overflow-hidden font-medium [overflow-wrap:normal] [word-break:normal]",
+          TITLE_LINE_CLAMP[fit.maxLines] ?? "line-clamp-3"
+        )}
+        data-slot="node-compact-title"
+        lang="en"
+        ref={titleRef}
         style={{
-          height: COMPACT_MARK_PX + 2,
-          fontSize: COMPACT_MARK_PX,
+          fontSize: fit.fontPx,
+          lineHeight: COMPACT_TITLE_LINE_HEIGHT,
+          hyphens: fit.hyphenate ? "auto" : "manual",
         }}
+        title={title}
       >
-        {lead}
-        {marks}
-      </div>
-      <div
-        className="flex min-h-0 flex-1 items-center"
-        style={{ maxHeight: COMPACT_TITLE_BOX.height }}
-      >
-        <span
-          className={cn(
-            "w-full overflow-hidden font-semibold [overflow-wrap:normal] [word-break:normal]",
-            TITLE_LINE_CLAMP[fit.maxLines] ?? "line-clamp-3"
-          )}
-          data-slot="node-compact-title"
-          lang="en"
-          ref={titleRef}
-          style={{
-            fontSize: fit.fontPx,
-            lineHeight: COMPACT_TITLE_LINE_HEIGHT,
-            hyphens: fit.hyphenate ? "auto" : "manual",
-          }}
-          title={title}
-        >
-          {title}
-        </span>
-      </div>
+        {title}
+      </span>
     </div>
   );
 };

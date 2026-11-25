@@ -6,19 +6,11 @@
  */
 
 /**
- * The size of a compact card's step number and its marks: the issue badge,
- * the disabled mark and the run status. It draws at 11.7px on screen at zoom
- * 0.53, where a 1512 by 982 window fits the seeded 16-step workflow.
+ * The type size of a card's lead row (its glyph, step number and marks) and
+ * its run status mark below the full card. It draws at 11.7px on screen at
+ * zoom 0.53; at the lowest tier `globals.css` holds both at 14px on screen.
  */
 export const COMPACT_MARK_PX = 22;
-
-/**
- * The size of a card's number and glyph at the lowest tier, where the card
- * shows nothing else. It draws at 11px on screen down to zoom 0.2, and
- * `globals.css` grows it against the zoom below that, so a number stays
- * readable down to the canvas's minimum zoom.
- */
-export const NUMBER_TIER_PX = 56;
 
 /** The box a compact card gives its title, in canvas pixels. */
 export const COMPACT_TITLE_BOX = { width: 164, height: 76 } as const;

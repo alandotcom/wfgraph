@@ -2,21 +2,16 @@ import { type NodeProps, Position } from "@xyflow/react";
 import { Play } from "lucide-react";
 import { memo } from "react";
 import {
+  LEAD_GLYPH_CLASS,
   Node,
-  NodeBody,
-  NodeCompactBody,
+  NodeContent,
   NodeDescription,
-  NodeNumberBody,
-  NodeTitle,
   useCardTier,
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
 import { useReviewEdit } from "#src/components/workflow/review/use-review-edit";
-import {
-  NODE_ICON_CLASS,
-  workflowNodeSize,
-} from "#src/lib/workflow-node-dimensions";
+import { workflowNodeSize } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
 import {
   LIFECYCLE_CANCELED_HANDLE,
@@ -49,9 +44,9 @@ export const LifecycleNode = memo(
     // While the review sheet is open a changed card says what changed in the
     // words the sheet uses.
     const reviewEdit = useReviewEdit(id);
-    // Zoomed out, the card draws its title below the Play glyph, which stands
-    // where a step's number stands on the other cards, and further out the
-    // glyph alone.
+    // The Play glyph leads the card where a step's glyph and number lead
+    // theirs. Zoomed out the card drops its description, and further out its
+    // title.
     const tier = useCardTier();
     const isCompact = tier !== "full";
 
@@ -105,34 +100,7 @@ export const LifecycleNode = memo(
             (reviewEdit ? { kind: reviewEdit.kind } : undefined)
           }
         />
-        {/* The collector walks every node, not only actions: a broken template
-          token in the Lifecycle config is an issue the toolbar counts, and
-          without this it was one no card on the canvas admitted to. */}
-        {tier === "number" ? (
-          <NodeNumberBody
-            glyph={
-              <Play
-                aria-hidden="true"
-                className="size-[0.7em] shrink-0 text-node-lifecycle"
-                strokeWidth={2}
-              />
-            }
-            marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
-            value={undefined}
-          />
-        ) : isCompact ? (
-          <NodeCompactBody
-            lead={
-              <Play
-                aria-hidden="true"
-                className="size-[0.875em] shrink-0 text-node-lifecycle"
-                strokeWidth={2}
-              />
-            }
-            marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
-            title={displayTitle}
-          />
-        ) : (
+        {tier === "full" ? (
           <>
             {/* The outlet captions draw only on the full card: at the card's
               12px they would draw at 6px when the whole workflow is fitted,
@@ -152,19 +120,29 @@ export const LifecycleNode = memo(
             >
               Canceled
             </div>
-            <NodeIssueBadge issues={data.issues} />
-            <NodeBody>
-              <Play
-                className={cn(NODE_ICON_CLASS, "text-node-lifecycle")}
-                strokeWidth={1.5}
-              />
-              <NodeTitle>{displayTitle}</NodeTitle>
-              {displayDescription && (
-                <NodeDescription>{displayDescription}</NodeDescription>
-              )}
-            </NodeBody>
           </>
-        )}
+        ) : null}
+        <NodeContent
+          description={
+            displayDescription ? (
+              <NodeDescription>{displayDescription}</NodeDescription>
+            ) : null
+          }
+          glyph={
+            <Play
+              aria-hidden="true"
+              className={cn(LEAD_GLYPH_CLASS, "text-node-lifecycle")}
+              strokeWidth={2}
+            />
+          }
+          // The collector walks every node, not only actions: a broken
+          // template token in the Lifecycle config is an issue the toolbar
+          // counts, and the badge is how this card admits to it.
+          marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
+          tier={tier}
+          title={displayTitle}
+          value={undefined}
+        />
       </Node>
     );
   }

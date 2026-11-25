@@ -84,10 +84,107 @@ function renderAtZoom(input: {
   return { view, setZoom };
 }
 
+/** A card's content while it draws its compact form, or null. */
 const compactBody = (container: HTMLElement) =>
-  container.querySelector<HTMLElement>("[data-slot='node-compact-body']");
+  container
+    .querySelector<HTMLElement>("[data-slot='node-compact-title']")
+    ?.closest<HTMLElement>("[data-slot='node-content']") ?? null;
+/** A card's lead row: its glyph, step number and marks. */
+const leadRow = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>("[data-slot='node-lead']");
 const stepNumber = (container: HTMLElement) =>
   container.querySelector("[data-slot='node-step-number']")?.textContent;
+
+describe("a card's one anatomy", () => {
+  it("keeps the glyph and the number in the lead row at every tier, and drops the description, then the title", () => {
+    const { view, setZoom } = renderAtZoom({
+      card: (
+        <ActionNode
+          data={{ ...reminder, status: "error" }}
+          id="remind"
+          type="action"
+          {...requiredNodeProps}
+        />
+      ),
+      zoom: 1,
+      numbers: new Map([["remind", 4]]),
+    });
+    const shown = () => {
+      const lead = leadRow(view.container);
+      return {
+        form: view
+          .getByTestId("action-node-remind")
+          .getAttribute("data-card-form"),
+        // The lead row opens the card's content at every tier.
+        leadFirst:
+          lead !== null &&
+          lead.parentElement?.firstElementChild === lead &&
+          lead.parentElement.dataset.slot === "node-content",
+        glyph: lead?.querySelector("svg") !== null,
+        number: lead?.querySelector("[data-slot='node-step-number']")
+          ?.textContent,
+        title: view.queryAllByText("Send 24-hour reminder").length > 0,
+        description:
+          view.queryByText("Texts the patient a day before") !== null,
+        status: view.queryAllByRole("status").length,
+      };
+    };
+
+    expect(shown()).toEqual({
+      form: "full",
+      leadFirst: true,
+      glyph: true,
+      number: "4",
+      title: true,
+      description: true,
+      status: 1,
+    });
+    setZoom(0.6);
+    expect(shown()).toEqual({
+      form: "compact",
+      leadFirst: true,
+      glyph: true,
+      number: "4",
+      title: true,
+      description: false,
+      status: 1,
+    });
+    setZoom(0.3);
+    expect(shown()).toEqual({
+      form: "number",
+      leadFirst: true,
+      glyph: true,
+      number: "4",
+      title: false,
+      description: false,
+      status: 1,
+    });
+  });
+
+  it("sets the title in one weight at every tier", () => {
+    const { view, setZoom } = renderAtZoom({
+      card: (
+        <ActionNode
+          data={reminder}
+          id="remind"
+          type="action"
+          {...requiredNodeProps}
+        />
+      ),
+      zoom: 1,
+    });
+    const titleClass = () =>
+      view
+        .getAllByText("Send 24-hour reminder")
+        .map((element) => element.className)
+        .join(" ");
+
+    expect(titleClass()).toContain("font-medium");
+    setZoom(0.6);
+    expect(titleClass()).toContain("font-medium");
+    expect(titleClass()).not.toContain("font-semibold");
+  });
+});
 
 describe("a step card's compact form", () => {
   it("draws the full card with its step number at or above the compact zoom", () => {
@@ -125,8 +222,9 @@ describe("a step card's compact form", () => {
 
     const body = compactBody(view.container);
     expect(body?.textContent).toBe("4Send 24-hour reminder");
-    // The number sits in the top row, and the title below it has the card's
-    // full width and breaks only between words.
+    // The glyph and number sit in the lead row, and the title below it has
+    // the card's full width and breaks only between words.
+    expect(leadRow(view.container)?.querySelector("svg")).not.toBeNull();
     const title = body?.querySelector<HTMLElement>(
       "[data-slot='node-compact-title']"
     );
@@ -494,8 +592,11 @@ describe("a compact title the page breaks onto more lines than measured", () => 
 });
 
 describe("the number tier, below a compact title's 11px", () => {
+  /** A card's content while it draws its number tier, or null. */
   const numberBody = (container: HTMLElement) =>
-    container.querySelector<HTMLElement>("[data-slot='node-number-body']");
+    container.querySelector<HTMLElement>(
+      "[data-card-form='number'] [data-slot='node-content']"
+    );
 
   it("draws a step's number and its kind's glyph, and no title", () => {
     const { view } = renderAtZoom({
@@ -544,7 +645,7 @@ describe("the number tier, below a compact title's 11px", () => {
     expect(
       view
         .getByRole("img", { name: "1 blocking issue" })
-        .closest("[data-slot='node-number-marks']")
+        .closest("[data-slot='node-lead']")
     ).not.toBeNull();
     expect(
       view.getByTestId("action-node-remind").querySelector(".comparison-marker")

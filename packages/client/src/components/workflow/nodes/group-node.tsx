@@ -25,9 +25,9 @@ import { ComparisonMarker } from "#src/components/flow-elements/comparison-marke
 import { COMPACT_TITLE_MIN_PX } from "#src/components/flow-elements/compact-card";
 import type { CardTier } from "#src/components/workflow/workflow-viewport";
 import {
-  NodeCompactBody,
+  LEAD_GLYPH_CLASS,
+  NodeContent,
   NodeDescription,
-  NodeNumberBody,
   NodeStatusMark,
   NodeStepNumber,
   useCardTier,
@@ -66,9 +66,9 @@ const GROUP_STATUS_AS_STEP_STATUS = {
 >;
 
 /**
- * The size of a region header's glyph and step count at the lowest tier, in
- * canvas pixels: 11px on screen at zoom 0.3, and grown against the zoom below
- * that by `globals.css`.
+ * The type size of a region header's glyph and step count at the lowest tier,
+ * in canvas pixels. `globals.css` scales it to draw at 12px on screen at every
+ * zoom of that tier.
  */
 const GROUP_HEADER_MARK_PX = 36;
 
@@ -152,7 +152,7 @@ GroupNode.displayName = "GroupNode";
  * with its run status and counts, its changed steps and the collapse control.
  * Compact, it names the Group on up to two lines at a compact card's smallest
  * title size, with a status mark. At the lowest tier it shows the Group glyph
- * and how many steps it holds, grown against the zoom like a card's number.
+ * and how many steps it holds at 12px on screen.
  */
 function RegionHeader({
   id,
@@ -174,8 +174,9 @@ function RegionHeader({
   const markStatus = runSummary
     ? GROUP_STATUS_AS_STEP_STATUS[runSummary.status]
     : undefined;
-  const lead =
-    stepNumber === undefined ? (
+  // The Group glyph and number lead the header as a card's lead its card.
+  const lead = (
+    <>
       <Group
         aria-hidden="true"
         className={cn(
@@ -184,9 +185,9 @@ function RegionHeader({
         )}
         strokeWidth={1.5}
       />
-    ) : (
       <NodeStepNumber className="shrink-0" value={stepNumber} />
-    );
+    </>
+  );
 
   return (
     <div
@@ -381,36 +382,19 @@ function CollapsedGroupCard({
             }
             testSkipped={false}
           />
-          {tier === "number" ? (
-            <NodeNumberBody
-              glyph={
-                <Group
-                  aria-hidden="true"
-                  className="size-[0.7em] shrink-0 text-muted-foreground"
-                  strokeWidth={2}
-                />
-              }
-              marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
-              value={stepNumber}
-            />
-          ) : (
-            <NodeCompactBody
-              className="flex-1"
-              lead={
-                stepNumber === undefined ? (
-                  <Group
-                    aria-hidden="true"
-                    className="size-[0.875em] shrink-0 text-muted-foreground"
-                    strokeWidth={2}
-                  />
-                ) : (
-                  <NodeStepNumber value={stepNumber} />
-                )
-              }
-              marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
-              title={label}
-            />
-          )}
+          <NodeContent
+            glyph={
+              <Group
+                aria-hidden="true"
+                className={cn(LEAD_GLYPH_CLASS, "text-muted-foreground")}
+                strokeWidth={2}
+              />
+            }
+            marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
+            tier={tier}
+            title={label}
+            value={stepNumber}
+          />
         </>
       ) : (
         <>

@@ -13,10 +13,7 @@ import {
   workflowFitViewOptions,
   worldCameraFromViewport,
 } from "#src/components/workflow/workflow-viewport";
-import {
-  COMPACT_TITLE_MIN_PX,
-  NUMBER_TIER_PX,
-} from "#src/components/flow-elements/compact-card";
+import { COMPACT_TITLE_MIN_PX } from "#src/components/flow-elements/compact-card";
 
 describe("workspace camera", () => {
   it("restores the same world-space center on a canvas of another size", () => {
@@ -259,7 +256,6 @@ describe("workflow viewport policy", () => {
 
     expect(viewport.zoom).toBeCloseTo(0.37, 2);
     expect(cardTierAtZoom(viewport.zoom)).toBe("number");
-    expect(NUMBER_TIER_PX * viewport.zoom).toBeGreaterThanOrEqual(11);
   });
 });
 

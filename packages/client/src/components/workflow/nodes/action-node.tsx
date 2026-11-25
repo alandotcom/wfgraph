@@ -9,13 +9,10 @@ import { Schema } from "effect";
 import { compact } from "es-toolkit/array";
 import { memo, useMemo, useState } from "react";
 import {
+  LEAD_GLYPH_CLASS,
   Node,
-  NodeBody,
-  NodeCompactBody,
+  NodeContent,
   NodeDescription,
-  NodeNumberBody,
-  NodeStepNumber,
-  NodeTitle,
   useCardTier,
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
@@ -458,34 +455,22 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
 }
 
 /**
- * The disabled mark or, on an enabled step, the issue badge: in the card's
- * top-left corner on a full card, and in the top row beside the step number
- * on a compact one. A disabled step is left out of validation upstream, so
- * the two never compete.
+ * The disabled mark or, on an enabled step, the issue badge, in the card's
+ * lead row beside its step number at every tier. A disabled step is left out
+ * of validation upstream, so the two never compete.
  */
 function StepMarks(input: {
   disabled: boolean;
   issues: WorkflowNodeData["issues"];
-  inline: boolean;
 }) {
   if (input.disabled) {
     return (
-      <div
-        className={cn(
-          "rounded-full bg-muted-foreground/50 p-1",
-          input.inline ? "shrink-0" : "absolute top-2 left-2"
-        )}
-      >
+      <div className="shrink-0 rounded-full bg-muted-foreground/50 p-1">
         <EyeOff className="size-3.5 text-background" />
       </div>
     );
   }
-  return (
-    <NodeIssueBadge
-      issues={input.issues}
-      placement={input.inline ? "inline" : "corner"}
-    />
-  );
+  return <NodeIssueBadge issues={input.issues} placement="inline" />;
 }
 
 type ActionNodeProps = NodeProps & {
@@ -614,48 +599,20 @@ export const ActionNode = memo((props: ActionNodeProps) => {
         <ComparisonMarker
           comparison={data[COMPARISON_NODE_ANNOTATION] ?? reviewMarker}
         />
-        {tier === "number" ? (
-          <NodeNumberBody
-            glyph={
-              <Zap
-                aria-hidden="true"
-                className="size-[0.7em] shrink-0 text-muted-foreground"
-                strokeWidth={1.5}
-              />
-            }
-            marks={
-              <StepMarks disabled={isDisabled} inline issues={data.issues} />
-            }
-            value={stepNumber}
-          />
-        ) : isCompact ? (
-          <NodeCompactBody
-            lead={<NodeStepNumber value={stepNumber} />}
-            marks={
-              <StepMarks disabled={isDisabled} inline issues={data.issues} />
-            }
-            title={unconfiguredTitle}
-          />
-        ) : (
-          <>
-            <StepMarks
-              disabled={isDisabled}
-              inline={false}
-              issues={data.issues}
+        <NodeContent
+          description={<NodeDescription>Select an action</NodeDescription>}
+          glyph={
+            <Zap
+              aria-hidden="true"
+              className={cn(LEAD_GLYPH_CLASS, "text-muted-foreground")}
+              strokeWidth={1.5}
             />
-            <NodeBody>
-              <Zap
-                className={cn(NODE_ICON_CLASS, "text-muted-foreground")}
-                strokeWidth={1.5}
-              />
-              <NodeTitle title={unconfiguredTitle}>
-                <NodeStepNumber className="mr-1.5" value={stepNumber} />
-                {unconfiguredTitle}
-              </NodeTitle>
-              <NodeDescription>Select an action</NodeDescription>
-            </NodeBody>
-          </>
-        )}
+          }
+          marks={<StepMarks disabled={isDisabled} issues={data.issues} />}
+          tier={tier}
+          title={unconfiguredTitle}
+          value={stepNumber}
+        />
       </Node>
     );
   }
@@ -795,59 +752,36 @@ export const ActionNode = memo((props: ActionNodeProps) => {
           </OutletLabel>
         ))}
 
-      {tier === "number" ? (
-        <NodeNumberBody
-          glyph={
+      <NodeContent
+        description={
+          displayDescription ? (
+            <NodeDescription
+              className={
+                waitPreview && !reviewEdit
+                  ? "font-medium tabular-nums"
+                  : undefined
+              }
+            >
+              {displayDescription}
+            </NodeDescription>
+          ) : null
+        }
+        glyph={
+          tier === "full" && generatedImageBase64 ? (
+            <GeneratedImageThumbnail base64={generatedImageBase64} />
+          ) : (
             <ProviderLogo
               actionType={actionType}
               catalog={catalog}
-              className="size-[0.7em] shrink-0"
+              className={LEAD_GLYPH_CLASS}
             />
-          }
-          marks={
-            <StepMarks disabled={isDisabled} inline issues={data.issues} />
-          }
-          value={stepNumber}
-        />
-      ) : isCompact ? (
-        <NodeCompactBody
-          lead={<NodeStepNumber value={stepNumber} />}
-          marks={
-            <StepMarks disabled={isDisabled} inline issues={data.issues} />
-          }
-          title={displayTitle}
-        />
-      ) : (
-        <>
-          <StepMarks
-            disabled={isDisabled}
-            inline={false}
-            issues={data.issues}
-          />
-          <NodeBody>
-            {generatedImageBase64 ? (
-              <GeneratedImageThumbnail base64={generatedImageBase64} />
-            ) : (
-              <ProviderLogo actionType={actionType} catalog={catalog} />
-            )}
-            <NodeTitle title={displayTitle}>
-              <NodeStepNumber className="mr-1.5" value={stepNumber} />
-              {displayTitle}
-            </NodeTitle>
-            {displayDescription && (
-              <NodeDescription
-                className={
-                  waitPreview && !reviewEdit
-                    ? "font-medium tabular-nums"
-                    : undefined
-                }
-              >
-                {displayDescription}
-              </NodeDescription>
-            )}
-          </NodeBody>
-        </>
-      )}
+          )
+        }
+        marks={<StepMarks disabled={isDisabled} issues={data.issues} />}
+        tier={tier}
+        title={displayTitle}
+        value={stepNumber}
+      />
     </Node>
   );
 });

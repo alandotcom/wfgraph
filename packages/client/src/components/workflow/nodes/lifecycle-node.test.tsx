@@ -230,11 +230,12 @@ describe("LifecycleNode handles", () => {
     expect(title.className).toContain("text-sm");
     expect(title.className).not.toContain("truncate");
     expect(title.getAttribute("title")).toBe(label);
+    // The glyph is sized against the lead row's 14px type, about 16px.
     expect(
       view.container
         .querySelector("svg[class*='text-node-lifecycle']")
         ?.getAttribute("class")
-    ).toContain("size-4");
+    ).toContain("size-[1.15em]");
   });
 
   it("hides the visual comparison marker from the accessibility tree", () => {
