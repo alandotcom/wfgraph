@@ -37,6 +37,8 @@ import {
 import { COMPARISON_CHANGE_KIND_LABEL } from "#src/lib/workflow-graph-types";
 import { reviewHighlightAtom } from "#src/lib/workflow-review-store";
 import { findAction } from "@wfgraph/shared/extensions/catalog";
+import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { summarizeWorkflow } from "@wfgraph/shared/graph/workflow-summary";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { cn } from "@wfgraph/shared/utils";
 
@@ -232,6 +234,14 @@ function EditDifference({
   const fields = comparisonFields(catalog, payload, change, { connections });
   const notice = comparisonMetadataNotice({ catalog, payload, change, fields });
   const nodes = comparisonSideNodes(payload);
+  const isLifecycle =
+    nodes.after.find((node) => node.id === change.nodeId)?.data.type ===
+    "lifecycle";
+  // A Lifecycle Node reads as what starts and stops a run. A new one says only
+  // that, and a changed one says it before the settings that changed.
+  if (isLifecycle && change.kind === "added") {
+    return <LifecycleDifference kind="added" payload={payload} />;
+  }
   if (change.kind === "added") {
     return (
       <>
@@ -243,6 +253,9 @@ function EditDifference({
   const changed = fields.filter((field) => field.category !== "organization");
   return (
     <>
+      {isLifecycle ? (
+        <LifecycleDifference kind="modified" payload={payload} />
+      ) : null}
       {changed.map((field) => (
         <section aria-label={field.label} className="space-y-1" key={field.key}>
           <h4 className="font-medium text-muted-foreground text-xs">
@@ -252,6 +265,74 @@ function EditDifference({
         </section>
       ))}
       {notice ? <p className="text-muted-foreground">{notice}</p> : null}
+    </>
+  );
+}
+
+/**
+ * What starts and stops a run, as the outline writes it for the Lifecycle
+ * Node, in place of the Lifecycle Node's raw settings: the sentences the
+ * workflow will have, and for a change the sentences it had, where they
+ * differ.
+ */
+function LifecycleDifference({
+  kind,
+  payload,
+}: {
+  kind: "added" | "modified";
+  payload: WorkflowComparisonPayload;
+}) {
+  const catalog = useExtensionCatalog();
+  const now = summarizeWorkflow({
+    ...toWorkflowGraphData(payload.draftGraph),
+    catalog,
+  });
+  const before =
+    kind === "modified"
+      ? summarizeWorkflow({
+          ...toWorkflowGraphData(payload.baseGraph),
+          catalog,
+        })
+      : null;
+  const sections = [
+    { title: "Starts when", now: now.starts, before: before?.starts },
+    { title: "Stops when", now: now.stops, before: before?.stops },
+  ];
+  return (
+    <>
+      {sections.map((section) => {
+        const changed =
+          section.before !== undefined &&
+          section.before.join("\n") !== section.now.join("\n");
+        if (section.now.length === 0 && !changed) return null;
+        return (
+          <section
+            aria-label={section.title}
+            className="space-y-1"
+            key={section.title}
+          >
+            <h4 className="font-medium text-muted-foreground text-xs">
+              {section.title}
+            </h4>
+            {changed ? (
+              <ul className="space-y-0.5 text-muted-foreground line-through">
+                {(section.before ?? []).map((sentence) => (
+                  <li key={sentence}>{sentence}</li>
+                ))}
+              </ul>
+            ) : null}
+            <ul className="space-y-0.5">
+              {section.now.length === 0 ? (
+                <li className="text-muted-foreground">Nothing stops a run.</li>
+              ) : (
+                section.now.map((sentence) => (
+                  <li key={sentence}>{sentence}</li>
+                ))
+              )}
+            </ul>
+          </section>
+        );
+      })}
     </>
   );
 }

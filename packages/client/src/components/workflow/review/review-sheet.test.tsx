@@ -65,7 +65,23 @@ const WORKFLOW_ID = "workflow_1";
 
 const catalog: ExtensionCatalog = {
   entities: [],
-  events: [],
+  events: [
+    {
+      name: "billing/payment.settled",
+      label: "Payment settled",
+      payloadFields: [],
+    },
+    {
+      name: "billing/payment.refunded",
+      label: "Payment refunded",
+      payloadFields: [],
+    },
+    {
+      name: "app/appointment.canceled",
+      label: "Appointment canceled",
+      payloadFields: [],
+    },
+  ],
   integrations: [],
   actions: [
     {
@@ -347,6 +363,24 @@ afterEach(() => {
   resetAuthorizationGrantsForTests();
   vi.unstubAllGlobals();
 });
+
+/** A Lifecycle Node that starts on `startEvent` and stops on a cancellation. */
+function startingOn(startEvent: string): WorkflowNode {
+  return {
+    ...lifecycle,
+    data: {
+      ...lifecycle.data,
+      config: {
+        lifecycleRules: {
+          startEvents: [startEvent],
+          cancelEvents: ["app/appointment.canceled"],
+          concurrency: "unlimited",
+          allowManualStart: true,
+        },
+      },
+    },
+  };
+}
 
 describe("ReviewSheet", () => {
   it("stays closed while no review is open", async () => {
@@ -712,6 +746,87 @@ describe("runsLeftOnOlderVersions", () => {
     );
     expect(runsLeftOnOlderVersions([item(6, 1), item(4, 1)])).toBe(
       "2 active runs stay on v4 and v6."
+    );
+  });
+});
+
+describe("ReviewSheet Lifecycle Node", () => {
+  const thanks = mail("thanks", "Send thanks", "Thanks for your payment.");
+  const start = {
+    id: "start",
+    source: "lifecycle",
+    target: "thanks",
+    sourceHandle: "started",
+  };
+
+  it("says what starts and stops the workflow on a first publish, and no raw settings", async () => {
+    const firstPublish: WorkflowComparisonPayload = {
+      baseVersion: null,
+      proposedVersion: 1,
+      baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+      draftGraph: createSerializedWorkflowGraph({
+        nodes: [startingOn("billing/payment.settled"), thanks],
+        edges: [start],
+      }),
+      hasChanges: true,
+      nodeChanges: [
+        { nodeId: "lifecycle", kind: "added", fields: [] },
+        { nodeId: "thanks", kind: "added", fields: [] },
+      ],
+      edgeChanges: [{ edgeId: "start", kind: "added" }],
+    };
+    stubServer(firstPublish);
+    const view = await renderSheet({ payload: firstPublish });
+    await view.findByRole("heading", { name: "Publish v1" });
+
+    expect(
+      view.getByRole("region", { name: "Starts when" }).textContent
+    ).toContain("Starts when Payment settled arrives.");
+    expect(
+      view.getByRole("region", { name: "Stops when" }).textContent
+    ).toContain("Appointment canceled stops a run in progress.");
+    expect(sheet(view)?.textContent).not.toMatch(/Configuration value/u);
+  });
+
+  it("shows the sentences a changed Lifecycle Node had and has", async () => {
+    const changedStart: WorkflowComparisonPayload = {
+      baseVersion: comparison.baseVersion,
+      proposedVersion: 8,
+      baseGraph: createSerializedWorkflowGraph({
+        nodes: [startingOn("billing/payment.settled"), thanks],
+        edges: [start],
+      }),
+      draftGraph: createSerializedWorkflowGraph({
+        nodes: [startingOn("billing/payment.refunded"), thanks],
+        edges: [start],
+      }),
+      hasChanges: true,
+      nodeChanges: [
+        {
+          nodeId: "lifecycle",
+          kind: "modified",
+          fields: [
+            {
+              path: ["data", "config", "lifecycleRules", "startEvents"],
+              kind: "modified",
+              before: ["billing/payment.settled"],
+              after: ["billing/payment.refunded"],
+            },
+          ],
+        },
+      ],
+      edgeChanges: [],
+    };
+    stubServer(changedStart);
+    const view = await renderSheet({ payload: changedStart });
+    await view.findByRole("heading", { name: "Publish v8" });
+
+    const starts = view.getByRole("region", { name: "Starts when" });
+    expect(starts.querySelector(".line-through")?.textContent).toBe(
+      "Starts when Payment settled arrives."
+    );
+    expect(starts.textContent).toContain(
+      "Starts when Payment refunded arrives."
     );
   });
 });

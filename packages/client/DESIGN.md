@@ -759,7 +759,9 @@ sentences, a Wait's settings use its form's labels, a Start or Cancel Filter
 reads as its rules, and a Connection reads as its name. A value the server
 redacted or masked reads "Hidden for security". A new step shows what its
 action does and its longest text setting, with **Show all settings** for the
-rest. A removed step shows its strip, with its own name struck through, and its
+rest. The Lifecycle Node reads as the outline's "Starts when" and "Stops when"
+sentences. A changed one shows the sentences it had struck through above the
+ones it has, then its changed settings. A removed step shows its strip, with its own name struck through, and its
 one line. The edit says so when
 the step's action is missing from the catalog and its settings show general
 names. Field labels come from the extension catalog, and machine paths never
