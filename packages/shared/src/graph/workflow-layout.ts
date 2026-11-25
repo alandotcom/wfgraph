@@ -2,7 +2,9 @@
  * Where auto-layout puts every node. Two rules the signature cannot state: an
  * outlet a branching node draws keeps its column whether or not anything is
  * wired to it, and a rank is as tall as the tallest node standing in it. Both
- * belong to the tree pass; the dagre fallback holds no column open.
+ * belong to the tree pass; the dagre fallback holds no column open. A Group is
+ * laid out in two passes: its members on their own, then the region they fill
+ * as one box among the other steps.
  */
 
 import { Graph, type GraphLabel, layout } from "@dagrejs/dagre";
@@ -24,11 +26,12 @@ import { isConditionNode, isLifecycleNode } from "#src/graph/node-config";
 import {
   COUSIN_SPACING_FACTOR,
   eventSplitCardWidth,
+  GROUP_REGION_INSET,
+  groupRegionBox,
   NODE_SPACING,
   RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
-  workflowNodeSize,
 } from "#src/graph/workflow-layout-geometry";
 import { isGroupNode } from "#src/graph/group-boundary";
 import { edgesForGroupLayout } from "#src/graph/node-group";
@@ -211,11 +214,17 @@ function readNodeShape(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
+  /** Each Group's whole region, header and padding included. */
+  groupRegions?: ReadonlyMap<string, NodeSize> | undefined;
 }): NodeShape {
-  // A Group draws as one collapsed card on the overview. Its members are
-  // placed by the focused Group canvas, so layout leaves them where they are.
+  // A Group stands among the other steps as the whole region its members
+  // fill, which the members' own pass has already sized.
   if (isGroupNode(input.node)) {
-    return standardCard({ outletHandles: [], holdsOutletsOpen: false });
+    const region = input.groupRegions?.get(input.node.id);
+    return {
+      ...standardCard({ outletHandles: [], holdsOutletsOpen: false }),
+      ...region,
+    };
   }
 
   if (isLifecycleNode(input.node)) {
@@ -334,6 +343,7 @@ function buildLayoutModel(input: {
   edges: WorkflowEdge[];
   allEdges: WorkflowEdge[];
   catalog: ExtensionCatalog;
+  groupRegions?: ReadonlyMap<string, NodeSize> | undefined;
 }): LayoutModel {
   const positionXById = new Map(
     input.nodes.map((node) => [node.id, node.position.x])
@@ -354,6 +364,7 @@ function buildLayoutModel(input: {
       nodes: input.allNodes,
       edges: input.allEdges,
       catalog: input.catalog,
+      groupRegions: input.groupRegions,
     });
     sizeById.set(node.id, { width: shape.width, height: shape.height });
 
@@ -691,8 +702,16 @@ export function layoutWorkflowNodes(input: {
   nodes: WorkflowNode[];
   changed: boolean;
 } {
+  const spacing = getLayoutSpacing(input.availableWidth);
+  const { localPositions, regions, boxes } = layoutGroupMembers({
+    nodes: input.nodes,
+    edges: input.edges,
+    catalog: input.catalog,
+    spacing,
+  });
+
   const layoutableNodes = input.nodes.filter(isLayoutableNode);
-  if (layoutableNodes.length === 0) {
+  if (layoutableNodes.length === 0 && localPositions.size === 0) {
     return { nodes: input.nodes, changed: false };
   }
 
@@ -701,27 +720,45 @@ export function layoutWorkflowNodes(input: {
     (edge) =>
       layoutableNodeIds.has(edge.source) && layoutableNodeIds.has(edge.target)
   );
-  const spacing = getLayoutSpacing(input.availableWidth);
-  const model = buildLayoutModel({
-    nodes: layoutableNodes,
-    allNodes: input.nodes,
-    edges: layoutableEdges,
-    allEdges: input.edges,
-    catalog: input.catalog,
-  });
-
   const positions =
-    layoutWorkflowNodesWithHierarchy({ model, spacing }) ??
-    layoutWorkflowNodesWithDagre({ model, spacing });
+    layoutableNodes.length === 0
+      ? new Map<string, Position>()
+      : layoutPositions({
+          model: buildLayoutModel({
+            nodes: layoutableNodes,
+            allNodes: input.nodes,
+            edges: layoutableEdges,
+            allEdges: input.edges,
+            catalog: input.catalog,
+            groupRegions: regions,
+          }),
+          spacing,
+        });
 
-  const positioned = input.nodes.map((node) => {
+  const nodes = input.nodes.map((node) => {
+    const local = localPositions.get(node.id);
+    if (local) {
+      return { ...node, position: local };
+    }
     const next = positions.get(node.id);
     if (!next) {
       return node;
     }
-    return { ...node, position: next };
+    const box = boxes.get(node.id);
+    // The pass placed the region's outline, and the frame's stored position
+    // is where its node box starts, below the header and inside the padding.
+    return box
+      ? {
+          ...node,
+          position: {
+            x: next.x + GROUP_REGION_INSET.left,
+            y: next.y + GROUP_REGION_INSET.top,
+          },
+          width: box.width,
+          height: box.height,
+        }
+      : { ...node, position: next };
   });
-  const nodes = sizeGroupFrames(positioned);
   const previousById = new Map(input.nodes.map((node) => [node.id, node]));
   const changed = nodes.some((node) => {
     const previous = previousById.get(node.id);
@@ -738,12 +775,81 @@ export function layoutWorkflowNodes(input: {
   return { nodes, changed };
 }
 
-/** Gives each Group frame holding a member the one card size it draws at. */
-function sizeGroupFrames(nodes: WorkflowNode[]): WorkflowNode[] {
-  const parentIds = new Set(nodes.map((node) => node.parentId));
-  return nodes.map((node) =>
-    isGroupNode(node) && parentIds.has(node.id)
-      ? { ...node, ...workflowNodeSize() }
-      : node
+function layoutPositions(input: {
+  model: LayoutModel;
+  spacing: LayoutSpacing;
+}): Map<string, Position> {
+  return (
+    layoutWorkflowNodesWithHierarchy(input) ??
+    layoutWorkflowNodesWithDagre(input)
   );
+}
+
+/**
+ * The first pass: each Group's members laid out on their own, by the edges
+ * between them, with positions local to the frame so the topmost and leftmost
+ * member sits at its node box's corner. Answers those positions, each region's
+ * node box, and each region's whole size with its header and padding, which
+ * the second pass reserves for the Group.
+ */
+function layoutGroupMembers(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  catalog: ExtensionCatalog;
+  spacing: LayoutSpacing;
+}): {
+  localPositions: Map<string, Position>;
+  regions: Map<string, NodeSize>;
+  boxes: Map<string, NodeSize>;
+} {
+  const localPositions = new Map<string, Position>();
+  const regions = new Map<string, NodeSize>();
+  const boxes = new Map<string, NodeSize>();
+  for (const frame of input.nodes.filter(isGroupNode)) {
+    const members = input.nodes.filter(
+      (node) => node.parentId === frame.id && node.type !== "add"
+    );
+    if (members.length === 0) {
+      continue;
+    }
+    const memberIds = new Set(members.map((node) => node.id));
+    const free = members.map((member) => {
+      const { parentId: _parentId, ...rest } = member;
+      return rest;
+    });
+    const placed = layoutPositions({
+      model: buildLayoutModel({
+        nodes: free,
+        allNodes: input.nodes,
+        edges: input.edges.filter(
+          (edge) => memberIds.has(edge.source) && memberIds.has(edge.target)
+        ),
+        allEdges: input.edges,
+        catalog: input.catalog,
+      }),
+      spacing: input.spacing,
+    });
+    const placedPositions = [...placed.values()];
+    const minX = Math.min(...placedPositions.map((position) => position.x));
+    const minY = Math.min(...placedPositions.map((position) => position.y));
+    const sized = members.map((member) => {
+      const shape = readNodeShape({
+        node: member,
+        nodes: input.nodes,
+        edges: input.edges,
+        catalog: input.catalog,
+      });
+      const at = placed.get(member.id) ?? member.position;
+      const position = { x: at.x - minX, y: at.y - minY };
+      localPositions.set(member.id, position);
+      return { position, width: shape.width, height: shape.height };
+    });
+    const box = groupRegionBox(sized);
+    boxes.set(frame.id, box);
+    regions.set(frame.id, {
+      width: box.width + GROUP_REGION_INSET.left,
+      height: box.height + GROUP_REGION_INSET.top,
+    });
+  }
+  return { localPositions, regions, boxes };
 }

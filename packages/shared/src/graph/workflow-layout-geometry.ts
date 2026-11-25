@@ -30,3 +30,57 @@ export function eventSplitCardWidth(outletCount: number): number {
     ? outletCount * EVENT_SPLIT_OUTLET_WIDTH
     : WORKFLOW_NODE_WIDTH;
 }
+
+/**
+ * A Group drawn in place is a region around its members. Its node box starts
+ * at the frame's stored position, where members' local positions start, and
+ * reaches `GROUP_REGION_PADDING` past their right and bottom edges. The region
+ * draws its header and the same padding above and to the left of that box.
+ */
+export const GROUP_REGION_PADDING = 24;
+/** The height of a Group region's header, which names and selects the Group. */
+export const GROUP_REGION_HEADER_HEIGHT = 40;
+
+type RegionMember = {
+  position: { x: number; y: number };
+  width?: number | undefined;
+  height?: number | undefined;
+  measured?: { width?: number | undefined; height?: number | undefined };
+};
+
+/**
+ * The size of a Group region's node box for `members`, whose positions are
+ * local to the frame. A Group with no member draws at the card size.
+ */
+export function groupRegionBox(members: readonly RegionMember[]): {
+  width: number;
+  height: number;
+} {
+  if (members.length === 0) {
+    return workflowNodeSize();
+  }
+  const right = Math.max(
+    ...members.map(
+      (member) =>
+        member.position.x +
+        (member.measured?.width ?? member.width ?? WORKFLOW_NODE_WIDTH)
+    )
+  );
+  const bottom = Math.max(
+    ...members.map(
+      (member) =>
+        member.position.y +
+        (member.measured?.height ?? member.height ?? WORKFLOW_NODE_HEIGHT)
+    )
+  );
+  return {
+    width: Math.max(right, 0) + GROUP_REGION_PADDING,
+    height: Math.max(bottom, 0) + GROUP_REGION_PADDING,
+  };
+}
+
+/** How far a region's drawn outline reaches above and left of its node box. */
+export const GROUP_REGION_INSET = {
+  left: GROUP_REGION_PADDING,
+  top: GROUP_REGION_HEADER_HEIGHT + GROUP_REGION_PADDING,
+} as const;

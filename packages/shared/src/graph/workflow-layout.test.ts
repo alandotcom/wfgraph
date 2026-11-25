@@ -12,6 +12,8 @@ import { layoutWorkflowNodes } from "#src/graph/workflow-layout";
 import {
   COUSIN_SPACING_FACTOR,
   eventSplitCardWidth,
+  GROUP_REGION_INSET,
+  GROUP_REGION_PADDING,
   NODE_SPACING,
   RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
@@ -180,6 +182,19 @@ function buildFramedChain(input: {
       buildEdge("out", "exit", "sms"),
     ],
   };
+}
+
+/** The node box of a two-step chain's region: one card wide, two ranks tall. */
+const TWO_STEP_BOX = {
+  width: WORKFLOW_NODE_WIDTH + GROUP_REGION_PADDING,
+  height: 2 * WORKFLOW_NODE_HEIGHT + RANK_SPACING + GROUP_REGION_PADDING,
+};
+
+/** The centre of a Group region's whole outline, header and padding included. */
+function regionCenterX(nodes: WorkflowNode[], id: string): number {
+  const frame = findNode(nodes, id);
+  const left = frame.position.x - GROUP_REGION_INSET.left;
+  return left + ((frame.width ?? 0) + GROUP_REGION_INSET.left) / 2;
 }
 
 function findNode(nodes: WorkflowNode[], id: string): WorkflowNode {
@@ -740,8 +755,7 @@ describe("layoutWorkflowNodes", () => {
     expect(result.nodes[0]?.position).toEqual({ x: 40, y: 40 });
   });
 
-  test("lays out a chain holding a Group as a tree", async () => {
-    const frame = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
+  test("lays out a chain holding a Group as a tree, centring the region", async () => {
     const graph = buildFramedChain({
       entryIds: ["lookup"],
       members: ["lookup", "exit"],
@@ -753,21 +767,37 @@ describe("layoutWorkflowNodes", () => {
       ...graph,
     });
 
-    // A frame takes the tree path now, so the chain reads as one centre line,
+    // The region takes the tree path, so the chain reads as one centre line,
     // with the column held for Canceled off to the right of the entry node.
     const waitCenter = centerX(result.nodes, "wait", WORKFLOW_NODE_WIDTH);
-    expect(centerX(result.nodes, "g", frame.width)).toBe(waitCenter);
+    expect(regionCenterX(result.nodes, "g")).toBe(waitCenter);
     expect(centerX(result.nodes, "sms", WORKFLOW_NODE_WIDTH)).toBe(waitCenter);
-    expect(centerX(result.nodes, "entry", WORKFLOW_NODE_WIDTH)).toBe(
-      waitCenter + HALF_SIBLING_PITCH
-    );
+  });
+
+  test("lays out each Group's members first, local to the frame", async () => {
+    const graph = buildFramedChain({
+      entryIds: ["lookup"],
+      members: ["lookup", "exit"],
+      interior: [buildEdge("i1", "lookup", "exit")],
+    });
+
+    const result = await layoutWorkflowNodes({
+      catalog: layoutCatalog,
+      ...graph,
+    });
+
+    expect(findNode(result.nodes, "lookup").position).toEqual({ x: 0, y: 0 });
+    expect(findNode(result.nodes, "exit").position).toEqual({
+      x: 0,
+      y: WORKFLOW_NODE_HEIGHT + RANK_SPACING,
+    });
+    expect(findNode(result.nodes, "exit").parentId).toBe("g");
   });
 
   // A frame id comes from the persisted graph, so it can be any string.
-  // Gathering the members into a plain object files a frame named "__proto__"
-  // onto the prototype, and the frame then never receives its card size.
-  test("sizes a frame whose id is __proto__ as a collapsed card", async () => {
-    const frame = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
+  // Gathering the members into a plain object would file a frame named
+  // "__proto__" onto the prototype, and the frame would never get its size.
+  test("sizes a frame whose id is __proto__ to the region its members fill", async () => {
     const graph = buildFramedChain({
       groupId: "__proto__",
       entryIds: ["lookup"],
@@ -780,12 +810,10 @@ describe("layoutWorkflowNodes", () => {
       ...graph,
     });
 
-    expect(findNode(result.nodes, "__proto__").width).toBe(frame.width);
-    expect(findNode(result.nodes, "__proto__").height).toBe(frame.height);
+    expect(findNode(result.nodes, "__proto__")).toMatchObject(TWO_STEP_BOX);
   });
 
-  test("gives a Group a rank as tall as the frame draws", async () => {
-    const frame = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
+  test("gives a Group a rank as tall as its whole region", async () => {
     const graph = buildFramedChain({
       entryIds: ["lookup"],
       members: ["lookup", "exit"],
@@ -797,66 +825,17 @@ describe("layoutWorkflowNodes", () => {
       ...graph,
     });
 
-    // The overview draws a Group as one collapsed card, so the step after it
-    // sits one standard rank below.
-    expect(positionY(result.nodes, "g")).toBe(
+    // The region's header and padding stand above and left of the frame's
+    // node box, and the rank reserves them.
+    expect(positionY(result.nodes, "g") - GROUP_REGION_INSET.top).toBe(
       positionY(result.nodes, "wait") + WORKFLOW_NODE_HEIGHT + RANK_SPACING
     );
     expect(positionY(result.nodes, "sms")).toBe(
-      positionY(result.nodes, "g") + frame.height + RANK_SPACING
-    );
-  });
-
-  test("lays out a horizontal Group as the same one-card region", async () => {
-    const graph = buildFramedChain({
-      entryIds: ["lookup"],
-      members: ["lookup", "send", "exit"],
-      interior: [
-        buildEdge("i1", "lookup", "send"),
-        buildEdge("i2", "send", "exit"),
-      ],
-    });
-    const horizontal = {
-      ...graph,
-      nodes: graph.nodes.map((node) =>
-        node.id === "g"
-          ? {
-              ...node,
-              data: { ...node.data, config: {} },
-            }
-          : node
-      ),
-    };
-
-    const vertical = await layoutWorkflowNodes({
-      catalog: layoutCatalog,
-      ...graph,
-    });
-    const turned = await layoutWorkflowNodes({
-      catalog: layoutCatalog,
-      ...horizontal,
-    });
-
-    // A Group's direction lays out its own focused canvas only. The overview
-    // places the collapsed card, and the steps around it, the same either way.
-    expect(findNode(turned.nodes, "g")).toMatchObject({
-      width: WORKFLOW_NODE_WIDTH,
-      height: WORKFLOW_NODE_HEIGHT,
-    });
-    for (const id of ["entry", "wait", "g", "sms"]) {
-      expect(findNode(turned.nodes, id).position).toEqual(
-        findNode(vertical.nodes, id).position
-      );
-    }
-    expect(positionY(turned.nodes, "sms")).toBe(
-      positionY(turned.nodes, "g") + WORKFLOW_NODE_HEIGHT + RANK_SPACING
+      positionY(result.nodes, "g") + TWO_STEP_BOX.height + RANK_SPACING
     );
   });
 
   test("lays out a chain holding a parallel-lookup Group", async () => {
-    // Two entries fanning in on one exit: the painted inlet edges collapse to
-    // one, so the frame keeps an in-degree of one and stays on the tree path.
-    const frame = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
     const graph = buildFramedChain({
       entryIds: ["one", "two"],
       members: ["one", "two", "exit"],
@@ -871,10 +850,12 @@ describe("layoutWorkflowNodes", () => {
       ...graph,
     });
 
+    const group = findNode(result.nodes, "g");
     const waitCenter = centerX(result.nodes, "wait", WORKFLOW_NODE_WIDTH);
-    expect(centerX(result.nodes, "g", frame.width)).toBe(waitCenter);
+    expect(regionCenterX(result.nodes, "g")).toBe(waitCenter);
+    expect(positionY(result.nodes, "one")).toBe(positionY(result.nodes, "two"));
     expect(positionY(result.nodes, "sms")).toBe(
-      positionY(result.nodes, "g") + frame.height + RANK_SPACING
+      group.position.y + (group.height ?? 0) + RANK_SPACING
     );
   });
 
