@@ -1,6 +1,6 @@
 import { CircleX } from "lucide-react";
 import type { CancelNotDelivered } from "#src/lib/execution-logs";
-import { getRelativeTime } from "@wfgraph/shared/utils/time";
+import { formatExactTime, getRelativeTime } from "@wfgraph/shared/utils/time";
 
 /**
  * Cancellation failures: Cancel Events that reached no run. Missing Entity
@@ -31,7 +31,7 @@ export function WorkflowCancellationFailures({
             <p className="text-foreground text-xs">{failure.message}</p>
             <p
               className="shrink-0 text-muted-foreground text-xs tabular-nums"
-              title={failure.createdAt.toLocaleString()}
+              title={formatExactTime(failure.createdAt)}
             >
               {getRelativeTime(failure.createdAt)}
             </p>

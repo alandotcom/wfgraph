@@ -1,7 +1,25 @@
-import { fireEvent, render } from "@testing-library/react";
+import {
+  fireEvent,
+  render as renderWithoutCatalog,
+} from "@testing-library/react";
+import type { ReactElement } from "react";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RunHistoryTable } from "#src/components/workflows/run-history-table";
 import type { RunHistoryTableRow } from "#src/components/workflows/run-history-table";
+
+/** Renders `ui` inside an empty catalog, which names every Event by its machine name. */
+function render(ui: ReactElement) {
+  return renderWithoutCatalog(ui, {
+    wrapper: ({ children }) => (
+      <ExtensionCatalogProvider
+        value={{ entities: [], events: [], actions: [], integrations: [] }}
+      >
+        {children}
+      </ExtensionCatalogProvider>
+    ),
+  });
+}
 
 function run(
   overrides: Partial<RunHistoryTableRow> & { id: string }

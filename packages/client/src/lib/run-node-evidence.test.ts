@@ -226,6 +226,53 @@ describe("buildRunNodeEvidence", () => {
     expect(evidence.cancellation).toBeNull();
   });
 
+  // The canvas chip of a step the run is parked on reads Waiting, so its
+  // evidence names the same status rather than the log row's `running`.
+  it("reads the execution a run is parked on as waiting, as the canvas does", () => {
+    const evidence = buildRunNodeEvidence({
+      nodeId: "step",
+      execution: { ...EXECUTION, status: "waiting" },
+      logs: [
+        log("first", "step", "2026-03-01T10:00:00Z"),
+        log("second", "step", "2026-03-01T10:00:02Z", "running"),
+      ],
+      waits: [
+        {
+          id: "wait_state",
+          nodeId: "step",
+          nodeName: "Step",
+          resumeToken: "tok",
+          subscribedEvents: [],
+          waitUntil: null,
+        },
+      ],
+      events: [],
+      nodes: [node("step", "action", "Step")],
+      pinnedGraph: "ready",
+      chosenExecution: null,
+      schedule: null,
+    });
+
+    expect(evidence.status).toBe("waiting");
+    expect(evidence.executionStatuses).toEqual(["success", "waiting"]);
+  });
+
+  it("reads a node that never ran as none", () => {
+    const evidence = buildRunNodeEvidence({
+      nodeId: "step",
+      execution: EXECUTION,
+      logs: [],
+      waits: [],
+      events: [],
+      nodes: [node("step", "action", "Step")],
+      pinnedGraph: "ready",
+      chosenExecution: null,
+      schedule: null,
+    });
+
+    expect(evidence.status).toBe("none");
+  });
+
   it("reads a canceled run's unfinished execution as cancelled, with the run's cancellation", () => {
     const evidence = buildRunNodeEvidence({
       nodeId: "step",

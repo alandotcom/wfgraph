@@ -1,6 +1,6 @@
 import { Ban } from "lucide-react";
 import type { RefusedStart } from "#src/lib/execution-logs";
-import { getRelativeTime } from "@wfgraph/shared/utils/time";
+import { formatExactTime, getRelativeTime } from "@wfgraph/shared/utils/time";
 
 /**
  * The Refused Starts: arrivals this workflow declined, which have no run to be
@@ -43,7 +43,7 @@ export function WorkflowRefusedStarts({
                 one that happened last week. */}
             <p
               className="shrink-0 text-muted-foreground text-xs tabular-nums"
-              title={refusal.createdAt.toLocaleString()}
+              title={formatExactTime(refusal.createdAt)}
             >
               {getRelativeTime(refusal.createdAt)}
             </p>

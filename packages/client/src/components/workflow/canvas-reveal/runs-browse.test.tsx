@@ -1,4 +1,5 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
+import { runShortId } from "#src/lib/workflow-run-labels";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { installAuthorizationGrantsForTests } from "#src/lib/authorization-test-support";
 import {
@@ -56,19 +57,19 @@ describe("Runs Browse run list and selected run", () => {
       view: "runs",
     });
 
-    await waitFor(() => expect(title()).toBe("Run #2"));
+    await waitFor(() => expect(title()).toBe("Run exec_b"));
     expect(router.state.location.search).toEqual({
       view: "runs",
       executionId: "exec_b",
     });
     expect(router.history.canGoBack()).toBe(false);
     expect(aside()?.getAttribute("aria-label")).toBe("Runs inspector");
-    expect(path()).toBe("Appointment reminders › Runs › Run #2");
+    expect(path()).toBe("Appointment reminders › Runs › Run exec_b");
     expect(aside()?.querySelector("header")?.textContent).toContain(
       "Completed"
     );
     expect(view.getByRole("heading", { name: "app/appointment.created" }));
-    expect(view.getByRole("status").textContent).toBe("Completed in 30.00s");
+    expect(view.getByRole("status").textContent).toBe("Completed in 30s");
     expect(view.getByText("appt_2")).toBeTruthy();
     expect(view.getByText("Started")).toBeTruthy();
   });
@@ -81,7 +82,7 @@ describe("Runs Browse run list and selected run", () => {
     const { view, router, title, path, rows, back } = await renderRunsReveal({
       view: "runs",
     });
-    await waitFor(() => expect(title()).toBe("Run #2"));
+    await waitFor(() => expect(title()).toBe("Run exec_b"));
     back();
     await waitFor(() => expect(rows()).toHaveLength(2));
     expect(title()).toBe("Runs");
@@ -90,7 +91,7 @@ describe("Runs Browse run list and selected run", () => {
     expect(view.getByRole("button", { name: "Refresh" })).toBeTruthy();
 
     fireEvent.click(rows()[1]);
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_a"));
     expect(router.state.location.search).toEqual({
       view: "runs",
       executionId: "exec_a",
@@ -128,12 +129,12 @@ describe("Runs Browse run list and selected run", () => {
     await waitFor(() => expect(rows()).toHaveLength(2));
     fireEvent.click(rows()[0]);
     await waitFor(() => expect(overlayIds()).toEqual(["b_step"]));
-    expect(title()).toBe("Run #2");
+    expect(title()).toBe("Run exec_b");
     expect(store.get(selectedNodeAtom)).toBeNull();
 
     await show({ view: "runs", executionId: "exec_a" });
     await waitFor(() => expect(overlayIds()).toEqual(["a_step"]));
-    expect(title()).toBe("Run #1");
+    expect(title()).toBe("Run exec_a");
     expect(store.get(selectedNodeAtom)).toBe("a_step");
   });
   it("leaves an open run for its row the same way on Escape and on Back, and closes from the list", async () => {
@@ -143,7 +144,7 @@ describe("Runs Browse run list and selected run", () => {
     ];
     const { view, router, aside, title, rows, show, back, escape } =
       await renderRunsReveal({ view: "runs", executionId: "exec_a" });
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_a"));
 
     escape();
     await waitFor(() => expect(rows()).toHaveLength(2));
@@ -151,7 +152,7 @@ describe("Runs Browse run list and selected run", () => {
     await waitFor(() => expect(document.activeElement).toBe(rows()[1]));
 
     await show({ view: "runs", executionId: "exec_a" });
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_a"));
     back();
     await waitFor(() => expect(rows()).toHaveLength(2));
     expect(router.state.location.search).toEqual({ view: "runs" });
@@ -173,7 +174,7 @@ describe("Runs Browse run list and selected run", () => {
       view: "runs",
       executionId: "exec_old",
     });
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_old"));
 
     back();
     await waitFor(() => expect(rows()).toHaveLength(1));
@@ -193,7 +194,7 @@ describe("Runs Browse run list and selected run", () => {
     const { aside, title, rows, back, listScroller } = await renderRunsReveal({
       view: "runs",
     });
-    await waitFor(() => expect(title()).toBe("Run #2"));
+    await waitFor(() => expect(title()).toBe("Run exec_b"));
     back();
     await waitFor(() => expect(rows()).toHaveLength(2));
     const list = listScroller();
@@ -205,7 +206,7 @@ describe("Runs Browse run list and selected run", () => {
     fireEvent(list, new Event("scrollend"));
 
     fireEvent.click(rows()[1]);
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_a"));
     // A browser scrolls a row it focuses into view; happy-dom does not, so a
     // run row taking focus stands in for that scroll here.
     aside()?.addEventListener("focusin", (event) => {
@@ -392,7 +393,7 @@ describe("Runs Browse edge cases", () => {
       executionId: "exec_old",
     });
 
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_old"));
     expect(aside()?.querySelector("header")?.textContent).toContain(
       "Superseded"
     );
@@ -419,7 +420,7 @@ describe("Runs Browse edge cases", () => {
       view: "runs",
       executionId: "exec_live",
     });
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run xec_live"));
     back();
     await waitFor(() => expect(rows()).toHaveLength(1));
     expect(view.queryByText(/Runs are deleted/)).toBeNull();
@@ -442,11 +443,13 @@ describe("Runs Browse edge cases", () => {
       executionId: "exec_past",
     });
 
+    // A run keeps the identifier cut from its own id whether or not the list
+    // holds it.
     expect(await view.findByText(/no longer in the runs list/)).toBeTruthy();
-    expect(title()).toBe("Run");
+    expect(title()).toBe(`Run ${runShortId("exec_past")}`);
 
     await show({ view: "runs", executionId: "exec_live" });
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe(`Run ${runShortId("exec_live")}`));
     expect(view.queryByText(/no longer in the runs list/)).toBeNull();
 
     served.items = [];
@@ -567,7 +570,7 @@ describe("Runs Browse edge cases", () => {
       view: "runs",
       executionId: "exec_a",
     });
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_a"));
 
     await show({ view: "runs", executionId: "exec_b" });
     expect(await view.findByText("B step")).toBeTruthy();
@@ -577,7 +580,7 @@ describe("Runs Browse edge cases", () => {
       }
     });
 
-    expect(title()).toBe("Run #2");
+    expect(title()).toBe("Run exec_b");
     expect(view.queryByText("A step")).toBeNull();
     expect(view.getByText("B step")).toBeTruthy();
     await waitFor(() =>
@@ -719,7 +722,7 @@ describe("Runs Browse reads and writes", () => {
       executionId: "exec_done",
     });
 
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run xec_done"));
     await afterPaint();
     expect(callCount("workflow/getExecutionLogs")).toBe(1);
   });
@@ -732,7 +735,7 @@ describe("Runs Browse restoration", () => {
       view: "runs",
       executionId: "exec_a",
     });
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_a"));
     const scroller = () =>
       aside()?.querySelector<HTMLElement>(".overflow-y-auto") ?? null;
     const overview = scroller();
@@ -755,7 +758,7 @@ describe("Runs Browse restoration", () => {
     expect(view.queryByTestId("runs-browse")).toBeNull();
     await show({ view: "runs", executionId: "exec_a" });
 
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_a"));
     expect(aside()?.dataset.level).toBe("browse");
     await waitFor(() => expect(scroller()?.scrollTop).toBe(120));
     expect(store.get(activeWorkspaceCamerasAtom).desktop).toEqual(camera);
@@ -769,7 +772,7 @@ describe("Runs Browse restoration", () => {
     const { router, aside, title, rows, back, show } = await renderRunsReveal({
       view: "runs",
     });
-    await waitFor(() => expect(title()).toBe("Run #2"));
+    await waitFor(() => expect(title()).toBe("Run exec_b"));
     back();
     await waitFor(() => expect(rows()).toHaveLength(2));
     const scroller = () =>
@@ -798,7 +801,7 @@ describe("Runs Browse restoration", () => {
     served.supersededCount = 1;
     const { view, title, rows, back, show, listScroller } =
       await renderRunsReveal({ view: "runs", executionId: "exec_live" });
-    await waitFor(() => expect(title()).toBe("Run #2"));
+    await waitFor(() => expect(title()).toBe("Run xec_live"));
     back();
     await waitFor(() => expect(rows()).toHaveLength(1));
     fireEvent.click(view.getByRole("button", { name: "Show" }));

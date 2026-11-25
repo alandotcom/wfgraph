@@ -91,7 +91,6 @@ function renderDetail(
               logs={extras?.logs ?? []}
               onCancel={vi.fn(() => undefined)}
               onResume={vi.fn(() => undefined)}
-              runNumber={1}
               waits={extras?.waits ?? []}
             />
           </IntegrationUiProvider>
@@ -562,4 +561,121 @@ describe("WorkflowRunDetail", () => {
       expect(view.getByRole("button", { name: "Resume now" })).toBeTruthy();
     }
   );
+
+  describe("a failed run's journey", () => {
+    const step = (
+      id: string,
+      status: "success" | "error",
+      minute: number
+    ): WorkflowRunDetailLogs[number] => ({
+      id,
+      nodeId: `node_${id}`,
+      nodeName: `Step ${id}`,
+      nodeType: "action",
+      status,
+      startedAt: new Date(`2026-02-22T10:0${minute}:00Z`),
+      completedAt: new Date(`2026-02-22T10:0${minute}:01Z`),
+      duration: "12",
+      error: status === "error" ? "Request failed" : null,
+      retries: 0,
+      retryLimit: 4,
+    });
+    const logs = [
+      step("a", "success", 0),
+      step("b", "success", 1),
+      step("c", "success", 2),
+      step("d", "error", 3),
+    ];
+    const failed = { ...BASE_EXECUTION, status: "failed" as const };
+
+    // The step where the run stopped stays in view: the steps that succeeded
+    // before it fold into one row the reader can expand.
+    it("folds the successful steps before the failure into one row", () => {
+      const view = renderDetail(failed, { logs });
+
+      expect(
+        view.queryByRole("button", { name: "Step a, Successful" })
+      ).toBeNull();
+      expect(view.getByRole("button", { name: "Step d, Failed" })).toBeTruthy();
+
+      fireEvent.click(
+        view.getByRole("button", { name: "Show 3 successful steps" })
+      );
+      const entry = view.getByRole("button", { name: "Step a, Successful" });
+      // The colored dot marks the status; the word stays quiet on success.
+      expect(within(entry).getByText("Successful").className).toContain(
+        "text-muted-foreground"
+      );
+      // A step that took milliseconds prints no duration in the list.
+      expect(within(entry).queryByText("<1s")).toBeNull();
+    });
+
+    it("shows a folded step when focus returns to it", () => {
+      const onFocusRestored = vi.fn();
+      const view = renderDetail(failed, {
+        logs,
+        focusLogId: "b",
+        onFocusRestored,
+      });
+
+      expect(document.activeElement).toBe(
+        view.getByRole("button", { name: "Step b, Successful" })
+      );
+      expect(onFocusRestored).toHaveBeenCalledOnce();
+    });
+
+    it("opens the failed step's evidence from the failure summary", () => {
+      const onSelectLog = vi.fn();
+      const view = renderDetail(failed, { logs, onSelectLog });
+
+      fireEvent.click(view.getByRole("button", { name: "Failed at Step d" }));
+      expect(onSelectLog).toHaveBeenCalledWith(logs[3]);
+    });
+
+    it("keeps every step of a completed run in view", () => {
+      const view = renderDetail(
+        { ...BASE_EXECUTION, status: "completed" },
+        { logs: logs.slice(0, 3) }
+      );
+
+      expect(
+        view.getByRole("button", { name: "Step a, Successful" })
+      ).toBeTruthy();
+      expect(
+        view.queryByRole("button", { name: /successful steps/ })
+      ).toBeNull();
+    });
+  });
+
+  it("names the Events a wait is for by their labels", () => {
+    const view = renderDetail(
+      { ...BASE_EXECUTION, status: "waiting" },
+      {
+        catalog: {
+          ...emptyExtensionCatalog,
+          events: [
+            {
+              name: "billing/payment.settled",
+              label: "Payment settled",
+              payloadFields: [],
+            },
+          ],
+        },
+        waits: [
+          {
+            id: "wait_1",
+            nodeId: "wait_1",
+            nodeName: "Wait for payment",
+            resumeToken: null,
+            subscribedEvents: ["billing/payment.settled", "app/unknown"],
+            waitUntil: null,
+          },
+        ],
+      }
+    );
+
+    expect(
+      view.getByText("Waiting for Payment settled, app/unknown")
+    ).toBeTruthy();
+  });
 });

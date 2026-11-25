@@ -4,7 +4,9 @@ import type { IntegrationUi } from "@wfgraph/plugins/ui";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import {
+  formatDuration,
   JsonPropertyInspector,
+  listDuration,
   OutputDisplay,
   runNodeEvidenceLabel,
 } from "#src/components/workflow/workflow-run-shared";
@@ -203,5 +205,26 @@ describe("JsonPropertyInspector", () => {
     fireEvent.click(view.getByRole("button", { name: /Customer.*1 field/ }));
 
     expect(view.container.innerHTML).not.toContain("run-disclosure");
+  });
+});
+
+describe("durations", () => {
+  it("rounds a duration to a unit a person compares", () => {
+    expect(formatDuration("0")).toBe("<1s");
+    expect(formatDuration("999")).toBe("<1s");
+    expect(formatDuration("1200")).toBe("1.2s");
+    expect(formatDuration("15090")).toBe("15s");
+    expect(formatDuration("192000")).toBe("3m 12s");
+    expect(formatDuration("7500000")).toBe("2h 5m");
+  });
+
+  it("keeps a duration that is not whole milliseconds as it was stored", () => {
+    expect(formatDuration("about a minute")).toBe("about a minute");
+  });
+
+  it("prints no duration in a list for anything under a second", () => {
+    expect(listDuration("22")).toBeNull();
+    expect(listDuration(null)).toBeNull();
+    expect(listDuration("1500")).toBe("1.5s");
   });
 });

@@ -173,12 +173,57 @@ export function runNodeEvidenceLabel(status: RunNodeEvidenceStatus): {
   return { text: nodeStatusLabel(status), tone: nodeStatusTone(status) };
 }
 
+/** How `formatDuration` reads any duration under one second. */
+const SUB_SECOND = "<1s";
+
+/**
+ * A recorded duration, in milliseconds as the engine stores it, rounded to a
+ * unit a person compares: "<1s", "4.2s", "15s", "3m 12s", "2h 5m". Text that
+ * is not a whole number of milliseconds is returned as it was stored.
+ */
 export function formatDuration(duration: string): string {
   if (!/^\d+$/.test(duration)) {
     return duration;
   }
   const ms = Number.parseInt(duration, 10);
-  return ms < 1000 ? `${duration}ms` : `${(ms / 1000).toFixed(2)}s`;
+  if (ms < 1000) {
+    return SUB_SECOND;
+  }
+  if (ms < 10_000) {
+    return `${(Math.floor(ms / 100) / 10).toFixed(1)}s`;
+  }
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ${seconds % 60}s`;
+  }
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/**
+ * The duration a list row prints, or null for one under a second. Most steps
+ * finish in milliseconds, so a list printing each of them repeats one value on
+ * every row; the run's header and a step's evidence still state it exactly.
+ */
+export function listDuration(duration: string | null): string | null {
+  if (duration === null) {
+    return null;
+  }
+  const text = formatDuration(duration);
+  return text === SUB_SECOND ? null : text;
+}
+
+/**
+ * The text class of a status word in a list row. A successful status reads in
+ * the muted foreground, because it is the normal case on most rows, and every
+ * other status keeps its signal color so the rows that need attention stand
+ * out. The dot beside the word keeps the color of every status.
+ */
+export function listStatusTextClass(tone: StatusTone): string {
+  return statusToneTextClass(tone === "success" ? "muted" : tone);
 }
 
 // Data helpers

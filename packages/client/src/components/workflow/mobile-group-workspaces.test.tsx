@@ -492,7 +492,7 @@ describe("mobile Runs Group drill-in", () => {
     const { view, store, search, inSheet, title, status, press, levels } =
       editor;
     await editor.openSheet();
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_f"));
 
     // Workflow: the Group card opens its run summary with member statuses.
     await editor.tapNode("outreach");
@@ -527,7 +527,7 @@ describe("mobile Runs Group drill-in", () => {
     expect(store.get(activeSelectionAtom).nodeIds).toEqual(["case_study"]);
 
     // The focused Group draws top to bottom beneath the sheets.
-    press("Back to Run #1");
+    press("Back to Run exec_f");
     await waitFor(() => expect(editor.sheet()?.dataset.level).toBe("summary"));
     await waitFor(() =>
       expect(editor.handleSides("welcome")).toEqual(["top", "bottom"])
@@ -555,7 +555,7 @@ describe("mobile Runs Group drill-in", () => {
     await waitFor(() =>
       expect(editor.scope()).toEqual({ kind: "group", groupId: "outreach" })
     );
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_f"));
     expect(
       inSheet().getByRole("button", { name: "Back to Initial outreach" })
     ).toBeTruthy();
@@ -580,14 +580,14 @@ describe("mobile Runs Group drill-in", () => {
     });
     const { view, search, title, press } = editor;
     await editor.openSheet();
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_f"));
     await editor.tapNode("outreach");
     await view.findByTestId("runs-group-summary");
     press(/Enter group/);
     await waitFor(() =>
       expect(editor.scope()).toEqual({ kind: "group", groupId: "outreach" })
     );
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_f"));
 
     press("Back to Initial outreach");
     await waitFor(() => expect(editor.sheet()).toBeNull());
@@ -616,7 +616,7 @@ describe("mobile Runs Group drill-in", () => {
       expect(editor.handleSides("welcome")).toEqual(["top", "bottom"])
     );
     // Forward carries the run's sheet into the Group, as Enter group does.
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_f"));
     expect(editor.levels()).toEqual(["summary:address"]);
     expectDraftUntouched(editor.store);
   });
@@ -657,13 +657,13 @@ describe("mobile Runs Group drill-in", () => {
     });
     const { view, search, title, status, press, levels } = editor;
     await editor.openSheet();
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_w"));
 
     await editor.tapNode("outreach");
     await view.findByTestId("runs-group-summary");
     expect(status()).toBe("Waiting");
-    press("Back to Run #1");
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    press("Back to Run exec_w");
+    await waitFor(() => expect(title()).toBe("Run exec_w"));
 
     // The journey entry names a step the overview hides inside the Group.
     press("Send welcome back, Waiting");
@@ -956,7 +956,7 @@ describe("mobile workspace switching inside Groups", () => {
 
     // Runs: the newest run's member evidence inside the Group.
     await switchTo("Show Runs");
-    await waitFor(() => expect(title()).toBe("Run #1"));
+    await waitFor(() => expect(title()).toBe("Run exec_f"));
     await editor.tapNode("outreach");
     await view.findByTestId("runs-group-summary");
     press("Send case study, Failed");

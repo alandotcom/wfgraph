@@ -1,11 +1,43 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render } from "@testing-library/react";
+import {
+  fireEvent,
+  render as renderWithoutCatalog,
+} from "@testing-library/react";
+import type { ReactElement } from "react";
 import type { WorkflowExecution } from "#src/lib/execution-logs";
+import { runShortId } from "#src/lib/workflow-run-labels";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { formatExactTime } from "@wfgraph/shared/utils/time";
 import {
   getRunIdentity,
   getRunOutcome,
   WorkflowRunSummaryRow,
 } from "./workflow-run-summary-row";
+
+const catalog: ExtensionCatalog = {
+  entities: [],
+  events: [
+    {
+      name: "appointment.updated",
+      label: "Appointment updated",
+      payloadFields: [],
+    },
+  ],
+  actions: [],
+  integrations: [],
+};
+
+/** Renders `ui` inside the catalog the run titles are read from. */
+function render(ui: ReactElement) {
+  return renderWithoutCatalog(ui, {
+    wrapper: ({ children }) => (
+      <ExtensionCatalogProvider value={catalog}>
+        {children}
+      </ExtensionCatalogProvider>
+    ),
+  });
+}
 
 const BASE_EXECUTION: WorkflowExecution = {
   cancelledAt: null,
@@ -13,7 +45,7 @@ const BASE_EXECUTION: WorkflowExecution = {
   entityValue: null,
   duration: "1200",
   error: null,
-  id: "exec_1",
+  id: "01a212fa-dd29-736c-9eb8-a0d40e3f6303",
   runMode: "test",
   versionKind: "published",
   versionNumber: 7,
@@ -29,20 +61,19 @@ const BASE_EXECUTION: WorkflowExecution = {
 };
 
 describe("WorkflowRunSummaryRow", () => {
-  it("uses the start event as the run identity and keeps the run number secondary", () => {
+  it("titles a run by its Event's label and keeps its short id secondary", () => {
     const onClick = vi.fn(() => undefined);
     const view = render(
       <WorkflowRunSummaryRow
         execution={{ ...BASE_EXECUTION, entityValue: "appt_42" }}
         onClick={onClick}
-        runNumber={12}
       />
     );
 
     const row = view.getByTestId("workflow-run-summary-row");
-    expect(view.getByText("appointment.updated")).toBeTruthy();
+    expect(view.getByText("Appointment updated")).toBeTruthy();
     expect(view.getByText("appt_42")).toBeTruthy();
-    expect(view.getByText(/Run #12/)).toBeTruthy();
+    expect(view.getByText(runShortId(BASE_EXECUTION.id))).toBeTruthy();
     expect(view.getByText("v7 · Test")).toBeTruthy();
 
     fireEvent.click(row);
@@ -67,7 +98,6 @@ describe("WorkflowRunSummaryRow", () => {
       <WorkflowRunSummaryRow
         execution={execution}
         receivedAtMs={receivedAtMs}
-        runNumber={2}
       />
     );
 
@@ -79,11 +109,7 @@ describe("WorkflowRunSummaryRow", () => {
     // Rows kept from an earlier answer have no arrival time to measure from,
     // so they keep their status word.
     view.rerender(
-      <WorkflowRunSummaryRow
-        execution={execution}
-        receivedAtMs={null}
-        runNumber={2}
-      />
+      <WorkflowRunSummaryRow execution={execution} receivedAtMs={null} />
     );
     expect(view.queryByText(/Unclaimed/)).toBeNull();
     expect(view.getByText("Running")).toBeTruthy();
@@ -99,7 +125,6 @@ describe("WorkflowRunSummaryRow", () => {
           versionKind: "draft_snapshot",
           versionNumber: null,
         }}
-        runNumber={3}
       />
     );
 
@@ -107,9 +132,7 @@ describe("WorkflowRunSummaryRow", () => {
   });
 
   it("shows no Draft label for a published-graph run", () => {
-    const view = render(
-      <WorkflowRunSummaryRow execution={BASE_EXECUTION} runNumber={3} />
-    );
+    const view = render(<WorkflowRunSummaryRow execution={BASE_EXECUTION} />);
 
     expect(view.queryByText("Draft")).toBeNull();
     expect(view.getByText("v7 · Test")).toBeTruthy();
@@ -123,7 +146,6 @@ describe("WorkflowRunSummaryRow", () => {
           versionKind: "draft_snapshot",
           versionNumber: null,
         }}
-        runNumber={3}
         variant="header"
       />
     );
@@ -136,7 +158,6 @@ describe("WorkflowRunSummaryRow", () => {
     const publishedView = render(
       <WorkflowRunSummaryRow
         execution={{ ...BASE_EXECUTION, runMode: "live" }}
-        runNumber={3}
         variant="header"
       />
     );
@@ -153,7 +174,7 @@ describe("WorkflowRunSummaryRow", () => {
           startEventName: null,
           startSource: "schedule",
         },
-        8
+        catalog
       ).title
     ).toBe("Scheduled run");
     expect(
@@ -163,7 +184,7 @@ describe("WorkflowRunSummaryRow", () => {
           startEventName: null,
           startSource: "manual",
         },
-        8
+        catalog
       ).title
     ).toBe("Manual run");
     expect(
@@ -174,7 +195,7 @@ describe("WorkflowRunSummaryRow", () => {
           startEventName: null,
           startSource: null,
         },
-        8
+        catalog
       ).title
     ).toBe("customer_7");
   });
@@ -189,9 +210,7 @@ describe("WorkflowRunSummaryRow", () => {
       scheduleDescription: "Every weekday at 9:00 AM (America/New_York)",
     };
 
-    const row = render(
-      <WorkflowRunSummaryRow execution={scheduled} runNumber={4} />
-    );
+    const row = render(<WorkflowRunSummaryRow execution={scheduled} />);
     expect(row.getByText("Scheduled run")).toBeTruthy();
     expect(
       row.getByText("Every weekday at 9:00 AM (America/New_York)")
@@ -199,11 +218,7 @@ describe("WorkflowRunSummaryRow", () => {
     row.unmount();
 
     const header = render(
-      <WorkflowRunSummaryRow
-        execution={scheduled}
-        runNumber={4}
-        variant="header"
-      />
+      <WorkflowRunSummaryRow execution={scheduled} variant="header" />
     );
     // One is the row's label and the other is the Source row's value.
     expect(header.getAllByText("Schedule")).toHaveLength(2);
@@ -215,9 +230,10 @@ describe("WorkflowRunSummaryRow", () => {
 
   it("labels the line beneath a run's title by what it names", () => {
     expect(
-      getRunIdentity({ ...BASE_EXECUTION, entityValue: "appt_42" }, 1)
+      getRunIdentity({ ...BASE_EXECUTION, entityValue: "appt_42" }, catalog)
     ).toEqual({
-      title: "appointment.updated",
+      title: "Appointment updated",
+      eventName: "appointment.updated",
       context: "appt_42",
       contextLabel: "Entity",
     });
@@ -230,10 +246,11 @@ describe("WorkflowRunSummaryRow", () => {
           startSource: "schedule",
           scheduleDescription: "Every day at 9:00 AM (UTC)",
         },
-        1
+        catalog
       )
     ).toEqual({
       title: "Scheduled run",
+      eventName: null,
       context: "Every day at 9:00 AM (UTC)",
       contextLabel: "Schedule",
     });
@@ -249,9 +266,9 @@ describe("WorkflowRunSummaryRow", () => {
           startSource: "schedule",
           scheduleDescription: null,
         },
-        8
+        catalog
       )
-    ).toEqual({ title: "Scheduled run", context: null });
+    ).toEqual({ title: "Scheduled run", eventName: null, context: null });
   });
 
   it("shows a scheduled run's slot beside its start only when the run started more than a minute late", () => {
@@ -261,17 +278,12 @@ describe("WorkflowRunSummaryRow", () => {
       startEventName: null,
       startSource: "schedule",
     };
-    const format = (value: Date) =>
-      value.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
+    const format = (value: Date) => formatExactTime(value);
     const slot = new Date("2026-02-22T09:00:00Z");
 
     const late = render(
       <WorkflowRunSummaryRow
         execution={{ ...scheduled, scheduledFor: slot }}
-        runNumber={3}
         variant="header"
       />
     );
@@ -289,7 +301,6 @@ describe("WorkflowRunSummaryRow", () => {
           scheduledFor: new Date("2026-02-22T09:59:30Z"),
           scheduleDescription: null,
         }}
-        runNumber={3}
         variant="header"
       />
     );
@@ -306,9 +317,9 @@ describe("WorkflowRunSummaryRow", () => {
           startEventName: null,
           startSource: "manual",
         },
-        8
+        catalog
       )
-    ).toEqual({ title: "Manual run", context: null });
+    ).toEqual({ title: "Manual run", eventName: null, context: null });
   });
 
   it("keeps a correlated workflow entity as the run title", () => {
@@ -320,9 +331,13 @@ describe("WorkflowRunSummaryRow", () => {
           startEventName: null,
           startSource: "manual",
         },
-        8
+        catalog
       )
-    ).toEqual({ title: "workflow:customer_7", context: null });
+    ).toEqual({
+      title: "workflow:customer_7",
+      eventName: null,
+      context: null,
+    });
   });
 
   it("describes terminal and active outcomes from the execution logs", () => {
@@ -344,7 +359,7 @@ describe("WorkflowRunSummaryRow", () => {
       getRunOutcome({ ...BASE_EXECUTION, status: "failed" }, [failedLog])
     ).toBe("Failed at Send confirmation");
     expect(getRunOutcome({ ...BASE_EXECUTION, status: "completed" }, [])).toBe(
-      "Completed in 1.20s"
+      "Completed in 1.2s"
     );
     expect(
       getRunOutcome({ ...BASE_EXECUTION, status: "running", duration: null }, [
@@ -386,7 +401,6 @@ describe("WorkflowRunSummaryRow", () => {
         }}
         onCancel={onCancel}
         outcome="Waiting at Hold until appointment"
-        runNumber={2}
         variant="header"
       />
     );
@@ -398,6 +412,51 @@ describe("WorkflowRunSummaryRow", () => {
     const cancelButton = view.getByRole("button", { name: "Cancel" });
     expect(cancelButton.className).not.toContain("w-full");
     fireEvent.click(cancelButton);
-    expect(onCancel).toHaveBeenCalledWith("exec_1");
+    expect(onCancel).toHaveBeenCalledWith(BASE_EXECUTION.id);
+  });
+
+  it("names a run by its short id in the list and the header", () => {
+    const row = render(<WorkflowRunSummaryRow execution={BASE_EXECUTION} />);
+    expect(row.getByText(runShortId(BASE_EXECUTION.id))).toBeTruthy();
+    row.unmount();
+
+    const header = render(
+      <WorkflowRunSummaryRow execution={BASE_EXECUTION} variant="header" />
+    );
+    expect(header.getByText("Run")).toBeTruthy();
+    expect(header.getByText(runShortId(BASE_EXECUTION.id))).toBeTruthy();
+  });
+
+  it("keeps the Event's machine name beside its label in the header", () => {
+    const header = render(
+      <WorkflowRunSummaryRow execution={BASE_EXECUTION} variant="header" />
+    );
+
+    expect(header.getByRole("heading").textContent).toBe("Appointment updated");
+    expect(header.getByText("appointment.updated")).toBeTruthy();
+  });
+
+  it("titles a run whose Event the catalog does not declare by its machine name", () => {
+    expect(
+      getRunIdentity(
+        { ...BASE_EXECUTION, startEventName: "billing/payment.settled" },
+        catalog
+      ).title
+    ).toBe("billing/payment.settled");
+  });
+
+  // Most runs finish in milliseconds, so the list prints no duration under a
+  // second; the success word reads muted so a failure stands out.
+  it("leaves out a sub-second duration and mutes a successful status in the list", () => {
+    const view = render(
+      <WorkflowRunSummaryRow
+        execution={{ ...BASE_EXECUTION, duration: "33" }}
+      />
+    );
+
+    expect(view.queryByText("<1s")).toBeNull();
+    expect(view.getByText("Completed").className).toContain(
+      "text-muted-foreground"
+    );
   });
 });

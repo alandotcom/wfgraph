@@ -257,3 +257,23 @@ export function runRecipientsLabel(runMode: "live" | "test"): string {
 export function runGraphRecipientsLabel(run: WorkflowRunGraphIdentity): string {
   return `${runGraphLabel(run)}${SEPARATOR}${runRecipientsLabel(run.runMode)}`;
 }
+
+/**
+ * How many characters from the end of a run's id identify it on screen.
+ *
+ * A run id is a 36-character UUIDv7. Its leading characters hold the
+ * millisecond it was minted in and repeat across every run started around the
+ * same time, so the last eight characters are the ones that tell two runs of
+ * one workflow apart.
+ */
+const RUN_ID_SUFFIX_LENGTH = 8;
+
+/**
+ * The identifier every Runs surface prints for a run: the run list row, the
+ * run's header, its summary and the status strip. It is cut from the run's own
+ * id, so it never changes with the rows a list shows, and the full id in the
+ * URL ends with it.
+ */
+export function runShortId(executionId: string): string {
+  return executionId.slice(-RUN_ID_SUFFIX_LENGTH);
+}

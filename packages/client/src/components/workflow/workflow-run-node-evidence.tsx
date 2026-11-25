@@ -3,6 +3,9 @@ import { isNotNil } from "es-toolkit/predicate";
 import { cn } from "@wfgraph/shared/utils";
 import { Button } from "#src/components/ui/button";
 import type { ExecutionLog } from "#src/lib/execution-logs";
+import { formatExactTime } from "@wfgraph/shared/utils/time";
+import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { RunNodeEvidence } from "#src/lib/run-node-evidence";
 import {
   finishedRetriesSummary,
@@ -15,19 +18,11 @@ import {
   CopyButton,
   formatDuration,
   JSON_PRE_CLASS,
-  nodeStatusLabel,
-  nodeStatusTone,
+  runNodeEvidenceLabel,
   statusToneTextClass,
   JsonWithLinks,
   OutputDisplay,
 } from "./workflow-run-shared";
-
-function formatTime(date: Date): string {
-  return date.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "medium",
-  });
-}
 
 /** A notice at the top of the evidence about what it can and cannot show. */
 function Notice({ children }: { children: string }) {
@@ -71,44 +66,48 @@ function Payload({
 
 function ExecutionList({
   executions,
+  statuses,
   shown,
   onChoose,
 }: {
   executions: readonly ExecutionLog[];
+  /** The status of each execution, in the order of `executions`. */
+  statuses: readonly RunNodeEvidenceStatus[];
   shown: ExecutionLog;
   onChoose: (logId: string) => void;
 }) {
   return (
     <ul aria-label="Executions" className="space-y-1">
-      {executions.map((execution, index) => (
-        <li key={execution.id}>
-          <button
-            aria-pressed={execution.id === shown.id}
-            className={cn(
-              "grid min-h-9 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border px-2 py-1 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
-              execution.id === shown.id && "border-foreground bg-muted/50"
-            )}
-            onClick={() => onChoose(execution.id)}
-            type="button"
-          >
-            <span className="font-medium text-sm">Execution {index + 1}</span>
-            <span className="flex items-baseline gap-2 text-xs">
-              <span
-                className={statusToneTextClass(
-                  nodeStatusTone(execution.status)
-                )}
-              >
-                {nodeStatusLabel(execution.status)}
-              </span>
-              {execution.duration ? (
-                <span className="font-mono text-muted-foreground tabular-nums">
-                  {formatDuration(execution.duration)}
+      {executions.map((execution, index) => {
+        const status = runNodeEvidenceLabel(
+          statuses[index] ?? execution.status
+        );
+        return (
+          <li key={execution.id}>
+            <button
+              aria-pressed={execution.id === shown.id}
+              className={cn(
+                "grid min-h-9 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border px-2 py-1 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+                execution.id === shown.id && "border-foreground bg-muted/50"
+              )}
+              onClick={() => onChoose(execution.id)}
+              type="button"
+            >
+              <span className="font-medium text-sm">Execution {index + 1}</span>
+              <span className="flex items-baseline gap-2 text-xs">
+                <span className={statusToneTextClass(status.tone)}>
+                  {status.text}
                 </span>
-              ) : null}
-            </span>
-          </button>
-        </li>
-      ))}
+                {execution.duration ? (
+                  <span className="font-mono text-muted-foreground tabular-nums">
+                    {formatDuration(execution.duration)}
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -134,7 +133,9 @@ export function WorkflowRunNodeEvidence({
   onChooseExecution: (logId: string) => void;
   onResume?: ((token: string) => void) | undefined;
 }) {
+  const catalog = useExtensionCatalog();
   const { shownExecution: shown, executions } = evidence;
+  const status = runNodeEvidenceLabel(evidence.status);
   const executionNumber = shown ? executions.indexOf(shown) + 1 : 0;
   const unfinished =
     shown !== null &&
@@ -185,30 +186,26 @@ export function WorkflowRunNodeEvidence({
                 executions={executions}
                 onChoose={onChooseExecution}
                 shown={shown}
+                statuses={evidence.executionStatuses}
               />
             ) : null}
             <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
               <dt className="text-muted-foreground text-xs leading-5">
                 Status
               </dt>
-              <dd
-                className={cn(
-                  "leading-5",
-                  statusToneTextClass(nodeStatusTone(shown.status))
-                )}
-              >
-                {nodeStatusLabel(shown.status)}
+              <dd className={cn("leading-5", statusToneTextClass(status.tone))}>
+                {status.text}
               </dd>
               <dt className="text-muted-foreground text-xs leading-5">
                 Started
               </dt>
-              <dd className="leading-5">{formatTime(shown.startedAt)}</dd>
+              <dd className="leading-5">{formatExactTime(shown.startedAt)}</dd>
               <dt className="text-muted-foreground text-xs leading-5">
                 Finished
               </dt>
               <dd className="leading-5">
                 {shown.completedAt
-                  ? formatTime(shown.completedAt)
+                  ? formatExactTime(shown.completedAt)
                   : "Not finished"}
               </dd>
               <dt className="text-muted-foreground text-xs leading-5">
@@ -248,7 +245,7 @@ export function WorkflowRunNodeEvidence({
               {evidence.cancellation ? (
                 <p className="text-muted-foreground text-xs">
                   {evidence.cancellation.message} ·{" "}
-                  {formatTime(evidence.cancellation.createdAt)}
+                  {formatExactTime(evidence.cancellation.createdAt)}
                 </p>
               ) : null}
             </Section>
@@ -271,7 +268,9 @@ export function WorkflowRunNodeEvidence({
         <Section title="Wait">
           {evidence.waits.map((wait) => (
             <div className="space-y-1.5" key={wait.id}>
-              <p className="break-words text-sm">{waitingSummary(wait)}</p>
+              <p className="break-words text-sm">
+                {waitingSummary(wait, catalog)}
+              </p>
               {wait.resumeToken && onResume ? (
                 <Button
                   disabled={isResuming}
@@ -298,7 +297,7 @@ export function WorkflowRunNodeEvidence({
               >
                 <span className="break-words text-sm">{event.message}</span>
                 <span className="text-muted-foreground text-xs">
-                  {formatTime(event.createdAt)}
+                  {formatExactTime(event.createdAt)}
                 </span>
               </li>
             ))}

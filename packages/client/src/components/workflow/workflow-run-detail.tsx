@@ -1,7 +1,7 @@
 import { Hourglass, XCircle } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { Fragment, type RefObject, useState } from "react";
-import { getRelativeTime } from "@wfgraph/shared/utils/time";
+import { formatExactTime, getRelativeTime } from "@wfgraph/shared/utils/time";
 import { useNowMs } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
 import {
@@ -25,7 +25,11 @@ import {
 import { orderedRunLogs } from "#src/lib/run-node-evidence";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
-import { findEntity } from "@wfgraph/shared/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  findEntity,
+} from "@wfgraph/shared/extensions/catalog";
+import { eventLabel } from "./config/lifecycle-policy-summary";
 import { getEntityConditionFields } from "#src/lib/upstream-node-fields";
 import { ConditionSummary } from "./config/condition-summary";
 import { CollapsibleSection } from "./workflow-run-shared";
@@ -39,7 +43,6 @@ import { WorkflowRunNodeIndex } from "./workflow-run-timeline";
 
 export type WorkflowRunDetailProps = {
   execution: WorkflowExecution;
-  runNumber: number;
   /** Why this run is no longer in the list behind it, when it has left. */
   notice?: string | undefined;
   logs: ExecutionLog[];
@@ -170,16 +173,21 @@ function exitSummary(input: {
     : `Exited before “${input.nodeLabel}” because the ${input.entityLabel} was no longer eligible.`;
 }
 
-/** One sentence naming what a parked wait is waiting for. */
-export function waitingSummary(wait: ExecutionWait): string {
+/**
+ * One sentence naming what a parked wait is waiting for, with each Event named
+ * by its label in `catalog`, as the canvas names an Event Split's outlets.
+ */
+export function waitingSummary(
+  wait: ExecutionWait,
+  catalog: ExtensionCatalog
+): string {
   if (wait.subscribedEvents.length > 0) {
-    return `Waiting for ${wait.subscribedEvents.join(", ")}`;
+    return `Waiting for ${wait.subscribedEvents
+      .map((name) => eventLabel(catalog, name))
+      .join(", ")}`;
   }
   if (wait.waitUntil) {
-    return `Waiting until ${wait.waitUntil.toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    })}`;
+    return `Waiting until ${formatExactTime(wait.waitUntil)}`;
   }
   return "Waiting on a timer";
 }
@@ -191,7 +199,6 @@ export function waitingSummary(wait: ExecutionWait): string {
  */
 export function WorkflowRunDetail({
   execution,
-  runNumber,
   notice,
   logs,
   events,
@@ -275,7 +282,6 @@ export function WorkflowRunDetail({
         isCanceling={isCanceling}
         onCancel={isRunInProgress(execution.status) ? onCancel : undefined}
         outcome={outcome}
-        runNumber={runNumber}
         variant="header"
       />
 
@@ -307,7 +313,9 @@ export function WorkflowRunDetail({
                     />
                     Waiting at {wait.nodeName}
                   </h3>
-                  <p className="break-words text-xs">{waitingSummary(wait)}</p>
+                  <p className="break-words text-xs">
+                    {waitingSummary(wait, catalog)}
+                  </p>
                   {wait.resumeToken && onResume ? (
                     <Button
                       disabled={isResuming}
@@ -357,10 +365,7 @@ export function WorkflowRunDetail({
                       Checked
                     </dt>
                     <dd className="text-sm leading-5">
-                      {exit.checkedAt.toLocaleString(undefined, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
+                      {formatExactTime(exit.checkedAt)}
                     </dd>
                   </dl>
                   {exitCondition ? (
@@ -394,9 +399,18 @@ export function WorkflowRunDetail({
                   aria-hidden="true"
                   className="size-3.5 shrink-0 text-destructive"
                 />
-                {failedLog
-                  ? `Failed at ${failedLog.nodeName || failedLog.nodeType}`
-                  : "Run failed"}
+                {failedLog ? (
+                  // The step the run stopped at, as a way into its evidence.
+                  <button
+                    className="rounded-sm text-left underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onSelectLog(failedLog)}
+                    type="button"
+                  >
+                    Failed at {failedLog.nodeName || failedLog.nodeType}
+                  </button>
+                ) : (
+                  "Run failed"
+                )}
               </h3>
               <p className="mt-1 break-words text-xs">
                 {failedLog?.error ?? execution.error}
@@ -409,6 +423,7 @@ export function WorkflowRunDetail({
               exit && exitNodeLabel ? { nodeLabel: exitNodeLabel } : undefined
             }
             focusLogId={focusLogId}
+            foldSuccessful={execution.status === "failed"}
             logs={sortedLogs}
             onFocusRestored={onFocusRestored}
             retryingNodeIds={retryingNodeIds}

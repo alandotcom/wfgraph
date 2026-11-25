@@ -4,39 +4,27 @@ import {
   pinnedRunModeLabel,
 } from "#src/components/workflow/workflow-status-strip";
 import { generateId } from "@wfgraph/shared/utils/id";
+import { formatExactTime } from "@wfgraph/shared/utils/time";
+import { runShortId } from "#src/lib/workflow-run-labels";
 
 describe("pinnedRunLabel", () => {
   // The ids this takes are what `generateId` produces: a 36-character UUIDv7,
   // whose leading characters repeat across runs minted around the same time.
   const runId = generateId();
 
-  it("shortens the run id to a fixed width and says when the run started", () => {
-    const label = pinnedRunLabel({
-      id: runId,
-      startedAt: new Date(2026, 7, 2, 14, 32),
-    });
+  it("names the run by its short id and its start in the exact time format", () => {
+    const startedAt = new Date(2026, 7, 2, 14, 32);
 
-    expect(label).toBe(`${runId.slice(-8)} · 02 Aug, 14:32`);
-  });
-
-  it("holds its width across ids and dates, so the row cannot reflow", () => {
-    const first = pinnedRunLabel({
-      id: generateId(),
-      startedAt: new Date(2026, 7, 2, 14, 32),
-    });
-    const second = pinnedRunLabel({
-      id: generateId(),
-      startedAt: new Date(2026, 10, 30, 9, 5),
-    });
-
-    expect(second.length).toBe(first.length);
+    expect(pinnedRunLabel({ id: runId, startedAt })).toBe(
+      `${runShortId(runId)} · ${formatExactTime(startedAt)}`
+    );
   });
 
   it("names the run alone when the payload's timestamp will not parse", () => {
-    // `startedAt` crosses the wire as a plain string. Printing the parts of an
-    // invalid date would put "NaN undefined, NaN:NaN" in the strip.
+    // `startedAt` crosses the wire as a plain string, and printing an invalid
+    // date would put "Invalid Date" in the strip.
     expect(pinnedRunLabel({ id: runId, startedAt: null })).toBe(
-      runId.slice(-8)
+      runShortId(runId)
     );
   });
 

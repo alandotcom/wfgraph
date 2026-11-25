@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -90,9 +91,13 @@ async function renderWorkflowsPage() {
   });
   await router.load();
   const view = render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
+    <ExtensionCatalogProvider
+      value={{ entities: [], events: [], actions: [], integrations: [] }}
+    >
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </ExtensionCatalogProvider>
   );
   return { view, queryClient, router };
 }

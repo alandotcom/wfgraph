@@ -37,7 +37,7 @@ export function WorkflowRunsList({
 
   return (
     <div>
-      {executions.map((execution, index) => (
+      {executions.map((execution) => (
         <div
           key={execution.id}
           ref={(element) => {
@@ -52,7 +52,6 @@ export function WorkflowRunsList({
             execution={execution}
             onClick={() => onSelect(execution.id)}
             receivedAtMs={receivedAtMs}
-            runNumber={executions.length - index}
           />
         </div>
       ))}

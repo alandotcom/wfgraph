@@ -20,7 +20,6 @@ import { WorkflowRunDetail } from "#src/components/workflow/workflow-run-detail"
 import { WorkflowRunNodeEvidence } from "#src/components/workflow/workflow-run-node-evidence";
 import {
   groupRunStatusTone,
-  type NodeStatus,
   runNodeEvidenceLabel,
   runStatusLabel,
   runStatusTone,
@@ -43,6 +42,7 @@ import {
   workspaceRouteSearch,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
+import { runShortId } from "#src/lib/workflow-run-labels";
 import {
   activeWorkspaceAddressAtom,
   clearRunNodeInspectionAtom,
@@ -52,6 +52,7 @@ import {
 import {
   type GroupRunStatus,
   groupRunStatusLabel,
+  type RunNodeEvidenceStatus,
 } from "@wfgraph/shared/graph/group-run-status";
 import { RevealHeader, type RevealHeaderModel } from "./reveal-header";
 import { RunsGroupSummary } from "./runs-group-summary";
@@ -78,13 +79,13 @@ const RUNS_FOCUS_TOGGLE_TEXT = {
  */
 type RunsHeaderTarget =
   | { kind: "run" }
-  | { kind: "node"; title: string; status: NodeStatus | null }
+  | { kind: "node"; title: string; status: RunNodeEvidenceStatus }
   | { kind: "group"; title: string; status: GroupRunStatus };
 
 /**
  * The Runs header model. The run list names the workflow and Runs with no
- * Back. A run is titled by its number in the run list, or "Run" once it has
- * left the list, and carries its status and Back. A node or Group target adds
+ * Back. A run is titled by `runShortId`, the identifier every Runs surface
+ * prints for it, and carries its status and Back. A node or Group target adds
  * itself to the path and is titled by its name. A node carries the shown
  * execution's status, or "Not run" for a node with no execution, and a Group
  * carries its run status.
@@ -122,8 +123,8 @@ function runsHeaderModel(input: {
   if (openRun.kind === "run-unavailable") {
     return runHeader("Run unavailable", null);
   }
-  const { execution, runNumber } = openRun;
-  const run = runHeader(runNumber > 0 ? `Run #${runNumber}` : "Run", {
+  const { execution } = openRun;
+  const run = runHeader(`Run ${runShortId(execution.id)}`, {
     text: runStatusLabel(execution.status),
     tone: runStatusTone(execution.status),
   });
@@ -140,7 +141,7 @@ function runsHeaderModel(input: {
             text: groupRunStatusLabel(target.status),
             tone: groupRunStatusTone(target.status),
           }
-        : runNodeEvidenceLabel(target.status ?? "none"),
+        : runNodeEvidenceLabel(target.status),
   };
 }
 
@@ -175,7 +176,7 @@ function useRunsHeaderModel(
       ? {
           kind: "node",
           title: evidence.title,
-          status: evidence.shownExecution?.status ?? null,
+          status: evidence.status,
         }
       : groupSummary !== null
         ? {

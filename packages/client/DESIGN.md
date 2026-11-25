@@ -421,10 +421,15 @@ Cancellation Failures, a muted line naming the host's run retention window when
 the host deletes old runs, and the run rows. The All Runs list on the workflows
 page states the same window under its title. Selecting a run adds a browser history
 entry and puts the graph version the run pinned on the canvas. The header then
-titles the run by its list number, shows its status, and offers **Back**.
+titles the run by its short id, shows its status, and offers **Back**. The short
+id is the last eight characters of the run's id, and the run's row, its summary
+and the status strip print the same one. A run's row and summary are titled by
+the label of the Event that started it.
 Browse holds the run's start identity, outcome, timing, and entity, then its
 active waits with **Resume now**, **Cancel**, exit details, the failure summary,
-the node journey, and activity. **Back** and Escape on a run replace the history
+the node journey, and activity. In a failed run the journey folds each stretch
+of three or more successful steps into one row, so the failed step stays in
+view. **Back** and Escape on a run replace the history
 entry with the run list and put focus on that run's row, or on the header title
 when the list shows no row for it. A run past the newest 50, or one that leaves
 the list, keeps its view and says why it is not listed. Each run list remembers
@@ -616,7 +621,9 @@ split button's face is **Run draft**, which always sends to test recipients. Its
 menu holds the run of the published version, labelled with that version number
 and the Published mode. Below `md` the workspace control, both run commands and
 **Publish** collapse into one overflow menu, each disabled for the reason its
-desktop control is disabled. **Configuration** stays beside that menu as an icon
+desktop control is disabled. In Runs and Changes, disabled Run and Publish
+controls say "Switch to Draft to run." or "Switch to Draft to publish." in a
+tooltip, and their menu rows say it in a detail line. **Configuration** stays beside that menu as an icon
 button, because Canvas Reveal is absent at that width. In Draft it opens the
 selected object's summary sheet, and in Runs the sheet of the run list or the run.
 

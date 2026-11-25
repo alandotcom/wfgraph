@@ -4,6 +4,7 @@ import {
   formatClockTimeWithSeconds,
   formatDayAndTime,
   getCompactRelativeTime,
+  formatExactTime,
 } from "#src/utils/time";
 
 describe("getCompactRelativeTime", () => {
@@ -53,20 +54,27 @@ describe("formatClockTimeWithSeconds", () => {
   });
 });
 
-describe("formatDayAndTime", () => {
-  it("names the day, the month and the time", () => {
-    expect(formatDayAndTime(new Date(2026, 7, 12, 14, 32))).toBe(
-      "12 Aug, 14:32"
+describe("formatExactTime", () => {
+  const now = new Date(2026, 10, 25, 9, 0);
+
+  it("leaves the year out for an instant in the current year", () => {
+    const text = formatExactTime(new Date(2026, 10, 23, 13, 5), now);
+
+    expect(text).toContain("23");
+    expect(text).not.toContain("2026");
+  });
+
+  it("names the year for an instant in another year", () => {
+    expect(formatExactTime(new Date(2025, 10, 23, 13, 5), now)).toContain(
+      "2025"
     );
   });
 
-  it("pads the day, so the string holds one width all month", () => {
-    // It sits in a fixed-height strip beside a monospaced run id; an unpadded
-    // day would move everything after it by a character on nine days in ten.
-    const first = formatDayAndTime(new Date(2026, 0, 1, 23, 59));
-    const later = formatDayAndTime(new Date(2026, 0, 31, 23, 59));
+  it("reads to the minute, with no seconds", () => {
+    const withSeconds = formatExactTime(new Date(2026, 10, 23, 13, 5, 42), now);
 
-    expect(first).toBe("01 Jan, 23:59");
-    expect(later.length).toBe(first.length);
+    expect(withSeconds).toBe(
+      formatExactTime(new Date(2026, 10, 23, 13, 5, 0), now)
+    );
   });
 });

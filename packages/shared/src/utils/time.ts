@@ -2,6 +2,10 @@ function formatTimeDifference(value: number, unit: string): string {
   return `${value} ${unit}${value === 1 ? "" : "s"} ago`;
 }
 
+/**
+ * How long ago `date` was, as "3 hours ago". This is the compact form every
+ * list prints a time in, beside `formatExactTime` for a property value.
+ */
 export function getRelativeTime(date: string | Date): string {
   const now = new Date();
   const past = new Date(date);
@@ -84,21 +88,6 @@ export function getCompactRelativeTime(
   return `${Math.floor(diffInDays / 365)}y`;
 }
 
-const MONTH_NAMES = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-
 function twoDigits(value: number): string {
   return value.toString().padStart(2, "0");
 }
@@ -125,13 +114,16 @@ export function formatClockTimeWithSeconds(date: Date): string {
 }
 
 /**
- * The same clock reading with the day it fell on, as `12 Aug, 14:32`.
- *
- * The day is padded for the same reason the clock is: this string sits in a
- * fixed-height strip beside a monospaced run id, and an unpadded day would move
- * everything after it by a character on nine days in ten.
+ * An instant as the one exact form the editor prints in a property value, in
+ * the viewer's locale and timezone, as "Nov 23, 1:05 PM". The year appears
+ * when it differs from the year of `now`, as "Nov 23, 2025, 1:05 PM".
  */
-export function formatDayAndTime(date: Date): string {
-  const month = MONTH_NAMES[date.getMonth()];
-  return `${twoDigits(date.getDate())} ${month}, ${formatClockTime(date)}`;
+export function formatExactTime(date: Date, now: Date = new Date()): string {
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }

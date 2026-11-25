@@ -62,8 +62,8 @@ export type OpenRun = Omit<
 
 /**
  * Which run the route opens, as far as the reads know it. `run` carries the
- * execution from the run list, or from its logs once it has left the list, its
- * number in the list, which is 0 for a run the list does not hold, the logs,
+ * execution from the run list, or from its logs once it has left the list,
+ * whether the list holds it, the logs,
  * waits, events and executor schedule read so far, and whether its pinned
  * graph is on the canvas.
  */
@@ -73,7 +73,6 @@ export type OpenRunIdentity =
   | {
       kind: "run";
       execution: WorkflowExecution;
-      runNumber: number;
       listed: boolean;
       logs: ExecutionLog[];
       waits: ExecutionWait[];
@@ -187,12 +186,10 @@ function useRunReads(): RunReads {
   });
 
   const executions = executionsQuery.data?.executions ?? [];
-  const listedIndex =
-    executionId === undefined
-      ? -1
-      : executions.findIndex((execution) => execution.id === executionId);
   const listedRun: WorkflowExecution | undefined =
-    listedIndex >= 0 ? executions[listedIndex] : undefined;
+    executionId === undefined
+      ? undefined
+      : executions.find((execution) => execution.id === executionId);
 
   // The list is already polling, so its status controls whether the logs still
   // have active work to learn about. A run that has left the list reports no
@@ -260,7 +257,6 @@ function useRunReads(): RunReads {
     return {
       kind: "run",
       execution,
-      runNumber: listedIndex >= 0 ? executions.length - listedIndex : 0,
       listed: listedRun !== undefined,
       logs: detailQuery.data?.logs ?? [],
       waits: detailQuery.data?.waits ?? [],
@@ -385,7 +381,6 @@ export function useWorkflowRuns(): WorkflowRunsState {
       pinnedGraph: identity.pinnedGraph,
       run: {
         execution,
-        runNumber: identity.runNumber,
         notice: identity.listed ? undefined : LEFT_THE_LIST_NOTICE,
         logs: identity.logs,
         events: identity.events,

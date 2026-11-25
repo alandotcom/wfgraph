@@ -26,6 +26,7 @@ import { cn } from "@wfgraph/shared/utils";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { formatExactTime } from "@wfgraph/shared/utils/time";
 
 type WorkflowComparisonActions = ReturnType<
   typeof useWorkflowComparisonActions
@@ -161,7 +162,7 @@ export function WorkflowVersionHistory({
                   <span className="text-right text-muted-foreground text-xs">
                     {item.isCurrent ? "Current" : ""}
                     {item.isCurrent ? " · " : ""}
-                    {new Date(item.publishedAt).toLocaleString()}
+                    {formatExactTime(new Date(item.publishedAt))}
                   </span>
                 </button>
               ))}

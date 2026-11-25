@@ -3,7 +3,12 @@ import { useRef } from "react";
 import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
-import { getRelativeTime } from "@wfgraph/shared/utils/time";
+import { formatExactTime, getRelativeTime } from "@wfgraph/shared/utils/time";
+import {
+  type ExtensionCatalog,
+  findEvent,
+} from "@wfgraph/shared/extensions/catalog";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { workflowEntityValue } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
   type ExecutionLog,
@@ -14,9 +19,12 @@ import {
   runGraphLabel,
   runGraphRecipientsLabel,
   runRecipientsLabel,
+  runShortId,
 } from "#src/lib/workflow-run-labels";
 import {
   formatDuration,
+  listDuration,
+  listStatusTextClass,
   runStatusLabel,
   runStatusTone,
   statusToneDotClass,
@@ -26,7 +34,6 @@ import { useListActivityLabel } from "./use-list-activity-label";
 
 type WorkflowRunSummaryRowProps = {
   execution: WorkflowExecution;
-  runNumber: number;
   variant?: "list" | "header" | undefined;
   outcome?: string | undefined;
   onClick?: (() => void) | undefined;
@@ -42,16 +49,19 @@ type WorkflowRunSummaryRowProps = {
 };
 
 /**
- * A run's title, and the line beneath it with the label the overview gives
- * that line. A run with no line beneath its title has no label either.
+ * A run's title, the line beneath it with the label the overview gives that
+ * line, and the machine name of the Event that started it when the title is
+ * that Event's label. A run with no line beneath its title has no label either.
  */
-type RunIdentity =
+type RunIdentity = { eventName: string | null } & (
   | { title: string; context: null }
-  | { title: string; context: string; contextLabel: "Entity" | "Schedule" };
+  | { title: string; context: string; contextLabel: "Entity" | "Schedule" }
+);
 
 /** The fields of a run its identity is read from. */
 type RunIdentitySource = Pick<
   WorkflowExecution,
+  | "id"
   | "startEventName"
   | "entityValue"
   | "startSource"
@@ -60,23 +70,37 @@ type RunIdentitySource = Pick<
 >;
 
 /**
- * The run's title and the line beneath it. A scheduled run carries no payload
- * and its Entity Value is the workflow's own (`workflow:<id>`), so it is
- * titled by its source, with the schedule that started it beneath.
- * `runNumber` titles a run nothing else names.
+ * The run's title and the line beneath it. A run an Event started is titled
+ * by the Event's label in `catalog`, the words the Lifecycle editors use for
+ * it, and keeps the Event's machine name as `eventName`. A scheduled run
+ * carries no payload and its Entity Value is the workflow's own
+ * (`workflow:<id>`), so it is titled by its source, with the schedule that
+ * started it beneath. A run nothing else names is titled by `runShortId`.
  */
 export function getRunIdentity(
   execution: RunIdentitySource,
-  runNumber: number
+  catalog: ExtensionCatalog
 ): RunIdentity {
   const eventName = execution.startEventName?.trim();
   const entity = execution.entityValue?.trim();
 
   if (eventName) {
+    const label = findEvent(catalog, eventName)?.label ?? eventName;
+    const named = { title: label, eventName };
     return entity
-      ? { title: eventName, context: entity, contextLabel: "Entity" }
-      : { title: eventName, context: null };
+      ? { ...named, context: entity, contextLabel: "Entity" }
+      : { ...named, context: null };
   }
+  return { eventName: null, ...unnamedRunIdentity(execution, entity) };
+}
+
+/** The title of a run no Event started, and the line beneath it. */
+function unnamedRunIdentity(
+  execution: RunIdentitySource,
+  entity: string | undefined
+):
+  | { title: string; context: null }
+  | { title: string; context: string; contextLabel: "Schedule" } {
   if (execution.startSource === "schedule") {
     return execution.scheduleDescription === null
       ? { title: "Scheduled run", context: null }
@@ -98,7 +122,7 @@ export function getRunIdentity(
   if (execution.startSource === "manual") {
     return { title: "Manual run", context: null };
   }
-  return { title: `Run #${runNumber}`, context: null };
+  return { title: `Run ${runShortId(execution.id)}`, context: null };
 }
 
 function relevantLog(logs: ExecutionLog[], status: ExecutionLog["status"]) {
@@ -171,14 +195,13 @@ export function getRunOutcome(
 
 function ListSummary({
   execution,
-  runNumber,
   receivedAtMs,
 }: {
   execution: WorkflowExecution;
-  runNumber: number;
   receivedAtMs: number | null;
 }) {
-  const identity = getRunIdentity(execution, runNumber);
+  const identity = getRunIdentity(execution, useExtensionCatalog());
+  const duration = listDuration(execution.duration);
   // What the executor is doing about the run, said in place of the status word.
   const activityLabel = useListActivityLabel(execution.activity, receivedAtMs);
 
@@ -207,10 +230,10 @@ function ListSummary({
           </p>
         ) : null}
         <p className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-muted-foreground text-xs">
-          <span>Run #{runNumber}</span>
+          <span className="font-mono">{runShortId(execution.id)}</span>
           <span aria-hidden="true">·</span>
           <span
-            className={statusToneTextClass(
+            className={listStatusTextClass(
               activityLabel?.warns === true
                 ? "warning"
                 : runStatusTone(execution.status)
@@ -220,14 +243,12 @@ function ListSummary({
           </span>
           <span aria-hidden="true">·</span>
           <span>{runGraphRecipientsLabel(execution)}</span>
-          {execution.duration ? (
+          {duration === null ? null : (
             <>
               <span aria-hidden="true">·</span>
-              <span className="font-mono tabular-nums">
-                {formatDuration(execution.duration)}
-              </span>
+              <span className="font-mono tabular-nums">{duration}</span>
             </>
-          ) : null}
+          )}
         </p>
       </div>
     </div>
@@ -255,14 +276,6 @@ function lateScheduledSlot(execution: WorkflowExecution): Date | null {
     : null;
 }
 
-/** A date and time in the reader's locale, as the overview prints each one. */
-function formatOverviewTime(value: Date): string {
-  return value.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
-
 function MetadataRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2 text-xs">
@@ -274,20 +287,18 @@ function MetadataRow({ label, value }: { label: string; value: string }) {
 
 function HeaderSummary({
   execution,
-  runNumber,
   outcome,
   onCancel,
   isCanceling = false,
   focusOnMount = false,
 }: {
   execution: WorkflowExecution;
-  runNumber: number;
   outcome?: string | undefined;
   onCancel?: ((executionId: string) => void) | undefined;
   isCanceling?: boolean | undefined;
   focusOnMount?: boolean | undefined;
 }) {
-  const identity = getRunIdentity(execution, runNumber);
+  const identity = getRunIdentity(execution, useExtensionCatalog());
   const lateSlot = lateScheduledSlot(execution);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -344,11 +355,15 @@ function HeaderSummary({
           <MetadataRow label={identity.contextLabel} value={identity.context} />
         )}
         {lateSlot ? (
-          <MetadataRow label="Scheduled" value={formatOverviewTime(lateSlot)} />
+          <MetadataRow label="Scheduled" value={formatExactTime(lateSlot)} />
         ) : null}
+        {identity.eventName === null ||
+        identity.eventName === identity.title ? null : (
+          <MetadataRow label="Event" value={identity.eventName} />
+        )}
         <MetadataRow
           label="Started"
-          value={formatOverviewTime(execution.startedAt)}
+          value={formatExactTime(execution.startedAt)}
         />
         <MetadataRow
           label="Graph"
@@ -358,10 +373,7 @@ function HeaderSummary({
           label="Recipients"
           value={runRecipientsLabel(execution.runMode)}
         />
-        <MetadataRow
-          label="Run"
-          value={runNumber > 0 ? `#${runNumber}` : execution.id}
-        />
+        <MetadataRow label="Run" value={runShortId(execution.id)} />
         {execution.startSource ? (
           <MetadataRow
             label="Source"
@@ -378,7 +390,6 @@ function HeaderSummary({
 
 export function WorkflowRunSummaryRow({
   execution,
-  runNumber,
   variant = "list",
   outcome,
   onClick,
@@ -396,7 +407,6 @@ export function WorkflowRunSummaryRow({
           focusOnMount={focusOnMount}
           onCancel={onCancel}
           outcome={outcome}
-          runNumber={runNumber}
         />
       </div>
     );
@@ -409,11 +419,7 @@ export function WorkflowRunSummaryRow({
       onClick={onClick}
       type="button"
     >
-      <ListSummary
-        execution={execution}
-        receivedAtMs={receivedAtMs}
-        runNumber={runNumber}
-      />
+      <ListSummary execution={execution} receivedAtMs={receivedAtMs} />
     </button>
   );
 }

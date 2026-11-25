@@ -60,6 +60,7 @@ import {
   publishedModeChoice,
   publishedModeWord,
   runGraphRecipientsLabel,
+  runShortId,
   type WorkflowRunGraphIdentity,
 } from "#src/lib/workflow-run-labels";
 import {
@@ -76,27 +77,15 @@ import {
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
 import { cn } from "@wfgraph/shared/utils";
-import { formatDayAndTime } from "@wfgraph/shared/utils/time";
-
-/**
- * How many characters from the end of a run's id identify it on screen.
- *
- * A run id is a 36-character UUIDv7, which no strip has room for. Its leading
- * characters hold the millisecond it was minted in and repeat across every run
- * started around the same time, so the last eight characters are the ones that
- * tell two runs of one workflow apart. Eight is also a fixed width in a line
- * that must not reflow, and the whole id is on the element's title for anyone
- * who needs to quote it.
- */
-const RUN_ID_SUFFIX_LENGTH = 8;
+import { formatExactTime } from "@wfgraph/shared/utils/time";
 
 /**
  * Which run is on the canvas and when it started, as one string.
  *
  * Empty while the run's payload is still in flight, and empty again if the
  * payload carried a timestamp that will not parse: `startedAt` crosses the wire
- * as a plain string, and a strip reading "NaN undefined, NaN:NaN" is worse than
- * one that names no time at all.
+ * as a plain string, and a strip reading "Invalid Date" is worse than one that
+ * names no time at all.
  */
 export function pinnedRunLabel(
   run: { id: string; startedAt: Date | null } | undefined
@@ -105,9 +94,9 @@ export function pinnedRunLabel(
     return "";
   }
   if (!run.startedAt) {
-    return run.id.slice(-RUN_ID_SUFFIX_LENGTH);
+    return runShortId(run.id);
   }
-  return `${run.id.slice(-RUN_ID_SUFFIX_LENGTH)} · ${formatDayAndTime(run.startedAt)}`;
+  return `${runShortId(run.id)} · ${formatExactTime(run.startedAt)}`;
 }
 
 /**

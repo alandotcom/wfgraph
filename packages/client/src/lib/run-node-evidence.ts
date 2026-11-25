@@ -168,6 +168,14 @@ export type RunNodeEvidence = {
   executions: readonly ExecutionLog[];
   /** The execution shown, or null for a node that never ran. */
   shownExecution: ExecutionLog | null;
+  /**
+   * The status of each entry of `executions`, in the same order, as the
+   * canvas chip reads it: an unfinished execution the run is parked on is
+   * `waiting`, and one with a step that will run again is `retrying`.
+   */
+  executionStatuses: readonly RunNodeEvidenceStatus[];
+  /** The status of `shownExecution` in those words, or `none` for no execution. */
+  status: RunNodeEvidenceStatus;
   pinnedGraph: PinnedGraphState;
   /** Whether the pinned graph is on the canvas and does not hold the node. */
   removed: boolean;
@@ -212,18 +220,31 @@ export function buildRunNodeEvidence(input: {
   });
   const node = nodes.find((item) => item.id === nodeId);
   const inProgress = isRunInProgress(execution.status);
+  const waits = inProgress
+    ? input.waits.filter((wait) => wait.nodeId === nodeId)
+    : [];
+  const retry = inProgress ? nodeRetryOf(nodeId, input.schedule) : null;
+  // The same reading `RunStatusProjection` gives the canvas, so the evidence
+  // and the node's chip name one status.
+  const statusOf = (log: ExecutionLog): RunNodeEvidenceStatus =>
+    runNodeEvidenceStatuses({
+      executionStatus: execution.status,
+      nodeStatuses: [{ nodeId, status: log.status }],
+      parkedNodeIds: waits.length > 0 ? [nodeId] : [],
+      retryingNodeIds: retry === null ? [] : [nodeId],
+    })[0]?.status ?? log.status;
   return {
     nodeId,
     title: runNodeTitle({ nodeId, nodes, logs }),
     nodeType: executions.at(-1)?.nodeType ?? node?.data.type ?? "action",
     executions,
     shownExecution: shown,
+    executionStatuses: executions.map(statusOf),
+    status: shown === null ? "none" : statusOf(shown),
     pinnedGraph: input.pinnedGraph,
     removed: input.pinnedGraph === "ready" && node === undefined,
     config: node?.data.config ?? null,
-    waits: inProgress
-      ? input.waits.filter((wait) => wait.nodeId === nodeId)
-      : [],
+    waits,
     activity: sortBy(
       input.events.filter((event) => eventNodeId(event) === nodeId),
       [(event) => event.createdAt.getTime()]
@@ -234,7 +255,7 @@ export function buildRunNodeEvidence(input: {
             (event) => event.eventType === "run_cancelled"
           ) ?? null)
         : null,
-    retry: inProgress ? nodeRetryOf(nodeId, input.schedule) : null,
+    retry,
     inProgress,
   };
 }
