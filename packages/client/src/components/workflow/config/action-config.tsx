@@ -1,7 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import { HelpCircle } from "lucide-react";
-import { type ReactNode, useCallback, useMemo } from "react";
+import { ChevronRight, HelpCircle } from "lucide-react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "#src/components/ui/collapsible";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { Input } from "#src/components/ui/input";
 import { IntegrationSelector } from "#src/components/ui/integration-selector";
@@ -231,6 +236,33 @@ function EventSplitFields() {
   );
 }
 
+/**
+ * "More options" over the settings a Wait rarely needs. Closed until one of
+ * them is set (`set`), and then open; a press opens or closes it for as long
+ * as the form shows.
+ */
+function MoreOptions({ set, children }: { set: boolean; children: ReactNode }) {
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const open = chosen ?? set;
+  return (
+    <Collapsible onOpenChange={setChosen} open={open}>
+      <CollapsibleTrigger className="flex items-center gap-1 rounded-sm text-muted-foreground text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <ChevronRight
+          aria-hidden
+          className={cn(
+            "size-3 transition-transform duration-150",
+            open && "rotate-90"
+          )}
+        />
+        More options
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-3 pt-3">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 type WaitFieldProps = {
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
@@ -360,6 +392,13 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
     "off"
   );
   const isWindowEnabled = allowedHoursMode === "daily_window";
+  // Each option a delay Wait rarely needs, set away from its default.
+  const timezone = readConfigString(config, "waitTimezone") ?? "";
+  const optionsSet =
+    delayTimingMode !== "duration" ||
+    waitGateMode !== "off" ||
+    allowedHoursMode !== "off" ||
+    (!isBlank(timezone) && timezone !== "UTC");
 
   // Switching timing drops the fields the timing being left owned, so a run
   // never reads a stale duration next to a freshly chosen target date.
@@ -389,33 +428,6 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           Choose how this step gets its scheduled time. Changing the Time source
           clears settings used only by the previous source.
         </ConfigHelp>
-      </div>
-
-      <div className="space-y-2">
-        <WaitFieldLabel
-          htmlFor="waitDelayTimingMode"
-          label={WAIT_FIELD_LABELS.waitDelayTimingMode}
-        >
-          Choose a duration from when the run reaches this step, or a specific
-          date and time.
-        </WaitFieldLabel>
-        <Select
-          disabled={disabled}
-          items={WAIT_DELAY_TIMING_OPTIONS}
-          onValueChange={whenChosen(handleDelayTimingModeChange)}
-          value={delayTimingMode}
-        >
-          <SelectTrigger className="w-full" id="waitDelayTimingMode">
-            <SelectValue placeholder="Choose a time source" />
-          </SelectTrigger>
-          <SelectContent>
-            {WAIT_DELAY_TIMING_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       {delayTimingMode === "duration" ? (
@@ -464,139 +476,174 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         </>
       )}
 
-      <div className="space-y-2">
-        <WaitFieldLabel
-          htmlFor="waitGateMode"
-          label={WAIT_FIELD_LABELS.waitGateMode}
-        >
-          {waitGateHelp}
-        </WaitFieldLabel>
-        <Select
-          disabled={disabled}
-          items={WAIT_GATE_OPTIONS}
-          onValueChange={whenChosen(handleGateModeChange)}
-          value={waitGateMode}
-        >
-          <SelectTrigger className="w-full" id="waitGateMode">
-            <SelectValue placeholder="Select behavior" />
-          </SelectTrigger>
-          <SelectContent>
-            {WAIT_GATE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {waitGateMode === "max_lateness" ? (
+      <MoreOptions set={optionsSet}>
         <div className="space-y-2">
           <WaitFieldLabel
-            htmlFor="waitMaxLateness"
-            id="waitMaxLateness-label"
-            label={WAIT_FIELD_LABELS.waitMaxLateness}
+            htmlFor="waitDelayTimingMode"
+            label={WAIT_FIELD_LABELS.waitDelayTimingMode}
           >
-            Enter the maximum delay, such as 30m or 6h. This limit is checked
-            before Allowed hours adjust the scheduled time.
+            Choose a duration from when the run reaches this step, or a specific
+            date and time.
           </WaitFieldLabel>
-          <TemplateBadgeInput
+          <Select
             disabled={disabled}
-            fieldType={WAIT_VALUE_TARGETS.waitMaxLateness.type}
-            id="waitMaxLateness"
-            labelledBy="waitMaxLateness-label"
-            onChange={(value) => onUpdateConfig({ waitMaxLateness: value })}
-            placeholder="30m, 6h, or P1D"
-            value={configuredWaitMaxLateness}
+            items={WAIT_DELAY_TIMING_OPTIONS}
+            onValueChange={whenChosen(handleDelayTimingModeChange)}
+            value={delayTimingMode}
+          >
+            <SelectTrigger className="w-full" id="waitDelayTimingMode">
+              <SelectValue placeholder="Choose a time source" />
+            </SelectTrigger>
+            <SelectContent>
+              {WAIT_DELAY_TIMING_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <WaitFieldLabel
+            htmlFor="waitGateMode"
+            label={WAIT_FIELD_LABELS.waitGateMode}
+          >
+            {waitGateHelp}
+          </WaitFieldLabel>
+          <Select
+            disabled={disabled}
+            items={WAIT_GATE_OPTIONS}
+            onValueChange={whenChosen(handleGateModeChange)}
+            value={waitGateMode}
+          >
+            <SelectTrigger className="w-full" id="waitGateMode">
+              <SelectValue placeholder="Select behavior" />
+            </SelectTrigger>
+            <SelectContent>
+              {WAIT_GATE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {waitGateMode === "max_lateness" ? (
+          <div className="space-y-2">
+            <WaitFieldLabel
+              htmlFor="waitMaxLateness"
+              id="waitMaxLateness-label"
+              label={WAIT_FIELD_LABELS.waitMaxLateness}
+            >
+              Enter the maximum delay, such as 30m or 6h. This limit is checked
+              before Allowed hours adjust the scheduled time.
+            </WaitFieldLabel>
+            <TemplateBadgeInput
+              disabled={disabled}
+              fieldType={WAIT_VALUE_TARGETS.waitMaxLateness.type}
+              id="waitMaxLateness"
+              labelledBy="waitMaxLateness-label"
+              onChange={(value) => onUpdateConfig({ waitMaxLateness: value })}
+              placeholder="30m, 6h, or P1D"
+              value={configuredWaitMaxLateness}
+            />
+          </div>
+        ) : null}
+
+        <div className="space-y-2">
+          <WaitFieldLabel
+            htmlFor="waitAllowedHoursMode"
+            label={WAIT_FIELD_LABELS.waitAllowedHoursMode}
+          >
+            {isWindowEnabled
+              ? "A time outside the set hours moves to the next Start time. Use 24-hour times, with Start time before End time."
+              : "Any time adds no time-of-day restriction."}
+          </WaitFieldLabel>
+          <Select
+            disabled={disabled}
+            items={WAIT_WINDOW_OPTIONS}
+            onValueChange={(value) =>
+              onUpdateConfig({ waitAllowedHoursMode: value })
+            }
+            value={allowedHoursMode}
+          >
+            <SelectTrigger className="w-full" id="waitAllowedHoursMode">
+              <SelectValue placeholder="Choose allowed hours" />
+            </SelectTrigger>
+            <SelectContent>
+              {WAIT_WINDOW_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {isWindowEnabled && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-2">
+              <Label htmlFor="waitAllowedStartTime">
+                {WAIT_FIELD_LABELS.waitAllowedStartTime}
+              </Label>
+              <Input
+                disabled={disabled}
+                id="waitAllowedStartTime"
+                onChange={(e) =>
+                  onUpdateConfig({ waitAllowedStartTime: e.target.value })
+                }
+                placeholder="09:00"
+                value={readConfigString(config, "waitAllowedStartTime")}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="waitAllowedEndTime">
+                {WAIT_FIELD_LABELS.waitAllowedEndTime}
+              </Label>
+              <Input
+                disabled={disabled}
+                id="waitAllowedEndTime"
+                onChange={(e) =>
+                  onUpdateConfig({ waitAllowedEndTime: e.target.value })
+                }
+                placeholder="17:00"
+                value={readConfigString(config, "waitAllowedEndTime")}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <WaitFieldLabel
+            htmlFor="waitTimezone"
+            label={`${WAIT_FIELD_LABELS.waitTimezone}${
+              isWindowEnabled ? " (required for allowed hours)" : " (optional)"
+            }`}
+          >
+            Sets the clock for Allowed hours and for dates and times without an
+            offset.
+          </WaitFieldLabel>
+          <TimezoneSelect
+            disabled={disabled}
+            id="waitTimezone"
+            onValueChange={(value) => onUpdateConfig({ waitTimezone: value })}
+            value={readConfigStringOr(config, "waitTimezone", "UTC")}
           />
         </div>
-      ) : null}
-
-      <div className="space-y-2">
-        <WaitFieldLabel
-          htmlFor="waitAllowedHoursMode"
-          label={WAIT_FIELD_LABELS.waitAllowedHoursMode}
-        >
-          {isWindowEnabled
-            ? "A time outside the set hours moves to the next Start time. Use 24-hour times, with Start time before End time."
-            : "Any time adds no time-of-day restriction."}
-        </WaitFieldLabel>
-        <Select
-          disabled={disabled}
-          items={WAIT_WINDOW_OPTIONS}
-          onValueChange={(value) =>
-            onUpdateConfig({ waitAllowedHoursMode: value })
-          }
-          value={allowedHoursMode}
-        >
-          <SelectTrigger className="w-full" id="waitAllowedHoursMode">
-            <SelectValue placeholder="Choose allowed hours" />
-          </SelectTrigger>
-          <SelectContent>
-            {WAIT_WINDOW_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {isWindowEnabled && (
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-2">
-            <Label htmlFor="waitAllowedStartTime">
-              {WAIT_FIELD_LABELS.waitAllowedStartTime}
-            </Label>
-            <Input
-              disabled={disabled}
-              id="waitAllowedStartTime"
-              onChange={(e) =>
-                onUpdateConfig({ waitAllowedStartTime: e.target.value })
-              }
-              placeholder="09:00"
-              value={readConfigString(config, "waitAllowedStartTime")}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="waitAllowedEndTime">
-              {WAIT_FIELD_LABELS.waitAllowedEndTime}
-            </Label>
-            <Input
-              disabled={disabled}
-              id="waitAllowedEndTime"
-              onChange={(e) =>
-                onUpdateConfig({ waitAllowedEndTime: e.target.value })
-              }
-              placeholder="17:00"
-              value={readConfigString(config, "waitAllowedEndTime")}
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <WaitFieldLabel
-          htmlFor="waitTimezone"
-          label={`${WAIT_FIELD_LABELS.waitTimezone}${
-            isWindowEnabled ? " (required for allowed hours)" : " (optional)"
-          }`}
-        >
-          Sets the clock for Allowed hours and for dates and times without an
-          offset.
-        </WaitFieldLabel>
-        <TimezoneSelect
-          disabled={disabled}
-          id="waitTimezone"
-          onValueChange={(value) => onUpdateConfig({ waitTimezone: value })}
-          value={readConfigStringOr(config, "waitTimezone", "UTC")}
-        />
-      </div>
+      </MoreOptions>
     </div>
   );
 }
 
 function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
+  // The timeout and what happens at it, set away from the defaults Event
+  // mode writes. A blank timeout is unset, which Publish refuses, so it opens.
+  const optionsSet =
+    readConfigString(config, "waitTimeout") !== DEFAULT_WAIT_TIMEOUT ||
+    readConfigStringOr(config, "waitTimeoutBehavior", "continue") !==
+      "continue";
   return (
     <div className="space-y-3 rounded-md border bg-muted/30 p-3">
       <div className="flex items-center gap-1">
@@ -619,43 +666,49 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         onUpdateConfig={onUpdateConfig}
       />
 
-      <div className="space-y-2">
-        <Label htmlFor="waitTimeout">{WAIT_FIELD_LABELS.waitTimeout}</Label>
-        <TemplateBadgeInput
-          disabled={disabled}
-          fieldType={WAIT_VALUE_TARGETS.waitTimeout.type}
-          id="waitTimeout"
-          onChange={(value) => onUpdateConfig({ waitTimeout: value })}
-          placeholder={DEFAULT_WAIT_TIMEOUT}
-          value={readConfigString(config, "waitTimeout")}
-        />
-        <FieldIssueMessages fieldKey="waitTimeout" />
-      </div>
+      <MoreOptions set={optionsSet}>
+        <div className="space-y-2">
+          <Label htmlFor="waitTimeout">{WAIT_FIELD_LABELS.waitTimeout}</Label>
+          <TemplateBadgeInput
+            disabled={disabled}
+            fieldType={WAIT_VALUE_TARGETS.waitTimeout.type}
+            id="waitTimeout"
+            onChange={(value) => onUpdateConfig({ waitTimeout: value })}
+            placeholder={DEFAULT_WAIT_TIMEOUT}
+            value={readConfigString(config, "waitTimeout")}
+          />
+          <FieldIssueMessages fieldKey="waitTimeout" />
+        </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="waitTimeoutBehavior">
-          {WAIT_FIELD_LABELS.waitTimeoutBehavior}
-        </Label>
-        <Select
-          disabled={disabled}
-          items={WAIT_TIMEOUT_OPTIONS}
-          onValueChange={(value) =>
-            onUpdateConfig({ waitTimeoutBehavior: value })
-          }
-          value={readConfigStringOr(config, "waitTimeoutBehavior", "continue")}
-        >
-          <SelectTrigger className="w-full" id="waitTimeoutBehavior">
-            <SelectValue placeholder="Select timeout behavior" />
-          </SelectTrigger>
-          <SelectContent>
-            {WAIT_TIMEOUT_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+        <div className="space-y-2">
+          <Label htmlFor="waitTimeoutBehavior">
+            {WAIT_FIELD_LABELS.waitTimeoutBehavior}
+          </Label>
+          <Select
+            disabled={disabled}
+            items={WAIT_TIMEOUT_OPTIONS}
+            onValueChange={(value) =>
+              onUpdateConfig({ waitTimeoutBehavior: value })
+            }
+            value={readConfigStringOr(
+              config,
+              "waitTimeoutBehavior",
+              "continue"
+            )}
+          >
+            <SelectTrigger className="w-full" id="waitTimeoutBehavior">
+              <SelectValue placeholder="Select timeout behavior" />
+            </SelectTrigger>
+            <SelectContent>
+              {WAIT_TIMEOUT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </MoreOptions>
     </div>
   );
 }

@@ -417,7 +417,15 @@ Edits write to the draft as they are made, and autosave carries on. Typing in
 one field is one undo step until the field loses focus or the typing pauses for
 a second, the way a text editor groups it. A step with no
 action chosen shows the **Does** field open with its list, and choosing an
-action moves focus to the first required field it leaves empty. A Condition's rules are live the
+action moves focus to the first required field it leaves empty. A Wait opens
+on the one choice it needs: how long, under how it should wait, or which Event
+it waits for. Its other settings sit under **More options**, closed by
+default: for a time-based Wait the time source, what happens when the
+scheduled time has passed, the allowed hours and the timezone, and for an
+Event Wait when to stop waiting and what happens then. **More options** opens
+by itself when any of them is set away from its default, including an Event
+Wait's timeout left blank. The Condition's rules and the Event Split's
+outlets are each the step's one choice, so neither has such a disclosure. A Condition's rules are live the
 same way: the sentence saying when it takes True sits above them and changes as
 they do, and there is no Edit or Done. Every rule builder, the Wait's match and
 the filters and eligibility rule inside a Lifecycle section included, edits in

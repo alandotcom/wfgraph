@@ -550,6 +550,14 @@ describe("NodeConfigPanel Wait mode", () => {
       await view.findByText(/Counting starts when the run reaches this step/i)
     ).toBeTruthy();
 
+    // A 1-hour Wait sets nothing else, so its other options start closed.
+    expect(
+      view.queryByRole("button", {
+        name: "About If the scheduled time has passed",
+      })
+    ).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "More options" }));
+
     fireEvent.click(
       view.getByRole("button", {
         name: "About If the scheduled time has passed",
@@ -565,6 +573,38 @@ describe("NodeConfigPanel Wait mode", () => {
     expect(
       await view.findByText(/Sets the clock for Allowed hours/i)
     ).toBeTruthy();
+  });
+
+  it("opens a Wait on its one choice, with More options open only when one is set", async () => {
+    const plain = renderWaitPanel({ waitMode: "delay", waitDuration: "1d" });
+    expect(
+      (
+        await plain.view.findByRole("button", { name: "More options" })
+      ).getAttribute("aria-expanded")
+    ).toBe("false");
+    expect(plain.view.queryByLabelText(/Timezone/)).toBeNull();
+    plain.view.unmount();
+
+    const windowed = renderWaitPanel({
+      waitMode: "delay",
+      waitDuration: "1d",
+      waitAllowedHoursMode: "daily_window",
+    });
+    expect(
+      (
+        await windowed.view.findByRole("button", { name: "More options" })
+      ).getAttribute("aria-expanded")
+    ).toBe("true");
+    windowed.view.unmount();
+
+    // Event mode writes its default timeout, which counts as unset.
+    const event = renderWaitPanel({ waitMode: "event", waitTimeout: "7d" });
+    await event.view.findByRole("button", { name: "More options" });
+    expect(event.view.queryByText("Stop waiting after")).toBeNull();
+    fireEvent.click(
+      await event.view.findByRole("button", { name: "More options" })
+    );
+    expect(event.view.getByText("Stop waiting after")).toBeTruthy();
   });
 
   it("marks a Duration that cannot be read and leaves a readable one alone", async () => {
