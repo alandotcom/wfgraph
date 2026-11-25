@@ -959,7 +959,7 @@ server-sent events (SSE) stream. The server checks the persisted revision twice
 per second and emits an event only when the revision increases. After an MCP
 write succeeds, a clean Draft canvas loads the saved graph and fits it into
 view. The subscription reconnects from the last received revision after a
-connection failure. A workflow created through MCP appears in the dashboard and
+connection failure. A workflow created through MCP appears on the Workflows page and
 workflow switcher within one second.
 
 If the browser has unsaved edits when the persisted revision changes, the
