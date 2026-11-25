@@ -7,13 +7,27 @@
 
 import type { OutlineRow } from "@wfgraph/shared/graph/workflow-outline";
 
+/** A line standing for rows a run's outline folds, such as "3 steps not reached yet". */
+export type OutlineNoteRow = {
+  kind: "note";
+  key: string;
+  /** The key of the first row the note stands for, which places it in its section. */
+  standsFor: string;
+  depth: number;
+  parentKey: string | null;
+  text: string;
+};
+
+/** A row the outline draws: one the model wrote, or a note a run's outline adds. */
+export type OutlineDisplayRow = OutlineRow | OutlineNoteRow;
+
 /** The rows that carry a step or the Lifecycle Node, which select a card. */
 export type OutlineNodeRow = Extract<
   OutlineRow,
   { kind: "lifecycle" | "step" | "group" }
 >;
 
-export function isNodeRow(row: OutlineRow): row is OutlineNodeRow {
+export function isNodeRow(row: OutlineDisplayRow): row is OutlineNodeRow {
   return (
     row.kind === "lifecycle" || row.kind === "step" || row.kind === "group"
   );
@@ -24,12 +38,12 @@ export function isNodeRow(row: OutlineRow): row is OutlineNodeRow {
  * a reference that leads to the step it names. Outlet and arm labels are read
  * as headings and fold with the row they sit under.
  */
-export function isFocusableRow(row: OutlineRow): boolean {
+export function isFocusableRow(row: OutlineDisplayRow): boolean {
   return isNodeRow(row) || row.kind === "continues";
 }
 
 /** The words a filter is matched against. */
-export function rowWords(row: OutlineRow): string {
+export function rowWords(row: OutlineDisplayRow): string {
   switch (row.kind) {
     case "lifecycle":
     case "step":
@@ -42,7 +56,7 @@ export function rowWords(row: OutlineRow): string {
 
 /** The keys of the rows `key` sits under, nearest first. */
 export function ancestorKeys(
-  rows: readonly OutlineRow[],
+  rows: readonly OutlineDisplayRow[],
   key: string
 ): string[] {
   const parentOf = new Map(rows.map((row) => [row.key, row.parentKey]));
@@ -56,7 +70,7 @@ export function ancestorKeys(
 }
 
 /** The keys of the rows that have rows under them, which can fold. */
-export function foldableKeys(rows: readonly OutlineRow[]): Set<string> {
+export function foldableKeys(rows: readonly OutlineDisplayRow[]): Set<string> {
   return new Set(
     rows.flatMap((row) => (row.parentKey === null ? [] : [row.parentKey]))
   );
@@ -64,9 +78,9 @@ export function foldableKeys(rows: readonly OutlineRow[]): Set<string> {
 
 /** The rows shown for `folded` keys and a `filter` text. */
 export function visibleRows(
-  rows: readonly OutlineRow[],
+  rows: readonly OutlineDisplayRow[],
   input: { folded: ReadonlySet<string>; filter: string }
-): OutlineRow[] {
+): OutlineDisplayRow[] {
   const query = input.filter.trim().toLowerCase();
   if (query !== "") {
     const shown = new Set<string>();
@@ -93,7 +107,7 @@ export function visibleRows(
  * moves nothing.
  */
 export function moveFocus(input: {
-  shown: readonly OutlineRow[];
+  shown: readonly OutlineDisplayRow[];
   from: string;
   key: "ArrowUp" | "ArrowDown" | "Home" | "End" | "parent" | "child";
 }): string | null {

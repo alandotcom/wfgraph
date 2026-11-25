@@ -24,6 +24,8 @@ import { ProviderLogo } from "#src/components/workflow/nodes/action-node";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { Input } from "#src/components/ui/input";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
+import { useTestSkippedNodeIds } from "#src/hooks/use-execution-logs";
+import { isRunInProgress } from "#src/lib/execution-logs";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
 import { editorChordAllowed } from "#src/lib/editor-shortcuts";
@@ -34,8 +36,13 @@ import {
   edgesAtom,
   nodesAtom,
   presentedGraphAtom,
+  runNodeEvidenceStatusesAtom,
+  runPathAtom,
 } from "#src/lib/workflow-graph-store";
-import { canvasIssuesByNodeIdAtom } from "#src/lib/workflow-graph-presentation-store";
+import {
+  canvasIssuesByNodeIdAtom,
+  projectedRunLogsAtom,
+} from "#src/lib/workflow-graph-presentation-store";
 import {
   isReviewSheetShownAtom,
   requestReviewScrollAtom,
@@ -45,19 +52,20 @@ import {
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import {
-  type OutlineRow,
   outlineRows,
   type WorkflowOutline as Outline,
   workflowOutline,
   workflowStepNumbers,
 } from "@wfgraph/shared/graph/workflow-outline";
 import { cn } from "@wfgraph/shared/utils";
+import { type RunOutcome, runOutline } from "./outline-run";
 import {
   ancestorKeys,
   foldableKeys,
   isFocusableRow,
   isNodeRow,
   moveFocus,
+  type OutlineDisplayRow,
   type OutlineNodeRow,
   visibleRows,
 } from "./outline-view";
@@ -71,20 +79,44 @@ export function outlineRowElementId(key: string): string {
 }
 
 /** The step a row stands for: its own, or the one a reference leads to. */
-function nodeIdOf(row: OutlineRow): string | null {
+function nodeIdOf(row: OutlineDisplayRow): string | null {
   if (isNodeRow(row)) return row.nodeId;
   return row.kind === "continues" ? row.targetNodeId : null;
 }
 
-type Section = { title: string; rows: readonly OutlineRow[] };
+type Section = { title: string; rows: readonly OutlineDisplayRow[] };
 
-function outlineSections(outline: Outline): Section[] {
-  return [
-    { title: "Starts when", rows: outline.starts },
-    { title: "Steps", rows: outline.steps },
+/**
+ * The shown rows under their section titles. A run's outline reads what
+ * starts it and its steps as one account under "What happened".
+ */
+function outlineSections(input: {
+  outline: Outline;
+  shown: readonly OutlineDisplayRow[];
+  isRun: boolean;
+}): Section[] {
+  const { outline, isRun } = input;
+  const parts = [
+    { title: isRun ? "What happened" : "Starts when", rows: outline.starts },
+    { title: isRun ? "What happened" : "Steps", rows: outline.steps },
     { title: "Stops when", rows: outline.stops },
     { title: "Not connected", rows: outline.unconnected },
-  ].filter((section) => section.rows.length > 0);
+  ];
+  const titleOf = new Map(
+    parts.flatMap((part) => part.rows.map((row) => [row.key, part.title]))
+  );
+  const sections: Section[] = [];
+  for (const row of input.shown) {
+    const title =
+      titleOf.get(row.kind === "note" ? row.standsFor : row.key) ?? "Steps";
+    const last = sections.at(-1);
+    if (last?.title === title) {
+      sections[sections.length - 1] = { title, rows: [...last.rows, row] };
+    } else {
+      sections.push({ title, rows: [row] });
+    }
+  }
+  return sections;
 }
 
 /**
@@ -115,6 +147,10 @@ export function WorkflowOutline() {
   const requestReviewScroll = useSetAtom(requestReviewScrollAtom);
   const focusRevealTitle = useSetAtom(revealTitleFocusRequestAtom);
   const openPalette = useSetAtom(openCommandPaletteAtom);
+  const runPath = useAtomValue(runPathAtom);
+  const runStatuses = useAtomValue(runNodeEvidenceStatusesAtom);
+  const runLogs = useAtomValue(projectedRunLogsAtom);
+  const testSkipped = useTestSkippedNodeIds();
 
   const editing = view === "draft" && !reviewShown;
   // While the review sheet shows, the graph holds removed steps too, and the
@@ -142,7 +178,27 @@ export function WorkflowOutline() {
         : null,
     [graph, catalog, draftNumbers]
   );
-  const rows = useMemo(() => (outline ? outlineRows(outline) : []), [outline]);
+  const outlineRowList = useMemo(
+    () => (outline ? outlineRows(outline) : []),
+    [outline]
+  );
+  // On a run, what the run did at each step, with the branches it did not
+  // take folded.
+  const run = useMemo(
+    () =>
+      view === "runs" && runPath !== null && runLogs !== null
+        ? runOutline({
+            rows: outlineRowList,
+            path: runPath,
+            statuses: runStatuses,
+            logs: runLogs.logs,
+            testSkipped,
+            ended: !isRunInProgress(runLogs.executionStatus),
+          })
+        : null,
+    [view, runPath, runLogs, runStatuses, testSkipped, outlineRowList]
+  );
+  const rows: readonly OutlineDisplayRow[] = run?.rows ?? outlineRowList;
   const unreachable = useMemo(
     () => (editing && graph ? inactiveBranch(graph).nodeIds : new Set()),
     [editing, graph]
@@ -220,7 +276,7 @@ export function WorkflowOutline() {
   };
 
   /** Select the step a row stands for, as a press on its card would. */
-  const choose = (row: OutlineRow) => {
+  const choose = (row: OutlineDisplayRow) => {
     const nodeId = nodeIdOf(row);
     if (nodeId === null) return;
     if (row.kind === "continues") {
@@ -250,11 +306,11 @@ export function WorkflowOutline() {
     }
   };
 
-  const point = (row: OutlineRow) => {
+  const point = (row: OutlineDisplayRow) => {
     const nodeId = nodeIdOf(row);
     if (nodeId !== null) setHighlight(nodeId);
   };
-  const stopPointing = (row: OutlineRow) => {
+  const stopPointing = (row: OutlineDisplayRow) => {
     const nodeId = nodeIdOf(row);
     if (nodeId !== null && store.get(reviewHighlightAtom) === nodeId) {
       setHighlight(null);
@@ -330,7 +386,7 @@ export function WorkflowOutline() {
    * first. A Condition and an Event Split have several outlets and a Group has
    * none of its own, so those rows say where to add instead.
    */
-  const addStepAfter = (row: OutlineRow) => {
+  const addStepAfter = (row: OutlineDisplayRow) => {
     if (!editing) return;
     if (
       row.kind === "group" ||
@@ -365,13 +421,9 @@ export function WorkflowOutline() {
     }
   };
 
-  const sections = outline ? outlineSections(outline) : [];
-  const shownSections = sections
-    .map((section) => ({
-      ...section,
-      rows: section.rows.filter((row) => shownKeys.has(row.key)),
-    }))
-    .filter((section) => section.rows.length > 0);
+  const shownSections = outline
+    ? outlineSections({ outline, shown, isRun: run !== null })
+    : [];
 
   return (
     <div
@@ -435,7 +487,14 @@ export function WorkflowOutline() {
                         : undefined
                     }
                     key={row.key}
-                    muted={isNodeRow(row) && unreachable.has(row.nodeId)}
+                    muted={
+                      isNodeRow(row) &&
+                      (unreachable.has(row.nodeId) ||
+                        run?.outcomes
+                          .get(row.key)
+                          ?.text.startsWith("Not reached") === true)
+                    }
+                    outcome={run?.outcomes.get(row.key)}
                     onChoose={() => {
                       focusRow(row.key);
                       choose(row);
@@ -468,13 +527,14 @@ function OutlineRowView({
   muted,
   issues,
   edit,
+  outcome,
   onChoose,
   onFocus,
   onLeave,
   onPoint,
   onToggle,
 }: {
-  row: OutlineRow;
+  row: OutlineDisplayRow;
   /** Whether the row holds the list's one Tab stop. */
   active: boolean;
   selected: boolean;
@@ -484,6 +544,8 @@ function OutlineRowView({
   muted: boolean;
   issues: Parameters<typeof NodeIssueBadge>[0]["issues"];
   edit: { kind: "added" | "modified" | "removed" } | null;
+  /** What the open run did at the step, which takes the summary's place. */
+  outcome: RunOutcome | undefined;
   onChoose: () => void;
   onFocus: () => void;
   onLeave: () => void;
@@ -512,6 +574,19 @@ function OutlineRowView({
         )}
       </button>
     );
+
+  if (row.kind === "note") {
+    return (
+      <div
+        className="flex h-6 items-center gap-1 pr-2 text-muted-foreground text-xs"
+        role="none"
+        style={indent}
+      >
+        <span className="size-4 shrink-0" />
+        <span className="ml-7 min-w-0 truncate font-medium">{row.text}</span>
+      </div>
+    );
+  }
 
   if (row.kind === "outlet" || row.kind === "parallel") {
     // A heading over the rows behind an outlet or an arm. Pressing it folds
@@ -597,11 +672,21 @@ function OutlineRowView({
       </span>
       <span className="ml-1 min-w-0 flex-1 truncate">
         <span className="font-medium">{nodeRow.label}</span>
-        {nodeRow.summary ? (
+        {outcome ? (
+          <span className={OUTCOME_TONE_CLASS[outcome.tone]}>
+            {" "}
+            · {outcome.text}
+          </span>
+        ) : nodeRow.summary ? (
           <span className="text-muted-foreground"> · {nodeRow.summary}</span>
         ) : null}
       </span>
       <RowEnd>
+        {outcome?.time ? (
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {outcome.time}
+          </span>
+        ) : null}
         {nodeRow.kind === "step" && nodeRow.disabled ? (
           <span className="flex items-center text-muted-foreground">
             <EyeOff aria-hidden className="size-3.5" />
@@ -616,6 +701,15 @@ function OutlineRowView({
     </div>
   );
 }
+
+/** A run outcome's words in the signal its status uses, or muted. */
+const OUTCOME_TONE_CLASS: Record<RunOutcome["tone"], string> = {
+  done: "text-muted-foreground",
+  failed: "text-destructive",
+  waiting: "text-warning",
+  running: "text-info",
+  quiet: "text-muted-foreground",
+};
 
 function RowEnd({ children }: { children: ReactNode }) {
   return <span className="flex shrink-0 items-center gap-1">{children}</span>;

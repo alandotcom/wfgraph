@@ -107,6 +107,12 @@ export const runPathAtom = atom((get): RunPath | null => {
 });
 
 /**
+ * The open run's recorded executions and its status, as `runPathAtom` reads
+ * them, or null before they are read.
+ */
+export const projectedRunLogsAtom = atom((get) => get(runLogsAtom));
+
+/**
  * Whether the canvas shows a run that is still going, read from the same logs
  * as `runPathAtom`. Only then does a connection march, and only one the run
  * may still take. A Draft, a comparison and an ended run hold every

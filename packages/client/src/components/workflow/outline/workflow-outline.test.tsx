@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -20,8 +21,12 @@ import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { WorkflowOutline } from "#src/components/workflow/outline/workflow-outline";
 import { commandPaletteAtom } from "#src/lib/command-palette-store";
+import type { ExecutionLog } from "#src/lib/execution-logs";
 import {
+  executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
+  projectRunLogsAtom,
+  projectRunProgressAtom,
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
@@ -40,18 +45,56 @@ import {
   toWorkflowGraphData,
 } from "@wfgraph/shared/graph/graph";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
+import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import {
   heroGraph,
   outlineTestCatalog,
+  SETTLED,
 } from "@wfgraph/shared/graph/workflow-outline-test-support";
 
 afterEach(() => {
   cleanup();
 });
 
+function runLog(
+  nodeId: string,
+  status: ExecutionLog["status"],
+  output?: unknown
+): ExecutionLog {
+  return {
+    id: `log-${nodeId}`,
+    nodeId,
+    nodeName: nodeId,
+    nodeType: "action",
+    status,
+    startedAt: new Date(2026, 10, 25, 9, 14, 2),
+    completedAt: status === "running" ? null : new Date(2026, 10, 25, 9, 14, 3),
+    duration: null,
+    output,
+    error: null,
+    retries: 0,
+    retryLimit: 3,
+  };
+}
+
+/** The run the approved design shows: waiting in the Group, failed at step 10. */
+const SEEDED_RUN_LOGS: ExecutionLog[] = [
+  runLog("Enough time for reminders?", "success", { condition: true }),
+  runLog("Send booking confirmation", "success"),
+  runLog("Wait until 24 hours before", "running"),
+  runLog("Wait for deposit or reschedule", "success"),
+  runLog("Deposit or reschedule?", "success", { event: SETTLED }),
+  runLog("Deposit covers the visit?", "success", { condition: true }),
+  runLog("Send deposit receipt", "error"),
+];
+
 function renderOutline(
-  options: { comparison?: WorkflowComparisonPayload } = {}
+  options: {
+    comparison?: WorkflowComparisonPayload;
+    /** Open the run the design shows: waiting in the Group, failed at step 10. */
+    run?: boolean;
+  } = {}
 ) {
   const store = createStore();
   const hero = toWorkflowGraphData(createSerializedWorkflowGraph(heroGraph()));
@@ -61,6 +104,27 @@ function renderOutline(
     edges: hero.edges.map(toEditorEdge),
   });
   showWorkspaceRoute(store, {});
+  if (options.run) {
+    showWorkspaceRoute(store, { view: "runs" });
+    store.set(executionOverlayGraphAtom, {
+      nodes: hero.nodes.map(toEditorNode),
+      edges: hero.edges.map(toEditorEdge),
+    });
+    store.set(projectRunLogsAtom, {
+      executionStatus: "running",
+      logs: SEEDED_RUN_LOGS,
+    });
+    store.set(projectRunProgressAtom, {
+      executionStatus: "running",
+      statuses: SEEDED_RUN_LOGS.map(
+        (log): { nodeId: string; status: RunNodeEvidenceStatus } => ({
+          nodeId: log.nodeId,
+          status: log.status === "running" ? "waiting" : log.status,
+        })
+      ),
+    });
+  }
+  const queryClient = new QueryClient();
   if (options.comparison) {
     const epoch = store.set(beginPublicationReviewAtom, "workflow_1");
     if (epoch !== null) {
@@ -77,17 +141,19 @@ function renderOutline(
   }
   const rootRoute = createRootRoute({
     component: () => (
-      <Provider store={store}>
-        <ExtensionCatalogProvider value={outlineTestCatalog}>
-          <IntegrationUiProvider value={{}}>
-            <OverlayProvider>
-              <div style={{ height: 600, width: 340 }}>
-                <WorkflowOutline />
-              </div>
-            </OverlayProvider>
-          </IntegrationUiProvider>
-        </ExtensionCatalogProvider>
-      </Provider>
+      <QueryClientProvider client={queryClient}>
+        <Provider store={store}>
+          <ExtensionCatalogProvider value={outlineTestCatalog}>
+            <IntegrationUiProvider value={{}}>
+              <OverlayProvider>
+                <div style={{ height: 600, width: 340 }}>
+                  <WorkflowOutline />
+                </div>
+              </OverlayProvider>
+            </IntegrationUiProvider>
+          </ExtensionCatalogProvider>
+        </Provider>
+      </QueryClientProvider>
     ),
   });
   const router = createRouter({
@@ -263,5 +329,36 @@ describe("WorkflowOutline", () => {
       "Send deposit receipt",
     ]);
     expect(store.get(commandPaletteAtom)?.pages).toEqual([{ id: "add-step" }]);
+  });
+
+  it("states what a run did at each step and folds what it did not take", async () => {
+    renderOutline({ run: true });
+    const list = await tree();
+
+    expect(within(list).getByText("What happened")).toBeTruthy();
+    expect(row("Enough time for reminders?").textContent).toContain(
+      "Took True"
+    );
+    expect(row("Send booking confirmation").textContent).toMatch(/Ran.*:03/u);
+    expect(row("Pre-visit reminders").textContent).toContain("Waiting");
+    expect(within(list).getByText("3 steps not reached yet")).toBeTruthy();
+    expect(row("Deposit or reschedule?").textContent).toContain(
+      "Took Payment settled"
+    );
+    expect(row("Send deposit receipt").textContent).toContain("Failed");
+    // A step past the failure can no longer be reached, while the run goes on.
+    expect(row("Send intake form").textContent).toMatch(/Not reached$/u);
+    expect(
+      within(list).getByText("Otherwise · 2 steps not taken")
+    ).toBeTruthy();
+    expect(
+      within(list).getByText("When Appointment rescheduled · 2 steps not taken")
+    ).toBeTruthy();
+    expect(
+      within(list).getByText("Appointment canceled · has not happened")
+    ).toBeTruthy();
+    // Rows behind an outlet the run did not take fold away.
+    expect(screen.queryByText("Release the slot")).toBeNull();
+    expect(screen.queryByText("Send cancellation notice")).toBeNull();
   });
 });
