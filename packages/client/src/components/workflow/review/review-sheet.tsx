@@ -27,7 +27,6 @@ import {
 } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
-import { MigrationDialog } from "#src/components/workflow/migration-dialog";
 import {
   Dialog,
   DialogContent,
@@ -396,15 +395,11 @@ function SheetFooter({
 
 /**
  * The consequence of publishing, in one line: the Published mode, that new
- * runs use the new version, and how many active runs stay on older ones. When
- * some of those runs are on a version older than the current publication, the
- * line offers the version history's own migration, which moves parked runs
- * onto the current published version.
+ * runs use the new version, and how many active runs stay on older ones.
  */
 function PublishConsequence({ version }: { version: number }) {
   const mode = useAtomValue(currentWorkflowModeAtom);
   const workflowId = useAtomValue(currentWorkflowIdAtom);
-  const [migrationOpen, setMigrationOpen] = useState(false);
   const canReadUsage = can(WfGraphOperations.workflowGetVersionUsage.id);
   const usage = useQuery({
     ...orpcQuery.workflow.getVersionUsage.queryOptions({
@@ -413,24 +408,11 @@ function PublishConsequence({ version }: { version: number }) {
     enabled: Boolean(workflowId) && canReadUsage,
     staleTime: 30_000,
   });
-  const items = usage.data?.items ?? [];
-  const left = canReadUsage ? runsLeftOnOlderVersions(items) : null;
-  // The migration moves runs onto the current published version, so it is
-  // offered for runs pinned to a version older than that one. The same two
-  // grants gate it in the version history.
-  const target =
-    items.find((item) => item.kind === "published" && item.isCurrent)
-      ?.version ?? null;
-  const movable =
-    target !== null &&
-    items.some(
-      (item) =>
-        item.kind === "published" && !item.isCurrent && item.activeRunCount > 0
-    ) &&
-    can(WfGraphOperations.workflowMigrateExecutions.id) &&
-    can(WfGraphOperations.workflowPreviewMigration.id);
+  const left = canReadUsage
+    ? runsLeftOnOlderVersions(usage.data?.items ?? [])
+    : null;
   return (
-    <div className="flex flex-wrap items-start gap-2 text-muted-foreground">
+    <p className="flex items-start gap-2 text-muted-foreground">
       {/* The Published mode's dot: filled Amber for Test, an outline for
           Live. */}
       <Circle
@@ -446,25 +428,7 @@ function PublishConsequence({ version }: { version: number }) {
           : `Live. New runs use v${version} and reach real recipients.`}
         {left ? ` ${left}` : null}
       </span>
-      {movable && workflowId ? (
-        <>
-          <Button
-            className="h-6"
-            onClick={() => setMigrationOpen(true)}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            Move to v{target}
-          </Button>
-          <MigrationDialog
-            onOpenChange={setMigrationOpen}
-            open={migrationOpen}
-            workflowId={workflowId}
-          />
-        </>
-      ) : null}
-    </div>
+    </p>
   );
 }
 

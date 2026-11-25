@@ -874,12 +874,7 @@ connections unchanged. They start open when no edit changes what runs.
 
 The footer states the consequence in one line beside the Published mode dot
 the publication chip uses: "Live. New runs use v3 and reach real recipients. 1
-active run stays on v1." When some of those runs are on a version older than
-the current publication, the line carries **Move to v2**, naming the current
-version, which opens the version history's **Migrate active runs** dialog: the
-migration moves parked runs onto the current published version, so runs on
-the current one can move to v3 only once v3 is published, and the line offers
-nothing for them. The footer then offers **Keep editing** and the filled
+active run stays on v1." It then offers **Keep editing** and the filled
 **Publish v3**. Cmd+Enter anywhere in the sheet publishes, and Escape takes the
 sheet back one page or keeps editing. Publish sends the exact draft the sheet
 reviewed. A refusal because the draft or the publication changed meanwhile
