@@ -48,6 +48,27 @@ function useEditorDocumentTitle(workflowNotFound: boolean): void {
   );
 }
 
+/**
+ * The page for a workflow id the server does not know. It draws none of the
+ * editor, because a toolbar, a status strip and a canvas would describe a
+ * workflow that does not exist. Its one action goes back to Workflows.
+ */
+function WorkflowNotFound() {
+  return (
+    <main className="flex h-dvh w-full items-center justify-center bg-background p-4">
+      <div className="max-w-sm text-center">
+        <h1 className="font-semibold text-base">Workflow not found</h1>
+        <p className="mt-1 text-muted-foreground text-sm">
+          This workflow does not exist, or it was deleted.
+        </p>
+        <Button className="mt-4" render={<Link to="/" />}>
+          Go to Workflows
+        </Button>
+      </div>
+    </main>
+  );
+}
+
 const WorkflowEditor = () => {
   const endWorkflowEditorLifetime = useSetAtom(endWorkflowEditorLifetimeAtom);
   useUnmountCleanup(() => endWorkflowEditorLifetime());
@@ -56,6 +77,10 @@ const WorkflowEditor = () => {
   const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
   const canUpdate = can(WfGraphOperations.workflowUpdate.id);
   useEditorDocumentTitle(workflowNotFound);
+
+  if (workflowNotFound) {
+    return <WorkflowNotFound />;
+  }
 
   return (
     // The page the shell is inset on. It owns the viewport height, because
@@ -74,7 +99,7 @@ const WorkflowEditor = () => {
           the shell fills it exactly and the two curves are one curve. */}
       <div className="size-full bg-background md:rounded-xl md:shadow-xs">
         {/* The editor shell: the toolbar over the canvas column. `relative`
-            because the two failure overlays measure themselves against the
+            because the load failure overlay measures itself against the
             whole editor.
 
             Three things hold the contents inside the corner, and all three are
@@ -110,22 +135,6 @@ const WorkflowEditor = () => {
           {/* Open run → one evidence status per node, which step cards and
               Group cards both read. */}
           <RunStatusProjection />
-
-          {/* Workflow not found overlay */}
-          {workflowNotFound && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center">
-              <div className="rounded-lg border bg-background p-8 text-center shadow-lg">
-                <h1 className="mb-2 font-semibold text-2xl">
-                  Workflow not found
-                </h1>
-                <p className="mb-6 text-muted-foreground">
-                  The workflow you're looking for doesn't exist or has been
-                  deleted.
-                </p>
-                <Button render={<Link to="/" />}>Go to Workflows</Button>
-              </div>
-            </div>
-          )}
 
           {workflowLoadError && (
             <div className="absolute inset-0 z-20 flex items-center justify-center">
