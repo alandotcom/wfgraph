@@ -107,10 +107,14 @@ const RUN_STATUS_LABELS = {
   failed: "Failed",
 } satisfies Record<WorkflowExecutionStatus, string>;
 
+/**
+ * A step reads with the words its run reads with, so a run and the steps it
+ * finished are both Completed.
+ */
 const NODE_STATUS_LABELS = {
   pending: "Pending",
   running: "Running",
-  success: "Successful",
+  success: "Completed",
   error: "Failed",
   cancelled: "Canceled",
 } satisfies Record<NodeStatus, string>;

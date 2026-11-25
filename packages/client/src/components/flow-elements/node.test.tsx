@@ -167,7 +167,7 @@ describe("Node status chip", () => {
   it("hangs the chip across the card's top edge, right of the top handle", () => {
     const view = renderCard("success", false);
     const chip = view.getByRole("status");
-    expect(chip.textContent).toBe("Successful");
+    expect(chip.textContent).toBe("Completed");
     const strip = chip.parentElement?.className ?? "";
     expect(strip).toContain("top-0");
     expect(strip).toContain("-translate-y-1/2");

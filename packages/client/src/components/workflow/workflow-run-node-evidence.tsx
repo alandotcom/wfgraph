@@ -394,7 +394,7 @@ function ExecutionList({
   onChoose: (logId: string) => void;
 }) {
   return (
-    <ul aria-label="Executions" className="space-y-1">
+    <ul aria-label="Times this step ran" className="space-y-1">
       {executions.map((execution, index) => {
         const status = stepRunStatusLabel(
           statuses[index] ?? execution.status,
@@ -415,7 +415,7 @@ function ExecutionList({
               onClick={() => onChoose(execution.id)}
               type="button"
             >
-              <span className="font-medium text-sm">Execution {index + 1}</span>
+              <span className="font-medium text-sm">Time {index + 1}</span>
               <span className="flex items-baseline gap-2 text-xs">
                 <span className={statusToneTextClass(status.tone)}>
                   {status.text}
@@ -498,7 +498,7 @@ export function WorkflowRunNodeEvidence({
       ) : null}
 
       {shown === null ? (
-        <Section title="Executions">
+        <Section title="In this run">
           <p className="text-muted-foreground text-xs">
             {evidence.inProgress
               ? "This step has not run yet."
@@ -510,8 +510,8 @@ export function WorkflowRunNodeEvidence({
           <Section
             title={
               executions.length > 1
-                ? `Execution ${executionNumber} of ${executions.length}`
-                : "Execution"
+                ? `In this run · time ${executionNumber} of ${executions.length}`
+                : "In this run"
             }
           >
             {executions.length > 1 ? (
@@ -552,8 +552,8 @@ export function WorkflowRunNodeEvidence({
             {unfinished ? (
               <p className="text-info text-xs">
                 {evidence.inProgress
-                  ? "This execution has not finished, so its record is incomplete."
-                  : "The run ended before this execution recorded a finish."}
+                  ? "This step has not finished, so its record is incomplete."
+                  : "The run ended before this step recorded a finish."}
               </p>
             ) : null}
             {evidence.testSkip === null ? null : (

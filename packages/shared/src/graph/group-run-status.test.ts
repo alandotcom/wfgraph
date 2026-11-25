@@ -310,7 +310,7 @@ describe("summarizeGroupRun", () => {
   });
 
   it("reads each status and a single step in plain words", () => {
-    expect(groupRunStatusLabel("successful")).toBe("Successful");
+    expect(groupRunStatusLabel("successful")).toBe("Completed");
     expect(groupRunStatusLabel("canceled")).toBe("Canceled");
     expect(
       groupRunCountsText({

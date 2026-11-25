@@ -90,7 +90,7 @@ describe("Runs Group summary", () => {
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label"))
     ).toEqual([
-      "Look up patient, Successful",
+      "Look up patient, Completed",
       "Send reminder, Failed",
       "Wait for reply, Not run",
     ]);
@@ -154,7 +154,7 @@ describe("Runs Group summary", () => {
     expect(router.state.location.search).toEqual({ view: "runs" });
   });
 
-  it("shows a terminal Group as Successful once the run completed, and Back returns to the run with focus on the card", async () => {
+  it("shows a terminal Group as Completed once the run completed, and Back returns to the run with focus on the card", async () => {
     served.items = [execution("exec_s", "completed")];
     served.graphs = {
       ver_exec_s: labelledGraph(STEPS, GROUP, [
@@ -181,7 +181,7 @@ describe("Runs Group summary", () => {
     fireEvent.click(card);
     const summary = await view.findByTestId("runs-group-summary");
     expect(aside()?.querySelector("header")?.textContent).toContain(
-      "Successful"
+      "Completed"
     );
     expect(within(summary).getByText("3 of 3 steps reached")).toBeTruthy();
 

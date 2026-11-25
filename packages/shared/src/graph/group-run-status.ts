@@ -135,7 +135,7 @@ const GROUP_RUN_STATUS_LABELS = {
   retrying: "Retrying",
   canceled: "Canceled",
   failed: "Failed",
-  successful: "Successful",
+  successful: "Completed",
 } satisfies Record<GroupRunStatus, string>;
 
 /** How a Group run status reads on screen. */

@@ -72,7 +72,9 @@ describe("runOutline", () => {
     });
 
     expect(texts(result)).toContain("Appointment canceled");
-    expect(result.outcomes.get("Send cancellation notice")?.text).toBe("Ran");
+    expect(result.outcomes.get("Send cancellation notice")?.text).toBe(
+      "Completed"
+    );
     expect(texts(result)).toContain("14 steps not reached");
   });
 

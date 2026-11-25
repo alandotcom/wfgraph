@@ -361,7 +361,7 @@ describe("WorkflowOutline", () => {
     // The first step finished names its time; the next, finished in the same
     // second, does not repeat it.
     expect(row("Enough time for reminders?").textContent).toMatch(/:03$/u);
-    expect(row("Send booking confirmation").textContent).toMatch(/Ran$/u);
+    expect(row("Send booking confirmation").textContent).toMatch(/Completed$/u);
     // Each outcome sits on its own line, outside the label's truncation, so
     // it reads whole at any depth.
     for (const outcome of list.querySelectorAll('[data-slot="run-outcome"]')) {

@@ -801,7 +801,7 @@ describe("a Group drawn in place", () => {
     await openRun(store, router);
 
     await waitFor(() => expect(chipText(view, "case_study")).toBe("Waiting"));
-    expect(chipText(view, "welcome")).toBe("Successful");
+    expect(chipText(view, "welcome")).toBe("Completed");
     const header = await view.findByTestId("group-run-summary-outreach");
     await waitFor(() => expect(header.textContent).toContain("Waiting"));
     expect(header.textContent).toContain("2 of 2 steps reached, 1 waiting");

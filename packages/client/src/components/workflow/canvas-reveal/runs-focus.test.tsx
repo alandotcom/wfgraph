@@ -127,7 +127,7 @@ describe("Runs Focus node evidence", () => {
       `Appointment reminders › Runs › ${runHeading("exec_s")} › Send reminder`
     );
     expect(aside()?.querySelector("header")?.textContent).toContain(
-      "Successful"
+      "Completed"
     );
     expect(within(evidence()).getByText(/patient@example.com/)).toBeTruthy();
     expect(within(evidence()).getAllByText(/msg_42/).length).toBeGreaterThan(0);
@@ -281,7 +281,7 @@ describe("Runs Focus node evidence", () => {
     ).toBeTruthy();
     expect(
       shown.getByText(
-        "This execution has not finished, so its record is incomplete."
+        "This step has not finished, so its record is incomplete."
       )
     ).toBeTruthy();
     expect(shown.getByText("Waiting for app/reply")).toBeTruthy();
@@ -505,10 +505,12 @@ describe("Runs Focus node evidence", () => {
     // The row opens the latest execution, as the card does.
     fireEvent.click(await outlineRow("Loop step"));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
-    fireEvent.click(view.getByRole("button", { name: /Execution 1/ }));
+    fireEvent.click(view.getByRole("button", { name: /Time 1/ }));
     await waitFor(() =>
       expect(
-        within(evidence()).getByRole("heading", { name: "Execution 1 of 2" })
+        within(evidence()).getByRole("heading", {
+          name: "In this run · time 1 of 2",
+        })
       ).toBeTruthy()
     );
     const scroller = evidence().parentElement;
@@ -517,12 +519,14 @@ describe("Runs Focus node evidence", () => {
     }
     scroller.scrollTop = 140;
 
-    const second = view.getByRole("button", { name: /Execution 2/ });
+    const second = view.getByRole("button", { name: /Time 2/ });
     second.focus();
     fireEvent.click(second);
     await waitFor(() =>
       expect(
-        within(evidence()).getByRole("heading", { name: "Execution 2 of 2" })
+        within(evidence()).getByRole("heading", {
+          name: "In this run · time 2 of 2",
+        })
       ).toBeTruthy()
     );
     expect(document.activeElement).toBe(second);
@@ -540,15 +544,19 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     await waitFor(() =>
       expect(
-        within(evidence()).getByRole("heading", { name: "Execution 2 of 2" })
+        within(evidence()).getByRole("heading", {
+          name: "In this run · time 2 of 2",
+        })
       ).toBeTruthy()
     );
     expect(store.get(selectedNodeAtom)).toBe("loop");
 
-    fireEvent.click(view.getByRole("button", { name: /Execution 1/ }));
+    fireEvent.click(view.getByRole("button", { name: /Time 1/ }));
     await waitFor(() =>
       expect(
-        within(evidence()).getByRole("heading", { name: "Execution 1 of 2" })
+        within(evidence()).getByRole("heading", {
+          name: "In this run · time 1 of 2",
+        })
       ).toBeTruthy()
     );
     const send = await canvasNode("Send reminder");
@@ -558,13 +566,15 @@ describe("Runs Focus node evidence", () => {
     expect(aside()?.dataset.level).toBe("focus");
     expect(document.activeElement).toBe(send);
     expect(
-      within(evidence()).queryByRole("list", { name: "Executions" })
+      within(evidence()).queryByRole("list", { name: "Times this step ran" })
     ).toBeNull();
 
     fireEvent.click(await canvasNode("Loop step"));
     await waitFor(() => expect(title()).toBe("Loop step"));
     expect(
-      within(evidence()).getByRole("heading", { name: "Execution 2 of 2" })
+      within(evidence()).getByRole("heading", {
+        name: "In this run · time 2 of 2",
+      })
     ).toBeTruthy();
   });
 
@@ -1014,7 +1024,7 @@ describe("Runs Focus node evidence", () => {
     expect(store.get(selectedNodeAtom)).toBe("send");
     expect(title()).toBe("Send reminder");
     expect(
-      within(evidence()).getByRole("heading", { name: "Execution" })
+      within(evidence()).getByRole("heading", { name: "In this run" })
     ).toBeTruthy();
 
     escape();

@@ -22,7 +22,7 @@ import type { OutlineDisplayRow } from "./outline-view";
 export type RunOutcome = {
   tone: "done" | "failed" | "waiting" | "running" | "quiet";
   /**
-   * "Ran", "Took True", "Woke on Payment settled", "Failed", "Waiting ·
+   * "Completed", "Took True", "Woke on Payment settled", "Failed", "Waiting ·
    * resumes Nov 26, 2:00 PM", "Skipped (test run)", "Not reached".
    */
   text: string;
@@ -116,7 +116,7 @@ export function runOutline(input: {
             tookText(row) ??
             (row.stepKind === "wait"
               ? (waitWakeText(log?.output, input.eventLabel) ?? "Waited")
-              : "Ran"),
+              : "Completed"),
           time,
         };
       case "error":
@@ -229,7 +229,7 @@ export function runOutline(input: {
   };
 }
 
-/** A Group's outcome from its members': the most pressing one, or "Ran". */
+/** A Group's outcome from its members': the most pressing one, or "Completed". */
 function groupOutcome(members: readonly RunOutcome[]): RunOutcome {
   for (const tone of ["failed", "waiting", "running"] as const) {
     const found = members.find((member) => member.tone === tone);
@@ -239,7 +239,7 @@ function groupOutcome(members: readonly RunOutcome[]): RunOutcome {
     (member) => !member.text.startsWith("Not reached")
   );
   if (ran.length > 0) {
-    return { tone: "done", text: "Ran", time: ran.at(-1)?.time ?? null };
+    return { tone: "done", text: "Completed", time: ran.at(-1)?.time ?? null };
   }
   return members[0] ?? { tone: "quiet", text: "Not reached", time: null };
 }
