@@ -416,10 +416,12 @@ export function RunsBody({ subject, level, mobile }: RevealBodyProps) {
           <WorkflowRunNodeEvidence
             evidence={evidence}
             isResuming={openRun.run.isResuming}
+            isContinuing={openRun.run.isContinuing}
             onChooseExecution={(logId) =>
               chooseExecution(evidence.nodeId, logId)
             }
             onResume={openRun.run.onResume}
+            onContinueWait={openRun.run.onContinueWait}
           />
         </div>
       ) : null}

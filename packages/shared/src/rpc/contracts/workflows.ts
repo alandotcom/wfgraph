@@ -409,12 +409,15 @@ const executionSummarySchema = Schema.Struct({
  *
  * The token is here because the Runs view's Resume affordance is what an operator
  * uses when the Event a run parked on will never arrive. It is a session-gated
- * read of a row this operator can already see.
+ * read of a row this operator can already see. `waitType` says whether the Wait
+ * counts down to a time (`delay`) or waits for an Event (`event`), which is
+ * how the Runs view offers Continue now on a timed Wait of a draft run.
  */
 const executionWaitSchema = Schema.Struct({
   id: idSchema,
   nodeId: Schema.String,
   nodeName: Schema.String,
+  waitType: Schema.Literals(["delay", "event"]),
   resumeToken: Schema.NullOr(Schema.String),
   subscribedEvents: listOf(Schema.String),
   waitUntil: Schema.NullOr(Schema.String),

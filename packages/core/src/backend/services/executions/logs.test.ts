@@ -13,6 +13,7 @@ import type {
   ExecutionTerminationState,
   ExecutorState,
   WorkflowExecutionLog,
+  WorkflowWaitState,
 } from "#src/backend/services/executions/repo";
 import { getExecutionLogs } from "#src/backend/services/executions/logs";
 
@@ -43,11 +44,12 @@ function summary(overrides: Partial<ExecutionSummary> = {}): ExecutionSummary {
   };
 }
 
-/** The three reads this service makes, with the summary the test chose. */
+/** The reads this service makes, with the summary and parks the test chose. */
 function makeRepos(
   execution: ExecutionSummary | null,
   logs: WorkflowExecutionLog[] = [],
-  termination: ExecutionTerminationState | null = null
+  termination: ExecutionTerminationState | null = null,
+  waits: WorkflowWaitState[] = []
 ) {
   return Layer.mergeAll(
     SilentAppLoggerLayer,
@@ -55,7 +57,7 @@ function makeRepos(
       findSummaryById: () => Effect.succeed(execution),
       findTerminationState: () => Effect.succeed(termination),
       listLogs: () => Effect.succeed(logs),
-      listWaitingStates: () => Effect.succeed([]),
+      listWaitingStates: () => Effect.succeed(waits),
     })
   );
 }
@@ -364,6 +366,47 @@ describe("getExecutionLogs", () => {
         );
         assert.strictEqual(ended.schedule, null);
       })
+    );
+
+    // The Runs view offers Continue now on a timed Wait alone, and reads
+    // which kind a park is from this field.
+    it.effect(
+      "says whether each park counts down to a time or waits for an Event",
+      () =>
+        Effect.gen(function* () {
+          const park = (id: string, waitType: "delay" | "event") => ({
+            id,
+            executionId: "exec_1",
+            workflowId: "wf_1",
+            nodeId: `node_${id}`,
+            nodeName: id,
+            waitType,
+            status: "waiting" as const,
+            resumeToken: waitType === "event" ? `tok_${id}` : null,
+            waitUntil: new Date("2026-03-02T10:00:00.000Z"),
+            subscribedEvents: waitType === "event" ? ["app/reply"] : [],
+            metadata: null,
+            createdAt: new Date("2026-03-01T10:00:00.000Z"),
+            resumedAt: null,
+            cancelledAt: null,
+          });
+          const result = yield* getExecutionLogs("exec_1").pipe(
+            Effect.provide(
+              makeRepos(summary(), [], null, [
+                park("wait_day", "delay"),
+                park("wait_reply", "event"),
+              ])
+            )
+          );
+
+          assert.deepStrictEqual(
+            result.waits.map((wait) => [wait.id, wait.waitType]),
+            [
+              ["wait_day", "delay"],
+              ["wait_reply", "event"],
+            ]
+          );
+        })
     );
 
     it.effect("answers not-found when the run is gone", () =>

@@ -238,6 +238,7 @@ describe("Runs Group summary", () => {
           id: "wait_1",
           nodeId: "wait",
           nodeName: "Wait for reply",
+          waitType: "event",
           resumeToken: "tok_w",
           subscribedEvents: ["app/reply"],
           waitUntil: null,

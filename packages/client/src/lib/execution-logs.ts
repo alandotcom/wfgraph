@@ -125,6 +125,8 @@ export type ExecutionWait = {
   id: string;
   nodeId: string;
   nodeName: string;
+  /** A Wait that counts down to a time (`delay`) or waits for an Event (`event`). */
+  waitType: "delay" | "event";
   resumeToken: string | null;
   subscribedEvents: string[];
   waitUntil: Date | null;

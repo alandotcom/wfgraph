@@ -501,6 +501,7 @@ describe("toExecutionOverlaySource", () => {
       id: `wait_${nodeId}`,
       nodeId,
       nodeName: nodeId,
+      waitType: "delay",
       resumeToken: null,
       subscribedEvents: [],
       waitUntil: null,

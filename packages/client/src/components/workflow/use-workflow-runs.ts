@@ -298,6 +298,7 @@ export function useWorkflowRuns(): WorkflowRunsState {
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const canCancel = can(WfGraphOperations.workflowCancelExecution.id);
   const canResume = can(WfGraphOperations.workflowResumeWait.id);
+  const canContinue = can(WfGraphOperations.workflowContinueWait.id);
   // Workspace navigation records whether a route has named a run of this
   // workflow. The surface unmounts outside Runs, so a value held here would
   // forget the run closed before leaving and reopen the newest on return.
@@ -341,6 +342,14 @@ export function useWorkflowRuns(): WorkflowRunsState {
     orpcQuery.workflow.resumeWait.mutationOptions({
       onSuccess: () => refreshRunHistory(queryClient),
       meta: { errorMessage: "Failed to resume the run" },
+    })
+  );
+
+  // No `errorMessage`, as for Cancel: the server says which of its refusals
+  // this is, such as a Wait an Event or its own deadline ended first.
+  const continueWait = useMutation(
+    orpcQuery.workflow.continueWait.mutationOptions({
+      onSuccess: () => refreshRunHistory(queryClient),
     })
   );
 
@@ -407,6 +416,20 @@ export function useWorkflowRuns(): WorkflowRunsState {
         onResume: canResume
           ? (token) => resumeWait.mutate({ token })
           : undefined,
+        isContinuing:
+          continueWait.isPending &&
+          continueWait.variables?.executionId === execution.id,
+        // Continue now belongs to a run of the draft alone. A run of a
+        // published version keeps the timing its builder published, and the
+        // server refuses it there too.
+        onContinueWait:
+          canContinue && execution.versionKind === "draft_snapshot"
+            ? (waitStateId) =>
+                continueWait.mutate({
+                  executionId: execution.id,
+                  waitStateId,
+                })
+            : undefined,
       },
     };
   };

@@ -470,6 +470,7 @@ export function waitingRun(id: string, token: string) {
       id: `wait_${id}`,
       nodeId: "w",
       nodeName: `Wait in ${id}`,
+      waitType: "event",
       resumeToken: token,
       subscribedEvents: [],
       waitUntil: null,

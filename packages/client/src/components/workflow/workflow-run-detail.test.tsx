@@ -91,6 +91,7 @@ function renderDetail(
                   executor={extras?.executor ?? null}
                   onSelectLog={extras?.onSelectLog ?? vi.fn()}
                   isCanceling={false}
+                  isContinuing={false}
                   isResuming={false}
                   logs={extras?.logs ?? []}
                   onCancel={vi.fn(() => undefined)}
@@ -400,6 +401,7 @@ describe("WorkflowRunDetail", () => {
             id: "wait_1",
             nodeId: "wait_1",
             nodeName: "Wait",
+            waitType: "event",
             resumeToken: "tok_1",
             subscribedEvents: ["resend/email.delivered"],
             waitUntil: null,
@@ -424,6 +426,7 @@ describe("WorkflowRunDetail", () => {
               id: "wait_1",
               nodeId: "wait_1",
               nodeName: "Wait",
+              waitType: "event",
               resumeToken: "tok_1",
               subscribedEvents: ["resend/email.delivered"],
               waitUntil: null,
@@ -710,6 +713,7 @@ describe("WorkflowRunDetail", () => {
             id: "wait_1",
             nodeId: "wait_1",
             nodeName: "Wait for payment",
+            waitType: "event",
             resumeToken: null,
             subscribedEvents: ["billing/payment.settled", "app/unknown"],
             waitUntil: null,

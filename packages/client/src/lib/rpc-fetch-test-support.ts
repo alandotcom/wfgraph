@@ -256,6 +256,7 @@ export async function answerWorkflowRunRpc(
       return rpcJsonResponse({ events: [] });
 
     case "workflow/cancelExecution":
+    case "workflow/continueWait":
     case "workflow/resumeWait":
     case "workflow/deleteExecutions":
       return rpcJsonResponse({});

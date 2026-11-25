@@ -33,6 +33,59 @@ beforeEach(() => {
 });
 afterEach(removeRunsRevealRpc);
 
+/** What a Continue now on `exec_d`'s Wait posts. */
+const CONTINUE_INPUT = { executionId: "exec_d", waitStateId: "wait_exec_d" };
+
+/** The inputs of every Continue now posted so far. */
+function continueCalls() {
+  return runsRpc.calls
+    .filter((call) => call.path === "workflow/continueWait")
+    .map((call) => call.input);
+}
+
+/**
+ * Serves `id` as a run parked on a one-day Wait, a timed one unless `event`
+ * says it waits for an Event, of the draft or of a published version.
+ */
+function serveTimedWait(
+  id: string,
+  input: { versionKind: "published" | "draft_snapshot"; event?: boolean }
+) {
+  served.items = [
+    ...served.items,
+    { ...execution(id, "waiting"), versionKind: input.versionKind },
+  ];
+  served.graphs = {
+    ...served.graphs,
+    [`ver_${id}`]: labelledGraph([{ id: "w", label: "Wait a day" }]),
+  };
+  served.logsByExecutionId = {
+    ...served.logsByExecutionId,
+    [id]: [
+      log({
+        id: `log_${id}`,
+        nodeId: "w",
+        nodeName: "Wait a day",
+        status: "running",
+      }),
+    ],
+  };
+  served.waitsByExecutionId = {
+    ...served.waitsByExecutionId,
+    [id]: [
+      {
+        id: `wait_${id}`,
+        nodeId: "w",
+        nodeName: "Wait a day",
+        waitType: input.event ? "event" : "delay",
+        resumeToken: input.event ? `tok_${id}` : null,
+        subscribedEvents: input.event ? ["app/reply"] : [],
+        waitUntil: "2026-03-02T10:00:00.000Z",
+      },
+    ],
+  };
+}
+
 describe("Runs Focus node evidence", () => {
   it("opens the same evidence from a canvas node and its outline row, and returns to each", async () => {
     served.items = [execution("exec_s", "completed")];
@@ -197,6 +250,7 @@ describe("Runs Focus node evidence", () => {
           id: "wait_1",
           nodeId: "w",
           nodeName: "Wait for reply",
+          waitType: "event",
           resumeToken: "tok_w",
           subscribedEvents: ["app/reply"],
           waitUntil: null,
@@ -244,6 +298,61 @@ describe("Runs Focus node evidence", () => {
         )
       ).toBe(true)
     );
+  });
+
+  // A draft run with a one-day Wait could only be cancelled, so "run it once
+  // to see it work" took a day. Continue now ends the Wait and the run goes on.
+  it("offers Continue now on a draft run's timed Wait, in the step's evidence and the run overview, and posts the run and the wait", async () => {
+    serveTimedWait("exec_d", { versionKind: "draft_snapshot" });
+    const { view, aside, title, evidence, canvasNode } = await renderRunsReveal(
+      { view: "runs", executionId: "exec_d" }
+    );
+    await waitFor(() => expect(title()).toBe(runHeading("exec_d")));
+
+    // The run overview names the Wait the run is held at.
+    fireEvent.click(await view.findByRole("button", { name: "Continue now" }));
+    await waitFor(() => expect(continueCalls()).toEqual([CONTINUE_INPUT]));
+
+    fireEvent.click(await canvasNode("Wait a day"));
+    await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
+    const shown = within(evidence());
+    expect(shown.queryByRole("button", { name: "Resume now" })).toBeNull();
+    fireEvent.click(await shown.findByRole("button", { name: "Continue now" }));
+    await waitFor(() =>
+      expect(continueCalls()).toEqual([CONTINUE_INPUT, CONTINUE_INPUT])
+    );
+  });
+
+  it("offers no Continue now on a timed Wait of a published run", async () => {
+    serveTimedWait("exec_p", { versionKind: "published" });
+    const { view, aside, title, evidence, canvasNode } = await renderRunsReveal(
+      { view: "runs", executionId: "exec_p" }
+    );
+    await waitFor(() => expect(title()).toBe(runHeading("exec_p")));
+    expect(
+      await view.findByRole("heading", { name: "Waiting at Wait a day" })
+    ).toBeTruthy();
+    expect(view.queryByRole("button", { name: "Continue now" })).toBeNull();
+
+    fireEvent.click(await canvasNode("Wait a day"));
+    await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
+    expect(
+      within(evidence()).queryByRole("button", { name: "Continue now" })
+    ).toBeNull();
+  });
+
+  // An event Wait already offers Resume now, which ends it with an arrival.
+  it("offers Resume now and no Continue now on an event Wait of a draft run", async () => {
+    serveTimedWait("exec_e", { versionKind: "draft_snapshot", event: true });
+    const { view, title } = await renderRunsReveal({
+      view: "runs",
+      executionId: "exec_e",
+    });
+    await waitFor(() => expect(title()).toBe(runHeading("exec_e")));
+    expect(
+      await view.findByRole("button", { name: "Resume now" })
+    ).toBeTruthy();
+    expect(view.queryByRole("button", { name: "Continue now" })).toBeNull();
   });
 
   it("shows how a resumed node's wait ended", async () => {

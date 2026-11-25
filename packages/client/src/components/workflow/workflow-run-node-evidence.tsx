@@ -434,7 +434,7 @@ function ExecutionList({
 /**
  * The recorded evidence of one node in one run: its executions, timing, error or
  * cancellation, a step the executor is retrying, the wait it holds with
- * Resume, what it did in words, its activity, and its recorded input, output
+ * Resume, or Continue now for a timed Wait of a draft run, what it did in words, its activity, and its recorded input, output
  * and configuration as raw JSON behind **Show raw data**. A Condition says the
  * branch it took and each rule; any other step shows its input and output as
  * labeled values. An execution
@@ -447,13 +447,18 @@ function ExecutionList({
 export function WorkflowRunNodeEvidence({
   evidence,
   isResuming,
+  isContinuing,
   onChooseExecution,
   onResume,
+  onContinueWait,
 }: {
   evidence: RunNodeEvidence;
   isResuming: boolean;
+  isContinuing: boolean;
   onChooseExecution: (logId: string) => void;
   onResume?: ((token: string) => void) | undefined;
+  /** As on `WorkflowRunDetailProps`: present only for a run of the draft. */
+  onContinueWait?: ((waitStateId: string) => void) | undefined;
 }) {
   const catalog = useExtensionCatalog();
   const { shownExecution: shown, executions } = evidence;
@@ -611,6 +616,17 @@ export function WorkflowRunNodeEvidence({
                   variant="outline"
                 >
                   Resume now
+                </Button>
+              ) : null}
+              {wait.waitType === "delay" && onContinueWait ? (
+                <Button
+                  disabled={isContinuing}
+                  onClick={() => onContinueWait(wait.id)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Continue now
                 </Button>
               ) : null}
             </div>

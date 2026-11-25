@@ -133,7 +133,7 @@ describe("runOverlayCopy", () => {
     expect(runOverlayCopy({ graph: "draft" })).toEqual({
       title: "Run draft",
       description:
-        'Runs the draft as a test run. A step with an "In test runs" setting follows it. Other steps run as usual unless the app skips them.',
+        'Runs the draft as a test run. A step with an "In test runs" setting follows it. Other steps run as usual unless the app skips them. A Wait waits its full time unless you press Continue now.',
       confirmLabel: "Run draft",
     });
   });

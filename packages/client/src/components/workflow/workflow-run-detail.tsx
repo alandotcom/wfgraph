@@ -57,8 +57,15 @@ export type WorkflowRunDetailProps = {
   executor: RunExecutorHold | null;
   isCanceling: boolean;
   isResuming: boolean;
+  /** Whether a Continue now for this run is in flight. */
+  isContinuing: boolean;
   onCancel?: ((executionId: string) => void) | undefined;
   onResume?: ((token: string) => void) | undefined;
+  /**
+   * Ends one timed Wait of the run now, by its wait row id. Present only for
+   * a run of the draft, which is the one run Continue now is offered on.
+   */
+  onContinueWait?: ((waitStateId: string) => void) | undefined;
   /** The failed step was chosen, which shows that execution's evidence. */
   onSelectLog: (log: ExecutionLog) => void;
   /** Whether the run summary's heading takes focus when the detail mounts. */
@@ -206,8 +213,10 @@ export function WorkflowRunDetail({
   executor,
   isCanceling,
   isResuming,
+  isContinuing,
   onCancel,
   onResume,
+  onContinueWait,
   onSelectLog,
   focusSummaryOnMount = false,
   scroll,
@@ -320,6 +329,17 @@ export function WorkflowRunDetail({
                       variant="outline"
                     >
                       Resume now
+                    </Button>
+                  ) : null}
+                  {wait.waitType === "delay" && onContinueWait ? (
+                    <Button
+                      disabled={isContinuing}
+                      onClick={() => onContinueWait(wait.id)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      Continue now
                     </Button>
                   ) : null}
                 </div>

@@ -205,7 +205,9 @@ export function runOverlayCopy(target: WorkflowRunTarget): {
   if (target.graph === "draft") {
     return {
       title: "Run draft",
-      description: `Runs the draft as a test run. ${TEST_RUN_STEPS}`,
+      // Continue now is offered on a draft run alone, so only this sentence
+      // names it.
+      description: `Runs the draft as a test run. ${TEST_RUN_STEPS} A Wait waits its full time unless you press Continue now.`,
       confirmLabel: "Run draft",
     };
   }

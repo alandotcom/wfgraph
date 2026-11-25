@@ -13,6 +13,7 @@ The editor is easier to read and to operate.
 - Add step joins the Started path when it has one open end, a Wait offers common durations, Event pickers list the host app's Events first, and Run draft opens on a sample Event.
 - Publish opens one review sheet that lists each edit in the order the workflow runs, with where it sits and the changed words marked, and ends in the decision to publish. It replaces the Changes view and the Publish dialog. Version history shows what each past version changed in the same sheet.
 - Selecting a step in Draft shows its editable form, with each issue beside the field it names. A Lifecycle section edits in place, a Condition's rules keep one line each where the column is wide enough, and the issue list's Edit opens the step at its field. A template field says that typing @ inserts a value.
+- A run of the draft that is waiting on a timed Wait offers Continue now, which ends that Wait as if its time had come so the run goes on. A run of a published version never offers it.
 - Status text clears 4.5:1 contrast, focus rings are full strength, and overlays share one scrim that darkens in both themes.
 
 Fixes: duplicating a workflow that contains a Group no longer fails, a Wait Duration that cannot be read is a blocking issue, and deleting a Connection no longer rebinds its steps to another Connection.
@@ -20,6 +21,8 @@ Fixes: duplicating a workflow that contains a Group no longer fails, a Wait Dura
 The build agent uses the step numbers the editor prints and reads what a test run does at each step from the workflow's own settings. `read_workflow` and `read_nodes` give each step its `stepNumber` and give an action step its `testRun`, the note under a message names each attached step by number and label, and a host runner's `turn.selectedNodes` carries `stepNumber`.
 
 Each run that `getExecutions`, `getExecutionsGlobal` and `getExecutionLogs` return carries `entity`: the tracked Entity's `type` and `id`, or null when the workflow tracks no Entity.
+
+Each run that `getExecutions`, `getExecutionsGlobal` and `getExecutionLogs` return carries `entity`: the tracked Entity's `type` and `id`, or null when the workflow tracks no Entity. Each wait that `getExecutionLogs` returns carries `waitType`, `delay` or `event`. The new `workflow.continueWait` procedure, which takes `run.manage`, ends one waiting park of a draft run as if its time had come and refuses a run of a published version.
 
 Each workflow that `getAll` and `subscribeList` return carries `runCounts`: `failedRecently`, the failed runs among the newest 50 its run list shows, and `waiting`, its runs waiting now. A run that fails or parks emits a new `subscribeList` snapshot.
 

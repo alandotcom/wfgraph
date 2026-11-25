@@ -109,6 +109,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         id: wait.id,
         nodeId: wait.nodeId,
         nodeName: wait.nodeName,
+        waitType: wait.waitType,
         resumeToken: wait.resumeToken,
         subscribedEvents: wait.subscribedEvents ?? [],
         waitUntil: toIso(wait.waitUntil),
