@@ -4,7 +4,9 @@
  * A row matches when the query appears anywhere in its label or its keywords,
  * ignoring case and accents, which is the match Base UI's own filter makes.
  * The rows are then ranked by where the query landed, so a row named by the
- * query comes before a row that merely mentions it. Rows of equal rank keep
+ * query comes before a row that merely mentions it. A query of digits alone
+ * names a step by its number, so a numbered step matches it only when the
+ * number is the query. Rows of equal rank keep
  * their authored order, and groups are ordered by their best row.
  */
 
@@ -15,6 +17,8 @@ export type SearchableRow = {
   readonly label: string;
   /** Every word the row can be found by, its label included. */
   readonly keywords: string;
+  /** The step's number in the outline, on a row that stands for a step. */
+  readonly stepNumber?: number | undefined;
 };
 
 export type SearchableGroup<Row extends SearchableRow> = {
@@ -28,7 +32,7 @@ export function normalizeSearchText(text: string): string {
 
 /**
  * The rank of `row` for `query`, lower first, or null when it does not match:
- * 0 when the label is the query, 1 when the label starts with it, 2 when a word
+ * 0 when the label is the query or the query is the row's step number, 1 when the label starts with it, 2 when a word
  * of the label starts with it, 3 when the label holds it elsewhere, and 4 when
  * only the keywords hold it.
  */
@@ -40,6 +44,9 @@ export function paletteMatchRank(
   const label = normalizeSearchText(row.label);
   if (needle === "") {
     return 0;
+  }
+  if (row.stepNumber !== undefined && /^\d+$/.test(needle)) {
+    return Number(needle) === row.stepNumber ? 0 : null;
   }
   if (label === needle) {
     return 0;

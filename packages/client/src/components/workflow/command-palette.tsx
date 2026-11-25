@@ -13,6 +13,7 @@
  * would put four `@radix-ui/*` packages back in the lockfile for one screen.
  */
 
+import { stepNumbersAtom } from "#src/lib/step-numbers";
 import { Autocomplete } from "@base-ui/react/autocomplete";
 import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type { BaseUIEvent } from "@base-ui/react/types";
@@ -108,6 +109,8 @@ type PaletteItem = {
   /** Whether the row reaches real recipients. The highlight rules below skip these. */
   readonly consequential: boolean;
   readonly icon: ReactNode;
+  /** The step's number in the outline, which a query of digits matches. */
+  readonly stepNumber?: number | undefined;
   readonly select: () => void;
 };
 
@@ -364,6 +367,7 @@ function CommandPaletteDialog({
   const catalog = useExtensionCatalog();
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const displayNodes = useAtomValue(displayNodesAtom);
+  const stepNumbers = useAtomValue(stepNumbersAtom);
   // The edges of the graph on the canvas. A drag replaces nodes and keeps this
   // array, so it does not by itself rebuild the search rows.
   const presentedEdges = useAtomValue(presentedGraphAtom)?.edges ?? NO_EDGES;
@@ -488,6 +492,7 @@ function CommandPaletteDialog({
           ? labels.get(node.parentId)
           : undefined;
         const place = places.get(node.id);
+        const stepNumber = stepNumbers.get(node.id);
         const configuredActionId =
           typeof node.data.config?.actionType === "string" &&
           node.data.config.actionType.trim()
@@ -498,7 +503,10 @@ function CommandPaletteDialog({
           : undefined;
         return {
           id: `node:${node.id}`,
-          label,
+          // A numbered step reads as the outline and the step's commands name
+          // it: "Step 4 · Send 24-hour reminder".
+          label:
+            stepNumber === undefined ? label : `Step ${stepNumber} · ${label}`,
           detail: place ? upperFirst(place) : undefined,
           keywords: uniq(
             compact([
@@ -512,6 +520,7 @@ function CommandPaletteDialog({
           disabled: false,
           consequential: false,
           icon: <Search className="size-3.5 text-muted-foreground" />,
+          stepNumber,
           select: () => {
             if (
               focusNode({ nodeId: node.id, workflowId: palette.workflowId })
@@ -529,6 +538,7 @@ function CommandPaletteDialog({
     catalog,
     displayNodes,
     presentedEdges,
+    stepNumbers,
     focusNode,
     requestEditFocus,
     palette.workflowId,
@@ -660,7 +670,7 @@ function CommandPaletteDialog({
               label: "Add step",
               items: stepPageGroups.flatMap((group) => group.items),
             },
-            { id: "nodes", label: "Nodes", items: nodeItems },
+            { id: "nodes", label: "Steps", items: nodeItems },
             { id: "workflows", label: "Workflows", items: workflowItems },
           ];
   }

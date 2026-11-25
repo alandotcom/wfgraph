@@ -25,6 +25,20 @@ describe("paletteMatchRank", () => {
   });
 });
 
+describe("paletteMatchRank for a step number", () => {
+  const step = {
+    label: "Wait 13 days",
+    keywords: "Wait 13 days",
+    stepNumber: 7,
+  };
+
+  it("matches a query of digits only against the step's number", () => {
+    expect(paletteMatchRank(step, "13")).toBeNull();
+    expect(paletteMatchRank(step, "7")).toBe(0);
+    expect(paletteMatchRank(step, "wait")).toBe(1);
+  });
+});
+
 describe("rankPaletteGroups", () => {
   it("puts the row a query names first, then the group holding it", () => {
     const groups = [

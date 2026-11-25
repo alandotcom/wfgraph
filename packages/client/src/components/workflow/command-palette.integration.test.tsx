@@ -1,4 +1,4 @@
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ToolbarActions } from "#src/components/workflow/workflow-toolbar-chrome";
 import { renderChrome } from "#src/components/workflow/workflow-toolbar-chrome.test-support";
@@ -458,7 +458,7 @@ describe("the command palette", () => {
 
     fireEvent.change(input, { target: { value: "notify" } });
     const result = rendered.getByRole("option", {
-      name: "Notify customer — In Customer updates",
+      name: "Step 1 · Notify customer — In Customer updates",
     });
 
     fireEvent.click(result);
@@ -1024,6 +1024,41 @@ describe("the command palette with a step selected", () => {
     } finally {
       resetAuthorizationGrantsForTests();
     }
+  });
+
+  it("prints each found step's number and finds a step by its number alone", async () => {
+    const rendered = renderChrome(ToolbarActions, {
+      // Step 1's name holds a 2, which a number must not match.
+      graph: SEARCH_GRAPH.map((node) =>
+        node.id === "notify_customer"
+          ? { ...node, data: { ...node.data, label: "Notify 2 customers" } }
+          : node
+      ),
+    });
+    await rendered.findByRole("button", { name: /^Publish( v\d+)?$/ });
+    pressCommandK();
+    const input = paletteInput();
+    if (!input) {
+      throw new Error("the palette did not open");
+    }
+
+    fireEvent.change(input, { target: { value: "customer" } });
+    const steps = within(rendered.getByRole("group", { name: "Steps" }));
+    expect(
+      steps.getAllByRole("option").map((option) => option.textContent)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^Step 1 · Notify 2 customers/),
+        expect.stringMatching(/^Step 2 · Load customer/),
+      ])
+    );
+
+    fireEvent.change(input, { target: { value: "2" } });
+    expect(
+      within(rendered.getByRole("group", { name: "Steps" }))
+        .getAllByRole("option")
+        .map((option) => option.textContent)
+    ).toEqual([expect.stringMatching(/^Step 2 · Load customer/)]);
   });
 
   it("offers no step commands to a person who may not edit the workflow", async () => {
