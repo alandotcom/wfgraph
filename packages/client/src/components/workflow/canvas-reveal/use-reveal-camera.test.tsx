@@ -9,7 +9,9 @@ import { useRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearSelectionAtom,
+  duplicateSelectionAtom,
   loadWorkflowGraphAtom,
+  nodesAtom,
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -17,7 +19,14 @@ import {
   workspaceAddressFromSearch,
   workspaceAddressId,
 } from "#src/lib/workflow-navigation-state";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowIdAtom,
+  workflowApiAtom,
+} from "#src/lib/workflow-save-store";
+import {
+  savedWorkflow,
+  unreadableDraft,
+} from "#src/lib/workflow-save-test-support";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { requestRevealPlacementAtom } from "./reveal-requests";
@@ -186,6 +195,35 @@ beforeEach(() => {
 });
 
 describe("useRevealCamera", () => {
+  it("shows a duplicated step that lands below the canvas, in one move", async () => {
+    const camera = renderCamera({
+      nodes: [step("near", 100, 300), step("low", 100, 680)],
+      edges: [],
+    });
+    await camera.settle();
+    // The duplicate saves at once; the save answers without a server.
+    camera.store.set(workflowApiAtom, {
+      update: vi.fn(() => Promise.resolve(savedWorkflow("wf_1"))) as never,
+      read: unreadableDraft,
+    });
+    await camera.run(() => camera.store.set(selectOnlyNodeAtom, "low"));
+    expect(camera.moves).toEqual([]);
+
+    await camera.run(() => camera.store.set(duplicateSelectionAtom));
+    const copy = camera.store
+      .get(nodesAtom)
+      .find((node) => !["near", "low"].includes(node.id));
+    if (!copy) throw new Error("no copy was added");
+    // React Flow holds the copy once the canvas paints it.
+    camera.setFlowNodes(camera.store.get(nodesAtom));
+    await camera.settle();
+
+    expect(camera.moves).toHaveLength(1);
+    const viewport = camera.viewport();
+    const bottom = viewport.y + (copy.position.y + 80) * viewport.zoom;
+    expect(bottom).toBeLessThanOrEqual(CANVAS.height);
+  });
+
   it("moves nothing when a step is selected or deselected, even one off screen", async () => {
     const camera = renderCamera();
     await camera.settle();

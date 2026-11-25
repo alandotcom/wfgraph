@@ -86,7 +86,12 @@ import {
   selectionWithChanges,
   type SelectionChange,
 } from "#src/lib/workflow-navigation-state";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+} from "#src/lib/workflow-workspace-navigation";
+import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
+import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 
 export {
   executionOverlayGraphAtom,
@@ -538,6 +543,16 @@ function insertClonedSubgraph(
         (edge) => topLevelIds.has(edge.source) && topLevelIds.has(edge.target)
       )
       .map((edge) => edge.id),
+  });
+
+  // The camera shows the new steps once, moving the least it must to bring
+  // them clear of the agent's prompt line and the controls floating over
+  // the canvas, and not at all when they are already in view. A step
+  // duplicated below the graph, or dropped at the bottom of the canvas,
+  // otherwise lands under the prompt line.
+  set(requestRevealPlacementAtom, {
+    addressId: workspaceAddressId(get(activeWorkspaceAddressAtom)),
+    nodeIds: [...topLevelIds],
   });
 
   const only = nodes.length === 1 ? nodes[0] : undefined;

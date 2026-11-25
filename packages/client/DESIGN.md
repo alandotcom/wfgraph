@@ -428,6 +428,10 @@ opens, selects the step, brings the details column back if it was collapsed,
 and puts focus in the field the row names. A
 step added from the palette opens with focus in the first required field it
 leaves empty, and any other new step opens with focus in the action picker.
+However a step is added, by the palette, the outline, a connection dropped on
+empty canvas, a duplicate or a paste, the camera then moves once, the least it
+must, to show the new steps clear of the agent's prompt line and the canvas
+controls, and does not move when they are already in view.
 
 Selecting the Lifecycle node opens its inspector with the workflow's lifecycle
 policy, one section each in this order: an editable label, the Start Events
