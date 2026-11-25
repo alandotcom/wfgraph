@@ -4,6 +4,7 @@
  * navigation state beside the inspector scroll, so both restore together.
  */
 
+import { START_RULE_NAMES } from "#src/components/workflow/config/lifecycle-policy-summary";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   type ExtensionCatalog,
@@ -26,40 +27,61 @@ import {
 } from "#src/lib/workflow-workspace-navigation";
 import { useRevealNavigation } from "./use-reveal-navigation";
 
+/** The start's sections in order, each titled with its rule's one name. */
 export const LIFECYCLE_SECTIONS = [
-  { id: "start-events", label: "Starts when" },
-  { id: "overlapping-runs", label: "Overlapping runs" },
-  { id: "schedule", label: "Schedule" },
-  { id: "cancel-events", label: "Cancel Events" },
-  { id: "entity-eligibility", label: "Entity" },
+  { id: "start-events", label: START_RULE_NAMES.starts },
+  { id: "overlapping-runs", label: START_RULE_NAMES.overlapping },
+  { id: "schedule", label: START_RULE_NAMES.schedule },
+  { id: "cancel-events", label: START_RULE_NAMES.stop },
+  { id: "entity-eligibility", label: START_RULE_NAMES.entity },
   { id: "connections", label: "Event Connections" },
   { id: "validation", label: "Validation" },
 ] as const;
 
+/** The title of `section`. */
+export function lifecycleSectionTitle(section: LifecycleSectionId): string {
+  return (
+    LIFECYCLE_SECTIONS.find((entry) => entry.id === section)?.label ?? section
+  );
+}
+
 export type LifecycleSectionId = (typeof LIFECYCLE_SECTIONS)[number]["id"];
 
 /**
- * The rules "Add a rule" offers, named for what each does, with the section
- * that edits it. A Start Filter is written in the Start Events section, and
- * the Entity and its eligibility rule share one section.
+ * The rules "Add a rule" offers, each by the name its section or form heading
+ * carries, with the section that edits it. A Start Filter is written in the
+ * "Starts when" section, and the Entity and its eligibility rule share one
+ * section.
  */
 const LIFECYCLE_RULE_CHOICES = [
-  { id: "start-filter", label: "Only start when…", section: "start-events" },
-  { id: "cancel-events", label: "Stop a run when…", section: "cancel-events" },
+  {
+    id: "start-filter",
+    label: `${START_RULE_NAMES.startFilter}…`,
+    section: "start-events",
+  },
+  {
+    id: "cancel-events",
+    label: `${START_RULE_NAMES.stop}…`,
+    section: "cancel-events",
+  },
   {
     id: "overlapping-runs",
-    label: "If a run is already in progress…",
+    label: `${START_RULE_NAMES.overlapping}…`,
     section: "overlapping-runs",
   },
-  { id: "schedule", label: "On a schedule…", section: "schedule" },
+  {
+    id: "schedule",
+    label: `${START_RULE_NAMES.schedule}…`,
+    section: "schedule",
+  },
   {
     id: "entity",
-    label: "Tie each run to a record…",
+    label: `${START_RULE_NAMES.entity}…`,
     section: "entity-eligibility",
   },
   {
     id: "eligibility",
-    label: "Only run while the record matches…",
+    label: `${START_RULE_NAMES.eligibility}…`,
     section: "entity-eligibility",
   },
 ] as const satisfies ReadonlyArray<{

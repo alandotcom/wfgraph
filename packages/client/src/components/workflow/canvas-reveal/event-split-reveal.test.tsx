@@ -398,7 +398,7 @@ describe("Event Split Browse", () => {
 
     expect(aside()?.dataset.level).toBe("browse");
     expect(
-      view.getByRole("button", { name: "Done editing Cancel Events" })
+      view.getByRole("button", { name: "Done editing Stop a run when" })
     ).toBeTruthy();
   });
 

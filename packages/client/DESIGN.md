@@ -464,10 +464,16 @@ set by what it does: "Only start when…" (a Start Filter, offered once a Start
 Event is chosen), "Stop a run when…" (Cancel Events), "If a run is already in
 progress…" (Overlapping runs), "On a schedule…", "Tie each run to a record…"
 (the tracked Entity) and "Only run while the record matches…" (its eligibility
-rule). Each set rule shows as its own section in this order: Overlapping runs
-with what a newer start does to the run in progress, each schedule in words
-with its next run, the Cancel Events, and the Entity with its binding in each
-Event, its eligibility rule and when it is checked. Two sections show without
+rule). A rule goes by that one name everywhere a person reads it: its menu
+item, its section's title and its form's heading, so "Stop a run when…" opens
+a section titled "Stop a run when", and a filter on a Start Event is headed
+"Only start when". CONTEXT.md keeps the domain nouns for the same rules. Each
+set rule shows as its own section in this order: "If a run is already in
+progress" with what a newer start does to the run in progress, "On a
+schedule" with each schedule in words and its next run, "Stop a run when"
+with its Cancel Events, and "Tie each run to a record" with the Entity's
+binding in each Event, "Only run while the record matches" and when it is
+checked. Two sections show without
 being added, because the workflow is wrong without them: Event Connections,
 while a Start or Cancel Event arrives through an integration, since such an
 Event reaches no run until its Connection is chosen, and Validation, while the

@@ -111,7 +111,7 @@ describe("LifecyclePanel Connection picker", () => {
   it("gives both Event groups clear headings", () => {
     const view = renderPanel({});
 
-    for (const name of ["Start Events", "Cancel Events"]) {
+    for (const name of ["Starts when", "Stop a run when"]) {
       const heading = view.getByRole("heading", { level: 4, name });
 
       expect(heading.className).toContain("text-sm");

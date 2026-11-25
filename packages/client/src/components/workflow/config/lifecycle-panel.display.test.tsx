@@ -59,10 +59,11 @@ describe("LifecyclePanel display", () => {
   it("shows the stored configuration in the controls that set it", () => {
     const view = renderPanel();
 
-    expect(view.getByLabelText("Start Events")).toBeTruthy();
-    expect(view.getByLabelText("Cancel Events")).toBeTruthy();
+    expect(view.getByLabelText("Starts when")).toBeTruthy();
+    expect(view.getByLabelText("Stop a run when")).toBeTruthy();
     expect(
-      view.getByRole("combobox", { name: "Overlapping runs" }).textContent
+      view.getByRole("combobox", { name: "If a run is already in progress" })
+        .textContent
     ).toContain("Start the newest run");
     expect(
       view.getByRole("checkbox", { name: "Allow manual runs" })
@@ -96,7 +97,7 @@ describe("LifecyclePanel display", () => {
     // them is refused where it stands rather than hidden.
     expect(
       view
-        .getByRole("combobox", { name: "Overlapping runs" })
+        .getByRole("combobox", { name: "If a run is already in progress" })
         .hasAttribute("disabled")
     ).toBe(true);
     // Base UI draws this one as a span rather than a control the browser can
@@ -117,7 +118,7 @@ describe("LifecyclePanel display", () => {
     const view = renderPanel();
 
     expect(view.queryByText(/A selected Start Event starts a run/)).toBeNull();
-    fireEvent.click(view.getByRole("button", { name: "About Start Events" }));
+    fireEvent.click(view.getByRole("button", { name: "About Starts when" }));
     expect(view.getByText(/A selected Start Event starts a run/)).toBeTruthy();
   });
 
@@ -125,7 +126,9 @@ describe("LifecyclePanel display", () => {
     const view = renderPanel();
 
     fireEvent.click(
-      view.getByRole("button", { name: "About Overlapping runs" })
+      view.getByRole("button", {
+        name: "About If a run is already in progress",
+      })
     );
     const described = view
       .getAllByText(
@@ -171,7 +174,9 @@ describe("LifecyclePanel display", () => {
     expect(view.queryByText(/The editor and API/)).toBeNull();
 
     fireEvent.click(
-      view.getByRole("button", { name: "About Overlapping runs" })
+      view.getByRole("button", {
+        name: "About If a run is already in progress",
+      })
     );
     expect(view.getByText(/Each arrival starts a separate run/)).toBeTruthy();
 

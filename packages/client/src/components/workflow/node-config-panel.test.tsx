@@ -278,7 +278,7 @@ describe("NodeConfigPanel config scoping", () => {
     const description = view.getByLabelText("Description");
     // The policy summary and the Start Events editor both carry the heading.
     const startEvents = view.getAllByRole("heading", {
-      name: "Start Events",
+      name: "Starts when",
     })[0];
 
     expect(view.queryByText("Node Metadata")).toBeNull();
@@ -326,7 +326,7 @@ describe("NodeConfigPanel config scoping", () => {
       selected: "lifecycle_1",
     });
 
-    const picker = await view.findByLabelText("Start Events");
+    const picker = await view.findByLabelText("Starts when");
     fireEvent.change(picker, { target: { value: "appoint" } });
     expect((picker as HTMLInputElement).value).toBe("appoint");
 
@@ -336,9 +336,9 @@ describe("NodeConfigPanel config scoping", () => {
 
     // Unkeyed, the same component instance carries the search term over and the
     // second node opens on a list filtered by something nobody typed into it.
-    expect(
-      (view.getByLabelText("Start Events") as HTMLInputElement).value
-    ).toBe("");
+    expect((view.getByLabelText("Starts when") as HTMLInputElement).value).toBe(
+      ""
+    );
   });
 });
 
@@ -506,7 +506,7 @@ describe("NodeConfigPanel authorization", () => {
     resetAuthorizationGrantsForTests();
     const { view } = renderPanel({ selected: "lifecycle_1" });
 
-    await view.findByLabelText("Start Events");
+    await view.findByLabelText("Starts when");
     expect(
       view.queryByText(
         "You are viewing a public workflow. Duplicate it to make changes."

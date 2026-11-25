@@ -24,6 +24,7 @@ import {
   eligibilityTiming,
   entityBindingRows,
   eventLabel,
+  START_RULE_NAMES,
   trackedEntityLabel,
 } from "#src/components/workflow/config/lifecycle-policy-summary";
 import { scheduleReadout } from "#src/components/workflow/config/lifecycle-schedule";
@@ -68,6 +69,7 @@ import {
   lifecycleIssueSection,
   lifecycleSectionHeadingId,
   lifecycleSectionShown,
+  lifecycleSectionTitle,
   offeredLifecycleRules,
   type RemovableLifecycleSection,
   useOpenLifecycleSection,
@@ -161,7 +163,7 @@ const ROLE_SUMMARY = {
     eventNames: (rules: LifecycleRules) => rules.startEvents,
     readFilter: readStartFilter,
     readLayout: readStartFilterLayout,
-    filterNoun: "Start Filter",
+    sharedFilterText: `${START_RULE_NAMES.startFilter}, for every Event`,
     noEventsText: "No Start Events.",
     // The start's sentences already say every arrival starts a run.
     noFilterText: () => null,
@@ -170,7 +172,7 @@ const ROLE_SUMMARY = {
     eventNames: (rules: LifecycleRules) => rules.cancelEvents,
     readFilter: readCancelFilter,
     readLayout: readCancelFilterLayout,
-    filterNoun: "Cancel Filter",
+    sharedFilterText: "Only stop when, for every Event",
     noEventsText: "No Cancel Events.",
     noFilterText: (rules: LifecycleRules, catalog: ExtensionCatalog) => {
       const entityLabel = trackedEntityLabel(rules, catalog);
@@ -217,7 +219,7 @@ function RoleEvents({
           ))}
         </ul>
         <p className="text-muted-foreground text-xs">
-          One {summary.filterNoun} for every Event
+          {summary.sharedFilterText}
         </p>
         <ConditionText
           emptyText={summary.noFilterText(rules, catalog)}
@@ -291,7 +293,7 @@ function EntityEligibilitySummary({
         </div>
       ) : null}
       <div className="space-y-1">
-        <h4 className="font-medium text-xs">Eligible when</h4>
+        <h4 className="font-medium text-xs">{START_RULE_NAMES.eligibility}</h4>
         <p className="text-muted-foreground text-xs">
           Reads the {entityLabel}'s current state from your app when it is
           checked. Event payloads are not read here.
@@ -549,7 +551,7 @@ export function LifecyclePolicySections({
             : undefined
         }
         headingId={headingId("start-events")}
-        title="Starts when"
+        title={lifecycleSectionTitle("start-events")}
       >
         {body(
           "start-events",
@@ -575,9 +577,12 @@ export function LifecyclePolicySections({
 
       {shown("overlapping-runs") ? (
         <Section
-          action={editAction("Overlapping runs", "overlapping-runs")}
+          action={editAction(
+            lifecycleSectionTitle("overlapping-runs"),
+            "overlapping-runs"
+          )}
           headingId={headingId("overlapping-runs")}
-          title="Overlapping runs"
+          title={lifecycleSectionTitle("overlapping-runs")}
         >
           {body(
             "overlapping-runs",
@@ -593,9 +598,9 @@ export function LifecyclePolicySections({
 
       {shown("schedule") ? (
         <Section
-          action={editAction("Schedule", "schedule")}
+          action={editAction(lifecycleSectionTitle("schedule"), "schedule")}
           headingId={headingId("schedule")}
-          title="Schedule"
+          title={lifecycleSectionTitle("schedule")}
         >
           {body("schedule", <ScheduleSummary rules={rules} />)}
         </Section>
@@ -603,9 +608,12 @@ export function LifecyclePolicySections({
 
       {shown("cancel-events") ? (
         <Section
-          action={editAction("Cancel Events", "cancel-events")}
+          action={editAction(
+            lifecycleSectionTitle("cancel-events"),
+            "cancel-events"
+          )}
           headingId={headingId("cancel-events")}
-          title="Cancel Events"
+          title={lifecycleSectionTitle("cancel-events")}
         >
           {body(
             "cancel-events",
@@ -621,9 +629,12 @@ export function LifecyclePolicySections({
 
       {shown("entity-eligibility") ? (
         <Section
-          action={editAction("Entity", "entity-eligibility")}
+          action={editAction(
+            lifecycleSectionTitle("entity-eligibility"),
+            "entity-eligibility"
+          )}
           headingId={headingId("entity-eligibility")}
-          title="Entity"
+          title={lifecycleSectionTitle("entity-eligibility")}
         >
           {body(
             "entity-eligibility",

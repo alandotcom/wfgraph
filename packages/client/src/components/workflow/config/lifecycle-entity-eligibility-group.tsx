@@ -22,7 +22,10 @@ import { getEntityConditionFields } from "#src/lib/upstream-node-fields";
 import { whenChosen } from "#src/lib/select-choice";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { ConfigGroup } from "./config-section";
-import { trackedEntityLabel } from "./lifecycle-policy-summary";
+import {
+  START_RULE_NAMES,
+  trackedEntityLabel,
+} from "./lifecycle-policy-summary";
 
 const CHECKPOINTS = [
   {
@@ -381,11 +384,7 @@ export function LifecycleEntityEligibilityGroup({
           <p>Steps cannot use this Entity data.</p>
         </>
       }
-      label={
-        tracked
-          ? `${entityLabel} tracking and eligibility`
-          : "Tracking and eligibility"
-      }
+      label={START_RULE_NAMES.entity}
       prominent
     >
       {tracked ? (
@@ -468,7 +467,7 @@ export function LifecycleEntityEligibilityGroup({
             disabled={disabled}
             emptyFieldsMessage={`The ${entityLabel} has no fields available for an eligibility rule.`}
             fields={entityFields}
-            label="Eligible when"
+            label={START_RULE_NAMES.eligibility}
             // Entity Eligibility refuses a set comparison on a string field
             // with no enum values, so the builder does not offer one.
             setOperatorsRequireEnumValues
@@ -511,7 +510,7 @@ export function LifecycleEntityEligibilityGroup({
             type="button"
             variant="outline"
           >
-            Remove tracking and eligibility
+            Remove this rule
           </Button>
         </div>
       ) : compatibleEntities.length > 0 ? (

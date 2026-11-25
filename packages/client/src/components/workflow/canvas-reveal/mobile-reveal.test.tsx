@@ -422,10 +422,10 @@ describe("mobile Reveal for complex nodes", () => {
       within(list)
         .getAllByRole("button")
         .map((entry) => entry.textContent)
-    ).toEqual(["Starts when1", "Cancel Events"]);
+    ).toEqual(["Starts when1", "Stop a run when"]);
     expect(
       view
-        .getByRole("button", { name: /^Cancel Events/ })
+        .getByRole("button", { name: /^Stop a run when/ })
         .getAttribute("aria-current")
     ).toBe("true");
     expect(store.get(activeMobileSheetsAtom).at(-1)?.section).toBe(

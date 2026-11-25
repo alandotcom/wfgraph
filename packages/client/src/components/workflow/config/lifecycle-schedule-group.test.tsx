@@ -371,7 +371,7 @@ describe("LifecyclePanel Schedule", () => {
     });
 
     const summary = view
-      .getAllByRole("heading", { name: "Schedule" })
+      .getAllByRole("heading", { name: "On a schedule" })
       .map((heading) => heading.closest("section")?.textContent ?? "")
       .find((text) => text.includes("Next run"));
     expect(summary).toContain(

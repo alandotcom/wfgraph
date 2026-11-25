@@ -16,6 +16,22 @@ import type {
   LifecycleRules,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 
+/**
+ * The one name each start rule goes by, in the words of what it does: its
+ * "Add a rule" item (with an ellipsis), its section title and its form's
+ * heading. CONTEXT.md keeps the domain nouns: Start Event, Start Filter,
+ * Concurrency, Schedule, Cancel Event, tracked Entity, Entity Eligibility.
+ */
+export const START_RULE_NAMES = {
+  starts: "Starts when",
+  startFilter: "Only start when",
+  overlapping: "If a run is already in progress",
+  schedule: "On a schedule",
+  stop: "Stop a run when",
+  entity: "Tie each run to a record",
+  eligibility: "Only run while the record matches",
+} as const;
+
 export const CONCURRENCY_OPTIONS: ReadonlyArray<{
   value: Concurrency;
   label: string;

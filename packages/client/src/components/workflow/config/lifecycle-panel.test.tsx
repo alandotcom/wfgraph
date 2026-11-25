@@ -204,7 +204,9 @@ function choosePath(view: RenderResult, eventName: string, option: string) {
 
 /** Pick an overlapping-run setting by the words its option carries. */
 function chooseConcurrency(view: RenderResult, label: string) {
-  fireEvent.click(view.getByRole("combobox", { name: "Overlapping runs" }));
+  fireEvent.click(
+    view.getByRole("combobox", { name: "If a run is already in progress" })
+  );
 
   const choice = view.getByRole("option", { name: label });
   fireEvent.pointerDown(choice);
@@ -238,7 +240,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    chooseEvent(view, "Start Events", "Appointment created");
+    chooseEvent(view, "Starts when", "Appointment created");
 
     await waitFor(() => {
       expect(rulesOf(latest)).toEqual({
@@ -265,7 +267,7 @@ describe("LifecyclePanel", () => {
 
     expect(onUpdateConfig).not.toHaveBeenCalled();
 
-    chooseEvent(view, "Start Events", "Appointment created");
+    chooseEvent(view, "Starts when", "Appointment created");
 
     expect(onUpdateConfig).toHaveBeenCalledTimes(1);
   });
@@ -289,12 +291,12 @@ describe("LifecyclePanel", () => {
   it.each([
     {
       name: "Start Event",
-      label: "Start Events",
+      label: "Starts when",
       field: "startEvents",
     },
     {
       name: "Cancel Event",
-      label: "Cancel Events",
+      label: "Stop a run when",
       field: "cancelEvents",
     },
   ] as const)(
@@ -333,7 +335,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    chooseEvent(view, "Start Events", "ops/nightly");
+    chooseEvent(view, "Starts when", "ops/nightly");
 
     await waitFor(() => {
       expect(rulesOf(latest).startEvents).toEqual(["ops/nightly.swept"]);
@@ -360,7 +362,7 @@ describe("LifecyclePanel", () => {
       />
     );
 
-    chooseEvent(view, "Start Events", "Nightly sweep");
+    chooseEvent(view, "Starts when", "Nightly sweep");
 
     await waitFor(() => {
       expect(rulesOf(latest).startEvents).toEqual([
@@ -483,7 +485,7 @@ describe("LifecyclePanel Cancel Events", () => {
       />
     );
 
-    chooseEvent(view, "Cancel Events", "Appointment created");
+    chooseEvent(view, "Stop a run when", "Appointment created");
 
     await waitFor(() => {
       expect(rulesOf(latest).cancelEvents).toEqual(["app/appointment.created"]);
@@ -608,7 +610,7 @@ describe("LifecyclePanel Cancel Events", () => {
 
     expect(view.queryByText("The start needs attention")).toBeNull();
 
-    chooseEvent(view, "Cancel Events", "Appointment created");
+    chooseEvent(view, "Stop a run when", "Appointment created");
 
     await waitFor(() => {
       expect(
@@ -1146,7 +1148,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       />
     );
 
-    chooseEvent(view, "Cancel Events", "Nightly");
+    chooseEvent(view, "Stop a run when", "Nightly");
     await waitFor(() => {
       expect(rulesOf(latest).trackedEntity?.bindings).toEqual({
         "app/appointment.created": "appointment",
@@ -1293,7 +1295,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       view.getByRole("combobox", { name: "Track runs by" }),
       view.getByRole("button", { name: "Configure condition" }),
       view.getByRole("button", {
-        name: "Remove tracking and eligibility",
+        name: "Remove this rule",
       }),
     ]) {
       expect(control.hasAttribute("disabled")).toBe(true);
@@ -1360,9 +1362,7 @@ describe("LifecyclePanel Entity eligibility", () => {
       ]);
     });
 
-    fireEvent.click(
-      view.getByRole("button", { name: "Remove tracking and eligibility" })
-    );
+    fireEvent.click(view.getByRole("button", { name: "Remove this rule" }));
     await waitFor(() => {
       expect(rulesOf(latest).trackedEntity).toBeUndefined();
       expect(rulesOf(latest).entityEligibility).toBeUndefined();
@@ -1592,7 +1592,7 @@ describe("LifecyclePanel start filters", () => {
       />
     );
 
-    chooseEvent(view, "Start Events", "Nightly sweep");
+    chooseEvent(view, "Starts when", "Nightly sweep");
 
     await waitFor(() => {
       expect(rulesOf(latest).startFilters).toEqual({
@@ -1619,7 +1619,7 @@ describe("LifecyclePanel start filters", () => {
       />
     );
 
-    chooseEvent(view, "Start Events", "Nightly sweep");
+    chooseEvent(view, "Starts when", "Nightly sweep");
 
     await waitFor(() => {
       expect(rulesOf(latest).startEvents).toHaveLength(2);
@@ -1718,7 +1718,9 @@ describe("LifecyclePanel cancel filters", () => {
       />
     );
 
-    fireEvent.click(view.getByRole("button", { name: "About Cancel Events" }));
+    fireEvent.click(
+      view.getByRole("button", { name: "About Stop a run when" })
+    );
 
     expect(
       view.getByText(
@@ -1726,7 +1728,7 @@ describe("LifecyclePanel cancel filters", () => {
       )
     ).toBeTruthy();
     expect(
-      view.getByText("A Cancel Filter limits which arrivals can cancel runs.")
+      view.getByText("“Only stop when” limits which arrivals stop a run.")
     ).toBeTruthy();
     expect(
       view.queryByText(/Only runs with the same tracked Entity ID/)
@@ -1790,7 +1792,7 @@ describe("LifecyclePanel cancel filters", () => {
       />
     );
 
-    chooseEvent(view, "Cancel Events", "Nightly sweep");
+    chooseEvent(view, "Stop a run when", "Nightly sweep");
 
     await waitFor(() => {
       expect(rulesOf(latest).cancelFilters).toEqual({

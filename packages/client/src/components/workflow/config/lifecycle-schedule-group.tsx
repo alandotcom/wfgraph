@@ -1,3 +1,4 @@
+import { START_RULE_NAMES } from "./lifecycle-policy-summary";
 import { Plus, X } from "lucide-react";
 import { useId, useMemo } from "react";
 import { toast } from "sonner";
@@ -80,7 +81,7 @@ export function LifecycleScheduleGroup({
           <p>A workflow that tracks an Entity can't have a schedule.</p>
         </>
       }
-      label="Schedule"
+      label={START_RULE_NAMES.schedule}
       prominent
     >
       <div className="space-y-2">

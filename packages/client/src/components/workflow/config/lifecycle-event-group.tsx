@@ -46,25 +46,28 @@ import {
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { ConfigGroup } from "./config-section";
 import { EventMultiCombobox } from "./event-combobox";
-import { trackedEntityLabel } from "./lifecycle-policy-summary";
+import {
+  START_RULE_NAMES,
+  trackedEntityLabel,
+} from "./lifecycle-policy-summary";
 
 const ROLE_COPY = {
   start: {
-    label: "Start Events",
+    label: START_RULE_NAMES.starts,
     pickerPlaceholder: "Add start event",
     help: [
       "A selected Start Event starts a run.",
-      "A Start Filter limits which arrivals can start runs.",
+      "“Only start when” limits which arrivals start a run.",
     ],
     entityIdentity: (label: string) =>
       `Each Event's ${label} binding provides the ${label} ID tracked by the run.`,
   },
   cancel: {
-    label: "Cancel Events",
+    label: START_RULE_NAMES.stop,
     pickerPlaceholder: "Add cancel event",
     help: [
       "A Cancel Event sends active runs down the Canceled branch.",
-      "A Cancel Filter limits which arrivals can cancel runs.",
+      "“Only stop when” limits which arrivals stop a run.",
     ],
     entityIdentity: (label: string) =>
       `Each Event's ${label} binding provides its ${label} ID. A Cancel Event only affects active runs with the same ID.`,
@@ -513,7 +516,7 @@ function LifecycleFilterEditor({
           : "This event has no fields to filter."
       }
       fields={fields}
-      label="Filter"
+      label={role === "start" ? START_RULE_NAMES.startFilter : "Only stop when"}
       onChange={handleChange}
       value={model}
     />

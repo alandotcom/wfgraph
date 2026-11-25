@@ -19,6 +19,7 @@ import { ConfigGroup, ConfigHelp } from "./config-section";
 import {
   CONCURRENCY_OPTIONS,
   describeRelatedRuns,
+  START_RULE_NAMES,
 } from "./lifecycle-policy-summary";
 
 export function LifecycleConcurrencyGroup({
@@ -39,7 +40,7 @@ export function LifecycleConcurrencyGroup({
     <ConfigGroup
       className="py-3 first:pt-0 last:pb-0"
       help={<ConcurrencyHelp concurrency={rules.concurrency} />}
-      label="Overlapping runs"
+      label={START_RULE_NAMES.overlapping}
       prominent
     >
       <div className="space-y-2">
@@ -64,7 +65,10 @@ export function LifecycleConcurrencyGroup({
           })}
           value={rules.concurrency}
         >
-          <SelectTrigger aria-label="Overlapping runs" className="w-full">
+          <SelectTrigger
+            aria-label={START_RULE_NAMES.overlapping}
+            className="w-full"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
