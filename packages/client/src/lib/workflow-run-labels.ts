@@ -234,15 +234,14 @@ export type WorkflowRunGraphIdentity = {
 };
 
 /**
- * Names the graph a run pinned. A canvas snapshot reads "Draft"; a published
- * version reads "v7" in a table column and "Published v7" in prose.
+ * Names the graph a run pinned: "Draft" for a canvas snapshot, "v7" for a
+ * published version.
  *
  * The contract rejects a published run without a version number, so the bare
  * "Published" is only a fallback for a row that should not exist.
  */
 export function runGraphLabel(
-  run: Pick<WorkflowRunGraphIdentity, "versionKind" | "versionNumber">,
-  style: "short" | "qualified" = "short"
+  run: Pick<WorkflowRunGraphIdentity, "versionKind" | "versionNumber">
 ): string {
   if (run.versionKind === "draft_snapshot") {
     return "Draft";
@@ -250,9 +249,7 @@ export function runGraphLabel(
   if (run.versionNumber === null) {
     return "Published";
   }
-  return style === "qualified"
-    ? `Published v${run.versionNumber}`
-    : `v${run.versionNumber}`;
+  return `v${run.versionNumber}`;
 }
 
 /** Who a run sent to: "Test" for test recipients, "Live" for real ones. */

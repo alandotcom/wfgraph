@@ -177,10 +177,10 @@ describe("runGraphLabel", () => {
     ).toBe("Draft");
   });
 
-  it("labels a published run by its version number, short or qualified", () => {
-    const run = { versionKind: "published", versionNumber: 7 } as const;
-    expect(runGraphLabel(run)).toBe("v7");
-    expect(runGraphLabel(run, "qualified")).toBe("Published v7");
+  it("labels a published run by its version number", () => {
+    expect(runGraphLabel({ versionKind: "published", versionNumber: 7 })).toBe(
+      "v7"
+    );
   });
 
   // The contract rejects a published version without a number, so this covers
@@ -188,12 +188,6 @@ describe("runGraphLabel", () => {
   it("falls back to Published when a published run carries no number", () => {
     expect(
       runGraphLabel({ versionKind: "published", versionNumber: null })
-    ).toBe("Published");
-    expect(
-      runGraphLabel(
-        { versionKind: "published", versionNumber: null },
-        "qualified"
-      )
     ).toBe("Published");
   });
 });

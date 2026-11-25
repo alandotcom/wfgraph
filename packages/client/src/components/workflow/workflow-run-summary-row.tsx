@@ -16,9 +16,7 @@ import {
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
 import {
-  runGraphLabel,
   runGraphRecipientsLabel,
-  runRecipientsLabel,
   runShortId,
 } from "#src/lib/workflow-run-labels";
 import {
@@ -378,12 +376,8 @@ function HeaderSummary({
           value={formatExactTime(execution.startedAt)}
         />
         <MetadataRow
-          label="Graph"
-          value={runGraphLabel(execution, "qualified")}
-        />
-        <MetadataRow
-          label="Recipients"
-          value={runRecipientsLabel(execution.runMode)}
+          label="Version"
+          value={runGraphRecipientsLabel(execution)}
         />
         <MetadataRow label="Run" value={runShortId(execution.id)} />
         {execution.startSource ? (

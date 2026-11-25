@@ -141,7 +141,9 @@ describe("WorkflowRunSummaryRow", () => {
     expect(view.getByText("v7 · Test")).toBeTruthy();
   });
 
-  it("shows the run's graph and recipients in the header's metadata", () => {
+  // The header names the version and Published mode in one Version row, in
+  // the words the run list, the All Runs Version column and the Run control use.
+  it("shows the run's version and mode in one Version row of the header", () => {
     const draftView = render(
       <WorkflowRunSummaryRow
         execution={{
@@ -153,10 +155,10 @@ describe("WorkflowRunSummaryRow", () => {
       />
     );
 
-    expect(draftView.getByText("Graph")).toBeTruthy();
-    expect(draftView.getByText("Draft")).toBeTruthy();
-    expect(draftView.getByText("Recipients")).toBeTruthy();
-    expect(draftView.getByText("Test")).toBeTruthy();
+    expect(draftView.getByText("Version")).toBeTruthy();
+    expect(draftView.getByText("Draft · Test")).toBeTruthy();
+    expect(draftView.queryByText("Graph")).toBeNull();
+    expect(draftView.queryByText("Recipients")).toBeNull();
 
     const publishedView = render(
       <WorkflowRunSummaryRow
@@ -165,8 +167,7 @@ describe("WorkflowRunSummaryRow", () => {
       />
     );
 
-    expect(publishedView.getByText("Published v7")).toBeTruthy();
-    expect(publishedView.getByText("Live")).toBeTruthy();
+    expect(publishedView.getByText("v7 · Live")).toBeTruthy();
   });
 
   it("uses meaningful fallbacks for starts that have no event", () => {
