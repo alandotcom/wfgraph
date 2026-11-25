@@ -234,7 +234,7 @@ The editor shell is inset 12px from the viewport on all four sides at `md` and a
 
 ## 5. Components
 
-All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, precise on interaction. Focus is always the 2px `ring-ring/30` halo with a border-color shift; hover is always a fill change, never movement.
+All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, precise on interaction. Focus is always a 2px halo in full `--ring` with a border-color shift, and an element with no ring of its own gets a 2px `--ring` outline. Both clear 3:1 on Paper, Panel and Wash in light (3.95, 3.78 and 3.62:1) and on every dark surface; hover is always a fill change, never movement.
 
 ### Buttons
 
@@ -243,7 +243,7 @@ All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, 
 - **Outline:** Paper fill, hairline border, shadow-xs; hover fills with Graphite Wash.
 - **Ghost:** Transparent until hovered, then Graphite Wash.
 - **Destructive:** Signal Red fill; the only chromatic button.
-- **Focus:** 2px ring at 30% ring color plus a border shift, visible in both themes. `--ring` is oklch(0.6 0 0) in light so the border shift clears the 3:1 that WCAG 1.4.11 asks of a focus indicator.
+- **Focus:** 2px ring in full ring color plus a border shift, visible in both themes. `--ring` is oklch(0.6 0 0) in light so the ring clears the 3:1 that WCAG 1.4.11 asks of a focus indicator, on borderless ghost controls as well.
 
 ### Cards / Containers
 
@@ -325,7 +325,7 @@ handle is a focusable separator named "Resize inspector": Left Arrow widens
 Reveal by 16px, Right Arrow narrows it by 16px, Home goes to the minimum, and
 End goes to the maximum. Double-clicking the handle returns the shared width to
 its default. The handle draws nothing at rest, a 2px Ring line on hover, and the
-line with the 2px `ring-ring/30` halo on keyboard focus. A viewer's chosen width
+line with the 2px `--ring` halo on keyboard focus. A viewer's chosen width
 is remembered across subjects, workflows, and reloads, and is narrowed to fit a
 smaller canvas when shown. The camera holds still while the handle is dragged.
 When a drag or key press ends, the camera places the subject beside the new

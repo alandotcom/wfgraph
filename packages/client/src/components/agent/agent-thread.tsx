@@ -408,7 +408,7 @@ function OmittedMessagesNotice() {
  */
 function Composer() {
   return (
-    <ComposerPrimitive.Root className="flex items-end gap-2 rounded-md border border-input bg-input/20 px-2 py-1.5 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
+    <ComposerPrimitive.Root className="flex items-end gap-2 rounded-md border border-input bg-input/20 px-2 py-1.5 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring">
       <ComposerPrimitive.Input
         autoFocus
         className="max-h-32 min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground md:text-sm"

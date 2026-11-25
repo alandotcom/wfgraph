@@ -130,7 +130,7 @@ function VersionUsageRow({ item }: { item: WorkflowVersionUsageItem }) {
 
   return (
     <Collapsible.Root>
-      <Collapsible.Trigger className="group flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30">
+      <Collapsible.Trigger className="group flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="min-w-0 flex-1">
           <span className="flex items-center justify-between gap-3">
             <span className="flex min-w-0 items-center gap-2">

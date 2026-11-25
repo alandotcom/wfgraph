@@ -298,7 +298,7 @@ export function ConditionFocus({ subject, frame, openFocus }: RevealBodyProps) {
 
       <section
         aria-label="Rule builder"
-        className="border-t px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-inset"
+        className="border-t px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         id={CONDITION_RULES_TARGET_ID}
         tabIndex={-1}
       >

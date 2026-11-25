@@ -103,7 +103,7 @@ function GroupStepLinks({ groupId }: { groupId: string }) {
           <li key={nodeId}>
             <button
               aria-label={issueText ? `${title}, ${issueText}` : title}
-              className="grid min-h-9 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-sm px-2 py-1.5 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+              className="grid min-h-9 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 rounded-sm px-2 py-1.5 text-left transition-colors duration-100 hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => {
                 if (workflowId) {
                   focusNode({ nodeId, workflowId });

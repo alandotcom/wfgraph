@@ -161,8 +161,8 @@
      `color-mix` toward the background, because mixing toward Paper lightens and
      mixing toward Void darkens, so one expression cannot serve both. */
   --canvas-line-muted: oklch(0.78 0 0);
-  /* Solved for SC 1.4.11: the old oklch(0.708) put the focus border at 2.59:1
-     on Paper, under the 3:1 floor for a non-text indicator. */
+  /* The focus indicator, drawn at full strength as a 2px ring or outline. 3.95:1
+     on Paper and 3.62:1 on Wash, over the 3:1 SC 1.4.11 asks of it. */
   --ring: oklch(0.6 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -271,7 +271,15 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
+  }
+  /* Keyboard focus on any element that draws no focus treatment of its own: a
+     hand-rolled button, a link, a focusable row. A component that draws a ring
+     sets `outline-none`, and that utility outranks this base rule. */
+  :focus-visible {
+    outline-width: 2px;
+    outline-style: solid;
+    outline-offset: 2px;
   }
   body {
     @apply bg-background text-foreground;

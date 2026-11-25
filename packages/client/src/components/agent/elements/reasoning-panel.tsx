@@ -66,7 +66,7 @@ export function ReasoningPanel({
       onOpenChange={onOpenChange}
       className={cn("w-full", className)}
     >
-      <CollapsibleTrigger className="group/trigger flex items-center gap-1.5 rounded-sm py-1 text-muted-foreground text-xs outline-none transition-[color,scale] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/30 active:scale-[0.98]">
+      <CollapsibleTrigger className="group/trigger flex items-center gap-1.5 rounded-sm py-1 text-muted-foreground text-xs outline-none transition-[color,scale] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98]">
         <SwapLabel active={streaming ? 0 : 1} className="text-start">
           <>
             <ShimmerLabel

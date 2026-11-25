@@ -165,7 +165,7 @@ export function RevealResizeHandle(input: {
     >
       <span
         aria-hidden
-        className="my-3 w-0.5 rounded-full bg-transparent transition-colors group-hover:bg-ring group-focus-visible:bg-ring group-focus-visible:ring-2 group-focus-visible:ring-ring/30"
+        className="my-3 w-0.5 rounded-full bg-transparent transition-colors group-hover:bg-ring group-focus-visible:bg-ring group-focus-visible:ring-2 group-focus-visible:ring-ring"
       />
     </div>
   );
