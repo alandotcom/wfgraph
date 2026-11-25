@@ -34,10 +34,13 @@ import { useIntegrationUi } from "#src/components/integration-ui-provider";
 import { readAs } from "@wfgraph/shared/types/schema";
 import { cn } from "@wfgraph/shared/utils";
 import {
+  parseDurationMs,
   parseTimestampWithTimezone,
   resolveWaitUntil,
 } from "@wfgraph/shared/utils/wait-time";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { readWaitDelayTiming } from "@wfgraph/shared/lifecycle/wait-subscription";
+import { durationInWords } from "#src/lib/duration-words";
 import { isConditionActionType } from "@wfgraph/shared/conditions/condition-branch";
 import {
   eventSplitOutlet,
@@ -200,8 +203,16 @@ function useWaitPreview(
     };
   }
 
+  // A duration reads back as its length, so the card says what the step does.
+  const durationMs =
+    readWaitDelayTiming(config ?? {}) === "duration"
+      ? parseDurationMs(waitDuration)
+      : null;
   return {
-    countdown: "Delay configured",
+    countdown:
+      durationMs !== null && durationMs >= 1
+        ? `Waits ${durationInWords(durationMs)}`
+        : "Delay configured",
     triggerTime: formatTriggerTime(resolution.waitUntil, waitTimezone),
   };
 }

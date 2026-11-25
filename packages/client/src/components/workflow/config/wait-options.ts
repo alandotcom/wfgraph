@@ -22,6 +22,16 @@ export const WAIT_DELAY_TIMING_OPTIONS = [
   { value: "duration", label: WAIT_FIELD_LABELS.waitDuration },
   { value: "until", label: WAIT_FIELD_LABELS.waitUntil },
 ] as const satisfies readonly WaitOption<"duration" | "until">[];
+/**
+ * The durations most Waits use, offered as choices above the Duration field.
+ * Each stores the short notation a builder would type for it.
+ */
+export const COMMON_WAIT_DURATIONS = [
+  { value: "15m", label: "15 minutes" },
+  { value: "1h", label: "1 hour" },
+  { value: "1d", label: "1 day" },
+  { value: "1w", label: "1 week" },
+] as const satisfies readonly WaitOption[];
 export const WAIT_GATE_OPTIONS = [
   {
     value: "off",

@@ -243,3 +243,23 @@ describe("ActionNode outlets", () => {
     expect(label(view, "Churned").style.top).toBe("75%");
   });
 });
+
+describe("Wait card", () => {
+  it("says how long a duration Wait waits", () => {
+    const view = renderCard({
+      id: "wait",
+      data: {
+        label: "Wait a day",
+        type: "action",
+        config: {
+          actionType: BUILT_IN_ACTION_IDS.wait,
+          waitMode: "delay",
+          waitDuration: "24h",
+        },
+        status: "idle",
+      },
+    });
+
+    expect(view.getByText("Waits 1 day")).toBeTruthy();
+  });
+});

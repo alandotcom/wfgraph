@@ -47,6 +47,11 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { waitDurationCannotBeRead } from "@wfgraph/shared/actions/action-config-validation";
+import { parseDurationMs } from "@wfgraph/shared/utils/wait-time";
+import { waitDurationReadback } from "#src/lib/duration-words";
+import { Button } from "#src/components/ui/button";
+import { cn } from "@wfgraph/shared/utils";
+import { ButtonGroup } from "#src/components/ui/button-group";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   DEFAULT_WAIT_TIMEOUT,
@@ -61,6 +66,7 @@ import { ConfigHelp } from "./config-section";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { WaitEventSelect } from "./wait-event-select";
 import {
+  COMMON_WAIT_DURATIONS,
   WAIT_DELAY_TIMING_OPTIONS,
   WAIT_FIELD_LABELS,
   WAIT_GATE_OPTIONS,
@@ -299,6 +305,86 @@ function WaitFieldLabel({
   );
 }
 
+/**
+ * How long a duration Wait waits: the common lengths as one-press choices,
+ * a field for any other length or a value from Event or step data, and a line
+ * reading the typed value back in words. A choice is pressed whenever the
+ * field holds the same length in any notation, so "24h" presses "1 day".
+ */
+function WaitDurationField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  const unreadable = waitDurationCannotBeRead(value);
+  const readback = unreadable
+    ? "This step cannot read that length. Type it as 1d, 24h or 90m."
+    : waitDurationReadback(value);
+  const typedMs = parseDurationMs(value);
+
+  return (
+    <div className="space-y-2">
+      <WaitFieldLabel
+        htmlFor="waitDuration"
+        id="waitDuration-label"
+        label={WAIT_FIELD_LABELS.waitDuration}
+      >
+        Counting starts when the run reaches this step. A typed length can be
+        24h, 90m, milliseconds, or an ISO 8601 duration such as P1D.
+      </WaitFieldLabel>
+      <ButtonGroup
+        aria-label="Common durations"
+        className="w-full rounded-md bg-muted p-0.5"
+      >
+        {COMMON_WAIT_DURATIONS.map((choice) => {
+          const pressed =
+            typedMs !== null && typedMs === parseDurationMs(choice.value);
+          return (
+            <Button
+              aria-pressed={pressed}
+              className="h-6 flex-1 border-0 px-2 shadow-none"
+              disabled={disabled}
+              key={choice.value}
+              onClick={() => onChange(choice.value)}
+              size="sm"
+              type="button"
+              variant={pressed ? "default" : "ghost"}
+            >
+              {choice.label}
+            </Button>
+          );
+        })}
+      </ButtonGroup>
+      <TemplateBadgeInput
+        describedBy={readback === null ? undefined : "waitDuration-readback"}
+        disabled={disabled}
+        fieldType={WAIT_VALUE_TARGETS.waitDuration.type}
+        id="waitDuration"
+        invalid={unreadable}
+        labelledBy="waitDuration-label"
+        onChange={onChange}
+        placeholder="Or type a length, such as 90m or 2d"
+        value={value}
+      />
+      {readback === null ? null : (
+        <p
+          className={cn(
+            "text-xs",
+            unreadable ? "text-destructive" : "text-muted-foreground"
+          )}
+          id="waitDuration-readback"
+        >
+          {readback}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
   const waitGateMode = readConfigStringOr(config, "waitGateMode", "off");
   const configuredWaitUntil = readConfigString(config, "waitUntil");
@@ -373,26 +459,11 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
       </div>
 
       {delayTimingMode === "duration" ? (
-        <div className="space-y-2">
-          <WaitFieldLabel
-            htmlFor="waitDuration"
-            id="waitDuration-label"
-            label={WAIT_FIELD_LABELS.waitDuration}
-          >
-            Enter 24h, 90m, milliseconds, or an ISO 8601 duration such as P1D.
-            Counting starts when the run reaches this step.
-          </WaitFieldLabel>
-          <TemplateBadgeInput
-            disabled={disabled}
-            fieldType={WAIT_VALUE_TARGETS.waitDuration.type}
-            id="waitDuration"
-            invalid={waitDurationCannotBeRead(configuredWaitDuration)}
-            labelledBy="waitDuration-label"
-            onChange={(value) => onUpdateConfig({ waitDuration: value })}
-            placeholder="24h, 90m, 3600000, or P1D"
-            value={configuredWaitDuration}
-          />
-        </div>
+        <WaitDurationField
+          disabled={disabled}
+          onChange={(value) => onUpdateConfig({ waitDuration: value })}
+          value={configuredWaitDuration ?? ""}
+        />
       ) : (
         <>
           <div className="space-y-2">

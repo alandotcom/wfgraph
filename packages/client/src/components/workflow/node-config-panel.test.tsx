@@ -552,6 +552,42 @@ describe("NodeConfigPanel Wait mode", () => {
     ).toBeNull();
   });
 
+  it("offers common durations and reads the typed one back in words", async () => {
+    const { view } = renderWaitPanel({
+      waitMode: "delay",
+      waitDuration: "24h",
+    });
+
+    const oneDay = await view.findByRole("button", { name: "1 day" });
+    expect(oneDay.getAttribute("aria-pressed")).toBe("true");
+    expect(view.getByText("Waits 1 day.")).toBeTruthy();
+    expect(
+      (await view.findByRole("textbox", { name: "Duration" })).getAttribute(
+        "aria-describedby"
+      )
+    ).toBe("waitDuration-readback");
+
+    fireEvent.click(view.getByRole("button", { name: "1 week" }));
+    expect(await view.findByText("Waits 1 week.")).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "1 week" }).getAttribute("aria-pressed")
+    ).toBe("true");
+    expect(oneDay.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("says how to write a Duration it cannot read", async () => {
+    const { view } = renderWaitPanel({
+      waitMode: "delay",
+      waitDuration: "one day",
+    });
+
+    expect(
+      await view.findByText(
+        "This step cannot read that length. Type it as 1d, 24h or 90m."
+      )
+    ).toBeTruthy();
+  });
+
   it("uses the default past-time help for an unknown stored option", async () => {
     const { view } = renderWaitPanel({
       waitMode: "delay",
