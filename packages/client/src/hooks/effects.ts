@@ -203,6 +203,20 @@ export function useAbortableTask(input: AbortableTaskInput): void {
   }, [input.key, enabled, run, onError]);
 }
 
+/** The suffix every route's document title ends with. */
+const APP_TITLE = "Workflow Graph";
+
+/**
+ * Name the browser tab and the history entry after the page on screen, as
+ * `Workflows · Workflow Graph`. Each route calls this with its own place, so
+ * the title holds whichever route rendered last and needs no restoring.
+ */
+export function useDocumentTitle(place: string): void {
+  useEffect(() => {
+    document.title = `${place} · ${APP_TITLE}`;
+  }, [place]);
+}
+
 /** Dispose an owned external operation when its component unmounts. */
 export function useUnmountCleanup(cleanup: () => void): void {
   const onUnmount = useLatestEvent(cleanup);

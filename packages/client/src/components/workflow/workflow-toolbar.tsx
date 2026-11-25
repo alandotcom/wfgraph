@@ -41,7 +41,8 @@ type WorkflowToolbarProps = {
   workflowId?: string | undefined;
 };
 
-const WORKSPACE_LABELS: Record<WorkflowWorkspaceView, string> = {
+/** The word for each workspace view, shared by the toolbar and the tab title. */
+export const WORKSPACE_LABELS: Record<WorkflowWorkspaceView, string> = {
   draft: "Draft",
   runs: "Runs",
   changes: "Changes",

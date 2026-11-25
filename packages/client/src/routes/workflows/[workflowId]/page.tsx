@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { getRouteApi, Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { AgentPanel } from "#src/components/agent/agent-panel";
 import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
@@ -12,18 +12,40 @@ import { RunStatusProjection } from "#src/components/workflow/run-status-project
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkflowDraftSync } from "#src/components/workflow/workflow-draft-sync";
 import { WorkflowStatusStrip } from "#src/components/workflow/workflow-status-strip";
-import { WorkflowToolbar } from "#src/components/workflow/workflow-toolbar";
+import {
+  WORKSPACE_LABELS,
+  WorkflowToolbar,
+} from "#src/components/workflow/workflow-toolbar";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
-import { useUnmountCleanup } from "#src/hooks/effects";
+import { useDocumentTitle, useUnmountCleanup } from "#src/hooks/effects";
 import { isAgentEnabled } from "#src/lib/extensions";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { endWorkflowEditorLifetimeAtom } from "#src/lib/workflow-graph-store";
 import {
   currentWorkflowIdAtom,
+  currentWorkflowNameAtom,
   workflowNotFoundAtom,
   workflowLoadErrorAtom,
 } from "#src/lib/workflow-save-store";
+import { isBlank } from "@wfgraph/shared/types/string";
+
+const workflowRouteApi = getRouteApi("/workflows/$workflowId");
+
+/**
+ * The tab title names the workflow and the workspace view, so Back and the
+ * browser's history menu tell Draft, Runs and Changes apart.
+ */
+function useEditorDocumentTitle(workflowNotFound: boolean): void {
+  const workflowName = useAtomValue(currentWorkflowNameAtom);
+  const view = workflowRouteApi.useSearch({ select: (search) => search.view });
+  const name = isBlank(workflowName) ? "Untitled workflow" : workflowName;
+  useDocumentTitle(
+    workflowNotFound
+      ? "Workflow not found"
+      : `${name} · ${WORKSPACE_LABELS[view ?? "draft"]}`
+  );
+}
 
 const WorkflowEditor = () => {
   const endWorkflowEditorLifetime = useSetAtom(endWorkflowEditorLifetimeAtom);
@@ -32,6 +54,7 @@ const WorkflowEditor = () => {
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
   const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
   const canUpdate = can(WfGraphOperations.workflowUpdate.id);
+  useEditorDocumentTitle(workflowNotFound);
 
   return (
     // The page the shell is inset on. It owns the viewport height, because
