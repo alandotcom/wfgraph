@@ -17,7 +17,7 @@ import { UserMenu } from "#src/components/workflows/user-menu";
 import {
   WorkflowsPageLink,
   CommandPaletteTrigger,
-  FindNodeTrigger,
+  FindStepTrigger,
   RunPublishMenuItems,
   ToolbarActions,
   ToolbarPublishControls,
@@ -229,7 +229,7 @@ function WorkflowTrailingControls({
       {workspace.views.length > 0 ? (
         <WorkspaceViewSwitcher {...workspace} />
       ) : null}
-      <FindNodeTrigger />
+      <FindStepTrigger />
       <PhoneMapToggle />
       <ToolbarPublishControls actions={actions} state={state} />
       {hasOverflowRows ? (

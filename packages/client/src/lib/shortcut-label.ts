@@ -30,6 +30,7 @@ export function currentPlatform(): string {
 export type EditorShortcutLabels = {
   copy: string;
   duplicate: string;
+  findStep: string;
   fitView: string;
   group: string;
   paste: string;
@@ -46,6 +47,7 @@ export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
     ? {
         copy: "⌘C",
         duplicate: "⌘D",
+        findStep: "⌘F",
         fitView: "⌘/",
         group: "⌘G",
         paste: "⌘V",
@@ -58,6 +60,7 @@ export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
     : {
         copy: "Ctrl+C",
         duplicate: "Ctrl+D",
+        findStep: "Ctrl+F",
         fitView: "Ctrl+/",
         group: "Ctrl+G",
         paste: "Ctrl+V",
@@ -127,6 +130,7 @@ export function shortcutReference(
         { label: "Run draft", keys: [keys.run] },
         { label: "Undo", keys: [keys.undo] },
         { label: "Redo", keys: [keys.redo] },
+        { label: "Find a step in the outline", keys: [keys.findStep] },
         {
           label: "Collapse or show the outline",
           keys: [COLUMN_SHORTCUT_KEYS.outline],

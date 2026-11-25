@@ -202,6 +202,13 @@ export const phoneShowsMapAtom = atom(false);
 export const detailsFloatOpenAtom = atom(false);
 
 /**
+ * How many times "Find a step" has asked for the outline's filter field. The
+ * editor columns focus the field after each request commits, once the outline
+ * it brought into view has mounted.
+ */
+export const outlineFilterFocusRequestAtom = atom(0);
+
+/**
  * The editor's three window widths. `wide` is 1360px and wider, where both side
  * columns dock. `medium` is 900px to 1359px, where the outline docks and
  * details floats over the canvas. `compact` is narrower than 900px, where the

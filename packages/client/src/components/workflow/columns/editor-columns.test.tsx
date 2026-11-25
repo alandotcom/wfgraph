@@ -50,9 +50,12 @@ function renderColumns() {
           </ColumnHeader>
         }
         outline={
-          <ColumnHeader side="outline">
-            <span>Outline body</span>
-          </ColumnHeader>
+          <>
+            <ColumnHeader side="outline">
+              <span>Outline body</span>
+            </ColumnHeader>
+            <input aria-label="Filter steps" type="search" />
+          </>
         }
         phone={<div data-testid="phone-sheets" />}
       />
@@ -267,5 +270,72 @@ describe("EditorColumns", () => {
     expect(screen.queryByText("Outline body")).toBeNull();
     expect(screen.getByTestId("canvas").closest("[inert]")).toBeNull();
     expect(screen.getByTestId("phone-sheets")).toBeTruthy();
+  });
+
+  describe("Find a step", () => {
+    const filterField = () =>
+      document.querySelector<HTMLInputElement>(
+        'input[aria-label="Filter steps"]'
+      );
+    const pressFind = () => {
+      act(() => {
+        fireEvent.keyDown(document.body, { key: "f", metaKey: true });
+      });
+    };
+
+    it("docks a collapsed outline on Cmd+F and puts the cursor in its filter", () => {
+      setViewportWidth(1512);
+      const store = renderColumns();
+      pressKey("[");
+      expect(dockedColumn("outline")).toBeNull();
+
+      pressFind();
+
+      expect(dockedColumn("outline")).not.toBeNull();
+      expect(store.get(columnPreferencesAtom).outline.collapsed).toBe(false);
+      expect(document.activeElement).toBe(filterField());
+    });
+
+    it("docks a collapsed outline at medium widths and focuses its filter", () => {
+      setViewportWidth(1024);
+      renderColumns();
+      pressKey("[");
+      expect(dockedColumn("outline")).toBeNull();
+
+      pressFind();
+
+      expect(dockedColumn("outline")).not.toBeNull();
+      expect(document.activeElement).toBe(filterField());
+    });
+
+    it("leaves a phone's map for the outline", () => {
+      setViewportWidth(500);
+      const store = renderColumns();
+      act(() => {
+        store.set(phoneShowsMapAtom, true);
+      });
+
+      pressFind();
+
+      expect(store.get(phoneShowsMapAtom)).toBe(false);
+      expect(document.activeElement).toBe(filterField());
+    });
+
+    it("leaves Cmd+F to the outline while it is on screen", () => {
+      setViewportWidth(1512);
+      renderColumns();
+      const event = new KeyboardEvent("keydown", {
+        key: "f",
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+
+      act(() => {
+        document.body.dispatchEvent(event);
+      });
+
+      expect(event.defaultPrevented).toBe(false);
+    });
   });
 });

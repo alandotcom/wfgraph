@@ -346,7 +346,7 @@ describe("WorkflowToolbarChrome", () => {
     });
     const run = await findByRole("group", { name: "Run" });
     const publish = await findByRole("button", { name: "Publish" });
-    const findNode = await findByRole("button", { name: "Find a node" });
+    const findStep = await findByRole("button", { name: "Find a step" });
 
     expect(
       [dashboard, workflow, actions, settings].map((element) =>
@@ -354,7 +354,7 @@ describe("WorkflowToolbarChrome", () => {
       )
     ).not.toContain(null);
     expect(
-      [workspaceSwitcher, findNode, run, publish].map((element) =>
+      [workspaceSwitcher, findStep, run, publish].map((element) =>
         element.closest("[data-slot='workflow-toolbar-right']")
       )
     ).not.toContain(null);
@@ -362,7 +362,7 @@ describe("WorkflowToolbarChrome", () => {
       (await findByRole("button", { name: "Search commands or add a step" }))
         .className
     ).toContain("w-80");
-    expect(findNode.className).toContain("min-[70rem]:hidden");
+    expect(findStep.className).toContain("min-[70rem]:hidden");
     const leftClasses =
       dashboard
         .closest("[data-slot='workflow-toolbar-left']")

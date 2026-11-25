@@ -23,10 +23,15 @@ import {
   columnPreferencesAtom,
   columnWidth,
   detailsFloatOpenAtom,
+  outlineFilterFocusRequestAtom,
   phoneShowsMapAtom,
 } from "./editor-columns-store";
 import { COLUMN_SHORTCUT_KEYS } from "#src/lib/shortcut-label";
-import { useColumnControls, useColumnShortcuts } from "./use-column-controls";
+import {
+  useColumnControls,
+  useColumnShortcuts,
+  useFindStepShortcut,
+} from "./use-column-controls";
 
 const COLUMN_LABELS: Record<ColumnSide, string> = {
   outline: "Outline",
@@ -297,6 +302,20 @@ export function EditorColumns({
   const isMobile = useIsMobile();
   const showsMap = useAtomValue(phoneShowsMapAtom);
   useColumnShortcuts(controls, { enabled: !isMobile });
+  useFindStepShortcut(controls);
+  // "Find a step" may have just brought the outline into view, so its filter
+  // field is looked up after the commit that mounted it.
+  const filterFocusRequest = useAtomValue(outlineFilterFocusRequestAtom);
+  useAfterCommit(filterFocusRequest, () => {
+    if (filterFocusRequest === 0) {
+      return;
+    }
+    const field = document.querySelector<HTMLInputElement>(
+      '[data-column="outline"] input[aria-label="Filter steps"]'
+    );
+    field?.focus();
+    field?.select();
+  });
   const { shapes } = controls;
   useDetailsFloatFollowsSelection({
     enabled: !isMobile,

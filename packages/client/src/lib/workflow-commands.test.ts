@@ -42,6 +42,7 @@ function commandInput(
     shortcuts: {
       copy: "Cmd+C",
       duplicate: "Cmd+D",
+      findStep: "Cmd+F",
       fitView: "Cmd+/",
       group: "Cmd+G",
       palette: "Cmd+K",

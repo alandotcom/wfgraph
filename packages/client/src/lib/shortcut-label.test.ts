@@ -27,6 +27,7 @@ describe("editorShortcutLabels", () => {
     expect(editorShortcutLabels(true)).toEqual({
       copy: "⌘C",
       duplicate: "⌘D",
+      findStep: "⌘F",
       fitView: "⌘/",
       group: "⌘G",
       paste: "⌘V",
@@ -39,6 +40,7 @@ describe("editorShortcutLabels", () => {
     expect(editorShortcutLabels(false)).toEqual({
       copy: "Ctrl+C",
       duplicate: "Ctrl+D",
+      findStep: "Ctrl+F",
       fitView: "Ctrl+/",
       group: "Ctrl+G",
       paste: "Ctrl+V",

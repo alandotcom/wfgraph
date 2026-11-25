@@ -53,6 +53,7 @@ import { requestRevealEditFocusAtom } from "#src/components/workflow/canvas-reve
 import { useAddStep } from "#src/components/workflow/use-add-step";
 import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
+import { useColumnControls } from "#src/components/workflow/columns/use-column-controls";
 import { useAfterCommit, useDomEvent } from "#src/hooks/effects";
 import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import {
@@ -371,6 +372,7 @@ function CommandPaletteDialog({
   // The palette's search box is gone once a row is chosen, so a row that
   // selects a step asks the details column to put focus on the step's title.
   const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
+  const columns = useColumnControls();
   const hintsId = useId();
   const pageId = useId();
 
@@ -399,7 +401,6 @@ function CommandPaletteDialog({
   }, [setPalette, palette]);
 
   const onStepPage = page.id === "add-step";
-  const onFindNodePage = page.id === "find-node";
   const onWorkflowPage = page.id === "go-to-workflow";
   // The root searches step types too, as its placeholder says, once something
   // is typed. At rest it lists commands only, and "Add step" leads to the types.
@@ -594,22 +595,25 @@ function CommandPaletteDialog({
           command.execute();
         },
       }));
-    const findNodeItem: PaletteItem = {
-      id: "find-node",
-      label: "Find a node",
-      detail: "Search the displayed workflow",
-      keywords: "find node search workflow",
+    const findStepItem: PaletteItem = {
+      id: "find-step",
+      label: "Find a step",
+      detail: "Filter the outline",
+      keywords: "find step node search filter outline",
       disabled: false,
       consequential: false,
       icon: <Search className="size-3.5 text-muted-foreground" />,
-      select: () => setPalette(pushPalettePage(palette, { id: "find-node" })),
+      select: () => {
+        close();
+        columns.findStep();
+      },
     };
     const extraItems: Record<string, readonly PaletteItem[]> = {
       workflow: [
         ...menuCommands.map((command) => menuCommandItem(command, close)),
         goToWorkflowItem,
       ],
-      canvas: [findNodeItem],
+      canvas: [findStepItem],
       settings: settingsCommands.map((command) =>
         menuCommandItem(command, close)
       ),
@@ -623,11 +627,6 @@ function CommandPaletteDialog({
   let authoredGroups: readonly PaletteGroup[];
   if (onStepPage) {
     authoredGroups = stepPageGroups;
-  } else if (onFindNodePage) {
-    authoredGroups =
-      palette.query === ""
-        ? NO_GROUPS
-        : [{ id: "nodes", label: "Nodes", items: nodeItems }];
   } else if (onWorkflowPage) {
     authoredGroups = [
       { id: "workflows", label: "Workflows", items: workflowItems },
@@ -667,11 +666,9 @@ function CommandPaletteDialog({
   const pageAnnouncement =
     page.id === "add-step"
       ? "Add step. Choose what the new step does."
-      : page.id === "find-node"
-        ? "Find node. Type a node name, action, ID, or Group."
-        : page.id === "go-to-workflow"
-          ? "Go to workflow. Choose the workflow to open."
-          : "Commands.";
+      : page.id === "go-to-workflow"
+        ? "Go to workflow. Choose the workflow to open."
+        : "Commands.";
 
   /**
    * Escape is contested: the dialog closes on it, and the palette wants it to
@@ -825,11 +822,9 @@ function CommandPaletteDialog({
               placeholder={
                 page.id === "add-step"
                   ? "Search step types"
-                  : page.id === "find-node"
-                    ? "Search nodes"
-                    : page.id === "go-to-workflow"
-                      ? "Search workflows"
-                      : "Search commands, steps, or nodes"
+                  : page.id === "go-to-workflow"
+                    ? "Search workflows"
+                    : "Search commands, steps, or nodes"
               }
               ref={inputRef}
             />
@@ -839,11 +834,9 @@ function CommandPaletteDialog({
             <p className="px-3 py-6 text-center text-muted-foreground text-xs">
               {hasAnyItem
                 ? "Nothing matches that."
-                : page.id === "find-node"
-                  ? "Type a node name, action, ID, or Group."
-                  : page.id === "go-to-workflow"
-                    ? "No other workflows exist yet."
-                    : "No step types are available yet."}
+                : page.id === "go-to-workflow"
+                  ? "No other workflows exist yet."
+                  : "No step types are available yet."}
             </p>
           </Autocomplete.Empty>
 
@@ -851,11 +844,9 @@ function CommandPaletteDialog({
             aria-label={
               page.id === "add-step"
                 ? "Step types"
-                : page.id === "find-node"
-                  ? "Nodes"
-                  : page.id === "go-to-workflow"
-                    ? "Workflows"
-                    : "Commands, step types, nodes, and workflows"
+                : page.id === "go-to-workflow"
+                  ? "Workflows"
+                  : "Commands, step types, nodes, and workflows"
             }
             className="max-h-[min(24rem,50vh)] overflow-y-auto overscroll-contain p-1"
           >

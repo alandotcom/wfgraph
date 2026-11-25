@@ -235,19 +235,23 @@ export function CommandPaletteTrigger() {
   );
 }
 
-/** A compact route into node search while the full command search field is hidden. */
-export function FindNodeTrigger() {
-  const openPalette = useSetAtom(openCommandPaletteAtom);
-  const refusal = useAtomValue(commandPaletteRefusalAtom);
+/**
+ * A compact route to the outline's "Filter steps" field while the full command
+ * search field is hidden. It brings the outline into view when it is collapsed.
+ */
+export function FindStepTrigger() {
+  const columns = useColumnControls();
+  const shortcut = editorShortcutLabels(
+    isApplePlatform(currentPlatform())
+  ).findStep;
 
   return (
-    <ControlTooltip label={refusal ?? "Find a node"}>
+    <ControlTooltip label="Find a step" shortcut={shortcut}>
       <Button
-        aria-label="Find a node"
+        aria-keyshortcuts="Meta+F Control+F"
+        aria-label="Find a step"
         className="min-[70rem]:hidden"
-        disabled={refusal !== null}
-        focusableWhenDisabled
-        onClick={() => openPalette({ id: "find-node" })}
+        onClick={columns.findStep}
         size="icon"
         variant="outline"
       >

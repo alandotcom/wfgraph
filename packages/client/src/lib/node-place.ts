@@ -1,8 +1,8 @@
 /**
  * Where a step sits in its workflow, said in step names, so two steps a person
- * sees under one name can be told apart without printing an id. Find a node
- * shows the place under every result, and the issues list adds it to a
- * heading only when another step has the same name.
+ * sees under one name can be told apart without printing an id. The command
+ * palette shows the place under every step it finds, and the issues list adds
+ * it to a heading only when another step has the same name.
  *
  * `nameOf` is the caller's, so each surface keeps the names it already shows.
  */

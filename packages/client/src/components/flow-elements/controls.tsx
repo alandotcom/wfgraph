@@ -1,6 +1,5 @@
-import { useReactFlow, useStore } from "@xyflow/react";
-import { useAtom, useSetAtom } from "jotai";
-import type { ReactNode } from "react";
+import { useReactFlow } from "@xyflow/react";
+import { useAtom } from "jotai";
 import {
   MapPin,
   MapPinXInside,
@@ -21,51 +20,13 @@ import {
 import { workflowFitViewOptions } from "#src/components/workflow/workflow-viewport";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import { showMinimapAtom } from "#src/lib/workflow-ui-store";
-import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
-import { isCompactCardZoom } from "#src/components/workflow/workflow-viewport";
 
 type ControlsProps = {
   onReflow?: (() => void) | undefined;
   canReflow?: boolean | undefined;
-  /** What sits above the zoom buttons, such as `OverviewCue`. */
-  children?: ReactNode | undefined;
 };
 
-/**
- * While the canvas is zoomed out far enough for cards to draw their compact
- * form, a card saying that node details appear when zoomed in, with a way to
- * find a node by name. Renders nothing while cards draw in full.
- */
-export function OverviewCue() {
-  const openPalette = useSetAtom(openCommandPaletteAtom);
-  const overview = useStore((state) => isCompactCardZoom(state.transform[2]));
-  if (!overview) {
-    return null;
-  }
-  return (
-    <div
-      className="w-44 rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm"
-      data-slot="canvas-overview-cue"
-    >
-      <p className="font-medium">Overview</p>
-      <p className="mt-0.5 text-muted-foreground">Zoom in to view details.</p>
-      <Button
-        className="mt-1.5 h-11 px-3 md:h-7 md:px-2"
-        onClick={() => openPalette({ id: "find-node" })}
-        size="xs"
-        variant="outline"
-      >
-        Find a node
-      </Button>
-    </div>
-  );
-}
-
-export const Controls = ({
-  onReflow,
-  canReflow = true,
-  children,
-}: ControlsProps) => {
+export const Controls = ({ onReflow, canReflow = true }: ControlsProps) => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   const isMobile = useIsMobile();
   const [showMinimap, setShowMinimap] = useAtom(showMinimapAtom);
@@ -95,7 +56,6 @@ export const Controls = ({
   // would cover a third of the canvas's height.
   return (
     <div className="flex flex-col items-start gap-2">
-      {children}
       <ButtonGroup
         className="rounded-md bg-card shadow-sm"
         orientation={isMobile ? "horizontal" : "vertical"}

@@ -9,6 +9,8 @@ import {
   columnShapes,
   detailsFloatOpenAtom,
   detailsToggle,
+  outlineFilterFocusRequestAtom,
+  phoneShowsMapAtom,
   setColumnCollapsedAtom,
 } from "./editor-columns-store";
 import { useEditorLayout } from "./use-editor-layout";
@@ -20,6 +22,13 @@ export type ColumnControls = {
   toggle: (side: ColumnSide) => void;
   /** Close details floating over the canvas. */
   closeDetailsFloat: () => void;
+  /** Whether the outline is on screen: docked, or a phone's main view. */
+  outlineShown: boolean;
+  /**
+   * Bring the outline into view, docking it or leaving a phone's map, and put
+   * the cursor in its "Filter steps" field.
+   */
+  findStep: () => void;
 };
 
 const DETAILS_LABELS: Record<ReturnType<typeof detailsToggle>, string> = {
@@ -40,8 +49,12 @@ export function useColumnControls(): ColumnControls {
   const preferences = useAtomValue(columnPreferencesAtom);
   const [detailsFloatOpen, setDetailsFloatOpen] = useAtom(detailsFloatOpenAtom);
   const setCollapsed = useSetAtom(setColumnCollapsedAtom);
+  const [phoneShowsMap, setPhoneShowsMap] = useAtom(phoneShowsMapAtom);
+  const requestFilterFocus = useSetAtom(outlineFilterFocusRequestAtom);
   const shapes = columnShapes({ layout, preferences, detailsFloatOpen });
   const detailsAction = detailsToggle({ layout, shape: shapes.details });
+  const outlineShown =
+    layout === "compact" ? !phoneShowsMap : shapes.outline !== "rail";
 
   const toggle = (side: ColumnSide) => {
     if (side === "outline") {
@@ -63,12 +76,45 @@ export function useColumnControls(): ColumnControls {
     return DETAILS_LABELS[detailsAction];
   };
 
+  const findStep = () => {
+    if (layout === "compact") {
+      setPhoneShowsMap(false);
+    } else if (shapes.outline === "rail") {
+      setCollapsed({ side: "outline", collapsed: false });
+    }
+    requestFilterFocus((count) => count + 1);
+  };
+
   return {
     shapes,
     toggle,
     toggleLabel,
     closeDetailsFloat: () => setDetailsFloatOpen(false),
+    outlineShown,
+    findStep,
   };
+}
+
+/**
+ * Cmd+F or Ctrl+F while the outline is out of view brings it back and puts the
+ * cursor in its filter field. While the outline is on screen it answers the
+ * chord itself.
+ */
+export function useFindStepShortcut(controls: ColumnControls): void {
+  useDomEvent(document, "keydown", (event) => {
+    if (
+      controls.outlineShown ||
+      event.key.toLowerCase() !== "f" ||
+      !(event.metaKey || event.ctrlKey) ||
+      event.altKey ||
+      event.shiftKey ||
+      !editorChordAllowed(event, { inTextFields: true })
+    ) {
+      return;
+    }
+    event.preventDefault();
+    controls.findStep();
+  });
 }
 
 /**

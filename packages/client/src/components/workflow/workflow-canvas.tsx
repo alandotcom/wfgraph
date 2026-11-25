@@ -17,7 +17,7 @@ import {
 } from "react";
 import { Canvas } from "#src/components/flow-elements/canvas";
 import { Connection } from "#src/components/flow-elements/connection";
-import { Controls, OverviewCue } from "#src/components/flow-elements/controls";
+import { Controls } from "#src/components/flow-elements/controls";
 import "@xyflow/react/dist/style.css";
 
 import { Edge, InsertStepSlot } from "#src/components/flow-elements/edge";
@@ -693,12 +693,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
               onReflow={
                 graphEditingLocked || !topologyAuthoring ? undefined : reflow
               }
-            >
-              {/* Runs keeps the zoom cue, since its canvas shows a graph
-                    other than the draft. In Draft the outline says what the
-                    workflow does. */}
-              {workspaceView !== "draft" ? <OverviewCue /> : null}
-            </Controls>
+            />
           </Panel>
           {/* A workflow with nothing but its Lifecycle Node shows how to
                 begin, wherever the canvas can add a step. */}
