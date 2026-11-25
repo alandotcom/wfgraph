@@ -121,24 +121,15 @@ export function WorkflowContextMenu({
   const canToggleEnabled = clicked?.data.type === "action";
   const clickedIsGroup = isGroupNode(clicked);
 
+  // Deleting a step is one undo step, as it is from the Backspace key, so it
+  // happens at once with no confirmation.
   const handleDeleteNode = useCallback(() => {
     if (canEdit && menuState?.nodeId) {
       const nodeId = menuState.nodeId;
       onClose();
-      openOverlay(ConfirmOverlay, {
-        title: "Delete Step",
-        message:
-          "Are you sure you want to delete this node? This action cannot be undone.",
-        confirmLabel: "Delete",
-        confirmVariant: "destructive" as const,
-        onConfirm: () => {
-          if (canEdit) {
-            deleteNode(nodeId);
-          }
-        },
-      });
+      deleteNode(nodeId);
     }
-  }, [canEdit, menuState, deleteNode, onClose, openOverlay]);
+  }, [canEdit, menuState, deleteNode, onClose]);
 
   const handleEditNode = useCallback(() => {
     if (menuState?.nodeId) {
@@ -330,9 +321,6 @@ export function WorkflowContextMenu({
       : [];
   // Below the cursor when the menu fits there, above it otherwise.
   const opensUpward =
-      // Names the menu to the editor's shortcut gate, which holds every editor
-      // chord while it is open.
-      data-slot="canvas-context-menu"
     menuState.position.y + MENU_HEIGHT_PX + VIEWPORT_MARGIN_PX >
     window.innerHeight;
   const nodeLabel = clicked?.data.label || "Step";
@@ -342,6 +330,9 @@ export function WorkflowContextMenu({
   // that layer's siblings and the properties panel drew over the menu.
   return createPortal(
     <div
+      // Names the menu to the editor's shortcut gate, which holds every editor
+      // chord while it is open.
+      data-slot="canvas-context-menu"
       className="fade-in-0 zoom-in-95 fixed z-50 max-h-[calc(100vh-1rem)] w-fit min-w-[8rem] max-w-72 animate-in overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:animate-none"
       ref={menuRef}
       style={{

@@ -44,8 +44,8 @@ function StepEnableToggle({ node }: { node: WorkflowNode }) {
 }
 
 /**
- * Delete one step after the frame's confirmation, then close a frame that
- * configured only that step.
+ * Delete one step, then close a frame that configured only that step. Undo
+ * restores the step, so the delete asks for no confirmation.
  */
 function DeleteStepButton({
   nodeId,
@@ -57,18 +57,10 @@ function DeleteStepButton({
   const deleteNode = useSetAtom(deleteNodeAtom);
   return (
     <Button
-      onClick={() =>
-        frame.confirm({
-          title: "Delete Step",
-          message:
-            "Are you sure you want to delete this step? This action cannot be undone.",
-          confirmLabel: "Delete",
-          onConfirm: () => {
-            deleteNode(nodeId);
-            frame.dismiss?.();
-          },
-        })
-      }
+      onClick={() => {
+        deleteNode(nodeId);
+        frame.dismiss?.();
+      }}
       size="sm"
       variant="outline"
     >
@@ -81,8 +73,9 @@ function DeleteStepButton({
 /**
  * The control row of one node, shown only to a person who may update the
  * workflow: the enable toggle for a step, Ungroup for a Group or a Group
- * member, and a confirmed delete. A Group's delete removes the frame with every
- * step inside it, since Ungroup is how the frame alone is removed. The
+ * member, and a delete. A step's delete happens at once. A Group's delete is
+ * confirmed and removes the frame with every step inside it, since Ungroup is
+ * how the frame alone is removed. The
  * Lifecycle Node is the workflow's entry and cannot be deleted, so it has none.
  * Ungroup and delete follow the topology capabilities, so a phone shows the
  * toggle alone.
