@@ -97,6 +97,16 @@ const cancelableWaitGraph = createSerializedWorkflowGraph({
   ],
 });
 
+/** Entry, a one-day delay, and a node that records when the run got past it. */
+const dayWaitGraph = createSerializedWorkflowGraph({
+  nodes: [
+    lifecycleNode(),
+    waitNode("wait", delay("1d")),
+    actionNode("after", "test/mark"),
+  ],
+  edges: [edge("entry", "wait", "started"), edge("wait", "after")],
+});
+
 /** A poll no case outlasts, so a loop that acted was woken. */
 const LONG_POLL_MS = 30_000;
 
@@ -589,6 +599,59 @@ function describeCases(
     expect(result.schedule?.state).toBe("queued");
     expect(result.schedule?.wakeAt.getTime()).toBeLessThanOrEqual(Date.now());
   });
+
+  // Continue now: the park takes the wake the claim writes when a deadline
+  // passes, so the run goes on below the Wait a day early, and the engine
+  // reads it as the delay's target reached.
+  it("ends a one-day delay park at once when its time is brought forward, and the run goes on below the Wait", async () => {
+    const app = appOn(await openConnection());
+    const run = await app.startRun(dayWaitGraph);
+    const loop = app.loop();
+    const findSchedule = () =>
+      app.connection.run(
+        Effect.flatMap(ExecutionRepo, (executions) =>
+          executions.findSchedule({ executionId: run.executionId })
+        )
+      );
+    await waitUntil(
+      async () => (await findSchedule())?.state === "waiting",
+      "The run did not park"
+    );
+    // The parked run sleeps a day, and the loop until its next poll.
+    expect((await findSchedule())?.wakeAt.getTime()).toBeGreaterThan(
+      Date.now() + 23 * 60 * 60 * 1000
+    );
+    await sleep(100);
+    const wakesBefore = app.worker.calls();
+
+    const endPark = Effect.gen(function* () {
+      const driver = yield* ExecutionDriver;
+      const executions = yield* ExecutionRepo;
+      const [parked] = yield* executions.listWaitingStates(run.executionId);
+      if (parked === undefined) throw new Error("No park to end");
+      return yield* driver.endParkNow({
+        executionId: run.executionId,
+        waitStateId: parked.id,
+      });
+    });
+    const resolution = await app.drive(endPark);
+    const wokenAt = Date.now();
+
+    expect(await app.ended(run.executionId)).toBe("completed");
+    await loop.stop();
+    expect(resolution).toEqual({ resolved: true, requeued: true });
+    expect(app.worker.calls()).toBe(wakesBefore + 1);
+    expect((marks.get("after") ?? Number.NaN) - wokenAt).toBeLessThan(1_000);
+
+    const events = await app.connection.run(
+      Effect.flatMap(ExecutionRepo, (executions) =>
+        executions.listEvents(run.executionId)
+      )
+    );
+    expect(events.map((event) => event.message)).toContain(
+      "Run resumed after delay in node 'wait'"
+    );
+  }, 30_000);
 }
 
 /**

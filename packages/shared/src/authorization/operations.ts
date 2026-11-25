@@ -186,6 +186,10 @@ const operationDefinitions = {
     "workflow.cancelExecution",
     WfGraphPermissions.runManage
   ),
+  workflowContinueWait: operation(
+    "workflow.continueWait",
+    WfGraphPermissions.runManage
+  ),
   workflowMigrateExecutions: operation(
     "workflow.migrateExecutions",
     WfGraphPermissions.runManage

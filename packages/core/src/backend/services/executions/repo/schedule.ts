@@ -303,10 +303,13 @@ export type ScheduleRepoMethods = {
     now: Date;
   }) => Effect.Effect<ClaimedSchedule[], DatabaseError>;
   /**
-   * Write `wake` onto one park by its row id and make its run due, which is
-   * how the replay harness plays whichever producer resolves that park. A
-   * producer the application runs claims its park by what it knows instead
-   * (`claimWaitingStateById`, `requestCancelForEntity`, `repinVersion`).
+   * Write `wake` onto one park by its row id and make its run due. The
+   * application calls it with a `timeout` wake for Continue now
+   * (`ExecutionDriver.endParkNow`), which ends a draft run's park ahead of its
+   * deadline. The replay harness calls it to play whichever producer resolves
+   * that park. Every other producer the application runs claims its park by
+   * what it knows instead (`claimWaitingStateById`, `requestCancelForEntity`,
+   * `repinVersion`).
    *
    * Runs through `wakeExecutions`. The wake is set only on a row still
    * `waiting`, so each park takes one wake, and only a wake this call set

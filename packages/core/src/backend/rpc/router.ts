@@ -25,6 +25,7 @@ import { deleteIntegrationOAuth } from "#src/backend/services/integrations/oauth
 import { postWorkflowExecute } from "#src/backend/services/workflows/lifecycle/manual-start";
 import { resumeWaitByToken } from "#src/backend/services/workflows/lifecycle/resume";
 import { postExecutionCancel } from "#src/backend/services/executions/cancel";
+import { continueWaitNow } from "#src/backend/services/executions/continue-wait";
 import { getExecutionEvents } from "#src/backend/services/executions/events";
 import { getExecutionLogs } from "#src/backend/services/executions/logs";
 import { getExecutionStatus } from "#src/backend/services/executions/status";
@@ -668,6 +669,14 @@ export const rpcRouter = rpc.router({
     ),
     cancelExecution: rpc.workflow.cancelExecution.handler(
       rpcEffectHandler(({ input }) => postExecutionCancel(input.executionId))
+    ),
+    continueWait: rpc.workflow.continueWait.handler(
+      rpcEffectHandler(({ input }) =>
+        continueWaitNow({
+          executionId: input.executionId,
+          waitStateId: input.waitStateId,
+        })
+      )
     ),
     getExecutionStatus: rpc.workflow.getExecutionStatus.handler(
       rpcEffectHandler(({ input }) => getExecutionStatus(input.executionId))

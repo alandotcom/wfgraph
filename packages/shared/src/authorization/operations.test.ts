@@ -55,6 +55,7 @@ function returnKnownOperationId(id: WfGraphOperationId): WfGraphOperationId {
     case "workflow.deleteExecutions":
     case "workflow.resumeWait":
     case "workflow.cancelExecution":
+    case "workflow.continueWait":
     case "workflow.migrateExecutions":
     case "oauth.start":
     case "oauth.status":
@@ -109,6 +110,11 @@ describe("Workflow Graph authorization operations", () => {
     );
     expect(WfGraphOperations.workflowMigrateExecutions.permission).toBe(
       "run.manage"
+    );
+    // Continue now changes how a run proceeds, as Cancel does, so it takes the
+    // same permission.
+    expect(WfGraphOperations.workflowContinueWait.permission).toBe(
+      WfGraphOperations.workflowCancelExecution.permission
     );
   });
 

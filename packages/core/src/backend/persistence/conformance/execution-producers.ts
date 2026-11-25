@@ -1,8 +1,9 @@
 /**
  * The executions aggregate's producers, the writes that resolve a parked run's
  * parks and make its schedule row due: an Event or a manual resume claiming a
- * park, a Cancel claim, an Exit claim, a Migration's repin, and the replay
- * harness's `wakePark`. Each case checks that the wake and the re-queue land in
+ * park, a Cancel claim, an Exit claim, a Migration's repin, and `wakePark`,
+ * which Continue now and the replay harness call. Each case checks that the
+ * wake and the re-queue land in
  * one write, and that a leased run is left to its release.
  *
  * Every case passes its own clock, so the due comparisons do not depend on how
@@ -852,6 +853,96 @@ export function describeExecutionProducerConformance({
       expect(reused).toMatchObject([
         { kind: "claimed", executionId: retried.lateId },
       ]);
+    });
+
+    // Continue now (`ExecutionDriver.endParkNow`) ends a draft run's park a
+    // day early with the same wake the claim writes onto an overdue park.
+    it("ends a park ahead of its deadline with a timeout wake, re-queues the sleeping run once, and leaves an Event nothing to claim", async () => {
+      const day = 24 * 60 * 60 * 1000;
+      const connection = await seeded(await openConnection());
+      const result = await connection.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const executionId = yield* scheduledRun(T0);
+          const { fence } = yield* claimRun(executionId, T0);
+          const delayed = yield* executions.startWait({
+            side: "started",
+            executionId,
+            workflowId: "wf_1",
+            nodeId: "wait_day",
+            nodeName: "wait_day",
+            workflowVersionId: "ver_1",
+            waitType: "delay",
+            waitUntil: at(day),
+          });
+          if (!delayed) throw new Error("The park was refused");
+          const eventPark = yield* park(executionId, "wait_event", at(day));
+          const released = yield* executions
+            .fenced(fence)
+            .releasePass({ outcome: { kind: "parked" }, now: at(1_000) });
+
+          const ended = yield* executions.wakePark({
+            executionId,
+            waitStateId: delayed.waitStateId,
+            wake: { kind: "timeout" },
+            now: at(5_000),
+          });
+          const requeued = yield* executions.findSchedule({ executionId });
+          const pressedAgain = yield* executions.wakePark({
+            executionId,
+            waitStateId: delayed.waitStateId,
+            wake: { kind: "timeout" },
+            now: at(6_000),
+          });
+          const eventEnded = yield* executions.wakePark({
+            executionId,
+            waitStateId: eventPark,
+            wake: { kind: "timeout" },
+            now: at(6_000),
+          });
+          const lateEvent = yield* executions.claimWaitingStateByToken({
+            resumeToken: `${executionId}-wait_event`,
+            arrival: { eventName: null, payload: {} },
+            now: at(7_000),
+          });
+          const { claim } = yield* claimRun(executionId, at(8_000));
+          return {
+            released: released.schedule,
+            ended,
+            requeued,
+            pressedAgain,
+            eventEnded,
+            lateEvent,
+            claim,
+            delayed: yield* executions.findPark(delayed.waitStateId),
+            eventPark: yield* executions.findPark(eventPark),
+          };
+        })
+      );
+
+      expect(result.released).toMatchObject({
+        state: "waiting",
+        wakeAt: at(day),
+      });
+      expect(result.ended).toEqual({ resolved: true, requeued: true });
+      expect(result.requeued).toMatchObject({
+        state: "queued",
+        wakeAt: at(5_000),
+      });
+      // The park took one wake, and a second press sets nothing.
+      expect(result.pressedAgain).toEqual({ resolved: false, requeued: false });
+      // The run is already due, so ending its other park re-queues nothing.
+      expect(result.eventEnded).toEqual({ resolved: true, requeued: false });
+      expect(result.lateEvent).toBeNull();
+      expect(result.claim.executionId).toBeDefined();
+      expect(result.delayed).toMatchObject({
+        status: "resuming",
+        wake: { kind: "timeout" },
+      });
+      expect(result.eventPark).toMatchObject({
+        status: "resuming",
+        wake: { kind: "timeout" },
+      });
     });
   });
 }

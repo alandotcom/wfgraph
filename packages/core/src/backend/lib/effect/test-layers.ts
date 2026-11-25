@@ -498,6 +498,7 @@ export function stubIntegrationRepo(
 const executionDriverStubs: ExecutionDriver["Service"] = {
   startRun: refuse("startRun"),
   resolvePark: refuse("resolvePark"),
+  endParkNow: refuse("endParkNow"),
   requestCanceledOutlet: refuse("requestCanceledOutlet"),
   migrateRun: refuse("migrateRun"),
   receiveEvent: refuse("receiveEvent"),

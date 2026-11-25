@@ -23,9 +23,11 @@ import {
   ExecutionRepo,
   type InboxInsert,
   type NewInboxEvent,
+  type ParkResolution,
   type StartForEntityInput,
   type WaitResumeClaim,
 } from "#src/backend/services/executions/repo";
+import { TIMEOUT_WAKE } from "#src/backend/services/executions/repo/release-policy";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 
 /**
@@ -96,6 +98,17 @@ export class ExecutionDriver extends Context.Service<
       /** What the Event or the Runs view sent, which the woken run reads back. */
       payload: JsonObject;
     }) => Effect.Effect<WaitResumeClaim | null, DriverError>;
+    /**
+     * End one park ahead of its deadline, as if its time had come: write the
+     * `timeout` wake the claim writes onto an overdue park, and make the run
+     * due, in one write (`ExecutionRepo.wakePark`). A delay Wait reads it as
+     * its target reached, and an event Wait as its timeout. Answers whether
+     * the wake landed, which it does only on a park still `waiting`.
+     */
+    readonly endParkNow: (input: {
+      executionId: string;
+      waitStateId: string;
+    }) => Effect.Effect<ParkResolution, DriverError>;
     /**
      * Claim every in-flight run of one entity for its Canceled outlet,
      * resolving each run's parks with a `cancel` wake and re-queueing it, as
@@ -224,6 +237,22 @@ export function makeExecutionDriverLayer(
             return claim;
           }
         ),
+
+        endParkNow: Effect.fn("wfgraph.driver.end_park_now")(function* (input) {
+          yield* Effect.annotateCurrentSpan({
+            "wfgraph.execution.id": input.executionId,
+            "wfgraph.wait.id": input.waitStateId,
+          });
+          const resolution = yield* executions
+            .wakePark({ ...input, wake: TIMEOUT_WAKE, now: yield* now })
+            .pipe(Effect.mapError(driverError));
+          yield* Effect.annotateCurrentSpan(
+            "wfgraph.driver.requeued",
+            resolution.requeued
+          );
+          yield* runDue(resolution.requeued);
+          return resolution;
+        }),
 
         // One write claims the whole batch, so its runs are announced once.
         requestCanceledOutlet: Effect.fn(

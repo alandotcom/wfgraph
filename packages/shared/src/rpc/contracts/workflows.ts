@@ -972,6 +972,27 @@ export const workflowContract = {
         })
       )
     ),
+  // Continue now: ends one Wait of a run of the draft before its time, and the
+  // run goes on as if the time had come. A run of a published version is refused.
+  continueWait: route(
+    "POST",
+    "/workflows/executions/{executionId}/waits/{waitStateId}/continue",
+    WfGraphOperations.workflowContinueWait
+  )
+    .input(
+      contractSchema(
+        Schema.Struct({ executionId: idSchema, waitStateId: idSchema })
+      )
+    )
+    .output(
+      contractSchema(
+        Schema.Struct({
+          success: Schema.Literal(true),
+          status: Schema.Literal("continued"),
+          executionId: idSchema,
+        })
+      )
+    ),
   getExecutionStatus: route(
     "GET",
     "/workflows/executions/{executionId}/status",
