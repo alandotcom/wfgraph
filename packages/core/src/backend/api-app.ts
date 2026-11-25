@@ -3,15 +3,10 @@ import { isNotNil } from "es-toolkit/predicate";
 import { Effect, Result, Schema, type SchemaAST } from "effect";
 import { Hono } from "hono";
 import { AgentConfig } from "#src/backend/agent/config";
-import {
-  createAgentMcpHandler,
-  type HostToolExecution,
-  mcpAuthenticationChallenge,
-  mcpHttpValidationResponse,
-  mcpProtectedResourceMetadataPath,
-  mcpProtectedResourceMetadataResponse,
-  type WfGraphMcpOptions,
-} from "#src/backend/agent/mcp-server";
+import type {
+  HostToolExecution,
+  McpEndpoint,
+} from "#src/backend/agent/mcp-option";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import { responseFromServiceFailure } from "#src/backend/lib/http/failure-response";
@@ -210,8 +205,12 @@ export type CreateApiAppOptions = {
    * procedure whose service has been migrated can run its Effect on it.
    */
   runtime: WfGraphRuntime;
-  /** Enables and secures the authenticated stateless MCP authoring endpoint. */
-  mcp?: true | WfGraphMcpOptions | undefined;
+  /**
+   * Enables and secures the authenticated stateless MCP authoring endpoint,
+   * as `readMcpOption` read it from the host's `mcp` option. Absent, the
+   * endpoint is not mounted.
+   */
+  mcp?: McpEndpoint | undefined;
   /**
    * The shared key `POST /events` accepts as `Authorization: Bearer <key>`.
    * Absent, the route is not mounted.
@@ -290,7 +289,7 @@ export function requestLogPath(path: string): string {
 }
 
 export function createApiApp(options: CreateApiAppOptions) {
-  const { basePath, auth, runtime, mcp = false, eventsKey, health } = options;
+  const { basePath, auth, runtime, mcp, eventsKey, health } = options;
   // The root app shares its router with `app`, which is what lets the MCP
   // endpoint's RFC 9728 metadata answer at the origin's well-known path
   // while every other route sits under `basePath`.
@@ -425,16 +424,15 @@ export function createApiApp(options: CreateApiAppOptions) {
   // Public discovery data an MCP client reads before it holds a token, so it
   // sits outside the host gate. Mounted only when the host names an
   // authorization server.
-  if (mcp && mcp !== true && mcp.authorization !== undefined) {
-    root.get(mcpProtectedResourceMetadataPath(mcpPath), async (c) => {
-      const response = mcpProtectedResourceMetadataResponse({
+  const mcpMetadata = mcp?.metadata;
+  if (mcpMetadata !== undefined) {
+    root.get(mcpMetadata.path(mcpPath), async (c) =>
+      mcpMetadata.response({
         request: c.req.raw,
-        mcp,
         mcpPath,
         publicUrl: await readPublicUrl(),
-      });
-      return response ?? c.json({ error: "Not found" }, 404);
-    });
+      })
+    );
   }
   app.use("*", async (c, next) => {
     if (
@@ -485,9 +483,8 @@ export function createApiApp(options: CreateApiAppOptions) {
     if (mcp && c.req.path === mcpPath) {
       c.header(
         "WWW-Authenticate",
-        mcpAuthenticationChallenge({
+        mcp.authenticationChallenge({
           request: c.req.raw,
-          mcp,
           mcpPath,
           publicUrl: await readPublicUrl(),
         })
@@ -645,7 +642,7 @@ export function createApiApp(options: CreateApiAppOptions) {
 
   if (mcp) {
     routes.all("/mcp", async (c) => {
-      const headerRejection = mcpHttpValidationResponse(c.req.raw, mcp);
+      const headerRejection = mcp.refuseUntrustedHeaders(c.req.raw);
       if (headerRejection) {
         return headerRejection;
       }
@@ -666,9 +663,8 @@ export function createApiApp(options: CreateApiAppOptions) {
       }
 
       const authContext = c.get("wfgraphAuth")!;
-      const handler = createAgentMcpHandler({
+      const handler = mcp.createHandler({
         auth: authContext,
-        httpSecurity: mcp,
         listWorkflows: async (signal) =>
           await runtime.runPromise(
             getWorkflows().pipe(

@@ -10,16 +10,17 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import { Conflict, DraftConflict } from "#src/backend/lib/effect/failures";
 import type { AuthContext } from "#src/backend/lib/http/authorize";
+import { wfMcp } from "#src/backend/agent/mcp-http";
 import {
-  createAgentMcpHandler,
-  createAgentMcpServer,
   type CreateAgentMcpServerInput,
   type DraftToolExecution,
   type DraftToolExecutor,
+  readMcpOption,
   type WorkflowCreateExecutor,
   type WorkflowListExecutor,
   type WorkflowPublicationExecutors,
-} from "#src/backend/agent/mcp-server";
+} from "#src/backend/agent/mcp-option";
+import { createAgentMcpServer } from "#src/backend/agent/mcp-server";
 
 const allowAll: AuthContext = { allows: async () => true };
 
@@ -48,13 +49,23 @@ const unusedPublication: WorkflowPublicationExecutors = {
   },
 };
 
+/**
+ * The handler for one request, built the way `createApiApp` builds it: from
+ * what `wfMcp()` returns, through `readMcpOption`. The Host and Origin check
+ * is `createApiApp`'s, so a request here reaches the handler whatever its
+ * headers name.
+ */
 function createTestMcpHandler(
   input: Omit<
     CreateAgentMcpServerInput,
     "listWorkflows" | "createWorkflow" | "publication"
   >
 ) {
-  return createAgentMcpHandler({
+  const endpoint = readMcpOption(wfMcp(), "test");
+  if (endpoint === undefined) {
+    throw new Error("wfMcp() built no endpoint");
+  }
+  return endpoint.createHandler({
     ...input,
     publication: unusedPublication,
     listWorkflows: listNoWorkflows,
@@ -720,7 +731,7 @@ describe("createAgentMcpServer", () => {
   });
 });
 
-describe("createAgentMcpHandler", () => {
+describe("the request handler wfMcp builds", () => {
   it("answers invalid arguments with a tool error naming each field", async () => {
     const execute = vi.fn<DraftToolExecutor>(async () => {
       throw new Error("unexpected");

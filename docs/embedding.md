@@ -642,29 +642,45 @@ local and perform no asynchronous fanout.
 
 The editor's Agent panel is a chat that reads the catalog and edits the open
 workflow. It is off until `agent` names a model, and the editor then shows no
-panel. A turn runs on the server against the provider `agent.provider` names, through
-Effect's provider package for it. A turn's history, the graph the editor holds, and the
-canvas selection arrive with each request, and nothing about a conversation is stored
-on the server.
+panel. Each model provider has its own entry, and `agent` takes what that entry's
+function returns. A turn runs on the server against that provider. A turn's history,
+the graph the editor holds, and the canvas selection arrive with each request, and
+nothing about a conversation is stored on the server.
 
 ```ts
+import { wfAnthropic } from "@wfgraph/core/anthropic";
+
 const wfgraph = await createWfGraphApp({
-  agent: { apiKey: process.env.OPENAI_API_KEY },
+  agent: wfAnthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    model: "claude-sonnet-5-5",
+  }),
   ...
 });
 ```
 
-| `agent.provider`    | Endpoint `baseUrl` must implement                                | `model`                                       | `reasoningEffort`                                                                           |
-| ------------------- | ---------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `openai` (default)  | `POST {baseUrl}/responses`, OpenAI's Responses API               | Defaults to `gpt-6.1-terra`                   | Sent as `reasoning.effort`, with a reasoning summary. Defaults to `medium`                  |
-| `anthropic`         | `POST {baseUrl}/v1/messages`, Anthropic's Messages API           | Required                                      | `low` to `max`, sent as `output_config.effort` beside adaptive thinking. Defaults to `high` |
-| `openrouter`        | `POST {baseUrl}/chat/completions`, OpenRouter's API              | Required, such as `anthropic/claude-opus-5-5` | Sent as `reasoning.effort` only when set                                                    |
-| `openai-compatible` | `POST {baseUrl}/chat/completions`, OpenAI's Chat Completions API | Required                                      | Sent as `reasoning_effort` only when set                                                    |
+| Entry and function                                          | Endpoint `baseUrl` must implement                                | `model`                                       | `reasoningEffort`                                                                           |
+| ----------------------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `wfOpenAi` from `@wfgraph/core/openai`                      | `POST {baseUrl}/responses`, OpenAI's Responses API               | Defaults to `gpt-6.1-terra`                   | Sent as `reasoning.effort`, with a reasoning summary. Defaults to `medium`                  |
+| `wfAnthropic` from `@wfgraph/core/anthropic`                | `POST {baseUrl}/v1/messages`, Anthropic's Messages API           | Required                                      | `low` to `max`, sent as `output_config.effort` beside adaptive thinking. Defaults to `high` |
+| `wfOpenRouter` from `@wfgraph/core/openrouter`              | `POST {baseUrl}/chat/completions`, OpenRouter's API              | Required, such as `anthropic/claude-opus-5-5` | Sent as `reasoning.effort` only when set                                                    |
+| `wfOpenAiCompatible` from `@wfgraph/core/openai-compatible` | `POST {baseUrl}/chat/completions`, OpenAI's Chat Completions API | Required                                      | Sent as `reasoning_effort` only when set                                                    |
+
+Each provider function takes these options:
+
+| Option               | Required                 | Description                                                                                                                                                                                          |
+| -------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apiKey`             | No                       | The provider's API key. Absent or blank leaves the build agent off, and the editor then shows no chat panel. `wfOpenAiCompatible` sends it as a bearer token only when it is set                     |
+| `model`              | All but `wfOpenAi`       | Model id the agent runs against. `wfOpenAi` defaults to a current OpenAI model                                                                                                                       |
+| `reasoningEffort`    | No                       | How hard the model thinks before answering. For `wfOpenAi`: `none`, `low`, `medium`, `high`, `xhigh`, or `max`, defaulting to `medium`. The provider table names the others                          |
+| `baseUrl`            | For `wfOpenAiCompatible` | The endpoint to call in place of the provider's own. For `wfOpenAiCompatible` it is what turns the agent on                                                                                          |
+| `maxConcurrentTurns` | No                       | How many agent turns this process streams at once, across everyone using the editor, as a positive integer. Defaults to 4. A turn past the limit is refused with a message asking the person to wait |
 
 - **Each endpoint streams.** Every request is a streaming request with function tools, so a
   gateway in front of a provider must pass server-sent events through and accept a
-  `tools` array. A `baseUrl` for `openai` must serve the Responses API: a gateway that offers
-  Chat Completions alone, such as most self-hosted model servers, is `openai-compatible`.
+  `tools` array. A `baseUrl` for `wfOpenAi` must serve the Responses API: a gateway that
+  offers Chat Completions alone, such as most self-hosted model servers, takes
+  `wfOpenAiCompatible`.
 - **A past turn reaches the model with its record.** The browser sends each assistant
   message with a `record` of its turn: every tool call's name and outcome (the sentence a
   write answered, or the reason a refusal gave), the ids and labels of the nodes it added,
@@ -679,7 +695,7 @@ const wfgraph = await createWfGraphApp({
   `prompt_cache_key: "wfgraph-agent:<workflowId>"`, an Anthropic request asks for automatic
   prompt caching, and an OpenAI request sets `store: false`, so the Responses API keeps no
   copy of a turn. A gateway in front of OpenAI must pass both fields through.
-- **`anthropic` needs a Claude model from the 4.6 generation or later**, because the turn
+- **`wfAnthropic` needs a Claude model from the 4.6 generation or later**, because the turn
   asks for adaptive thinking, which earlier models refuse. The repository's eval suite has
   measured `claude-sonnet-5-5`, at the default `high` effort. The tools are sent without
   `strict`, since Anthropic accepts at most 20 strict tools in one request.
@@ -689,8 +705,13 @@ const wfgraph = await createWfGraphApp({
   `list_integrations`. A tool the caller lacks a grant for answers the model a refusal.
 - **A blank key is no agent.** `apiKey: process.env.ANTHROPIC_API_KEY` on a machine without
   the variable leaves the agent off, where a blank `model` for a provider with no default
-  fails at startup. `openai-compatible` is the exception: its `baseUrl` turns it on, and the
-  key is sent as a bearer token only when one is set.
+  throws when the host calls the function. `wfOpenAiCompatible` is the exception: its
+  `baseUrl` turns it on, and the key is sent as a bearer token only when one is set.
+- **Any other `agent` value is refused.** A value that is neither a provider function's
+  result nor `{ runner }`, such as a plain object of `apiKey` and `model`, throws a message
+  naming the provider functions. `createWfGraphApp` throws it when it is called. `wfWorker`
+  reads `agent` from its `request` callback on each invocation, so it throws the message on
+  each request and tick.
 
 ### Run turns on your own gateway or model
 
@@ -737,30 +758,43 @@ const wfgraph = await createWfGraphApp({
 
 ## MCP authoring
 
-Set `mcp: true` to expose the authenticated Model Context Protocol (MCP)
-authoring endpoint for localhost development. For a deployed host, configure
-the hostnames that can address the endpoint:
+Import `wfMcp` from `@wfgraph/core/mcp` and pass what it returns as the `mcp`
+option to expose the authenticated Model Context Protocol (MCP) authoring
+endpoint. `wfMcp()` with no argument admits localhost alone, for local
+development:
+
+```ts
+import { wfMcp } from "@wfgraph/core/mcp";
+
+const wfgraph = await createWfGraphApp({
+  // ...
+  mcp: wfMcp(),
+});
+```
+
+For a deployed host, pass `wfMcp` the hostnames that can address the endpoint:
 
 ```ts
 const wfgraph = await createWfGraphApp({
   // ...
-  mcp: {
+  mcp: wfMcp({
     allowedHostnames: ["workflows.example.com"],
     allowedOriginHostnames: ["console.example.com"],
-  },
+  }),
 });
 ```
 
 The endpoint is `${basePath}/api/mcp`. With the default `basePath`, the endpoint
 is `/api/mcp`. The `mcp` option is disabled by default and works with
-`createWfGraphApp` and `wfWorker`.
+`createWfGraphApp` and `wfWorker`. A value `wfMcp` did not return fails at
+startup with a message naming `wfMcp`.
 
 List hostnames only, with no scheme or port. Every request must have an allowed
 `Host` header. Browser requests must also have an allowed `Origin` hostname.
 Requests from non-browser MCP clients can omit the `Origin` header. Workflow
 Graph rejects an invalid host or origin with HTTP 403 before reading the body.
-The 403 names the `mcp.allowedHostnames` or `mcp.allowedOriginHostnames` option
-that would admit the hostname.
+The 403 names the `allowedHostnames` or `allowedOriginHostnames` option of
+`wfMcp` that would admit the hostname.
 
 Every MCP request passes through the `auth` function, as an editor request
 does, so an MCP client must carry a credential that function accepts. A client
@@ -768,21 +802,21 @@ sends it as `Authorization: Bearer <token>`, so `auth` reads that header beside
 the session cookie the editor uses, and verifies the token itself: Workflow
 Graph issues and checks no MCP token. A request `auth` answers with `null` or
 `undefined` gets a 401 carrying a `WWW-Authenticate` challenge. Without
-`mcp.authorization` the challenge is a bare `Bearer`. Name the OAuth
+`authorization` in the options of `wfMcp` the challenge is a bare `Bearer`. Name the OAuth
 authorization servers that issue your tokens, and an MCP client can discover
 where to obtain one:
 
 ```ts
 const wfgraph = await createWfGraphApp({
   // ...
-  mcp: {
+  mcp: wfMcp({
     allowedHostnames: ["workflows.example.com"],
     allowedOriginHostnames: [],
     authorization: {
       authorizationServers: ["https://auth.example.com"],
       scopesSupported: ["workflows"],
     },
-  },
+  }),
 });
 ```
 
@@ -1778,25 +1812,30 @@ first publication. `GET /api/openapi.json` documents every route.
 
 ## Package exports
 
-| Entry                      | What it is                                                                                                                                                                                                                                                                                               |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@wfgraph/core`            | The host-facing entry. It exports the authoring vocabulary, application and authorization contracts, `createWfGraphApp`, `createWfGraphRunner` for a process that runs workflows and serves no HTTP, `createRequestListener`, and `callExternal` with `callExternalAsync` for a host action's HTTP calls |
-| `@wfgraph/core/postgres`   | `wfPostgres` for a Node PostgreSQL pool                                                                                                                                                                                                                                                                  |
-| `@wfgraph/core/sqlite`     | `wfSqlite` for native Node SQLite                                                                                                                                                                                                                                                                        |
-| `@wfgraph/core/worker`     | `wfWorker`, the Worker host with its `fetch`, `scheduled` and `queue` handlers, and `wfHyperdrive`, per-invocation PostgreSQL through Hyperdrive                                                                                                                                                         |
-| `@wfgraph/core/plugin`     | What an integration package builds against                                                                                                                                                                                                                                                               |
-| `@wfgraph/core/testing`    | `runAction` for an integration's action, `runHostAction` for a host `defineAction`, and `actionData` and `actionError`, for a test suite. See Testing a host                                                                                                                                             |
-| `@wfgraph/core/migrate`    | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                                                          |
-| `@wfgraph/core/logging`    | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                                                                                             |
-| `@wfgraph/core/inngest`    | `createWfGraphInngestFunctions`, the forwarders a host on Inngest registers so `inngest.send` reaches the event inbox. The one entry that imports `inngest`, an optional peer dependency. See `docs/events.md`                                                                                           |
-| `@wfgraph/client`          | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                                                               |
-| `@wfgraph/plugins/clerk`   | `clerk()`, which returns the Clerk integration                                                                                                                                                                                                                                                           |
-| `@wfgraph/plugins/linear`  | `linear()`, which returns the Linear integration                                                                                                                                                                                                                                                         |
-| `@wfgraph/plugins/posthog` | `posthog()`, which returns the PostHog integration                                                                                                                                                                                                                                                       |
-| `@wfgraph/plugins/resend`  | `resend()`, which returns the Resend integration                                                                                                                                                                                                                                                         |
-| `@wfgraph/plugins/slack`   | `slack(options?)`, which returns the Slack integration with the host's optional Slack OAuth client                                                                                                                                                                                                       |
-| `@wfgraph/plugins/twilio`  | `twilio()`, which returns the Twilio integration                                                                                                                                                                                                                                                         |
-| `@wfgraph/plugins/ui`      | The six integrations' icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                                            |
+| Entry                             | What it is                                                                                                                                                                                                                                                                                               |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@wfgraph/core`                   | The host-facing entry. It exports the authoring vocabulary, application and authorization contracts, `createWfGraphApp`, `createWfGraphRunner` for a process that runs workflows and serves no HTTP, `createRequestListener`, and `callExternal` with `callExternalAsync` for a host action's HTTP calls |
+| `@wfgraph/core/postgres`          | `wfPostgres` for a Node PostgreSQL pool                                                                                                                                                                                                                                                                  |
+| `@wfgraph/core/sqlite`            | `wfSqlite` for native Node SQLite                                                                                                                                                                                                                                                                        |
+| `@wfgraph/core/worker`            | `wfWorker`, the Worker host with its `fetch`, `scheduled` and `queue` handlers, and `wfHyperdrive`, per-invocation PostgreSQL through Hyperdrive                                                                                                                                                         |
+| `@wfgraph/core/plugin`            | What an integration package builds against                                                                                                                                                                                                                                                               |
+| `@wfgraph/core/testing`           | `runAction` for an integration's action, `runHostAction` for a host `defineAction`, and `actionData` and `actionError`, for a test suite. See Testing a host                                                                                                                                             |
+| `@wfgraph/core/migrate`           | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                                                          |
+| `@wfgraph/core/logging`           | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                                                                                             |
+| `@wfgraph/core/inngest`           | `createWfGraphInngestFunctions`, the forwarders a host on Inngest registers so `inngest.send` reaches the event inbox. The one entry that imports `inngest`, an optional peer dependency. See `docs/events.md`                                                                                           |
+| `@wfgraph/core/openai`            | `wfOpenAi`, the build agent on OpenAI's Responses API, passed to `createWfGraphApp` as `agent`. See The build agent                                                                                                                                                                                      |
+| `@wfgraph/core/anthropic`         | `wfAnthropic`, the build agent on Anthropic's Messages API                                                                                                                                                                                                                                               |
+| `@wfgraph/core/openrouter`        | `wfOpenRouter`, the build agent on OpenRouter                                                                                                                                                                                                                                                            |
+| `@wfgraph/core/openai-compatible` | `wfOpenAiCompatible`, the build agent on a server implementing OpenAI's Chat Completions API                                                                                                                                                                                                             |
+| `@wfgraph/core/mcp`               | `wfMcp`, the MCP authoring endpoint, passed to `createWfGraphApp` or `wfWorker` as `mcp`, with its `WfGraphMcpOptions` and `WfGraphMcpAuthorization` types. See MCP authoring                                                                                                                            |
+| `@wfgraph/client`                 | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                                                               |
+| `@wfgraph/plugins/clerk`          | `clerk()`, which returns the Clerk integration                                                                                                                                                                                                                                                           |
+| `@wfgraph/plugins/linear`         | `linear()`, which returns the Linear integration                                                                                                                                                                                                                                                         |
+| `@wfgraph/plugins/posthog`        | `posthog()`, which returns the PostHog integration                                                                                                                                                                                                                                                       |
+| `@wfgraph/plugins/resend`         | `resend()`, which returns the Resend integration                                                                                                                                                                                                                                                         |
+| `@wfgraph/plugins/slack`          | `slack(options?)`, which returns the Slack integration with the host's optional Slack OAuth client                                                                                                                                                                                                       |
+| `@wfgraph/plugins/twilio`         | `twilio()`, which returns the Twilio integration                                                                                                                                                                                                                                                         |
+| `@wfgraph/plugins/ui`             | The six integrations' icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                                            |
 
 Workflow Graph cannot serialize a React component, so the `@wfgraph/plugins/ui` record is the one part of the catalog
 that stays off `/api/extensions`. `@wfgraph/shared` stays private, and the build inlines it
@@ -1811,32 +1850,28 @@ Cloudflare Workers and Hyperdrive.
 
 ## createWfGraphApp options
 
-| Option                     | Required            | Description                                                                                                                                                                                                                                                                                  |
-| -------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `basePath`                 | No                  | Path the host mounts Workflow Graph at (default `/`)                                                                                                                                                                                                                                         |
-| `publicUrl`                | No                  | External HTTPS origin. Required for OAuth callback and client metadata URLs, and to copy a Connection webhook URL. Loopback development can use HTTP                                                                                                                                         |
-| `auth`                     | Yes                 | A function of the request returning a request-scoped access policy, or `null` or `undefined` for a request that is not signed in. An object holding that function as `authenticate` also works                                                                                               |
-| `persistence`              | Yes                 | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                                                                                                                                                            |
-| `entityResolverTimeoutMs`  | No                  | How long one call to a `defineEntity` resolver may take, in milliseconds, as a positive integer. Defaults to 10,000. A timeout is an operational failure. See Current Entity State in `docs/events.md`                                                                                       |
-| `encryption.key`           | With an integration | 64-character hex string that seals the integration credentials. Required when `extensions.integrations` declares one; an app with none may leave `encryption` out                                                                                                                            |
-| `events.key`               | No                  | Shared secret that mounts `POST /api/events`. A sender presents it as `Authorization: Bearer <key>`. Unset, the route is not mounted. A blank value, or one holding whitespace, fails at startup. See `docs/events.md`                                                                       |
-| `events.retentionMs`       | No                  | How long a settled inbox row is kept after its Event arrived, in milliseconds, at most 100 years. Defaults to seven days. See Keep settled Events for a window                                                                                                                               |
-| `runs.retentionMs`         | No                  | How long an ended run is kept after it completed, in milliseconds, from one hour to 100 years. Unset, run history is never deleted. See Delete run history after a window                                                                                                                    |
-| `runner`                   | No                  | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none beside a `createWfGraphRunner` process. See Workflow runs                                                                                              |
-| `extensions.events`        | No                  | `defineEvent` values                                                                                                                                                                                                                                                                         |
-| `extensions.actions`       | No                  | `defineAction` values                                                                                                                                                                                                                                                                        |
-| `extensions.integrations`  | No                  | `defineIntegration` values                                                                                                                                                                                                                                                                   |
-| `agent.provider`           | No                  | `openai` (the default), `anthropic`, `openrouter`, or `openai-compatible`. See The build agent                                                                                                                                                                                               |
-| `agent.apiKey`             | No                  | The provider's API key. Absent or blank turns the build agent off, and the editor then shows no chat panel. Optional for `openai-compatible`                                                                                                                                                 |
-| `agent.model`              | For some providers  | Model id the agent runs against. Defaults to a current OpenAI model for `openai`; required for every other provider                                                                                                                                                                          |
-| `agent.reasoningEffort`    | No                  | How hard the model thinks before answering. For `openai`: `none`, `low`, `medium`, `high`, `xhigh`, or `max`, defaulting to `medium`. See The build agent for the others                                                                                                                     |
-| `agent.maxConcurrentTurns` | No                  | How many agent turns this process streams at once, across everyone using the editor, as a positive integer. Defaults to 4. A turn past the limit is refused with a message asking the person to wait                                                                                         |
-| `agent.runner`             | No                  | A `WfGraphAgentRunner` that runs each turn in place of the built-in provider client. The other `agent` fields do not apply. See Run turns on your own gateway or model                                                                                                                       |
-| `agent.baseUrl`            | No                  | The provider endpoint to call in place of the provider's own. Required for `openai-compatible`, where it turns the agent on. See The build agent for what each provider's endpoint must implement                                                                                            |
-| `mcp`                      | No                  | Enables the authenticated stateless MCP authoring endpoint at `${basePath}/api/mcp`. Pass `true` for localhost development. For deployed hosts, configure allowed hostnames and origin hostnames, and optionally `authorization` naming the OAuth authorization servers. Disabled by default |
-| `health`                   | No                  | `true` mounts `GET /api/health`, the readiness route outside `auth`. Off by default. See API endpoints                                                                                                                                                                                       |
-| `logger`                   | No                  | A `WfGraphLogger` that takes every record. See Logging below                                                                                                                                                                                                                                 |
-| `client`                   | No                  | The editor bundle to serve, from `@wfgraph/client`                                                                                                                                                                                                                                           |
+| Option                     | Required            | Description                                                                                                                                                                                                                                                                                                             |
+| -------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `basePath`                 | No                  | Path the host mounts Workflow Graph at (default `/`)                                                                                                                                                                                                                                                                    |
+| `publicUrl`                | No                  | External HTTPS origin. Required for OAuth callback and client metadata URLs, and to copy a Connection webhook URL. Loopback development can use HTTP                                                                                                                                                                    |
+| `auth`                     | Yes                 | A function of the request returning a request-scoped access policy, or `null` or `undefined` for a request that is not signed in. An object holding that function as `authenticate` also works                                                                                                                          |
+| `persistence`              | Yes                 | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                                                                                                                                                                                       |
+| `entityResolverTimeoutMs`  | No                  | How long one call to a `defineEntity` resolver may take, in milliseconds, as a positive integer. Defaults to 10,000. A timeout is an operational failure. See Current Entity State in `docs/events.md`                                                                                                                  |
+| `encryption.key`           | With an integration | 64-character hex string that seals the integration credentials. Required when `extensions.integrations` declares one; an app with none may leave `encryption` out                                                                                                                                                       |
+| `events.key`               | No                  | Shared secret that mounts `POST /api/events`. A sender presents it as `Authorization: Bearer <key>`. Unset, the route is not mounted. A blank value, or one holding whitespace, fails at startup. See `docs/events.md`                                                                                                  |
+| `events.retentionMs`       | No                  | How long a settled inbox row is kept after its Event arrived, in milliseconds, at most 100 years. Defaults to seven days. See Keep settled Events for a window                                                                                                                                                          |
+| `runs.retentionMs`         | No                  | How long an ended run is kept after it completed, in milliseconds, from one hour to 100 years. Unset, run history is never deleted. See Delete run history after a window                                                                                                                                               |
+| `runner`                   | No                  | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none beside a `createWfGraphRunner` process. See Workflow runs                                                                                                                         |
+| `extensions.events`        | No                  | `defineEvent` values                                                                                                                                                                                                                                                                                                    |
+| `extensions.actions`       | No                  | `defineAction` values                                                                                                                                                                                                                                                                                                   |
+| `extensions.integrations`  | No                  | `defineIntegration` values                                                                                                                                                                                                                                                                                              |
+| `agent`                    | No                  | The build agent's model: what `wfOpenAi`, `wfAnthropic`, `wfOpenRouter` or `wfOpenAiCompatible` returns, each from its own entry. Absent, the build agent is off and the editor shows no chat panel. See The build agent                                                                                                |
+| `agent.runner`             | No                  | A `WfGraphAgentRunner` that runs each turn in place of a provider function's model. See Run turns on your own gateway or model                                                                                                                                                                                          |
+| `agent.maxConcurrentTurns` | No                  | With `agent.runner`, how many agent turns this process streams at once, as a positive integer. Defaults to 4. A provider function takes the same option                                                                                                                                                                 |
+| `mcp`                      | No                  | The authenticated stateless MCP authoring endpoint at `${basePath}/api/mcp`: what `wfMcp` from `@wfgraph/core/mcp` returns. `wfMcp()` admits localhost alone; a deployed host passes `wfMcp` its allowed hostnames and origin hostnames, and optionally `authorization`. Absent, the endpoint is off. See MCP authoring |
+| `health`                   | No                  | `true` mounts `GET /api/health`, the readiness route outside `auth`. Off by default. See API endpoints                                                                                                                                                                                                                  |
+| `logger`                   | No                  | A `WfGraphLogger` that takes every record. See Logging below                                                                                                                                                                                                                                                            |
+| `client`                   | No                  | The editor bundle to serve, from `@wfgraph/client`                                                                                                                                                                                                                                                                      |
 
 Read these once:
 

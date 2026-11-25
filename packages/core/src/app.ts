@@ -32,7 +32,11 @@ import type {
   WfGraphRunnerOptions,
 } from "#src/backend/executor/in-process-runner";
 import { openWfGraphSetup, type WfGraphSetup } from "#src/backend/setup";
-import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
+import {
+  type McpEndpoint,
+  readMcpOption,
+  type WfGraphMcp,
+} from "#src/backend/agent/mcp-option";
 import {
   assertValidEventsKey,
   type WfGraphEvents,
@@ -58,20 +62,10 @@ export {
 export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
+export type { WfGraphMcp } from "#src/backend/agent/mcp-option";
 export type {
-  WfGraphMcpAuthorization,
-  WfGraphMcpOptions,
-} from "#src/backend/agent/mcp-server";
-export type {
-  AgentReasoningEffort,
-  AnthropicReasoningEffort,
-  WfGraphAgentCapacityConfig,
   WfGraphAgentConfig,
-  WfGraphAnthropicAgentConfig,
-  WfGraphModelAgentConfig,
-  WfGraphOpenAiAgentConfig,
-  WfGraphOpenAiCompatibleAgentConfig,
-  WfGraphOpenRouterAgentConfig,
+  WfGraphAgentModel,
   WfGraphRunnerAgentConfig,
 } from "#src/backend/agent/config";
 export type {
@@ -186,14 +180,18 @@ export type WfGraphAppOptions = {
    * The build agent: the chat panel in the editor that reads the catalog and
    * edits the open workflow.
    *
-   * Absent, or with a blank `apiKey`, the agent is off: no model is called, and
-   * the editor shows no chat panel. `provider` picks OpenAI (the default),
-   * Anthropic, OpenRouter or an OpenAI-compatible server, and a host passes its
-   * own key, conventionally `process.env.OPENAI_API_KEY` for OpenAI.
+   * Takes what a provider entry's function returns, such as `wfOpenAi` from
+   * `@wfgraph/core/openai`, or `{ runner }` for a host's own runner. Absent,
+   * or built from a blank key, the agent is off: no model is called, and the
+   * editor shows no chat panel.
    */
   agent?: WfGraphAgentConfig | undefined;
-  /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */
-  mcp?: true | WfGraphMcpOptions | undefined;
+  /**
+   * The authenticated stateless MCP endpoint at `${basePath}/api/mcp`. Takes
+   * what `wfMcp` from `@wfgraph/core/mcp` returns. Absent, the endpoint is
+   * not mounted.
+   */
+  mcp?: WfGraphMcp | undefined;
   /**
    * `true` mounts `GET {basePath}/api/health`, a readiness route outside
    * `auth` for a load balancer, answering `app.health()` as booleans and a
@@ -275,6 +273,7 @@ export async function createWfGraphApp(
     caller: "createWfGraphApp",
   });
   assertValidEventsKey(options.events?.key, "createWfGraphApp");
+  const mcp = readMcpOption(options.mcp, "createWfGraphApp");
   const retention = resolveRetention({
     events: options.events,
     runs: options.runs,
@@ -307,6 +306,7 @@ export async function createWfGraphApp(
     return await assembleWfGraphApp(options, {
       basePath,
       auth,
+      mcp,
       setup,
     });
   } catch (error) {
@@ -338,10 +338,11 @@ async function assembleWfGraphApp(
   startup: {
     basePath: "" | `/${string}`;
     auth: ResolvedAuth;
+    mcp: McpEndpoint | undefined;
     setup: WfGraphSetup;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, auth, setup } = startup;
+  const { basePath, auth, mcp, setup } = startup;
   const { runtime } = setup;
   const { startRunner } = setup;
   // Assigned last, below, and read by the check whenever it runs.
@@ -356,7 +357,7 @@ async function assembleWfGraphApp(
     basePath: `${basePath}/api`,
     auth,
     runtime,
-    mcp: options.mcp,
+    mcp,
     eventsKey: options.events?.key,
     health: options.health === true ? health : undefined,
   });

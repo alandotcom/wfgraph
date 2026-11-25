@@ -18,8 +18,9 @@ import {
   WfGraphRoles,
   type WfGraphApp,
   type WfGraphAuth,
-  type WfGraphMcpOptions,
+  type WfGraphMcp,
 } from "@wfgraph/core";
+import { wfMcp } from "@wfgraph/core/mcp";
 import { openHost } from "#src/skills/host";
 
 const HOST = "workflows.example.com";
@@ -30,15 +31,15 @@ const ISSUED_TOKEN = "mcp-token-1";
 /** The editor's session cookie, which the MCP client never holds. */
 const EDITOR_COOKIE = "session=editor";
 
-/** The recommended endpoint options for a deployed host. */
-const deployedMcp: WfGraphMcpOptions = {
+/** The recommended endpoint for a deployed host. */
+const deployedMcp = wfMcp({
   allowedHostnames: [HOST],
   allowedOriginHostnames: [],
   authorization: {
     authorizationServers: ["https://auth.example.com"],
     scopesSupported: ["workflows"],
   },
-};
+});
 
 /** Stands in for the host verifying a token with its authorization server. */
 function verifiedToken(request: Request): boolean {
@@ -139,7 +140,7 @@ const protectedResource = Schema.Struct({
  */
 async function expectMcpAccess(options: {
   auth: WfGraphAuth;
-  mcp: true | WfGraphMcpOptions;
+  mcp: WfGraphMcp;
 }): Promise<void> {
   await using app = await openHost(options);
 
@@ -220,9 +221,9 @@ describe("wfgraph-core/mcp task check", () => {
     ).rejects.toThrow("expected 200 to be 401");
   });
 
-  it("rejects mcp: true on a deployed hostname", async () => {
+  it("rejects wfMcp() with no options on a deployed hostname", async () => {
     await expect(
-      expectMcpAccess({ auth: cookieOrTokenAuth, mcp: true })
+      expectMcpAccess({ auth: cookieOrTokenAuth, mcp: wfMcp() })
     ).rejects.toThrow("expected 403 to be 200");
   });
 });

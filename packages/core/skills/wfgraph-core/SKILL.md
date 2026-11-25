@@ -100,8 +100,10 @@ its own `serve` or `connect`: see wfgraph-core/events.
 - OAuth needs `publicUrl` (HTTPS except loopback). The callback stays behind
   `auth`, so the session must ride on a cookie: wfgraph-core/auth. Slack/Resend
   on/off: wfgraph-plugins.
-- `mcp` turns on the MCP authoring endpoint, and `agent` turns on the editor's
-  chat agent. Both are off by default: wfgraph-core/mcp and
+- `mcp` turns on the MCP authoring endpoint with what `wfMcp` from
+  `@wfgraph/core/mcp` returns, and `agent` turns on the editor's chat agent
+  with what a provider entry's function returns, such as `wfOpenAi` from
+  `@wfgraph/core/openai`. Both are off by default: wfgraph-core/mcp and
   wfgraph-core/build-agent.
 - Grouping never changes what a run executes. A draft save refuses Group
   membership errors and edges that touch a Group frame. The remaining Group rules block Publish, and a draft run

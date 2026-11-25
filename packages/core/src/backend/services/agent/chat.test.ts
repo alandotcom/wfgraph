@@ -13,7 +13,11 @@ import { describe, expect, it } from "@effect/vitest";
 import type { AgentStreamPart } from "@wfgraph/shared/rpc/agent-stream";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
-import { makeAgentConfigLayer } from "#src/backend/agent/config";
+import {
+  makeAgentConfigLayer,
+  readAgentSettings,
+} from "#src/backend/agent/config";
+import { wfOpenAi } from "#src/backend/agent/providers/openai";
 import {
   makeAgentRunnerLayer,
   type AgentRunner,
@@ -99,14 +103,15 @@ describe("postAgentChat", () => {
       }).pipe(
         Effect.provide(
           Layer.mergeAll(
-            makeAgentConfigLayer({
-              enabled: true,
-              maxConcurrentTurns: 4,
-              provider: "openai",
-              apiKey: "test-key",
-              model: "unused-built-in-model",
-              reasoningEffort: "high",
-            }),
+            makeAgentConfigLayer(
+              readAgentSettings(
+                wfOpenAi({
+                  apiKey: "test-key",
+                  model: "unused-built-in-model",
+                  reasoningEffort: "high",
+                })
+              )
+            ),
             makeAgentRunnerLayer(runner),
             stubExtensions(),
             stubIntegrationRepo({ listIdentities: Effect.succeed([]) }),
@@ -177,14 +182,15 @@ describe("postAgentChat tool grants", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              makeAgentConfigLayer({
-                enabled: true,
-                maxConcurrentTurns: 4,
-                provider: "openai",
-                apiKey: "test-key",
-                model: "unused-built-in-model",
-                reasoningEffort: "high",
-              }),
+              makeAgentConfigLayer(
+                readAgentSettings(
+                  wfOpenAi({
+                    apiKey: "test-key",
+                    model: "unused-built-in-model",
+                    reasoningEffort: "high",
+                  })
+                )
+              ),
               makeAgentRunnerLayer(runner),
               stubExtensions(),
               stubIntegrationRepo({

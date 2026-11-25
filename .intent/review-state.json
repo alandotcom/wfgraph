@@ -3,25 +3,29 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "2665af1ce9692ebed6867307250304639448ab7f7721a3b19fbb6f01e65df4f7",
+      "fingerprint": "0ec551eb0d61b81557289821cb90f9994a3e6f35e40767b83a433727e502ec79",
       "snapshot": {
-        "README.md": "4ade259bff890b42bce6053ab61af3d63e78f7614ed2055e32611ce9ddf4b9db",
-        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
-        "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
-        "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
+        "README.md": "5f892a1af0314742b9fff202057bf97b99bf8eab5181d1dbe6243ae857da3297",
+        "docs/embedding.md": "784caaf57c96f706fe72abe5b03088284d1709c191aa081a4681a9b8c1e9cd62",
+        "packages/core/skills/wfgraph-core/SKILL.md": "653f65cc0e19f3ebaa97caf6494c81b8d91dc4cc25be86a85230f3509829fcfe",
+        "packages/core/skills/wfgraph-core/auth/SKILL.md": "9b9c938bd96a5eec053b8211fab94827f114f41f46ea437fb025e75a08f176d4",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "09acaccf1f081b4753a6f30d9f2a0af1d4a7a29e3766b19cc00439bbe3fb0337",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "3f10ace37eabf896a18eb9870bb2a7fb48f540d9d093aa3f1184e8a79c0e2547",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "e8059e1107d04a42083879a85c280edcd9d655d4be76ec2a755b4bd976082b82",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "6839c255f3c0a3c439bde1cf0b18be040ad0045f1a655cbad020fe9daa220693",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
-      "outcome": "no-change",
-      "reason": "The only change in this item's snapshot is its integrations sub-skill's SDK rule. wfgraph-core routes 'Write a vendor integration' to wfgraph-core/integrations and states no SDK rule of its own, so its routing table and its claims about @wfgraph/plugins still hold.",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "updated",
+      "reason": "This branch rewrote the routing bullet for mcp and agent: mcp takes what wfMcp from @wfgraph/core/mcp returns, and agent takes what a provider entry's function returns, such as wfOpenAi from @wfgraph/core/openai. That matches readMcpOption in backend/agent/mcp-option.ts and readAgentSettings in backend/agent/config.ts, and 'Both are off by default' still holds: each returns off for undefined. README.md's embed now passes wfOpenAi({ apiKey }), the same form. The other changed files in this snapshot are the auth, build-agent and mcp sub-skills, reviewed in their own items.",
       "evidence": [
-        "git diff origin/main -- packages/core/skills/wfgraph-core/integrations/SKILL.md"
+        "git diff origin/main...513383f3 -- packages/core/skills/wfgraph-core/SKILL.md README.md",
+        "git diff origin/main...513383f3 -- packages/core/src/app.ts packages/core/src/backend/agent/config.ts",
+        "pnpm run skills:validate: 10 skill files passed",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)",
+        "Discovery and a fresh consumer session unverified; no isolated agent session was available"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
@@ -40,18 +44,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "aeb74108e568dca76f7d68f8f71595cbe31894cd5aae9a36f57b1e36b8f5762a",
+      "fingerprint": "6d2f54e3d9fe13a5d89237445b605909426e753fef6864591fbbd53eeb0e4115",
       "snapshot": {
-        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
+        "docs/embedding.md": "784caaf57c96f706fe72abe5b03088284d1709c191aa081a4681a9b8c1e9cd62",
         "docs/integrations.md": "88363346b5a2b2b88703ea69a9ef96dcdc117797ca651f276fda9abb823d9d83",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "3f10ace37eabf896a18eb9870bb2a7fb48f540d9d093aa3f1184e8a79c0e2547"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "no-change",
-      "reason": "docs/integrations.md now passes the connection test function itself as test and a function as each configOptions provider's load. host-actions covers defineAction, whose option pickers are the action's own options callbacks ('Dynamic host action fields' in docs/embedding.md, unchanged by this branch); the skill names neither an integration's test nor configOptions load.",
+      "reason": "docs/embedding.md changed only in 'The build agent', 'MCP authoring', 'Package exports' and the 'createWfGraphApp options' table. host-actions cites 'A handler runs once per node of a run', 'Action links and draft reads', 'Test runs call your handler' and 'Dynamic host action fields', none of which changed, and the skill states nothing about the agent or mcp options or the core entries.",
       "evidence": [
-        "git diff origin/main...718ca8a4 -- docs/integrations.md",
-        "git diff origin/main...718ca8a4 -- docs/embedding.md"
+        "git diff origin/main...513383f3 -- docs/embedding.md",
+        "grep for embedding.md in host-actions/SKILL.md",
+        "pnpm run skills:validate: 10 skill files passed"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
@@ -72,64 +77,65 @@
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "6a6d80744c48bba5da1c9e5ef5d62f83ee9b2b77d6f05a47b27aeb44ae9f1a35",
+      "fingerprint": "73a188f494301a178f9aa633ac59001687841334a6225811718583438137f1db",
       "snapshot": {
-        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
+        "docs/embedding.md": "784caaf57c96f706fe72abe5b03088284d1709c191aa081a4681a9b8c1e9cd62",
         "packages/plugins/README.md": "30c8b45b5bd662156cf0875cbe5ddcadae94871f2993388da154383bbd2ad2de",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "9cc82d60f1ca456c79698af53304ef1735505d07942ec1910e2e708f2bc8dc0b"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
-      "outcome": "updated",
-      "reason": "Commit 4cc5a088 rewrote the description, metadata.purpose, the overview and the 'One entry per integration' section for one entry per integration and the call form, changed the CRITICAL import mistake to import an entry and the Slack publicUrl mistake to slack({ oauthClient }), and added the HIGH mistake 'Import from the package root or pass an uncalled function'. Checked against the code: the exports map lists ./clerk, ./linear, ./posthog, ./resend, ./slack, ./twilio and ./ui with no root entry; clerk, linear, posthog, resend and twilio each return one module-level definition; slack builds a definition per call; no integration index.ts imports React; the Clerk and Linear handlers read no runMode, so a test run calls them for real.",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "no-change",
+      "reason": "docs/embedding.md changed only in 'The build agent', 'MCP authoring', 'Package exports' and the 'createWfGraphApp options' table. In 'Package exports' the @wfgraph/plugins rows changed only in column padding when the new core rows widened the table; their text is the same. wfgraph-plugins cites 'Built-in integrations', which did not change.",
       "evidence": [
-        "git diff origin/main...718ca8a4 -- packages/plugins/skills/wfgraph-plugins/SKILL.md",
-        "git diff origin/main...718ca8a4 -- packages/plugins/README.md",
-        "git diff origin/main...718ca8a4 -- docs/embedding.md",
-        "pnpm run skills:validate: 10 skill files passed",
-        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)",
-        "Discovery and a fresh consumer session unverified; no isolated agent session was available"
+        "git diff origin/main...513383f3 -- docs/embedding.md",
+        "pnpm run skills:validate: 10 skill files passed"
       ]
     },
     "planning:_artifacts": {
-      "fingerprint": "0ccaf3acdff08c610b58f9a9edd6121970a67fe24e4dc8a396f193971a5ff645",
+      "fingerprint": "8431e986365b8eee6c4b559a6d860f4aa26cb8befcae092621fbca8b602331de",
       "snapshot": {
-        "README.md": "4ade259bff890b42bce6053ab61af3d63e78f7614ed2055e32611ce9ddf4b9db",
-        "_artifacts/domain_map.yaml": "088a5857ec55d69da43fe033f2ca4cedd5a9a7c5e6cb83e365ea084f5318f5f7",
-        "_artifacts/skill_spec.md": "f18084d50222af437bcfb9a0b8bf0a3be7dbb593e3a3a65b24cb4eb89f611b96",
-        "_artifacts/skill_tree.yaml": "27311243cf93a8ee46b65bff403769c5482d8e64b536e68aaf0323e0b52efc9e",
-        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
+        "README.md": "5f892a1af0314742b9fff202057bf97b99bf8eab5181d1dbe6243ae857da3297",
+        "_artifacts/domain_map.yaml": "9f698bbaabd246448247a1500dc27423332b31d5f200e8b1ac6b0df204da2988",
+        "_artifacts/skill_spec.md": "cd7b66db64d71c13bd5a8f351c6a1c571e098104f73045692132c0aa9aa0997a",
+        "_artifacts/skill_tree.yaml": "4a7d4c1a7a64b039a5160b5b045367c9834c76a289997076cc36e65c411285f0",
+        "docs/embedding.md": "784caaf57c96f706fe72abe5b03088284d1709c191aa081a4681a9b8c1e9cd62",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "88363346b5a2b2b88703ea69a9ef96dcdc117797ca651f276fda9abb823d9d83",
-        "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
-        "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
+        "packages/core/skills/wfgraph-core/SKILL.md": "653f65cc0e19f3ebaa97caf6494c81b8d91dc4cc25be86a85230f3509829fcfe",
+        "packages/core/skills/wfgraph-core/auth/SKILL.md": "9b9c938bd96a5eec053b8211fab94827f114f41f46ea437fb025e75a08f176d4",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "09acaccf1f081b4753a6f30d9f2a0af1d4a7a29e3766b19cc00439bbe3fb0337",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "3f10ace37eabf896a18eb9870bb2a7fb48f540d9d093aa3f1184e8a79c0e2547",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "e8059e1107d04a42083879a85c280edcd9d655d4be76ec2a755b4bd976082b82",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "6839c255f3c0a3c439bde1cf0b18be040ad0045f1a655cbad020fe9daa220693",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
-        "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
-        "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca",
+        "packages/core/src/backend/agent/config.ts": "b7d7412566fe7badef45b1a40dcd8d501b6d15a1286137f24b2282b1ed7427fd",
+        "packages/core/src/backend/agent/mcp-http.ts": "eb64621d16127a927adbfaca3d011cd02f6918f8ca3f3acac702e412e8d84dd4",
+        "packages/core/src/backend/agent/mcp-server.ts": "3f293721d68459abaeeb103ac2dcaee540f1b825e14f3c7454ac97fc7f91b652",
+        "packages/core/src/backend/agent/providers/anthropic.ts": "0777874840d9941635f529b793b66cbadab709d58df3e6200f59139cd1bb359a",
+        "packages/core/src/backend/agent/providers/openai-compatible.ts": "15fec14a0e2e692e16e6fbc814b0278cd179e6b5db5db91d6e4e93c568a3785b",
+        "packages/core/src/backend/agent/providers/openai.ts": "a81be4a201cb788578a1a48ed544caa7b00184673c3f4176172b644b495eab09",
+        "packages/core/src/backend/agent/providers/openrouter.ts": "8bfd2d9ccc3080d27507854358d41814bdbe1e6485ee57a47b47a608f046ab33",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
-        "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb",
+        "packages/core/src/backend/worker.ts": "b8130c59d3f831e0fbf03a0f81be482206a08e46277e0ac5169d9f7586aa35d3",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06",
+        "packages/core/src/mcp.ts": "d333f50179ef656eb25ddde62d59f9548c8ee2c12a8f59c4157b2adb2a74d416",
         "packages/plugins/README.md": "30c8b45b5bd662156cf0875cbe5ddcadae94871f2993388da154383bbd2ad2de",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "9cc82d60f1ca456c79698af53304ef1735505d07942ec1910e2e708f2bc8dc0b",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "updated",
-      "reason": "skill_spec.md Batch 7 gained one bullet recording that the integrations skill's SDK rule no longer names Clerk and Linear and now matches packages/plugins/src/AGENTS.md. domain_map.yaml and skill_tree.yaml need no change: the integrations entry in domain_map.yaml lists no SDK claim or failure mode about SDKs, and the tree entry's description and purpose are unchanged (intent maintainer sync: Nothing to synchronize).",
+      "reason": "skill_spec.md gained decisions 10 (provider entries) and 11 (the MCP entry), the Batch 8 history entry with the refusal messages, checks and unverified items, and updated rows for build-agent (5 failure modes) and mcp (8) in the inventories and the open-questions table. domain_map.yaml gained the new covers, tasks and failure modes for both skills ('The agent option as a plain object', 'mcp true or a plain object of hostnames'), the new sources, and reworded gaps. skill_tree.yaml gained the new descriptions, purposes and sources for mcp and build-agent. Every tree entry's description, purpose and sources match its SKILL.md frontmatter, and both YAML files parse.",
       "evidence": [
-        "git diff -- _artifacts/skill_spec.md",
-        "grep for SDK in _artifacts/domain_map.yaml finds no integrations entry",
-        "intent maintainer sync: Nothing to synchronize",
-        "pnpm exec oxfmt --check _artifacts/skill_spec.md: correct format"
+        "git diff origin/main...513383f3 -- _artifacts/",
+        "yaml.parse of _artifacts/domain_map.yaml and _artifacts/skill_tree.yaml: both parse; 10 tree entries compared with SKILL.md frontmatter, 0 mismatches",
+        "pnpm run skills:validate: 10 skill files passed"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -146,17 +152,23 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "be9dc43eed89ae3a8ebc98b601301ca0a4242e7501cce0b1962549ece85236f9",
+      "fingerprint": "08dbdd903b5d2e363fc59a215246ba4bd4e8fbfd4b0d73f4215e4fe9454f13a1",
       "snapshot": {
-        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
-        "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
+        "docs/embedding.md": "784caaf57c96f706fe72abe5b03088284d1709c191aa081a4681a9b8c1e9cd62",
+        "packages/core/skills/wfgraph-core/auth/SKILL.md": "9b9c938bd96a5eec053b8211fab94827f114f41f46ea437fb025e75a08f176d4",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md changed the embed, runner and Worker samples, the Built-in integrations section (entries, the call form, the dependency bullets) and the Package exports table. The auth skill's claim from Built-in integrations is the OAuth callback rule (publicUrl, the callback behind auth, a SameSite=Lax cookie), and that paragraph is unchanged; the Authentication and authorization section is unchanged.",
-      "evidence": ["git diff origin/main...718ca8a4 -- docs/embedding.md"]
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "updated",
+      "reason": "One sentence changed: the MCP protected-resource metadata is public when wfMcp was given authorization, where it said mcp.authorization. wfMcp in backend/agent/mcp-http.ts sets the endpoint's metadata member only when options.authorization is defined, and createApiApp in backend/api-app.ts mounts that route on the root router before the auth gate only when metadata is present. authorize.ts and authorization/operations.ts are unchanged, so the skill's other claims about roles, grants and the 401/403 answers hold.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/skills/wfgraph-core/auth/SKILL.md",
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/mcp-http.ts packages/core/src/backend/api-app.ts",
+        "pnpm run skills:validate: 10 skill files passed",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)",
+        "Discovery and a fresh consumer session unverified; no isolated agent session was available"
+      ]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
       "fingerprint": "3ee0533adfeac10df9fefff86d8615bebf429b7b1a61076fcf0440caab43de0d",
@@ -184,18 +196,21 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "7c53705ca62fd4380c975ddd292dc296c414ef0d8f62362fb2103c6877ca36eb",
+      "fingerprint": "379ce2a417e2d9b7f0da0c3fe9c80e9413cdad162db85034911c0858e802dac4",
       "snapshot": {
-        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
+        "docs/embedding.md": "784caaf57c96f706fe72abe5b03088284d1709c191aa081a4681a9b8c1e9cd62",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only the integration imports in its samples, the Built-in integrations section and the plugins rows of Package exports. 'Logging', 'Tracing', 'Sentry' and 'Any other backend' are unchanged, and the observability skill states nothing about integrations.",
-      "evidence": ["git diff origin/main...718ca8a4 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only in 'The build agent', 'MCP authoring', 'Package exports' and the 'createWfGraphApp options' table. observability cites 'Logging' and 'Tracing', which did not change, and the logger row of the options table kept its text. log-config.ts, telemetry.ts and logging.ts are unchanged.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- docs/embedding.md",
+        "pnpm run skills:validate: 10 skill files passed"
+      ]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
       "fingerprint": "f7b9e4046cfb3c14d3e427344152b7e5c4b475bd530b856e7e1e993bf6476543",
@@ -237,17 +252,21 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "4016902db6c23fefdf013ea5a1970b640b2b7db0f346146d4c5e3bd3e4f98484",
+      "fingerprint": "85cbb0656dcca15a88106647847d244d2dd4b0a670030c255647c0c44f0abecc",
       "snapshot": {
-        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
+        "docs/embedding.md": "784caaf57c96f706fe72abe5b03088284d1709c191aa081a4681a9b8c1e9cd62",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
-        "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb"
+        "packages/core/src/backend/worker.ts": "b8130c59d3f831e0fbf03a0f81be482206a08e46277e0ac5169d9f7586aa35d3"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "no-change",
-      "reason": "The Worker sample in docs/embedding.md now imports resend and slack from their own entries and lists [resend(), slack({ oauthClient })]. The skill tells the reader to copy the entry from that section and says extensions may be a function of the environment, which the sample still shows. 'Worker options', 'Wake runs through a Queue', 'Ticks and the platform limits' and 'Hyperdrive' are unchanged, and the skill names no builtInIntegrations.",
-      "evidence": ["git diff origin/main...718ca8a4 -- docs/embedding.md"]
+      "reason": "worker.ts now reads mcp through readMcpOption when wfWorker is called and documents agent as a provider function's result or { runner }, still read per invocation by readAgentSettings in open(). The skill's step 3 puts agent inside request(env) and mcp on wfWorker itself, and names no value form for either, so it holds. Its Result, that loading the entry does not throw, gives a publicUrl with a path as its example and stays true for a valid mcp value. docs/embedding.md changed only in 'The build agent', 'MCP authoring', 'Package exports' and the 'createWfGraphApp options' table; the Hyperdrive, Queue and runner sections the skill cites are unchanged.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/backend/worker.ts docs/embedding.md",
+        "pnpm run skills:validate: 10 skill files passed",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
       "fingerprint": "cc7599f1637d2993b948d3e4600eaf434e6b2298e4821136ed54c0d1b63ea320",
@@ -849,17 +868,16 @@
       ]
     },
     "source:packages/core/src/backend/agent/chat.ts": {
-      "fingerprint": "d3ad9a569e65a9182441d342f072ddeec1bdcba2c5866592c5f8565d431d0b91",
+      "fingerprint": "7be0429aca17e829dcd304440f337aff889d139de37e2399f312d62f3a5800ac",
       "snapshot": {
-        "packages/core/src/backend/agent/chat.ts": "579f28431b8f24d2d8c3c10308ada803a3a03a7b0c740a136b4e2d96c7d2332c"
+        "packages/core/src/backend/agent/chat.ts": "0b58b3e51896c15dc30a86bc1337c9485f6f3ab21f472f3f930efbf734e3fb7d"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The build agent and MCP server internals behind the new skills: providers and the runner seam, per-tool grants shared by chat and MCP, prompt caching, usage parts, the smaller MCP tool list and the publish and run tools. build-agent and mcp state the host-visible contract; the schema compaction, trace and session plumbing change no instruction.",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "The built-in turn calls settings.modelLayer(turn) where it called agentModelLayer. An internal call no skill describes; a turn's behavior is unchanged.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "9bec1944 feat(skills): add a wfgraph-core/build-agent skill",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/chat.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/backend/agent/tool-session.test.ts": {
@@ -3099,31 +3117,48 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "cf65af41fc538d7213e79d0c7911219ae85d0bd98c48bb3380f6beec81a31fd6",
+      "fingerprint": "d043be77c848d7e6ffe28d7328209ef9f8cc28c61e350acacf62990ea4f4caf6",
       "snapshot": {
-        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
-        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
-        "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
+        "docs/embedding.md": "784caaf57c96f706fe72abe5b03088284d1709c191aa081a4681a9b8c1e9cd62",
+        "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "09acaccf1f081b4753a6f30d9f2a0af1d4a7a29e3766b19cc00439bbe3fb0337",
+        "packages/core/src/backend/agent/config.ts": "b7d7412566fe7badef45b1a40dcd8d501b6d15a1286137f24b2282b1ed7427fd",
+        "packages/core/src/backend/agent/providers/anthropic.ts": "0777874840d9941635f529b793b66cbadab709d58df3e6200f59139cd1bb359a",
+        "packages/core/src/backend/agent/providers/openai-compatible.ts": "15fec14a0e2e692e16e6fbc814b0278cd179e6b5db5db91d6e4e93c568a3785b",
+        "packages/core/src/backend/agent/providers/openai.ts": "a81be4a201cb788578a1a48ed544caa7b00184673c3f4176172b644b495eab09",
+        "packages/core/src/backend/agent/providers/openrouter.ts": "8bfd2d9ccc3080d27507854358d41814bdbe1e6485ee57a47b47a608f046ab33",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md changed only the integration imports in its samples, the Built-in integrations section and the plugins rows of Package exports. 'The build agent' section and the agent rows of 'createWfGraphApp options' are unchanged, and the build-agent skill states nothing about integrations.",
-      "evidence": ["git diff origin/main...718ca8a4 -- docs/embedding.md"]
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "updated",
+      "reason": "This branch rewrote the skill for the provider entries: the description, purpose, the provider table (function and entry per row), procedure steps 1 to 4 and 6, the reasoning-effort section, the no-model and gateway mistakes, a new HIGH mistake for the plain-object agent option, and sources naming the four modules under backend/agent/providers/. Checked against source: requiredModel in backend/agent/model.ts throws '<function> needs a non-blank model, because its provider has no default model.'; each provider function checks maxConcurrentTurns as \"<function>'s maxConcurrentTurns\" and the runner form as agent.maxConcurrentTurns, default 4; a blank apiKey, or a blank baseUrl for wfOpenAiCompatible, returns AGENT_OFF; wfOpenAi defaults to gpt-6.1-terra at medium and wfAnthropic to high, and wfOpenRouter and wfOpenAiCompatible send an effort only when set; readAgentSettings throws 'agent takes what a provider function returns' for any other value, which app.ts reads when createWfGraphApp is called and worker.ts reads in each invocation's open().",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/skills/wfgraph-core/build-agent/SKILL.md",
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/config.ts packages/core/src/backend/agent/model.ts packages/core/src/backend/agent/providers/ packages/core/src/app.ts packages/core/src/backend/worker.ts",
+        "Task check packages/evals/src/skills/build-agent/agent-config.test.ts passed",
+        "pnpm run skills:validate: 10 skill files passed",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)",
+        "Discovery and a fresh consumer session unverified; no isolated agent session was available"
+      ]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
-      "fingerprint": "4f04a0867d46dd421194ac2fd886d96fbb18c60fc42ba2ce9677d7afb49201ce",
+      "fingerprint": "eea43b5dae07ed55db167eeb833ecd1c32b761e24a453c29159f3e90b6006d50",
       "snapshot": {
-        "docs/embedding.md": "4217a6c90cecb3a661e51553168b6d8d3264fdd988156271445e36dbc425f871",
-        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
-        "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca"
+        "docs/embedding.md": "784caaf57c96f706fe72abe5b03088284d1709c191aa081a4681a9b8c1e9cd62",
+        "packages/core/skills/wfgraph-core/mcp/SKILL.md": "6839c255f3c0a3c439bde1cf0b18be040ad0045f1a655cbad020fe9daa220693",
+        "packages/core/src/backend/agent/mcp-http.ts": "eb64621d16127a927adbfaca3d011cd02f6918f8ca3f3acac702e412e8d84dd4",
+        "packages/core/src/backend/agent/mcp-server.ts": "3f293721d68459abaeeb103ac2dcaee540f1b825e14f3c7454ac97fc7f91b652",
+        "packages/core/src/mcp.ts": "d333f50179ef656eb25ddde62d59f9548c8ee2c12a8f59c4157b2adb2a74d416"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
-      "outcome": "no-change",
-      "reason": "The mcp skill maps list_field_options to integration.configOptions for an integration. postIntegrationConfigOptions now calls entry.load(credentials, request) directly in place of loading the function first; the procedure, its input and its answer are unchanged. docs/embedding.md's 'MCP authoring' section is unchanged by this branch.",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "updated",
+      "reason": "This branch rewrote the skill for the @wfgraph/core/mcp entry: the description, purpose, the opening paragraph, procedure steps 1 and 3, the 403 answer, the bearer-token mistake, 'wfMcp() on a deployed host', a new HIGH mistake for mcp: true and the plain object, the completion list, and sources naming mcp-http.ts and src/mcp.ts. Checked against source: wfMcp() in backend/agent/mcp-http.ts admits localhostAllowedHostnames and localhostAllowedOrigins; the 403 under wfMcp() names wfMcp({ allowedHostnames, allowedOriginHostnames }) and under explicit options names the allowedHostnames or allowedOriginHostnames option of wfMcp, without the sent hostname; the metadata route and the resource_metadata challenge exist only with authorization; readMcpOption in mcp-option.ts throws a message naming wfMcp for every value wfMcp did not build, called when createWfGraphApp and wfWorker are called. mcp-server.ts kept the tool registration, so the tool, grant and draft-revision claims hold.",
       "evidence": [
-        "git diff origin/main...718ca8a4 -- packages/core/src/backend/services/integrations/config-options.ts",
-        "git diff origin/main...718ca8a4 -- docs/embedding.md"
+        "git diff origin/main...513383f3 -- packages/core/skills/wfgraph-core/mcp/SKILL.md",
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/mcp-http.ts packages/core/src/backend/agent/mcp-option.ts packages/core/src/backend/agent/mcp-server.ts packages/core/src/mcp.ts",
+        "Task check packages/evals/src/skills/mcp/mcp-endpoint.test.ts passed",
+        "pnpm run skills:validate: 10 skill files passed",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)",
+        "Discovery and a fresh consumer session unverified; no isolated agent session was available"
       ]
     },
     "source:.agents/behaviors/workflow-authoring/BEHAVIOR.md": {
@@ -3196,16 +3231,15 @@
       ]
     },
     "source:docs/adr/0018-stateless-mcp-authoring-uses-persisted-draft-revisions.md": {
-      "fingerprint": "310ba21b470d023f9206b262d29a91b4cac3dc8c5f94a3828868fb5629220c04",
+      "fingerprint": "9c44ac4a8f2d3f7c685102609ed1ca15150ff8800eca6f25652dee8e6e6601c2",
       "snapshot": {
-        "docs/adr/0018-stateless-mcp-authoring-uses-persisted-draft-revisions.md": "e523a7ee715341064eacd5f70e4c19494db3d8848d071f557ce12a672e98d1e4"
+        "docs/adr/0018-stateless-mcp-authoring-uses-persisted-draft-revisions.md": "35b86ab1b4306a6e3f1fbfd7b7a62ff7edabba1515716079010e1ec3571e8bd3"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "out-of-scope",
-      "reason": "ADR amendments and CONTEXT.md terms record why and the domain vocabulary. AGENTS.md gives each fact one home and keeps it out of skills; the skills state the resulting contracts, such as the once-per-node handler from the ADR-0009 amendment.",
+      "reason": "Two dated amendments recording why each model provider and the MCP server moved to their own entries, with the startup measurements. An ADR records a past decision for maintainers; the skills teach the resulting API from docs/embedding.md and source.",
       "evidence": [
-        "AGENTS.md (Documentation: one fact, one home)",
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs"
+        "git diff origin/main...513383f3 -- docs/adr/0018-stateless-mcp-authoring-uses-persisted-draft-revisions.md"
       ]
     },
     "source:docs/adr/0020-host-resolved-entity-eligibility-controls-execution-admission.md": {
@@ -3235,14 +3269,14 @@
       ]
     },
     "source:examples/app.ts": {
-      "fingerprint": "7a906bc33515ec5c5c16b5c843b1ae8d8179a66f6416f19296581fd4218763af",
+      "fingerprint": "444d5e0c84271f9817746e0b128205056e7b271f9ab9f6fe83a5ccb14d4a20d1",
       "snapshot": {
-        "examples/app.ts": "cfa68a7eca4aded4cda2be38f9bcc21d9c60701d83e48ff2d773734055916907"
+        "examples/app.ts": "cb456613f19d95a6ee1423d79825b67e4312ca2c9c500ee4ea7bbcd140e22d5e"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
-      "outcome": "out-of-scope",
-      "reason": "The repository's demo host now imports the six integrations from their own entries and lists clerk(), linear(), posthog(), resend(), slack({ oauthClient }) and twilio(). No skill lists it as a source; the adopter pattern it shows is the one wfgraph-plugins teaches from docs/embedding.md.",
-      "evidence": ["git diff origin/main...718ca8a4 -- examples/app.ts"]
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "no-change",
+      "reason": "The example app now passes agent: wfOpenAi({ model, apiKey }) and mcp: wfMcp(). That is the form build-agent and mcp teach, and wfMcp() for localhost matches mcp step 1.",
+      "evidence": ["git diff origin/main...513383f3 -- examples/app.ts"]
     },
     "source:examples/demo-auth.ts": {
       "fingerprint": "746d9495f81ff2d0b6749ad826ae0882469b17055ba3a02f28c01de36adffd01",
@@ -4056,55 +4090,55 @@
       ]
     },
     "source:packages/core/src/app.test.ts": {
-      "fingerprint": "91fe2470946728bcd8258d5dbbad5f96dc197b04b8b75fef7f6c00204385430e",
+      "fingerprint": "d338451f12b2e7b5ab577e7a25f21af54d46c2078a609c26711d1bb74032325a",
       "snapshot": {
-        "packages/core/src/app.test.ts": "8f0870fb3f2aa422db8603f39a6bbce6c0d05ee97d7f44e21ee443ae41b7619c"
+        "packages/core/src/app.test.ts": "da93ca0d06f64046c580393a1ebbd0a7f57a80823e78b40a0c2dea46d457ea0c"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "out-of-scope",
-      "reason": "Tests of the host entry points and a JSDoc correction in migrate.ts. They assert behavior the updated skills already state and change no guidance; host-recipe.test.ts still guards the CI recipe in docs/embedding.md (Testing a host).",
+      "reason": "Tests createWfGraphApp refusing mcp: true and a plain object of hostnames with the message naming wfMcp, and builds its app with wfMcp() and wfOpenAi. Tests are no source of skill guidance.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "pnpm run test passed, host-recipe.test.ts included"
+        "git diff origin/main...513383f3 -- packages/core/src/app.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/app.ts": {
-      "fingerprint": "65e1893160e23acd90ce6f005ce0d980c3885ff9fabb075385415db9fdf207ec",
+      "fingerprint": "0b5d236e3e6acc56c3e2f643421cebbaa19b3ba09d8fe987d59a562d1c08270f",
       "snapshot": {
-        "packages/core/src/app.ts": "6fa8339be0c423748c066e33bdea781aeb0a20d54276d554a00112c00e198d69"
+        "packages/core/src/app.ts": "f3ecee750a4a4167d244711c643b648ae4f2a57a406a52f293e952173e5f455a"
       },
-      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "updated",
-      "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
+      "reason": "createWfGraphApp now reads mcp through readMcpOption when called, types agent as WfGraphAgentConfig and mcp as WfGraphMcp, and drops the provider config types. build-agent and mcp were updated to say createWfGraphApp refuses any other value when it is called.",
       "evidence": [
-        "draft-node.test.ts and app.workflows.test.ts passed",
-        "pnpm run skills:validate: 10 skill files passed"
+        "git diff origin/main...513383f3 -- packages/core/src/app.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/backend/agent/config.test.ts": {
-      "fingerprint": "a728815bfedbe0ce0b0156791c9a0b25e23dbabb86cbd0414d79baf8f8231b46",
+      "fingerprint": "4529aebac4d06755f683f064ea6e0fb41c45b8dbf50f459397c4c1a0ab5412d6",
       "snapshot": {
-        "packages/core/src/backend/agent/config.test.ts": "5df6d46eb1c3905e6f98bd2d8d693c802f328a6f4cdf956a782607aadbde4ce8"
+        "packages/core/src/backend/agent/config.test.ts": "ce421ea08743ee6236523b54de18902aeeb662dc001ff71c37ecd2983227267f"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "out-of-scope",
-      "reason": "The Anthropic model layer and its settings. The adopter-visible facts, the high default effort and the measured model, are in the build-agent skill and docs/embedding.md.",
+      "reason": "Tests readAgentSettings reading a provider function's value, a runner's turn limit, and refusing every other value. Tests are no source of skill guidance.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/config.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/backend/agent/mcp-conformance.test.ts": {
-      "fingerprint": "e876db6043aa53b6911a189fc0f73304700e786553434e0cee0df21874c92f81",
+      "fingerprint": "500ac4dc6be2a0db1808cf21942605de6dd3429079e4ac5f97ade6186136eaa1",
       "snapshot": {
-        "packages/core/src/backend/agent/mcp-conformance.test.ts": "b1780c353f2c58bb9ddfffa8370ae08267795c703c04605938e7eba3dd8f1cd2"
+        "packages/core/src/backend/agent/mcp-conformance.test.ts": "413dfe893a5dad285cba27ece947f881dcd10bb8b20293e0882d89148118080d"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "reason": "Only its imports changed: DraftToolExecutor now comes from mcp-option.ts. Tests are no source of skill guidance.",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/mcp-conformance.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/backend/agent/mcp-schema-compaction.test.ts": {
@@ -4135,42 +4169,41 @@
       ]
     },
     "source:packages/core/src/backend/agent/mcp-server.test.ts": {
-      "fingerprint": "f545757a4a23941b2a48d61130f1a2907a55ada8d47f0f7dc31fcea385622949",
+      "fingerprint": "6a97c3f8100e680fe8443bafef40e8d254a7b4f0313958858b8156dd7d431bdb",
       "snapshot": {
-        "packages/core/src/backend/agent/mcp-server.test.ts": "0c59dfee7fac0e7f65f045cd026bca66d08e9161d1eaa585512af64107aa25ad"
+        "packages/core/src/backend/agent/mcp-server.test.ts": "9ffbe0ef3149acff9f961b4b192e4941c98d6665e637ce20cdf6d03f60e4c43d"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "out-of-scope",
-      "reason": "Tests of the agent, the MCP server, the HTTP boundary, the RPC router and the extension set. They assert the contracts the updated auth, mcp, build-agent and host-actions skills state, and add no guidance of their own.",
+      "reason": "Tests the request handler wfMcp builds and its Host and Origin refusals. Tests are no source of skill guidance.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "pnpm run test passed: 510 files, 6590 tests"
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/mcp-server.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/backend/agent/model.test.ts": {
-      "fingerprint": "a6b02fcd28413f72c5ee7d59faea7a6412fea5aec2296917c7f6a39501d83bf4",
+      "fingerprint": "0026e0b7d8c12dc9fe35a8452e8a9f614d155dbbabfc9c889e72a7f8ff770c89",
       "snapshot": {
-        "packages/core/src/backend/agent/model.test.ts": "fe8794e6ec82be3368af1b0045b1841a4b61ff2f6d0b3d9d0e35d7c4ca47977b"
+        "packages/core/src/backend/agent/model.test.ts": null
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "6060fdea2859d30d78cc4739e1a33aaa5e2bcbee",
       "outcome": "out-of-scope",
-      "reason": "The Anthropic model layer and its settings. The adopter-visible facts, the high default effort and the measured model, are in the build-agent skill and docs/embedding.md.",
+      "reason": "The file was the unit test of agentModelLayer, the one function that built a model layer for all four providers. This branch deleted it with that function, and its cases now live beside each provider module as openai.test.ts, anthropic.test.ts, openrouter.test.ts and openai-compatible.test.ts under packages/core/src/backend/agent/providers/. A test file states no adopter task, so no skill teaches it.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "git diff origin/main...HEAD --stat shows packages/core/src/backend/agent/model.test.ts deleted and the four provider test files added. pnpm run test passed with 6,904 tests at 513383f3, and a review pass compared the removed cases with the new ones and found each one present."
       ]
     },
     "source:packages/core/src/backend/agent/model.ts": {
-      "fingerprint": "5ef18fe56a4e2db92b2bca3fa99ef8d52be8fffff5406d98436a27bf62c3f48f",
+      "fingerprint": "ff2726050b4b52735c9059ec79a7af902fee350ceb693bc7bf9793f46ad8b9bd",
       "snapshot": {
-        "packages/core/src/backend/agent/model.ts": "0909070bb2d167896c34c729a0e64d6bf9f9861ddeb50d788e3c75e05d024d4b"
+        "packages/core/src/backend/agent/model.ts": "99f86d7f5c4c6d333f1ca8c6292a17695fc24bfa6662dae1f7e75a438789e7e6"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
-      "outcome": "out-of-scope",
-      "reason": "The Anthropic model layer and its settings. The adopter-visible facts, the high default effort and the measured model, are in the build-agent skill and docs/embedding.md.",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "no-change",
+      "reason": "Now holds only what the provider modules share: the output token limit, the prompt cache key, AGENT_REASONING_EFFORTS, present and requiredModel. build-agent quotes requiredModel's message, 'wfAnthropic needs a non-blank model, because its provider has no default model.', and the OpenAI effort list, and both match.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/model.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/backend/agent/runner.test.ts": {
@@ -4254,31 +4287,29 @@
       ]
     },
     "source:packages/core/src/backend/api-app.test.ts": {
-      "fingerprint": "29afe1594fc3c3a6aa667740dcc6e781981af49f7c097774f1f754775866a838",
+      "fingerprint": "f591c8457f0b796902293e083d42a10c6016ac7c9c14a0f06a4f6cfb713e9df8",
       "snapshot": {
-        "packages/core/src/backend/api-app.test.ts": "4e4aef68a8da82f93d07a776bff1432cd48d6fdeb8da4c057c9c5de7a93eea2b"
+        "packages/core/src/backend/api-app.test.ts": "a07588d63aae6c78dfb788c90367c10f136121db1fa6f95acbd26db863cb2f9c"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "out-of-scope",
-      "reason": "Tests of the agent, the MCP server, the HTTP boundary, the RPC router and the extension set. They assert the contracts the updated auth, mcp, build-agent and host-actions skills state, and add no guidance of their own.",
+      "reason": "Tests the API app with wfMcp values, including that the 403 under the localhost defaults names wfMcp's options. Tests are no source of skill guidance.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "pnpm run test passed: 510 files, 6590 tests"
+        "git diff origin/main...513383f3 -- packages/core/src/backend/api-app.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/backend/api-app.ts": {
-      "fingerprint": "7ed8d1fd7bbd415ba26e0e78c38baad75a53f51f5da0af0dc7fbc1e4e37aef48",
+      "fingerprint": "8d3a9f4aea2c988367e9dfd63831f436683ad28f1ae64d4d0e5558cfca90ed67",
       "snapshot": {
-        "packages/core/src/backend/api-app.ts": "bc6f7417d573edc74dd311d3123f41eba88d0460c0a1e4a55730559466e2077f"
+        "packages/core/src/backend/api-app.ts": "6124d2114bae1afa88795690e4778b2244698ac6fa23003408cf42a2e09bfc04"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The HTTP boundary: the cross-site write refusal, the 8 MiB operator body cap, the readiness route, the MCP 401 challenge and protected-resource metadata route, and the OAuth start content-type rule. auth, wfgraph-core and mcp now state these, and docs/embedding.md (MCP authoring) gained the challenge and metadata text.",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "no-change",
+      "reason": "createApiApp now takes the McpEndpoint readMcpOption produced and calls its members: refuseUntrustedHeaders before the body, metadata on the root router outside the auth gate, authenticationChallenge on a 401, and createHandler per request. mcp and auth describe the endpoint path, the 403 before the body, the public metadata route and the 401 challenge, and those hold.",
       "evidence": [
-        "75abc778 fix(skills): teach the auth skill the function form and the new refusals",
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "4f1d4fec docs(embedding): document mcp.authorization and validate_workflow's answer",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...513383f3 -- packages/core/src/backend/api-app.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/backend/engine/cancel-boundary.ts": {
@@ -5183,17 +5214,16 @@
       ]
     },
     "source:packages/core/src/backend/services/agent/chat.test.ts": {
-      "fingerprint": "de7b0c56c5046652a0d1cdb8c0c0bd33671e37be4f1897ec66b518e32422c13d",
+      "fingerprint": "bd5c1eec5044614f5ed7522a84dabcc97d9ba6784416dd5c30ab908f84ca16a0",
       "snapshot": {
-        "packages/core/src/backend/services/agent/chat.test.ts": "7078e40408d3b2bf9405edb196553ce826ea879ca638d3acab964cea743a64bf"
+        "packages/core/src/backend/services/agent/chat.test.ts": "def660420ea787e572be249e80c4ca0f6b15f2fed098d79632397fd674508885"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The build agent and MCP server internals behind the new skills: providers and the runner seam, per-tool grants shared by chat and MCP, prompt caching, usage parts, the smaller MCP tool list and the publish and run tools. build-agent and mcp state the host-visible contract; the schema compaction, trace and session plumbing change no instruction.",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "Builds its agent settings with readAgentSettings(wfOpenAi(...)) where it wrote the settings object by hand. Tests are no source of skill guidance.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "9bec1944 feat(skills): add a wfgraph-core/build-agent skill",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...513383f3 -- packages/core/src/backend/services/agent/chat.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/backend/services/agent/chat.ts": {
@@ -5736,29 +5766,29 @@
       ]
     },
     "source:packages/core/src/index.ts": {
-      "fingerprint": "c79bb217114f5880592e50570483dc63721eaddd9731e4c85bef6d919ace4c2a",
+      "fingerprint": "6b47ba57f78baf6738ab941a7c227b1d69ee51660b35639815a5e688f25013c8",
       "snapshot": {
-        "packages/core/src/index.ts": "b471ae3dabad07d81bb6d19441dacbabbb74394c6fec659a450c668fc7822640"
+        "packages/core/src/index.ts": "f2409a34a5aa39c93df2be655bf34e35f66bb09f5449000dd69997a3d26c8271"
       },
-      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "updated",
-      "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
+      "reason": "The root entry drops the provider config types, AgentReasoningEffort, AnthropicReasoningEffort, WfGraphMcpOptions and WfGraphMcpAuthorization, and exports WfGraphAgentModel and WfGraphMcp. build-agent and mcp were updated to import the functions from their own entries; neither names a removed type.",
       "evidence": [
-        "draft-node.test.ts and app.workflows.test.ts passed",
-        "pnpm run skills:validate: 10 skill files passed"
+        "git diff origin/main...513383f3 -- packages/core/src/index.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/mcp-authoring.test.ts": {
-      "fingerprint": "19e4286114608b526ba0c08a3c74501adde09b8a159cc764ca0946480f5eb1f2",
+      "fingerprint": "59edf376af172214d03bd090deb5c3486b490ad0de55300328500a6e3290beca",
       "snapshot": {
-        "packages/core/src/mcp-authoring.test.ts": "9b38dbc81e7fe62ca45f9e45880dfa0a8cad1a6c4f82d83da424d973acd0335a"
+        "packages/core/src/mcp-authoring.test.ts": "fcb41be9c9e304c8deb402581b0cce785f082ae1b7a49536bada714e2bffc7d2"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "out-of-scope",
-      "reason": "Tests of the host entry points and a JSDoc correction in migrate.ts. They assert behavior the updated skills already state and change no guidance; host-recipe.test.ts still guards the CI recipe in docs/embedding.md (Testing a host).",
+      "reason": "Builds its app with wfMcp() where it passed mcp: true. Tests are no source of skill guidance.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "pnpm run test passed, host-recipe.test.ts included"
+        "git diff origin/main...513383f3 -- packages/core/src/mcp-authoring.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/core/src/migrate.ts": {
@@ -5860,16 +5890,16 @@
       ]
     },
     "source:packages/evals/src/agent/harness.ts": {
-      "fingerprint": "92148fb0c686f8f7f4f960e01aeaf35827533d13bb6efc504224ee0138428184",
+      "fingerprint": "b7fe3521d5aae54978ce9524cfc9eda3da95b834200ddbe6566118cee616c8ed",
       "snapshot": {
-        "packages/evals/src/agent/harness.ts": "009bab3415c965328f5274986f3d935c503f853039918e8907beab7e4c941b05"
+        "packages/evals/src/agent/harness.ts": "f3db8406daf2db71c06ea7e20fa520bd491f3bb7eb0f3541d0892b1e3a8579cb"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
+      "reason": "The private eval harness now builds its model settings with wfOpenAi, wfAnthropic and wfOpenRouter. @wfgraph/evals is never published, and no skill describes the harness.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "git diff origin/main...513383f3 -- packages/evals/src/agent/harness.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/evals/src/agent/judges/completion.test.ts": {
@@ -6011,18 +6041,16 @@
       ]
     },
     "source:packages/evals/src/skills/build-agent/agent-config.test.ts": {
-      "fingerprint": "5ccbede6fda1624a71e6d4b7b5299821977ad2a959d73480f8f55f4f6208a43e",
+      "fingerprint": "3f63d5ceb00c8073f9237846758b5087aaa7c13ae2f183d2f619f5ceccdd6ae9",
       "snapshot": {
-        "packages/evals/src/skills/build-agent/agent-config.test.ts": "d1906593618e60b823473929df67b899a7215a33e050e9a90910e173eaa32e46"
+        "packages/evals/src/skills/build-agent/agent-config.test.ts": "a5084272f23edb6a1f00d1c444a42b2e6681031e1cc158bffae419bd89453667"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The skill task checks this batch added or extended: the mcp, build-agent and host-actions checks and the host module's mcp and agent passthrough. They are the executable evidence for those skills.",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "build-agent's task check, now grading the provider functions and the runner form, including the wfAnthropic no-model refusal and the wfOpenAi turn-limit refusal. It checks the skill's claims and is no source of guidance; it passed.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "9bec1944 feat(skills): add a wfgraph-core/build-agent skill",
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...513383f3 -- packages/evals/src/skills/build-agent/agent-config.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/evals/src/skills/host-actions/refund-action.test.ts": {
@@ -6041,18 +6069,16 @@
       ]
     },
     "source:packages/evals/src/skills/mcp/mcp-endpoint.test.ts": {
-      "fingerprint": "84e5ea3936d7aa5f4fffcdb952964945e3844458d5ba5513ec08345f268a227d",
+      "fingerprint": "d7789a121a1f5e5d50e777b5830a390e2306e1a964ea3637179e79793890f35e",
       "snapshot": {
-        "packages/evals/src/skills/mcp/mcp-endpoint.test.ts": "5404d04fb7cc3e532ebe1d2c9c7e2d879bbd59a841af5310d43642903761dd41"
+        "packages/evals/src/skills/mcp/mcp-endpoint.test.ts": "19272d45e6e0c75feae75b668abf11a43ddf367535b57f952146742563125142"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The skill task checks this batch added or extended: the mcp, build-agent and host-actions checks and the host module's mcp and agent passthrough. They are the executable evidence for those skills.",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "mcp's task check, now building its endpoint with wfMcp and grading wfMcp() refused on a deployed hostname. It checks the skill's claims and is no source of guidance; it passed.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "9bec1944 feat(skills): add a wfgraph-core/build-agent skill",
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff origin/main...513383f3 -- packages/evals/src/skills/mcp/mcp-endpoint.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/plugins/src/posthog/capture-event.test.ts": {
@@ -7265,16 +7291,16 @@
       ]
     },
     "source:packages/evals/src/agent/harness.test.ts": {
-      "fingerprint": "38229a4a6b601421b3babf85861a4dd250a862f657e811ecb747a0add1ffb5fc",
+      "fingerprint": "a43a86972b3ace92882c97620557174054be941762c088a7649d3413821539f2",
       "snapshot": {
-        "packages/evals/src/agent/harness.test.ts": "9fa3286a08331053c75555d1c0dd87c81968da9d0e1878393a0f8c1f04f847fe"
+        "packages/evals/src/agent/harness.test.ts": "304734e6a6f427087bb3047d1ff35087d53b9de913a72f82a537a115431a6d3c"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios, including the provider setting. It is neither built nor published.",
+      "reason": "Adds a case that WFGRAPH_EVAL_REASONING_EFFORT reaches the provider through one stubbed turn. A test of the private eval harness.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "git diff origin/main...513383f3 -- packages/evals/src/agent/harness.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:packages/evals/src/agent/judges/recovery.test.ts": {
@@ -8374,14 +8400,14 @@
       ]
     },
     "source:knip.ts": {
-      "fingerprint": "d4d377d575d4474fb7b22af7681189725fbe0b2f8032d41506e91e78a66fd929",
+      "fingerprint": "c2260c5f471d2ea3ef2285cc6de9dfccc77e155291d9a5e8e96ea1dc4a20bd0b",
       "snapshot": {
-        "knip.ts": "a97d9ecaa59aa3a126adf1e611f53e4c2fcb83415064b3e3e202819a79dc62a9"
+        "knip.ts": "4ac08c04eaa45e1392b786a8419aae861d3ea72b08110550d3cc2ed1312d2c01"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "out-of-scope",
-      "reason": "Repository lint configuration: only the comment on the packages/plugins workspace changed, to say each src/<name>/index.ts is an entry of the exports map. An adopter never runs this file.",
-      "evidence": ["git diff origin/main...718ca8a4 -- knip.ts"]
+      "reason": "knip's core workspace now derives its entry list from the exports map of packages/core/package.json. Repository lint configuration an adopter never runs.",
+      "evidence": ["git diff origin/main...513383f3 -- knip.ts"]
     },
     "source:packages/core/src/backend/extensions/config-options-wiring.test.ts": {
       "fingerprint": "bb9a3485b478fc2eb8e2e1c7146aeed4ade2b481fd486ffa11ebf6d5ce5d62a8",
@@ -8956,16 +8982,16 @@
       ]
     },
     "source:scripts/plugins/worker-bundle.test.ts": {
-      "fingerprint": "add38a3dff554c698025abbb3d3031c5280daa241e5c692528f01a9dad0e21a8",
+      "fingerprint": "a5769b0168ac6cd38a76cc5c933df6a1f7939dbce6bff9f83b340f00ff986236",
       "snapshot": {
-        "scripts/plugins/worker-bundle.test.ts": "3afbc0d566ef4efc5235a138cfd27a6ea1b78cf65f2b3b1c4cadfd626126c902"
+        "scripts/plugins/worker-bundle.test.ts": "b54af68fb7bee15574779fbce371154276c7f3b78eea029835fd552ce250adf4"
       },
-      "head": "718ca8a4f2c5271ac147a6f99ebe6211d87b83c9",
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
       "outcome": "out-of-scope",
-      "reason": "A repository test that bundles each integration entry with wrangler's esbuild settings, refuses an import() of bundled code and holds each entry to a byte ceiling. A repository script an adopter never runs.",
+      "reason": "A repository test that bundles every core entry and fails when a provider package, @modelcontextprotocol/ or zod reaches an entry other than the one that owns it. A repository script an adopter never runs.",
       "evidence": [
-        "git diff origin/main...718ca8a4 -- scripts/plugins/worker-bundle.test.ts",
-        "At 718ca8a4: pnpm run test passed (520 files, 6842 tests passed, 236 skipped without a database); scripts/plugins/worker-bundle.test.ts, packages/plugins/src/integrations.test.ts, packages/plugins/src/clerk, packages/plugins/src/linear, packages/core/src/backend/extensions and packages/core/src/backend/services/integrations passed (44 files, 581 tests)"
+        "git diff origin/main...513383f3 -- scripts/plugins/worker-bundle.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
       ]
     },
     "source:scripts/plugins/workspace-source-aliases.ts": {
@@ -8990,6 +9016,187 @@
       "outcome": "out-of-scope",
       "reason": "Repository build paths: @wfgraph/plugins/ui and @wfgraph/plugins/* now map to src/ui.ts and src/*/index.ts, and the root mapping is gone. Repository configuration an adopter never sees.",
       "evidence": ["git diff origin/main...718ca8a4 -- tsconfig.build.json"]
+    },
+    "source:packages/core/src/anthropic.ts": {
+      "fingerprint": "73b8ac9dc75d7c4f102a8289d6ffbf3a15c3fe6edbccf3b74c4e2e31b486833f",
+      "snapshot": {
+        "packages/core/src/anthropic.ts": "3262283222d4177db709a94c91aa9645dc32b8d331ad8148aaab75e0386b7bdb"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "updated",
+      "reason": "The @wfgraph/core/anthropic entry, exporting wfAnthropic and AnthropicAgentOptions. build-agent's provider table and no-model mistake were updated to name it.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/anthropic.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/agent/mcp-option.test.ts": {
+      "fingerprint": "1bd542e44fdfe43583cb634daed13727bf7c69297a90252660d3818fa13548d5",
+      "snapshot": {
+        "packages/core/src/backend/agent/mcp-option.test.ts": "4d6581299a9ff3a6117be23884c2277d4c29b5df5157d31b1147905b0cf367fb"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "New test of readMcpOption: undefined leaves the endpoint off, a wfMcp value is read with a metadata route only for an authorization server, and other values are refused. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/mcp-option.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/agent/mcp-option.ts": {
+      "fingerprint": "84d675d18761a3f07c098b92330e76eda034c04b362dbf9149d30c159e31e98f",
+      "snapshot": {
+        "packages/core/src/backend/agent/mcp-option.ts": "a97365ab4cd0c0d77635860bcb88088b55b4259f5bb56d55db7dd4731ab0337e"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "no-change",
+      "reason": "Now holds WfGraphMcpOptions, WfGraphMcpAuthorization, the WfGraphMcp brand, the McpEndpoint members and readMcpOption, which throws a message naming wfMcp for any value wfMcp did not build. mcp states that refusal and the option names, which hold.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/mcp-option.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/agent/providers/anthropic.test.ts": {
+      "fingerprint": "a4164bd54c2080dc52d8adfaadf386385c574457f54628ec9ecc7f48f3c32b79",
+      "snapshot": {
+        "packages/core/src/backend/agent/providers/anthropic.test.ts": "97eace452e4c77d5ffa5d8eb9378b505723c9f39e5b108ed695569438967b869"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "Wire tests for wfAnthropic: a blank key leaves the agent off, a blank model is refused, and the request carries adaptive thinking and the effort. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/providers/anthropic.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/agent/providers/openai-compatible.test.ts": {
+      "fingerprint": "e8ae4ae64a3462b45fb47ec0df050bc325eccebb6952b247b466e1a12c8c58f4",
+      "snapshot": {
+        "packages/core/src/backend/agent/providers/openai-compatible.test.ts": "585eb5fa108dfe3408f9fe46bd223f3dc89be02f0de58b332f4f54078d63e8ac"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "Wire tests for wfOpenAiCompatible: a blank base URL leaves the agent off even with a key, and a blank model is refused. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/providers/openai-compatible.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/agent/providers/openai.test.ts": {
+      "fingerprint": "eaae15e0f00a465071b4d6492b0e762dbfa70514260faf9f79800d51778af964",
+      "snapshot": {
+        "packages/core/src/backend/agent/providers/openai.test.ts": "2ccd60ddb65555759a8b6b33852e467ec4d89387f88820a0ac85ec91ed11db1f"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "Wire tests for wfOpenAi, including a half-filled environment read as off. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/providers/openai.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/agent/providers/openrouter.test.ts": {
+      "fingerprint": "36adc43658a848737fb75cb6ae30a6e7a8ac4a957b16a2cb2f721642c39d1f71",
+      "snapshot": {
+        "packages/core/src/backend/agent/providers/openrouter.test.ts": "b6909a5113ef39ded385454460b83e4f0a0f54933562f3e03e09a3677a2b62d4"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "Wire tests for wfOpenRouter: a blank key leaves the agent off and a blank model is refused. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/providers/openrouter.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/agent/providers/provider-functions.test.ts": {
+      "fingerprint": "11652be7b513ec045f2f4c5747c57ec90465466f9cf219cef14dae6c02c20483",
+      "snapshot": {
+        "packages/core/src/backend/agent/providers/provider-functions.test.ts": "921c734bbc33887980d3ac93dd7faea518408eecec9efce9e2ef5318ab4722af"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "New describe.each over the four provider functions: blank options leave the agent off, a valid turn limit is kept and an absent one defaults, and invalid limits throw naming the function. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/providers/provider-functions.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/agent/providers/wire-test-support.ts": {
+      "fingerprint": "28079a4e8cdc8837fe2390f114446d5a6302323a688ec9834cac4171f9e3120f",
+      "snapshot": {
+        "packages/core/src/backend/agent/providers/wire-test-support.ts": "e0da62fcc0b39f550172c153712626e52d8cdc51f592edaf1a1404a6849f3e82"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "Test support that runs one turn of a provider function's model against a recording fetch. Test code, reachable from no package entry.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/backend/agent/providers/wire-test-support.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/backend/worker.test.ts": {
+      "fingerprint": "d407109ee08d2c8d0f6a3725e41c6b6c01d3d3fa7eba810517b183734a21736f",
+      "snapshot": {
+        "packages/core/src/backend/worker.test.ts": "02e5bf06aafa71613ed5ceb1fca11aec8285df9764204594fd1c0648ba611f35"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "Adds a case that wfWorker refuses mcp: true at startup with a message naming wfMcp. Tests are no source of skill guidance.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/backend/worker.test.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/openai-compatible.ts": {
+      "fingerprint": "cec0d2169dca75834345365f2be8e4fa63ab17bbb8e20098dc3ff6bdea3cb3a9",
+      "snapshot": {
+        "packages/core/src/openai-compatible.ts": "4cf47e014e8c29aaa0e0fbd4d9558386ccbe23648656f7121ac54a230823f91a"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "updated",
+      "reason": "The @wfgraph/core/openai-compatible entry, exporting wfOpenAiCompatible and its options type. build-agent's provider table and gateway mistake were updated to name it.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/openai-compatible.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/openai.ts": {
+      "fingerprint": "d4cf1b72415dcb5460f9753d95fce662411f791e42fb551929c567f2ad2a0ec8",
+      "snapshot": {
+        "packages/core/src/openai.ts": "ab1ff6969e54b889c37149d45a8349d04431c0797b0b3e7fa58a490bc99e7a25"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "updated",
+      "reason": "The @wfgraph/core/openai entry, exporting wfOpenAi and OpenAiAgentOptions. build-agent's provider table, gateway mistake and plain-object mistake, and wfgraph-core's routing bullet, were updated to name it.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/openai.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/src/openrouter.ts": {
+      "fingerprint": "30c68bc8c2104d78567a2b6b6a18efda10cc32d7185ca1f0450889dd01067787",
+      "snapshot": {
+        "packages/core/src/openrouter.ts": "b99198f7d2bf81469574722a5fb3cbbf7ba0adbf31d084cf61f1ba3596ee6d40"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "updated",
+      "reason": "The @wfgraph/core/openrouter entry, exporting wfOpenRouter and its options type. build-agent's provider table and reasoning-effort section were updated to name it.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/src/openrouter.ts",
+        "At 513383f3: pnpm exec vitest run over packages/core/src/backend/agent, app.test.ts, backend/api-app.test.ts, backend/worker.test.ts, mcp-authoring.test.ts, backend/services/agent/chat.test.ts, packages/evals/src/agent/harness.test.ts, both skill task checks and scripts/plugins/worker-bundle.test.ts passed (26 files, 323 tests)"
+      ]
+    },
+    "source:packages/core/tsdown.config.ts": {
+      "fingerprint": "33d52303f08581f01291139af7fc6040aefd0f77fdefa29c708e9fcb7b9df083",
+      "snapshot": {
+        "packages/core/tsdown.config.ts": "f548949a59605e9345444ae1e113d681821957bfdb1d18f5fcdf25f44c5e6dcc"
+      },
+      "head": "513383f3a478a01e7ed953a66ed0f665b4d62abd",
+      "outcome": "out-of-scope",
+      "reason": "The build now derives one entry per subpath of core's exports map. Build configuration an adopter never runs; the entries it builds are named in docs/embedding.md ('Package exports') and in build-agent and mcp.",
+      "evidence": [
+        "git diff origin/main...513383f3 -- packages/core/tsdown.config.ts"
+      ]
     }
   }
 }

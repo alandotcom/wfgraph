@@ -177,6 +177,20 @@ describe("wfWorker", () => {
     ).toThrow("entityResolverTimeoutMs must be a positive integer");
   });
 
+  it("refuses mcp: true at startup, naming wfMcp", () => {
+    expect(() =>
+      wfWorker({
+        mcp: true as unknown as WfGraphWorkerOptions<unknown>["mcp"],
+        extensions: () => ({}),
+        request: () => {
+          throw new Error("unused");
+        },
+      })
+    ).toThrow(
+      "wfWorker's mcp option takes what wfMcp from @wfgraph/core/mcp returns"
+    );
+  });
+
   it("refuses an events or runs option no invocation could run with, before it opens persistence", async () => {
     let opened = 0;
     const persistence: WfGraphPersistence = {

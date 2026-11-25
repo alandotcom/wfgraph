@@ -246,27 +246,30 @@ skills:
     package: packages/core
     path: skills/wfgraph-core/mcp/SKILL.md
     description: >
-      Use when letting an MCP client, such as a coding agent or an app built on
-      an MCP SDK, author workflows in an embedded Workflow Graph app: turning on
-      the mcp option of createWfGraphApp or wfWorker, admitting a deployed
-      hostname with mcp.allowedHostnames and mcp.allowedOriginHostnames,
-      accepting and verifying the client's bearer token in the auth function,
-      advertising an OAuth authorization server with mcp.authorization, granting
-      the operations each tool needs, or explaining a 401, a 403, a
-      workflow_draft_stale result or a refused publish from the endpoint. Also
-      use for requests such as "connect our coding agent to the workflow
-      editor", "the MCP client cannot sign in" or "let an agent publish
-      workflows". For the editor's own chat agent use wfgraph-core/build-agent;
-      for roles and custom grants in general use wfgraph-core/auth.
+      Use when letting an MCP client, such as a coding agent or an app built on an
+      MCP SDK, author workflows in an embedded Workflow Graph app: turning on the
+      mcp option of createWfGraphApp or wfWorker with wfMcp from
+      @wfgraph/core/mcp, admitting a deployed hostname with the allowedHostnames
+      and allowedOriginHostnames options of wfMcp, accepting and verifying the
+      client's bearer token in the auth function, advertising an OAuth
+      authorization server with the authorization option of wfMcp, granting the
+      operations each tool needs, or explaining a 401, a 403, a
+      workflow_draft_stale result or a refused publish from the endpoint. Also use
+      for requests such as "connect our coding agent to the workflow editor", "the
+      MCP client cannot sign in" or "let an agent publish workflows". For the
+      editor's own chat agent use wfgraph-core/build-agent; for roles and custom
+      grants in general use wfgraph-core/auth.
     purpose: >
       Turn on and secure Workflow Graph's stateless MCP authoring endpoint: the
-      mcp option, Host and Origin allowlists, bearer tokens checked by the
-      host's auth function, mcp.authorization discovery, per-tool grants, and
-      the draft-revision protocol a client follows from creating a workflow to
-      publishing it.
+      mcp option built by wfMcp, Host and Origin allowlists, bearer tokens
+      checked by the host's auth function, authorization-server discovery,
+      per-tool grants, and the draft-revision protocol a client follows from
+      creating a workflow to publishing it.
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/core/src/backend/agent/mcp-server.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/mcp-http.ts
+      - alandotcom/wfgraph:packages/core/src/mcp.ts
     requires:
       - wfgraph-core
   - name: build-agent
@@ -277,25 +280,29 @@ skills:
     description: >
       Use when turning on or configuring the Workflow Graph editor's chat agent,
       the build agent, in a host application: setting the agent option of
-      createWfGraphApp or wfWorker for OpenAI, Anthropic, OpenRouter or an
-      OpenAI-compatible server with apiKey, model, reasoningEffort and baseUrl,
-      limiting agent.maxConcurrentTurns, running turns on the host's own gateway
+      createWfGraphApp or wfWorker with wfOpenAi, wfAnthropic, wfOpenRouter or
+      wfOpenAiCompatible and their apiKey, model, reasoningEffort and baseUrl,
+      limiting maxConcurrentTurns, running turns on the host's own gateway
       or model with agent.runner and streamAgentTurn, granting agent.use and the
       operations the agent's tools check, or explaining why the chat panel is
-      missing, why startup refuses the agent option, or why a tool call is
+      missing, why the agent option is refused, or why a tool call is
       refused. Also use for requests such as "add AI to the workflow editor with
       our Anthropic key", "send the workflow agent through our LLM gateway" or
       "the agent panel does not appear". For an external MCP client use
       wfgraph-core/mcp; for roles and custom grants in general use
       wfgraph-core/auth.
     purpose: >
-      Configure the editor's build agent: the agent option's four providers and
-      their defaults, gateways through baseUrl, a host runner through
+      Configure the editor's build agent: the four provider entries and their
+      defaults, gateways through baseUrl, a host runner through
       agent.runner and streamAgentTurn, the turn limit, and the grants a turn's
       tools check.
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/core/src/backend/agent/config.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openai.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/anthropic.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openrouter.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openai-compatible.ts
       - alandotcom/wfgraph:packages/core/src/backend/agent/runner.ts
     requires:
       - wfgraph-core

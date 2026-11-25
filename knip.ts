@@ -1,4 +1,5 @@
 import type { KnipConfig } from "knip";
+import coreManifest from "./packages/core/package.json" with { type: "json" };
 
 /**
  * knip finds files, exports and dependencies that nothing reaches. Run it with
@@ -115,15 +116,21 @@ const config: KnipConfig = {
     },
 
     "packages/core": {
-      // The entries come from the tsdown plugin, which reads them out of
-      // tsdown.config.ts, so this list cannot drift from what the build emits.
-      // Whether the "exports" map names those same files is a separate question,
-      // and the comment in tsdown.config.ts is where it is answered.
+      // One entry per subpath of the "exports" map in packages/core/package.json,
+      // by the rule tsdown.config.ts builds them with: "." is src/index.ts and
+      // "./<name>" is src/<name>.ts. knip's tsdown plugin reads only the literal
+      // values in that config, so it cannot see entries the config derives, and
+      // this list derives them from the same map.
       //
       // The SQLite schema is an input to drizzle-kit rather than runtime code.
       // Its config is registered above, but knip's Drizzle plugin does not carry
       // a schema reached from a second config across workspace boundaries.
-      entry: ["src/backend/persistence/sqlite/schema.ts"],
+      entry: [
+        ...Object.keys(coreManifest.exports).map(
+          (subpath) => `src/${subpath === "." ? "index" : subpath.slice(2)}.ts`
+        ),
+        "src/backend/persistence/sqlite/schema.ts",
+      ],
       project: ["src/**/*.{ts,tsx}"],
 
       ignoreDependencies: [

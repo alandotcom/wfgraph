@@ -833,8 +833,8 @@ skills:
     packages:
       - "@wfgraph/core"
     covers:
-      - mcp option (true, allowedHostnames, allowedOriginHostnames)
-      - mcp.authorization and the RFC 9728 protected-resource metadata
+      - the @wfgraph/core/mcp entry and wfMcp, with no options for localhost or with allowedHostnames and allowedOriginHostnames
+      - the authorization option of wfMcp and the RFC 9728 protected-resource metadata
       - bearer tokens verified by the host's auth function
       - the 401 WWW-Authenticate challenge and the 403 Host and Origin refusal
       - protocol revisions 2026-07-28 and 2024-10-07 through 2025-11-25, served statelessly
@@ -852,7 +852,7 @@ skills:
       - Explain a 401, a 403, an isError argument result or a refused publish from the endpoint.
     failure_modes:
       - mistake: A bearer token nobody verifies
-        mechanism: mcp.authorization only tells a client where to get a token, and Workflow Graph checks no MCP token itself, so an auth function that answers a role for any bearer header lets any string reach every tool the role grants.
+        mechanism: The authorization option of wfMcp only tells a client where to get a token, and Workflow Graph checks no MCP token itself, so an auth function that answers a role for any bearer header lets any string reach every tool the role grants.
         wrong_pattern: |
           auth answers WfGraphRoles.editor for any request carrying Authorization: Bearer
         correct_pattern: |
@@ -871,12 +871,22 @@ skills:
         priority: HIGH
         status: active
         skills: [mcp, auth]
-      - mistake: mcp true on a deployed host
-        mechanism: mcp true admits localhost alone, so every request to the deployed name answers 403 naming mcp.allowedHostnames.
+      - mistake: wfMcp() on a deployed host
+        mechanism: wfMcp() with no options admits localhost alone, so every request to the deployed name answers 403 naming the allowedHostnames option of wfMcp.
         wrong_pattern: |
-          mcp: true in production
+          mcp: wfMcp() in production
         correct_pattern: |
+          mcp: wfMcp({ allowedHostnames: ["workflows.example.com"], allowedOriginHostnames: [] })
+        source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
+        priority: HIGH
+        status: active
+      - mistake: mcp true or a plain object of hostnames
+        mechanism: The mcp option takes only what wfMcp returns. true or a plain object fails to type-check, and from JavaScript createWfGraphApp and wfWorker throw at startup naming wfMcp.
+        wrong_pattern: |
           mcp: { allowedHostnames: ["workflows.example.com"], allowedOriginHostnames: [] }
+        correct_pattern: |
+          import { wfMcp } from "@wfgraph/core/mcp";
+          mcp: wfMcp({ allowedHostnames: ["workflows.example.com"], allowedOriginHostnames: [] })
         source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
         priority: HIGH
         status: active
@@ -920,6 +930,8 @@ skills:
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/core/src/backend/agent/mcp-server.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/mcp-http.ts
+      - alandotcom/wfgraph:packages/core/src/mcp.ts
 
   - name: build-agent
     slug: build-agent
@@ -931,10 +943,10 @@ skills:
     packages:
       - "@wfgraph/core"
     covers:
-      - agent.provider (openai, anthropic, openrouter, openai-compatible)
-      - agent.apiKey, agent.model, agent.reasoningEffort and agent.baseUrl
+      - the provider entries @wfgraph/core/openai, /anthropic, /openrouter and /openai-compatible
+      - wfOpenAi, wfAnthropic, wfOpenRouter and wfOpenAiCompatible, and their apiKey, model, reasoningEffort and baseUrl options
       - the default model gpt-6.1-terra
-      - agent.maxConcurrentTurns
+      - maxConcurrentTurns on a provider function and beside agent.runner
       - agent.runner, WfGraphAgentRunner and WfGraphAgentTurn
       - streamAgentTurn
       - agent.use and the per-tool grants a turn checks
@@ -942,24 +954,34 @@ skills:
       - prompt caching and store false
     tasks:
       - Turn on the editor's build agent against a chosen provider or gateway, or run its turns on the host's own model, and size its turn limit and grants.
-      - Choose openai-compatible for a gateway that serves Chat Completions alone.
-      - Explain a missing chat panel, a startup refusal of the agent option, or a refused tool call.
+      - Choose wfOpenAiCompatible for a gateway that serves Chat Completions alone.
+      - Explain a missing chat panel, a refusal of the agent option, or a refused tool call.
     failure_modes:
       - mistake: Anthropic or OpenRouter with no model
-        mechanism: Only openai has a default model, so a key with a blank model fails at startup.
+        mechanism: Only wfOpenAi has a default model, so wfAnthropic or wfOpenRouter given a key and a blank model throws where the host calls it.
         wrong_pattern: |
-          agent: { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY }
+          agent: wfAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY, model: "" })
         correct_pattern: |
-          agent: { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY, model: "claude-opus-5-5" }
+          agent: wfAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY, model: "claude-opus-5-5" })
         source: alandotcom/wfgraph:docs/embedding.md (The build agent)
         priority: HIGH
         status: active
-      - mistake: A Chat Completions gateway under the default provider
-        mechanism: The default provider calls POST {baseUrl}/responses, so a gateway serving Chat Completions alone fails every turn.
+      - mistake: A Chat Completions gateway under wfOpenAi
+        mechanism: wfOpenAi calls POST {baseUrl}/responses, so a gateway serving Chat Completions alone fails every turn.
         wrong_pattern: |
-          agent: { apiKey, baseUrl: "http://llm-gateway.internal/v1" }
+          agent: wfOpenAi({ apiKey, baseUrl: "http://llm-gateway.internal/v1" })
         correct_pattern: |
-          agent: { provider: "openai-compatible", baseUrl: "http://llm-gateway.internal/v1", model }
+          agent: wfOpenAiCompatible({ baseUrl: "http://llm-gateway.internal/v1", model })
+        source: alandotcom/wfgraph:docs/embedding.md (The build agent)
+        priority: HIGH
+        status: active
+      - mistake: The agent option as a plain object
+        mechanism: The agent option takes what a provider function returns, or { runner }. A plain object with a provider key fails to type-check. From JavaScript, createWfGraphApp throws when it is called, and wfWorker, which reads agent from its request callback, throws on every request and tick.
+        wrong_pattern: |
+          agent: { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY, model: "claude-opus-5-5" }
+        correct_pattern: |
+          import { wfAnthropic } from "@wfgraph/core/anthropic";
+          agent: wfAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY, model: "claude-opus-5-5" })
         source: alandotcom/wfgraph:docs/embedding.md (The build agent)
         priority: HIGH
         status: active
@@ -984,6 +1006,10 @@ skills:
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/core/src/backend/agent/config.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openai.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/anthropic.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openrouter.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openai-compatible.ts
       - alandotcom/wfgraph:packages/core/src/backend/agent/runner.ts
 
 tensions:
@@ -1045,8 +1071,8 @@ gaps:
     context: The task checks cover the entry's types, wfWorker's start-up and per-invocation refusals, tick behavior with SQLite standing in for Hyperdrive, and wfHyperdrive's current_schema() refusal and the createWfGraphRunner refusal against a live PostgreSQL. Query caching, the Wrangler configuration, Node.js compatibility, the wall-time, CPU and statement limits, and Queue delivery itself are unverified.
     status: open
   - skill: wfgraph-core
-    question: Does configuring the build agent (agent.apiKey, agent.model, agent.reasoningEffort, agent.baseUrl) need adopter guidance?
-    context: The agent option grew providers, a host runner, streamAgentTurn and a turn limit, which made it a task of its own. The build-agent skill now covers it, and the mcp skill covers the MCP endpoint that wfgraph-core used to describe in bullets.
+    question: Does configuring the build agent (its key, model, reasoning effort and base URL) need adopter guidance?
+    context: The agent option grew providers, a host runner, streamAgentTurn and a turn limit, which made it a task of its own. The build-agent skill now covers it, and the mcp skill covers the MCP endpoint that wfgraph-core used to describe in bullets. Those options now belong to the provider functions in their own entries (skill_spec.md decision 10).
     status: resolved
   - skill: wfgraph-core
     question: Discovery checks for every skill, executable task checks for the five batch 1 skills, and a fresh consumer session for any skill.
@@ -1062,5 +1088,5 @@ gaps:
     status: resolved
   - skill: build-agent
     question: Which build agent claims can be checked without a live model?
-    context: The task check covers startup refusals and agent.enabled for each provider form and a host runner. Whether a gateway passes streaming, tools and the cache fields through, adaptive thinking on older Claude models, and a turn's tool grants in a live turn are unverified.
+    context: The task check covers the refusals and agent.enabled for the provider functions and a host runner. Whether a gateway passes streaming, tools and the cache fields through, adaptive thinking on older Claude models, and a turn's tool grants in a live turn are unverified.
     status: open

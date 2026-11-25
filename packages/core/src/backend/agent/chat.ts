@@ -25,7 +25,6 @@ import type {
 } from "@wfgraph/shared/rpc/agent-stream";
 import { isBlank } from "@wfgraph/shared/types/string";
 import type { EnabledAgentSettings } from "#src/backend/agent/config";
-import { agentModelLayer } from "#src/backend/agent/model";
 import type {
   AgentRunner,
   AgentRunnerInput,
@@ -159,7 +158,7 @@ function runBuiltInAgentTurn(
   settings: EnabledAgentSettings,
   input: AgentRunnerInput
 ): Effect.Effect<Stream.Stream<AgentStreamPart, unknown>> {
-  const model = agentModelLayer(settings, { workflowId: input.workflowId });
+  const model = settings.modelLayer({ workflowId: input.workflowId });
   return Effect.gen(function* () {
     const session = yield* Chat.fromPrompt(
       agentPrompt({

@@ -1,21 +1,13 @@
-/** Adapts the canonical authoring toolkit to persisted, stateless MCP calls. */
+/**
+ * Adapts the canonical authoring toolkit to persisted, stateless MCP calls:
+ * one `McpServer` per request, whose tools read and write the stored draft
+ * through the executors `CreateAgentMcpServerInput` carries.
+ */
 
 import {
-  CLIENT_CAPABILITIES_META_KEY,
-  CLIENT_INFO_META_KEY,
-  createMcpHandler,
-  INVALID_PARAMS,
-  localhostAllowedHostnames,
-  localhostAllowedOrigins,
   McpServer,
-  PROTOCOL_VERSION_META_KEY,
   fromJsonSchema,
-  getOAuthProtectedResourceMetadataUrl,
-  type McpHttpHandler,
-  type OAuthProtectedResourceMetadata,
   type StandardSchemaWithJSON,
-  validateHostHeader,
-  validateOriginHeader,
 } from "@modelcontextprotocol/server";
 import { Tool } from "effect/ai";
 import { Context, Option, Result, Schema, type SchemaAST } from "effect";
@@ -37,8 +29,11 @@ import {
 } from "@wfgraph/shared/types/schema";
 import { formatSchemaFailure } from "@wfgraph/shared/types/schema-message";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
 import { workflowSummarySchema } from "@wfgraph/shared/rpc/contracts/workflows";
+import type {
+  CreateAgentMcpServerInput,
+  HostToolExecution,
+} from "#src/backend/agent/mcp-option";
 import {
   compactInputSchema,
   compactOutputSchema,
@@ -46,254 +41,6 @@ import {
 import { agentToolOperations } from "#src/backend/agent/tool-permissions";
 import type { ServiceFailure } from "#src/backend/lib/effect/failures";
 import type { AuthContext } from "#src/backend/lib/http/authorize";
-import type {
-  DraftToolResult,
-  ExecuteDraftToolInput,
-} from "#src/backend/services/agent/draft-tool";
-
-export type DraftToolExecution =
-  | { readonly ok: true; readonly result: DraftToolResult }
-  | { readonly ok: false; readonly failure: ServiceFailure };
-
-export type DraftToolExecutor = (
-  input: ExecuteDraftToolInput,
-  signal: AbortSignal
-) => Promise<DraftToolExecution>;
-
-export type WorkflowListExecution =
-  | {
-      readonly ok: true;
-      readonly workflows: readonly WorkflowSummaryPayload[];
-    }
-  | { readonly ok: false; readonly failure: ServiceFailure };
-
-export type WorkflowListExecutor = (
-  signal: AbortSignal
-) => Promise<WorkflowListExecution>;
-
-export type WorkflowCreateExecution =
-  | {
-      readonly ok: true;
-      readonly workflowId: string;
-      readonly draftRevision: number;
-    }
-  | { readonly ok: false; readonly failure: ServiceFailure };
-
-export type WorkflowCreateExecutor = (
-  input: { readonly name: string; readonly description?: string | undefined },
-  signal: AbortSignal
-) => Promise<WorkflowCreateExecution>;
-
-/**
- * One answer of a tool the host serves outside the toolkit. `isError` marks
- * an answer the tool refuses with, such as a publish the draft's blockers
- * stop, which still carries a structured result.
- */
-export type HostToolExecution =
-  | {
-      readonly ok: true;
-      readonly result: JsonObject;
-      readonly isError?: boolean | undefined;
-    }
-  | { readonly ok: false; readonly failure: ServiceFailure };
-
-/**
- * Publish, version history and restore. These are MCP tools only: the chat
- * panel's editor has its own Publish review and version history, and a chat
- * turn holds edits the editor has not stored yet, which a publish of the
- * stored draft would leave out.
- */
-export type WorkflowPublicationExecutors = {
-  readonly publish: (
-    input: {
-      readonly workflowId: string;
-      readonly expectedDraftRevision: number;
-    },
-    signal: AbortSignal
-  ) => Promise<HostToolExecution>;
-  readonly listVersions: (
-    input: { readonly workflowId: string },
-    signal: AbortSignal
-  ) => Promise<HostToolExecution>;
-  readonly restore: (
-    input: {
-      readonly workflowId: string;
-      readonly versionId: string;
-      readonly expectedDraftRevision: number;
-    },
-    signal: AbortSignal
-  ) => Promise<HostToolExecution>;
-};
-
-export type CreateAgentMcpServerInput = {
-  readonly auth: AuthContext;
-  readonly execute: DraftToolExecutor;
-  readonly listWorkflows: WorkflowListExecutor;
-  readonly createWorkflow: WorkflowCreateExecutor;
-  readonly publication: WorkflowPublicationExecutors;
-};
-
-/**
- * The OAuth 2.1 authorization servers a host names for its MCP endpoint.
- * Workflow Graph is never an authorization server: it advertises these in
- * the RFC 9728 protected-resource metadata, and the host's `auth` callback
- * still verifies every bearer token it receives.
- */
-export type WfGraphMcpAuthorization = {
-  /** Issuer URL of each authorization server that issues tokens for this endpoint. */
-  readonly authorizationServers: readonly [string, ...string[]];
-  /** Scopes the endpoint understands, sent as `scopes_supported` and in the 401 challenge. */
-  readonly scopesSupported?: readonly string[] | undefined;
-};
-
-export type WfGraphMcpOptions = {
-  /** Hostnames accepted from the HTTP Host header. Ports are ignored. */
-  readonly allowedHostnames: readonly string[];
-  /** Hostnames accepted from browser Origin headers. Ports are ignored. */
-  readonly allowedOriginHostnames: readonly string[];
-  /**
-   * The authorization servers an MCP client is sent to on a 401. Absent, a
-   * 401 carries a bare `WWW-Authenticate: Bearer` challenge and no metadata
-   * document is served.
-   */
-  readonly authorization?: WfGraphMcpAuthorization | undefined;
-};
-
-type McpHttpSecurity = true | WfGraphMcpOptions;
-
-function resolveMcpHttpSecurity(input: McpHttpSecurity): WfGraphMcpOptions {
-  return input === true
-    ? {
-        allowedHostnames: localhostAllowedHostnames(),
-        allowedOriginHostnames: localhostAllowedOrigins(),
-      }
-    : input;
-}
-
-/** A 403 refusal of the request's routing headers, as a JSON-RPC error. */
-function routingRefusal(message: string): Response {
-  return Response.json(
-    { jsonrpc: "2.0", error: { code: -32_000, message }, id: null },
-    { status: 403 }
-  );
-}
-
-/**
- * Rejects untrusted HTTP routing headers before any MCP body is read. Each
- * refusal names the option that admits the hostname and leaves the hostname
- * itself out, since it is what the sender typed.
- */
-export function mcpHttpValidationResponse(
-  request: Request,
-  input: McpHttpSecurity
-): Response | undefined {
-  const options = resolveMcpHttpSecurity(input);
-  const optionHint =
-    input === true
-      ? "`mcp: true` admits localhost alone; pass `mcp: { allowedHostnames, allowedOriginHostnames }` to admit another hostname"
-      : undefined;
-  const host = validateHostHeader(request.headers.get("host"), [
-    ...options.allowedHostnames,
-  ]);
-  if (!host.ok) {
-    return routingRefusal(
-      host.errorCode === "invalid_host"
-        ? `The Host header names a hostname this MCP endpoint does not accept. ${optionHint ?? "Add the hostname to mcp.allowedHostnames"}.`
-        : "The request carries no valid Host header."
-    );
-  }
-  const origin = validateOriginHeader(request.headers.get("origin"), [
-    ...options.allowedOriginHostnames,
-  ]);
-  if (!origin.ok) {
-    return routingRefusal(
-      origin.errorCode === "invalid_origin"
-        ? `The Origin header names a hostname this MCP endpoint does not accept from a browser. ${optionHint ?? "Add the hostname to mcp.allowedOriginHostnames"}.`
-        : "The request carries an Origin header that is not a valid origin."
-    );
-  }
-  return undefined;
-}
-
-/**
- * The canonical URL of the MCP endpoint, which is the `resource` an access
- * token is issued for. `publicUrl` is the host's configured public origin when
- * it has one, since a proxied request URL can name an internal host.
- */
-function mcpResourceUrl(input: {
-  readonly request: Request;
-  readonly mcpPath: string;
-  readonly publicUrl: string | undefined;
-}): URL {
-  return new URL(input.mcpPath, input.publicUrl ?? input.request.url);
-}
-
-/**
- * The RFC 9728 path of the protected-resource metadata for an endpoint at
- * `mcpPath`: the well-known prefix inserted ahead of the endpoint's path.
- */
-export function mcpProtectedResourceMetadataPath(mcpPath: string): string {
-  return new URL(
-    getOAuthProtectedResourceMetadataUrl(new URL(mcpPath, "http://localhost"))
-  ).pathname;
-}
-
-/**
- * The protected-resource metadata document, or undefined when the host named
- * no authorization server.
- */
-export function mcpProtectedResourceMetadataResponse(input: {
-  readonly request: Request;
-  readonly mcp: McpHttpSecurity;
-  readonly mcpPath: string;
-  readonly publicUrl: string | undefined;
-}): Response | undefined {
-  const authorization =
-    input.mcp === true ? undefined : input.mcp.authorization;
-  if (authorization === undefined) {
-    return undefined;
-  }
-  const metadata: OAuthProtectedResourceMetadata = omitUndefined({
-    resource: mcpResourceUrl(input).href,
-    authorization_servers: [...authorization.authorizationServers],
-    scopes_supported:
-      authorization.scopesSupported === undefined
-        ? undefined
-        : [...authorization.scopesSupported],
-    bearer_methods_supported: ["header"],
-  });
-  return Response.json(metadata, {
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=3600",
-    },
-  });
-}
-
-/**
- * The `WWW-Authenticate` value a 401 on the MCP endpoint carries: the
- * metadata URL and scopes when the host named an authorization server, and a
- * bare Bearer challenge otherwise.
- */
-export function mcpAuthenticationChallenge(input: {
-  readonly request: Request;
-  readonly mcp: McpHttpSecurity;
-  readonly mcpPath: string;
-  readonly publicUrl: string | undefined;
-}): string {
-  const authorization =
-    input.mcp === true ? undefined : input.mcp.authorization;
-  if (authorization === undefined) {
-    return "Bearer";
-  }
-  const metadataUrl = getOAuthProtectedResourceMetadataUrl(
-    mcpResourceUrl(input)
-  );
-  const scope = authorization.scopesSupported?.join(" ");
-  return scope
-    ? `Bearer resource_metadata="${metadataUrl}", scope="${scope}"`
-    : `Bearer resource_metadata="${metadataUrl}"`;
-}
 
 type AgentToolName = keyof typeof agentToolkit.tools;
 
@@ -669,18 +416,6 @@ const AGENT_TOOL_SCHEMAS: ReadonlyMap<string, ToolSchemas> = new Map(
       } satisfies ToolSchemas,
     ])
 );
-
-function invalidParamsResponse(body: JsonObject, message: string): Response {
-  const id = body.id;
-  return Response.json(
-    {
-      jsonrpc: "2.0",
-      id: typeof id === "string" || typeof id === "number" ? id : null,
-      error: { code: INVALID_PARAMS, message },
-    },
-    { status: 400 }
-  );
-}
 
 function toolResult(input: {
   workflowId?: string | undefined;
@@ -1124,69 +859,4 @@ function registerPublicationTools(
     operations: [WfGraphOperations.workflowRestoreVersion],
     run: async (arguments_, signal) => publication.restore(arguments_, signal),
   });
-}
-
-/**
- * Creates a handler whose factory builds one server per request. A 2026-07-28
- * request is served directly; a 2025-era request (protocol revisions
- * 2024-10-07 through 2025-11-25) is served by the SDK's stateless legacy path,
- * which answers `initialize` from a fresh server and refuses the session
- * methods `GET` and `DELETE` with 405. The server keeps no state between calls
- * in either era, so both serve the same tools against the same stored draft.
- */
-export function createAgentMcpHandler(
-  input: CreateAgentMcpServerInput & { readonly httpSecurity?: McpHttpSecurity }
-): McpHttpHandler {
-  const handler = createMcpHandler(() => createAgentMcpServer(input), {
-    legacy: "stateless",
-  });
-
-  return {
-    ...handler,
-    fetch: async (request, options) => {
-      const rejection = mcpHttpValidationResponse(
-        request,
-        input.httpSecurity ?? true
-      );
-      if (rejection) {
-        return rejection;
-      }
-
-      if (request.method === "POST") {
-        try {
-          const body = readJsonObject(
-            options?.parsedBody ?? (await request.clone().json())
-          );
-          const params = readJsonObject(body?.params);
-          const meta = readJsonObject(params?.["_meta"]);
-          const method = body?.method;
-          const name = params?.name;
-          const standardHeadersMatch =
-            request.headers.get("MCP-Protocol-Version") === "2026-07-28" &&
-            request.headers.get("Mcp-Method") === method &&
-            (method !== "tools/call" ||
-              request.headers.get("Mcp-Name") === name);
-
-          if (
-            meta?.[PROTOCOL_VERSION_META_KEY] === "2026-07-28" &&
-            standardHeadersMatch
-          ) {
-            if (
-              readJsonObject(meta[CLIENT_INFO_META_KEY]) === null ||
-              readJsonObject(meta[CLIENT_CAPABILITIES_META_KEY]) === null
-            ) {
-              return invalidParamsResponse(
-                body ?? {},
-                "Request _meta requires client identity and capabilities"
-              );
-            }
-          }
-        } catch {
-          // The SDK owns JSON and JSON-RPC parse errors.
-        }
-      }
-
-      return await handler.fetch(request, options);
-    },
-  };
 }

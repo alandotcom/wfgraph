@@ -66,9 +66,7 @@ import {
   runWithResponseClose,
 } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
-import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
-
-export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
+import { readMcpOption, type WfGraphMcp } from "#src/backend/agent/mcp-option";
 
 /**
  * How long one tick may run: a minute under the 15-minute wall time of a Cron
@@ -110,9 +108,10 @@ export type WfGraphWorkerRequestConfig = {
   persistence: WfGraphPersistence;
   encryption: EncryptionRuntimeConfig;
   /**
-   * The build agent's model settings. Read per invocation like every other
-   * secret here, because a Worker reads its bindings from the environment it
-   * was invoked with.
+   * The build agent, as on `createWfGraphApp`: what a provider entry's
+   * function returns, such as `wfAnthropic` from `@wfgraph/core/anthropic`, or
+   * `{ runner }`. Read per invocation like every other secret here, because a
+   * Worker reads its bindings from the environment it was invoked with.
    */
   agent?: WfGraphAgentConfig | undefined;
   /**
@@ -144,8 +143,11 @@ export type WfGraphWorkerOptions<Env> = {
    * Defaults to 10,000. A timeout is an operational failure.
    */
   entityResolverTimeoutMs?: number | undefined;
-  /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */
-  mcp?: true | WfGraphMcpOptions | undefined;
+  /**
+   * The authenticated stateless MCP endpoint at `${basePath}/api/mcp`, as on
+   * `createWfGraphApp`: what `wfMcp` from `@wfgraph/core/mcp` returns.
+   */
+  mcp?: WfGraphMcp | undefined;
   /** Public origin used in provider callback URLs and client metadata. */
   publicUrl?: string | undefined;
   logger?: WfGraphLogger | undefined;
@@ -230,6 +232,7 @@ export function wfWorker<Env>(
 ): WfGraphWorker<Env> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);
+  const mcp = readMcpOption(options.mcp, "wfWorker");
   const entityResolverTimeoutMs = readEntityResolverTimeoutMs(
     options.entityResolverTimeoutMs
   );
@@ -368,7 +371,7 @@ export function wfWorker<Env>(
             basePath: `${basePath}/api`,
             auth,
             runtime: invocation.runtime,
-            mcp: options.mcp,
+            mcp,
             eventsKey: config.events?.key,
           }).fetch(request),
         [invocation.close],

@@ -128,7 +128,7 @@ Connection's webhook intake (`POST /api/webhooks/{type}/{connectionId}`,
 verified by the vendor's signature) and `POST /api/events` (mounted only when
 `events.key` is set, sent with `Authorization: Bearer <key>`). The OAuth client
 metadata route is public provider-discovery data, as is the MCP
-protected-resource metadata when `mcp.authorization` is set, and
+protected-resource metadata when `wfMcp` was given `authorization`, and
 `GET /api/health`, mounted by `health: true`, answers a load balancer that
 cannot sign in. Every other route, the editor page and the MCP endpoint
 included, goes through the callback.
