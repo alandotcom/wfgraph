@@ -324,14 +324,27 @@ holds the control that brings it back. `[` collapses or shows the outline and
 `]` collapses or shows details from anywhere outside a text field, and the
 command palette offers both. A viewer's widths and collapsed columns are
 remembered across workflows and reloads. Only these controls change the
-columns: selecting or deselecting anything never adds, removes, or resizes a
-column, so the canvas box and the camera stay put.
+docked columns: selecting or deselecting anything never adds, removes, or
+resizes a docked column, so the canvas box never changes size.
 
 At 1360px and wider both side columns dock. From 900px to 1359px the canvas
-keeps room for one docked column: details docks, and the outline is a rail
-whose control, or `[`, opens it over the left of the canvas with shadow-lg.
-Escape or a press outside closes it there. Collapsing details docks the
-outline in its place. Below 900px the phone layout described below applies.
+keeps room for one docked column, the outline's, and details is a rail. Below
+900px the phone layout described below applies.
+
+Whenever details is a rail, because of the window's width or because the
+person collapsed it, selecting a step, a Group, the Lifecycle node, or a
+connection slides details in as a floating panel over the right of the canvas,
+8px inside the canvas box, with the docked column's width and content, a
+hairline border, shadow-lg, and a **Close details** control in its header. It
+floats, so the canvas box keeps its size and nothing reflows. Selecting
+something else while it is open replaces its content in place. It slides away
+when the selection is cleared, on **Close details**, and on Escape inside it,
+which returns focus to the selected step's outline row as docked details
+does. A closed panel reopens on the next selection. From 900px to 1359px the
+details rail control and `]` open and close the panel; at 1360px and wider
+they dock or collapse the column. With nothing selected nothing floats, and the
+rail control or `]` opens the panel on the workflow's own details. Under
+reduced motion the panel appears and leaves without sliding.
 
 The details column has two tabs in its header, **Details** and **Agent**.
 Details shows what the selection shows, under a header naming the object, the
@@ -528,7 +541,8 @@ its heading takes focus.
 Escape and **Back** take one step back as the shown object's kind defines it.
 In Draft, Escape inside the details column belongs to an open select,
 combobox, menu, autocomplete, or dialog first, then to a Lifecycle section open
-for editing, and then hands focus back to the selected object on the canvas.
+for editing, and then hands focus back to the selected step's outline row, or
+to the selected object on the canvas when the outline does not show it.
 For the Lifecycle node or a Wait opened from an Event Split, Back and that last
 Escape select the Event Split again. The way back lasts while the source stays
 selected alone; selecting anything else ends it, and Back is then no longer
@@ -538,12 +552,14 @@ step, the inspector's scroll position, and the open Lifecycle section are
 remembered separately for Draft, each Group view, the run list, and each run.
 Levels add no browser history.
 
-Selecting an object never moves the camera. The camera moves for a request
-alone: the command palette finding a step, an issue's **Edit**, a jump to
-another scope, and the review sheet pointing at an edit. A request never runs
+Selecting an object never moves the camera while details is docked. The camera
+moves for a request alone: the command palette finding a step, an issue's
+**Edit**, a jump to another scope, the review sheet pointing at an edit, and a
+selection that floating details would cover. A request never runs
 layout, moves a node, or marks the draft changed. The camera keeps its zoom
 when the nodes fit the usable canvas, the canvas less its controls, the
-MiniMap, and the part the review sheet covers, and zooms out only as far as
+MiniMap, and the part the review sheet or floating details covers, and zooms
+out only as far as
 fitting them needs. It then moves the least distance that keeps them and 64px
 of their neighbors inside the usable canvas, so a node already in view moves
 nothing.

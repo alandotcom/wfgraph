@@ -408,10 +408,11 @@ version changed in the same sheet.
 A person can resize each side column by dragging or with the arrow keys on its inner edge,
 and collapse either one with the control in its header, `[` for the outline or `]` for
 details. The browser remembers the widths and collapsed columns in a cookie. At 1360px and
-wider both side columns show; from 900px to 1359px the outline opens over the canvas
-unless details is collapsed. Selecting something never changes the columns or moves the
-camera, and nothing in the details column changes the saved draft except the edits made
-in it.
+wider both side columns dock; from 900px to 1359px the outline docks and details is a
+rail. While details is a rail, selecting something slides details in over the right of
+the canvas without resizing it, and the camera moves only when that panel would cover
+the selection. Nothing in the details column changes the saved draft except the edits
+made in it.
 
 The editor keeps the workspace address in the page's query string: `view` (`runs`,
 absent for Draft), `executionId`, and `group`. Browser Back and Forward move between those

@@ -7,8 +7,8 @@ import {
   type ColumnSide,
   columnPreferencesAtom,
   columnShapes,
-  outlineOverlayOpenAtom,
-  outlineToggle,
+  detailsFloatOpenAtom,
+  detailsToggle,
   setColumnCollapsedAtom,
 } from "./editor-columns-store";
 import { useEditorLayout } from "./use-editor-layout";
@@ -18,62 +18,56 @@ export type ColumnControls = {
   /** What the column's control, shortcut and command do now, in words. */
   toggleLabel: (side: ColumnSide) => string;
   toggle: (side: ColumnSide) => void;
-  /** Close the outline shown over the canvas, when it shows there. */
-  closeOutlineOverlay: () => void;
+  /** Close details floating over the canvas. */
+  closeDetailsFloat: () => void;
+};
+
+const DETAILS_LABELS: Record<ReturnType<typeof detailsToggle>, string> = {
+  collapse: "Collapse details",
+  dock: "Show details",
+  float: "Show details",
+  "close-float": "Close details",
 };
 
 /**
  * What each side column shows at the viewport's width, and the one action its
- * collapse control, its shortcut and its palette command share. Details
- * collapses to a rail and comes back. The outline does the same where it docks,
- * and between 900px and 1359px, while details is docked, it opens over the
- * canvas and closes again.
+ * control, its shortcut and its palette command share. The outline collapses
+ * to a rail and comes back. Details does the same at 1360px and wider; from
+ * 900px to 1359px it opens and closes over the right of the canvas.
  */
 export function useColumnControls(): ColumnControls {
   const layout = useEditorLayout();
   const preferences = useAtomValue(columnPreferencesAtom);
-  const [outlineOverlayOpen, setOutlineOverlayOpen] = useAtom(
-    outlineOverlayOpenAtom
-  );
+  const [detailsFloatOpen, setDetailsFloatOpen] = useAtom(detailsFloatOpenAtom);
   const setCollapsed = useSetAtom(setColumnCollapsedAtom);
-  const shapes = columnShapes({ layout, preferences, outlineOverlayOpen });
-
-  const outlineAction = outlineToggle({
-    layout,
-    shape: shapes.outline,
-    preferences,
-  });
+  const shapes = columnShapes({ layout, preferences, detailsFloatOpen });
+  const detailsAction = detailsToggle({ layout, shape: shapes.details });
 
   const toggle = (side: ColumnSide) => {
-    if (side === "details") {
-      setOutlineOverlayOpen(false);
-      setCollapsed({ side, collapsed: !preferences.details.collapsed });
+    if (side === "outline") {
+      setCollapsed({ side, collapsed: shapes.outline === "docked" });
       return;
     }
-    if (outlineAction === "collapse" || outlineAction === "dock") {
-      setCollapsed({ side, collapsed: outlineAction === "collapse" });
+    if (detailsAction === "collapse" || detailsAction === "dock") {
+      setDetailsFloatOpen(false);
+      setCollapsed({ side, collapsed: detailsAction === "collapse" });
       return;
     }
-    setOutlineOverlayOpen(outlineAction === "open-overlay");
+    setDetailsFloatOpen(detailsAction === "float");
   };
 
   const toggleLabel = (side: ColumnSide) => {
-    if (side === "details") {
-      return shapes.details === "docked" ? "Collapse details" : "Show details";
+    if (side === "outline") {
+      return shapes.outline === "docked" ? "Collapse outline" : "Show outline";
     }
-    return {
-      collapse: "Collapse outline",
-      dock: "Show outline",
-      "open-overlay": "Show outline",
-      "close-overlay": "Hide outline",
-    }[outlineAction];
+    return DETAILS_LABELS[detailsAction];
   };
 
   return {
     shapes,
     toggle,
     toggleLabel,
-    closeOutlineOverlay: () => setOutlineOverlayOpen(false),
+    closeDetailsFloat: () => setDetailsFloatOpen(false),
   };
 }
 

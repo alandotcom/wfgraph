@@ -39,6 +39,7 @@ import type { RevealLevel } from "#src/lib/workflow-navigation-state";
 import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { WorkflowDetails } from "./workflow-details";
 
 /**
@@ -47,13 +48,15 @@ import { WorkflowDetails } from "./workflow-details";
  * evidence, under a header naming it. In Draft with nothing selected it shows
  * the workflow's own details and issues. The subject's kind supplies the
  * header and bodies. Escape and Back take one step back as the kind defines
- * it, and with no step left Escape hands focus back to the selected object on
- * the canvas. A run node's evidence opens with focus on its title.
+ * it. With no step left, Escape hands focus back to the selected step's
+ * outline row, or else to the object on the canvas, and closes details that
+ * floats over the canvas. A run node's evidence opens with focus on its title.
  */
 export function DetailsPanel() {
   // Workspace synchronization can write these before normal subscriptions mount.
   const reveal = useAtomValueRawSync(canvasRevealAtom);
   const showLevel = useSetAtom(showCanvasRevealLevelAtom);
+  const closeDetailsFloat = useSetAtom(detailsFloatOpenAtom);
   const nodes = useAtomValue(nodesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
   const workflowName = useAtomValue(currentWorkflowNameAtom);
@@ -117,6 +120,9 @@ export function DetailsPanel() {
     const next = unwoundLevel(level);
     if (next === null) {
       returnFocus();
+      // Details floating over the canvas slides away once focus has left it.
+      // A docked details column ignores this.
+      closeDetailsFloat(false);
       return;
     }
     showLevel(next);

@@ -194,86 +194,74 @@ export const setColumnCollapsedAtom = atom(
 export const phoneShowsMapAtom = atom(false);
 
 /**
- * Whether the outline shows over the canvas, which it does only between 900px
- * and 1359px while details is docked. It is not kept across reloads.
+ * Whether details floats over the right of the canvas while the details
+ * column is not docked. A selection opens it and clearing the selection closes
+ * it; its close control, Escape inside it, and `]` close it too. It is not kept
+ * across reloads, and a docked details column ignores it.
  */
-export const outlineOverlayOpenAtom = atom(false);
+export const detailsFloatOpenAtom = atom(false);
 
 /**
  * The editor's three window widths. `wide` is 1360px and wider, where both side
- * columns dock. `medium` is 900px to 1359px, where the outline docks only while
- * details is collapsed. `compact` is narrower than 900px, where the outline is
- * the screen.
+ * columns dock. `medium` is 900px to 1359px, where the outline docks and
+ * details floats over the canvas. `compact` is narrower than 900px, where the
+ * outline is the screen.
  */
 export type EditorLayout = "wide" | "medium" | "compact";
 
-/** What one side column shows: docked beside the canvas, a rail, or over it. */
-export type ColumnShape = "docked" | "rail" | "overlay";
+/**
+ * What one side column shows: docked beside the canvas, or a rail. Details
+ * that is not docked floats over the right of the canvas while it is open.
+ */
+export type ColumnShape = "docked" | "rail" | "floating";
 
 /**
- * What each side column shows in `layout`. Details docks unless the person
- * collapsed it. In `wide` the outline does the same. In `medium` the canvas
- * keeps room for one docked column, so the outline docks only while details is
- * collapsed; otherwise it is a rail, or shows over the canvas while
- * `outlineOverlayOpen`. `compact` has no side columns of its own.
+ * What each side column shows in `layout`. The outline docks unless the
+ * person collapsed it. Details docks in `wide` unless the person collapsed it;
+ * in `medium` it never docks, because the canvas keeps room for one docked
+ * column, which is the outline's. Details that is not docked is a rail, and
+ * floats while `detailsFloatOpen`. `compact` has no side columns of its own.
  */
 export function columnShapes(input: {
   layout: EditorLayout;
   preferences: ColumnPreferences;
-  outlineOverlayOpen: boolean;
+  detailsFloatOpen: boolean;
 }): Record<ColumnSide, ColumnShape> {
   const { preferences } = input;
-  const details: ColumnShape = preferences.details.collapsed
+  const outline: ColumnShape = preferences.outline.collapsed
     ? "rail"
     : "docked";
-  if (input.layout === "wide") {
-    return {
-      outline: preferences.outline.collapsed ? "rail" : "docked",
-      details,
-    };
+  if (input.layout === "wide" && !preferences.details.collapsed) {
+    return { outline, details: "docked" };
   }
-  if (!preferences.outline.collapsed && preferences.details.collapsed) {
-    return { outline: "docked", details };
-  }
-  return {
-    outline: input.outlineOverlayOpen ? "overlay" : "rail",
-    details,
-  };
+  return { outline, details: input.detailsFloatOpen ? "floating" : "rail" };
 }
 
 /**
- * What the outline's collapse control, its shortcut and its command do in
- * `layout` from `shape`: collapse a docked outline, open or close the outline
- * over the canvas, or dock it again when nothing stops it from docking.
+ * What the details column's control, `]` and its command do in `layout`: in
+ * `wide` they collapse or dock the column, and in `medium` they open or close
+ * the floating details.
  */
-export function outlineToggle(input: {
+export function detailsToggle(input: {
   layout: EditorLayout;
   shape: ColumnShape;
-  preferences: ColumnPreferences;
-}): "collapse" | "dock" | "open-overlay" | "close-overlay" {
-  if (input.shape === "docked") {
-    return "collapse";
+}): "collapse" | "dock" | "float" | "close-float" {
+  if (input.layout === "wide") {
+    return input.shape === "docked" ? "collapse" : "dock";
   }
-  if (input.shape === "overlay") {
-    return "close-overlay";
-  }
-  const docksWhenExpanded =
-    input.layout === "wide" || input.preferences.details.collapsed;
-  return docksWhenExpanded ? "dock" : "open-overlay";
+  return input.shape === "floating" ? "close-float" : "float";
 }
 
 /**
- * Show one tab of the details column, bringing the column back when the person
- * collapsed it, for a command that asks for that tab by name: "Describe it to
- * the agent", or an issue's Edit.
+ * Show one tab of the details column, for a command that asks for that tab by
+ * name: "Describe it to the agent", or an issue's Edit. Details that is not
+ * docked floats in to show it.
  */
 const showDetailsColumnTabAtom = atom(
   null,
-  (get, set, tab: "details" | "agent") => {
+  (_get, set, tab: "details" | "agent") => {
     set(detailsTabAtom, tab);
-    if (get(columnPreferencesStateAtom).details.collapsed) {
-      set(setColumnCollapsedAtom, { side: "details", collapsed: false });
-    }
+    set(detailsFloatOpenAtom, true);
   }
 );
 

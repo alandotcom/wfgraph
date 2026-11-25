@@ -3,7 +3,7 @@ import {
   type ColumnPreferences,
   columnPreferencesCookie,
   columnShapes,
-  outlineToggle,
+  detailsToggle,
   readColumnPreferences,
 } from "./editor-columns-store";
 
@@ -58,85 +58,57 @@ describe("columnShapes", () => {
       columnShapes({
         layout: "wide",
         preferences: preferences(false, false),
-        outlineOverlayOpen: false,
+        detailsFloatOpen: true,
       })
     ).toEqual({ outline: "docked", details: "docked" });
     expect(
       columnShapes({
         layout: "wide",
-        preferences: preferences(true, false),
-        outlineOverlayOpen: false,
+        preferences: preferences(true, true),
+        detailsFloatOpen: false,
       })
-    ).toEqual({ outline: "rail", details: "docked" });
+    ).toEqual({ outline: "rail", details: "rail" });
   });
 
-  it("keeps the outline a rail at medium widths while details is docked", () => {
+  it("floats collapsed details at wide widths while it is open", () => {
     expect(
       columnShapes({
-        layout: "medium",
-        preferences: preferences(false, false),
-        outlineOverlayOpen: false,
-      })
-    ).toEqual({ outline: "rail", details: "docked" });
-    expect(
-      columnShapes({
-        layout: "medium",
-        preferences: preferences(false, false),
-        outlineOverlayOpen: true,
-      })
-    ).toEqual({ outline: "overlay", details: "docked" });
-  });
-
-  it("docks the outline at medium widths once details is collapsed", () => {
-    expect(
-      columnShapes({
-        layout: "medium",
+        layout: "wide",
         preferences: preferences(false, true),
-        outlineOverlayOpen: false,
+        detailsFloatOpen: true,
+      })
+    ).toEqual({ outline: "docked", details: "floating" });
+  });
+
+  it("docks the outline at medium widths and floats details while it is open", () => {
+    expect(
+      columnShapes({
+        layout: "medium",
+        preferences: preferences(false, false),
+        detailsFloatOpen: false,
       })
     ).toEqual({ outline: "docked", details: "rail" });
+    expect(
+      columnShapes({
+        layout: "medium",
+        preferences: preferences(true, false),
+        detailsFloatOpen: true,
+      })
+    ).toEqual({ outline: "rail", details: "floating" });
   });
 });
 
-describe("outlineToggle", () => {
-  it("collapses a docked outline and docks a collapsed one where it fits", () => {
-    expect(
-      outlineToggle({
-        layout: "wide",
-        shape: "docked",
-        preferences: preferences(false, false),
-      })
-    ).toBe("collapse");
-    expect(
-      outlineToggle({
-        layout: "wide",
-        shape: "rail",
-        preferences: preferences(true, false),
-      })
-    ).toBe("dock");
-    expect(
-      outlineToggle({
-        layout: "medium",
-        shape: "rail",
-        preferences: preferences(true, true),
-      })
-    ).toBe("dock");
+describe("detailsToggle", () => {
+  it("collapses and docks details at wide widths", () => {
+    expect(detailsToggle({ layout: "wide", shape: "docked" })).toBe("collapse");
+    expect(detailsToggle({ layout: "wide", shape: "rail" })).toBe("dock");
+    expect(detailsToggle({ layout: "wide", shape: "floating" })).toBe("dock");
   });
 
-  it("opens and closes the outline over the canvas at medium widths", () => {
-    expect(
-      outlineToggle({
-        layout: "medium",
-        shape: "rail",
-        preferences: preferences(false, false),
-      })
-    ).toBe("open-overlay");
-    expect(
-      outlineToggle({
-        layout: "medium",
-        shape: "overlay",
-        preferences: preferences(false, false),
-      })
-    ).toBe("close-overlay");
+  it("opens and closes floating details at medium widths", () => {
+    expect(detailsToggle({ layout: "medium", shape: "rail" })).toBe("float");
+    expect(detailsToggle({ layout: "medium", shape: "floating" })).toBe(
+      "close-float"
+    );
   });
 });

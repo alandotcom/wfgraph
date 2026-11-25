@@ -1,15 +1,20 @@
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  X,
 } from "lucide-react";
-import { type ReactNode, useRef } from "react";
+import type { ReactNode } from "react";
 import { Button } from "#src/components/ui/button";
 import { ControlTooltip } from "#src/components/ui/control-tooltip";
-import { useDomEvent } from "#src/hooks/effects";
+import { canvasRevealAtom } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
+import { placementNodeIds } from "#src/components/workflow/canvas-reveal/reveal-geometry";
+import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
+import { useAfterCommit } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { cn } from "@wfgraph/shared/utils";
 import { ColumnResizeHandle } from "./column-resize-handle";
 import { MobileRevealCovered } from "#src/components/workflow/canvas-reveal/mobile-reveal";
@@ -17,6 +22,7 @@ import {
   type ColumnSide,
   columnPreferencesAtom,
   columnWidth,
+  detailsFloatOpenAtom,
   phoneShowsMapAtom,
 } from "./editor-columns-store";
 import { COLUMN_SHORTCUT_KEYS } from "#src/lib/shortcut-label";
@@ -28,19 +34,24 @@ const COLUMN_LABELS: Record<ColumnSide, string> = {
 };
 
 /** The button that collapses, shows or hides one column, with its shortcut. */
-function ColumnToggleButton({ side }: { side: ColumnSide }) {
+function ColumnToggleButton({
+  side,
+  inFloat = false,
+}: {
+  side: ColumnSide;
+  /** Whether the button sits in floating details' header, where it closes it. */
+  inFloat?: boolean;
+}) {
   const controls = useColumnControls();
   const shape = controls.shapes[side];
-  const label = controls.toggleLabel(side);
+  const closesFloat = inFloat && shape === "floating";
+  const label = closesFloat ? "Close details" : controls.toggleLabel(side);
   const opens = shape === "rail";
-  const Icon =
+  const sideIcons =
     side === "outline"
-      ? opens
-        ? PanelLeftOpen
-        : PanelLeftClose
-      : opens
-        ? PanelRightOpen
-        : PanelRightClose;
+      ? { open: PanelLeftOpen, close: PanelLeftClose }
+      : { open: PanelRightOpen, close: PanelRightClose };
+  const Icon = closesFloat ? X : opens ? sideIcons.open : sideIcons.close;
   return (
     <ControlTooltip
       label={label}
@@ -50,7 +61,9 @@ function ColumnToggleButton({ side }: { side: ColumnSide }) {
       <Button
         aria-label={label}
         data-slot="column-toggle"
-        onClick={() => controls.toggle(side)}
+        onClick={() =>
+          closesFloat ? controls.closeDetailsFloat() : controls.toggle(side)
+        }
         size="icon-sm"
         type="button"
         variant="ghost"
@@ -82,7 +95,11 @@ export function ColumnHeader({
       )}
       data-slot="column-header"
     >
-      {isMobile ? null : <ColumnToggleButton side={side} />}
+      {isMobile ? null : (
+        // Details' header sits in floating details whenever details is not
+        // docked, so its control closes the float there.
+        <ColumnToggleButton inFloat={side === "details"} side={side} />
+      )}
       <div className="flex min-w-0 flex-1 items-center gap-2">{children}</div>
     </div>
   );
@@ -132,48 +149,78 @@ function DockedColumn({
   );
 }
 
+/** The gap between floating details and the canvas box's edges, in pixels. */
+const FLOAT_INSET_PX = 8;
+
 /**
- * The outline shown over the left of the canvas, between 900px and 1359px
- * while details is docked. Escape inside it, or a press outside it and its
- * rail, closes it.
+ * Details floating over the right of the canvas, for a details column that is
+ * not docked. It has the docked column's width and content, and slides in and
+ * out on `open` without changing the canvas box, so nothing reflows. Closed it
+ * stays mounted, out of sight and inert, so the agent's conversation and the
+ * inspector's state survive it. `data-covers-width` tells the canvas camera
+ * how much of the canvas it covers while open.
  */
-function OutlineOverlay({
+function FloatingDetails({
+  open,
   children,
-  onClose,
 }: {
+  open: boolean;
   children: ReactNode;
-  onClose: () => void;
 }) {
   const preferences = useAtomValue(columnPreferencesAtom);
-  const ref = useRef<HTMLElement>(null);
-  useDomEvent(document, "pointerdown", (event) => {
-    const target = event.target instanceof Element ? event.target : null;
-    if (
-      target !== null &&
-      !ref.current?.contains(target) &&
-      target.closest('[data-slot="column-rail"]') === null
-    ) {
-      onClose();
-    }
-  });
+  const width = columnWidth("details", preferences);
   return (
     <section
-      aria-label={COLUMN_LABELS.outline}
-      className="absolute inset-y-0 left-0 z-30 flex flex-col border-r bg-sidebar shadow-lg"
-      data-column="outline"
-      data-slot="editor-column"
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && !event.defaultPrevented) {
-          event.preventDefault();
-          onClose();
-        }
+      aria-label={COLUMN_LABELS.details}
+      className="absolute inset-y-2 right-2 z-20 flex flex-col overflow-clip rounded-xl border bg-sidebar shadow-lg transition-transform duration-200 ease-out motion-reduce:transition-none"
+      data-column="details"
+      data-covers-width={open ? width + FLOAT_INSET_PX : 0}
+      data-open={open}
+      data-slot="details-float"
+      inert={!open}
+      style={{
+        width,
+        transform: open
+          ? "translateX(0)"
+          : `translateX(calc(100% + ${FLOAT_INSET_PX}px))`,
       }}
-      ref={ref}
-      style={{ width: columnWidth("outline", preferences) }}
     >
       {children}
     </section>
   );
+}
+
+/**
+ * Opens floating details when the selection comes to hold something and closes
+ * it when the selection empties. Each opening for a selection asks the canvas
+ * camera to show the selected nodes beside the panel, which moves the camera
+ * only when the panel would cover them. A docked details column ignores the
+ * open state, and a phone has none.
+ */
+function useDetailsFloatFollowsSelection(input: {
+  enabled: boolean;
+  docked: boolean;
+}) {
+  const store = useStore();
+  const setOpen = useSetAtom(detailsFloatOpenAtom);
+  const requestPlacement = useSetAtom(requestRevealPlacementAtom);
+  const selection = useAtomValue(activeSelectionAtom);
+  const { addressId } = useAtomValue(canvasRevealAtom);
+  const selectionKey =
+    selection.nodeIds.length + selection.edgeIds.length === 0
+      ? null
+      : `${addressId}|${selection.nodeIds.join(",")}|${selection.edgeIds.join(",")}`;
+  useAfterCommit(selectionKey, () => {
+    if (!input.enabled) {
+      return;
+    }
+    setOpen(selectionKey !== null);
+    const { subject } = store.get(canvasRevealAtom);
+    const nodeIds = placementNodeIds(subject?.placement);
+    if (selectionKey !== null && !input.docked && nodeIds.length > 0) {
+      requestPlacement({ addressId, nodeIds });
+    }
+  });
 }
 
 /**
@@ -222,10 +269,11 @@ function PhoneMain({
 /**
  * The editor below the toolbar: the outline column, the canvas box, and the
  * details column, left to right, which is also their Tab order. Each side
- * column is docked at its chosen width, a rail when collapsed, or, for the
- * outline at medium widths, a panel over the canvas. Only the person's own
- * collapse and resize controls change them, so a selection never resizes the
- * canvas box. `[` and `]` collapse and show the outline and details.
+ * column is docked at its chosen width or a rail. Details that is not docked
+ * floats over the right of the canvas while a selection holds something.
+ * Only the person's own collapse and resize controls change the docked
+ * columns, so a selection never resizes the canvas box. `[` and `]` collapse
+ * and show the outline and details.
  */
 export function EditorColumns({
   outline,
@@ -250,6 +298,10 @@ export function EditorColumns({
   const showsMap = useAtomValue(phoneShowsMapAtom);
   useColumnShortcuts(controls, { enabled: !isMobile });
   const { shapes } = controls;
+  useDetailsFloatFollowsSelection({
+    enabled: !isMobile,
+    docked: shapes.details === "docked",
+  });
   if (isMobile) {
     return (
       <div
@@ -263,17 +315,21 @@ export function EditorColumns({
       </div>
     );
   }
+  const docksDetails = shapes.details === "docked";
+  // `overflow-clip` keeps floating details out of sight past the canvas
+  // box's right edge while it is closed, and leaves the box no scroll
+  // container for a focused control to scroll.
   const canvasBox = (
     <div
-      className="relative min-h-[min(20rem,40dvh)] min-w-0 flex-1"
+      className="relative min-h-[min(20rem,40dvh)] min-w-0 flex-1 overflow-clip"
       data-slot="canvas-box"
     >
       {canvas}
-      {shapes.outline === "overlay" ? (
-        <OutlineOverlay onClose={controls.closeOutlineOverlay}>
-          {outline}
-        </OutlineOverlay>
-      ) : null}
+      {docksDetails ? null : (
+        <FloatingDetails open={shapes.details === "floating"}>
+          {details}
+        </FloatingDetails>
+      )}
     </div>
   );
   return (
@@ -287,7 +343,7 @@ export function EditorColumns({
         <ColumnRail side="outline" />
       )}
       {canvasBox}
-      {shapes.details === "docked" ? (
+      {docksDetails ? (
         <DockedColumn side="details">{details}</DockedColumn>
       ) : (
         <ColumnRail side="details" />

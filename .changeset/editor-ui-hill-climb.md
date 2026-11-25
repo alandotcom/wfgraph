@@ -6,7 +6,7 @@
 
 The editor is easier to read and to operate.
 
-- The editor is three columns: the outline, the canvas, and a details column that is always present and always editable. Each side column resizes and collapses, with `[` and `]` as shortcuts, and a selection never changes the columns or moves the camera. The build agent is the details column's second tab. Below 900px the outline is the main view and Map shows the canvas.
+- The editor is three columns: the outline, the canvas, and a details column that is always present and always editable. Each side column resizes and collapses, with `[` and `]` as shortcuts. Where details is not docked, a selection slides it in over the canvas without resizing the canvas. The build agent is the details column's second tab. Below 900px the outline is the main view and Map shows the canvas.
 - The Workflows page lists one-line rows with one State column (Live, Test, Paused or Never published), a page title, and an error state when a list cannot load.
 - A run is titled by its Entity, such as "Patient pat_20418", with the Event that started it and its start time beneath. A step that a test run skipped reads "Skipped (test run)", and a failed step names its cause and the Connection to repair. A refused Run draft stays in its dialog and says which fields are wrong.
 - Editor shortcuts no longer run behind an open dialog or in a text field, dialogs take and return focus, two-finger scroll pans the canvas, and the command palette ranks a command's own name first and finds step types.

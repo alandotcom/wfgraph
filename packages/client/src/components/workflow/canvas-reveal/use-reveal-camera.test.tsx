@@ -242,6 +242,42 @@ describe("useRevealCamera", () => {
     expect(camera.moves).toEqual([]);
   });
 
+  it("shows a requested step beside floating details, and leaves one already beside it", async () => {
+    const float = document.createElement("section");
+    float.dataset.slot = "details-float";
+    float.dataset.coversWidth = "408";
+    document.body.append(float);
+    try {
+      const camera = renderCamera();
+      await camera.settle();
+      const addressId = workspaceAddressId(
+        camera.store.get(activeWorkspaceAddressAtom)
+      );
+      await camera.run(() =>
+        camera.store.set(requestRevealPlacementAtom, {
+          addressId,
+          nodeIds: ["near"],
+        })
+      );
+      expect(camera.moves).toEqual([]);
+
+      await camera.run(() =>
+        camera.store.set(requestRevealPlacementAtom, {
+          addressId,
+          nodeIds: ["far"],
+        })
+      );
+      // The usable canvas ends 408px short of the 1200px edge, at 792px, and
+      // 24px of padding before that. The step's right edge with 64px of
+      // context is at 1364px.
+      expect(camera.moves).toHaveLength(1);
+      expect(camera.moves[0]?.x).toBeCloseTo(-(1364 - (792 - 24)));
+      expect(camera.moves[0]?.zoom).toBe(1);
+    } finally {
+      float.remove();
+    }
+  });
+
   it("answers a request for another address once that address shows", async () => {
     const camera = renderCamera();
     await camera.settle();

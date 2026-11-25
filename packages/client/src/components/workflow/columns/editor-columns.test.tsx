@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
 import { ColumnHeader, EditorColumns } from "./editor-columns";
@@ -8,6 +8,7 @@ import {
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { revealPlacementRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import {
   columnPreferencesAtom,
   phoneShowsMapAtom,
@@ -60,11 +61,25 @@ function renderColumns() {
   return store;
 }
 
-/** The outline column itself, docked or over the canvas, rather than its rail. */
-function outlineColumn(): HTMLElement | null {
+/** A docked column, or null while it is a rail. */
+function dockedColumn(side: "outline" | "details"): HTMLElement | null {
   return document.querySelector<HTMLElement>(
-    '[data-slot="editor-column"][data-column="outline"]'
+    `[data-slot="editor-column"][data-column="${side}"]`
   );
+}
+
+/** Details floating over the canvas, or null while details is docked. */
+function floatingDetails(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[data-slot="details-float"]');
+}
+
+/** Each element of the row under the toolbar, with its width. */
+function columnRow(): string[] {
+  return [
+    ...document.querySelectorAll<HTMLElement>(
+      '[data-slot="editor-columns"] > *'
+    ),
+  ].map((element) => `${element.dataset.slot}:${element.style.width}`);
 }
 
 function pressKey(key: string, target: Element = document.body) {
@@ -100,11 +115,18 @@ describe("EditorColumns", () => {
     const store = renderColumns();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse details" }));
-    expect(screen.queryByText("Details body")).toBeNull();
+    expect(dockedColumn("details")).toBeNull();
+    expect(floatingDetails()?.dataset.open).toBe("false");
     expect(store.get(columnPreferencesAtom).details.collapsed).toBe(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show details" }));
-    expect(screen.getByText("Details body")).toBeTruthy();
+    const rail = document.querySelector<HTMLElement>(
+      '[data-slot="column-rail"][data-column="details"]'
+    );
+    fireEvent.click(
+      within(rail as HTMLElement).getByRole("button", { name: "Show details" })
+    );
+    expect(dockedColumn("details")).not.toBeNull();
+    expect(floatingDetails()).toBeNull();
   });
 
   it("toggles the outline with [ and details with ] outside text fields", () => {
@@ -112,41 +134,104 @@ describe("EditorColumns", () => {
     renderColumns();
 
     pressKey("[");
-    expect(screen.queryByText("Outline body")).toBeNull();
+    expect(dockedColumn("outline")).toBeNull();
     pressKey("]");
-    expect(screen.queryByText("Details body")).toBeNull();
+    expect(dockedColumn("details")).toBeNull();
     pressKey("[");
     pressKey("]");
-    expect(screen.getByText("Outline body")).toBeTruthy();
-    expect(screen.getByText("Details body")).toBeTruthy();
+    expect(dockedColumn("outline")).not.toBeNull();
+    expect(dockedColumn("details")).not.toBeNull();
 
     const field = document.createElement("input");
     document.body.append(field);
     pressKey("[", field);
-    expect(screen.getByText("Outline body")).toBeTruthy();
+    expect(dockedColumn("outline")).not.toBeNull();
     field.remove();
   });
 
-  it("opens the outline over the canvas at medium widths while details is docked", () => {
-    setViewportWidth(1100);
-    renderColumns();
+  it("docks the outline at medium widths and floats details in on a selection", () => {
+    setViewportWidth(1280);
+    const store = renderColumns();
+    expect(dockedColumn("outline")).not.toBeNull();
+    expect(dockedColumn("details")).toBeNull();
+    expect(floatingDetails()?.dataset.open).toBe("false");
+    expect(floatingDetails()?.hasAttribute("inert")).toBe(true);
+    const row = columnRow();
 
-    expect(screen.queryByText("Outline body")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show outline" }));
-    const overlay = outlineColumn();
-    // The outline shows inside the canvas box, over the canvas.
-    expect(overlay?.parentElement).toBe(
-      screen.getByTestId("canvas").parentElement
-    );
-    fireEvent.keyDown(overlay as HTMLElement, { key: "Escape" });
-    expect(screen.queryByText("Outline body")).toBeNull();
+    act(() => {
+      store.set(selectOnlyNodeAtom, "send");
+    });
+    // Details floats over the canvas box, which keeps its size, and the
+    // camera is asked to show the step beside it.
+    expect(floatingDetails()?.dataset.open).toBe("true");
+    expect(floatingDetails()?.dataset.coversWidth).toBe("408");
+    expect(floatingDetails()?.parentElement?.dataset.slot).toBe("canvas-box");
+    expect(columnRow()).toEqual(row);
+    expect(store.get(revealPlacementRequestAtom)?.nodeIds).toEqual(["send"]);
 
-    // Collapsing details leaves room to dock the outline instead.
-    fireEvent.click(screen.getByRole("button", { name: "Collapse details" }));
-    expect(outlineColumn()?.parentElement?.getAttribute("data-slot")).toBe(
-      "editor-columns"
+    act(() => {
+      store.set(clearSelectionAtom);
+    });
+    expect(floatingDetails()?.dataset.open).toBe("false");
+    expect(columnRow()).toEqual(row);
+  });
+
+  it("closes floating details from its control and ] and reopens it with ]", () => {
+    setViewportWidth(1280);
+    const store = renderColumns();
+    act(() => {
+      store.set(selectOnlyNodeAtom, "send");
+    });
+
+    fireEvent.click(
+      within(floatingDetails() as HTMLElement).getByRole("button", {
+        name: "Close details",
+      })
     );
-    expect(screen.getByText("Outline body")).toBeTruthy();
+    expect(floatingDetails()?.dataset.open).toBe("false");
+    pressKey("]");
+    expect(floatingDetails()?.dataset.open).toBe("true");
+    pressKey("]");
+    expect(floatingDetails()?.dataset.open).toBe("false");
+
+    // With nothing selected, ] still opens the workflow's own details.
+    act(() => {
+      store.set(clearSelectionAtom);
+    });
+    pressKey("]");
+    expect(floatingDetails()?.dataset.open).toBe("true");
+  });
+
+  it("floats details on a selection at wide widths once the person collapsed it", () => {
+    setViewportWidth(1512);
+    const store = renderColumns();
+    pressKey("]");
+    act(() => {
+      store.set(selectOnlyNodeAtom, "send");
+    });
+    expect(floatingDetails()?.dataset.open).toBe("true");
+
+    pressKey("]");
+    expect(dockedColumn("details")).not.toBeNull();
+    expect(floatingDetails()).toBeNull();
+  });
+
+  it("keeps every docked column and the canvas box as they are on a selection", () => {
+    setViewportWidth(1512);
+    const store = renderColumns();
+    const row = columnRow();
+
+    act(() => {
+      store.set(selectOnlyNodeAtom, "send");
+    });
+    expect(columnRow()).toEqual(row);
+    expect(floatingDetails()).toBeNull();
+    // Docked details covers nothing, so the selection asks for no placement.
+    expect(store.get(revealPlacementRequestAtom)).toBeNull();
+    act(() => {
+      store.set(clearSelectionAtom);
+    });
+    expect(columnRow()).toEqual(row);
   });
 
   it("resizes a column with the arrow keys inside its range", () => {
@@ -162,27 +247,6 @@ describe("EditorColumns", () => {
     expect(handle.getAttribute("aria-valuenow")).toBe("560");
     fireEvent.doubleClick(handle);
     expect(handle.getAttribute("aria-valuenow")).toBe("400");
-  });
-
-  it("keeps every column where it is when a step is selected and deselected", () => {
-    setViewportWidth(1512);
-    const store = renderColumns();
-    const layout = () =>
-      [
-        ...document.querySelectorAll<HTMLElement>(
-          '[data-slot="editor-columns"] > *'
-        ),
-      ].map((element) => `${element.dataset.slot}:${element.style.width}`);
-    const before = layout();
-
-    act(() => {
-      store.set(selectOnlyNodeAtom, "send");
-    });
-    expect(layout()).toEqual(before);
-    act(() => {
-      store.set(clearSelectionAtom);
-    });
-    expect(layout()).toEqual(before);
   });
 
   it("shows the outline as a phone's main view, and the canvas once Map is pressed", () => {

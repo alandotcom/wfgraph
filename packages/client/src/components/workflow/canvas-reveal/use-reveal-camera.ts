@@ -24,26 +24,37 @@ import { measureObstacles, usableCanvasRect } from "./reveal-geometry";
 import { revealPlacementRequestAtom } from "./reveal-requests";
 
 /**
- * The pixels the review sheet covers at the right of the canvas element, or 0
- * while it does not show. The sheet overlays the canvas from the editor's right
- * edge, so a step a review edit points at is placed beside it.
+ * The pixels covered at the right of the canvas element: by the review sheet,
+ * which overlays the canvas from the editor's right edge, or by details
+ * floating over the canvas, whichever covers more, and 0 while neither shows.
+ * Floating details states its width with its inset, because it may still be
+ * sliding in when the camera measures.
  */
-function reviewSheetOverlap(canvas: HTMLElement): number {
+function coveredRightWidth(canvas: HTMLElement): number {
   const sheet = document.querySelector('[data-slot="review-sheet"]');
-  if (sheet === null) {
-    return 0;
-  }
-  const canvasRect = canvas.getBoundingClientRect();
-  return Math.max(0, canvasRect.right - sheet.getBoundingClientRect().left);
+  const sheetOverlap =
+    sheet === null
+      ? 0
+      : Math.max(
+          0,
+          canvas.getBoundingClientRect().right -
+            sheet.getBoundingClientRect().left
+        );
+  const floating = Number(
+    document
+      .querySelector<HTMLElement>('[data-slot="details-float"]')
+      ?.getAttribute("data-covers-width") ?? 0
+  );
+  return Math.max(sheetOverlap, Number.isFinite(floating) ? floating : 0);
 }
 
 /**
  * Answers each placement request once: the command palette, an issue, an
- * outline row, a jump between scopes, and the review sheet ask for nodes to be
- * shown. The camera moves the least it must to bring those nodes fully into the
- * canvas, clear of the controls floating over it and of the review sheet, so a
- * node already in view moves nothing. A selection on its own asks for nothing,
- * and the columns beside the canvas never move it. It only calls
+ * outline row, a jump between scopes, the review sheet, and a selection while
+ * details floats over the canvas ask for nodes to be shown. The camera moves
+ * the least it must to bring those nodes fully into the canvas, clear of the
+ * controls floating over it, the review sheet and floating details, so a node
+ * already in view moves nothing. A docked column never moves it. It only calls
  * `setViewport`: no layout runs and no node moves. A request waits until its
  * address shows, the canvas can be placed, and React Flow holds every node it
  * names. `canvas` is the element React Flow fills.
@@ -111,7 +122,7 @@ export function useRevealCamera(input: {
         inFlightRef.current ?? worldCameraFromViewport(getViewport(), size);
       const usable = usableCanvasRect({
         canvas: size,
-        rightOccupiedWidth: reviewSheetOverlap(element),
+        rightOccupiedWidth: coveredRightWidth(element),
         obstacles: measureObstacles(element),
       });
       if (usable === null) {
