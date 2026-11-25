@@ -1472,7 +1472,7 @@ describe("LifecyclePanel start filters", () => {
     ).toBeNull();
   });
 
-  it("names a filter action for the Event it edits", () => {
+  it("edits an Event's filter in place, with no Edit or Done of its own", () => {
     const model = filterOnTenant();
     const view = renderWithCatalog(
       <ControlledPanel
@@ -1482,16 +1482,10 @@ describe("LifecyclePanel start filters", () => {
       />
     );
 
-    const edit = view.getByRole("button", {
-      name: "Edit filter for Appointment created",
-    });
-    fireEvent.click(edit);
-
     expect(
-      view.getByRole("button", {
-        name: "Done editing filter for Appointment created",
-      })
-    ).toBeTruthy();
+      view.queryByRole("button", { name: /filter for Appointment created$/ })
+    ).toBeNull();
+    expect(view.getByLabelText("Select field")).toBeTruthy();
   });
 
   it("writes one filter to every Start Event while they agree", async () => {

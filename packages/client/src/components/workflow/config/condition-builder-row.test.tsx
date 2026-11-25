@@ -104,6 +104,7 @@ function ControlledRow({
   initialValue,
   onChange = vi.fn(),
   setOperatorsRequireEnumValues,
+  disabled = false,
 }: {
   fields: ConditionSelectableField[];
   initialValue: string;
@@ -111,6 +112,7 @@ function ControlledRow({
     | ((next: { model: string; expression: string }) => void)
     | undefined;
   setOperatorsRequireEnumValues?: boolean | undefined;
+  disabled?: boolean | undefined;
 }) {
   const [value, setValue] = useState(initialValue);
 
@@ -118,8 +120,7 @@ function ControlledRow({
     <ConditionBuilderRow
       currentNodeId="condition-1"
       description="Build a condition"
-      disabled={false}
-      editActionName="condition"
+      disabled={disabled}
       emptyFieldsMessage="No fields"
       fields={fields}
       label="Continue when"
@@ -138,7 +139,11 @@ function renderRow(
   fields: ConditionSelectableField[],
   initialValue: string,
   onChange?: (next: { model: string; expression: string }) => void,
-  options?: { setOperatorsRequireEnumValues?: boolean | undefined }
+  options?: {
+    setOperatorsRequireEnumValues?: boolean | undefined;
+    /** A person who may not edit, who reads the rules as text. */
+    disabled?: boolean | undefined;
+  }
 ) {
   return render(
     <ExtensionCatalogProvider value={emptyExtensionCatalog}>
@@ -146,6 +151,7 @@ function renderRow(
         fields={fields}
         initialValue={initialValue}
         onChange={onChange}
+        disabled={options?.disabled}
         setOperatorsRequireEnumValues={options?.setOperatorsRequireEnumValues}
       />
     </ExtensionCatalogProvider>
@@ -186,16 +192,6 @@ function openFieldPicker(view: RenderResult) {
   return input;
 }
 
-/**
- * Open the row's controls.
- *
- * The row reads as text until its Edit button is pressed, so every case about a
- * control goes through here first.
- */
-function enterEdit(view: RenderResult) {
-  fireEvent.click(view.getByRole("button", { name: "Edit condition" }));
-}
-
 describe("ConditionBuilderRow field picker", () => {
   it("offers every field, grouped by the node that produced it", () => {
     const view = renderRow(
@@ -203,7 +199,6 @@ describe("ConditionBuilderRow field picker", () => {
       storedModel("becsRef")
     );
 
-    enterEdit(view);
     openFieldPicker(view);
 
     expect(view.getByText("Look Up Donor")).toBeTruthy();
@@ -227,7 +222,6 @@ describe("ConditionBuilderRow field picker", () => {
       storedModel("appointment.id")
     );
 
-    enterEdit(view);
     openFieldPicker(view);
 
     expect(view.getByText("__proto__")).toBeTruthy();
@@ -238,7 +232,6 @@ describe("ConditionBuilderRow field picker", () => {
 
   it("filters the list as the builder types", () => {
     const view = renderRow(DONOR_FIELDS, storedModel("becsRef"));
-    enterEdit(view);
     const input = openFieldPicker(view);
 
     fireEvent.change(input, { target: { value: "email" } });
@@ -253,10 +246,11 @@ describe("ConditionBuilderRow field picker", () => {
     const fields = [field(path, "Donor State", { label: "Journey status" })];
     const view = renderRow(fields, storedModel(path));
 
-    expect(view.getByText(/Journey status/)).toBeTruthy();
+    expect(
+      (view.getByLabelText("Select field") as HTMLInputElement).value
+    ).toBe("Journey status");
     expect(view.queryByText(/\$entity:donor/)).toBeNull();
 
-    enterEdit(view);
     openFieldPicker(view);
 
     expect(view.getByRole("option").textContent).toBe("Journey status");
@@ -268,7 +262,6 @@ describe("ConditionBuilderRow field picker", () => {
       [...DONOR_FIELDS, ...APPOINTMENT_FIELDS],
       storedModel("becsRef")
     );
-    enterEdit(view);
     const input = openFieldPicker(view);
 
     fireEvent.change(input, { target: { value: "Created" } });
@@ -280,7 +273,6 @@ describe("ConditionBuilderRow field picker", () => {
 
   it("says when nothing matches the query", () => {
     const view = renderRow(DONOR_FIELDS, storedModel("becsRef"));
-    enterEdit(view);
     const input = openFieldPicker(view);
 
     fireEvent.change(input, { target: { value: "zzzz" } });
@@ -293,7 +285,6 @@ describe("ConditionBuilderRow field picker", () => {
     const onChange = vi.fn();
     const view = renderRow(DONOR_FIELDS, storedModel("becsRef"), onChange);
 
-    enterEdit(view);
     chooseField(view, "firstName");
 
     const written = onChange.mock.calls.at(-1)?.[0] as
@@ -310,7 +301,6 @@ describe("ConditionBuilderRow field picker", () => {
   // somebody to type a dotted path into a field search.
   it("offers an open record as an ordinary row", () => {
     const view = renderRow(TAG_FIELDS, storedModel("data.email_id"));
-    enterEdit(view);
     const input = openFieldPicker(view);
 
     fireEvent.change(input, { target: { value: "data.tags" } });
@@ -326,7 +316,6 @@ describe("ConditionBuilderRow field picker", () => {
     const onChange = vi.fn();
     const view = renderRow(TAG_FIELDS, storedModel("data.email_id"), onChange);
 
-    enterEdit(view);
     chooseField(view, "data.tags");
     fireEvent.change(view.getByLabelText("Key"), {
       target: { value: "order_id" },
@@ -342,7 +331,6 @@ describe("ConditionBuilderRow field picker", () => {
     const onChange = vi.fn();
     const view = renderRow(TAG_FIELDS, storedModel("data.email_id"), onChange);
 
-    enterEdit(view);
     chooseField(view, "data.tags");
 
     // Comparing the record itself is an object no arrival equals, so the rule
@@ -362,7 +350,6 @@ describe("ConditionBuilderRow field picker", () => {
     const onChange = vi.fn();
     const view = renderRow(TAG_FIELDS, recordModel("order_id"), onChange);
 
-    enterEdit(view);
     fireEvent.change(view.getByLabelText("Key"), {
       target: { value: "campaign" },
     });
@@ -482,7 +469,6 @@ describe("ConditionBuilderRow field picker", () => {
   it("fills the Key box from a stored rule", () => {
     const view = renderRow(TAG_FIELDS, recordModel("order_id"));
 
-    enterEdit(view);
     expect(view.getByLabelText("Key")).toHaveProperty("value", "order_id");
     expect(view.queryByText(/Unavailable/)).toBeNull();
   });
@@ -493,7 +479,6 @@ describe("ConditionBuilderRow field picker", () => {
     const onChange = vi.fn();
     const view = renderRow(TAG_FIELDS, recordModel("order_id"), onChange);
 
-    enterEdit(view);
     fireEvent.change(view.getByLabelText("Key"), {
       target: { value: "order.id" },
     });
@@ -505,14 +490,12 @@ describe("ConditionBuilderRow field picker", () => {
   it("draws no Key box for an ordinary field", () => {
     const view = renderRow(TAG_FIELDS, storedModel("data.email_id"));
 
-    enterEdit(view);
     expect(view.queryByLabelText("Key")).toBeNull();
   });
 
   it("keeps a stored path the graph no longer offers", () => {
     const view = renderRow(DONOR_FIELDS, storedModel("gone.path"));
 
-    enterEdit(view);
     expect(
       (view.getByLabelText("Select field") as HTMLInputElement).value
     ).toBe("Unavailable field");
@@ -553,7 +536,6 @@ describe("ConditionBuilderRow rules naming their source node", () => {
   it("offers a path two nodes share once under each node", () => {
     const view = renderRow(SCORE_FIELDS, storedModel("$node:lifecycle.score"));
 
-    enterEdit(view);
     openFieldPicker(view);
 
     expect(view.getByText("Lifecycle")).toBeTruthy();
@@ -569,10 +551,6 @@ describe("ConditionBuilderRow rules naming their source node", () => {
     const onChange = vi.fn();
     const view = renderRow(SCORE_FIELDS, storedModel("score"), onChange);
 
-    expect(view.queryByText("Unavailable field")).toBeNull();
-    expect(view.getByText(/Score/)).toBeTruthy();
-
-    enterEdit(view);
     expect(
       (view.getByLabelText("Select field") as HTMLInputElement).value
     ).toBe("Score");
@@ -582,14 +560,23 @@ describe("ConditionBuilderRow rules naming their source node", () => {
   });
 
   it("marks a rule naming a node the graph no longer offers", () => {
-    const view = renderRow(SCORE_FIELDS, storedModel("$node:deleted.score"));
+    const view = renderRow(
+      SCORE_FIELDS,
+      storedModel("$node:deleted.score"),
+      undefined,
+      {
+        disabled: true,
+      }
+    );
 
     expect(view.getByText("Unavailable field")).toBeTruthy();
     expect(view.queryByText(/deleted/)).toBeNull();
   });
 });
 
-describe("ConditionBuilderRow view mode", () => {
+// A person who may not edit reads the rules as text, with what each one
+// still owes on its own line.
+describe("ConditionBuilderRow read by a person who may not edit", () => {
   function twoGroupModel(): string {
     return serializeConditionModel({
       version: 2,
@@ -634,7 +621,9 @@ describe("ConditionBuilderRow view mode", () => {
   // Every word of the summary comes from the same option tables the pickers are
   // built from, so what a builder reads back is what they picked.
   it("reads each rule back as a line of text", () => {
-    const view = renderRow(DONOR_FIELDS, twoGroupModel());
+    const view = renderRow(DONOR_FIELDS, twoGroupModel(), undefined, {
+      disabled: true,
+    });
 
     expect(view.getByText("2 conditions")).toBeTruthy();
     expect(view.getByText("1 condition")).toBeTruthy();
@@ -647,25 +636,17 @@ describe("ConditionBuilderRow view mode", () => {
     expect(view.queryByLabelText("Select field")).toBeNull();
   });
 
-  it("switches between its two modes with Edit and Done", () => {
+  // An editor's rules are live the way an action step's fields are.
+  it("edits the rules in place, with no Edit or Done", () => {
     const view = renderRow(DONOR_FIELDS, storedModel("becsRef"));
 
-    fireEvent.click(view.getByRole("button", { name: "Edit condition" }));
     expect(view.getByLabelText("Select field")).toBeTruthy();
-
-    fireEvent.click(
-      view.getByRole("button", { name: "Done editing condition" })
-    );
-    expect(view.queryByLabelText("Select field")).toBeNull();
+    expect(view.queryByRole("button", { name: /^Edit / })).toBeNull();
+    expect(view.queryByRole("button", { name: /^Done / })).toBeNull();
   });
 
-  // Nothing configured has no view to show, so the one button both seeds the
-  // model and opens the editor rather than leaving the builder to press Edit
-  // afterwards.
   it("opens the editor from the button that seeds the first rule", () => {
     const view = renderRow(DONOR_FIELDS, "");
-
-    expect(view.queryByRole("button", { name: "Edit condition" })).toBeNull();
 
     fireEvent.click(view.getByRole("button", { name: "Configure condition" }));
 
@@ -752,8 +733,6 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     });
     const view = renderRow(DONOR_FIELDS, stringRule("email", token));
 
-    fireEvent.click(view.getByRole("button", { name: "Edit condition" }));
-
     expect(view.queryByText(/Compiled CEL/)).toBeNull();
     expect(view.queryByText(/payload\.email/)).toBeNull();
   });
@@ -765,7 +744,12 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
     const withEnum = [
       field("status", "Look Up Donor", { enumValues: ["confirmed", "booked"] }),
     ];
-    const view = renderRow(withEnum, stringRule("status", "cancelled"));
+    const view = renderRow(
+      withEnum,
+      stringRule("status", "cancelled"),
+      undefined,
+      { disabled: true }
+    );
 
     expect(view.getByText(/no longer offers/)).toBeTruthy();
   });
@@ -794,7 +778,9 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
             ],
           },
         ],
-      })
+      }),
+      undefined,
+      { disabled: true }
     );
 
     expect(
@@ -834,7 +820,6 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
       onChange
     );
 
-    enterEdit(view);
     fireEvent.click(view.getByRole("combobox", { name: "status operator" }));
     const operator = view.getByRole("option", { name: "is one of" });
     fireEvent.pointerDown(operator);
@@ -865,7 +850,12 @@ describe("ConditionBuilderRow view mode names what a rule still owes", () => {
   // The field picker marks a path the graph no longer offers; the summary marks
   // it the same way, out of the same helper, without exposing the stored path.
   it("marks a field the graph no longer offers", () => {
-    const view = renderRow(DONOR_FIELDS, stringRule("gone.path", "x"));
+    const view = renderRow(
+      DONOR_FIELDS,
+      stringRule("gone.path", "x"),
+      undefined,
+      { disabled: true }
+    );
 
     expect(view.getByText("Unavailable field")).toBeTruthy();
     expect(view.queryByText("gone.path")).toBeNull();
@@ -942,7 +932,6 @@ describe("ConditionBuilderRow set comparison on a plain string field", () => {
 
     expect(view.queryByText(/fixed list/)).toBeNull();
 
-    enterEdit(view);
     expect(
       view.getByRole("combobox", { name: "email operator" }).textContent
     ).toContain("is one of");
@@ -988,8 +977,6 @@ describe("ConditionBuilderRow set comparison on a plain string field", () => {
       })
     );
 
-    enterEdit(view);
-
     expect(view.getByLabelText("Select status values")).toBeTruthy();
     expect(view.queryByLabelText("Add status values")).toBeNull();
   });
@@ -1001,16 +988,22 @@ describe("ConditionBuilderRow set comparison on a plain string field", () => {
       DONOR_FIELDS,
       emailSetModel(["a@example.com"]),
       undefined,
-      { setOperatorsRequireEnumValues: true }
+      { setOperatorsRequireEnumValues: true, disabled: true }
     );
 
     expect(view.getByText(/no longer offers a fixed list/)).toBeTruthy();
+    view.unmount();
 
-    enterEdit(view);
+    const editing = renderRow(
+      DONOR_FIELDS,
+      emailSetModel(["a@example.com"]),
+      undefined,
+      { setOperatorsRequireEnumValues: true }
+    );
     expect(
-      view.getByRole("combobox", { name: "email operator" }).textContent
+      editing.getByRole("combobox", { name: "email operator" }).textContent
     ).toContain("is one of");
-    expect(view.getByText("a@example.com")).toBeTruthy();
+    expect(editing.getByText("a@example.com")).toBeTruthy();
   });
 });
 
@@ -1049,7 +1042,7 @@ describe("ConditionBuilderRow set comparison on an enum field", () => {
 
   // A reference is resolved when the run reaches the rule, so the summary has
   // no enum value to hold it to.
-  it("reports no refusal in view mode for a set holding a reference", () => {
+  it("reports no refusal when read for a set holding a reference", () => {
     const view = renderRow(
       STATUS_FIELDS,
       statusSetModel(["active", reference])
@@ -1059,10 +1052,12 @@ describe("ConditionBuilderRow set comparison on an enum field", () => {
     expect(view.queryByText(/no longer offers/)).toBeNull();
   });
 
-  it("still reports a literal the field no longer offers in view mode", () => {
+  it("still reports a literal the field no longer offers when read", () => {
     const view = renderRow(
       STATUS_FIELDS,
-      statusSetModel(["active", "cancelled"])
+      statusSetModel(["active", "cancelled"]),
+      undefined,
+      { disabled: true }
     );
 
     expect(
@@ -1070,7 +1065,7 @@ describe("ConditionBuilderRow set comparison on an enum field", () => {
     ).toBeTruthy();
   });
 
-  it("reports no refusal in view mode for equals holding a reference", () => {
+  it("reports no refusal when read for equals holding a reference", () => {
     const view = renderRow(
       STATUS_FIELDS,
       serializeConditionModel({
@@ -1091,7 +1086,9 @@ describe("ConditionBuilderRow set comparison on an enum field", () => {
             ],
           },
         ],
-      })
+      }),
+      undefined,
+      { disabled: true }
     );
 
     expect(view.getByText(/Lifecycle\.email/)).toBeTruthy();
@@ -1149,7 +1146,6 @@ describe("ConditionBuilderRow removal", () => {
       onChange
     );
 
-    enterEdit(view);
     fireEvent.click(
       view.getByRole("button", { name: "Remove condition on appointment.id" })
     );
@@ -1164,7 +1160,6 @@ describe("ConditionBuilderRow removal", () => {
     const onChange = vi.fn();
     const view = renderRow(APPOINTMENT_FIELDS, twoGroups(), onChange);
 
-    enterEdit(view);
     fireEvent.click(
       view.getAllByRole("button", { name: /^Remove condition on / })[0]
     );
@@ -1181,7 +1176,6 @@ describe("ConditionBuilderRow removal", () => {
     const onChange = vi.fn();
     const view = renderRow(APPOINTMENT_FIELDS, twoGroups(), onChange);
 
-    enterEdit(view);
     fireEvent.click(view.getByRole("button", { name: "Remove rule set 1" }));
 
     const written = parseConditionModel(onChange.mock.calls.at(-1)?.[0].model);
@@ -1197,10 +1191,8 @@ describe("ConditionBuilderRow removal", () => {
       <ExtensionCatalogProvider value={emptyExtensionCatalog}>
         <ConditionBuilderRow
           currentNodeId="condition-1"
-          defaultEditing
           description="Build a condition"
           disabled
-          editActionName="condition"
           emptyFieldsMessage="No fields"
           fields={APPOINTMENT_FIELDS}
           label="Continue when"
@@ -1242,7 +1234,6 @@ describe("ConditionBuilderRow operator width", () => {
       [field("amount", "Booked", { type: "number" })],
       model
     );
-    enterEdit(view);
 
     const trigger = view.getByLabelText("amount operator");
     expect(trigger.textContent).toContain("is greater than or equal");

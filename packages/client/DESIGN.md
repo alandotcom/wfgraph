@@ -407,7 +407,11 @@ Edits write to the draft as they are made, and autosave carries on. Typing in
 one field is one undo step until the field loses focus or the typing pauses for
 a second, the way a text editor groups it. A step with no
 action chosen shows the action picker, and choosing an action moves focus to
-the first required field it leaves empty. A Condition's rule keeps field,
+the first required field it leaves empty. A Condition's rules are live the
+same way: the sentence saying when it takes True sits above them and changes as
+they do, and there is no Edit or Done. Every rule builder, the Wait's match and
+the filters and eligibility rule inside a Lifecycle section included, edits in
+place; a person who may not edit reads the rules as sentences. A Condition's rule keeps field,
 operator, value, and remove on one line where the rule has 28rem; in a
 narrower details column the field shares the first line with remove, and the
 operator and value share the second. The operator is always as wide as its

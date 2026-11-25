@@ -464,7 +464,6 @@ export function LifecycleEntityEligibilityGroup({
           <ConditionBuilderRow
             description={`Checks current ${entityLabel} data from your app. Steps cannot use this data.`}
             disabled={disabled}
-            editActionName="Eligibility rule"
             emptyFieldsMessage={`The ${entityLabel} has no fields available for an eligibility rule.`}
             fields={entityFields}
             label="Eligible when"

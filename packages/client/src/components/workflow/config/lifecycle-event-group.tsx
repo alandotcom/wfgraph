@@ -73,12 +73,10 @@ const ROLE_COPY = {
 
 const FILTER_COPY = {
   start: {
-    actionForAll: "filter for all start events",
     filterEach: "Use a different filter for each event",
     recollapse: "Use one filter for all events",
   },
   cancel: {
-    actionForAll: "filter for all cancel events",
     filterEach: "Use a different filter for each cancel event",
     recollapse: "Use one filter for all cancel events",
   },
@@ -229,7 +227,6 @@ export function LifecycleEventGroup(props: LifecycleEventGroupProps) {
         {collapsed ? (
           <div className="space-y-1 rounded-md border px-2 py-1.5">
             <LifecycleFilterEditor
-              actionName={filterCopy.actionForAll}
               disabled={disabled}
               eventNames={eventNames}
               model={collapsed.model}
@@ -381,7 +378,6 @@ function ChosenEvent({
           ) : null}
           {filter ? (
             <LifecycleFilterEditor
-              actionName={`filter for ${displayName}`}
               disabled={disabled}
               eventNames={scope}
               model={filter.model}
@@ -410,15 +406,12 @@ function ChosenEvent({
  * model itself and a stored copy of the CEL could only go stale.
  */
 function LifecycleFilterEditor({
-  actionName,
   eventNames,
   model,
   onChange,
   disabled,
   role,
 }: {
-  /** The Edit and Done controls use this subject. */
-  actionName: string;
   /**
    * The Events this filter is written against. One means a filter of its own,
    * several mean one control standing for the group. Held stable by its caller,
@@ -459,13 +452,6 @@ function LifecycleFilterEditor({
     [onChange]
   );
 
-  /**
-   * Whether the rule below was seeded by the button rather than loaded with the
-   * workflow, which is what opens the builder on its controls: one click for a
-   * filter the builder still has to fill in, rather than a summary and an Edit.
-   */
-  const [seededHere, setSeededHere] = useState(false);
-
   const seedFilter = useCallback(() => {
     const seedField = payloadFields[0];
     if (!seedField) {
@@ -480,7 +466,6 @@ function LifecycleFilterEditor({
         })
       )
     );
-    setSeededHere(true);
   }, [payloadFields, onChange]);
 
   if (!model) {
@@ -510,7 +495,6 @@ function LifecycleFilterEditor({
 
   return (
     <ConditionBuilderRow
-      defaultEditing={seededHere}
       description={
         shared
           ? role === "start"
@@ -521,7 +505,6 @@ function LifecycleFilterEditor({
             : "If this event does not match, active runs continue."
       }
       disabled={disabled}
-      editActionName={actionName}
       emptyFieldsMessage={
         shared
           ? role === "start"

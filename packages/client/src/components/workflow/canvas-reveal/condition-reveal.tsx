@@ -274,7 +274,7 @@ export function ConditionSummarySheet({
 
 /**
  * The inspector of a Condition: one sentence saying when it takes True, the
- * rule builder open for editing beneath it, both branch destinations, every
+ * rules edited in place beneath it, both branch destinations, every
  * available input, its label and description, its issues, and its node
  * controls. Every edit writes to the graph store.
  */
@@ -305,11 +305,10 @@ export function ConditionEditor({
       >
         <ConditionFields
           config={node.data.config ?? {}}
-          defaultEditing
           disabled={disabled}
           fields={fields}
           // Keyed to the node, so the builder's pickers start clean for each
-          // Condition and the builder opens its controls again.
+          // Condition.
           key={nodeId}
           nodeId={nodeId}
           onUpdateConfig={updateConfig}

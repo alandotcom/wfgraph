@@ -362,8 +362,6 @@ describe("WaitEventSelect match editor", () => {
       ],
     });
 
-    fireEvent.click(view.getByRole("button", { name: "Edit Match" }));
-
     expect(view.queryByText(/Compiled CEL/)).toBeNull();
     expect(view.queryByText(/payload\.settledAt/)).toBeNull();
   });
@@ -398,7 +396,6 @@ describe("WaitEventSelect match editor", () => {
 
     // Deleting the only rule is what clears the match: the subscription keeps
     // its Event and goes back to resuming on any arrival of it.
-    fireEvent.click(view.getByRole("button", { name: "Edit Match" }));
     fireEvent.click(
       view.getByRole("button", { name: /^Remove condition on / })
     );
@@ -446,8 +443,8 @@ describe("WaitEventSelect seeded match", () => {
     expect(view.getByText("The appointment")).toBeTruthy();
   });
 
-  // A match loaded with the workflow is a rule already made, so it reads as one.
-  it("opens a stored match in view mode", () => {
+  // A stored match is edited in place, the way a step's fields are.
+  it("opens a stored match on its live rules, with no Edit", () => {
     const view = renderControlledSelect({
       waitFor: [
         {
@@ -475,9 +472,9 @@ describe("WaitEventSelect seeded match", () => {
       ],
     });
 
-    expect(view.queryByLabelText("Select field")).toBeNull();
+    expect(view.getByLabelText("Select field")).toBeTruthy();
     expect(view.getByText("1 condition")).toBeTruthy();
-    expect(view.getByRole("button", { name: "Edit Match" })).toBeTruthy();
+    expect(view.queryByRole("button", { name: "Edit Match" })).toBeNull();
   });
 });
 

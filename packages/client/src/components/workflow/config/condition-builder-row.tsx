@@ -1,6 +1,6 @@
 import { useAtomValue } from "jotai";
 import { Plus, Trash2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { toast } from "sonner";
 import { Button } from "#src/components/ui/button";
 import { Input } from "#src/components/ui/input";
@@ -24,7 +24,7 @@ import {
   EnumMultiValueInput,
   TextSetValueInput,
 } from "./condition-set-value-input";
-import { ConfigSection } from "./config-section";
+import { ConfigHeading } from "./config-section";
 import { ConditionSummary } from "./condition-summary";
 import {
   type ConditionFieldDefinition,
@@ -46,6 +46,7 @@ import {
   type TimeUnit,
 } from "@wfgraph/shared/conditions/conditions";
 import { appendOutputPathKey } from "@wfgraph/shared/graph/node-references";
+import { cn } from "@wfgraph/shared/utils";
 import { generateId } from "@wfgraph/shared/utils/id";
 import {
   applyOperatorValueToCondition,
@@ -63,9 +64,10 @@ import {
  */
 type ConditionBuilderRowProps = {
   label: string;
-  /** See `ConfigSection`: what the Edit and Done buttons name. */
-  editActionName?: string | undefined;
-  /** See `ConfigSection`: only a row mounted in the panel column may pin. */
+  /**
+   * Whether the heading pins to the top while the rules below it scroll. Only
+   * a row mounted straight into the panel's scrolling column may pin.
+   */
   stickyHeader?: boolean | undefined;
   description: string;
   /** The fields rules may be built from, already typed. */
@@ -77,12 +79,6 @@ type ConditionBuilderRowProps = {
   onChange: (next: { model: string; expression: string }) => void;
   /** Excluded from a value field's template autocomplete, being its own node. */
   currentNodeId?: string | undefined;
-  /**
-   * Whether the row opens in edit mode rather than in view mode. Read once, on
-   * mount, for the caller that seeds a model with its own button: without it,
-   * one click would produce a summary of a rule nobody has filled in yet.
-   */
-  defaultEditing?: boolean | undefined;
   /**
    * Offers `is one of` and `is not one of` only on string fields that declare
    * enum values. Entity Eligibility sets it, because it refuses a set
@@ -363,7 +359,6 @@ function ConditionValueInput(input: {
 
 export function ConditionBuilderRow({
   label,
-  editActionName,
   stickyHeader,
   description,
   fields: availableFields,
@@ -371,7 +366,6 @@ export function ConditionBuilderRow({
   value: storedValue,
   onChange,
   currentNodeId,
-  defaultEditing = false,
   setOperatorsRequireEnumValues = false,
   disabled,
 }: ConditionBuilderRowProps) {
@@ -379,9 +373,6 @@ export function ConditionBuilderRow({
   // value holds in the summary.
   const nodes = useAtomValue(nodesAtom);
   const seedField = availableFields[0] ?? null;
-  // The mode is this row's own, and it belongs to no workflow: a fresh open
-  // starts where `defaultEditing` says, whatever the last one was left in.
-  const [editing, setEditing] = useState(defaultEditing);
 
   const modelValue = storedValue.trim();
   const modelParseResult = parseConditionModel(modelValue);
@@ -551,150 +542,145 @@ export function ConditionBuilderRow({
     });
   };
 
-  // The section is what holds the two modes, and it offers Edit only once
-  // there is a model to edit: a row with nothing configured has no view to
-  // show, so its one button both seeds a model and opens the editor.
-  const editable = !disabled && parsedModel !== null;
+  // Rules are edited where they are shown, the way an action step's fields
+  // are. A person who may not edit, or a row with no model yet, reads the
+  // rules instead: there are no controls to offer, or nothing to edit.
+  const live = !disabled && parsedModel !== null;
+  const reading = parsedModel ? (
+    <ConditionSummary
+      fields={availableFields}
+      model={parsedModel}
+      nodes={nodes}
+      setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
+    />
+  ) : (
+    <div className="space-y-2">
+      {availableFields.length > 0 ? (
+        <Button
+          disabled={disabled}
+          onClick={addConditionModel}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Configure condition
+        </Button>
+      ) : (
+        <p className="text-muted-foreground text-xs">{emptyFieldsMessage}</p>
+      )}
+      {modelValue && !modelParseResult.valid && (
+        <p className="text-destructive text-xs">{modelParseResult.error}</p>
+      )}
+    </div>
+  );
 
   return (
-    <ConfigSection
-      editable={editable}
-      editActionName={editActionName}
-      editing={editing}
-      help={<p>{description}</p>}
-      label={label}
-      onEditingChange={setEditing}
-      stickyHeader={stickyHeader}
-      view={
-        parsedModel ? (
-          <ConditionSummary
-            fields={availableFields}
-            model={parsedModel}
-            nodes={nodes}
-            setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
-          />
-        ) : (
-          <div className="space-y-2">
-            {availableFields.length > 0 ? (
-              <Button
-                disabled={disabled}
-                onClick={() => {
-                  addConditionModel();
-                  setEditing(true);
-                }}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                Configure condition
-              </Button>
-            ) : (
-              <p className="text-muted-foreground text-xs">
-                {emptyFieldsMessage}
-              </p>
-            )}
-            {modelValue && !modelParseResult.valid && (
-              <p className="text-destructive text-xs">
-                {modelParseResult.error}
-              </p>
-            )}
-          </div>
-        )
-      }
-    >
-      {parsedModel ? (
-        <>
-          {parsedModel.groups.map((group, groupIndex) => (
-            <div key={group.id}>
-              {/* The joiner sits on the divider between two groups rather than
+    <section className="space-y-2">
+      <ConfigHeading
+        className={cn(stickyHeader && live && "sticky top-0 z-20 bg-card")}
+        help={<p>{description}</p>}
+        label={label}
+      />
+      {live ? (
+        <div className="space-y-2">
+          {parsedModel ? (
+            <>
+              {parsedModel.groups.map((group, groupIndex) => (
+                <div key={group.id}>
+                  {/* The joiner sits on the divider between two groups rather than
                   floating over it, which is what lets a group be a gutter rule
                   instead of a card. */}
-              {groupIndex > 0 && (
-                <div className="flex items-center gap-2 py-2">
-                  <span className="h-px flex-1 bg-border" />
-                  <LogicToggle
-                    disabled={disabled}
-                    onChange={(value) => {
-                      persistModel({
-                        ...parsedModel,
-                        groupLogic: value,
-                      });
-                    }}
-                    value={parsedModel.groupLogic}
-                  />
-                  <span className="h-px flex-1 bg-border" />
-                </div>
-              )}
+                  {groupIndex > 0 && (
+                    <div className="flex items-center gap-2 py-2">
+                      <span className="h-px flex-1 bg-border" />
+                      <LogicToggle
+                        disabled={disabled}
+                        onChange={(value) => {
+                          persistModel({
+                            ...parsedModel,
+                            groupLogic: value,
+                          });
+                        }}
+                        value={parsedModel.groupLogic}
+                      />
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+                  )}
 
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-md bg-muted px-1.5 py-0.5 font-medium text-xs">
-                    Rule set {groupIndex + 1}
-                  </span>
-                  <span className="text-muted-foreground text-xs">
-                    {group.conditions.length}{" "}
-                    {group.conditions.length === 1 ? "condition" : "conditions"}
-                  </span>
-                </div>
-                <Button
-                  aria-label={`Remove rule set ${groupIndex + 1}`}
-                  disabled={disabled}
-                  onClick={() => removeGroup(group.id)}
-                  size="icon-sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-md bg-muted px-1.5 py-0.5 font-medium text-xs">
+                        Rule set {groupIndex + 1}
+                      </span>
+                      <span className="text-muted-foreground text-xs">
+                        {group.conditions.length}{" "}
+                        {group.conditions.length === 1
+                          ? "condition"
+                          : "conditions"}
+                      </span>
+                    </div>
+                    <Button
+                      aria-label={`Remove rule set ${groupIndex + 1}`}
+                      disabled={disabled}
+                      onClick={() => removeGroup(group.id)}
+                      size="icon-sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
 
-              {/* The gutter: a left rule with the rows indented behind it, in
+                  {/* The gutter: a left rule with the rows indented behind it, in
                   place of the bordered card these used to sit in. */}
-              <div className="mt-1 ml-2.5 space-y-2 border-l pl-3">
-                {group.conditions.map((condition, conditionIndex) => {
-                  const selectedFieldDef = fieldByPath.get(condition.field);
-                  // The picker deals in whole paths; the rule stores the record
-                  // and its key apart. This is the one conversion between them,
-                  // so a rule reached by typing a key reads back as the row that
-                  // names it.
-                  const namedPath = condition.recordKey
-                    ? appendOutputPathKey(condition.field, condition.recordKey)
-                    : condition.field;
-                  // A key the graph names has a row of its own; one nobody names
-                  // leaves the record itself selected, with the key beside it.
-                  const pickedPath = fieldByPath.has(namedPath)
-                    ? namedPath
-                    : condition.field;
-                  const offeredOperators = getOperatorOptionsByFieldType(
-                    condition.fieldType,
-                    selectedFieldDef?.nullable ||
-                      condition.recordKey !== undefined,
-                    selectedFieldDef?.enumValues,
-                    { setOperatorsRequireEnumValues }
-                  );
-                  // A stored set operator this context no longer offers stays
-                  // in the list, so the picker shows the operator the rule
-                  // holds. The summary and the Eligibility check say why it is
-                  // refused.
-                  const operatorOptions = offeredOperators.some(
-                    (option) => option.value === condition.operator
-                  )
-                    ? offeredOperators
-                    : [
-                        ...offeredOperators,
-                        ...STRING_SET_OPERATOR_OPTIONS.filter(
-                          (option) => option.value === condition.operator
-                        ),
-                      ];
-                  // Names the row's delete button. Several rows can sit in one
-                  // group, and a list of buttons all called "Remove" says
-                  // nothing about which rule each one drops.
-                  const conditionName =
-                    selectedFieldDef?.label ?? unavailableFieldLabel();
+                  <div className="mt-1 ml-2.5 space-y-2 border-l pl-3">
+                    {group.conditions.map((condition, conditionIndex) => {
+                      const selectedFieldDef = fieldByPath.get(condition.field);
+                      // The picker deals in whole paths; the rule stores the record
+                      // and its key apart. This is the one conversion between them,
+                      // so a rule reached by typing a key reads back as the row that
+                      // names it.
+                      const namedPath = condition.recordKey
+                        ? appendOutputPathKey(
+                            condition.field,
+                            condition.recordKey
+                          )
+                        : condition.field;
+                      // A key the graph names has a row of its own; one nobody names
+                      // leaves the record itself selected, with the key beside it.
+                      const pickedPath = fieldByPath.has(namedPath)
+                        ? namedPath
+                        : condition.field;
+                      const offeredOperators = getOperatorOptionsByFieldType(
+                        condition.fieldType,
+                        selectedFieldDef?.nullable ||
+                          condition.recordKey !== undefined,
+                        selectedFieldDef?.enumValues,
+                        { setOperatorsRequireEnumValues }
+                      );
+                      // A stored set operator this context no longer offers stays
+                      // in the list, so the picker shows the operator the rule
+                      // holds. The summary and the Eligibility check say why it is
+                      // refused.
+                      const operatorOptions = offeredOperators.some(
+                        (option) => option.value === condition.operator
+                      )
+                        ? offeredOperators
+                        : [
+                            ...offeredOperators,
+                            ...STRING_SET_OPERATOR_OPTIONS.filter(
+                              (option) => option.value === condition.operator
+                            ),
+                          ];
+                      // Names the row's delete button. Several rows can sit in one
+                      // group, and a list of buttons all called "Remove" says
+                      // nothing about which rule each one drops.
+                      const conditionName =
+                        selectedFieldDef?.label ?? unavailableFieldLabel();
 
-                  return (
-                    <div className="@container/rule" key={condition.id}>
-                      {/* The operator's column is as wide as the chosen
+                      return (
+                        <div className="@container/rule" key={condition.id}>
+                          {/* The operator's column is as wide as the chosen
                           operator's whole label, because a clipped operator
                           states another rule: "is greater than or equal" cut
                           to "is greater than". Where the rule has 28rem, one
@@ -703,200 +689,206 @@ export function ConditionBuilderRow({
                           own slot at the end. In a narrower details column the
                           field takes the first line beside the remove button,
                           and the operator and the value share the second. */}
-                      <div
-                        className={CONDITION_RULE_GRID_CLASS}
-                        data-slot="condition-rule"
-                      >
-                        <div className="col-span-2 flex min-w-0 items-center gap-2 @md/rule:col-span-1">
-                          <ConditionFieldCombobox
-                            disabled={disabled || availableFields.length === 0}
-                            fields={availableFields}
-                            onValueChange={(nextField) => {
-                              if (nextField.path === pickedPath) {
-                                return;
-                              }
-
-                              // A row for a key the graph names is a shortcut for
-                              // the record plus that key, and it carries the split
-                              // so the rule it writes is the one typing the key
-                              // would have written.
-                              const chosen: ConditionFieldDefinition =
-                                nextField.recordPath
-                                  ? {
-                                      ...nextField,
-                                      path: nextField.recordPath,
-                                      openRecord: true,
-                                    }
-                                  : nextField;
-
-                              updateCondition(
-                                group.id,
-                                condition.id,
-                                (existing) => {
-                                  const seeded = createDefaultConditionRule(
-                                    chosen,
-                                    existing.id
-                                  );
-                                  return nextField.recordKey
-                                    ? {
-                                        ...seeded,
-                                        recordKey: nextField.recordKey,
-                                      }
-                                    : seeded;
+                          <div
+                            className={CONDITION_RULE_GRID_CLASS}
+                            data-slot="condition-rule"
+                          >
+                            <div className="col-span-2 flex min-w-0 items-center gap-2 @md/rule:col-span-1">
+                              <ConditionFieldCombobox
+                                disabled={
+                                  disabled || availableFields.length === 0
                                 }
-                              );
-                            }}
-                            valuePath={pickedPath}
-                          />
+                                fields={availableFields}
+                                onValueChange={(nextField) => {
+                                  if (nextField.path === pickedPath) {
+                                    return;
+                                  }
 
-                          {condition.recordKey !== undefined && (
-                            <Input
-                              aria-label="Key"
-                              className="w-24 shrink-0"
+                                  // A row for a key the graph names is a shortcut for
+                                  // the record plus that key, and it carries the split
+                                  // so the rule it writes is the one typing the key
+                                  // would have written.
+                                  const chosen: ConditionFieldDefinition =
+                                    nextField.recordPath
+                                      ? {
+                                          ...nextField,
+                                          path: nextField.recordPath,
+                                          openRecord: true,
+                                        }
+                                      : nextField;
+
+                                  updateCondition(
+                                    group.id,
+                                    condition.id,
+                                    (existing) => {
+                                      const seeded = createDefaultConditionRule(
+                                        chosen,
+                                        existing.id
+                                      );
+                                      return nextField.recordKey
+                                        ? {
+                                            ...seeded,
+                                            recordKey: nextField.recordKey,
+                                          }
+                                        : seeded;
+                                    }
+                                  );
+                                }}
+                                valuePath={pickedPath}
+                              />
+
+                              {condition.recordKey !== undefined && (
+                                <Input
+                                  aria-label="Key"
+                                  className="w-24 shrink-0"
+                                  disabled={disabled}
+                                  onChange={(event) =>
+                                    updateCondition(
+                                      group.id,
+                                      condition.id,
+                                      (existing) => ({
+                                        ...existing,
+                                        // The key alone: every key of a record carries
+                                        // the record's value type, so the operator and
+                                        // the value the builder already chose still
+                                        // stand. Rebuilding the rule here would throw
+                                        // them away on every keystroke.
+                                        recordKey: event.target.value,
+                                      })
+                                    )
+                                  }
+                                  placeholder="key"
+                                  value={condition.recordKey}
+                                />
+                              )}
+                            </div>
+
+                            <div data-slot="condition-rule-operator">
+                              <Select
+                                disabled={disabled}
+                                items={operatorOptions}
+                                onValueChange={whenChosen((operatorValue) => {
+                                  const nextCondition =
+                                    applyOperatorValueToCondition(
+                                      condition,
+                                      operatorValue
+                                    );
+                                  if (!nextCondition) {
+                                    return;
+                                  }
+
+                                  updateCondition(
+                                    group.id,
+                                    condition.id,
+                                    () => nextCondition
+                                  );
+                                })}
+                                value={condition.operator}
+                              >
+                                <SelectTrigger
+                                  aria-label={`${conditionName} operator`}
+                                  className="w-full"
+                                >
+                                  <SelectValue placeholder="Select operator" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {operatorOptions.map((option) => (
+                                    <SelectItem
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div className="flex min-w-0 items-center gap-2">
+                              <ConditionValueInput
+                                condition={condition}
+                                currentNodeId={currentNodeId}
+                                disabled={disabled}
+                                field={selectedFieldDef}
+                                onConditionChange={(nextCondition) => {
+                                  updateCondition(
+                                    group.id,
+                                    condition.id,
+                                    () => nextCondition
+                                  );
+                                }}
+                              />
+                            </div>
+
+                            <Button
+                              aria-label={`Remove condition on ${conditionName}`}
+                              className="col-start-3 row-start-1 @md/rule:col-start-auto @md/rule:row-start-auto"
                               disabled={disabled}
-                              onChange={(event) =>
-                                updateCondition(
-                                  group.id,
-                                  condition.id,
-                                  (existing) => ({
-                                    ...existing,
-                                    // The key alone: every key of a record carries
-                                    // the record's value type, so the operator and
-                                    // the value the builder already chose still
-                                    // stand. Rebuilding the rule here would throw
-                                    // them away on every keystroke.
-                                    recordKey: event.target.value,
-                                  })
-                                )
+                              onClick={() =>
+                                removeConditionFromGroup(group.id, condition.id)
                               }
-                              placeholder="key"
-                              value={condition.recordKey}
-                            />
+                              size="icon-sm"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+
+                          {conditionIndex < group.conditions.length - 1 && (
+                            <div className="pt-2">
+                              <LogicToggle
+                                disabled={disabled}
+                                onChange={(value) => {
+                                  updateGroup(group.id, (existing) => ({
+                                    ...existing,
+                                    logic: value,
+                                  }));
+                                }}
+                                value={group.logic}
+                              />
+                            </div>
                           )}
                         </div>
+                      );
+                    })}
 
-                        <div data-slot="condition-rule-operator">
-                          <Select
-                            disabled={disabled}
-                            items={operatorOptions}
-                            onValueChange={whenChosen((operatorValue) => {
-                              const nextCondition =
-                                applyOperatorValueToCondition(
-                                  condition,
-                                  operatorValue
-                                );
-                              if (!nextCondition) {
-                                return;
-                              }
+                    <Button
+                      disabled={disabled || !seedField}
+                      onClick={() => addConditionToGroup(group.id)}
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Plus className="size-4" />
+                      Add condition
+                    </Button>
+                  </div>
+                </div>
+              ))}
 
-                              updateCondition(
-                                group.id,
-                                condition.id,
-                                () => nextCondition
-                              );
-                            })}
-                            value={condition.operator}
-                          >
-                            <SelectTrigger
-                              aria-label={`${conditionName} operator`}
-                              className="w-full"
-                            >
-                              <SelectValue placeholder="Select operator" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {operatorOptions.map((option) => (
-                                <SelectItem
-                                  key={option.value}
-                                  value={option.value}
-                                >
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="flex min-w-0 items-center gap-2">
-                          <ConditionValueInput
-                            condition={condition}
-                            currentNodeId={currentNodeId}
-                            disabled={disabled}
-                            field={selectedFieldDef}
-                            onConditionChange={(nextCondition) => {
-                              updateCondition(
-                                group.id,
-                                condition.id,
-                                () => nextCondition
-                              );
-                            }}
-                          />
-                        </div>
-
-                        <Button
-                          aria-label={`Remove condition on ${conditionName}`}
-                          className="col-start-3 row-start-1 @md/rule:col-start-auto @md/rule:row-start-auto"
-                          disabled={disabled}
-                          onClick={() =>
-                            removeConditionFromGroup(group.id, condition.id)
-                          }
-                          size="icon-sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-
-                      {conditionIndex < group.conditions.length - 1 && (
-                        <div className="pt-2">
-                          <LogicToggle
-                            disabled={disabled}
-                            onChange={(value) => {
-                              updateGroup(group.id, (existing) => ({
-                                ...existing,
-                                logic: value,
-                              }));
-                            }}
-                            value={group.logic}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
+              <div className="pt-1">
                 <Button
                   disabled={disabled || !seedField}
-                  onClick={() => addConditionToGroup(group.id)}
+                  onClick={addGroup}
                   size="sm"
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                 >
                   <Plus className="size-4" />
-                  Add condition
+                  Add rule set
                 </Button>
               </div>
-            </div>
-          ))}
 
-          <div className="pt-1">
-            <Button
-              disabled={disabled || !seedField}
-              onClick={addGroup}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              <Plus className="size-4" />
-              Add rule set
-            </Button>
-          </div>
-
-          {compiled?.valid === false ? (
-            <p className="text-destructive text-xs">{compiled.error}</p>
+              {compiled?.valid === false ? (
+                <p className="text-destructive text-xs">{compiled.error}</p>
+              ) : null}
+            </>
           ) : null}
-        </>
-      ) : null}
-    </ConfigSection>
+        </div>
+      ) : (
+        reading
+      )}
+    </section>
   );
 }

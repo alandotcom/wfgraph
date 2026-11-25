@@ -164,8 +164,7 @@ export function useUpstreamConditionFields(
 
 /**
  * The rule builder of the Condition `nodeId`, over `fields`, the values
- * `useUpstreamConditionFields` answers for it. `defaultEditing` opens the
- * builder's controls on mount.
+ * `useUpstreamConditionFields` answers for it.
  *
  * The model and the CEL it compiles to are both stored, because the save path
  * checks one against the other before a run is allowed to read either.
@@ -176,14 +175,12 @@ export function ConditionFields({
   config,
   onUpdateConfig,
   disabled,
-  defaultEditing,
 }: {
   nodeId: string;
   fields: ConditionSelectableField[];
   config: Record<string, unknown>;
   onUpdateConfig: UpdateNodeConfig;
   disabled: boolean;
-  defaultEditing?: boolean | undefined;
 }) {
   const handleChange = useCallback(
     (next: { model: string; expression: string }) => {
@@ -198,13 +195,9 @@ export function ConditionFields({
   return (
     <ConditionBuilderRow
       currentNodeId={nodeId}
-      defaultEditing={defaultEditing}
       description="Build a condition from Entity fields, the arriving Event, and results from earlier steps. Timestamp fields support relative and absolute time filters."
       disabled={disabled}
       emptyFieldsMessage="No fields are available. Track an Entity or connect this step after the Lifecycle or a step with typed results."
-      // The heading is a clause, so the Edit and Done buttons name the thing
-      // instead: "Edit Continue when" is not a sentence anybody would say.
-      editActionName="condition"
       fields={fields}
       // Named for what it does rather than for the node it sits on: "Condition"
       // on a node called Condition said nothing about which way True leads.
