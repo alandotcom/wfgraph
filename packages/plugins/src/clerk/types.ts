@@ -1,17 +1,36 @@
-export type ClerkApiUser = {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  email_addresses: Array<{
-    id: string;
-    email_address: string;
-  }>;
-  primary_email_address_id: string | null;
-  public_metadata: Record<string, unknown>;
-  private_metadata: Record<string, unknown>;
-  created_at: number;
-  updated_at: number;
-};
+/**
+ * Clerk's user resource as the Backend API sends it, and the flat user the
+ * Clerk steps answer with.
+ */
+
+import { Schema } from "effect";
+
+/**
+ * One entry of a user's `email_addresses` list. Clerk's reference lists `id` as
+ * an optional property of the EmailAddress object, so a decode accepts an entry
+ * without one, and such an entry never matches the primary address id.
+ */
+const clerkEmailAddressSchema = Schema.Struct({
+  id: Schema.optionalKey(Schema.String),
+  email_address: Schema.String,
+});
+
+/**
+ * The User object Clerk's Backend API answers with, holding the fields
+ * `toClerkUserData` reads. Clerk sends many more, and a decode ignores them.
+ * `created_at` and `updated_at` are Unix timestamps in milliseconds.
+ */
+export const clerkApiUserSchema = Schema.Struct({
+  id: Schema.String,
+  first_name: Schema.NullOr(Schema.String),
+  last_name: Schema.NullOr(Schema.String),
+  email_addresses: Schema.Array(clerkEmailAddressSchema),
+  primary_email_address_id: Schema.NullOr(Schema.String),
+  created_at: Schema.Finite,
+  updated_at: Schema.Finite,
+});
+
+export type ClerkApiUser = typeof clerkApiUserSchema.Type;
 
 /**
  * Flat user data for workflow steps

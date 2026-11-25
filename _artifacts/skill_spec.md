@@ -71,6 +71,17 @@ integrations). The published skills ship inside the `@wfgraph/core` and
    and its "Repeat a stale MCP write" failure mode moved to `mcp`, the way the
    Worker guidance moved to cloudflare-worker in batch 4. This resolves the
    open question about adopter guidance for the build agent.
+9. **One entry per built-in integration, decided 2026-11-25.** `@wfgraph/plugins`
+   has an entry per integration (`@wfgraph/plugins/clerk`, `/linear`,
+   `/posthog`, `/resend`, `/slack`, `/twilio`) beside `@wfgraph/plugins/ui`, and
+   no root entry. Every integration is a function: `clerk()`, `linear()`,
+   `posthog()`, `resend()` and `twilio()` return one definition built at module
+   load, and `slack(options?)` builds one per call. `builtInIntegrations` is
+   removed. The reason is Worker startup time: a Cloudflare Worker that imported
+   the root entry loaded all six integrations whichever it listed, and
+   Cloudflare limits Worker startup to 1 second of CPU. wfgraph-plugins teaches
+   the entries and the call form, and has a failure mode for importing the
+   package root or passing an uncalled function.
 
 ## Domains
 
@@ -88,7 +99,7 @@ integrations). The published skills ship inside the `@wfgraph/core` and
 | events            | sub-skill | host-extensions | implemented | `defineEvent`, `defineEntity`, `correlationPath`, umbrella sources, intake through a typed `events.send`, HTTP, `events.inboxInsert` and Inngest, delivery settlement                              | 7             |
 | host-actions      | sub-skill | host-extensions | implemented | `defineAction`, config forms, `options` callbacks, the once-per-node handler, `step.run`, idempotency keys, `runMode`, `readCredentials`, `sideEffect`, `runHostAction`                            | 6             |
 | integrations      | sub-skill | integrations    | implemented | `defineIntegration`, `callExternal`, step names and keys, `runMode`, `url` credentials, webhooks, `IntegrationOAuth` with `revoke`, `runAction`, `checkIntegration`, evolving and retiring actions | 8             |
-| wfgraph-plugins   | core      | integrations    | implemented | `builtInIntegrations`, `slack(options?)`, the five value exports, OAuth host requirements, `oauthRevocation`, per-step test settings, Resend webhook Events                                        | 4             |
+| wfgraph-plugins   | core      | integrations    | implemented | one entry per integration, `slack(options?)` and the five functions without options, OAuth host requirements, `oauthRevocation`, per-step test settings, Resend webhook Events                     | 5             |
 | auth              | sub-skill | embedding       | implemented | the `auth` function and `{ authenticate }`, `defineWfGraphAuth`, `WfGraphRoles`, `WfGraphAccess`, `trustWfGraphUpstream`, the 401, 403, 413 and 500 answers, the editor's grant snapshot           | 5             |
 | observability     | sub-skill | embedding       | implemented | `configureWfGraphLogging`, `logger`, LogTape, OpenTelemetry, Sentry, span names, record groups                                                                                                     | 4             |
 | cloudflare-worker | sub-skill | embedding       | implemented | `wfWorker`, `wfHyperdrive`, Cron Trigger, wake Queue, Hyperdrive caching and `search_path`, platform limits, tick records                                                                          | 5             |
@@ -203,14 +214,15 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | 3   | An unset variable read as a startup check             | MEDIUM   | docs/embedding.md (The build agent)                        | none         |
 | 4   | A runner that draws the canvas itself                 | MEDIUM   | docs/embedding.md (Run turns on your own gateway or model) | none         |
 
-### wfgraph-plugins (4 failure modes)
+### wfgraph-plugins (5 failure modes)
 
-| #   | Mistake                                 | Priority | Source                                    | Cross-skill?       |
-| --- | --------------------------------------- | -------- | ----------------------------------------- | ------------------ |
-| 1   | Expect import to enable integrations    | CRITICAL | packages/plugins/README.md                | integrations       |
-| 2   | Slack OAuth without publicUrl           | HIGH     | docs/embedding.md (Built-in integrations) | none               |
-| 3   | Two copies of @wfgraph/core             | HIGH     | docs/embedding.md                         | none               |
-| 4   | Header-based auth on the OAuth callback | MEDIUM   | docs/embedding.md                         | wfgraph-core, auth |
+| #   | Mistake                                                   | Priority | Source                                    | Cross-skill?       |
+| --- | --------------------------------------------------------- | -------- | ----------------------------------------- | ------------------ |
+| 1   | Expect import to enable integrations                      | CRITICAL | packages/plugins/README.md                | integrations       |
+| 2   | Import from the package root or pass an uncalled function | HIGH     | packages/plugins/README.md                | none               |
+| 3   | Slack OAuth without publicUrl                             | HIGH     | docs/embedding.md (Built-in integrations) | none               |
+| 4   | Two copies of @wfgraph/core                               | HIGH     | docs/embedding.md                         | none               |
+| 5   | Header-based auth on the OAuth callback                   | MEDIUM   | docs/embedding.md                         | wfgraph-core, auth |
 
 ## Tensions
 
@@ -578,6 +590,39 @@ sources, apart from the source checks each later batch records.
   `template-config.test.ts` and the host-actions task check
   `refund-action.test.ts` passed. Discovery and a fresh consumer session are
   unverified, as for every earlier batch.
+
+### Batch 7: one entry per built-in integration (packages at 4.1.2, branch perf/plugin-entries)
+
+- Source: the branch's commits that make every built-in integration a function,
+  give each its own package entry and remove `builtInIntegrations` and the root
+  entry (decision 9). `docs/embedding.md` ("Built-in integrations", the embed,
+  runner and Worker samples, and "Package exports") and
+  `packages/plugins/README.md` were rewritten for the new form.
+- wfgraph-plugins: the description, `metadata.purpose`, the overview and the
+  "One entry per integration" section teach the entries and the call form. The
+  CRITICAL import mistake now imports an entry, the Slack `publicUrl` mistake
+  calls `slack({ oauthClient })`, and a new HIGH mistake covers importing the
+  package root or passing an uncalled function. That mistake's correct pattern
+  imports both `resend` and `twilio` from their entries before listing
+  `[resend(), twilio()]`, in the skill and in `domain_map.yaml`, so it
+  resolves as written.
+- integrations: the `runAction` mistake calls `twilio()`. Commit `61231f7f`
+  changed the rule for `test`: it takes the connection test function itself,
+  imported statically, where the skill had said `test` was a loader that kept
+  the vendor call behind a dynamic import. Each `configOptions` entry's `load`
+  takes the function itself too. The skill's `configOptions` line names no
+  form for `load`, so that line did not change.
+- integrations: the SDK rule no longer names Clerk and Linear, whose SDKs this
+  branch removed. It now says an SDK earns its place only for protocol logic
+  such as Svix webhook signature verification, and that a vendor's HTTP or
+  GraphQL API is called through `callExternal`, which matches
+  `packages/plugins/src/AGENTS.md`.
+- `library_version` stays at 4.1.1, as in batch 6.
+- Checks: `intent validate` passed. The behavior is covered by
+  `packages/plugins/src/integrations.test.ts`, which checks all six
+  definitions and that each of the five functions without options returns the
+  same value on every call. No eval task check was added, and discovery and a
+  fresh consumer session are unverified, as for every earlier batch.
 
 ### Remaining work
 

@@ -16,6 +16,7 @@ import {
 import { Effect, Schema } from "effect";
 import { callSlack, describeSlackFailure } from "#src/slack/client";
 import { createSlackOAuth } from "#src/slack/oauth";
+import { testSlack } from "#src/slack/test";
 
 const slackCredentialFields = {
   SLACK_API_KEY: {
@@ -104,6 +105,12 @@ function resolveSlackTestBehavior(
   return value === "send_message" ? "send_message" : "log_only";
 }
 
+/**
+ * Returns the Slack integration, for a host to list under
+ * `extensions.integrations` in `createWfGraphApp`. Each call builds a new
+ * definition, because the definition holds the Slack OAuth client that
+ * `options.oauthClient` names.
+ */
 export const slack = (options?: SlackOptions) => {
   const clientId = options?.oauthClient?.clientId?.trim();
   const clientSecret = options?.oauthClient?.clientSecret?.trim();
@@ -129,9 +136,7 @@ export const slack = (options?: SlackOptions) => {
         ? createSlackOAuth(clientId, clientSecret)
         : undefined,
 
-    // The connection test reaches Slack, so it stays behind a dynamic import until
-    // someone presses "Test connection".
-    test: async () => (await import("#src/slack/test")).testSlack,
+    test: testSlack,
 
     actions: {
       "send-message": {

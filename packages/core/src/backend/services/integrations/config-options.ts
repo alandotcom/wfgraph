@@ -94,9 +94,8 @@ export const postIntegrationConfigOptions = Effect.fn(
   });
 
   const resolved = yield* resolveIntegrationCredentials(integrationId);
-  const answerFn = yield* attempt(() => entry.load());
   const answer = yield* attempt(() =>
-    answerFn(resolved.credentials, { parameters: accepted })
+    entry.load(resolved.credentials, { parameters: accepted })
   );
 
   if (!answerKindMatches(entry.answers, answer)) {

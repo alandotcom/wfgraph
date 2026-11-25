@@ -17,6 +17,7 @@ import {
 } from "@wfgraph/core/plugin";
 import { Effect, Schema, SchemaTransformation } from "effect";
 import { createTwilioMessage, describeTwilioFailure } from "#src/twilio/client";
+import { testTwilio } from "#src/twilio/test";
 
 // `satisfies` rather than a type annotation. Annotating the const would widen
 // each key to `string`, and the credential vocabulary below is those keys.
@@ -129,15 +130,13 @@ function resolveTwilioTestBehavior(
   return value === "send_to_test_phone" ? "send_to_test_phone" : "log_only";
 }
 
-export const twilio = defineIntegration({
+const twilioIntegration = defineIntegration({
   type: "twilio",
   label: "Twilio",
   description: "Send SMS messages with Twilio Programmable Messaging",
   credentials: twilioCredentialFields,
 
-  // The connection test reaches Twilio, so it stays behind a dynamic import
-  // until someone presses "Test connection".
-  test: async () => (await import("#src/twilio/test")).testTwilio,
+  test: testTwilio,
 
   // The record key is the action slug. It is the only place the slug exists, so
   // the action id "twilio/send-sms" is computed and never written twice.
@@ -338,3 +337,10 @@ export const twilio = defineIntegration({
     },
   },
 });
+
+/**
+ * Returns the Twilio integration, for a host to list under
+ * `extensions.integrations` in `createWfGraphApp`. The definition is built once
+ * when this module loads, so every call returns the same value.
+ */
+export const twilio = () => twilioIntegration;

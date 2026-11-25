@@ -4,6 +4,10 @@
 around a handler, the canonical JSON codec and which optional spelling goes on which side.
 This file holds what is specific to the six integrations in this directory.
 
+Each integration is one entry of the package: `@wfgraph/plugins/[name]` is built from
+`[name]/index.ts`, which exports a function named after the integration that returns its
+definition. The package has no root entry, so a host loads only the integrations it imports.
+
 ## The files
 
 The minimum, which `slack/` and `twilio/` are:
@@ -60,11 +64,13 @@ calls answer an `Effect` a step yields directly. Twilio's client is the one to c
 retry policy is stated once, above `RETRY_ATTEMPTS`, and the executor's run-level retry is
 the outer policy beyond it.
 
-An SDK earns its place only where it carries protocol logic worth borrowing, which is why
-`@clerk/backend` (JWT verification), `@linear/sdk` (a typed GraphQL client) and `svix`
-(Resend webhook signatures) stayed while `twilio`, `resend`, `@slack/web-api` and
-`posthog-node` did not. Those keep their own transport and error handling and do not go
-through `callExternal`.
+A vendor SDK belongs here only when it implements protocol logic, such as signature
+verification, that an integration would otherwise have to write itself. `svix` is the
+one vendor dependency this package has: `resend/webhook.ts` uses it to verify the signature
+on a Resend webhook. Every call to a vendor's API goes through `callExternal`. A new vendor
+dependency has to fit under the integration's byte ceiling in
+`scripts/plugins/worker-bundle.test.ts`, which measures what the integration adds to a
+Worker bundle.
 
 ## OAuth adapters
 
@@ -72,10 +78,10 @@ through `callExternal`.
 are specific to maintaining the built-in adapters in this package.
 
 Put a provider's OAuth protocol in `[name]/oauth.ts` when it is more than a few lines.
-Export one `IntegrationOAuth` value and attach it to the integration in `index.ts`. Keep
-an integration as a static value unless host-provided client credentials require a
-factory. Slack is the example of that exception; Resend and PostHog are the
-metadata-client pattern.
+Export one `IntegrationOAuth` value and attach it to the integration in `index.ts`. Build
+the definition once at module level and have the exported function return it, unless
+host-provided client credentials require building it on each call. Slack is the example of
+that exception; Resend and PostHog are the metadata-client pattern.
 
 Keep provider behavior out of core. The adapter owns client registration, authorization
 parameters, token and error response schemas, exchange, refresh, revocation, and the
@@ -130,6 +136,11 @@ The connection test the credentials UI runs, a Promise all the way out because t
 the UI calls it. It is not an effect at its edge, so it is where `callExternalAsync` enters
 the runtime and provides the transport. Validate a key's format before spending a request
 where the system's keys have a known shape; it names the problem more precisely than a 401.
+
+`index.ts` imports `test[Name]` statically and passes it as `test`, and `resend/index.ts`
+passes its `config-options.ts` functions as each provider's `load` the same way. Those two
+modules therefore import only types from `index.ts`, since a value import would be an
+import cycle.
 
 ## icon.tsx and the ui record
 
@@ -200,10 +211,21 @@ pattern, and a field-derivation test alone catches none of what a vendor type ge
 ## Adding one
 
 1. Write the files above under `packages/plugins/src/[name]/`.
-2. Export the integration from `src/index.ts`, by name and in `builtInIntegrations`.
+2. Add `./[name]` to the `exports` map in `packages/plugins/package.json`. That map is
+   the one list of entries: `tsdown.config.ts` builds an entry for each subpath, and the
+   `@wfgraph/plugins/*` mappings in the root `tsconfig.json`, in `tsconfig.build.json` and
+   in `scripts/plugins/workspace-source-aliases.ts` resolve `@wfgraph/plugins/[name]` to
+   `[name]/index.ts` without a change.
 3. Add an entry to the `integrationUi` record in `src/ui.ts`.
-4. `pnpm run type-check && pnpm run test && pnpm run fix`.
-5. `pnpm run dev`, then add a connection, build a workflow on the action, and run it.
+4. Add the integration function to `withoutOptions` in `src/integrations.test.ts`, or call
+   it in that file's `integrations` list when it takes options. That test fails while an
+   exported integration is missing from the list.
+5. Add a row for the integration to `ADDED_KIB_CEILING` in
+   `scripts/plugins/worker-bundle.test.ts`, which fails while an exported integration has
+   no row. The comment on `ADDED_KIB_CEILING` says how to set the ceiling.
+6. `pnpm run type-check && pnpm run test && pnpm run fix`.
+7. Import it in `examples/app.ts`, then `pnpm run dev`, add a connection, build a workflow
+   on the action, and run it.
 
 Naming: the folder is the integration `type` in kebab-case; the credential type is
 `[Name]Credentials`; the connection test is `test[Name]`; the icon is
@@ -235,8 +257,8 @@ vocabulary, the action slugs, and the field list `requireOutputFieldsFromSchema`
 each output schema. What Workflow Graph itself does around a handler is covered once, in
 `packages/core/src/backend/extensions/steps/define-step.test.ts`.
 
-`src/index.test.ts` runs `checkIntegration` over all six at module level, which is every
-check `assembleExtensions` runs on one integration — including its Events and webhook —
+`src/integrations.test.ts` runs `checkIntegration` over all six at module level, which is
+every check `assembleExtensions` runs on one integration, including its Events and webhook,
 so a bad definition fails that file's collection. Cross-integration uniqueness stays in
 `assembleExtensions`. A host would otherwise meet a bad definition as a startup crash,
 and a description missing from one field of one output schema would reach a reviewer as

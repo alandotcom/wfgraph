@@ -41,8 +41,8 @@ The host passes it in `extensions.integrations`. Build against
 - Action slug exists only as the `actions` record key; id is `${type}/${slug}`.
 - Keep each handler an object literal inside `defineIntegration`. Lifting it
   into a `const` drops the typed `bag`.
-- `test` is a loader so the vendor call stays behind a dynamic import until
-  "Test connection".
+- `test` takes the connection test function itself, imported statically.
+  It runs only when an operator presses "Test connection".
 - `input` draws fields. `configFields` adds what a schema cannot (placeholder,
   `showWhen`, `provider-select`). A closed string set labels its choices from
   `title` on singleton `const` or `enum` branches under `anyOf` or `oneOf`; an
@@ -94,9 +94,10 @@ each completed `step.run` from the step memo. Work with a side effect goes in
   Promise at the edge (`callExternalAsync`).
 - `callExternal` answers an Effect (timeout, retry, JSON decode, three
   failures: `ExternalUnreachable`, `ExternalRejected`, `ExternalUnreadable`).
-- An SDK earns its place only when it owns protocol (Clerk JWT, Linear
-  GraphQL, Svix webhook signatures). Do not wrap Twilio/Slack/Resend-style HTTP
-  SDKs.
+- An SDK earns its place only when it owns protocol logic the integration
+  would otherwise write itself, such as Svix webhook signature verification.
+  Call a vendor's HTTP or GraphQL API through `callExternal`; do not wrap an
+  HTTP SDK.
 - What `step.run` answers must be JSON. Carry timestamps as ISO strings. One
   answer may hold at most `runner.maxStepValueBytes` of JSON (1 MiB by
   default); a larger one fails the node at once with no retry.
@@ -228,7 +229,7 @@ Source: alandotcom/wfgraph:docs/integrations.md (Evolving an action)
 
 ### HIGH Pass decoded handler input to runAction
 
-Wrong: `runAction(twilio, "send-sms", { input: { mediaUrls: ["https://a"] } })`
+Wrong: `runAction(twilio(), "send-sms", { input: { mediaUrls: ["https://a"] } })`
 when the schema transforms from comma-separated text.
 
 Correct: encoded side, what a builder typed.

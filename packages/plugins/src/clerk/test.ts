@@ -1,54 +1,68 @@
-import { createClerkBackendClient, getClerkApiErrorMessage } from "./client";
+import {
+  describeClerkFailure,
+  readClerkError,
+  verifyClerkSecretKey,
+} from "#src/clerk/client";
 import type { ClerkCredentials } from "#src/clerk/index";
+import { callExternalAsync } from "@wfgraph/core/plugin";
 import type { IntegrationTestResult } from "@wfgraph/core/plugin";
+import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 export async function testClerk(
   credentials: ClerkCredentials
 ): Promise<IntegrationTestResult> {
-  try {
-    const secretKey = credentials.CLERK_SECRET_KEY;
+  const secretKey = credentials.CLERK_SECRET_KEY;
 
-    if (!secretKey) {
-      return {
-        success: false,
-        error: "Secret key is required",
-      };
-    }
-
-    // Validate format - Clerk secret keys start with sk_live_ or sk_test_
-    if (
-      !(secretKey.startsWith("sk_live_") || secretKey.startsWith("sk_test_"))
-    ) {
-      return {
-        success: false,
-        error:
-          "Invalid secret key format. Clerk secret keys start with 'sk_live_' or 'sk_test_'",
-      };
-    }
-
-    const clerkClient = createClerkBackendClient(secretKey);
-    await clerkClient.users.getUserList({ limit: 1 });
-
-    return { success: true };
-  } catch (error) {
-    const details: Record<string, unknown> = {};
-
-    if (error && typeof error === "object") {
-      const clerkError = error as {
-        status?: number;
-        errors?: unknown[];
-        message?: string;
-      };
-      if (clerkError.status !== undefined) details.status = clerkError.status;
-      if (clerkError.errors !== undefined) details.errors = clerkError.errors;
-      if (clerkError.message !== undefined)
-        details.message = clerkError.message;
-    }
-
+  if (!secretKey) {
     return {
       success: false,
-      error: getClerkApiErrorMessage(error),
-      details,
+      error: "Secret key is required",
     };
   }
+
+  // Clerk secret keys start with sk_live_ or sk_test_. Checking the prefix
+  // costs no request and names a publishable key pasted into the secret field
+  // more precisely than the 401 Clerk would answer with.
+  if (!(secretKey.startsWith("sk_live_") || secretKey.startsWith("sk_test_"))) {
+    return {
+      success: false,
+      error:
+        "Invalid secret key format. Clerk secret keys start with 'sk_live_' or 'sk_test_'",
+    };
+  }
+
+  // A connection test answers the credentials UI over a Promise, so this is
+  // where the effect is run and the transport provided. A step reaches Clerk
+  // through the same client without any of that, because `defineStep` does it.
+  const result = await callExternalAsync(
+    verifyClerkSecretKey(secretKey),
+    (error) => error
+  );
+
+  if (result.ok) {
+    return { success: true };
+  }
+
+  const { failure } = result;
+
+  // A request that never arrived has no HTTP status to report, so the result
+  // carries the transport's message alone.
+  if (failure._tag === "ExternalUnreachable") {
+    return {
+      success: false,
+      error: failure.message,
+      details: { message: failure.message },
+    };
+  }
+
+  const body =
+    failure._tag === "ExternalRejected"
+      ? readClerkError(failure.payload)
+      : undefined;
+
+  return {
+    success: false,
+    error: describeClerkFailure(failure),
+    details: omitUndefined({ status: failure.status, errors: body?.errors }),
+  };
 }

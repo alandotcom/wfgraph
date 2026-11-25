@@ -63,7 +63,6 @@ export type {
   ConfigOptionField,
   ConfigOptionsAnswer,
   ConfigOptionsFunction,
-  ConfigOptionsLoader,
   ConfigOptionsProvider,
   ConfigOptionsRequest,
   ConfigOptionsUnavailableReason,

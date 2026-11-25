@@ -343,15 +343,11 @@ const runConnectionTest = Effect.fn("runConnectionTest")(function* (
     return yield* new InvalidInput({ error });
   }
 
-  const loadTest = extensions.connectionTestFor(type);
-  if (!loadTest) {
+  const testFn = extensions.connectionTestFor(type);
+  if (!testFn) {
     yield* logger.warn(MISSING_TEST_MESSAGE);
     return yield* new InvalidInput({ error: MISSING_TEST_MESSAGE });
   }
-
-  // The loader reaches for a vendor module, which is a throw the same `attempt`
-  // wraps as the vendor call below.
-  const testFn = yield* attempt(() => loadTest());
 
   yield* logger.info("Testing integration credentials", {
     credentialKeys: Object.keys(credentials),

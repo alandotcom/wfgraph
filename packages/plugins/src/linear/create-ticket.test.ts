@@ -1,81 +1,86 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { Effect } from "effect";
-import { beforeEach, vi } from "vitest";
-import { createLinear } from "#src/linear/index";
+import { type FetchResponder, recordFetch } from "#src/fetch-test-support";
+import { linear } from "#src/linear/index";
+import { linearResponses } from "#src/linear/responses.fixtures";
 
 /**
- * The seam is `createClient`, injected when the integration is built so a case
- * says which team was filed under and what the SDK threw.
+ * The seam is `fetch`: `runAction` runs the step with the transport that reads
+ * the global per call, so a case says what Linear answered to each GraphQL
+ * operation and reads back what the step sent. What the client puts on the
+ * wire in detail is `client.test.ts`'s subject, and how a refusal is worded is
+ * `errors.test.ts`'s.
  */
-const mocks = vi.hoisted(() => ({
-  teams: vi.fn(),
-  createIssue: vi.fn(),
-}));
-
-function fakeCreateClient(_apiKey: string) {
-  return {
-    teams: mocks.teams,
-    createIssue: mocks.createIssue,
-  } as never;
-}
-
-const underTest = createLinear(fakeCreateClient);
 
 const LINEAR_CREDENTIALS = { LINEAR_API_KEY: "lin_api_key" };
 
-/** The credentials a run would have fetched, and how often the step asked. */
-function credentialsRead(
-  values: Record<string, string | undefined> = LINEAR_CREDENTIALS
-) {
-  const reads = { count: 0 };
+/** What Linear answers to each of the two operations the step sends. */
+type OperationAnswers = {
+  firstTeam?: () => Response;
+  createIssue?: () => Response;
+};
 
-  return {
-    reads,
-    credentials: Effect.sync(() => {
-      reads.count += 1;
-      return values;
-    }),
+/**
+ * Answer each GraphQL operation by the name its document declares. An
+ * operation `answers` leaves out succeeds.
+ */
+function byOperation(answers: OperationAnswers = {}): FetchResponder {
+  return (_request, body) => {
+    const query = body?.query;
+    const isFirstTeam =
+      typeof query === "string" && query.startsWith("query FirstTeam");
+    const answer = isFirstTeam
+      ? (answers.firstTeam ?? (() => Response.json(linearResponses.firstTeam)))
+      : (answers.createIssue ??
+        (() => Response.json(linearResponses.issueCreated)));
+    return answer();
   };
 }
 
-beforeEach(() => {
-  mocks.teams.mockReset();
-  mocks.createIssue.mockReset();
-  mocks.teams.mockResolvedValue({ nodes: [{ id: "team_first" }] });
-  mocks.createIssue.mockResolvedValue({
-    issue: Promise.resolve({
-      id: "issue_1",
-      url: "https://linear.app/team/issue/ABC-1",
-      title: "Bug report",
-    }),
-  });
-});
+const wire = recordFetch(byOperation());
+
+/** The bodies of the requests that sent the operation `name`. */
+function sentOperation(name: string): JsonObject[] {
+  return wire
+    .bodies()
+    .filter(
+      ({ query }) => typeof query === "string" && query.includes(` ${name}`)
+    );
+}
+
+/** The credentials a run would have fetched. */
+function credentialsRead(
+  values: Record<string, string | undefined> = LINEAR_CREDENTIALS
+) {
+  return Effect.sync(() => values);
+}
 
 describe("linear/create-ticket", () => {
   it.effect("files under the team the integration names", () =>
     Effect.gen(function* () {
-      const { credentials } = credentialsRead({
-        ...LINEAR_CREDENTIALS,
-        LINEAR_TEAM_ID: "team_named",
-      });
-
       const result = actionData(
-        yield* runAction(underTest, "create-ticket", {
+        yield* runAction(linear(), "create-ticket", {
           input: { ticketTitle: "Bug report", ticketDescription: "It broke" },
-          credentials,
+          credentials: credentialsRead({
+            ...LINEAR_CREDENTIALS,
+            LINEAR_TEAM_ID: "team_named",
+          }),
         })
       );
 
-      expect(mocks.teams).toHaveBeenCalledTimes(0);
-      expect(mocks.createIssue).toHaveBeenCalledWith({
-        title: "Bug report",
-        description: "It broke",
-        teamId: "team_named",
+      expect(sentOperation("FirstTeam")).toHaveLength(0);
+      expect(sentOperation("CreateIssue")[0]?.variables).toEqual({
+        input: {
+          title: "Bug report",
+          description: "It broke",
+          teamId: "team_named",
+        },
       });
       expect(result).toEqual({
         id: "issue_1",
-        url: "https://linear.app/team/issue/ABC-1",
+        url: "https://linear.app/team/issue/ABC-1/bug-report",
         title: "Bug report",
       });
     })
@@ -83,48 +88,50 @@ describe("linear/create-ticket", () => {
 
   it.effect("falls back to the workspace's first team", () =>
     Effect.gen(function* () {
-      const { credentials } = credentialsRead();
-
-      yield* runAction(underTest, "create-ticket", {
+      yield* runAction(linear(), "create-ticket", {
         input: { ticketTitle: "Bug report" },
-        credentials,
+        credentials: credentialsRead(),
       });
 
-      expect(mocks.teams).toHaveBeenCalledWith({ first: 1 });
-      expect(mocks.createIssue).toHaveBeenCalledWith({
-        title: "Bug report",
-        description: undefined,
-        teamId: "team_first",
+      expect(sentOperation("FirstTeam")).toHaveLength(1);
+      expect(sentOperation("CreateIssue")[0]?.variables).toEqual({
+        input: { title: "Bug report", teamId: "team_1" },
       });
     })
   );
 
   it.effect("says so when the workspace has no team to file under", () =>
     Effect.gen(function* () {
-      mocks.teams.mockResolvedValue({ nodes: [] });
-      const { credentials } = credentialsRead();
+      wire.answer(
+        byOperation({
+          firstTeam: () => Response.json(linearResponses.noTeams),
+        })
+      );
 
       const error = actionError(
-        yield* runAction(underTest, "create-ticket", {
+        yield* runAction(linear(), "create-ticket", {
           input: { ticketTitle: "Bug report" },
-          credentials,
+          credentials: credentialsRead(),
         })
       );
 
       expect(error.message).toBe("No teams found in Linear workspace");
-      expect(mocks.createIssue).toHaveBeenCalledTimes(0);
+      expect(sentOperation("CreateIssue")).toHaveLength(0);
     })
   );
 
   it.effect("says so when the mutation answered with no issue", () =>
     Effect.gen(function* () {
-      mocks.createIssue.mockResolvedValue({ issue: undefined });
-      const { credentials } = credentialsRead();
+      wire.answer(
+        byOperation({
+          createIssue: () => Response.json(linearResponses.issueNotCreated),
+        })
+      );
 
       const error = actionError(
-        yield* runAction(underTest, "create-ticket", {
+        yield* runAction(linear(), "create-ticket", {
           input: { ticketTitle: "Bug report" },
-          credentials,
+          credentials: credentialsRead(),
         })
       );
 
@@ -132,42 +139,66 @@ describe("linear/create-ticket", () => {
     })
   );
 
-  // Linear throws a wrapper carrying the GraphQL errors, and the specific one
-  // inside it is what a user can act on.
-  it.effect("reports the GraphQL error Linear threw", () =>
+  it.effect("puts its own prefix in front of Linear's refusal", () =>
     Effect.gen(function* () {
-      mocks.createIssue.mockRejectedValue({
-        message: "Request failed",
-        response: { status: 400, errors: [{ message: "Team not found" }] },
-      });
-      const { credentials } = credentialsRead();
-
-      const error = actionError(
-        yield* runAction(underTest, "create-ticket", {
-          input: { ticketTitle: "Bug report" },
-          credentials,
+      wire.answer(
+        byOperation({
+          createIssue: () =>
+            Response.json(linearResponses.teamNotFound, { status: 400 }),
         })
       );
 
-      expect(error.message).toBe("Failed to create ticket: Team not found");
+      const error = actionError(
+        yield* runAction(linear(), "create-ticket", {
+          input: { ticketTitle: "Bug report" },
+          credentials: credentialsRead(),
+        })
+      );
+
+      expect(error.message).toBe(
+        "Failed to create ticket: Entity not found: Team"
+      );
+    })
+  );
+
+  it.effect("words a failed team lookup as a failed ticket", () =>
+    Effect.gen(function* () {
+      wire.answer(
+        byOperation({
+          firstTeam: () =>
+            Response.json(linearResponses.authenticationError, {
+              status: 401,
+            }),
+        })
+      );
+
+      const error = actionError(
+        yield* runAction(linear(), "create-ticket", {
+          input: { ticketTitle: "Bug report" },
+          credentials: credentialsRead(),
+        })
+      );
+
+      expect(error.message).toBe(
+        "Failed to create ticket: You need to authenticate to access this operation."
+      );
+      expect(sentOperation("CreateIssue")).toHaveLength(0);
     })
   );
 
   it.effect("says which credential is missing before reaching Linear", () =>
     Effect.gen(function* () {
-      const { credentials } = credentialsRead({});
-
       const error = actionError(
-        yield* runAction(underTest, "create-ticket", {
+        yield* runAction(linear(), "create-ticket", {
           input: { ticketTitle: "Bug report" },
-          credentials,
+          credentials: credentialsRead({}),
         })
       );
 
       expect(error.message).toBe(
         "LINEAR_API_KEY is not configured. Please add it in Project Integrations."
       );
-      expect(mocks.createIssue).toHaveBeenCalledTimes(0);
+      expect(wire.requests).toHaveLength(0);
     })
   );
 });

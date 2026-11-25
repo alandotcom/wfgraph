@@ -27,6 +27,7 @@ import {
 } from "#src/posthog/capture";
 import { posthogOAuth } from "#src/posthog/oauth";
 import { readProperties } from "#src/posthog/properties";
+import { testPostHog } from "#src/posthog/test";
 
 const posthogCredentialFields = {
   POSTHOG_PROJECT_API_KEY: {
@@ -124,16 +125,14 @@ function resolvePostHogTestBehavior(
   return value === "send" ? "send" : "log_only";
 }
 
-export const posthog = defineIntegration({
+const posthogIntegration = defineIntegration({
   type: "posthog",
   label: "PostHog",
   description: "Capture product analytics events and identify people",
   credentials: posthogCredentialFields,
   oauth: posthogOAuth,
 
-  // The connection test reaches PostHog, so it stays behind a dynamic import
-  // until someone presses "Test connection".
-  test: async () => (await import("#src/posthog/test")).testPostHog,
+  test: testPostHog,
 
   actions: {
     "capture-event": {
@@ -403,3 +402,10 @@ export const posthog = defineIntegration({
     },
   },
 });
+
+/**
+ * Returns the PostHog integration, for a host to list under
+ * `extensions.integrations` in `createWfGraphApp`. The definition is built once
+ * when this module loads, so every call returns the same value.
+ */
+export const posthog = () => posthogIntegration;

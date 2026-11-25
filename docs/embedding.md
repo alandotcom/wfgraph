@@ -27,7 +27,8 @@ import {
 } from "@wfgraph/core";
 import { auth } from "./wfgraph-auth";
 import { wfPostgres } from "@wfgraph/core/postgres";
-import { builtInIntegrations } from "@wfgraph/plugins";
+import { resend } from "@wfgraph/plugins/resend";
+import { twilio } from "@wfgraph/plugins/twilio";
 
 // An Event your application raises. See docs/events.md.
 const appointmentCreated = defineEvent({
@@ -98,7 +99,7 @@ const wfgraph = await createWfGraphApp({
   extensions: {
     events: [appointmentCreated],
     actions: [cancelAppointment],
-    integrations: builtInIntegrations(),
+    integrations: [resend(), twilio()],
   },
 });
 
@@ -936,29 +937,36 @@ reached learns of the change.
 
 ## Built-in integrations
 
-The third-party SDKs stay in `@wfgraph/plugins`. Pass them and they turn on:
+`@wfgraph/plugins` holds six integrations, each in its own entry:
+`@wfgraph/plugins/clerk`, `@wfgraph/plugins/linear`, `@wfgraph/plugins/posthog`,
+`@wfgraph/plugins/resend`, `@wfgraph/plugins/slack`, and `@wfgraph/plugins/twilio`. Each
+entry exports a function with the integration's name that returns the integration. Import
+the integrations the application uses, call each one, and pass the results under
+`extensions.integrations`:
 
 ```ts
-import { builtInIntegrations } from "@wfgraph/plugins";
+import { resend } from "@wfgraph/plugins/resend";
+import { slack } from "@wfgraph/plugins/slack";
 
 const wfgraph = await createWfGraphApp({
   // ...
   extensions: {
-    integrations: builtInIntegrations({
-      slack: {
+    integrations: [
+      resend(),
+      slack({
         oauthClient: {
           clientId: process.env.SLACK_CLIENT_ID,
           clientSecret: process.env.SLACK_CLIENT_SECRET,
         },
-      },
-    }),
+      }),
+    ],
   },
 });
 ```
 
 Resend and PostHog OAuth use a public client metadata document and need no provider secret.
-Slack OAuth needs the client ID and client secret of a registered Slack app. Omit
-`slack.oauthClient` to keep Slack manual-only. All three integrations keep their manual
+Slack OAuth needs the client ID and client secret of a registered Slack app. Call `slack()`
+with no `oauthClient` to keep Slack manual-only. All three integrations keep their manual
 credential forms when OAuth is available.
 
 OAuth requires `publicUrl`, which names the external origin alone. Workflow Graph
@@ -992,14 +1000,19 @@ means revocation failed or could not be attempted, because `publicUrl` is unset,
 integration no longer declares `oauth`, or the stored grant is unreadable. The server logs
 a warning naming the reason, and an operator revokes the grant at the provider.
 
-- Clerk, Linear, PostHog, Resend, and Twilio are exported as values. Slack is a factory because
-  it accepts host-provided OAuth client credentials.
+- `clerk()`, `linear()`, `posthog()`, `resend()`, and `twilio()` take no arguments and return
+  the same definition on every call. `slack(options?)` builds a new definition on each call,
+  because the definition holds the host-provided OAuth client credentials.
 - The editor shows what the server assembled. The action selector lists exactly the
   integrations you passed, and a connection can be stored for those alone.
-- That list controls what reaches `createWfGraphApp`. The process still loads every SDK the
-  package imports: two of the six carry one, and `@wfgraph/plugins` imports all six
-  integrations. The static import buys the timing of a failure. A missing SDK stops the
-  application at start-up, where a lazy import would let a single run fail much later.
+- A process loads only the entries it imports. An application that imports the Slack entry
+  loads none of the other five integrations, which keeps a Cloudflare Worker's startup time
+  low. Each entry is a static import, so a missing dependency stops the application at
+  start-up, where a lazy import would let a single run fail much later.
+- `@wfgraph/plugins` depends on `effect`, `es-toolkit`, and `svix`. `svix` is its one vendor
+  SDK: the Resend integration uses it to verify the signature on a Resend webhook. Every
+  integration calls its vendor's HTTP API directly, through `callExternal` from
+  `@wfgraph/core/plugin`.
 - `@wfgraph/plugins` peer-depends on `@wfgraph/core`. Keep one core copy so the
   plugin definitions and the app share one runtime contract.
 
@@ -1259,7 +1272,8 @@ between the two:
 // wfgraph-options.ts
 import type { WfGraphAppOptions } from "@wfgraph/core";
 import { wfPostgres } from "@wfgraph/core/postgres";
-import { builtInIntegrations } from "@wfgraph/plugins";
+import { resend } from "@wfgraph/plugins/resend";
+import { twilio } from "@wfgraph/plugins/twilio";
 import { auth } from "./wfgraph-auth";
 import { actions, events } from "./wfgraph-extensions";
 
@@ -1267,7 +1281,7 @@ export const options: WfGraphAppOptions = {
   auth,
   persistence: wfPostgres({ url: process.env.DATABASE_URL! }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
-  extensions: { integrations: builtInIntegrations(), events, actions },
+  extensions: { integrations: [resend(), twilio()], events, actions },
   // An OAuth token refresh in the runner builds its callback URLs from these.
   basePath: "/workflows",
   publicUrl: "https://app.example.com",
@@ -1362,6 +1376,8 @@ import {
   wfWorker,
   type WfGraphWakeQueue,
 } from "@wfgraph/core/worker";
+import { resend } from "@wfgraph/plugins/resend";
+import { slack } from "@wfgraph/plugins/slack";
 
 type Env = {
   HYPERDRIVE: { connectionString: string };
@@ -1384,14 +1400,15 @@ export default wfWorker<Env>({
   extensions: (env) => ({
     events,
     actions,
-    integrations: builtInIntegrations({
-      slack: {
+    integrations: [
+      resend(),
+      slack({
         oauthClient: {
           clientId: env.SLACK_CLIENT_ID,
           clientSecret: env.SLACK_CLIENT_SECRET,
         },
-      },
-    }),
+      }),
+    ],
   }),
 });
 ```
@@ -1761,22 +1778,27 @@ first publication. `GET /api/openapi.json` documents every route.
 
 ## Package exports
 
-| Entry                    | What it is                                                                                                                                                                                                                                                                                               |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@wfgraph/core`          | The host-facing entry. It exports the authoring vocabulary, application and authorization contracts, `createWfGraphApp`, `createWfGraphRunner` for a process that runs workflows and serves no HTTP, `createRequestListener`, and `callExternal` with `callExternalAsync` for a host action's HTTP calls |
-| `@wfgraph/core/postgres` | `wfPostgres` for a Node PostgreSQL pool                                                                                                                                                                                                                                                                  |
-| `@wfgraph/core/sqlite`   | `wfSqlite` for native Node SQLite                                                                                                                                                                                                                                                                        |
-| `@wfgraph/core/worker`   | `wfWorker`, the Worker host with its `fetch`, `scheduled` and `queue` handlers, and `wfHyperdrive`, per-invocation PostgreSQL through Hyperdrive                                                                                                                                                         |
-| `@wfgraph/core/plugin`   | What an integration package builds against                                                                                                                                                                                                                                                               |
-| `@wfgraph/core/testing`  | `runAction` for an integration's action, `runHostAction` for a host `defineAction`, and `actionData` and `actionError`, for a test suite. See Testing a host                                                                                                                                             |
-| `@wfgraph/core/migrate`  | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                                                          |
-| `@wfgraph/core/logging`  | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                                                                                             |
-| `@wfgraph/core/inngest`  | `createWfGraphInngestFunctions`, the forwarders a host on Inngest registers so `inngest.send` reaches the event inbox. The one entry that imports `inngest`, an optional peer dependency. See `docs/events.md`                                                                                           |
-| `@wfgraph/client`        | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                                                               |
-| `@wfgraph/plugins`       | Five static integration values, the configurable `slack(options?)` factory, and `builtInIntegrations(options?)`                                                                                                                                                                                          |
-| `@wfgraph/plugins/ui`    | Their icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                                                            |
+| Entry                      | What it is                                                                                                                                                                                                                                                                                               |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@wfgraph/core`            | The host-facing entry. It exports the authoring vocabulary, application and authorization contracts, `createWfGraphApp`, `createWfGraphRunner` for a process that runs workflows and serves no HTTP, `createRequestListener`, and `callExternal` with `callExternalAsync` for a host action's HTTP calls |
+| `@wfgraph/core/postgres`   | `wfPostgres` for a Node PostgreSQL pool                                                                                                                                                                                                                                                                  |
+| `@wfgraph/core/sqlite`     | `wfSqlite` for native Node SQLite                                                                                                                                                                                                                                                                        |
+| `@wfgraph/core/worker`     | `wfWorker`, the Worker host with its `fetch`, `scheduled` and `queue` handlers, and `wfHyperdrive`, per-invocation PostgreSQL through Hyperdrive                                                                                                                                                         |
+| `@wfgraph/core/plugin`     | What an integration package builds against                                                                                                                                                                                                                                                               |
+| `@wfgraph/core/testing`    | `runAction` for an integration's action, `runHostAction` for a host `defineAction`, and `actionData` and `actionError`, for a test suite. See Testing a host                                                                                                                                             |
+| `@wfgraph/core/migrate`    | `migrateWfGraphDatabase`, for migrations without an application                                                                                                                                                                                                                                          |
+| `@wfgraph/core/logging`    | `configureWfGraphLogging`, the console setup a host installs                                                                                                                                                                                                                                             |
+| `@wfgraph/core/inngest`    | `createWfGraphInngestFunctions`, the forwarders a host on Inngest registers so `inngest.send` reaches the event inbox. The one entry that imports `inngest`, an optional peer dependency. See `docs/events.md`                                                                                           |
+| `@wfgraph/client`          | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                                                               |
+| `@wfgraph/plugins/clerk`   | `clerk()`, which returns the Clerk integration                                                                                                                                                                                                                                                           |
+| `@wfgraph/plugins/linear`  | `linear()`, which returns the Linear integration                                                                                                                                                                                                                                                         |
+| `@wfgraph/plugins/posthog` | `posthog()`, which returns the PostHog integration                                                                                                                                                                                                                                                       |
+| `@wfgraph/plugins/resend`  | `resend()`, which returns the Resend integration                                                                                                                                                                                                                                                         |
+| `@wfgraph/plugins/slack`   | `slack(options?)`, which returns the Slack integration with the host's optional Slack OAuth client                                                                                                                                                                                                       |
+| `@wfgraph/plugins/twilio`  | `twilio()`, which returns the Twilio integration                                                                                                                                                                                                                                                         |
+| `@wfgraph/plugins/ui`      | The six integrations' icons and output renderers as one record, imported by the browser alone                                                                                                                                                                                                            |
 
-Workflow Graph cannot serialize a React component, so that last record is the one part of the catalog
+Workflow Graph cannot serialize a React component, so the `@wfgraph/plugins/ui` record is the one part of the catalog
 that stays off `/api/extensions`. `@wfgraph/shared` stays private, and the build inlines it
 into whichever bundle needs it. `@wfgraph/core` and `@wfgraph/plugins` also include a
 `skills/` directory in the tarball; it is not a package export.

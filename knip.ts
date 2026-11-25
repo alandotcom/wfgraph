@@ -177,11 +177,11 @@ const config: KnipConfig = {
     },
 
     "packages/plugins": {
-      // src/index.ts and src/ui.ts are the two names in this package's "exports"
-      // map, and knip picks them up from there. The first exports the
-      // integrations as values, which a host passes to createWfGraphApp; the second
-      // exports the icons and output renderers, which are React components and
-      // so cannot travel over /api/extensions.
+      // Each src/<name>/index.ts and src/ui.ts is a name in this package's
+      // "exports" map, and knip picks them up from there. An integration's
+      // index.ts exports the function a host calls and passes to
+      // createWfGraphApp; ui.ts exports the icons and output renderers, which are
+      // React components and so cannot travel over /api/extensions.
       entry: [],
       project: ["src/**/*.{ts,tsx}"],
     },

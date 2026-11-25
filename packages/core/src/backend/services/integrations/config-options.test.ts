@@ -104,7 +104,7 @@ const optionsProvider = (
   ) => void
 ): ConfigOptionsProvider => ({
   answers: "options",
-  load: async () => async (credentials, request) => {
+  load: async (credentials, request) => {
     seen?.(credentials, request.parameters);
     return answer;
   },
@@ -254,7 +254,7 @@ describe("integration config options", () => {
         const extensions = extensionsWith({
           templates: {
             answers: "options",
-            load: async () => () => {
+            load: () => {
               throw new Error("vendor said no");
             },
           },
@@ -271,24 +271,26 @@ describe("integration config options", () => {
       })
     );
 
-    it.effect("keeps a loader that throws in the error channel", () =>
-      Effect.gen(function* () {
-        const extensions = extensionsWith({
-          templates: {
-            answers: "options",
-            load: () => Promise.reject(new Error("module missing")),
-          },
-        });
+    it.effect(
+      "keeps a provider whose promise rejects in the error channel",
+      () =>
+        Effect.gen(function* () {
+          const extensions = extensionsWith({
+            templates: {
+              answers: "options",
+              load: () => Promise.reject(new Error("vendor unreachable")),
+            },
+          });
 
-        const failure = yield* postIntegrationConfigOptions(
-          "int_1",
-          "templates",
-          {}
-        ).pipe(Effect.provide(Layer.mergeAll(repo, extensions)), Effect.flip);
+          const failure = yield* postIntegrationConfigOptions(
+            "int_1",
+            "templates",
+            {}
+          ).pipe(Effect.provide(Layer.mergeAll(repo, extensions)), Effect.flip);
 
-        assert.instanceOf(failure, InternalFailure);
-        assert.strictEqual(failure.error, "module missing");
-      })
+          assert.instanceOf(failure, InternalFailure);
+          assert.strictEqual(failure.error, "vendor unreachable");
+        })
     );
 
     // A provider answering the wrong kind is a plugin bug an operator should
@@ -300,7 +302,7 @@ describe("integration config options", () => {
           const extensions = extensionsWith({
             templates: {
               answers: "options",
-              load: async () => async () => ({
+              load: async () => ({
                 status: "fields" as const,
                 fields: [],
               }),
@@ -324,7 +326,7 @@ describe("integration config options", () => {
           templates: optionsProvider({ status: "options", options: [] }),
           variables: {
             answers: "fields",
-            load: async () => async () => ({
+            load: async () => ({
               status: "fields",
               fields: [{ key: "constructor", label: "Unsafe" }],
             }),

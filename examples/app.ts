@@ -30,10 +30,15 @@ import {
 } from "@wfgraph/core";
 import { configureWfGraphLogging } from "@wfgraph/core/logging";
 import { wfSqlite } from "@wfgraph/core/sqlite";
-// The built-in integrations, created for this app. Nothing registers on import, so
-// the line that passes them to `createWfGraphApp` below is what turns them on and
-// dropping it is what turns them off.
-import { builtInIntegrations } from "@wfgraph/plugins";
+// The built-in integrations, one entry each. Nothing registers on import: the
+// `extensions.integrations` list passed to `createWfGraphApp` is what turns each one
+// on, and an integration left out of that list is off.
+import { clerk } from "@wfgraph/plugins/clerk";
+import { linear } from "@wfgraph/plugins/linear";
+import { posthog } from "@wfgraph/plugins/posthog";
+import { resend } from "@wfgraph/plugins/resend";
+import { slack } from "@wfgraph/plugins/slack";
+import { twilio } from "@wfgraph/plugins/twilio";
 import { Hono } from "hono";
 import { z } from "zod";
 import { createDemoAuth } from "./demo-auth";
@@ -311,17 +316,22 @@ const wfgraph = await createWfGraphApp({
   // The whole extension surface, assembled in one place. The Events are what the
   // editor lists and what a send is checked against.
   extensions: {
-    // Slack's OAuth flow turns on when the host hands over a Slack app's client
-    // credentials; with neither variable set, the editor offers the bot-token
-    // form alone.
-    integrations: builtInIntegrations({
-      slack: {
+    integrations: [
+      clerk(),
+      linear(),
+      posthog(),
+      resend(),
+      // Slack's OAuth flow turns on when the host hands over a Slack app's client
+      // credentials; with neither variable set, the editor offers the bot-token
+      // form alone.
+      slack({
         oauthClient: {
           clientId: process.env.SLACK_CLIENT_ID,
           clientSecret: process.env.SLACK_CLIENT_SECRET,
         },
-      },
-    }),
+      }),
+      twilio(),
+    ],
     events: [
       appointmentCreated,
       appointmentRescheduled,

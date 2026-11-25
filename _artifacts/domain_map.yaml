@@ -499,9 +499,9 @@ skills:
       - mistake: Pass decoded handler input to runAction
         mechanism: runAction input is the encoded side that a builder typed, and a transforming schema decodes it on the way in.
         wrong_pattern: |
-          runAction(twilio, "send-sms", { input: { mediaUrls: ["https://a"] } })
+          runAction(twilio(), "send-sms", { input: { mediaUrls: ["https://a"] } })
         correct_pattern: |
-          runAction(twilio, "send-sms", { input: { mediaUrls: "https://a" } })
+          runAction(twilio(), "send-sms", { input: { mediaUrls: "https://a" } })
         source: alandotcom/wfgraph:docs/integrations.md (Testing an integration)
         priority: HIGH
         status: active
@@ -527,9 +527,9 @@ skills:
     packages:
       - "@wfgraph/plugins"
     covers:
-      - builtInIntegrations
+      - one entry per integration (@wfgraph/plugins/clerk, linear, posthog, resend, slack, twilio)
       - slack(options?)
-      - clerk, linear, posthog, resend and twilio exports
+      - clerk(), linear(), posthog(), resend() and twilio(), each returning one definition built at module load
       - publicUrl OAuth routes
       - Resend webhook Events
       - "@wfgraph/plugins/ui"
@@ -537,8 +537,8 @@ skills:
       - oauthRevocation on a connection delete
       - the https rule for POSTHOG_HOST
     tasks:
-      - Turn on all six built-in integrations with builtInIntegrations() in extensions.integrations.
-      - Turn on a subset by passing individual exports.
+      - Turn on a built-in integration by importing it from its own entry and passing the result of calling it in extensions.integrations.
+      - Turn on all six by writing six imports, since the package has no root entry.
       - Enable Slack OAuth with slack({ oauthClient }) or keep Slack manual-only.
       - Meet the publicUrl, HTTPS and SameSite=Lax session cookie requirements of Slack, Resend and PostHog OAuth.
       - Receive Resend webhook Events by pasting the Connection URL and adding RESEND_WEBHOOK_SECRET on that Connection.
@@ -549,17 +549,28 @@ skills:
       - mistake: Expect import to enable integrations
         mechanism: Nothing registers on import, so an empty extensions object turns nothing on.
         wrong_pattern: |
-          import "@wfgraph/plugins"; createWfGraphApp({ extensions: {} })
+          import "@wfgraph/plugins/slack"; createWfGraphApp({ extensions: {} })
         correct_pattern: |
-          extensions: { integrations: builtInIntegrations() }
+          extensions: { integrations: [slack()] }
         source: alandotcom/wfgraph:packages/plugins/README.md
         priority: CRITICAL
         status: active
         skills: [wfgraph-plugins, integrations]
+      - mistake: Import from the package root or pass an uncalled function
+        mechanism: The package has no root entry, and every integration is a function a host calls to get its definition.
+        wrong_pattern: |
+          import { slack } from "@wfgraph/plugins"; integrations: [resend, twilio]
+        correct_pattern: |
+          import { resend } from "@wfgraph/plugins/resend";
+          import { twilio } from "@wfgraph/plugins/twilio";
+          integrations: [resend(), twilio()]
+        source: alandotcom/wfgraph:packages/plugins/README.md
+        priority: HIGH
+        status: active
       - mistake: Slack OAuth without publicUrl
         mechanism: Core derives the OAuth callback and metadata URLs from publicUrl plus basePath.
         wrong_pattern: |
-          builtInIntegrations({ slack: { oauthClient } }) with no publicUrl
+          slack({ oauthClient }) with no publicUrl
         correct_pattern: |
           publicUrl: "https://workflows.example.com"
         source: alandotcom/wfgraph:docs/embedding.md (Built-in integrations)

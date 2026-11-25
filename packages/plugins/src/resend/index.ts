@@ -24,8 +24,13 @@ import {
   getResendEmail,
   sendResendEmail,
 } from "#src/resend/client";
+import {
+  resendTemplateOptions,
+  resendTemplateVariableFields,
+} from "#src/resend/config-options";
 import { resendEvents } from "#src/resend/events";
 import { resendOAuth } from "#src/resend/oauth";
+import { testResend } from "#src/resend/test";
 import { resendWebhook } from "#src/resend/webhook";
 
 const resendCredentialFields = {
@@ -355,7 +360,7 @@ const buildEmailPayload = Effect.fn(function* (
   return payload;
 });
 
-export const resend = defineIntegration({
+const resendIntegration = defineIntegration({
   type: "resend",
   label: "Resend",
   description: "Send transactional emails",
@@ -364,21 +369,13 @@ export const resend = defineIntegration({
   events: resendEvents,
   webhook: resendWebhook,
 
-  test: async () => (await import("#src/resend/test")).testResend,
+  test: testResend,
 
-  // Lazy for the reason `test` is: the template calls stay out of the process
-  // until someone opens the node's config panel and asks.
   configOptions: {
-    templates: {
-      answers: "options",
-      load: async () =>
-        (await import("#src/resend/config-options")).resendTemplateOptions,
-    },
+    templates: { answers: "options", load: resendTemplateOptions },
     "template-variables": {
       answers: "fields",
-      load: async () =>
-        (await import("#src/resend/config-options"))
-          .resendTemplateVariableFields,
+      load: resendTemplateVariableFields,
     },
   },
 
@@ -724,3 +721,10 @@ export const resend = defineIntegration({
     },
   },
 });
+
+/**
+ * Returns the Resend integration, for a host to list under
+ * `extensions.integrations` in `createWfGraphApp`. The definition is built once
+ * when this module loads, so every call returns the same value.
+ */
+export const resend = () => resendIntegration;

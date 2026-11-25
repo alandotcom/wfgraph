@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { posthog } from "#src/posthog/index";
 
-const oauth = posthog.oauth;
+const oauth = posthog().oauth;
 
 if (oauth === undefined) {
   throw new Error("PostHog must always offer OAuth");

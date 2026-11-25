@@ -3,7 +3,8 @@ name: wfgraph-plugins
 description: >
   Use when turning on the built-in Workflow Graph integrations from
   @wfgraph/plugins (Clerk, Linear, PostHog, Resend, Slack and Twilio) in a host
-  application: passing builtInIntegrations() or individual exports in
+  application: importing each integration from its own entry
+  (@wfgraph/plugins/slack and so on) and passing the result of calling it in
   extensions.integrations, configuring Slack OAuth with slack({ oauthClient }),
   meeting the publicUrl and session cookie requirements of Slack, Resend and
   PostHog OAuth, receiving Resend webhook Events, deciding what the built-in
@@ -14,8 +15,9 @@ description: >
   mounting the app itself use wfgraph-core.
 metadata:
   purpose: >
-    builtInIntegrations, slack(options?) OAuth factory, clerk linear posthog
-    resend twilio value exports, publicUrl OAuth routes, @wfgraph/plugins/ui.
+    One entry per integration, clerk() linear() posthog() resend() twilio()
+    and slack(options?) with its OAuth client, no root entry, publicUrl OAuth
+    routes, @wfgraph/plugins/ui.
     Load when turning on the six built-in integrations or wiring Slack, Resend,
     or PostHog OAuth in the host.
   type: core
@@ -28,28 +30,31 @@ sources:
 
 # Built-in integrations
 
-Clerk, Linear, PostHog, Resend, Slack, and Twilio. Nothing registers on
-import. Pass the values into `createWfGraphApp` under
-`extensions.integrations`.
+Clerk, Linear, PostHog, Resend, Slack, and Twilio, each in its own entry
+(`@wfgraph/plugins/clerk` and so on). Each entry exports a function named
+after the integration. Nothing registers on import. Call each function and
+pass the results into `createWfGraphApp` under `extensions.integrations`.
 
 Writing a new vendor integration is `@wfgraph/core/plugin`
 (wfgraph-core/integrations), not this package's internals.
 
-Copy-paste `builtInIntegrations({ slack: { oauthClient } })` from
+Copy-paste the integration list with `slack({ oauthClient })` from
 `packages/plugins/README.md`. Host `publicUrl` and the OAuth route table:
 `docs/embedding.md` ("Built-in integrations").
 
 ## Core Patterns
 
-### Some of the six
+### One entry per integration
 
-Clerk, Linear, PostHog, Resend, and Twilio are values. Slack is
-`slack(options?)` because it closes over host OAuth client credentials.
-Selecting individual exports narrows what reaches `createWfGraphApp`, not
-what the process loads: the package still imports all six. `@wfgraph/core`
-is a peer; keep one copy.
+The package has no root entry; a host that wants all six writes six imports.
+A process loads only the entries it imports, which keeps a Cloudflare
+Worker's startup time down. `clerk()`, `linear()`, `posthog()`, `resend()`
+and `twilio()` take no arguments and return the same definition on every
+call. `slack(options?)` builds a new definition on each call because it
+closes over host OAuth client credentials. `@wfgraph/core` is a peer; keep
+one copy.
 
-Omit `slack.oauthClient` to keep Slack manual-only. Resend and PostHog OAuth
+Call `slack()` with no `oauthClient` to keep Slack manual-only. Resend and PostHog OAuth
 use a public client metadata document and need no provider secret. All three
 keep manual credential forms when OAuth is available.
 
@@ -90,21 +95,32 @@ run each send.
 ### Editor UI
 
 `@wfgraph/plugins/ui` exports `integrationUi` (icons and output renderers).
-Browser-only; the server entry does not import React.
+Browser-only; no integration entry imports React.
 
 ## Common Mistakes
 
 ### CRITICAL Expect import to enable integrations
 
-Wrong: `import "@wfgraph/plugins"` then `createWfGraphApp({ extensions: {} })`.
+Wrong: `import "@wfgraph/plugins/slack"` then `createWfGraphApp({ extensions: {} })`.
 
-Correct: `extensions.integrations: builtInIntegrations()` (or an explicit list).
+Correct: `extensions.integrations: [slack()]`, one call per integration.
+
+Source: alandotcom/wfgraph:packages/plugins/README.md
+
+### HIGH Import from the package root or pass an uncalled function
+
+Wrong: `extensions.integrations: [resend, twilio]`, or `import { slack } from "@wfgraph/plugins"`.
+
+Correct: `import { resend } from "@wfgraph/plugins/resend"` and
+`import { twilio } from "@wfgraph/plugins/twilio"`, then
+`extensions.integrations: [resend(), twilio()]`. Each integration has its own
+entry, and the package has no root entry.
 
 Source: alandotcom/wfgraph:packages/plugins/README.md
 
 ### HIGH Slack OAuth without publicUrl
 
-Wrong: `builtInIntegrations({ slack: { oauthClient } })` with no `publicUrl`.
+Wrong: `slack({ oauthClient })` with no `publicUrl`.
 
 Correct: set `publicUrl` to the external origin.
 

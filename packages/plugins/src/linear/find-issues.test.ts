@@ -1,24 +1,27 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { beforeEach, vi } from "vitest";
-import { createLinear } from "#src/linear/index";
+import { recordFetch } from "#src/fetch-test-support";
+import { linear } from "#src/linear/index";
+import {
+  linearIssuePage,
+  linearIssues,
+  linearResponses,
+} from "#src/linear/responses.fixtures";
 
 /**
- * The seam is `createClient`, injected when the integration is built so a case
- * says what filter was asked for and how the answer was flattened.
+ * The seam is `fetch`: `runAction` runs the step with the transport that reads
+ * the global per call, so a case says what Linear's `issues` connection held
+ * and reads back the variables the step sent. Reading the connection page by
+ * page is `client.test.ts`'s subject, and how a refusal is worded is
+ * `errors.test.ts`'s.
  */
-const mocks = vi.hoisted(() => ({ issues: vi.fn() }));
-
-function fakeCreateClient(_apiKey: string) {
-  return {
-    issues: mocks.issues,
-  } as never;
-}
-
-const underTest = createLinear(fakeCreateClient);
 
 const LINEAR_CREDENTIALS = { LINEAR_API_KEY: "lin_api_key" };
+
+const wire = recordFetch(() =>
+  Response.json(linearIssuePage([linearIssues.assigned]))
+);
 
 /** The credentials a run would have fetched. */
 function credentialsRead(
@@ -27,29 +30,11 @@ function credentialsRead(
   return Effect.sync(() => values);
 }
 
-beforeEach(() => {
-  mocks.issues.mockReset();
-  mocks.issues.mockResolvedValue({
-    nodes: [
-      {
-        id: "issue_1",
-        title: "Login broken",
-        url: "https://linear.app/team/issue/ABC-1",
-        state: Promise.resolve({ name: "In Progress" }),
-        priority: 2,
-        assigneeId: "user_1",
-      },
-    ],
-    pageInfo: { hasNextPage: false },
-    fetchNext: vi.fn(),
-  });
-});
-
 describe("linear/find-issues", () => {
-  it.effect("flattens the issue and the state behind it", () =>
+  it.effect("flattens the issue with its state and assignee", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(underTest, "find-issues", {
+        yield* runAction(linear(), "find-issues", {
           input: {},
           credentials: credentialsRead(),
         })
@@ -60,7 +45,7 @@ describe("linear/find-issues", () => {
           {
             id: "issue_1",
             title: "Login broken",
-            url: "https://linear.app/team/issue/ABC-1",
+            url: "https://linear.app/team/issue/ABC-1/login-broken",
             state: "In Progress",
             priority: 2,
             assigneeId: "user_1",
@@ -68,6 +53,8 @@ describe("linear/find-issues", () => {
         ],
         count: 1,
       });
+      // The state and the assignee arrive in the same request as the issue.
+      expect(wire.requests).toHaveLength(1);
     })
   );
 
@@ -75,18 +62,18 @@ describe("linear/find-issues", () => {
   // "any" is how the status select spells "do not filter on status".
   it.effect("asks for no filter when nothing was filled in", () =>
     Effect.gen(function* () {
-      yield* runAction(underTest, "find-issues", {
+      yield* runAction(linear(), "find-issues", {
         input: { linearStatus: "any", linearLabel: "" },
         credentials: credentialsRead(),
       });
 
-      expect(mocks.issues).toHaveBeenCalledWith({ filter: undefined });
+      expect(wire.body(0).variables).toEqual({ first: 50 });
     })
   );
 
   it.effect("builds Linear's filter shape from the fields given", () =>
     Effect.gen(function* () {
-      yield* runAction(underTest, "find-issues", {
+      yield* runAction(linear(), "find-issues", {
         input: {
           linearAssigneeId: "user_1",
           linearTeamId: "team_1",
@@ -96,82 +83,28 @@ describe("linear/find-issues", () => {
         credentials: credentialsRead(),
       });
 
-      expect(mocks.issues).toHaveBeenCalledWith({
+      expect(wire.body(0).variables).toEqual({
         filter: {
           assignee: { id: { eq: "user_1" } },
           team: { id: { eq: "team_1" } },
           state: { type: { eq: "started" } },
           labels: { name: { eqIgnoreCase: "bug" } },
         },
+        first: 50,
       });
-    })
-  );
-
-  it.effect("reads every page in Linear's issue connection", () =>
-    Effect.gen(function* () {
-      const found = {
-        nodes: [
-          {
-            id: "issue_1",
-            title: "First page",
-            url: "https://linear.app/team/issue/ABC-1",
-            state: Promise.resolve({ name: "Todo" }),
-            priority: 1,
-            assigneeId: null,
-          },
-        ],
-        pageInfo: { hasNextPage: true },
-        fetchNext: vi.fn(),
-      };
-      found.fetchNext.mockImplementation(async () => {
-        found.nodes.push({
-          id: "issue_2",
-          title: "Second page",
-          url: "https://linear.app/team/issue/ABC-2",
-          state: Promise.resolve({ name: "In Progress" }),
-          priority: 2,
-          assigneeId: null,
-        });
-        found.pageInfo.hasNextPage = false;
-        return found;
-      });
-      mocks.issues.mockResolvedValue(found);
-
-      const result = actionData(
-        yield* runAction(underTest, "find-issues", {
-          input: {},
-          credentials: credentialsRead(),
-        })
-      );
-
-      expect(found.fetchNext).toHaveBeenCalledTimes(1);
-      expect(result.issues.map((issue) => issue.id)).toEqual([
-        "issue_1",
-        "issue_2",
-      ]);
-      expect(result.count).toBe(2);
     })
   );
 
   it.effect("names an issue with no state rather than dropping it", () =>
     Effect.gen(function* () {
-      mocks.issues.mockResolvedValue({
-        nodes: [
-          {
-            id: "issue_2",
-            title: "No state",
-            url: "https://linear.app/team/issue/ABC-2",
-            state: undefined,
-            priority: 0,
-            assigneeId: null,
-          },
-        ],
-        pageInfo: { hasNextPage: false },
-        fetchNext: vi.fn(),
-      });
+      wire.answer(() =>
+        Response.json(
+          linearIssuePage([{ ...linearIssues.unassigned, state: null }])
+        )
+      );
 
       const result = actionData(
-        yield* runAction(underTest, "find-issues", {
+        yield* runAction(linear(), "find-issues", {
           input: {},
           credentials: credentialsRead(),
         })
@@ -179,8 +112,8 @@ describe("linear/find-issues", () => {
 
       expect(result.issues[0]).toEqual({
         id: "issue_2",
-        title: "No state",
-        url: "https://linear.app/team/issue/ABC-2",
+        title: "Unassigned",
+        url: "https://linear.app/team/issue/ABC-2/unassigned",
         state: "Unknown",
         priority: 0,
         assigneeId: null,
@@ -188,25 +121,21 @@ describe("linear/find-issues", () => {
     })
   );
 
-  it.effect("reports the GraphQL error Linear threw", () =>
+  it.effect("puts its own prefix in front of Linear's refusal", () =>
     Effect.gen(function* () {
-      mocks.issues.mockRejectedValue({
-        message: "Request failed",
-        response: {
-          status: 401,
-          errors: [{ message: "Authentication required" }],
-        },
-      });
+      wire.answer(() =>
+        Response.json(linearResponses.authenticationError, { status: 400 })
+      );
 
       const error = actionError(
-        yield* runAction(underTest, "find-issues", {
+        yield* runAction(linear(), "find-issues", {
           input: {},
           credentials: credentialsRead(),
         })
       );
 
       expect(error.message).toBe(
-        "Failed to find issues: Authentication required"
+        "Failed to find issues: You need to authenticate to access this operation."
       );
     })
   );
@@ -214,7 +143,7 @@ describe("linear/find-issues", () => {
   it.effect("says which credential is missing before reaching Linear", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(underTest, "find-issues", {
+        yield* runAction(linear(), "find-issues", {
           input: {},
           credentials: credentialsRead({}),
         })
@@ -223,7 +152,7 @@ describe("linear/find-issues", () => {
       expect(error.message).toBe(
         "LINEAR_API_KEY is not configured. Please add it in Project Integrations."
       );
-      expect(mocks.issues).toHaveBeenCalledTimes(0);
+      expect(wire.requests).toHaveLength(0);
     })
   );
 });

@@ -144,7 +144,8 @@ import {
   WfGraphRoles,
 } from "@wfgraph/core";
 import { wfPostgres } from "@wfgraph/core/postgres";
-import { builtInIntegrations } from "@wfgraph/plugins";
+import { resend } from "@wfgraph/plugins/resend";
+import { twilio } from "@wfgraph/plugins/twilio";
 
 const appointmentCreated = defineEvent({
   name: "app/appointment.created",
@@ -199,7 +200,8 @@ const wfgraph = await createWfGraphApp({
   extensions: {
     events: [appointmentCreated],
     actions: [cancelAppointment],
-    integrations: builtInIntegrations(),
+    // Each built-in integration has its own entry and is called to create it.
+    integrations: [resend(), twilio()],
   },
 });
 
@@ -243,7 +245,7 @@ can never be installed against a backend whose API contract it no longer matches
 | -------------------------------------------------------------------- | ---------------------------------------------------- |
 | [`@wfgraph/core`](https://www.npmjs.com/package/@wfgraph/core)       | Run engine, authoring vocabulary, `createWfGraphApp` |
 | [`@wfgraph/client`](https://www.npmjs.com/package/@wfgraph/client)   | The editor, as a built bundle                        |
-| [`@wfgraph/plugins`](https://www.npmjs.com/package/@wfgraph/plugins) | The six built-in integrations                        |
+| [`@wfgraph/plugins`](https://www.npmjs.com/package/@wfgraph/plugins) | The six built-in integrations, one entry each        |
 
 `@wfgraph/shared` holds types the three have in common. It stays private and is inlined at
 build time, so it never appears as a dependency of anything you install.

@@ -10,7 +10,7 @@ import {
   InvalidInput,
 } from "#src/backend/lib/effect/failures";
 import { defineIntegration } from "#src/backend/extensions/define-integration";
-import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
+import type { IntegrationTestFunction } from "#src/backend/extensions/integration-test";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
 import {
   SilentAppLoggerLayer,
@@ -64,7 +64,7 @@ const slackLike: IntegrationMetadata = {
  * The same integration as a definition, which is what carries a connection test.
  * `slackLike` above is the metadata half, for the cases that only mask a config.
  */
-function slackDefinition(test?: IntegrationTestLoader) {
+function slackDefinition(test?: IntegrationTestFunction) {
   return defineIntegration({
     type: "slack",
     label: "Slack",
@@ -600,15 +600,13 @@ describe("integration connection test failures", () => {
     it.effect("answers with what the vendor's test function threw", () =>
       Effect.gen(function* () {
         // A vendor SDK that throws instead of answering, which is the case the
-        // loader and the vendor call are both wrapped for.
+        // `attempt` around the test function's call is there for.
         const throwingSlack = makeExtensionsLayer(
           assembleExtensions({
             integrations: [
-              slackDefinition(() =>
-                Promise.resolve(() => {
-                  throw new Error("vendor said no");
-                })
-              ),
+              slackDefinition(() => {
+                throw new Error("vendor said no");
+              }),
             ],
           })
         );
@@ -685,7 +683,7 @@ describe("saved OAuth connection tests", () => {
             label: "Slack",
             description: "test double",
             credentials: slackLike.credentialFields,
-            test: async () => (credentials) => {
+            test: (credentials) => {
               testedCredentials = credentials;
               return Promise.resolve({ success: true as const });
             },
@@ -813,6 +811,7 @@ describe("an integration this server does not hold", () => {
 
         assert.instanceOf(failure, InvalidInput);
         assert.include(failure.error, "extensions.integrations");
+        assert.include(failure.error, '"@wfgraph/plugins/<type>"');
         // The list is what shows the cause: this build and the editor's disagree.
         assert.include(failure.error, "This server holds: slack.");
       })
@@ -865,7 +864,7 @@ describe("an integration this server does not hold", () => {
  * An integration whose secret is sent to a host the connection names, which is
  * the shape of PostHog's project key and API host.
  */
-const hostedDefinition = (test?: IntegrationTestLoader) =>
+const hostedDefinition = (test?: IntegrationTestFunction) =>
   defineIntegration({
     type: "hosted",
     label: "Hosted",
@@ -981,12 +980,10 @@ describe("a request that moves where a stored secret is sent", () => {
         const testedHosted = makeExtensionsLayer(
           assembleExtensions({
             integrations: [
-              hostedDefinition(() =>
-                Promise.resolve(async () => {
-                  tested += 1;
-                  return { success: true };
-                })
-              ),
+              hostedDefinition(async () => {
+                tested += 1;
+                return { success: true };
+              }),
             ],
           })
         );
@@ -1010,12 +1007,10 @@ describe("a request that moves where a stored secret is sent", () => {
         const testedHosted = makeExtensionsLayer(
           assembleExtensions({
             integrations: [
-              hostedDefinition(() =>
-                Promise.resolve(async (credentials) => {
-                  tested = credentials;
-                  return { success: true };
-                })
-              ),
+              hostedDefinition(async (credentials) => {
+                tested = credentials;
+                return { success: true };
+              }),
             ],
           })
         );

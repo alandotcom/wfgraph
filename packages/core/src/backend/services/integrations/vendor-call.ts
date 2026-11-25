@@ -3,9 +3,10 @@
  * Effect channel.
  *
  * A connection test and a config-options question both reach past the database:
- * a catalog lookup, a dynamic import of a vendor module, then the vendor call.
- * Each of those can throw, and each throws for reasons the caller reports
- * differently, so the wording is passed in rather than fixed here.
+ * each looks up a function the integration registered (its `test`, or a config
+ * options provider's `load`) and calls it, and that function calls the vendor.
+ * The call can throw, and each caller words the failure differently, so the
+ * wording is passed in rather than fixed here.
  */
 
 import { Effect } from "effect";
@@ -62,5 +63,5 @@ export function describeUnavailableIntegration(
       ? `This server holds: ${available.join(", ")}.`
       : "This server holds no integration at all.";
 
-  return `Integration "${type}" is not available on this server. Pass it to createWfGraphApp under extensions.integrations, or pass builtInIntegrations() from "@wfgraph/plugins" for the built-in ones. ${holds}`;
+  return `Integration "${type}" is not available on this server. Pass it to createWfGraphApp under extensions.integrations. A built-in integration is a function imported from "@wfgraph/plugins/<type>", and the value to pass is what it returns. ${holds}`;
 }

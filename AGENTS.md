@@ -27,8 +27,9 @@ beside `@wfgraph/example-app` (`examples/`), the host app `pnpm run dev` runs.
   nor published
 - `@wfgraph/core` (`packages/core`) library entrypoints and the backend
 - `@wfgraph/client` (`packages/client`) the React SPA, handed to `createWfGraphApp` as `client`
-- `@wfgraph/plugins` (`packages/plugins`) the six built-in integrations. Each server half
-  builds against `@wfgraph/core/plugin` alone; the browser half is one exported record,
+- `@wfgraph/plugins` (`packages/plugins`) the six built-in integrations, one package entry
+  each (`@wfgraph/plugins/slack` and so on) and no root entry. Each server half builds
+  against `@wfgraph/core/plugin` alone; the browser half is one exported record,
   `src/ui.ts`, which the editor provides through React context.
 
 Read the code for structure. `README.md` is the short host entrypoint, `docs/embedding.md`,
@@ -339,8 +340,6 @@ active keeps the mocked import for every later file in that worker. Prefer:
   `extensions.test.ts` stubs `fetch` to exercise hydrate)
 - required DI ports at construction (`fanOutDelivery`'s `ports`,
   `runBody`'s `actions`, `createInngestEventForwarder`'s `events`)
-- injected SDK factories (`createLinear(createClient)`) rather than `vi.spyOn` of
-  thin wrappers
 - fetch stubs that read `globalThis` per call (see `RPCLink`'s `fetch`)
 
 Do not add production put/dial seams written only for tests. For a stub only one
@@ -414,7 +413,8 @@ model-backed `*.eval.ts` files alone, on the same Vitest from the catalog.
 Vitest resolves `vitest.config` first and stops at the first file it finds, so each runner
 declares what its tests need. The `@wfgraph/plugins` source aliases are shared among them as
 `workspaceSourceAliases` (`scripts/plugins/workspace-source-aliases.ts`); without them a test
-importing `@wfgraph/plugins` would resolve through the package's `exports` to a stale `dist`.
+importing a `@wfgraph/plugins` entry would resolve through the package's `exports` to a stale
+`dist`.
 
 **The repo has no server of its own.** The one server is `examples/app.ts` (ADR-0006), and
 the bar for a line in it is whether an adopter would write it. `pnpm run dev` is two
@@ -437,6 +437,18 @@ entry, which `pnpm run package:smoke` checks by importing each of them from the 
 tarball installed without `inngest`. Verify a packaging change with `pnpm pack` and read
 the extracted manifest. `docs/embedding.md` ("Package exports") is the one home of the
 core entry points.
+
+**A dynamic `import()` of bundled code slows a Worker's startup.** Wrangler bundles a Worker
+into one file with esbuild, and esbuild wraps the target of an `import()` it bundles, along
+with every module that target imports statically, in a lazy initializer. The wrapping
+reaches the `effect` modules that target shares with the rest of the bundle, so the Worker
+grows and starts slower, and esbuild cannot tree-shake what the target pulled in.
+Nothing reachable from `@wfgraph/core/worker` or from an integration entry of
+`@wfgraph/plugins` uses `import()`: import a module statically, and give an optional
+dependency an entry of its own, the way `@wfgraph/core/inngest` holds the Inngest SDK.
+`scripts/plugins/worker-bundle.test.ts` bundles each of those entries with wrangler's
+settings, fails on an `import()` of bundled code, and holds each integration to its row of
+`ADDED_KIB_CEILING`.
 
 ## Code cleanliness
 
