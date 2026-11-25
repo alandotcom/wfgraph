@@ -659,6 +659,61 @@ describe("OAuth connection overlays", () => {
     });
   });
 
+  // A failed test is an answer the person acts on in this form, so it is
+  // drawn under the credentials in words, with the provider's code beneath.
+  it("shows a failed Test under the credentials, in a sentence", async () => {
+    stubFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            json: { status: "error", message: "invalid_auth" },
+          }),
+          { headers: { "content-type": "application/json" } }
+        )
+    );
+    const error = vi.spyOn(toast, "error");
+
+    renderEditOverlay(connection());
+    fireEvent.click(await screen.findByRole("button", { name: "Test" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "Test failed. Resend rejected the credentials of the Connection Production. Enter new credentials and test again."
+    );
+    expect(alert.textContent).toContain("invalid_auth");
+    expect(error).not.toHaveBeenCalled();
+
+    // The answer judged the credentials as they were, so editing one clears it.
+    fireEvent.change(screen.getByLabelText("From email"), {
+      target: { value: "alerts@example.com" },
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows a passed Test of new credentials under them", async () => {
+    stubFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            json: { status: "success", message: "Connection successful" },
+          }),
+          { headers: { "content-type": "application/json" } }
+        )
+    );
+
+    renderOverlay(
+      <ConfigureConnectionOverlay overlayId="add_resend" type="resend" />
+    );
+    fireEvent.change(screen.getByLabelText("API key"), {
+      target: { value: "api-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Test" }));
+
+    expect((await screen.findByRole("status")).textContent).toBe(
+      "Connection successful"
+    );
+  });
+
   it("runs the pre-save test through the saved connection with proposed config", async () => {
     const fetch = stubFetch(
       async () =>

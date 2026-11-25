@@ -7,10 +7,8 @@ import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { useOAuthConnection } from "#src/hooks/use-oauth-connection";
-import {
-  announceTestResult,
-  hasProvidedConfigValues,
-} from "#src/lib/connection-credentials";
+import { hasProvidedConfigValues } from "#src/lib/connection-credentials";
+import { describeConnectionTestFailure } from "#src/lib/run-failure";
 import { WebhookUrlField } from "#src/components/ui/webhook-url-field";
 import { can } from "#src/lib/authorization";
 import type { Integration } from "#src/lib/rpc-client";
@@ -27,7 +25,9 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { isBlank } from "@wfgraph/shared/types/string";
 import { ConfirmOverlay } from "./confirm-overlay";
+import { ConnectionTestResult } from "./connection-test-result";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 
@@ -376,10 +376,6 @@ export function EditConnectionOverlay({
   });
   const oauthPending = oauthConnection.pending;
 
-  const updateConfig = (key: string, value: string) => {
-    setConfig((prev) => ({ ...prev, [key]: value }));
-  };
-
   const update = useMutation(
     orpcQuery.integration.update.mutationOptions({
       onSuccess: async () => {
@@ -400,11 +396,18 @@ export function EditConnectionOverlay({
     })
   );
 
+  // Test's answer is drawn under the credentials, so it stays beside the
+  // fields it judged. A failure to reach the server still toasts.
   const testStoredCredentials = useMutation(
-    orpcQuery.integration.testConnection.mutationOptions({
-      onSuccess: announceTestResult,
-    })
+    orpcQuery.integration.testConnection.mutationOptions()
   );
+
+  // A Test's answer judged the credentials as they were, so changing one
+  // clears it.
+  const updateConfig = (key: string, value: string) => {
+    setConfig((prev) => ({ ...prev, [key]: value }));
+    testStoredCredentials.reset();
+  };
 
   const disconnectOAuth = useMutation(
     orpcQuery.integration.disconnectOAuth.mutationOptions({
@@ -430,6 +433,8 @@ export function EditConnectionOverlay({
   // Whether this integration has a connection test at all. An integration that
   // declares none has nothing to press and nothing to run before a save.
   const hasTest = catalogEntry?.hasTest === true;
+  const label = integrationLabel(catalogEntry, integration.type);
+  const connectionName = isBlank(integration.name) ? null : integration.name;
 
   const saving = update.isPending || testForSave.isPending;
   const testing = testStoredCredentials.isPending;
@@ -482,7 +487,13 @@ export function EditConnectionOverlay({
       });
 
       if (result.status === "error") {
-        offerToSaveAnyway(`The test failed: ${result.message}`);
+        offerToSaveAnyway(
+          describeConnectionTestFailure({
+            error: result.message,
+            integrationLabel: label,
+            connectionName,
+          }).sentence
+        );
         return;
       }
     } catch (error) {
@@ -669,7 +680,7 @@ export function EditConnectionOverlay({
           : []),
       ]}
       overlayId={overlayId}
-      title={`Edit ${integrationLabel(catalogEntry, integration.type)}`}
+      title={`Edit ${label}`}
     >
       <p className="-mt-2 mb-4 text-muted-foreground text-sm">
         Update your connection credentials
@@ -709,6 +720,14 @@ export function EditConnectionOverlay({
           ) : null}
 
           {renderConfigFields(credentialEntries)}
+
+          {testStoredCredentials.data ? (
+            <ConnectionTestResult
+              answer={testStoredCredentials.data}
+              connectionName={connectionName}
+              integrationLabel={label}
+            />
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="name">Label (Optional)</Label>

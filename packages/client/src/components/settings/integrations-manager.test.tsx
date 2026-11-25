@@ -219,4 +219,50 @@ describe("IntegrationsManager", () => {
       a.compareDocumentPosition(z) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
   });
+
+  it("shows a failed Test under the row it was pressed on", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(integrationsQueryOptions().queryKey, [connection]);
+    installAuthorizationGrantsForTests(WfGraphOperationIds);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes("/api/rpc/integration/getAll")
+          ? new Response(JSON.stringify({ json: [connection] }), {
+              headers: { "content-type": "application/json" },
+            })
+          : new Response(
+              JSON.stringify({
+                json: {
+                  status: "error",
+                  message: "Invalid API key. Please check your Linear API key.",
+                },
+              }),
+              { headers: { "content-type": "application/json" } }
+            )
+      )
+    );
+
+    render(
+      <ExtensionCatalogProvider value={catalog}>
+        <QueryClientProvider client={queryClient}>
+          <JotaiProvider store={createStore()}>
+            <IntegrationUiProvider value={{}}>
+              <OverlayProvider>
+                <IntegrationsManager />
+              </OverlayProvider>
+            </IntegrationUiProvider>
+          </JotaiProvider>
+        </QueryClientProvider>
+      </ExtensionCatalogProvider>
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Test" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Linear rejected the credentials of the Connection Linear Testing. Enter new credentials and test again."
+    );
+  });
 });

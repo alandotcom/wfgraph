@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeFailure } from "./run-failure";
+import { describeConnectionTestFailure, describeFailure } from "./run-failure";
 
 const entityLabel = (type: string) => (type === "patient" ? "Patient" : type);
 
@@ -88,5 +88,66 @@ describe("describeFailure", () => {
         entityLabel,
       }).connectionCause
     ).toBe(false);
+  });
+});
+
+describe("describeConnectionTestFailure", () => {
+  // Slack's test answers with its bare code, which reads as nothing to a
+  // person, so the sentence says what failed and what to do.
+  it("says a provider rejected a saved Connection's credentials", () => {
+    expect(
+      describeConnectionTestFailure({
+        error: "invalid_auth",
+        integrationLabel: "Slack",
+        connectionName: "Acme Slack",
+      })
+    ).toEqual({
+      sentence:
+        "Slack rejected the credentials of the Connection Acme Slack. Enter new credentials and test again.",
+      detail: "invalid_auth",
+      connectionCause: true,
+    });
+  });
+
+  it("says a provider rejected credentials not yet saved", () => {
+    expect(
+      describeConnectionTestFailure({
+        error: "Invalid API key. Please check your Linear API key.",
+        integrationLabel: "Linear",
+        connectionName: null,
+      })
+    ).toMatchObject({
+      sentence:
+        "Linear rejected these credentials. Enter new credentials and test again.",
+      connectionCause: true,
+    });
+  });
+
+  it("says a credential the test needs is empty", () => {
+    expect(
+      describeConnectionTestFailure({
+        error: "SLACK_API_KEY is required",
+        integrationLabel: "Slack",
+        connectionName: null,
+      })
+    ).toMatchObject({
+      sentence:
+        "A credential this Connection needs is empty. Enter it and test again.",
+      detail: "SLACK_API_KEY is required",
+    });
+  });
+
+  it("keeps an answer it does not recognize as the sentence", () => {
+    expect(
+      describeConnectionTestFailure({
+        error: "The PostHog host did not answer.",
+        integrationLabel: "PostHog",
+        connectionName: "Production",
+      })
+    ).toEqual({
+      sentence: "The PostHog host did not answer.",
+      detail: null,
+      connectionCause: false,
+    });
   });
 });

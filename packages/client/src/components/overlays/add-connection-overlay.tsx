@@ -7,10 +7,8 @@ import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import { Label } from "#src/components/ui/label";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { useOAuthConnection } from "#src/hooks/use-oauth-connection";
-import {
-  announceTestResult,
-  hasProvidedConfigValues,
-} from "#src/lib/connection-credentials";
+import { hasProvidedConfigValues } from "#src/lib/connection-credentials";
+import { describeConnectionTestFailure } from "#src/lib/run-failure";
 import { orpcQuery, refreshIntegrations } from "#src/lib/rpc-query";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { can } from "#src/lib/authorization";
@@ -21,6 +19,7 @@ import {
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { compareText } from "@wfgraph/shared/types/string";
 import { ConfirmOverlay } from "./confirm-overlay";
+import { ConnectionTestResult } from "./connection-test-result";
 import { Overlay } from "./overlay";
 import { useOverlay } from "./overlay-provider";
 
@@ -195,10 +194,6 @@ export function ConfigureConnectionOverlay({
     WfGraphOperations.integrationTestCredentials.id
   );
 
-  const updateConfig = (key: string, value: string) => {
-    setConfig((prev) => ({ ...prev, [key]: value }));
-  };
-
   const create = useMutation(
     orpcQuery.integration.create.mutationOptions({
       meta: { errorMessage: "Failed to save connection" },
@@ -213,11 +208,18 @@ export function ConfigureConnectionOverlay({
     })
   );
 
+  // Test's answer is drawn under the credentials, so it stays beside the
+  // fields it judged. A failure to reach the server still toasts.
   const testNewCredentials = useMutation(
-    orpcQuery.integration.testCredentials.mutationOptions({
-      onSuccess: announceTestResult,
-    })
+    orpcQuery.integration.testCredentials.mutationOptions()
   );
+
+  // A Test's answer judged the credentials as they were, so changing one
+  // clears it.
+  const updateConfig = (key: string, value: string) => {
+    setConfig((prev) => ({ ...prev, [key]: value }));
+    testNewCredentials.reset();
+  };
 
   const catalogEntry = findIntegration(catalog, type);
   const formFields = catalogEntry?.credentialFields;
@@ -295,7 +297,13 @@ export function ConfigureConnectionOverlay({
       const result = await testForSave.mutateAsync({ type, config });
 
       if (result.status === "error") {
-        offerToSaveAnyway(`The test failed: ${result.message}`);
+        offerToSaveAnyway(
+          describeConnectionTestFailure({
+            error: result.message,
+            integrationLabel: getLabel(catalog, type),
+            connectionName: null,
+          }).sentence
+        );
         return;
       }
     } catch (error) {
@@ -450,6 +458,14 @@ export function ConfigureConnectionOverlay({
           <h3 className="font-medium text-sm">Manual configuration</h3>
         )}
         {renderConfigFields()}
+
+        {testNewCredentials.data ? (
+          <ConnectionTestResult
+            answer={testNewCredentials.data}
+            connectionName={null}
+            integrationLabel={getLabel(catalog, type)}
+          />
+        ) : null}
 
         <div className="space-y-2">
           <Label htmlFor="name">Label (Optional)</Label>

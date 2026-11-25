@@ -10,14 +10,14 @@ import { useConnectionRepair } from "#src/hooks/use-connection-repair";
 import { Button } from "#src/components/ui/button";
 import { IntegrationIcon } from "#src/components/ui/integration-icon";
 import { Spinner } from "#src/components/ui/spinner";
-import { announceTestResult } from "#src/lib/connection-credentials";
+import { ConnectionTestResult } from "#src/components/overlays/connection-test-result";
 import type { Integration } from "#src/lib/rpc-client";
 import { integrationsQueryOptions, orpcQuery } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { findIntegration } from "@wfgraph/shared/extensions/catalog";
-import { compareText } from "@wfgraph/shared/types/string";
+import { compareText, isBlank } from "@wfgraph/shared/types/string";
 
 type IntegrationsManagerProps = {
   filter?: string;
@@ -41,9 +41,10 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
     meta: { errorMessage: "Failed to load integrations" },
   });
 
+  // A Test's answer is drawn under the row it was pressed on, one row at a
+  // time. A failure to reach the server still toasts.
   const testConnection = useMutation(
     orpcQuery.integration.testConnection.mutationOptions({
-      onSuccess: announceTestResult,
       meta: { errorMessage: "Connection test failed" },
     })
   );
@@ -110,6 +111,9 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
   const testingId = testConnection.isPending
     ? testConnection.variables?.integrationId
     : undefined;
+  const testedId = testConnection.data
+    ? testConnection.variables?.integrationId
+    : undefined;
 
   if (isError) {
     return (
@@ -152,70 +156,85 @@ export function IntegrationsManager({ filter = "" }: IntegrationsManagerProps) {
       <div className="space-y-1">
         {integrationsWithLabels.map((integration) => (
           <div
-            className="flex items-center justify-between rounded-md px-2 py-1.5"
+            className="space-y-1 rounded-md px-2 py-1.5"
             key={integration.id}
           >
-            <div className="flex items-center gap-2">
-              <IntegrationIcon
-                className="size-4"
-                integration={integration.type}
-              />
-              <span className="font-medium text-sm">{integration.label}</span>
-              <span className="text-muted-foreground text-sm">
-                {integration.name}
-              </span>
-              {integration.known ? null : (
-                <span className="text-muted-foreground text-xs">
-                  Not available in this build
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <IntegrationIcon
+                  className="size-4"
+                  integration={integration.type}
+                />
+                <span className="font-medium text-sm">{integration.label}</span>
+                <span className="text-muted-foreground text-sm">
+                  {integration.name}
                 </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              {integration.hasTest && canTest && (
-                <Button
-                  className="h-7 px-2"
-                  disabled={testingId === integration.id}
-                  onClick={() => {
-                    if (canTest) {
-                      testConnection.mutate({ integrationId: integration.id });
-                    }
-                  }}
-                  size="sm"
-                  variant="outline"
-                >
-                  {testingId === integration.id ? (
-                    <Spinner className="size-3" />
-                  ) : (
-                    <span className="text-xs">Test</span>
-                  )}
-                </Button>
-              )}
-              {/* Named for the connection each one acts on. A list of icon
+                {integration.known ? null : (
+                  <span className="text-muted-foreground text-xs">
+                    Not available in this build
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {integration.hasTest && canTest && (
+                  <Button
+                    className="h-7 px-2"
+                    disabled={testingId === integration.id}
+                    onClick={() => {
+                      if (canTest) {
+                        testConnection.mutate({
+                          integrationId: integration.id,
+                        });
+                      }
+                    }}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {testingId === integration.id ? (
+                      <Spinner className="size-3" />
+                    ) : (
+                      <span className="text-xs">Test</span>
+                    )}
+                  </Button>
+                )}
+                {/* Named for the connection each one acts on. A list of icon
                   buttons all called "Edit" leaves a screen reader with no way
                   to tell which connection is about to change. */}
-              {canUpdate ? (
-                <Button
-                  aria-label={`Edit ${integration.name}`}
-                  className="size-7"
-                  onClick={() => handleEdit(integration)}
-                  size="icon"
-                  variant="outline"
-                >
-                  <Pencil className="size-3" />
-                </Button>
-              ) : null}
-              {canDelete ? (
-                <Button
-                  aria-label={`Delete ${integration.name}`}
-                  className="size-7"
-                  onClick={() => handleDelete(integration)}
-                  size="icon"
-                  variant="outline"
-                >
-                  <Trash2 className="size-3" />
-                </Button>
-              ) : null}
+                {canUpdate ? (
+                  <Button
+                    aria-label={`Edit ${integration.name}`}
+                    className="size-7"
+                    onClick={() => handleEdit(integration)}
+                    size="icon"
+                    variant="outline"
+                  >
+                    <Pencil className="size-3" />
+                  </Button>
+                ) : null}
+                {canDelete ? (
+                  <Button
+                    aria-label={`Delete ${integration.name}`}
+                    className="size-7"
+                    onClick={() => handleDelete(integration)}
+                    size="icon"
+                    variant="outline"
+                  >
+                    <Trash2 className="size-3" />
+                  </Button>
+                ) : null}
+              </div>
             </div>
+            {testedId === integration.id && testConnection.data ? (
+              <div className="pl-6">
+                <ConnectionTestResult
+                  answer={testConnection.data}
+                  connectionName={
+                    isBlank(integration.name) ? null : integration.name
+                  }
+                  integrationLabel={integration.label}
+                />
+              </div>
+            ) : null}
           </div>
         ))}
       </div>

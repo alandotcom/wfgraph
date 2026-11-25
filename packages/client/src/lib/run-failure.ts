@@ -1,9 +1,9 @@
 /**
- * A failed step or run said in plain words. The stored error is written by an
- * integration, a host or the engine and often ends in a provider's code, such
- * as Slack's `invalid_auth`. This module recognizes the causes a person can
- * act on and words them; the stored error stays beside the sentence for a
- * developer. Every function is pure.
+ * A failed step, run or Connection test said in plain words. The error is
+ * written by an integration, a host or the engine and often ends in a
+ * provider's code, such as Slack's `invalid_auth`. This module recognizes the
+ * causes a person can act on and words them; the raw error stays beside the
+ * sentence for a developer. Every function is pure.
  */
 
 /** The Connection a failed step used, as the Runs view can name it. */
@@ -34,9 +34,12 @@ export type FailureDescription = {
 const REJECTED_CREDENTIALS =
   /\b(invalid_auth|not_authed|account_inactive|token_revoked|token_expired|invalid_api_key|unauthori[sz]ed|unauthenticated|forbidden|401|403)\b|authentication failed|invalid api key/i;
 
-/** An integration saying a credential its Connection needs is not set. */
+/**
+ * An integration saying a credential its Connection needs is not set. A step
+ * says "is not configured" and a Connection test says "is required".
+ */
 const MISSING_CREDENTIAL =
-  /\b[A-Z][A-Z0-9_]*_(KEY|TOKEN|SECRET)\b is not configured/;
+  /\b[A-Z][A-Z0-9_]*_(KEY|TOKEN|SECRET)\b is (not configured|required)/;
 
 /** The engine's error for an Entity the host's resolver did not find. */
 const ENTITY_NOT_FOUND = /^Entity "([^"]+)" was not found for node data$/;
@@ -91,6 +94,40 @@ export function describeFailure(input: {
       sentence: `The app found no ${input.entityLabel(entity[1])} for this run.`,
       detail: error,
       connectionCause: false,
+    };
+  }
+  return { sentence: error, detail: null, connectionCause: false };
+}
+
+/**
+ * The failure of a Connection test, as the Connection form and the Connections
+ * list show it. `connectionName` names a saved Connection, and is null for
+ * credentials typed into a form and not yet saved. A recognized cause ends
+ * with what to do next. Any other answer is the integration's own sentence.
+ */
+export function describeConnectionTestFailure(input: {
+  error: string;
+  integrationLabel: string;
+  connectionName: string | null;
+}): FailureDescription {
+  const { error, integrationLabel, connectionName } = input;
+  if (REJECTED_CREDENTIALS.test(error)) {
+    const credentials =
+      connectionName === null
+        ? "these credentials"
+        : `the credentials of the Connection ${connectionName}`;
+    return {
+      sentence: `${integrationLabel} rejected ${credentials}. Enter new credentials and test again.`,
+      detail: error,
+      connectionCause: true,
+    };
+  }
+  if (MISSING_CREDENTIAL.test(error)) {
+    return {
+      sentence:
+        "A credential this Connection needs is empty. Enter it and test again.",
+      detail: error,
+      connectionCause: true,
     };
   }
   return { sentence: error, detail: null, connectionCause: false };
