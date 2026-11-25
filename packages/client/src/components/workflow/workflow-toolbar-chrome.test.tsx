@@ -441,6 +441,21 @@ describe("WorkflowToolbarChrome", () => {
     ).not.toBeNull();
   });
 
+  // Choosing a view is the menu's whole errand, so the menu closes rather than
+  // staying over the sheet the view opens.
+  it("closes the overflow menu once a view is chosen", async () => {
+    const { findByRole, getByRole, queryByRole } = renderChrome(
+      WorkflowToolbarChrome
+    );
+
+    const trigger = await findByRole("button", { name: "Workflow actions" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyUp(trigger, { key: "ArrowDown" });
+    fireEvent.click(getByRole("menuitemradio", { name: "Runs" }));
+
+    await waitFor(() => expect(queryByRole("menu")).toBeNull());
+  });
+
   // The palette sits between the two groups, so Tab must reach it there. It
   // was previously written last and received focus after Publish.
   it("puts the palette trigger between the two groups in DOM order", async () => {

@@ -155,8 +155,11 @@ function WorkflowActionsMenu({
               }}
               value={view}
             >
+              {/* A radio row keeps its menu open by default. Choosing a view
+                  here is the whole errand, and the menu would otherwise sit
+                  over the sheet the view opens. */}
               {views.map((item) => (
-                <DropdownMenuRadioItem key={item} value={item}>
+                <DropdownMenuRadioItem closeOnClick key={item} value={item}>
                   {WORKSPACE_LABELS[item]}
                 </DropdownMenuRadioItem>
               ))}
