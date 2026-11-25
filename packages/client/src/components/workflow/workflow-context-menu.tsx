@@ -17,6 +17,7 @@ import { useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import { menuClassNames } from "#src/components/ui/dropdown-menu";
 import { Kbd } from "#src/components/ui/kbd";
 import { useDomEvent } from "#src/hooks/effects";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
@@ -324,7 +325,10 @@ export function WorkflowContextMenu({
       // Names the menu to the editor's shortcut gate, which holds every editor
       // chord while it is open.
       data-slot="canvas-context-menu"
-      className="fade-in-0 zoom-in-95 fixed z-50 max-h-[calc(100vh-1rem)] w-fit min-w-[8rem] max-w-72 animate-in overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:animate-none"
+      className={cn(
+        menuClassNames.surface,
+        "fade-in-0 zoom-in-95 fixed z-50 max-h-[calc(100vh-1rem)] w-fit min-w-32 max-w-72 animate-in overflow-y-auto duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:animate-none"
+      )}
       ref={menuRef}
       style={{
         // Held inside the right edge against the widest the menu can draw, so
@@ -340,27 +344,22 @@ export function WorkflowContextMenu({
       {menuState.type === "node" && (
         <>
           <MenuItem
-            icon={<SlidersHorizontal className="size-4" />}
+            icon={<SlidersHorizontal />}
             label={`Edit ${nodeLabel}`}
             onClick={handleEditNode}
           />
           {canToggleEnabled ? (
             <MenuItem
-              icon={
-                isDisabled ? (
-                  <Eye className="size-4" />
-                ) : (
-                  <EyeOff className="size-4" />
-                )
-              }
+              icon={isDisabled ? <Eye /> : <EyeOff />}
               label={`${isDisabled ? "Enable" : "Disable"} ${nodeLabel}`}
               onClick={handleToggleEnabled}
             />
           ) : null}
+          {outlets.length > 0 ? <MenuSeparator /> : null}
           {outlets.map((outlet) => (
             <MenuItem
               disabled={!canInsert}
-              icon={<Plus className="size-4" />}
+              icon={<Plus />}
               key={outlet.handle ?? "only"}
               label={
                 outlet.label === null
@@ -375,16 +374,17 @@ export function WorkflowContextMenu({
               }
             />
           ))}
+          <MenuSeparator />
           <MenuItem
             disabled={isLifecycleNode}
-            icon={<Copy className="size-4" />}
+            icon={<Copy />}
             label="Copy"
             onClick={handleCopyNode}
             shortcut={shortcutLabel("C")}
           />
           <MenuItem
             disabled={isLifecycleNode || !canInsert}
-            icon={<CopyPlus className="size-4" />}
+            icon={<CopyPlus />}
             label="Duplicate"
             onClick={handleDuplicateNode}
             shortcut={shortcutLabel("D")}
@@ -392,23 +392,24 @@ export function WorkflowContextMenu({
           <MenuItem
             disabled={!canGroup}
             hint={!canGroup && !grouping.ok ? grouping.error : undefined}
-            icon={<Group className="size-4" />}
+            icon={<Group />}
             label="Group"
             onClick={handleGroup}
             shortcut={shortcutLabel("G")}
           />
           {showUngroup ? (
             <MenuItem
-              icon={<Ungroup className="size-4" />}
+              icon={<Ungroup />}
               label="Ungroup"
               onClick={handleUngroup}
             />
           ) : null}
+          <MenuSeparator />
           {/* Ungroup is how a frame alone is removed, so a frame's destructive
               row is the explicit, confirmed delete of the Group's steps. */}
           {clickedIsGroup ? (
             <MenuItem
-              icon={<Trash2 className="size-4" />}
+              icon={<Trash2 />}
               label="Delete Group and steps"
               onClick={handleDeleteGroupWithSteps}
               variant="destructive"
@@ -416,7 +417,7 @@ export function WorkflowContextMenu({
           ) : (
             <MenuItem
               disabled={isLifecycleNode}
-              icon={<Trash2 className="size-4" />}
+              icon={<Trash2 />}
               label={`Delete ${nodeLabel}`}
               onClick={handleDeleteNode}
               variant="destructive"
@@ -429,12 +430,13 @@ export function WorkflowContextMenu({
         <>
           <MenuItem
             disabled={!canInsert}
-            icon={<Plus className="size-4" />}
+            icon={<Plus />}
             label="Insert step"
             onClick={handleInsertStep}
           />
+          <MenuSeparator />
           <MenuItem
-            icon={<Link2Off className="size-4" />}
+            icon={<Link2Off />}
             label="Delete connection"
             onClick={handleDeleteEdge}
             variant="destructive"
@@ -446,13 +448,13 @@ export function WorkflowContextMenu({
         <>
           <MenuItem
             disabled={!canInsert}
-            icon={<Plus className="size-4" />}
+            icon={<Plus />}
             label="Add step"
             onClick={handleAddStep}
           />
           <MenuItem
             disabled={!(canInsert && hasCopiedSelection)}
-            icon={<ClipboardPaste className="size-4" />}
+            icon={<ClipboardPaste />}
             label="Paste"
             onClick={handlePaste}
             shortcut={shortcutLabel("V")}
@@ -481,6 +483,11 @@ function shortcutLabel(key: string): string {
   return apple ? `⌘${key}` : `Ctrl+${key}`;
 }
 
+/** The rule between groups of rows, the one the toolbar's menus draw. */
+function MenuSeparator() {
+  return <div className={menuClassNames.separator} role="separator" />;
+}
+
 function MenuItem({
   icon,
   label,
@@ -493,7 +500,8 @@ function MenuItem({
   return (
     <button
       className={cn(
-        "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none",
+        menuClassNames.item,
+        "w-full",
         "hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
         variant === "destructive" &&
           "text-destructive hover:bg-destructive/10 hover:text-destructive focus:bg-destructive/10 focus:text-destructive",
