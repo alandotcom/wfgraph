@@ -476,9 +476,14 @@
   transform-origin: center;
   scale: calc(18 / (22 * var(--rf-zoom, 1)));
 }
+/* The status mark sits across the card's top-right corner at this tier, on
+   the card's own surface, so it stays clear of the centred number. */
 .react-flow__node [data-card-form="number"] > [data-slot="node-status-mark"] {
   transform-origin: top right;
+  translate: calc(7px / var(--rf-zoom, 1)) calc(-7px / var(--rf-zoom, 1));
   scale: calc(14 / (22 * var(--rf-zoom, 1)));
+  border-radius: 9999px;
+  background: var(--card);
 }
 .react-flow__node [data-slot="group-region-header-mark"] {
   transform-origin: left center;
