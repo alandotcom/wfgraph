@@ -3,26 +3,24 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "2c0383d71809c4360ec6d5e77dca84bfa43e8c0cd017f47190ee169dcecff28a",
+      "fingerprint": "dcd28e6ca68072aee8028c6f9891eea94926b4697caff01470fed765fbf3a28e",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
-        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
+        "docs/embedding.md": "e82d0a390c1708ee2d7c117b17b4c6dc70db065aa6e8c16df57653826d866e5c",
         "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "ee1aa65397d61483402b3cac130781d91275469b7af17814defdd7b54d7a608a",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "e380de5f93b0ebdb4ad03bfecadd7e00a7e5833d24523b717187ab5d4e798d87",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b"
       },
-      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "no-change",
-      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
-      "evidence": [
-        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
-      ]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. wfgraph-core/SKILL.md says only that workflows.readDraftNode applies no auth and routes to host-actions, which still holds; host-actions/SKILL.md changed as recorded on its own item.",
+      "evidence": ["git diff f4fba82f..46991002 -- docs/embedding.md"]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
       "fingerprint": "13c32b7096ee573305bfcb31e99446c9bf1ea13f64f5c3ec9eed98c797b0c903",
@@ -40,17 +38,19 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "9e60e30bf00f3187051b630c53f0439cd435547c113d6b873e8b8c15f2c744e8",
+      "fingerprint": "fc83e87bf92cdf3358dce21835c469d90fc7d0ac76f7cbbb55672264a534d3f1",
       "snapshot": {
-        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
+        "docs/embedding.md": "e82d0a390c1708ee2d7c117b17b4c6dc70db065aa6e8c16df57653826d866e5c",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "ee1aa65397d61483402b3cac130781d91275469b7af17814defdd7b54d7a608a"
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "e380de5f93b0ebdb4ad03bfecadd7e00a7e5833d24523b717187ab5d4e798d87"
       },
-      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "updated",
+      "reason": "The Action links section now says links show in Canvas Reveal at Browse and at Focus, that a placeholder never stands in the host or the port, and that defineAction throws for two links with one label; the description says 'links from the editor'. Each matches normalizeActionLinks in define-action.ts and actionLinkUrlProblem in action-links.ts at this revision.",
       "evidence": [
-        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
+        "pnpm run skills:validate: 10 skill files passed",
+        "define-action.test.ts refuses a second link labelled ' Fine ' with 'link 2: the label is the same as link 1's'",
+        "action-links.test.ts names a placeholder in the port as one before the path"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
@@ -69,27 +69,25 @@
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "c468b4133e29638e9c315bd44f07d3d9aa6894fa578837a633a95858b83c371c",
+      "fingerprint": "477f190bd2c4e9b82978bfde7c35193e29c40a7057370f3e9eec9355f005dc38",
       "snapshot": {
-        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
+        "docs/embedding.md": "e82d0a390c1708ee2d7c117b17b4c6dc70db065aa6e8c16df57653826d866e5c",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf"
       },
-      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "no-change",
-      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
-      "evidence": [
-        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
-      ]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. Integration actions declare no links, and the wfgraph-plugins skill states nothing about the section.",
+      "evidence": ["git diff f4fba82f..46991002 -- docs/embedding.md"]
     },
     "planning:_artifacts": {
-      "fingerprint": "31798324a77f6d71046211e4b17607c13fde61c2aca0aec694a186761e4495f7",
+      "fingerprint": "d8d2fbb7132dd1fd4f96b6952cd50605843b3813826726ad2a9e36ff9e09ab18",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
-        "_artifacts/domain_map.yaml": "a61d29ad57fa9330221398ce5f052d818d44951414b0cdf25a20189696561f49",
-        "_artifacts/skill_spec.md": "6bae5638645be75eca143d21660dbc43650148e32d23a89519ee81b62a01d638",
-        "_artifacts/skill_tree.yaml": "e0a056cca913fffb97d6f028fa1532565d3cbf55e190937771a623d4ecedbabf",
-        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
+        "_artifacts/domain_map.yaml": "6168f29820b7ea26754893353997645caa44c50f61edf3d03e74f42aafd1d162",
+        "_artifacts/skill_spec.md": "dc4aad758112644e8a57887d13f5a2f35fe49f6ea7279b3ddd979555968f55d6",
+        "_artifacts/skill_tree.yaml": "cdd9970c82abb906e5fbf7e3374e0edf936f9270af64f8735edec9d9339e4d8e",
+        "docs/embedding.md": "e82d0a390c1708ee2d7c117b17b4c6dc70db065aa6e8c16df57653826d866e5c",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
@@ -97,7 +95,7 @@
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "ee1aa65397d61483402b3cac130781d91275469b7af17814defdd7b54d7a608a",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "e380de5f93b0ebdb4ad03bfecadd7e00a7e5833d24523b717187ab5d4e798d87",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
@@ -114,11 +112,11 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
-      "outcome": "no-change",
-      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "updated",
+      "reason": "domain_map.yaml's host-actions task and skill_spec.md's batch 6 source now say the links show in Canvas Reveal, and skill_tree.yaml carries the host-actions description intent maintainer sync copied. No domain, task boundary or decision changed.",
       "evidence": [
-        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
+        "intent maintainer sync reported 0 files to sync after pnpm run fix"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -135,19 +133,17 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "bb612597d0fed458e8fe55c7390be8fdcf9cc6e48e01dc452f5c7d9da8d82b3f",
+      "fingerprint": "f6785fb409b72040808b36cad62206381e97194600d9ac824afd0826bbe24da4",
       "snapshot": {
-        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
+        "docs/embedding.md": "e82d0a390c1708ee2d7c117b17b4c6dc70db065aa6e8c16df57653826d866e5c",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "no-change",
-      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
-      "evidence": [
-        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
-      ]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. The auth skill covers the access policy and states nothing about Action Links or readDraftNode.",
+      "evidence": ["git diff f4fba82f..46991002 -- docs/embedding.md"]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
       "fingerprint": "3ee0533adfeac10df9fefff86d8615bebf429b7b1a61076fcf0440caab43de0d",
@@ -178,20 +174,18 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "8b0f2e16b33b37349f181a137f8b7412c42a92f1c53b51fcbb1c79e284314bee",
+      "fingerprint": "959fc82bcbb570e2ee5deaf352d8108a4dbe85e08bc7f6a6ada1faa2f7af3067",
       "snapshot": {
-        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
+        "docs/embedding.md": "e82d0a390c1708ee2d7c117b17b4c6dc70db065aa6e8c16df57653826d866e5c",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "no-change",
-      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
-      "evidence": [
-        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
-      ]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. The observability skill states nothing about Action Links or readDraftNode.",
+      "evidence": ["git diff f4fba82f..46991002 -- docs/embedding.md"]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
       "fingerprint": "f7b9e4046cfb3c14d3e427344152b7e5c4b475bd530b856e7e1e993bf6476543",
@@ -233,19 +227,17 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "dfca6a56d78a1b6d56c8b904626cf79e9e17cb048c78c571bd1ba45650dc9146",
+      "fingerprint": "21362e5015b0d98977471dd49b60e6b4d06cd1b6288c31a76f2ffb32c100fb53",
       "snapshot": {
-        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
+        "docs/embedding.md": "e82d0a390c1708ee2d7c117b17b4c6dc70db065aa6e8c16df57653826d866e5c",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb"
       },
-      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "no-change",
-      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
-      "evidence": [
-        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
-      ]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. The manual's sentence that a Worker deployment has no readDraftNode is unchanged, and the cloudflare-worker skill states nothing else about the section.",
+      "evidence": ["git diff f4fba82f..46991002 -- docs/embedding.md"]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
       "fingerprint": "cc7599f1637d2993b948d3e4600eaf434e6b2298e4821136ed54c0d1b63ea320",
@@ -785,16 +777,16 @@
       ]
     },
     "source:packages/client/src/lib/workflow-save-store.ts": {
-      "fingerprint": "1107274261e742c0f471dcca1066de227bdfe0119bcf6f939b4d4a9b794a9a46",
+      "fingerprint": "22e7ee01e6c622be67f269152aa9fd1c78654d599bdd3aea32d7cbd384896fe6",
       "snapshot": {
-        "packages/client/src/lib/workflow-save-store.ts": "11141873223885dc79ccafb74294d2dee7dc02f3096b3654f947da3f846f863e"
+        "packages/client/src/lib/workflow-save-store.ts": "81b61a9ae633c19f1b247f1100299b211034f1762329f492a7d5725abf9afd34"
       },
-      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "git diff c0f1fe00 -- packages/client/src/lib/workflow-save-store.ts",
-        "wfgraph-core/host-actions SKILL.md updated in the same change"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/lib/workflow-ui-store.test.ts": {
@@ -2917,16 +2909,16 @@
       ]
     },
     "source:CONTEXT.md": {
-      "fingerprint": "031000b549edfb472fc1fb97c8fa0cc79e0fec86686a84ae037281f8ec11aa7f",
+      "fingerprint": "8d534aff51cb02a1a282bdcf4627c677494f728d9f4fee87301700aa1bc1c65b",
       "snapshot": {
-        "CONTEXT.md": "a3b27688f5832b064dd634b197680d37df23bc6989b7ecd29d2aca166585a15a"
+        "CONTEXT.md": "c452991cfd1685256658e3de91ac0b37b9f1cf49224fcb4fcd3b1658d155cd7a"
       },
-      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "CONTEXT.md gained the domain term Action Link. It is repository vocabulary, and the published host-actions skill teaches the contract the term names.",
+      "reason": "The Action Link vocabulary entry now says the editor shows it in Canvas Reveal at Browse and at Focus. CONTEXT.md is repository vocabulary that no skill reads, and host-actions states the same placement.",
       "evidence": [
-        "git diff c0f1fe00 -- CONTEXT.md",
-        "wfgraph-core/host-actions SKILL.md updated in the same change"
+        "CONTEXT.md",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md"
       ]
     },
     "source:packages/agent/src/prompt.ts": {
@@ -3097,33 +3089,29 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "8e0a87b6b79c954b3fcdec735c39678b9014ee97b65c62a786e04178fe22b328",
+      "fingerprint": "6165ac604b3ddc75e2de81a9ce33b1d79e0612b6c437968868bdfd5fb5f7f874",
       "snapshot": {
-        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
+        "docs/embedding.md": "e82d0a390c1708ee2d7c117b17b4c6dc70db065aa6e8c16df57653826d866e5c",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "no-change",
-      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
-      "evidence": [
-        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
-      ]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. The build-agent skill states nothing about Action Links or readDraftNode.",
+      "evidence": ["git diff f4fba82f..46991002 -- docs/embedding.md"]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
-      "fingerprint": "202627f6643cc5d383244987fb3636e938a84d43e472069bce9dda92306b35eb",
+      "fingerprint": "32296d84750ebbae7edd1b43642808b37c3a0e4ba994ea29bdf416b678414b60",
       "snapshot": {
-        "docs/embedding.md": "6972d4ff86f6cf0b266f32f8f7d9b9ede74338dbeb2a39573e503417508b978d",
+        "docs/embedding.md": "e82d0a390c1708ee2d7c117b17b4c6dc70db065aa6e8c16df57653826d866e5c",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca"
       },
-      "head": "bfe09704b4e96887d75e919c46b36b3107b33bd5",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "no-change",
-      "reason": "docs/embedding.md now says Action Links show at both Canvas Reveal levels, Browse and Focus; no skill or planning record states where the links appear beyond the node's config panel, which still holds",
-      "evidence": [
-        "Changed: docs/embedding.md at bfe09704b4e96887d75e919c46b36b3107b33bd5"
-      ]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. The mcp skill states nothing about Action Links or readDraftNode.",
+      "evidence": ["git diff f4fba82f..46991002 -- docs/embedding.md"]
     },
     "source:.agents/behaviors/workflow-authoring/BEHAVIOR.md": {
       "fingerprint": "a9593fc154a998f98c5a0ae696eeee810b317bcbe9119d69bf1532fdd447285a",
@@ -3715,15 +3703,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/node-config-panel.test.tsx": {
-      "fingerprint": "b04625230dd09cda1884d1da7c773b30301712dabc134faa239e57c106e0d51c",
+      "fingerprint": "3324fe452945b8929817fe2e2a41b1f78882caade7646e947233bee28ca45daa",
       "snapshot": {
-        "packages/client/src/components/workflow/node-config-panel.test.tsx": "861e60ebdbd502fc14c0aa258be15c676058160e496bb87b9e8322acf61ec146"
+        "packages/client/src/components/workflow/node-config-panel.test.tsx": "7963e5b33ba28d8ba447ab705b537157c8b002b94627275f6d68cde8e5893910"
       },
-      "head": "e9e92a14a6ae744f42ab929a31c1ec266c41802e",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "A comment rewording or a test for the Action Link behavior host-actions already teaches; it changes no adopter contract.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "git diff f4fb4d54 -- packages/client/src/components/workflow/node-config-panel.test.tsx"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-draft-sync.tsx": {
@@ -4070,16 +4059,16 @@
       ]
     },
     "source:packages/core/src/app.ts": {
-      "fingerprint": "811504d46ee5143d4821a66de6fcfac3734c94fc7c221d3ba91cc4aea228374d",
+      "fingerprint": "38cdbe4d438cde73e36dfdeb861a29f0f645555aab36f0eb18b9d7e2b393f759",
       "snapshot": {
-        "packages/core/src/app.ts": "2986c4c28ace29ce1db348009c9513a214eb83eae45d6115c4dd414982033b8a"
+        "packages/core/src/app.ts": "c6d4470dbc5cac42ccb81f95e0527b5514b78674e8c40aaef1334ca664c5c9d5"
       },
-      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
-      "outcome": "out-of-scope",
-      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "no-change",
+      "reason": "readDraftNode's reference source no longer carries a label, its display follows the badge's tracked-Entity rule, an id holding a NUL byte answers null, and the module headers shrank. docs/embedding.md describes the new shape; host-actions/SKILL.md names fields as text and reference segments without the source's keys, and its no-auth mistake still holds.",
       "evidence": [
-        "git diff c0f1fe00 -- packages/core/src/app.ts",
-        "wfgraph-core/host-actions SKILL.md updated in the same change"
+        "draft-node.test.ts and app.workflows.test.ts passed",
+        "grep finds no source label in packages/core/skills"
       ]
     },
     "source:packages/core/src/backend/agent/config.test.ts": {
@@ -4711,29 +4700,27 @@
       ]
     },
     "source:packages/core/src/backend/extensions/define-action.test.ts": {
-      "fingerprint": "e77282eb11777d084a889f39a1044b6d43b49f769a3acfce2c1944a1eacf3642",
+      "fingerprint": "6a5bd4c25af35ec1e16e99fb57fda529804875ce2f7cccb06fc6d366542af8f6",
       "snapshot": {
-        "packages/core/src/backend/extensions/define-action.test.ts": "395292b18933bb0a46a52f0cc98fe370b71c44bea30b8c05f81e20e7161d1f94"
+        "packages/core/src/backend/extensions/define-action.test.ts": "12036e25e8226da1c83a33ce9c0aca384e2fb5e7205c6fdf91ac7adb6b1a57ed"
       },
-      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
-      "outcome": "out-of-scope",
-      "reason": "A test of the Action Link and readDraftNode behavior that host-actions now teaches. Tests are not adopter guidance.",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "updated",
+      "reason": "The link url check and normalization behind the host-actions Action Links rules: one sentinel parse for placeholders before the path, the port named, a duplicate label refused, and fillActionLinkUrl leaving out an empty or ill-formed id. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
-        "git diff c0f1fe00 -- packages/core/src/backend/extensions/define-action.test.ts",
-        "wfgraph-core/host-actions SKILL.md updated in the same change"
+        "pnpm exec vitest run packages/shared/src/extensions packages/core/src/backend/extensions/define-action.test.ts passed"
       ]
     },
     "source:packages/core/src/backend/extensions/define-action.ts": {
-      "fingerprint": "0555573476226b76cc10350bfa20ec71064630f86e82b221ddf83120b93367af",
+      "fingerprint": "313e43a749c5ecd1bc7445247a169cfa8e2877bdb8601aa4d0982c2b12bbc20d",
       "snapshot": {
-        "packages/core/src/backend/extensions/define-action.ts": "e43f4232b291d9be1950f5b4251b0f3ffa3e1a61868bd6f8c668ca26ef98521b"
+        "packages/core/src/backend/extensions/define-action.ts": "f066f4095978eacb9b6531a244cc34aab93d449b0359fc195cbb2c75aba962a2"
       },
-      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
-      "outcome": "out-of-scope",
-      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "updated",
+      "reason": "The link url check and normalization behind the host-actions Action Links rules: one sentinel parse for placeholders before the path, the port named, a duplicate label refused, and fillActionLinkUrl leaving out an empty or ill-formed id. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
-        "git diff c0f1fe00 -- packages/core/src/backend/extensions/define-action.ts",
-        "wfgraph-core/host-actions SKILL.md updated in the same change"
+        "pnpm exec vitest run packages/shared/src/extensions packages/core/src/backend/extensions/define-action.test.ts passed"
       ]
     },
     "source:packages/core/src/backend/extensions/extension-set.test.ts": {
@@ -7213,16 +7200,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/workflow-run-detail.tsx": {
-      "fingerprint": "a74d257f4f041a54dc9d10953d82970afe23217157b70d894f74cde65a314f80",
+      "fingerprint": "0480d7c199d060a9e6e6e4babedd79aaf16213d3cb620d79031e6e081a701b18",
       "snapshot": {
-        "packages/client/src/components/workflow/workflow-run-detail.tsx": "131f35bfb986c9b58fa19285c2d79aec36aa1acffa13e017fb52ed5cd8308a78"
+        "packages/client/src/components/workflow/workflow-run-detail.tsx": "dcd2e6cea244f2612c0e9c608e02366da9789eb234442eee00190e5adf38c438"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-run-timeline.tsx": {
@@ -7804,29 +7791,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/config/action-links.test.tsx": {
-      "fingerprint": "72672cf0089bdc0e1b8555751a9581d45705a0dada3b574b41da6f1a05a0cb83",
+      "fingerprint": "f83f2ce45ce28712eb05acad4de4c305bc29c8425a392bd2d8fa75052914560b",
       "snapshot": {
-        "packages/client/src/components/workflow/config/action-links.test.tsx": "260a26c9100d706290e6076da85c33cb8ace7a933196646e50bc72799d30b442"
+        "packages/client/src/components/workflow/config/action-links.test.tsx": "787f859b6d50ff3ceda56b38527cb1069d240a919eab12c1dbd0b78624d30fe2"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Implementation and tests behind the url rules, the draft read's logging and rejections, and the editor's links. The guidance they back is host-actions, reviewed in this record; no skill reads these files.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions/action-links.test.ts packages/core/src/backend/extensions/define-action.test.ts passed",
-        "pnpm exec vitest run packages/core/src/app.workflows.test.ts packages/core/src/backend/services/workflows/draft-node.test.ts packages/client/src/components/workflow/config/action-links.test.tsx passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/config/action-links.tsx": {
-      "fingerprint": "d58ae52d2a0cb591597528254db5eb437537489b1af440c35661e682fc56c3c9",
+      "fingerprint": "09b2e66dd2e4a252c9fdcd01621f285de8f59c517188f82b5c2c5fbe9046d3e6",
       "snapshot": {
-        "packages/client/src/components/workflow/config/action-links.tsx": "70dde29aa90734b0f8ef5cf34bb1b9d66cd1e2cb837fc98faf703d3e7f826c88"
+        "packages/client/src/components/workflow/config/action-links.tsx": "ae6c74304b7b838d570bc009eacf3f14b8e731ba9c651a8cba1b525961f46a15"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Implementation and tests behind the url rules, the draft read's logging and rejections, and the editor's links. The guidance they back is host-actions, reviewed in this record; no skill reads these files.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions/action-links.test.ts packages/core/src/backend/extensions/define-action.test.ts passed",
-        "pnpm exec vitest run packages/core/src/app.workflows.test.ts packages/core/src/backend/services/workflows/draft-node.test.ts packages/client/src/components/workflow/config/action-links.test.tsx passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/node-properties-form.tsx": {
@@ -7856,16 +7843,16 @@
       ]
     },
     "source:packages/core/src/app.workflows.test.ts": {
-      "fingerprint": "7244eb94a6d6ed7842f9c1e94dca8f69d67b6b2eaaa75ad1782e4dfb84599d47",
+      "fingerprint": "1e5cc8ccc0fab48609e2bfd377c3450d44ab69ac438a35740ed5b7f31bfc6f64",
       "snapshot": {
-        "packages/core/src/app.workflows.test.ts": "3b9a6f3b7c7aca50817eb1cef6b9492b382ad293b40d2e9151fad5208e6956ec"
+        "packages/core/src/app.workflows.test.ts": "277bdc5ae2a13ac1aaacd6b1433954dfed9cf27b85c16632c493ea3a4d43fa8d"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
-      "outcome": "out-of-scope",
-      "reason": "Implementation and tests behind the url rules, the draft read's logging and rejections, and the editor's links. The guidance they back is host-actions, reviewed in this record; no skill reads these files.",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "no-change",
+      "reason": "readDraftNode's reference source no longer carries a label, its display follows the badge's tracked-Entity rule, an id holding a NUL byte answers null, and the module headers shrank. docs/embedding.md describes the new shape; host-actions/SKILL.md names fields as text and reference segments without the source's keys, and its no-auth mistake still holds.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions/action-links.test.ts packages/core/src/backend/extensions/define-action.test.ts passed",
-        "pnpm exec vitest run packages/core/src/app.workflows.test.ts packages/core/src/backend/services/workflows/draft-node.test.ts packages/client/src/components/workflow/config/action-links.test.tsx passed"
+        "draft-node.test.ts and app.workflows.test.ts passed",
+        "grep finds no source label in packages/core/skills"
       ]
     },
     "source:packages/core/src/backend/extensions/extension-set.ts": {
@@ -7882,66 +7869,66 @@
       ]
     },
     "source:packages/core/src/backend/host-workflows.ts": {
-      "fingerprint": "ef7404797ebdfb8bd0677620894696b1027aa941a116a90c5db0d7d4bbe503d5",
+      "fingerprint": "979008be6b756a328e67181455271e65a622de006bd3c561238c4ace0864c2ae",
       "snapshot": {
-        "packages/core/src/backend/host-workflows.ts": "10b99d0dc09d4fb176de74d89e30d8d4a58a4f71579ad4540ff0a709f1c481e6"
+        "packages/core/src/backend/host-workflows.ts": "0ab4e6fda9a4f03e18383875f40b2b836f4b23a7a8319da484cb7b9ef71c8444"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
-      "outcome": "out-of-scope",
-      "reason": "Implementation and tests behind the url rules, the draft read's logging and rejections, and the editor's links. The guidance they back is host-actions, reviewed in this record; no skill reads these files.",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "no-change",
+      "reason": "readDraftNode's reference source no longer carries a label, its display follows the badge's tracked-Entity rule, an id holding a NUL byte answers null, and the module headers shrank. docs/embedding.md describes the new shape; host-actions/SKILL.md names fields as text and reference segments without the source's keys, and its no-auth mistake still holds.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions/action-links.test.ts packages/core/src/backend/extensions/define-action.test.ts passed",
-        "pnpm exec vitest run packages/core/src/app.workflows.test.ts packages/core/src/backend/services/workflows/draft-node.test.ts packages/client/src/components/workflow/config/action-links.test.tsx passed"
+        "draft-node.test.ts and app.workflows.test.ts passed",
+        "grep finds no source label in packages/core/skills"
       ]
     },
     "source:packages/core/src/backend/services/workflows/draft-node.test.ts": {
-      "fingerprint": "7dcdb4e9e85d111a86c0de72141124a5cd36484cadf37532670a549a29796ffb",
+      "fingerprint": "8d53655a76138863d401c44a4448fc83a1c519f329f09fa950e39ad0f9a74bbe",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/draft-node.test.ts": "aaad96b9663c93024d57146eb82597b6346934dfd1d723f34eafe637b0ace970"
+        "packages/core/src/backend/services/workflows/draft-node.test.ts": "149988cbed389ca19b05d9ad10ad60ca0343a4e63bcde763a0b90ba178f6a090"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
-      "outcome": "out-of-scope",
-      "reason": "Implementation and tests behind the url rules, the draft read's logging and rejections, and the editor's links. The guidance they back is host-actions, reviewed in this record; no skill reads these files.",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "no-change",
+      "reason": "readDraftNode's reference source no longer carries a label, its display follows the badge's tracked-Entity rule, an id holding a NUL byte answers null, and the module headers shrank. docs/embedding.md describes the new shape; host-actions/SKILL.md names fields as text and reference segments without the source's keys, and its no-auth mistake still holds.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions/action-links.test.ts packages/core/src/backend/extensions/define-action.test.ts passed",
-        "pnpm exec vitest run packages/core/src/app.workflows.test.ts packages/core/src/backend/services/workflows/draft-node.test.ts packages/client/src/components/workflow/config/action-links.test.tsx passed"
+        "draft-node.test.ts and app.workflows.test.ts passed",
+        "grep finds no source label in packages/core/skills"
       ]
     },
     "source:packages/core/src/backend/services/workflows/draft-node.ts": {
-      "fingerprint": "d77e94f0bbb0f0368f8d76e876a41c6f468020267f764d3f98a370fb0c0ba972",
+      "fingerprint": "e9a51fdd4cec534ee3eb1bf9e7c7f312050d65d2ba25eeeb52eae7d5cfeaa641",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/draft-node.ts": "2ee45ac2443e9e736329a743ff5fe20c0235fa029934d69b020a773af700fd1a"
+        "packages/core/src/backend/services/workflows/draft-node.ts": "e66de51686407c03e74816fdbed42228828e9c7375fd188ddb770cc25defaae5"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "no-change",
-      "reason": "readDraftNode now calls the shared currentTokenSourceLabel; its output and published contract are unchanged, so no skill or host manual changes.",
+      "reason": "readDraftNode's reference source no longer carries a label, its display follows the badge's tracked-Entity rule, an id holding a NUL byte answers null, and the module headers shrank. docs/embedding.md describes the new shape; host-actions/SKILL.md names fields as text and reference segments without the source's keys, and its no-auth mistake still holds.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "draft-node.test.ts and app.workflows.test.ts passed",
+        "grep finds no source label in packages/core/skills"
       ]
     },
     "source:packages/shared/src/extensions/action-links.test.ts": {
-      "fingerprint": "b047245ba18aaced1762729eea9275f49f0c7e05a796c063c20311802730f30b",
+      "fingerprint": "a5a2f1b544f7f94d93299611b2a6dfc1c0adf25dd2cd02607c69f034efad6325",
       "snapshot": {
-        "packages/shared/src/extensions/action-links.test.ts": "b9aff69e77e0a8b30e0bbc3e64f9cee6b3091db683bb291010b64fbe84b00b48"
+        "packages/shared/src/extensions/action-links.test.ts": "1bebedbee51c3491521168d9579dfb7005ca475d09a8353aa7924f299b70c5c1"
       },
-      "head": "cf7dcee3520f99377e45f6f4c46b60a0b9d8b11e",
-      "outcome": "out-of-scope",
-      "reason": "actionLinkUrlProblem now lets the URL parser decide whether a placeholder reaches the origin or user info, which catches a placeholder after extra slashes such as https:///{nodeId}/p. The rule host-actions and docs/embedding.md state, a placeholder only in the path, query or fragment, is unchanged, so no guidance changes; no skill reads this file.",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "updated",
+      "reason": "The link url check and normalization behind the host-actions Action Links rules: one sentinel parse for placeholders before the path, the port named, a duplicate label refused, and fillActionLinkUrl leaving out an empty or ill-formed id. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions/action-links.test.ts packages/core/src/backend/extensions/define-action.test.ts passed, and the two new refuse rows fail against the previous check"
+        "pnpm exec vitest run packages/shared/src/extensions packages/core/src/backend/extensions/define-action.test.ts passed"
       ]
     },
     "source:packages/shared/src/extensions/action-links.ts": {
-      "fingerprint": "acc2f4d531cb0fdca807ec47a90bc54b613074cfe4ec86822d7cd7dc928edc17",
+      "fingerprint": "123edbfa87cdec3ae0f6a236bacee174c8f2cb516d520295b2800790c6d8b476",
       "snapshot": {
-        "packages/shared/src/extensions/action-links.ts": "ccdbee65e979dc49a67d8d3bafccf704579a5cc291fc3845f0342b2801056e7e"
+        "packages/shared/src/extensions/action-links.ts": "7505c72cf81de057fc0932294de29a55049ba0f2d13b8e1e546530be5daaa79c"
       },
-      "head": "cf7dcee3520f99377e45f6f4c46b60a0b9d8b11e",
-      "outcome": "out-of-scope",
-      "reason": "actionLinkUrlProblem now lets the URL parser decide whether a placeholder reaches the origin or user info, which catches a placeholder after extra slashes such as https:///{nodeId}/p. The rule host-actions and docs/embedding.md state, a placeholder only in the path, query or fragment, is unchanged, so no guidance changes; no skill reads this file.",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "updated",
+      "reason": "The link url check and normalization behind the host-actions Action Links rules: one sentinel parse for placeholders before the path, the port named, a duplicate label refused, and fillActionLinkUrl leaving out an empty or ill-formed id. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions/action-links.test.ts packages/core/src/backend/extensions/define-action.test.ts passed, and the two new refuse rows fail against the previous check"
+        "pnpm exec vitest run packages/shared/src/extensions packages/core/src/backend/extensions/define-action.test.ts passed"
       ]
     },
     "source:packages/shared/src/extensions/catalog-wire.test.ts": {
@@ -7971,29 +7958,28 @@
       ]
     },
     "source:packages/shared/src/extensions/catalog.ts": {
-      "fingerprint": "21bee8e88808aa20655120428bd6a622725e7f967c410370a9f09487338c351f",
+      "fingerprint": "43b860450bc4077ab33e6597b0444386e3d49de29616cf09b2fead0578dfd094",
       "snapshot": {
-        "packages/shared/src/extensions/catalog.ts": "8b2d1c98506451acf85f5e51841a077972303db7b8c9fb4ddf0551a2152142b5"
+        "packages/shared/src/extensions/catalog.ts": "6826f9cf6453b4624920b6994efc766daa83e11597e23ce6154c10d86c1e2fce"
       },
-      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
-      "outcome": "out-of-scope",
-      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "updated",
+      "reason": "The link url check and normalization behind the host-actions Action Links rules: one sentinel parse for placeholders before the path, the port named, a duplicate label refused, and fillActionLinkUrl leaving out an empty or ill-formed id. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
-        "git diff c0f1fe00 -- packages/shared/src/extensions/catalog.ts",
-        "wfgraph-core/host-actions SKILL.md updated in the same change"
+        "pnpm exec vitest run packages/shared/src/extensions packages/core/src/backend/extensions/define-action.test.ts passed"
       ]
     },
     "source:packages/core/src/backend/host-rejection.ts": {
-      "fingerprint": "45eba4e2f6e77d8bc0fce61366ae02b698e007c774de49cd24936330f12894ce",
+      "fingerprint": "5bde5b4175451cb4deaf100a982bd3b454ac228a0ed7e7fb33e0443fd2d1eb66",
       "snapshot": {
-        "packages/core/src/backend/host-rejection.ts": "7d70dc6ca3c841bcb3c0a9775917f23f3c8a4973eedf02aef11ea58128f122a8"
+        "packages/core/src/backend/host-rejection.ts": "42f844b13c5af75e84026836d96eb3392274ee543d5ff92019322ec084e425c0"
       },
-      "head": "da865367a0267303dc45489da268c3096411c2c5",
-      "outcome": "out-of-scope",
-      "reason": "Implementation and tests behind the url rules, the draft read's logging and rejections, and the editor's links. The guidance they back is host-actions, reviewed in this record; no skill reads these files.",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
+      "outcome": "no-change",
+      "reason": "readDraftNode's reference source no longer carries a label, its display follows the badge's tracked-Entity rule, an id holding a NUL byte answers null, and the module headers shrank. docs/embedding.md describes the new shape; host-actions/SKILL.md names fields as text and reference segments without the source's keys, and its no-auth mistake still holds.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions/action-links.test.ts packages/core/src/backend/extensions/define-action.test.ts passed",
-        "pnpm exec vitest run packages/core/src/app.workflows.test.ts packages/core/src/backend/services/workflows/draft-node.test.ts packages/client/src/components/workflow/config/action-links.test.tsx passed"
+        "draft-node.test.ts and app.workflows.test.ts passed",
+        "grep finds no source label in packages/core/skills"
       ]
     },
     "source:packages/shared/src/graph/node-config.ts": {
@@ -8010,68 +7996,68 @@
       ]
     },
     "source:packages/client/src/components/ui/template-badge-dom.ts": {
-      "fingerprint": "3b667bb3f0b88055b8220a1d61cb8bc5752bf24ce14f97d261eb4c5b4e524a43",
+      "fingerprint": "637b51cc9c915d2942dd52a4eea3398bd8f67f47b1927510156522100e203397",
       "snapshot": {
-        "packages/client/src/components/ui/template-badge-dom.ts": "246604062f6499b328dd75592ee9ecc3d07f34b3af47f3551ddf3e692b184f1c"
+        "packages/client/src/components/ui/template-badge-dom.ts": "31ff00d1395adb4a08282e666dcab67de4de5d5d6228114f5736328992a125fa"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/canvas-reveal.test.tsx": {
-      "fingerprint": "c55b18d1327ff23144bf724a0cbe1e15236acdddae798a0eaa6a9f065c80a6cf",
+      "fingerprint": "04ff7784d769042062f8b68409b403203c686f3e6c25b6d03d86a503c78591d1",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/canvas-reveal.test.tsx": "a57bf6b0cd025677fad0e2b5ab4c24cfd35a2edeb8407cbbb2fb0c930649e160"
+        "packages/client/src/components/workflow/canvas-reveal/canvas-reveal.test.tsx": "170ce7caf037e5f972ebf2505f4c654aa5a23639391319acf2fe1e534bb2a141"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/condition-reveal.tsx": {
-      "fingerprint": "9dc3d856208d0201fc5c052d786e9a3581babd42190455f372eedb463cffe4f4",
+      "fingerprint": "1b51eeb05e4021988575ad41fe2afefe15086450aa23851c414ea6ca04fe58c9",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/condition-reveal.tsx": "e6c0bb08404443ddc08723a5ac530bdacf9df3778d18f55415c5ebdc3f9e2bd4"
+        "packages/client/src/components/workflow/canvas-reveal/condition-reveal.tsx": "fa2de8760ca1952f6a1f51b6fd7b68fbc478abb08cbf5c8c916b1413b015a2d7"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/lifecycle-browse.tsx": {
-      "fingerprint": "2ca82fbc95d9bdcd65d772012f4feb84d629c4d2da1b17132d6713b9e3a638a4",
+      "fingerprint": "054d83414abab5682b2bf6f85e0b53055156ff07827841d54ce2e31fe2b87bf3",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/lifecycle-browse.tsx": "cd04e690e3a197ba5239b659c80d07a8fff13104db3ec1b4012612cc130c3cf2"
+        "packages/client/src/components/workflow/canvas-reveal/lifecycle-browse.tsx": "cb47a9806f54f605f20b9f9471d3e53a38a6d8412d21a4b0b755476e7f5b9ac6"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": {
-      "fingerprint": "efc4ebf9cee1f26c1527e78e7229359728f695166b52d78e833f97e87e5f1e36",
+      "fingerprint": "71de5439ba8ec3194ee5991c04af2fae7cb9e930bed43e237b3f21403f6be369",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": "2b9124b06ef0803c613d8e71f0b3be9a540b99f4ee47ac2beb4426a5f7a960a1"
+        "packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": "0ab33889a975d4c0461fe9ca8d6290f146e43175c57b61b1ebfe8ce829850d23"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/step-summary.test.ts": {
@@ -8101,107 +8087,107 @@
       ]
     },
     "source:packages/client/src/components/workflow/comparison-field-labels.ts": {
-      "fingerprint": "0343e1aeb7f022ba1b354a45ada0458e370f90993f114391d91f1637f599d4cb",
+      "fingerprint": "793d3bde33d1fbf006dab12ff813a90c63ab84c551072bf3cc195a6022202309",
       "snapshot": {
-        "packages/client/src/components/workflow/comparison-field-labels.ts": "a553a580996a204ac756c4ca85d83e069a2d23eccbec0a4864fe700fd384b6c8"
+        "packages/client/src/components/workflow/comparison-field-labels.ts": "a5c6a53cd21ccca8886029d99cb28e27a3c129a11c5d2f9097bc054f88e394d9"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/comparison-properties.tsx": {
-      "fingerprint": "0d893a4ced6ddf19b4b3ffdf68c6d70c922b24d9c8147354cf7191381d66a5a0",
+      "fingerprint": "2d8243969a5cc7af0b8bd6f1c114c074d330dab1159ea057fded1e40ab86e2f4",
       "snapshot": {
-        "packages/client/src/components/workflow/comparison-properties.tsx": "6834377713924f313b98792e03191dac6de61d22ff040af419f30f88ab58b50e"
+        "packages/client/src/components/workflow/comparison-properties.tsx": "b282b5c19373e95142fabfd9f24f770ab85db46aeaa7113594ad329f46ff8eba"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/config/condition-builder-row.tsx": {
-      "fingerprint": "eb51587ae7ad542dfd6647354d3f05bd05966bb04c71037de6d6d0f3a6c0b460",
+      "fingerprint": "4ec56ecaa2aee377372417635acddb125df82c12b3e9a5539dd5fe97b636fd5d",
       "snapshot": {
-        "packages/client/src/components/workflow/config/condition-builder-row.tsx": "633e0e796f36f07fb24b31b4d632b6dc4917a9fd6fc8435d228ba69245c6419b"
+        "packages/client/src/components/workflow/config/condition-builder-row.tsx": "de08f2cc5b8666c91dcfc5700cb79c56e5edb5c1c894637787ae6d8f3963edc9"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/config/condition-set-value-input.test.tsx": {
-      "fingerprint": "074e5765695efe7e979e769bfc4dd540fcf3551c267a12dcdfb133320e3c963a",
+      "fingerprint": "a0565c163c7fda130b8b850f01b53bad5a2610e78778b1dbce82d4b70732d6e7",
       "snapshot": {
-        "packages/client/src/components/workflow/config/condition-set-value-input.test.tsx": "5fccaf64b0a33e09ff6dad13a15c9576ef5cd5f3ba560bef01aa66e8b72f30bd"
+        "packages/client/src/components/workflow/config/condition-set-value-input.test.tsx": "1bfd6dbfde4540fc0160ffc66dc0559e0ed2c67416703e4e551727ceab445244"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/config/condition-set-value-input.tsx": {
-      "fingerprint": "a13625d2615ac84ba00e7dd903cd687616cf06a4a7968403730faf9de360a9e7",
+      "fingerprint": "91f5f3a7f3ae63ae7415f22ed3a68226ca689d55d0d647e410a1e459735346cf",
       "snapshot": {
-        "packages/client/src/components/workflow/config/condition-set-value-input.tsx": "f739814b6425b7c404a7aadaac46a83d10a14d9a972b7e311ba9c63b6c4d0d31"
+        "packages/client/src/components/workflow/config/condition-set-value-input.tsx": "f48b8d36b268c3097c7d4241d1e7e0db394edd8d4d905f79442a19feedd9e960"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/client/src/components/workflow/config/condition-summary.tsx": {
-      "fingerprint": "5633467eebab3294426f83870cc9aab74faa9a77b24a7e979d6d874d74e49431",
+      "fingerprint": "9772ab309b3f26bbf046231d8d23d7e6ac2804d7440fc6fa2da8e1d5a1b8ad5e",
       "snapshot": {
-        "packages/client/src/components/workflow/config/condition-summary.tsx": "6b9a6d6d24e03dca217dd50204efa86f2d7b5712cb686ace7572ec6c78dabd2f"
+        "packages/client/src/components/workflow/config/condition-summary.tsx": "2d2fbe42bc76300f846d6bc31a0f985f7fcf7a37a4a184cb6ca3c22e8e764f77"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/shared/src/graph/node-display.test.ts": {
-      "fingerprint": "020bd137d6aa411d175edcc7fe6183ea0498980c8387c4b3b5caeae8c6183580",
+      "fingerprint": "a357962bee76d63edf2962f7fd7c13376f9a3244b0283bfccd65e0e8889236bf",
       "snapshot": {
-        "packages/shared/src/graph/node-display.test.ts": "ffb8757aba8b9f0e30130f9d482bf2761c88fbb1b168c1e337d267265414c080"
+        "packages/shared/src/graph/node-display.test.ts": "c1777c3e00ed95b2b633f945580af8f28bb0e671f531b8b44beb521bc48796dc"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/shared/src/graph/node-display.ts": {
-      "fingerprint": "15bbfb7dc88648b8b28ddaf41c22a08654b2279444507f1958d26b5d70b75a7a",
+      "fingerprint": "b885418a6b3b6527ffce562a3db71474e2d51bb61eaca4cd7b7fae11928b7e9b",
       "snapshot": {
-        "packages/shared/src/graph/node-display.ts": "8c863d8cf4d7f9880e689eb4d592dfa1bc728695815b6524643fc872ee7e05f6"
+        "packages/shared/src/graph/node-display.ts": "c0ff5dd27edf9025c6481f4a9ed43d2b72ede41ffe993147eaf97dd038460490"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "4699100254771e1282d1da6b0fa2528f8783a8ce",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "_artifacts/skill_spec.md decision 2",
+        "pnpm run test passed"
       ]
     },
     "source:packages/shared/src/graph/node-references.test.ts": {
