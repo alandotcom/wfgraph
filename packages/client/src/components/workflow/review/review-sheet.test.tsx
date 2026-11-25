@@ -551,6 +551,49 @@ describe("ReviewSheet", () => {
     ).toContain("text-warning");
   });
 
+  it("offers the version history's migration beside runs left on a version older than the current one", async () => {
+    installAuthorizationGrantsForTests([
+      WfGraphOperations.workflowPublish.id,
+      WfGraphOperations.workflowGetVersionUsage.id,
+      WfGraphOperations.workflowMigrateExecutions.id,
+      WfGraphOperations.workflowPreviewMigration.id,
+    ]);
+    const published = (
+      version: number,
+      isCurrent: boolean,
+      activeRunCount: number
+    ): WorkflowVersionUsageItem => ({
+      kind: "published",
+      version,
+      id: `version_${version}`,
+      publishedAt: "2026-08-20T15:00:00.000Z",
+      isCurrent,
+      activeRunCount,
+      oldestActiveRunAt: null,
+      actionIds: [],
+      missingActionIds: [],
+      catalogMatches: true,
+    });
+    const view = await renderSheet({
+      usage: [published(7, true, 0), published(6, false, 1)],
+    });
+    await view.findByRole("heading", { name: "Publish v8" });
+
+    // The migration moves parked runs onto the current publication, v7.
+    fireEvent.click(view.getByRole("button", { name: "Move to v7" }));
+    expect(
+      await view.findByRole("dialog", { name: "Migrate active runs" })
+    ).toBeTruthy();
+    view.unmount();
+
+    // Runs already on the current version can move only once v8 is
+    // published, so the line offers nothing.
+    const onCurrent = await renderSheet({ usage: [published(7, true, 2)] });
+    await onCurrent.findByRole("heading", { name: "Publish v8" });
+    expect(onCurrent.getByText(/2 active runs stay on v7\./)).toBeTruthy();
+    expect(onCurrent.queryByRole("button", { name: /^Move to/ })).toBeNull();
+  });
+
   it("states the Live consequence with the dot in muted ink", async () => {
     const view = await renderSheet({ mode: "live" });
     await view.findByRole("heading", { name: "Publish v8" });
