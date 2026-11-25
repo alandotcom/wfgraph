@@ -19,7 +19,8 @@ import {
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
-import { revealTitleFocusRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
+import { editFocusTarget } from "#src/components/workflow/canvas-reveal/reveal-edit-target";
+import { requestRevealEditFocusAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { ProviderLogo } from "#src/components/workflow/nodes/action-node";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { Input } from "#src/components/ui/input";
@@ -145,7 +146,7 @@ export function WorkflowOutline() {
   const focusNode = useFocusWorkflowNode();
   const setHighlight = useSetAtom(reviewHighlightAtom);
   const requestReviewScroll = useSetAtom(requestReviewScrollAtom);
-  const focusRevealTitle = useSetAtom(revealTitleFocusRequestAtom);
+  const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
   const openPalette = useSetAtom(openCommandPaletteAtom);
   const runPath = useAtomValue(runPathAtom);
   const runStatuses = useAtomValue(runNodeEvidenceStatusesAtom);
@@ -363,7 +364,13 @@ export function WorkflowOutline() {
         case "Enter": {
           choose(row);
           const nodeId = nodeIdOf(row);
-          if (!reviewShown && nodeId !== null) focusRevealTitle(nodeId);
+          const node = draftNodes.find((item) => item.id === nodeId);
+          if (!reviewShown && node !== undefined) {
+            requestEditFocus({
+              nodeId: node.id,
+              targetId: editFocusTarget(node),
+            });
+          }
           return true;
         }
         case " ":

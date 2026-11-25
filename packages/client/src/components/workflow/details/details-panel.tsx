@@ -30,6 +30,7 @@ import {
 } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { useInspectorScroll } from "#src/components/workflow/canvas-reveal/use-inspector-scroll";
 import { useRevealKeyboard } from "#src/components/workflow/canvas-reveal/use-reveal-keyboard";
+import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
 import { useAfterPaint, useBeforePaint } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { nodesAtom } from "#src/lib/workflow-graph-store";
@@ -37,6 +38,7 @@ import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { RevealLevel } from "#src/lib/workflow-navigation-state";
 import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { WorkflowDetails } from "./workflow-details";
 
 /**
@@ -89,8 +91,20 @@ export function DetailsPanel() {
     shownLevelRef.current = level;
   });
 
-  /** Hand focus back to the selected object on the canvas, when there is one. */
+  /**
+   * Hand focus back to where the person came from: the selected step's row
+   * when the outline shows it, or else the selected object on the canvas.
+   */
   const returnFocus = () => {
+    const [nodeId] = store.get(activeSelectionAtom).nodeIds;
+    const row =
+      nodeId === undefined
+        ? null
+        : document.getElementById(outlineRowElementId(nodeId));
+    if (row) {
+      row.focus({ preventScroll: true });
+      return;
+    }
     if (subject && kind) {
       kind
         .focusReturnTarget(subject, document.documentElement)
