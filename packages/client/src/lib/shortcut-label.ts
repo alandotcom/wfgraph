@@ -121,7 +121,10 @@ export function shortcutReference(
         { label: "Move to the previous row", keys: ["↑", "K"] },
         { label: "Open the row", keys: [enter] },
         { label: "Select the row", keys: ["Space"] },
-        { label: "Open the row's actions", keys: [rowActions] },
+        {
+          label: "Open the row's actions, such as showing its failed runs",
+          keys: [rowActions],
+        },
       ],
     },
     {

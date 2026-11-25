@@ -263,6 +263,77 @@ describe("WorkflowsPage workflow list", () => {
     );
   });
 
+  // The marks are no Tab stop, so the keyboard reaches the same command from
+  // the focused row's actions menu and from the page's palette.
+  it("shows a row's failed runs from its actions menu, opened with Shift+F10", async () => {
+    stubDashboardRpc(null, [
+      summary("workflow_1", "Reminders", "version_1", {
+        runCounts: { failedRecently: 2, waiting: 1 },
+      }),
+    ]);
+    const { view, router } = await renderWorkflowsPage();
+
+    const row = (await view.findByText("Reminders")).closest("tr");
+    if (!row) throw new Error("The workflow row is missing");
+    row.focus();
+    fireEvent.keyDown(row, { key: "F10", shiftKey: true });
+    fireEvent.click(
+      await view.findByRole("menuitem", { name: "Show 1 waiting run" })
+    );
+
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        filters: [
+          {
+            field: "workflow",
+            operator: "is",
+            value: "workflow_1",
+            valueLabel: "Reminders",
+          },
+          { field: "status", operator: "is", value: "waiting" },
+        ],
+      })
+    );
+  });
+
+  it("shows a workflow's failed runs from the page's palette", async () => {
+    stubDashboardRpc(null, [
+      summary("workflow_1", "Reminders", "version_1", {
+        runCounts: { failedRecently: 2, waiting: 0 },
+      }),
+      summary("workflow_2", "Quiet", "version_2"),
+    ]);
+    const { view, router } = await renderWorkflowsPage();
+    await view.findByText("Reminders");
+
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    const input = await view.findByRole("combobox", {
+      name: "Search workflows and commands",
+    });
+    // A workflow with no failed or waiting runs offers no run command.
+    expect(view.queryByRole("option", { name: /runs of Quiet/ })).toBeNull();
+    fireEvent.change(input, { target: { value: "failed" } });
+    fireEvent.click(
+      await view.findByRole("option", {
+        name: /^Show failed runs of Reminders/,
+      })
+    );
+
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        filters: [
+          {
+            field: "workflow",
+            operator: "is",
+            value: "workflow_1",
+            valueLabel: "Reminders",
+          },
+          { field: "status", operator: "is", value: "failed" },
+        ],
+      })
+    );
+  });
+
   it("offers Pause only for a workflow that has a published version", async () => {
     stubDashboardRpc(null, [
       summary("workflow_1", "Draft only"),

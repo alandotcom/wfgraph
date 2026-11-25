@@ -58,7 +58,10 @@ import {
   runStatusTone,
   statusToneDotClass,
 } from "#src/components/workflow/workflow-run-shared";
-import { compact } from "es-toolkit/array";
+import {
+  type RunMarkStatus,
+  workflowRunMarks,
+} from "#src/lib/workflow-run-marks";
 import type {
   WorkflowListItemPayload,
   WorkflowSummaryPayload,
@@ -217,16 +220,14 @@ function WorkflowStateLabel({
   );
 }
 
-/** The two run states a workflow row counts. */
-type RunMarkStatus = "failed" | "waiting";
-
 /**
  * A workflow's failed and waiting runs, such as "2 failed · 1 waiting", each a
  * signal dot beside its words. `failedRecently` counts the failed runs among
  * the ones the workflow's Runs view lists, and `waiting` its runs waiting now.
  * A workflow with neither shows nothing. With `onShow`, each count is a
- * button that shows those runs in All Runs; the row's own keys open the
- * workflow, so the buttons are no Tab stop.
+ * button that shows those runs in All Runs. The row's own keys open the
+ * workflow, so the buttons are no Tab stop; the keyboard reaches the same
+ * command through the row's actions menu (Shift+F10) and the page's palette.
  */
 function WorkflowRunMarks({
   workflow,
@@ -235,17 +236,7 @@ function WorkflowRunMarks({
   workflow: WorkflowListItemPayload;
   onShow: ((status: RunMarkStatus) => void) | null;
 }) {
-  const { failedRecently, waiting } = workflow.runCounts;
-  const marks = compact([
-    failedRecently > 0
-      ? { status: "failed" as const, count: failedRecently }
-      : null,
-    waiting > 0 ? { status: "waiting" as const, count: waiting } : null,
-  ]).map((mark) => ({
-    ...mark,
-    text: `${mark.count} ${mark.status}`,
-    runs: mark.count === 1 ? "run" : "runs",
-  }));
+  const marks = workflowRunMarks(workflow.runCounts);
   if (marks.length === 0) {
     return null;
   }
@@ -933,6 +924,18 @@ export default function WorkflowsPage() {
                             {toggleActionLabel}
                           </DropdownMenuItem>
                         ) : null}
+                        {canOpenGlobalRuns
+                          ? workflowRunMarks(workflow.runCounts).map((mark) => (
+                              <DropdownMenuItem
+                                key={mark.status}
+                                onClick={() => {
+                                  showWorkflowRuns(workflow, mark.status);
+                                }}
+                              >
+                                Show {mark.text} {mark.runs}
+                              </DropdownMenuItem>
+                            ))
+                          : null}
                         <DropdownMenuItem
                           onClick={() => void copyWorkflowId(workflow.id)}
                         >
@@ -963,7 +966,8 @@ export default function WorkflowsPage() {
         </table>
         <p className="sr-only" id={workflowKeysHintId}>
           Use the arrow keys or J and K to move between workflows. Press Enter
-          to open one, Space to select it, and Shift+F10 for its actions.
+          to open one, Space to select it, and Shift+F10 for its actions, which
+          include showing its failed and waiting runs.
         </p>
       </>
     );
@@ -984,6 +988,7 @@ export default function WorkflowsPage() {
             <WorkflowsPagePalette
               onNewWorkflow={canCreate ? openCreateDialog : undefined}
               onOpenWorkflow={canOpenWorkflow ? openWorkflow : undefined}
+              onShowRuns={canOpenGlobalRuns ? showWorkflowRuns : undefined}
               workflows={workflowRows}
             />
             {canCreate ? (

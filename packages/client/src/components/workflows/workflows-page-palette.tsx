@@ -1,6 +1,7 @@
 /**
- * ⌘K on the Workflows page: open a workflow by name, create one, and reach the
- * Settings menu's rows and the shortcut reference.
+ * ⌘K on the Workflows page: open a workflow by name, show a workflow's failed
+ * or waiting runs in All Runs, create one, and reach the Settings menu's rows
+ * and the shortcut reference.
  *
  * The editor's palette (`components/workflow/command-palette.tsx`) belongs to
  * an open workflow and reads its graph, so this page has a palette of its own
@@ -9,7 +10,7 @@
  */
 
 import { Autocomplete } from "@base-ui/react/autocomplete";
-import { Plus, Search, Workflow } from "lucide-react";
+import { ListFilter, Plus, Search, Workflow } from "lucide-react";
 import { type ReactNode, useCallback, useId, useRef, useState } from "react";
 import { Button } from "#src/components/ui/button";
 import {
@@ -23,6 +24,10 @@ import { useSettingsCommands } from "#src/hooks/use-app-commands";
 import { useDomEvent } from "#src/hooks/effects";
 import { editorChordAllowed } from "#src/lib/editor-shortcuts";
 import { rankPaletteGroups } from "#src/lib/palette-search";
+import {
+  type RunMarkStatus,
+  workflowRunMarks,
+} from "#src/lib/workflow-run-marks";
 import {
   currentPlatform,
   editorShortcutLabels,
@@ -50,10 +55,26 @@ function rowKeywords(row: PageRow): string {
   return row.keywords;
 }
 
+type PaletteWorkflow = {
+  readonly id: string;
+  readonly name: string;
+  readonly runCounts: {
+    readonly failedRecently: number;
+    readonly waiting: number;
+  };
+};
+
 type WorkflowsPagePaletteProps = {
-  workflows: readonly { readonly id: string; readonly name: string }[];
+  workflows: readonly PaletteWorkflow[];
   /** Absent when the person cannot open a workflow. */
   onOpenWorkflow?: ((workflowId: string) => void) | undefined;
+  /**
+   * Shows a workflow's failed or waiting runs in All Runs. Absent when the
+   * person cannot read All Runs.
+   */
+  onShowRuns?:
+    | ((workflow: PaletteWorkflow, status: RunMarkStatus) => void)
+    | undefined;
   /** Absent when the person cannot create a workflow. */
   onNewWorkflow?: (() => void) | undefined;
 };
@@ -117,6 +138,7 @@ export function WorkflowsPagePalette(props: WorkflowsPagePaletteProps) {
 function PagePaletteDialog({
   workflows,
   onOpenWorkflow,
+  onShowRuns,
   onNewWorkflow,
   onClose,
 }: WorkflowsPagePaletteProps & { onClose: () => void }) {
@@ -148,6 +170,25 @@ function PagePaletteDialog({
               icon: <Workflow className="size-3.5 text-muted-foreground" />,
               select: choose(() => onOpenWorkflow(workflow.id)),
             })),
+          },
+        ]
+      : []),
+    // A row's failed and waiting marks, as commands a keyboard can reach.
+    ...(onShowRuns
+      ? [
+          {
+            id: "runs",
+            label: "Runs",
+            items: workflows.flatMap((workflow) =>
+              workflowRunMarks(workflow.runCounts).map((mark) => ({
+                id: `runs:${mark.status}:${workflow.id}`,
+                label: `Show ${mark.status} runs of ${workflow.name}`,
+                detail: mark.text,
+                keywords: `${workflow.name} ${mark.status} runs show all runs`,
+                icon: <ListFilter className="size-3.5 text-muted-foreground" />,
+                select: choose(() => onShowRuns(workflow, mark.status)),
+              }))
+            ),
           },
         ]
       : []),
