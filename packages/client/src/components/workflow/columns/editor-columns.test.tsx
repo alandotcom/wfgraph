@@ -165,10 +165,12 @@ describe("EditorColumns", () => {
     act(() => {
       store.set(selectOnlyNodeAtom, "send");
     });
-    // Details floats over the canvas box, which keeps its size, and the
-    // camera is asked to show the step beside it.
+    // Details floats over the canvas box, which keeps its size, at the
+    // column's narrowest whatever width the docked column was given, and
+    // the camera is asked to show the step beside it.
     expect(floatingDetails()?.dataset.open).toBe("true");
-    expect(floatingDetails()?.dataset.coversWidth).toBe("408");
+    expect(floatingDetails()?.style.width).toBe("340px");
+    expect(floatingDetails()?.dataset.coversWidth).toBe("348");
     expect(floatingDetails()?.parentElement?.dataset.slot).toBe("canvas-box");
     expect(columnRow()).toEqual(row);
     expect(store.get(revealPlacementRequestAtom)?.nodeIds).toEqual(["send"]);

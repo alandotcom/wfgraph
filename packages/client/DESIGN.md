@@ -337,7 +337,8 @@ keeps room for one docked column, the outline's, and details is a rail. Below
 Whenever details is a rail, because of the window's width or because the
 person collapsed it, selecting a step, a Group, the Lifecycle node, or a
 connection slides details in as a floating panel over the right of the canvas,
-8px inside the canvas box, with the docked column's width and content, a
+8px inside the canvas box, at the column's narrowest width, 340px, so it
+covers as little of the canvas as the column allows, with its content, a
 hairline border, shadow-lg, and a **Close details** control in its header. It
 floats, so the canvas box keeps its size and nothing reflows. Selecting
 something else while it is open replaces its content in place. It slides away

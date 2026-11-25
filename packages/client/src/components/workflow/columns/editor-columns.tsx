@@ -19,6 +19,7 @@ import { cn } from "@wfgraph/shared/utils";
 import { ColumnResizeHandle } from "./column-resize-handle";
 import { MobileRevealCovered } from "#src/components/workflow/canvas-reveal/mobile-reveal";
 import {
+  COLUMN_WIDTHS,
   type ColumnSide,
   columnPreferencesAtom,
   columnWidth,
@@ -158,8 +159,16 @@ function DockedColumn({
 const FLOAT_INSET_PX = 8;
 
 /**
+ * The width of floating details: the details column's narrowest. Details
+ * float only where the canvas is too narrow to give the column room, so the
+ * float covers as little of the canvas as the column allows.
+ */
+const FLOATING_DETAILS_WIDTH = COLUMN_WIDTHS.details.min;
+
+/**
  * Details floating over the right of the canvas, for a details column that is
- * not docked. It has the docked column's width and content, and slides in and
+ * not docked. It has the docked column's content at `FLOATING_DETAILS_WIDTH`,
+ * and slides in and
  * out on `open` without changing the canvas box, so nothing reflows. Closed it
  * stays mounted, out of sight and inert, so the agent's conversation and the
  * inspector's state survive it. `data-covers-width` tells the canvas camera
@@ -172,8 +181,7 @@ function FloatingDetails({
   open: boolean;
   children: ReactNode;
 }) {
-  const preferences = useAtomValue(columnPreferencesAtom);
-  const width = columnWidth("details", preferences);
+  const width = FLOATING_DETAILS_WIDTH;
   return (
     <section
       aria-label={COLUMN_LABELS.details}
@@ -218,7 +226,6 @@ function ComposerBox({
   floatingDetails: boolean;
   children: ReactNode;
 }) {
-  const preferences = useAtomValue(columnPreferencesAtom);
   return (
     <div
       className="pointer-events-none absolute inset-y-3 z-10"
@@ -226,9 +233,7 @@ function ComposerBox({
       style={{
         left: COMPOSER_LEFT_CLEARANCE_PX,
         right: floatingDetails
-          ? columnWidth("details", preferences) +
-            FLOAT_INSET_PX +
-            COMPOSER_RIGHT_GAP_PX
+          ? FLOATING_DETAILS_WIDTH + FLOAT_INSET_PX + COMPOSER_RIGHT_GAP_PX
           : COMPOSER_RIGHT_GAP_PX,
       }}
     >
