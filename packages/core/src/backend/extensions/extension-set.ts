@@ -478,6 +478,7 @@ function readHostAction(action: ActionDefinition, into: Assembly): void {
       sideEffect: action.sideEffect,
       // An action the picker shows carries no `hidden` key at all.
       hidden: action.hidden || undefined,
+      links: action.links,
       configFields: action.configFields ?? [],
       outputFields: action.outputFields ?? [],
     })

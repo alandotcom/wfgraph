@@ -250,6 +250,88 @@ describe("defineAction with an output schema", () => {
     expect(writes.sideEffect).toBe(true);
   });
 
+  it("trims each link's label and url", () => {
+    const action = defineAction({
+      id: "members/send-email",
+      label: "Send Email to Member",
+      description: "Sends an email",
+      links: [
+        {
+          label: "  Preview email ",
+          url: " /email-preview?workflow={workflowId}&node={nodeId} ",
+        },
+      ],
+      input: z.object({ subject: z.string() }),
+      handler() {
+        return {};
+      },
+    });
+
+    expect(action.links).toEqual([
+      {
+        label: "Preview email",
+        url: "/email-preview?workflow={workflowId}&node={nodeId}",
+      },
+    ]);
+  });
+
+  it("leaves links off an action declaring an empty list", () => {
+    const action = defineAction({
+      id: "members/send-email",
+      label: "Send Email to Member",
+      description: "Sends an email",
+      links: [],
+      input: z.object({ subject: z.string() }),
+      handler() {
+        return {};
+      },
+    });
+
+    expect(action.links).toBeUndefined();
+  });
+
+  // Each refusal names the action and the link's position, so a host with
+  // many actions finds the line, and the url itself never reaches the message.
+  it.each([
+    [{ label: " ", url: "/preview" }, /link 2: the label is blank/],
+    [
+      { label: " Fine ", url: "/secret" },
+      /link 2: the label is the same as link 1's/,
+    ],
+    [
+      { label: "Preview", url: "preview?x=secret" },
+      /link 2: the url is neither/,
+    ],
+    [
+      { label: "Preview", url: "//secret.example.com" },
+      /link 2: the url starts with/,
+    ],
+    [
+      { label: "Preview", url: "javascript:secret()" },
+      /link 2: the url is neither/,
+    ],
+    [
+      { label: "Preview", url: "/p?d={secret}" },
+      /link 2: the url holds a placeholder/,
+    ],
+  ])("refuses %o", (link, message) => {
+    const define = () =>
+      defineAction({
+        id: "members/send-email",
+        label: "Send Email to Member",
+        description: "Sends an email",
+        links: [{ label: "Fine", url: "/fine" }, link],
+        input: z.object({ subject: z.string() }),
+        handler() {
+          return {};
+        },
+      });
+
+    expect(define).toThrow(/^Action "members\/send-email" /);
+    expect(define).toThrow(message);
+    expect(define).not.toThrow(/secret/);
+  });
+
   // Only an Effect output schema carries an encoder, and this is what it buys: a
   // `Date` reaching the memoized result would come back a string on the replay.
   it("encodes the handler's answer through an Effect output schema", async () => {

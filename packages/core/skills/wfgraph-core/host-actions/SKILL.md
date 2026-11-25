@@ -7,18 +7,20 @@ description: >
   configFields presentation, options callbacks for application-owned pickers,
   step.run and idempotency keys so a retry repeats no write, runMode checks so
   a Draft or Test-mode run touches nothing real, readCredentials, sideEffect,
-  or testing the action with runHostAction. Also use for requests such as "let
-  workflows call our cancel-appointment API", "a retry must not refund twice"
-  or "show a dropdown of our message templates in a workflow step". For
-  packaging a vendor API as an integration with Effect handlers, credential
-  forms or OAuth use wfgraph-core/integrations; for turning on the built-in
-  vendors use wfgraph-plugins.
+  links from the editor to a page of the host's own that reads the node with
+  app.workflows.readDraftNode, or testing the action with
+  runHostAction. Also use for requests such as "let workflows call our
+  cancel-appointment API", "a retry must not refund twice", "show a dropdown of
+  our message templates in a workflow step" or "let builders preview the email
+  this step sends". For packaging a vendor API as an integration with Effect
+  handlers, credential forms or OAuth use wfgraph-core/integrations; for turning
+  on the built-in vendors use wfgraph-plugins.
 metadata:
   purpose: >
     defineAction for host-owned steps: Promise handlers, Standard Schema input and
     output, authored config forms, dependent option callbacks, step.run,
-    readCredentials, sideEffect. Load when adding application actions beside
-    integrations. Not for defineIntegration (Effect plugin path).
+    readCredentials, sideEffect, Action Links with readDraftNode. Load when
+    adding application actions beside integrations. Not for defineIntegration (Effect plugin path).
   type: sub-skill
   library: wfgraph
   library_version: "4.1.1"
@@ -116,6 +118,27 @@ dialog of a Live published run counts the integration steps that declare it;
 a host action is not counted there. It changes nothing about whether or how
 the handler runs, in a test run or any other. Grouping ignores the field.
 
+### Action links and readDraftNode
+
+Workflow Graph renders no preview. `links: [{ label, url }]` on `defineAction`
+puts a link to a page of the host's own in Canvas Reveal, at Browse and at
+Focus, opened in a new tab. The url is an absolute path starting with one `/`,
+or a URL starting `http://` or `https://`, holds no control character, and may
+hold only `{workflowId}` and `{nodeId}`, which the editor fills, URL-encoded.
+In a full URL a placeholder may stand only in the path, query or fragment,
+never in the host or the port. `defineAction` throws at startup for any other
+url, a blank label, or two links with one label. Every reader sees the link,
+except for a node whose id is `.` or `..`, which gets no link.
+
+The page reads the node with `app.workflows.readDraftNode({ workflowId, nodeId })`
+(also on `createWfGraphRunner`, not on `wfWorker`). It answers null for a missing
+workflow or node, else the label, `actionId`, the draft `revision`, and `fields`:
+each config string as text and reference segments, other values as they are. It
+applies no `auth`, so the route authorizes the reader first. The editor starts a
+save when the link is clicked and does not wait for it, so the page reads again
+when its tab is shown. Copy the route from `docs/embedding.md` ("Action links and
+draft reads").
+
 ### Testing the action
 
 `runHostAction(action, { input, runMode?, credentials?, memo?, node? })` from
@@ -185,6 +208,31 @@ Correct: let the refusal fail the node. Catching it turns a store failure into
 whatever the handler answers next.
 
 Source: alandotcom/wfgraph:docs/integrations.md
+
+### HIGH A preview route that trusts readDraftNode to authorize
+
+Wrong: serve `readDraftNode`'s answer to whoever requests the page, on the
+assumption that Workflow Graph checked the reader.
+
+Correct: authorize the request with the host's own session first, as every
+other host route does.
+
+`readDraftNode` is server code with no `auth`, and the link is shown to
+viewers too, so an unguarded page hands any visitor every draft whose ids they
+can guess.
+
+Source: alandotcom/wfgraph:docs/embedding.md (Action links and draft reads)
+
+### MEDIUM A relative link url
+
+Wrong: `links: [{ label: "Preview", url: "preview?node={nodeId}" }]`.
+
+Correct: `url: "/preview?node={nodeId}"`, or a URL starting `https://`.
+
+`defineAction` refuses a relative url at startup, because the browser would
+resolve it against the editor's own route.
+
+Source: alandotcom/wfgraph:docs/embedding.md (Action links and draft reads)
 
 ### MEDIUM Redundant or missing field title
 

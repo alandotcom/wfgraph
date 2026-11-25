@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
+import { ActionLinks } from "#src/components/workflow/config/action-links";
 import { ConditionSummary } from "#src/components/workflow/config/condition-summary";
 import { NodePropertiesForm } from "#src/components/workflow/node-properties-form";
 import { NodeControls } from "#src/components/workflow/step-controls";
@@ -101,6 +102,7 @@ function WaitEventsSummary({ node }: { node: WorkflowNode }) {
                     nodes
                   )}
                   model={parsed.model}
+                  nodes={nodes}
                 />
               </div>
             ) : (
@@ -186,11 +188,14 @@ export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
               : "Not set"}
           </p>
         ) : null}
+        {/* Browse shows the action's links as well as Focus, since following
+            one needs no editing. */}
+        <ActionLinks actionId={actionType} className="pt-2" nodeId={nodeId} />
       </Section>
 
       {isWait ? (
         <Section title="Wait">
-          <SummaryRows rows={summarizeWait(config)} />
+          <SummaryRows rows={summarizeWait(config, { nodes, catalog })} />
           {readConfigString(config, "waitMode") === "event" ? (
             <div className="pt-2">
               <h4 className="pb-1 font-medium text-xs">Continue when</h4>
@@ -201,7 +206,10 @@ export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
       ) : action && action.configFields.length > 0 ? (
         <Section title="Settings">
           <SummaryRows
-            rows={summarizeActionFields(action.configFields, config)}
+            rows={summarizeActionFields(action.configFields, config, {
+              nodes,
+              catalog,
+            })}
           />
         </Section>
       ) : null}

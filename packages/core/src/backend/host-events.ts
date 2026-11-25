@@ -12,6 +12,7 @@ import { Cause, Effect, Exit, Option, Result, Schema } from "effect";
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
 import type { ExtensionSet } from "#src/backend/extensions/extension-set";
 import type { InboxInsertStatement } from "#src/backend/persistence/inbox-insert";
+import { hostRejection } from "#src/backend/host-rejection";
 import type { WfGraphRuntime } from "#src/backend/runtime";
 import { sendEvent } from "#src/backend/services/executions/send-event";
 import type { JsonObject } from "@wfgraph/shared/types/json";
@@ -262,15 +263,10 @@ export function createHostEvents(
     const exit = await runtime.runPromiseExit(sendEvent(input));
     if (Exit.isSuccess(exit)) return exit.value;
     const failure = Cause.findErrorOption(exit.cause);
-    if (Option.isSome(failure)) {
-      if (failure.value._tag === "InvalidInput") {
-        throw new WfGraphEventRefused(failure.value.error);
-      }
-      throw new Error(failure.value.error, { cause: failure.value.cause });
+    if (Option.isSome(failure) && failure.value._tag === "InvalidInput") {
+      throw new WfGraphEventRefused(failure.value.error);
     }
-    throw new Error("Could not send this Event", {
-      cause: Cause.squash(exit.cause),
-    });
+    throw hostRejection(exit.cause, "Could not send this Event");
   };
   return {
     sourceNames: extensions.hostEventSources,

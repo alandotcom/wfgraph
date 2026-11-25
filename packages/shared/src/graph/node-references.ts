@@ -502,8 +502,11 @@ export function formatTemplateToken(input: {
 }
 
 /**
- * What a builder reads for one token: the label and path, never the node id
+ * The label and path joined as a builder reads them, leaving out the node id
  * the engine resolves by. A token is `{{@id:Label.path}}`; the id is wiring.
+ * Given a token as parsed, the label is the one stored in it, which can be a
+ * renamed step's old name; `currentTokenDisplayText` in `./node-display`
+ * looks up the source's current name.
  */
 export function templateTokenDisplayText(
   token: Pick<TemplateToken, "nodeLabel" | "fieldPath">
@@ -511,23 +514,6 @@ export function templateTokenDisplayText(
   return token.fieldPath
     ? `${token.nodeLabel}.${token.fieldPath}`
     : token.nodeLabel;
-}
-
-/**
- * The authored string with every token collapsed to the label a builder sees.
- *
- * A condition summary and the compiled-CEL line both read this so a Wait match
- * against `{{@n1:Lifecycle.data.email_id}}` does not print the node id. A string
- * with no tokens is returned unchanged.
- */
-export function displayTemplateText(value: string): string {
-  return parseTemplate(value)
-    .map((segment) =>
-      segment.kind === "literal"
-        ? segment.text
-        : templateTokenDisplayText(segment.token)
-    )
-    .join("");
 }
 
 /**

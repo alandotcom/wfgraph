@@ -8,7 +8,7 @@
  * and anything that would exist only to serve this repo's dev loop belongs
  * somewhere else.
  *
- * The Events and the custom action are the interesting half. They show what
+ * The Events and the custom actions are the interesting half. They show what
  * `defineEvent` and `defineAction` are for, and Workflow Graph serves them beside its
  * built-in integrations with no further registration.
  *
@@ -26,6 +26,7 @@ import {
   defineAction,
   defineEntity,
   defineEvent,
+  WfGraphOperations,
 } from "@wfgraph/core";
 import { configureWfGraphLogging } from "@wfgraph/core/logging";
 import { wfSqlite } from "@wfgraph/core/sqlite";
@@ -33,8 +34,10 @@ import { wfSqlite } from "@wfgraph/core/sqlite";
 // the line that passes them to `createWfGraphApp` below is what turns them on and
 // dropping it is what turns them off.
 import { builtInIntegrations } from "@wfgraph/plugins";
+import { Hono } from "hono";
 import { z } from "zod";
 import { createDemoAuth } from "./demo-auth";
+import { MessagePreviewPage } from "./message-preview-page";
 
 // Workflow Graph asks LogTape for a logger and configures nothing, so where its
 // records go is this app's decision. One call installs the console setup it
@@ -238,6 +241,31 @@ const cancelAppointmentAction = defineAction({
   },
 });
 
+/**
+ * A message whose subject and body reference the run's values. Its link opens
+ * this app's own page at /message-preview in a new tab, with the open
+ * workflow's id and the node's id filled in by the editor.
+ */
+const sendPatientMessageAction = defineAction({
+  id: "patients/send-message",
+  label: "Send Patient Message",
+  description: "Sends a message to the appointment's patient.",
+  category: "Appointments",
+  sideEffect: true,
+  links: [
+    {
+      label: "Preview message",
+      url: "/message-preview?workflow={workflowId}&node={nodeId}",
+    },
+  ],
+  input: z.object({ subject: z.string(), body: z.string() }),
+  output: z.object({ status: z.string() }),
+  // This app has no mail service, so the handler reports what it would do.
+  handler({ runMode }) {
+    return { status: runMode === "test" ? "skipped" : "sent" };
+  },
+});
+
 const wfgraph = await createWfGraphApp({
   // OAuth providers compare callback URLs exactly. Development uses the local
   // server origin; deployments set WFGRAPH_PUBLIC_URL to their external origin.
@@ -300,17 +328,39 @@ const wfgraph = await createWfGraphApp({
       appointmentCanceled,
       paymentSettled,
     ],
-    actions: [cancelAppointmentAction],
+    actions: [cancelAppointmentAction, sendPatientMessageAction],
   },
 });
 
-// The host routes login and logout before handing every other request to the
-// Workflow Graph fetch handler. createRequestListener performs the node:http
-// IncomingMessage/ServerResponse translation for this combined Web handler.
+// The app's own routes, ahead of Workflow Graph's. The preview page is what
+// the "Preview message" link opens. `readDraftNode` applies no authorization,
+// so the page checks the session and the reader's access first.
+const hostRoutes = new Hono();
+hostRoutes.get("/message-preview", async (c) => {
+  const access = await demoAuth.auth(c.req.raw);
+  if (!access) return c.text("Sign in first", 401);
+  if (!(await access.allows(WfGraphOperations.workflowGetById))) {
+    return c.text("Forbidden", 403);
+  }
+  const workflowId = c.req.query("workflow");
+  const nodeId = c.req.query("node");
+  if (!workflowId || !nodeId) return c.text("Missing workflow or node", 400);
+  const node = await wfgraph.workflows.readDraftNode({ workflowId, nodeId });
+  if (!node) return c.text("No such node in the saved draft", 404);
+  return c.html(MessagePreviewPage({ node }));
+});
+hostRoutes.all("*", (c) => wfgraph.fetch(c.req.raw));
+
+// The host routes login and logout before handing every other request to its
+// own routes and then to the Workflow Graph fetch handler.
+// createRequestListener performs the node:http IncomingMessage/ServerResponse
+// translation for this combined Web handler.
 const server = createServer(
   createRequestListener({
     ...wfgraph,
-    fetch: demoAuth.createFetch(wfgraph.fetch),
+    fetch: demoAuth.createFetch(
+      async (request) => await hostRoutes.fetch(request)
+    ),
   })
 );
 

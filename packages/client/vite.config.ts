@@ -84,6 +84,9 @@ export default defineConfig({
       // that origin before the browser calls `/api`.
       "/login": APP_ORIGIN,
       "/logout": APP_ORIGIN,
+      // The example app's message preview, which an Action Link opens in a new
+      // tab. Served from the Vite origin, it carries the same session cookie.
+      "/message-preview": APP_ORIGIN,
     },
     fs: {
       // Sources from three workspace packages reach the browser, so the dev

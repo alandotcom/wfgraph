@@ -112,6 +112,20 @@ const catalog: ExtensionCatalog = {
       ],
       outputFields: [],
     },
+    {
+      id: "notices/send-letter",
+      label: "Send letter",
+      description: "Send one letter",
+      category: "Notices",
+      configFields: [{ key: "body", label: "Body", type: "template-textarea" }],
+      outputFields: [],
+      links: [
+        {
+          label: "Preview letter",
+          url: "/letters/preview?workflow={workflowId}&node={nodeId}",
+        },
+      ],
+    },
   ],
 };
 
@@ -149,6 +163,13 @@ const NODES: WorkflowNode[] = [
     waitFor: [{ event: "app/reply.received" }],
   }),
   node("condition", "Eligible?", { actionType: BUILT_IN_ACTION_IDS.condition }),
+  node("letter", "Send letter", { actionType: "notices/send-letter" }),
+  // The token was written while "send" was called "Old reminder", so the label
+  // stored inside it no longer matches the step's current name.
+  node("greet", "Greet", {
+    actionType: "mailer/send",
+    subject: "Hi {{@send:Old reminder.id}}",
+  }),
 ];
 
 /** Says whether any overlay, such as the configuration sheet, is open. */
@@ -404,6 +425,24 @@ describe("Canvas Reveal presentation states", () => {
     });
     expect(region.textContent).toContain("1 issue");
     expect(view.getByRole("button", { name: "To is required." })).toBeTruthy();
+  });
+
+  it("names a reference by its source step's current name in the Settings summary", async () => {
+    const { view, level, select } = await renderReveal();
+    await select("greet");
+
+    expect(level()).toBe("browse");
+    const region = view.getByRole("complementary", { name: "Step inspector" });
+    expect(region.textContent).toContain("Hi Send reminder.id");
+    expect(region.textContent).not.toContain("Old reminder");
+  });
+
+  it("shows a host action's links at Browse", async () => {
+    const { view, level, select } = await renderReveal();
+    await select("letter");
+
+    expect(level()).toBe("browse");
+    expect(view.getByRole("link", { name: "Preview letter" })).toBeTruthy();
   });
 
   it("opens Browse for a Wait with its timing summary", async () => {

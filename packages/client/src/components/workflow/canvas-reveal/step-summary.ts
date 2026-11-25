@@ -1,11 +1,13 @@
 /**
  * The label and value pairs Browse shows for an ordinary step, built from the
  * step's config and the labels its form uses. A null value is a field the step
- * has not set, which Browse shows as "Not set".
+ * has not set, which Browse shows as "Not set". A template reference reads as
+ * its source's current name, looked up in the workflow's nodes and catalog.
  */
 
 import { compact, partition } from "es-toolkit/array";
-import { displayTemplateText } from "@wfgraph/shared/graph/node-references";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { currentTemplateDisplayText } from "@wfgraph/shared/graph/node-display";
 import {
   readConfigString,
   readConfigStringOr,
@@ -26,6 +28,13 @@ import {
   WAIT_WINDOW_OPTIONS,
   waitOptionLabel,
 } from "#src/components/workflow/config/wait-options";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+
+/** The workflow a summary names template references against. */
+export type SummaryContext = {
+  nodes: readonly WorkflowNode[];
+  catalog: ExtensionCatalog;
+};
 
 export type SummaryRow = {
   /** The config key the row reads, which is also its form field's element id. */
@@ -51,7 +60,8 @@ function setString(
  */
 export function summarizeActionFields(
   fields: readonly ActionConfigField[],
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  context: SummaryContext
 ): SummaryRow[] {
   const rows = flattenConfigFields(fields)
     .filter((field) => matchesShowWhen(config, field.showWhen))
@@ -71,7 +81,11 @@ export function summarizeActionFields(
         ) {
           value = "Set";
         } else {
-          value = displayTemplateText(text);
+          value = currentTemplateDisplayText(
+            text,
+            context.nodes,
+            context.catalog
+          );
         }
       }
       return {
@@ -95,7 +109,10 @@ function waitRow(key: WaitFieldKey, value: string | null): SummaryRow {
  * A Wait step's timing or timeout settings, in the words its form uses. The
  * Events an event-mode Wait resumes on are summarized separately.
  */
-export function summarizeWait(config: Record<string, unknown>): SummaryRow[] {
+export function summarizeWait(
+  config: Record<string, unknown>,
+  context: SummaryContext
+): SummaryRow[] {
   const mode = readConfigStringOr(config, "waitMode", "delay");
   const modeRow = waitRow("waitMode", waitOptionLabel(WAIT_MODE_OPTIONS, mode));
   if (mode === "event") {
@@ -119,12 +136,12 @@ export function summarizeWait(config: Record<string, unknown>): SummaryRow[] {
   const windowLabel = waitOptionLabel(WAIT_WINDOW_OPTIONS, windowMode);
   const timingRows =
     timing === "duration"
-      ? [waitRow("waitDuration", textOf(config, "waitDuration"))]
+      ? [waitRow("waitDuration", textOf(config, "waitDuration", context))]
       : compact([
-          waitRow("waitUntil", textOf(config, "waitUntil")),
+          waitRow("waitUntil", textOf(config, "waitUntil", context)),
           setString(config, "waitOffset") === null
             ? undefined
-            : waitRow("waitOffset", textOf(config, "waitOffset")),
+            : waitRow("waitOffset", textOf(config, "waitOffset", context)),
         ]);
   return [
     modeRow,
@@ -135,7 +152,7 @@ export function summarizeWait(config: Record<string, unknown>): SummaryRow[] {
     ...timingRows,
     waitRow("waitGateMode", waitOptionLabel(WAIT_GATE_OPTIONS, gateMode)),
     ...(gateMode === "max_lateness"
-      ? [waitRow("waitMaxLateness", textOf(config, "waitMaxLateness"))]
+      ? [waitRow("waitMaxLateness", textOf(config, "waitMaxLateness", context))]
       : []),
     waitRow(
       "waitAllowedHoursMode",
@@ -147,7 +164,13 @@ export function summarizeWait(config: Record<string, unknown>): SummaryRow[] {
   ];
 }
 
-function textOf(config: Record<string, unknown>, key: string): string | null {
+function textOf(
+  config: Record<string, unknown>,
+  key: string,
+  context: SummaryContext
+): string | null {
   const value = setString(config, key);
-  return value === null ? null : displayTemplateText(value);
+  return value === null
+    ? null
+    : currentTemplateDisplayText(value, context.nodes, context.catalog);
 }

@@ -41,13 +41,16 @@ export type NodeConfigSource = {
   };
 };
 
+/** The config key a saved action node stores its action id under. */
+export const ACTION_TYPE_CONFIG_KEY = "actionType";
+
 export function actionTypeOf(
   node: NodeConfigSource | undefined
 ): string | undefined {
   if (!node || node.data.type !== "action") {
     return undefined;
   }
-  return readConfigString(node.data.config, "actionType");
+  return readConfigString(node.data.config, ACTION_TYPE_CONFIG_KEY);
 }
 
 export function enabledActionTypeOf(

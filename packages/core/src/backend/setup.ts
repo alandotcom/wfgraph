@@ -2,8 +2,8 @@
  * What `createWfGraphApp` and `createWfGraphRunner` both stand on: the worker
  * loop's settings, logging, the cipher, the extension surface, the opened
  * persistence backend, the app's run wakes, the runtime whose
- * `ExecutionDriver` announces to them, and the host's Event send over that
- * runtime. `openWfGraphRuntime`, the runtime over an opened backend, is also
+ * `ExecutionDriver` announces to them, and the host's Event send and workflow
+ * reads over that runtime. `openWfGraphRuntime`, the runtime over an opened backend, is also
  * what each `wfWorker` invocation stands on. The loop's options are refused
  * before anything opens. A failure while opening gives back whatever was
  * acquired. `close` disposes the runtime and then closes the backend, so the
@@ -26,6 +26,10 @@ import {
 } from "#src/backend/executor/in-process-runner";
 import { createAppRunWakes } from "#src/backend/executor/worker-wake";
 import { createHostEvents, type WfGraphEvents } from "#src/backend/host-events";
+import {
+  createHostWorkflows,
+  type WfGraphWorkflows,
+} from "#src/backend/host-workflows";
 import type { RetentionWindows } from "#src/backend/host-retention";
 import { closeInOrder, failAfterClose } from "#src/backend/lib/close-in-order";
 import {
@@ -74,6 +78,8 @@ export type WfGraphSetup = {
   readonly capabilities: WfGraphRunCapabilities;
   /** The host's in-process Event send, on this setup's runtime. */
   readonly events: WfGraphEvents;
+  /** The host's workflow reads, on this setup's runtime. */
+  readonly workflows: WfGraphWorkflows;
   /**
    * Starts the worker loop in this process on the setup's runtime and wakes,
    * with the settings resolved when the setup opened, or undefined for a
@@ -189,6 +195,7 @@ export async function openWfGraphSetup(
       extensions,
       capabilities,
       events: createHostEvents(runtime, extensions, persistence.inboxInsert),
+      workflows: createHostWorkflows(runtime),
       startRunner:
         settings === undefined
           ? undefined

@@ -20,6 +20,7 @@ import {
   flattenConfigFields,
 } from "#src/plugins/action-fields";
 import type { ReferenceField } from "#src/graph/node-references";
+import type { ActionLink } from "#src/extensions/action-links";
 
 /**
  * One Event, as the editor lists it.
@@ -82,6 +83,12 @@ export type ActionMetadata = {
    * pinned runs and existing nodes keep working.
    */
   readonly hidden?: boolean;
+  /**
+   * Pages of the host's own that the editor links to from Canvas Reveal, in
+   * the order the host declared them. Absent when the action declares none.
+   * Only a host `defineAction` declares links.
+   */
+  readonly links?: readonly ActionLink[];
   readonly configFields: readonly ActionConfigField[];
   readonly outputFields: readonly ReferenceField[];
 };

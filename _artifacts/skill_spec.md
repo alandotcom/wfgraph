@@ -156,16 +156,18 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | 6   | A hand-written inbox insert on the default search_path | MEDIUM   | docs/events.md (Sending an Event)     | none         |
 | 7   | Schema library without JSON Schema                     | MEDIUM   | docs/events.md                        | none         |
 
-### host-actions (6 failure modes)
+### host-actions (8 failure modes)
 
-| #   | Mistake                             | Priority | Source                                                                   | Cross-skill? |
-| --- | ----------------------------------- | -------- | ------------------------------------------------------------------------ | ------------ |
-| 1   | Effect handler on defineAction      | HIGH     | docs/integrations.md (Effect for integrations, Promise for host actions) | integrations |
-| 2   | Catch around readCredentials        | HIGH     | docs/integrations.md                                                     | none         |
-| 3   | Redundant or missing field title    | MEDIUM   | docs/embedding.md                                                        | none         |
-| 4   | A side effect with no runMode check | CRITICAL | docs/embedding.md (Test runs call your handler)                          | mcp          |
-| 5   | Two external calls in one step      | HIGH     | docs/embedding.md (A handler runs once per node of a run)                | none         |
-| 6   | A key the vendor never sees         | HIGH     | docs/embedding.md (A handler runs once per node of a run)                | none         |
+| #   | Mistake                                                | Priority | Source                                                                   | Cross-skill? |
+| --- | ------------------------------------------------------ | -------- | ------------------------------------------------------------------------ | ------------ |
+| 1   | Effect handler on defineAction                         | HIGH     | docs/integrations.md (Effect for integrations, Promise for host actions) | integrations |
+| 2   | Catch around readCredentials                           | HIGH     | docs/integrations.md                                                     | none         |
+| 3   | Redundant or missing field title                       | MEDIUM   | docs/embedding.md                                                        | none         |
+| 4   | A side effect with no runMode check                    | CRITICAL | docs/embedding.md (Test runs call your handler)                          | mcp          |
+| 5   | Two external calls in one step                         | HIGH     | docs/embedding.md (A handler runs once per node of a run)                | none         |
+| 6   | A key the vendor never sees                            | HIGH     | docs/embedding.md (A handler runs once per node of a run)                | none         |
+| 7   | A preview route that trusts readDraftNode to authorize | HIGH     | docs/embedding.md (Action links and draft reads)                         | none         |
+| 8   | A relative link url                                    | MEDIUM   | docs/embedding.md (Action links and draft reads)                         | none         |
 
 ### integrations (8 failure modes)
 
@@ -517,6 +519,38 @@ sources, apart from the source checks each later batch records.
   refusals for each provider form and a runner. `packages/evals/src/skills/host.ts`
   now lets a check pass `mcp` and `agent`. Discovery and a fresh consumer
   session are unverified, as for every earlier batch.
+
+### Batch 6: Action Links and readDraftNode (packages at 4.1.2, branch feat/action-links)
+
+- Source: the branch's commits on top of c0f1fe00, which add `links` to
+  `defineAction`, show them in the editor's Canvas Reveal, and add
+  `workflows.readDraftNode` to the objects `createWfGraphApp` and
+  `createWfGraphRunner` answer. `docs/embedding.md` gained "Action links and
+  draft reads", and its three lists of the app's members and the runner's
+  member list now name `workflows`.
+- Decision: links and the draft read are taught in host-actions, since a
+  developer declares a link on the same `defineAction` call and the read
+  exists for the page that link opens. No new skill.
+- host-actions: a section on links and `readDraftNode`, the description names
+  the preview task, and two new mistakes (an unguarded preview route, a
+  relative link url). `metadata.purpose` gained "Action Links with
+  readDraftNode" and kept its prior text. Its links paragraph states the url
+  rules as `actionLinkUrlProblem` checks them: a path or a URL starting
+  `http://` or `https://`, no control character, a placeholder only after the
+  host, and no link for a node whose id is `.` or `..`.
+- wfgraph-core: the return shape names `workflows` and points at host-actions.
+- Other skills whose source lists `docs/embedding.md` (auth, build-agent,
+  cloudflare-worker, mcp, observability, wfgraph-plugins) teach nothing the
+  new section or the member lists changed. cloudflare-worker stays accurate
+  because `wfWorker` exposes no `workflows`, which the manual says.
+- `library_version` stays at 4.1.1: the release carrying this change has not
+  been cut, so no published version carries the new guidance yet.
+- Checks: `intent validate` passed for ten skills. The behavior the guidance
+  states is covered by the package tests (`action-links.test.ts` and
+  `define-action.test.ts` for the url rules, `action-links.test.tsx` for the editor, `draft-node.test.ts` and
+  `app.workflows.test.ts` for the read). No eval task check was added, and
+  discovery and a fresh consumer session are unverified, as for every earlier
+  batch.
 
 ### Remaining work
 

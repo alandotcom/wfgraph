@@ -311,6 +311,7 @@ skills:
       - sideEffect
       - callExternal and callExternalAsync from @wfgraph/core
       - runHostAction from @wfgraph/core/testing
+      - links (Action Links) and app.workflows.readDraftNode
     tasks:
       - Write a defineAction with a Promise handler that fails by throwing and passes it in extensions.actions.
       - Describe the config form with the input schema, letting the editor derive labels, and add configFields for presentation the schema cannot express.
@@ -321,6 +322,7 @@ skills:
       - Check runMode so a Draft run or a Test-mode run changes nothing real.
       - Mark an action that writes outside the workflow with sideEffect true.
       - Test the action with runHostAction, including a later pass from the memo an earlier one left.
+      - Link from Canvas Reveal to a host page, such as an email preview, that authorizes the reader and reads the node with app.workflows.readDraftNode.
     failure_modes:
       - mistake: Effect handler on defineAction
         mechanism: defineAction is the Promise host path; Effect handlers belong to defineIntegration.
@@ -377,6 +379,24 @@ skills:
           await step.run("refund", ({ idempotencyKey }) => payments.refund(chargeId, { idempotencyKey }))
         source: alandotcom/wfgraph:docs/embedding.md (A handler runs once per node of a run)
         priority: HIGH
+        status: active
+      - mistake: A preview route that trusts readDraftNode to authorize
+        mechanism: readDraftNode is server code with no auth, and the editor shows an Action Link to viewers too, so a page that serves its answer unguarded hands any visitor the draft of every workflow whose ids they can guess.
+        wrong_pattern: |
+          app.get("/preview", async (c) => c.json(await wfgraph.workflows.readDraftNode(ids)))
+        correct_pattern: |
+          const user = await requireStaffUser(c.req.raw); // then readDraftNode
+        source: alandotcom/wfgraph:docs/embedding.md (Action links and draft reads)
+        priority: HIGH
+        status: active
+      - mistake: A relative link url
+        mechanism: defineAction refuses a relative url at startup, because the browser would resolve it against the editor's own route.
+        wrong_pattern: |
+          links: [{ label: "Preview", url: "preview?node={nodeId}" }]
+        correct_pattern: |
+          links: [{ label: "Preview", url: "/preview?node={nodeId}" }]
+        source: alandotcom/wfgraph:docs/embedding.md (Action links and draft reads)
+        priority: MEDIUM
         status: active
     sources:
       - alandotcom/wfgraph:docs/embedding.md

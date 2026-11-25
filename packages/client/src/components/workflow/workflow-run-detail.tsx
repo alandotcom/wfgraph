@@ -365,6 +365,7 @@ export function WorkflowRunDetail({
                         compact
                         fields={exitConditionFields}
                         model={exitCondition}
+                        nodes={executionGraph?.nodes ?? []}
                         setOperatorsRequireEnumValues
                       />
                     </div>

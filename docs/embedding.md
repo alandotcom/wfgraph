@@ -228,6 +228,109 @@ For an expected refusal, a callback can return
 The other reasons are `"unreachable"` and `"refused"`. An exception produces a generic
 fallback without exposing the exception text.
 
+## Action links and draft reads
+
+Workflow Graph renders no preview of what a node will send. A host that wants one serves the
+page itself and declares an Action Link to it with `links` on `defineAction`. The editor
+shows each link while a step running that action is selected, at both levels of Canvas
+Reveal, Browse and Focus. The page reads the node's saved draft
+with `app.workflows.readDraftNode`.
+
+```ts
+const sendMemberEmail = defineAction({
+  id: "members/send-email",
+  label: "Send Email to Member",
+  description: "Sends an email to the run's member.",
+  category: "Members",
+  sideEffect: true,
+  links: [
+    {
+      label: "Preview email",
+      url: "/member-email-preview?workflow={workflowId}&node={nodeId}",
+    },
+  ],
+  input: z.object({ subject: z.string(), body: z.string() }),
+  handler: async ({ input, runMode }) => sendEmailToMember(input, runMode),
+});
+```
+
+A link's `url` follows these rules, and `defineAction` throws at startup, naming the action
+and the link's position, for one that breaks them:
+
+- The url is an absolute path starting with a single `/`, or a URL starting `http://` or
+  `https://` in any letter case. A relative path, which the browser would resolve against
+  the editor's own route, is refused, and so are `https:/preview` and a url starting `//`
+  or `/\`.
+- The url holds no control character: no tab, newline, other C0 character, or DEL.
+- `{workflowId}` and `{nodeId}` are the only placeholders. The editor writes the open
+  workflow's id and the selected node's id in their place, each encoded with
+  `encodeURIComponent`. Any other `{` or `}` in the url is refused. In an `http://` or
+  `https://` URL a placeholder may stand only in the path, query or fragment, so a node id
+  never chooses the host or the port.
+- The label is not blank, and no other link of the same action has the same label.
+
+The editor leaves a link out for a node whose id it cannot write into a URL intact, such as
+`.` or `..`, which a browser reads as a step within the path in any encoding.
+
+The editor draws each link as an ordinary anchor that opens in a new tab with
+`rel="noopener noreferrer"`. Every reader of the workflow sees it, viewers included: Workflow
+Graph calls no host code when the link is followed and adds no permission of its own, so the
+page does its own authorization. Integration actions declare no links.
+
+The page is a route of the host's own, mounted beside Workflow Graph:
+
+```ts
+const hostRoutes = new Hono();
+hostRoutes.get("/member-email-preview", async (c) => {
+  // readDraftNode applies no auth, so the page authorizes the reader first.
+  const user = await requireStaffUser(c.req.raw);
+  const node = await wfgraph.workflows.readDraftNode({
+    workflowId: c.req.query("workflow") ?? "",
+    nodeId: c.req.query("node") ?? "",
+  });
+  if (!node) return c.notFound();
+
+  // The page lets the reader pick a member, and fills the references it owns
+  // from that member's record.
+  const member = await findMember(user, c.req.query("member"));
+  return c.html(renderEmailPreview(node, member));
+});
+hostRoutes.all("*", (c) => wfgraph.fetch(c.req.raw));
+```
+
+`readDraftNode({ workflowId, nodeId })` answers `null` when the workflow or the node does
+not exist. Otherwise it answers a `WfGraphDraftNode`:
+
+- `label` is the node's name as the editor shows it, and `actionId` is the action an action
+  node runs. `actionId` is absent for any other node.
+- `revision` is the draft revision the node was read at. Every save of the draft raises it,
+  so a page that reads again can tell a newer save apart.
+- `fields` holds one entry per top-level config key, the stored action id excluded. A string
+  value is `{ kind: "template", segments }`, and every other value is
+  `{ kind: "value", value }`, passed on unchanged.
+- A segment is `{ kind: "text", text }` or `{ kind: "reference", source, fieldPath, display }`.
+  `source` is `{ kind: "step", nodeId }` for another step's output or
+  `{ kind: "entity", entityType }` for the run's Entity state, where `entityType` is the
+  `defineEntity` type. `fieldPath` is the dotted path, `""` for the whole value, and
+  `display` is what the builder sees, such as `Member.firstName`: the step's current name
+  or the tracked Entity's label, and the path. A reference to a step the draft no longer
+  holds, or to an Entity the workflow does not track, keeps the name written into it.
+
+A preview fills the references it can answer, such as an Entity's fields for a member the
+reader picks, and shows the rest as placeholders. Escape every text value before writing it
+into HTML.
+
+A link's click starts a save of any edit still waiting on the editor's autosave, and the
+navigation does not wait for that save. A page that reads at once can therefore miss the last
+edit, so it reads the draft again when its tab is shown, for example on the document's
+`visibilitychange` event. `readDraftNode` reads what the last save stored and nothing the
+editor holds unsaved.
+
+`readDraftNode` rejects with an `Error` whose `cause` holds the storage failure, and its
+message quotes nothing stored. `createWfGraphRunner` answers the same `workflows` member. The
+Cloudflare `wfWorker` host has no app object to carry it, so a Worker deployment has no
+`readDraftNode`.
+
 ## Mounting on Node
 
 A fetch-native Node runtime takes `wfgraph.fetch` as it is:
@@ -1189,8 +1292,9 @@ that owns a SQLite file runs its loop.
 `createWfGraphRunner` refuses `wfHyperdrive` at startup, because a Worker runs no
 long-lived loop and advances its runs in the ticks of its `scheduled` and `queue` handlers.
 
-It answers `{ events, dispose, [Symbol.asyncDispose] }`. `events.send` raises an Event the
-way the app's does. `dispose()` drains the loop the way the app's does, then closes the
+It answers `{ events, workflows, dispose, [Symbol.asyncDispose] }`. `events.send` raises an
+Event the way the app's does, and `workflows.readDraftNode` reads a draft node the way the
+app's does. `dispose()` drains the loop the way the app's does, then closes the
 database. Run one Workflow Graph per process: an app and a
 runner in the same process are not supported.
 
@@ -1728,12 +1832,14 @@ Read these once:
 - **`hono` is a peer dependency**, at `^4.13.14`, and `inngest` is an optional one, at
   `^4.26.1`. Your application installs `hono` and owns its version; Workflow Graph builds
   its own Hono app inside, and `createWfGraphApp` answers with `fetch`, `basePath`,
-  `events`, `health`, `dispose`, and `[Symbol.asyncDispose]` alone, so Hono appears nowhere in what
-  it hands back. Only `@wfgraph/core/inngest` imports `inngest`, so install it only when
+  `events`, `workflows`, `health`, `dispose`, and `[Symbol.asyncDispose]` alone, so Hono appears
+  nowhere in what it hands back. Only `@wfgraph/core/inngest` imports `inngest`, so install it only when
   you register the forwarders; your own Inngest client then shares the one SDK copy.
 - `createWfGraphApp` answers
-  `{ fetch, basePath, events, health, dispose, [Symbol.asyncDispose] }`. `events.send`
-  raises an Event from your own code; see `docs/events.md`. `health()` is the check behind
+  `{ fetch, basePath, events, workflows, health, dispose, [Symbol.asyncDispose] }`.
+  `events.send` raises an Event from your own code; see `docs/events.md`.
+  `workflows.readDraftNode` reads one node of a saved draft, with no `auth`; see Action links
+  and draft reads. `health()` is the check behind
   the readiness route; see API endpoints. For a
   lexical lifetime, declare the app with `await using`. For a long-running host, call
   `await dispose()` from its shutdown handler. Both forms run the same idempotent shutdown:

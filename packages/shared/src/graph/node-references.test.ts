@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   appendOutputPathKey,
-  displayTemplateText,
   ENTITY_STATE_SOURCE_ID,
   extractAllTemplateReferences,
   fieldsOfferedForConfig,
@@ -606,29 +605,6 @@ describe("Entity State template source", () => {
       nodeLabel: "Patient.Profile {Current}",
       fieldPath: "journey.status",
     });
-  });
-});
-
-describe("displayTemplateText", () => {
-  it("drops the node id from a token so a person reads the label and path", () => {
-    expect(
-      displayTemplateText(
-        formatTemplateToken({
-          nodeId: "V1StGXR8_Z5jdHi6B-myT",
-          nodeLabel: "Lifecycle",
-          fieldPath: "data.email_id",
-        })
-      )
-    ).toBe("Lifecycle.data.email_id");
-  });
-
-  it("leaves surrounding prose and a token without a path", () => {
-    const token = formatTemplateToken({
-      nodeId: "n1",
-      nodeLabel: "Send Email",
-    });
-
-    expect(displayTemplateText(`id is ${token}`)).toBe("id is Send Email");
   });
 });
 

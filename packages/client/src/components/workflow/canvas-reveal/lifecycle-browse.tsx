@@ -64,7 +64,10 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** A stored condition read as sentences, or a note when it has none or can't be read. */
+/**
+ * A stored condition read as sentences, or a note when it has none or can't be
+ * read. A template reference in a value names its source in the live draft.
+ */
 function ConditionText({
   model,
   fields,
@@ -76,6 +79,7 @@ function ConditionText({
   emptyText: string;
   setOperatorsRequireEnumValues?: boolean | undefined;
 }) {
+  const nodes = useAtomValue(nodesAtom);
   if (!model) {
     return <p className="text-muted-foreground text-xs">{emptyText}</p>;
   }
@@ -86,6 +90,7 @@ function ConditionText({
         compact
         fields={fields}
         model={parsed.model}
+        nodes={nodes}
         setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
       />
     </div>

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { ActionConfigField } from "@wfgraph/shared/plugins/action-fields";
 import { summarizeActionFields, summarizeWait } from "./step-summary";
+
+const context = { nodes: [], catalog: emptyExtensionCatalog };
 
 describe("summarizeActionFields", () => {
   const fields: ActionConfigField[] = [
@@ -29,11 +32,15 @@ describe("summarizeActionFields", () => {
 
   it("lists required fields first, with labels and readable values", () => {
     expect(
-      summarizeActionFields(fields, {
-        subject: "Hello",
-        format: "html",
-        headers: '[{"key":"x","value":"y"}]',
-      })
+      summarizeActionFields(
+        fields,
+        {
+          subject: "Hello",
+          format: "html",
+          headers: '[{"key":"x","value":"y"}]',
+        },
+        context
+      )
     ).toEqual([
       { key: "to", label: "To", value: null, required: true },
       { key: "subject", label: "Subject", value: "Hello", required: false },
@@ -43,19 +50,24 @@ describe("summarizeActionFields", () => {
   });
 
   it("treats a blank value as not set", () => {
-    expect(summarizeActionFields(fields, { to: "   " })[0].value).toBeNull();
+    expect(
+      summarizeActionFields(fields, { to: "   " }, context)[0].value
+    ).toBeNull();
   });
 });
 
 describe("summarizeWait", () => {
   it("summarizes a delay Wait in the words of its form", () => {
-    const rows = summarizeWait({
-      waitMode: "delay",
-      waitDuration: "24h",
-      waitAllowedHoursMode: "daily_window",
-      waitAllowedStartTime: "09:00",
-      waitTimezone: "America/New_York",
-    });
+    const rows = summarizeWait(
+      {
+        waitMode: "delay",
+        waitDuration: "24h",
+        waitAllowedHoursMode: "daily_window",
+        waitAllowedStartTime: "09:00",
+        waitTimezone: "America/New_York",
+      },
+      context
+    );
     expect(rows.map((row) => [row.label, row.value])).toEqual([
       ["How should this step wait?", "Wait for time"],
       ["Time source", "Duration"],
@@ -67,12 +79,15 @@ describe("summarizeWait", () => {
   });
 
   it("summarizes a maximum-lateness gate", () => {
-    const rows = summarizeWait({
-      waitMode: "delay",
-      waitDuration: "24h",
-      waitGateMode: "max_lateness",
-      waitMaxLateness: "6h",
-    });
+    const rows = summarizeWait(
+      {
+        waitMode: "delay",
+        waitDuration: "24h",
+        waitGateMode: "max_lateness",
+        waitMaxLateness: "6h",
+      },
+      context
+    );
 
     expect(rows.map((row) => [row.label, row.value])).toContainEqual([
       "If the scheduled time has passed",
@@ -85,7 +100,10 @@ describe("summarizeWait", () => {
   });
 
   it("summarizes an event Wait's timeout", () => {
-    const rows = summarizeWait({ waitMode: "event", waitTimeout: "7d" });
+    const rows = summarizeWait(
+      { waitMode: "event", waitTimeout: "7d" },
+      context
+    );
     expect(rows.map((row) => [row.label, row.value])).toEqual([
       ["How should this step wait?", "Wait for an event"],
       ["Stop waiting after", "7d"],

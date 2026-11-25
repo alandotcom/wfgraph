@@ -25,6 +25,7 @@ export {
   type ActionDefinition,
   defineAction,
 } from "#src/backend/extensions/define-action";
+export type { ActionLink } from "@wfgraph/shared/extensions/action-links";
 export type {
   ActionOptionsCallback,
   ActionOptionsConfig,
@@ -71,6 +72,11 @@ export {
   type WfGraphEventSendOptions,
   type WfGraphEventsOptions,
   type WfGraphInboxInsert,
+  type WfGraphDraftField,
+  type WfGraphDraftNode,
+  type WfGraphDraftReferenceSource,
+  type WfGraphDraftSegment,
+  type WfGraphWorkflows,
   type WfGraphExtensions,
   type WfGraphHealth,
   type WfGraphQueueHealth,
