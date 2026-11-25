@@ -467,20 +467,37 @@
 }
 
 /* At the lowest card tier a card's lead row (its glyph, number and marks)
-   draws centred in the card at 18px on screen, its run status mark at 14px, and a Group region header's
-   glyph and step count at 12px, at every zoom of that tier. Only the card box
-   scales with the canvas. `scale` changes no layout, so zooming stays a pure
-   transform. The lead row and the status mark are set in 22px type, and the
-   header mark in 36px. */
+   draws centred in the card at 18px on screen, at every zoom of that tier
+   where the card holds it with 8px on each side and 6px above and below, the
+   card's 2px border included. Where the card is smaller the row shrinks to
+   that room, and it never spills over the border: the three terms are 18px
+   on screen, the card's width less 16 screen pixels over the row's width,
+   and the card's height less 12 screen pixels over the row's height.
+   `NodeContent` sets the four sizes in canvas pixels, the row's from its
+   layout box, which `scale` does not change. A Group region header's glyph
+   and step count draw at 12px. Only the card box scales with the canvas, and
+   `scale` changes no layout, so zooming stays a pure transform. The lead row
+   and the status mark are set in 22px type, and the header mark in 36px. */
 .react-flow__node [data-card-form="number"] [data-slot="node-lead"] {
   transform-origin: center;
-  scale: calc(18 / (22 * var(--rf-zoom, 1)));
+  scale: max(
+    0,
+    min(
+      calc(18 / (22 * var(--rf-zoom, 1))),
+      calc((var(--card-width) - 16 / var(--rf-zoom, 1)) / var(--lead-width)),
+      calc((var(--card-height) - 12 / var(--rf-zoom, 1)) / var(--lead-height))
+    )
+  );
 }
-/* The status mark sits across the card's top-right corner at this tier, on
-   the card's own surface, so it stays clear of the centred number. */
+/* The status mark hangs off the card's top-right corner at this tier, 14px
+   on screen and on the card's own surface: 4px of it inside the card and 10px
+   outside, along each edge. The lead row keeps 8px from the card's sides, so
+   the two never meet whatever the number's width. */
 .react-flow__node [data-card-form="number"] > [data-slot="node-status-mark"] {
+  top: 0;
+  right: 0;
   transform-origin: top right;
-  translate: calc(7px / var(--rf-zoom, 1)) calc(-7px / var(--rf-zoom, 1));
+  translate: calc(10px / var(--rf-zoom, 1)) calc(-10px / var(--rf-zoom, 1));
   scale: calc(14 / (22 * var(--rf-zoom, 1)));
   border-radius: 9999px;
   background: var(--card);

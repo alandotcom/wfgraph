@@ -454,6 +454,52 @@ export function useMeasuredHeight(
 }
 
 /**
+ * An element's layout size in CSS pixels, kept current as its content changes.
+ * Layout size ignores a CSS `scale` or `transform` on the element, so a caller
+ * can size a transform from it. Answers null while `enabled` is off, before
+ * the element mounts, and where nothing lays it out, as in a test.
+ */
+export function useElementSize(enabled: boolean): {
+  ref: RefCallback<HTMLElement>;
+  size: { width: number; height: number } | null;
+} {
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(
+    null
+  );
+  const ref = useCallback((next: HTMLElement | null) => {
+    setElement(next);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!(enabled && element)) {
+      setSize(null);
+      return undefined;
+    }
+    const measure = () => {
+      const width = element.offsetWidth;
+      const height = element.offsetHeight;
+      setSize((current) =>
+        width === 0 || height === 0
+          ? null
+          : current?.width === width && current.height === height
+            ? current
+            : { width, height }
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      return undefined;
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element, enabled]);
+
+  return { ref, size };
+}
+
+/**
  * Whether an element's rendered content exceeds its box, kept current as the
  * content or box size changes. The callback ref measures the rendered element
  * rather than guessing from text length, which varies with font and zoom.

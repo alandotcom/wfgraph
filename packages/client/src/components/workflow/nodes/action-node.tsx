@@ -623,6 +623,10 @@ export const ActionNode = memo((props: ActionNodeProps) => {
   }
 
   const displayTitle = actionNodeDisplayTitle(data, catalog);
+  // A split is as wide as its outlets. Every other node keeps the default.
+  const cardWidth = isEventSplitAction
+    ? eventSplitCardWidth(splitOutlets.length)
+    : WORKFLOW_NODE_WIDTH;
 
   const getAiModel = (): string | null => {
     if (actionType === "Generate Text") {
@@ -705,16 +709,11 @@ export const ActionNode = memo((props: ActionNodeProps) => {
               }))
             : true,
       }}
-      // A split is as wide as its outlets. Every other node keeps the default.
       selected={selected}
       sourcePosition={outlet}
       status={status}
       testSkipped={testSkipped}
-      style={workflowNodeSize(
-        isEventSplitAction
-          ? eventSplitCardWidth(splitOutlets.length)
-          : WORKFLOW_NODE_WIDTH
-      )}
+      style={workflowNodeSize(cardWidth)}
       targetPosition={targetPosition}
     >
       <ComparisonMarker
@@ -786,6 +785,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
         tier={tier}
         title={displayTitle}
         value={stepNumber}
+        width={cardWidth}
       />
     </Node>
   );

@@ -3,7 +3,7 @@ import {
   Ban,
   Check,
   CircleSlash,
-  Hourglass,
+  Clock,
   Loader2,
   RotateCw,
   XCircle,
@@ -38,7 +38,15 @@ import {
   hasSmallerTitleSize,
   measureCompactTitle,
 } from "#src/components/flow-elements/compact-card";
-import { useBeforePaint, useElementOverflow } from "#src/hooks/effects";
+import {
+  useBeforePaint,
+  useElementOverflow,
+  useElementSize,
+} from "#src/hooks/effects";
+import {
+  WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
 
 export type NodeProps = ComponentProps<typeof Card> & {
@@ -97,8 +105,10 @@ const STATUS_CHIP = {
     className: "bg-primary/5",
     iconClassName: "animate-spin text-info motion-reduce:animate-none",
   },
+  // A clock, since the Wait step's own glyph is an hourglass and a waiting
+  // Wait would otherwise show the same mark twice.
   waiting: {
-    Icon: Hourglass,
+    Icon: Clock,
     className: "bg-warning/10",
     iconClassName: "text-warning",
   },
@@ -439,17 +449,48 @@ export const NodeStepNumber = ({
     </span>
   );
 
+/** A tabular digit's width in the card's type, as a share of its size. */
+const DIGIT_EM = 0.62;
+/** The gap between a lead row's glyph and number, in canvas pixels at 22px. */
+const LEAD_GAP_PX = 6;
+/** A lead row glyph's size, as a share of the row's type size. */
+const LEAD_GLYPH_EM = 1.15;
+
+/**
+ * A number-tier lead row's layout size before `globals.css` scales it: the
+ * size the page measured, or an estimate from the glyph and the digits where
+ * nothing lays the row out.
+ */
+function numberLeadSize(
+  value: number | undefined,
+  measured: { width: number; height: number } | null
+): { width: number; height: number } {
+  if (measured) {
+    return measured;
+  }
+  const glyph = LEAD_GLYPH_EM * COMPACT_MARK_PX;
+  const digits = value === undefined ? 0 : String(value).length;
+  return {
+    width:
+      glyph +
+      (digits === 0 ? 0 : LEAD_GAP_PX + digits * DIGIT_EM * COMPACT_MARK_PX),
+    height: glyph,
+  };
+}
+
 /**
  * A card's content, one anatomy at every tier. The lead row holds the kind's
  * `glyph`, the step's number when it has one, and `marks` such as the issue
  * badge, in that order at every zoom. It sits in the top-left corner while a
  * title follows it. The full card adds the title and `description` below it;
  * the compact card keeps the title at the size `fitCompactTitle` finds; the
- * number tier keeps the lead row alone, centred in the card, which
- * `globals.css` holds at 18px on screen so the number is what the card says. The run
- * status stays in the card's top-right corner, as a chip on the full card and
- * a mark below it. The card keeps its size, so its handles, connections and
- * hit area stay where they are.
+ * number tier keeps the lead row alone, centred in the card. There
+ * `globals.css` draws the row at 18px on screen, or smaller where the card is
+ * too small to hold it with 8px on each side and 6px above and below, from
+ * the row's measured size and the card's `width`. The run status stays in the
+ * card's top-right corner, as a chip on the full card and a mark below it. The
+ * card keeps its size, so its handles, connections and hit area stay where
+ * they are.
  */
 export const NodeContent = ({
   tier,
@@ -458,6 +499,7 @@ export const NodeContent = ({
   marks,
   title,
   description,
+  width = WORKFLOW_NODE_WIDTH,
 }: {
   tier: CardTier;
   glyph: ReactNode;
@@ -465,42 +507,61 @@ export const NodeContent = ({
   marks?: ReactNode;
   title: string;
   description?: ReactNode;
-}) => (
-  <div
-    className={cn(
-      "flex h-full w-full min-w-0 flex-col text-left",
-      tier === "full" ? "gap-1 px-3 py-2" : "px-3 py-1",
-      tier === "number" && "justify-center"
-    )}
-    data-slot="node-content"
-  >
+  /** The card's width in canvas pixels, for the number tier's fit. */
+  width?: number | undefined;
+}) => {
+  const { ref: leadRef, size: measuredLead } = useElementSize(
+    tier === "number"
+  );
+  const leadSize = numberLeadSize(value, measuredLead);
+  return (
     <div
       className={cn(
-        "flex shrink-0 items-center gap-1.5 leading-none",
+        "flex h-full w-full min-w-0 flex-col text-left",
+        tier === "full" ? "gap-1 px-3 py-2" : "px-3 py-1",
         tier === "number" && "justify-center"
       )}
-      data-slot="node-lead"
-      style={{
-        fontSize: LEAD_PX[tier],
-        height: tier === "full" ? undefined : COMPACT_MARK_PX + 2,
-      }}
+      data-slot="node-content"
     >
-      {glyph}
-      <NodeStepNumber value={value} />
-      {marks}
-    </div>
-    {tier === "full" ? (
-      <div className="flex min-h-0 flex-1 flex-col justify-center gap-1">
-        <NodeTitle title={title}>
-          {title}
-        </NodeTitle>
-        {description}
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-1.5 leading-none",
+          tier === "number" && "self-center"
+        )}
+        data-slot="node-lead"
+        ref={leadRef}
+        style={
+          tier === "number"
+            ? ({
+                fontSize: LEAD_PX[tier],
+                "--lead-width": leadSize.width,
+                "--lead-height": leadSize.height,
+                "--card-width": width,
+                "--card-height": WORKFLOW_NODE_HEIGHT,
+              } as CSSProperties)
+            : {
+                fontSize: LEAD_PX[tier],
+                height: tier === "full" ? undefined : COMPACT_MARK_PX + 2,
+              }
+        }
+      >
+        {glyph}
+        <NodeStepNumber value={value} />
+        {marks}
       </div>
-    ) : tier === "compact" ? (
-      <NodeCompactTitle title={title} />
-    ) : null}
-  </div>
-);
+      {tier === "full" ? (
+        <div className="flex min-h-0 flex-1 flex-col justify-center gap-1">
+          <NodeTitle title={title}>
+            {title}
+          </NodeTitle>
+          {description}
+        </div>
+      ) : tier === "compact" ? (
+        <NodeCompactTitle title={title} />
+      ) : null}
+    </div>
+  );
+};
 
 let fontsLoaded =
   typeof document === "undefined" || document.fonts?.status !== "loading";

@@ -691,6 +691,71 @@ describe("the number tier, below a compact title's 11px", () => {
     ).toBe("A");
   });
 
+  it("hands the stylesheet the card's size and the lead row's, so the row fits the card", () => {
+    const leadAt = (value: number) => {
+      const { view } = renderAtZoom({
+        card: (
+          <ActionNode
+            data={reminder}
+            id="remind"
+            type="action"
+            {...requiredNodeProps}
+          />
+        ),
+        zoom: 0.25,
+        numbers: new Map([["remind", value]]),
+      });
+      const style = leadRow(view.container)?.style;
+      const sizes = {
+        card: [
+          style?.getPropertyValue("--card-width"),
+          style?.getPropertyValue("--card-height"),
+        ],
+        lead: Number(style?.getPropertyValue("--lead-width")),
+        height: Number(style?.getPropertyValue("--lead-height")),
+      };
+      view.unmount();
+      return sizes;
+    };
+
+    // Where nothing lays the row out, its size is estimated from a 25.3px
+    // glyph, a 6px gap and a 13.6px tabular digit, each at 22px type.
+    const one = leadAt(4);
+    const two = leadAt(12);
+    const three = leadAt(104);
+    expect(one.card).toEqual(["192", "112"]);
+    expect(one.height).toBeCloseTo(25.3);
+    expect(one.lead).toBeCloseTo(25.3 + 6 + 13.64);
+    expect(two.lead - one.lead).toBeCloseTo(13.64);
+    expect(three.lead - two.lead).toBeCloseTo(13.64);
+  });
+
+  it("marks a waiting step with a clock, apart from the Wait step's hourglass", () => {
+    const { view } = renderAtZoom({
+      card: (
+        <ActionNode
+          data={{
+            ...reminder,
+            status: "waiting",
+            config: { actionType: BUILT_IN_ACTION_IDS.wait },
+          }}
+          id="wait"
+          type="action"
+          {...requiredNodeProps}
+        />
+      ),
+      zoom: 0.3,
+    });
+
+    const mark = view.getByRole("status", { name: "Waiting" });
+    expect(mark.querySelector("svg")?.getAttribute("class")).toContain(
+      "lucide-clock"
+    );
+    expect(
+      leadRow(view.container)?.querySelector("svg")?.getAttribute("class")
+    ).toContain("lucide-hourglass");
+  });
+
   it("draws the Lifecycle card's glyph alone", () => {
     const { view } = renderAtZoom({
       card: (
