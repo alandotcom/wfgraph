@@ -20,6 +20,8 @@ import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/executio
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { type JsonValue, readJsonValue } from "@wfgraph/shared/types/json";
+import { decodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
+import { formatExactTime } from "@wfgraph/shared/utils/time";
 import { readAs } from "@wfgraph/shared/types/schema";
 import { TemplateText } from "./template-text";
 
@@ -513,6 +515,13 @@ function ScalarValue({
   }
   if (typeof value === "number") {
     return <span className="font-mono tabular-nums">{value}</span>;
+  }
+  // A recorded instant reads in the exact time format every run surface
+  // prints. The stored text stays in the `dateTime` attribute and in the raw
+  // data a run's evidence offers.
+  const instant = decodeIsoTimestamp(value);
+  if (instant !== null) {
+    return <time dateTime={value}>{formatExactTime(instant)}</time>;
   }
   if (isUrl(value)) {
     return (

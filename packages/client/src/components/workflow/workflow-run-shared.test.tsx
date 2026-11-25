@@ -8,8 +8,10 @@ import {
   JsonPropertyInspector,
   listDuration,
   OutputDisplay,
+  RecordedValue,
   runNodeEvidenceLabel,
 } from "#src/components/workflow/workflow-run-shared";
+import { formatExactTime } from "@wfgraph/shared/utils/time";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { groupRunStatusLabel } from "@wfgraph/shared/graph/group-run-status";
 
@@ -107,6 +109,24 @@ describe("OutputDisplay", () => {
     expect(view.getByText("Ok")).toBeTruthy();
     expect(view.getByText("Yes")).toBeTruthy();
     expect(view.queryByText(/"ok"/)).toBeNull();
+  });
+});
+
+describe("RecordedValue", () => {
+  it("reads a recorded ISO timestamp in the exact time format, keeping the stored text", () => {
+    const stored = "2026-11-25T01:09:59.995Z";
+    const view = render(<RecordedValue value={stored} />);
+
+    const time = view.container.querySelector("time");
+    expect(time?.textContent).toBe(formatExactTime(new Date(stored)));
+    expect(time?.getAttribute("dateTime")).toBe(stored);
+  });
+
+  it("leaves text that only looks like a date as it was recorded", () => {
+    const view = render(<RecordedValue value="2026-11-25" />);
+
+    expect(view.container.querySelector("time")).toBeNull();
+    expect(view.getByText("2026-11-25")).toBeTruthy();
   });
 });
 
