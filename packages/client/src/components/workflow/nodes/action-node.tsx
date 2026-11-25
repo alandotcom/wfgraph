@@ -6,6 +6,7 @@ import {
 import { useAtomValue } from "jotai";
 import { EyeOff, GitBranch, Hourglass, Split, Zap } from "lucide-react";
 import { Schema } from "effect";
+import { compact } from "es-toolkit/array";
 import { memo, useMemo, useState } from "react";
 import {
   Node,
@@ -42,6 +43,7 @@ import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { readWaitDelayTiming } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { durationInWords } from "#src/lib/duration-words";
 import { isConditionActionType } from "@wfgraph/shared/conditions/condition-branch";
+import { conditionRulesPhrase } from "@wfgraph/shared/graph/workflow-summary";
 import {
   eventSplitOutlet,
   isEventSplitActionType,
@@ -581,11 +583,20 @@ export const ActionNode = memo((props: ActionNodeProps) => {
 
   const aiModel = getAiModel();
   const isDisabled = data.enabled === false;
+  // A Condition titled by one question can hold several rules, so its card
+  // leads the description with how many must match.
+  const rulesPhrase = isConditionAction
+    ? conditionRulesPhrase(data.config)
+    : null;
+  const authoredDescription = rulesPhrase
+    ? compact([rulesPhrase, data.description]).join(" · ")
+    : data.description;
   const displayDescription = waitPreview
     ? waitPreview.countdown
     : aiModel
       ? getModelDisplayName(aiModel)
-      : data.description || getIntegrationFromActionType(catalog, actionType);
+      : authoredDescription ||
+        getIntegrationFromActionType(catalog, actionType);
 
   return (
     <Node

@@ -14,6 +14,7 @@ import type {
   WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 import {
   emptyExtensionCatalog,
   type ExtensionCatalog,
@@ -261,5 +262,57 @@ describe("Wait card", () => {
     });
 
     expect(view.getByText("Waits 1 day")).toBeTruthy();
+  });
+});
+
+describe("ActionNode Condition description", () => {
+  const rule = (id: string) => ({
+    id,
+    field: "amount",
+    fieldType: "number" as const,
+    operator: "greater_than" as const,
+    value: 1,
+  });
+
+  it("leads with how many rules must match when there is more than one", () => {
+    const view = renderCard({
+      id: "gate",
+      data: {
+        ...conditionData,
+        description: "Big orders only",
+        config: {
+          actionType: BUILT_IN_ACTION_IDS.condition,
+          conditionModel: serializeConditionModel({
+            version: 2,
+            groupLogic: "and",
+            groups: [
+              { id: "g", logic: "and", conditions: [rule("a"), rule("b")] },
+            ],
+          }),
+        },
+      },
+    });
+
+    expect(view.getByText("All of 2 rules · Big orders only")).toBeTruthy();
+  });
+
+  it("keeps a one-rule Condition's own description", () => {
+    const view = renderCard({
+      id: "gate",
+      data: {
+        ...conditionData,
+        description: "Big orders only",
+        config: {
+          actionType: BUILT_IN_ACTION_IDS.condition,
+          conditionModel: serializeConditionModel({
+            version: 2,
+            groupLogic: "and",
+            groups: [{ id: "g", logic: "and", conditions: [rule("a")] }],
+          }),
+        },
+      },
+    });
+
+    expect(view.getByText("Big orders only")).toBeTruthy();
   });
 });
