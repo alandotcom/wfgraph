@@ -47,8 +47,8 @@ const MISSING_CREDENTIAL =
 const ENTITY_NOT_FOUND = /^Entity "([^"]+)" was not found for node data$/;
 
 /**
- * How a run named the Entity it tracks, for a failure the engine recorded
- * against the run: the label of the Event that started it, and the Event's
+ * How a run named the Entity it tracks, for an Entity the host's resolver did
+ * not find: the label of the Event that started it, and the Event's
  * Entity binding the Lifecycle Rules chose. The run has no source to name
  * when it started with no Event, or its pinned graph names no binding.
  */
@@ -86,7 +86,7 @@ function connectionPhrase(connection: FailedStepConnection): string {
  * are absent. `integrationLabel` names the integration the step's action
  * belongs to, such as "Slack", and is null for an action with none.
  * `entityLabel` turns an Entity type into the label the editor uses.
- * `entitySource` says how the run named its Entity, for a run's own failure.
+ * `entitySource` says how the run named its Entity, for an Entity not found.
  */
 export function describeFailure(input: {
   error: string;

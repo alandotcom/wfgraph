@@ -570,6 +570,81 @@ describe("WorkflowRunDetail", () => {
         )
       ).toBeTruthy();
     });
+
+    // The engine records a missing Entity on the step whose data needed it,
+    // so the band names that step and still says where the ID came from.
+    it("names the step a missing Entity failed, and the Event and binding behind it", () => {
+      const missing = 'Entity "patient" was not found for node data';
+      const entityLogs = [
+        step("a", "success", 0),
+        {
+          ...step("b", "error", 1),
+          nodeName: "Patient still wants reminders?",
+          error: missing,
+        },
+      ];
+      const view = renderDetail(
+        {
+          ...failed,
+          startEventName: "appointment.created",
+          error: missing,
+        },
+        {
+          logs: entityLogs,
+          catalog: {
+            ...emptyExtensionCatalog,
+            events: [
+              {
+                name: "appointment.created",
+                label: "Appointment created",
+                payloadFields: [],
+              },
+            ],
+            entities: [
+              {
+                type: "patient",
+                label: "Patient",
+                stateFields: [],
+                stateSchemaDigest: "",
+              },
+            ],
+          },
+          executionNodes: [
+            {
+              id: "lifecycle",
+              type: "lifecycle",
+              position: { x: 0, y: 0 },
+              data: {
+                label: "Lifecycle",
+                type: "lifecycle",
+                config: {
+                  lifecycleRules: {
+                    startEvents: ["appointment.created"],
+                    cancelEvents: [],
+                    concurrency: "unlimited",
+                    trackedEntity: {
+                      type: "patient",
+                      bindings: { "appointment.created": "patient" },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      );
+
+      expect(
+        view.getByRole("button", {
+          name: "Failed at Patient still wants reminders?",
+        })
+      ).toBeTruthy();
+      expect(
+        view.getByText(
+          "The app found no Patient for this run. Appointment created provides the Patient ID through its patient binding. Check that the Patient exists in the app."
+        )
+      ).toBeTruthy();
+    });
   });
 
   it("words a run's activity, with its clock time and stored type", () => {

@@ -34,8 +34,8 @@ import { cn } from "@wfgraph/shared/utils";
  * beneath it as secondary text, and **Edit connection** when the failed step's
  * Connection refused or lacked its credentials. `nodeId` is the failed step,
  * read from the graph the run pinned, and null for a run that failed with no
- * step recorded. `startEventName` is the Event that started the run, which a
- * run's own failure names when the run's Entity was not found.
+ * step recorded. `startEventName` is the Event that started the run, which the
+ * sentence names when the run's Entity was not found.
  */
 export function RunFailureText({
   error,
@@ -94,10 +94,11 @@ export function RunFailureText({
     integrationLabel: integration?.label ?? action?.integration ?? null,
     connection,
     entityLabel: (type) => findEntity(catalog, type)?.label ?? type,
-    entitySource:
-      nodeId === null
-        ? runEntitySource({ nodes: pinnedNodes, startEventName, catalog })
-        : null,
+    entitySource: runEntitySource({
+      nodes: pinnedNodes,
+      startEventName,
+      catalog,
+    }),
   });
 
   return (
