@@ -22,13 +22,15 @@ import {
   toggleGroupCollapsedAtom,
 } from "#src/lib/collapsed-groups";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
-import { COMPACT_MARK_PX } from "#src/components/flow-elements/compact-card";
+import { COMPACT_TITLE_MIN_PX } from "#src/components/flow-elements/compact-card";
+import type { CardTier } from "#src/components/workflow/workflow-viewport";
 import {
   NodeCompactBody,
   NodeDescription,
+  NodeNumberBody,
   NodeStatusMark,
   NodeStepNumber,
-  useCompactCard,
+  useCardTier,
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { Button } from "#src/components/ui/button";
@@ -62,6 +64,13 @@ const GROUP_STATUS_AS_STEP_STATUS = {
   GroupRunStatus,
   ComponentProps<typeof NodeStatusMark>["status"]
 >;
+
+/**
+ * The size of a region header's glyph and step count at the lowest tier, in
+ * canvas pixels: 11px on screen at zoom 0.3, and grown against the zoom below
+ * that by `globals.css`.
+ */
+const GROUP_HEADER_MARK_PX = 36;
 
 type GroupNodeProps = NodeProps & {
   data?: WorkflowNodeData;
@@ -138,23 +147,141 @@ export const GroupNode = memo((props: GroupNodeProps) => {
 
 GroupNode.displayName = "GroupNode";
 
+/**
+ * A region's header at each card tier. Full, it names the Group in 14px type
+ * with its run status and counts, its changed steps and the collapse control.
+ * Compact, it names the Group on up to two lines at a compact card's smallest
+ * title size, with a status mark. At the lowest tier it shows the Group glyph
+ * and how many steps it holds, grown against the zoom like a card's number.
+ */
+function RegionHeader({
+  id,
+  data,
+  tier,
+  runSummary,
+}: {
+  id: string;
+  data: WorkflowNodeData;
+  tier: CardTier;
+  runSummary: GroupRunSummary | null;
+}) {
+  const stepNumber = useStepNumber(id);
+  const memberCount = useAtomValue(
+    useMemo(() => groupMemberCountAtom(id), [id])
+  );
+  const label = groupLabel(data.label);
+  const changedMemberIds = data[COMPARISON_GROUP_ANNOTATION]?.changedMemberIds;
+  const markStatus = runSummary
+    ? GROUP_STATUS_AS_STEP_STATUS[runSummary.status]
+    : undefined;
+  const lead =
+    stepNumber === undefined ? (
+      <Group
+        aria-hidden="true"
+        className={cn(
+          tier === "full" ? NODE_ICON_CLASS : "size-[0.875em]",
+          "shrink-0 text-muted-foreground"
+        )}
+        strokeWidth={1.5}
+      />
+    ) : (
+      <NodeStepNumber className="shrink-0" value={stepNumber} />
+    );
+
+  return (
+    <div
+      className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-t-lg border-canvas-line/60 border-b bg-muted px-3 font-medium"
+      data-slot="group-region-header"
+      style={{
+        height: GROUP_REGION_HEADER_HEIGHT,
+        fontSize: tier === "compact" ? COMPACT_TITLE_MIN_PX : undefined,
+      }}
+      title={label}
+    >
+      {tier === "number" ? (
+        <span
+          className="flex items-center gap-2 font-semibold leading-none tabular-nums"
+          data-slot="group-region-header-mark"
+          style={{ fontSize: GROUP_HEADER_MARK_PX }}
+        >
+          <Group
+            aria-hidden="true"
+            className="size-[0.8em] shrink-0 text-muted-foreground"
+            strokeWidth={2}
+          />
+          <span aria-label={`${memberCount} steps`}>{memberCount}</span>
+          {markStatus ? (
+            <NodeStatusMark
+              placement="inline"
+              status={markStatus}
+              testSkipped={false}
+            />
+          ) : null}
+          <NodeIssueBadge issues={data.issues} placement="inline" />
+        </span>
+      ) : (
+        <>
+          {lead}
+          <span
+            className={cn(
+              "min-w-0 flex-1",
+              tier === "full"
+                ? "truncate text-sm"
+                : "line-clamp-2 leading-[1.1] [overflow-wrap:normal]"
+            )}
+          >
+            {label}
+          </span>
+          <NodeIssueBadge issues={data.issues} placement="inline" />
+          {tier === "compact" && markStatus ? (
+            <NodeStatusMark
+              placement="inline"
+              status={markStatus}
+              testSkipped={false}
+            />
+          ) : null}
+          {tier === "full" && runSummary && runSummary.status !== "idle" ? (
+            <span
+              className="flex min-w-0 items-center gap-1.5 text-xs"
+              data-testid={`group-run-summary-${id}`}
+            >
+              <GroupRunWords summary={runSummary} />
+              <span className="truncate text-muted-foreground tabular-nums">
+                {groupRunCountsText(runSummary)}
+              </span>
+            </span>
+          ) : null}
+          {tier === "full" && changedMemberIds ? (
+            <span
+              className="shrink-0 text-xs"
+              data-testid={`group-changed-steps-${id}`}
+            >
+              {changedMemberIds.length} changed
+            </span>
+          ) : null}
+          {tier === "full" ? (
+            <CollapseToggle collapsed={false} groupId={id} label={label} />
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 function GroupRegion({ data, selected, id }: GroupNodeProps) {
   // Null outside a run. A Group records nothing in a run, so its status and
   // counts are read from its members' evidence.
   const runSummary = useRunGroupSummary(id);
-  const isCompact = useCompactCard();
-  const stepNumber = useStepNumber(id);
+  const tier = useCardTier();
 
   if (!data || !isGroupNode({ data })) {
     return null;
   }
-  const label = groupLabel(data.label);
-  const changedMemberIds = data[COMPARISON_GROUP_ANNOTATION]?.changedMemberIds;
 
   return (
     <div
       className="pointer-events-none relative h-full w-full"
-      data-card-form={isCompact ? "compact" : "full"}
+      data-card-form={tier}
       data-group-form="region"
       data-testid={`group-node-${id}`}
     >
@@ -176,61 +303,7 @@ function GroupRegion({ data, selected, id }: GroupNodeProps) {
         }}
       >
         <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
-        <div
-          className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-t-lg border-canvas-line/60 border-b bg-muted px-3 font-medium"
-          data-slot="group-region-header"
-          style={{
-            height: GROUP_REGION_HEADER_HEIGHT,
-            fontSize: isCompact ? COMPACT_MARK_PX : undefined,
-          }}
-        >
-          {stepNumber === undefined ? (
-            <Group
-              aria-hidden="true"
-              className={cn(
-                isCompact ? "size-[0.875em]" : NODE_ICON_CLASS,
-                "shrink-0 text-muted-foreground"
-              )}
-              strokeWidth={1.5}
-            />
-          ) : (
-            <NodeStepNumber className="shrink-0" value={stepNumber} />
-          )}
-          <span
-            className={cn("min-w-0 flex-1 truncate", !isCompact && "text-sm")}
-            title={label}
-          >
-            {label}
-          </span>
-          <NodeIssueBadge issues={data.issues} placement="inline" />
-          {/* The header's own type size keeps the status word readable when
-            the canvas is zoomed out; the counts join it when zoomed in. */}
-          {runSummary && runSummary.status !== "idle" ? (
-            <span
-              className={cn(
-                "flex min-w-0 items-center gap-1.5",
-                !isCompact && "text-xs"
-              )}
-              data-testid={`group-run-summary-${id}`}
-            >
-              <GroupRunWords summary={runSummary} />
-              {isCompact ? null : (
-                <span className="truncate text-muted-foreground tabular-nums">
-                  {groupRunCountsText(runSummary)}
-                </span>
-              )}
-            </span>
-          ) : null}
-          {changedMemberIds && !isCompact ? (
-            <span
-              className="shrink-0 text-xs"
-              data-testid={`group-changed-steps-${id}`}
-            >
-              {changedMemberIds.length} changed
-            </span>
-          ) : null}
-          <CollapseToggle collapsed={false} groupId={id} label={label} />
-        </div>
+        <RegionHeader data={data} id={id} runSummary={runSummary} tier={tier} />
       </div>
     </div>
   );
@@ -254,7 +327,8 @@ function CollapsedGroupCard({
     useMemo(() => groupMemberCountAtom(id), [id])
   );
   const runSummary = useRunGroupSummary(id);
-  const isCompact = useCompactCard();
+  const tier = useCardTier();
+  const isCompact = tier !== "full";
   const stepNumber = useStepNumber(id);
 
   if (!data || !isGroupNode({ data })) {
@@ -275,7 +349,7 @@ function CollapsedGroupCard({
         runSummary?.status === "canceled" && "border-2 border-cancelled",
         "group-node-container"
       )}
-      data-card-form={isCompact ? "compact" : "full"}
+      data-card-form={tier}
       data-group-form="card"
       data-selected={selected}
       data-testid={`group-node-${id}`}
@@ -300,22 +374,36 @@ function CollapsedGroupCard({
             }
             testSkipped={false}
           />
-          <NodeCompactBody
-            className="flex-1"
-            lead={
-              stepNumber === undefined ? (
+          {tier === "number" ? (
+            <NodeNumberBody
+              glyph={
                 <Group
                   aria-hidden="true"
-                  className="size-[0.875em] shrink-0 text-muted-foreground"
+                  className="size-[0.7em] shrink-0 text-muted-foreground"
                   strokeWidth={2}
                 />
-              ) : (
-                <NodeStepNumber value={stepNumber} />
-              )
-            }
-            marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
-            title={label}
-          />
+              }
+              marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
+              value={stepNumber}
+            />
+          ) : (
+            <NodeCompactBody
+              className="flex-1"
+              lead={
+                stepNumber === undefined ? (
+                  <Group
+                    aria-hidden="true"
+                    className="size-[0.875em] shrink-0 text-muted-foreground"
+                    strokeWidth={2}
+                  />
+                ) : (
+                  <NodeStepNumber value={stepNumber} />
+                )
+              }
+              marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
+              title={label}
+            />
+          )}
         </>
       ) : (
         <>

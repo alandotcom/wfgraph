@@ -13,9 +13,10 @@ import {
   NodeBody,
   NodeCompactBody,
   NodeDescription,
+  NodeNumberBody,
   NodeStepNumber,
   NodeTitle,
-  useCompactCard,
+  useCardTier,
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
@@ -551,9 +552,10 @@ export const ActionNode = memo((props: ActionNodeProps) => {
   // what changed in the words the sheet uses.
   const reviewEdit = useReviewEdit(id);
   const reviewMarker = reviewEdit ? { kind: reviewEdit.kind } : undefined;
-  // Zoomed out, the card draws only its number and title, large enough to
-  // read at the zoom that fits a whole workflow.
-  const isCompact = useCompactCard();
+  // Zoomed out, the card draws only its number and title, and further out its
+  // number and its kind's glyph, each large enough to read on screen.
+  const tier = useCardTier();
+  const isCompact = tier !== "full";
   const stepNumber = useStepNumber(id);
 
   // A condition node renders two source handles where every other node renders
@@ -598,7 +600,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
       <Node
         className={cn(isDisabled && "opacity-50")}
         compact={isCompact}
-        data-card-form={isCompact ? "compact" : "full"}
+        data-card-form={tier}
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
         isConnectable={isConnectable}
@@ -612,7 +614,21 @@ export const ActionNode = memo((props: ActionNodeProps) => {
         <ComparisonMarker
           comparison={data[COMPARISON_NODE_ANNOTATION] ?? reviewMarker}
         />
-        {isCompact ? (
+        {tier === "number" ? (
+          <NodeNumberBody
+            glyph={
+              <Zap
+                aria-hidden="true"
+                className="size-[0.7em] shrink-0 text-muted-foreground"
+                strokeWidth={1.5}
+              />
+            }
+            marks={
+              <StepMarks disabled={isDisabled} inline issues={data.issues} />
+            }
+            value={stepNumber}
+          />
+        ) : isCompact ? (
           <NodeCompactBody
             lead={<NodeStepNumber value={stepNumber} />}
             marks={
@@ -683,7 +699,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
     <Node
       className={cn(isDisabled && "opacity-50")}
       compact={isCompact}
-      data-card-form={isCompact ? "compact" : "full"}
+      data-card-form={tier}
       data-testid={`action-node-${id}`}
       isConnectable={isConnectable}
       handles={{
@@ -779,7 +795,21 @@ export const ActionNode = memo((props: ActionNodeProps) => {
           </OutletLabel>
         ))}
 
-      {isCompact ? (
+      {tier === "number" ? (
+        <NodeNumberBody
+          glyph={
+            <ProviderLogo
+              actionType={actionType}
+              catalog={catalog}
+              className="size-[0.7em] shrink-0"
+            />
+          }
+          marks={
+            <StepMarks disabled={isDisabled} inline issues={data.issues} />
+          }
+          value={stepNumber}
+        />
+      ) : isCompact ? (
         <NodeCompactBody
           lead={<NodeStepNumber value={stepNumber} />}
           marks={

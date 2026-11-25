@@ -9,7 +9,10 @@ import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { ActionNode } from "#src/components/workflow/nodes/action-node";
 import { GroupNode } from "#src/components/workflow/nodes/group-node";
 import { LifecycleNode } from "#src/components/workflow/nodes/lifecycle-node";
-import { WORKFLOW_COMPACT_CARD_ZOOM } from "#src/components/workflow/workflow-viewport";
+import {
+  WORKFLOW_COMPACT_CARD_ZOOM,
+  WORKFLOW_NUMBER_CARD_ZOOM,
+} from "#src/components/workflow/workflow-viewport";
 import { stepNumbersAtom } from "#src/lib/step-numbers";
 import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
 import {
@@ -154,7 +157,7 @@ describe("a step card's compact form", () => {
       );
     const full = handles();
 
-    setZoom(0.4);
+    setZoom(0.6);
 
     expect(compactBody(view.container)).not.toBeNull();
     expect(handles()).toEqual(full);
@@ -170,7 +173,7 @@ describe("a step card's compact form", () => {
           {...requiredNodeProps}
         />
       ),
-      zoom: 0.5,
+      zoom: 0.6,
     });
 
     expect(stepNumber(view.container)).toBeUndefined();
@@ -194,7 +197,7 @@ describe("a step card's compact form", () => {
           {...requiredNodeProps}
         />
       ),
-      zoom: 0.5,
+      zoom: 0.6,
     });
 
     const card = view.getByTestId("action-node-remind");
@@ -221,7 +224,7 @@ describe("a step card's compact form", () => {
           {...requiredNodeProps}
         />
       ),
-      zoom: 0.5,
+      zoom: 0.6,
       numbers: new Map([["remind", 4]]),
     });
     expect(compactBody(view.container)).not.toBeNull();
@@ -250,7 +253,7 @@ describe("the Lifecycle card's compact form", () => {
           {...requiredNodeProps}
         />
       ),
-      zoom: 0.5,
+      zoom: 0.6,
     });
 
     const body = compactBody(view.container);
@@ -309,14 +312,14 @@ describe("a Group on the canvas", () => {
   });
 
   it("sets the region's header in the compact type size when zoomed out", () => {
-    const { view } = renderGroup({ zoom: 0.5 });
+    const { view } = renderGroup({ zoom: 0.6 });
 
-    expect(header(view.container)?.style.fontSize).toBe("22px");
+    expect(header(view.container)?.style.fontSize).toBe("21px");
     expect(compactBody(view.container)).toBeNull();
   });
 
   it("draws one card the viewer collapsed it to, with its glyph or number", () => {
-    const unnumbered = renderGroup({ zoom: 0.5, collapsed: true });
+    const unnumbered = renderGroup({ zoom: 0.6, collapsed: true });
     const body = compactBody(unnumbered.view.container);
     expect(body?.textContent).toBe("Reminder sequence");
     expect(body?.querySelector("svg")).not.toBeNull();
@@ -382,7 +385,7 @@ describe("captions while cards are compact", () => {
     });
     expect(view.getByText("True")).toBeTruthy();
 
-    setZoom(0.5);
+    setZoom(0.6);
 
     expect(view.queryByText("True")).toBeNull();
     expect(view.queryByText("False")).toBeNull();
@@ -417,7 +420,7 @@ describe("a compact title the page breaks onto more lines than measured", () => 
             {...requiredNodeProps}
           />
         ),
-        zoom: 0.5,
+        zoom: 0.6,
       });
       const title = view.container.querySelector<HTMLElement>(
         "[data-slot='node-compact-title']"
@@ -435,5 +438,123 @@ describe("a compact title the page breaks onto more lines than measured", () => 
         Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
       }
     }
+  });
+});
+
+describe("the number tier, below a compact title's 11px", () => {
+  const numberBody = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>("[data-slot='node-number-body']");
+
+  it("draws a step's number and its kind's glyph, and no title", () => {
+    const { view } = renderAtZoom({
+      card: (
+        <ActionNode
+          data={reminder}
+          id="remind"
+          type="action"
+          {...requiredNodeProps}
+        />
+      ),
+      zoom: WORKFLOW_NUMBER_CARD_ZOOM - 0.01,
+      numbers: new Map([["remind", 4]]),
+    });
+
+    const body = numberBody(view.container);
+    expect(body?.textContent).toBe("4");
+    expect(body?.querySelector("svg")).not.toBeNull();
+    expect(view.queryByText("Send 24-hour reminder")).toBeNull();
+    expect(compactBody(view.container)).toBeNull();
+    expect(
+      view.getByTestId("action-node-remind").getAttribute("data-card-form")
+    ).toBe("number");
+  });
+
+  it("keeps the run status, the issue mark and the change marker", () => {
+    const { view } = renderAtZoom({
+      card: (
+        <ActionNode
+          data={{
+            ...reminder,
+            status: "waiting",
+            issues: { severity: "blocking", messages: ["Choose a Connection"] },
+            [COMPARISON_NODE_ANNOTATION]: { kind: "added" },
+          }}
+          id="remind"
+          type="action"
+          {...requiredNodeProps}
+        />
+      ),
+      zoom: 0.3,
+      numbers: new Map([["remind", 4]]),
+    });
+
+    expect(view.getByRole("status", { name: "Waiting" })).toBeTruthy();
+    expect(
+      view
+        .getByRole("img", { name: "1 blocking issue" })
+        .closest("[data-slot='node-number-marks']")
+    ).not.toBeNull();
+    expect(
+      view.getByTestId("action-node-remind").querySelector(".comparison-marker")
+        ?.textContent
+    ).toBe("A");
+  });
+
+  it("draws the Lifecycle card's glyph alone", () => {
+    const { view } = renderAtZoom({
+      card: (
+        <LifecycleNode
+          data={{ label: "Appointment booked", type: "lifecycle", config: {} }}
+          id="entry"
+          type="lifecycle"
+          {...requiredNodeProps}
+        />
+      ),
+      zoom: 0.3,
+    });
+
+    const body = numberBody(view.container);
+    expect(body?.textContent).toBe("");
+    expect(body?.querySelector("svg")).not.toBeNull();
+  });
+
+  it("gives a Group region's header its glyph and step count, and no collapse control", () => {
+    const { view } = renderAtZoom({
+      card: (
+        <GroupNode
+          data={{ label: "Reminder sequence", type: "group", config: {} }}
+          id="reminders"
+          type="group"
+          {...requiredNodeProps}
+        />
+      ),
+      zoom: 0.3,
+    });
+
+    const mark = view.container.querySelector<HTMLElement>(
+      "[data-slot='group-region-header-mark']"
+    );
+    expect(mark?.querySelector("svg")).not.toBeNull();
+    expect(view.getByLabelText("0 steps")).toBeTruthy();
+    expect(view.queryByRole("button", { name: /Collapse group/ })).toBeNull();
+  });
+
+  it("keeps the region header's name and drops its collapse control while compact", () => {
+    const { view } = renderAtZoom({
+      card: (
+        <GroupNode
+          data={{ label: "Pre-visit reminders", type: "group", config: {} }}
+          id="reminders"
+          type="group"
+          {...requiredNodeProps}
+        />
+      ),
+      zoom: 0.6,
+    });
+
+    expect(view.getByText("Pre-visit reminders").className).toContain(
+      "line-clamp-2"
+    );
+    expect(view.queryByRole("button", { name: /Collapse group/ })).toBeNull();
   });
 });

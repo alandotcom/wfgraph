@@ -3,16 +3,20 @@ import { describe, expect, it } from "vitest";
 import {
   WORKFLOW_CANVAS_MIN_ZOOM,
   WORKFLOW_COMPACT_CARD_ZOOM,
+  WORKFLOW_NUMBER_CARD_ZOOM,
   WORKFLOW_FIT_VIEW_MAX_ZOOM,
   WORKFLOW_FIT_VIEW_PADDING,
-  isCompactCardZoom,
+  cardTierAtZoom,
   openingViewport,
   revealViewport,
   viewportFromWorldCamera,
   workflowFitViewOptions,
   worldCameraFromViewport,
 } from "#src/components/workflow/workflow-viewport";
-import { COMPACT_TITLE_MIN_PX } from "#src/components/flow-elements/compact-card";
+import {
+  COMPACT_TITLE_MIN_PX,
+  NUMBER_TIER_PX,
+} from "#src/components/flow-elements/compact-card";
 
 describe("workspace camera", () => {
   it("restores the same world-space center on a canvas of another size", () => {
@@ -231,26 +235,31 @@ describe("workflow viewport policy", () => {
     });
   });
 
-  it("draws cards compact below the zoom where a full card's title falls under 11px", () => {
+  it("draws cards in three tiers, each switching where the larger form's type falls under 11px", () => {
     expect(14 * WORKFLOW_COMPACT_CARD_ZOOM).toBeCloseTo(11);
-    expect(isCompactCardZoom(WORKFLOW_COMPACT_CARD_ZOOM)).toBe(false);
-    expect(isCompactCardZoom(WORKFLOW_COMPACT_CARD_ZOOM - 0.01)).toBe(true);
-    expect(isCompactCardZoom(1)).toBe(false);
+    expect(COMPACT_TITLE_MIN_PX * WORKFLOW_NUMBER_CARD_ZOOM).toBeCloseTo(11);
+    expect(cardTierAtZoom(1)).toBe("full");
+    expect(cardTierAtZoom(WORKFLOW_COMPACT_CARD_ZOOM)).toBe("full");
+    expect(cardTierAtZoom(WORKFLOW_COMPACT_CARD_ZOOM - 0.01)).toBe("compact");
+    expect(cardTierAtZoom(WORKFLOW_NUMBER_CARD_ZOOM)).toBe("compact");
+    expect(cardTierAtZoom(WORKFLOW_NUMBER_CARD_ZOOM - 0.01)).toBe("number");
+    expect(cardTierAtZoom(WORKFLOW_CANVAS_MIN_ZOOM)).toBe("number");
   });
 
-  it("opens the seeded 16-step workflow on compact cards whose titles draw at 11px or more", () => {
-    // The canvas between a 340px outline and a 400px details column in a
-    // 1512 by 982 window, below the toolbar, where the fitted zoom is 0.53.
+  it("opens the seeded 16-step workflow, Group in place, on number cards", () => {
+    // The canvas between the outline and the details column of a 1512 by 982
+    // window, where the 16-step workflow with its Group drawn in place fits
+    // at about 0.37: a compact title would draw at about 8px there.
     const viewport = openingViewport({
       usable: { x: 0, y: 0, width: 770, height: 872 },
-      graphBounds: { x: 0, y: 0, width: 1050, height: 1370 },
+      graphBounds: { x: 0, y: 0, width: 1050, height: 1960 },
       lifecycle: { nodePosition: { x: 429, y: 0 }, nodeWidth: 192 },
       zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
     });
 
-    expect(viewport.zoom).toBeCloseTo(0.53, 2);
-    expect(isCompactCardZoom(viewport.zoom)).toBe(true);
-    expect(COMPACT_TITLE_MIN_PX * viewport.zoom).toBeGreaterThanOrEqual(11);
+    expect(viewport.zoom).toBeCloseTo(0.37, 2);
+    expect(cardTierAtZoom(viewport.zoom)).toBe("number");
+    expect(NUMBER_TIER_PX * viewport.zoom).toBeGreaterThanOrEqual(11);
   });
 });
 

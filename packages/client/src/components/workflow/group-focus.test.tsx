@@ -720,7 +720,7 @@ describe("a Group drawn in place", () => {
     expect(store.get(workflowApiAtom).update).not.toHaveBeenCalled();
   });
 
-  it("keeps Ungroup and Delete Group and steps on the Group's context menu", async () => {
+  it("keeps Collapse group, Ungroup and Delete Group and steps on the Group's context menu", async () => {
     const { view, store } = await renderEditor();
     render(
       <JotaiProvider store={store}>
@@ -747,6 +747,9 @@ describe("a Group drawn in place", () => {
       view.getByRole("button", { name: /Delete Group and steps/ })
     ).toBeTruthy();
     expect(view.queryByRole("button", { name: /Enter group/ })).toBeNull();
+    // Collapsing is offered at every zoom, where the header's own control
+    // shows only on the full card.
+    expect(view.getByRole("button", { name: "Collapse group" })).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: /Ungroup/ }));
 

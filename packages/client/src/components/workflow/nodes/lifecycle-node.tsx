@@ -6,8 +6,9 @@ import {
   NodeBody,
   NodeCompactBody,
   NodeDescription,
+  NodeNumberBody,
   NodeTitle,
-  useCompactCard,
+  useCardTier,
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
@@ -48,9 +49,11 @@ export const LifecycleNode = memo(
     // While the review sheet is open a changed card says what changed in the
     // words the sheet uses.
     const reviewEdit = useReviewEdit(id);
-    // Zoomed out, the card draws its title beside the Play glyph, which
-    // stands where a step's number stands on the other cards.
-    const isCompact = useCompactCard();
+    // Zoomed out, the card draws its title below the Play glyph, which stands
+    // where a step's number stands on the other cards, and further out the
+    // glyph alone.
+    const tier = useCardTier();
+    const isCompact = tier !== "full";
 
     if (!data) {
       return null;
@@ -68,7 +71,7 @@ export const LifecycleNode = memo(
     return (
       <Node
         compact={isCompact}
-        data-card-form={isCompact ? "compact" : "full"}
+        data-card-form={tier}
         isConnectable={isConnectable}
         handles={{
           target: false,
@@ -105,7 +108,19 @@ export const LifecycleNode = memo(
         {/* The collector walks every node, not only actions: a broken template
           token in the Lifecycle config is an issue the toolbar counts, and
           without this it was one no card on the canvas admitted to. */}
-        {isCompact ? (
+        {tier === "number" ? (
+          <NodeNumberBody
+            glyph={
+              <Play
+                aria-hidden="true"
+                className="size-[0.7em] shrink-0 text-node-lifecycle"
+                strokeWidth={2}
+              />
+            }
+            marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
+            value={undefined}
+          />
+        ) : isCompact ? (
           <NodeCompactBody
             lead={
               <Play

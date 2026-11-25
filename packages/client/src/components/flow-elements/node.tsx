@@ -25,9 +25,13 @@ import {
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
 import { stepRunStatusLabel } from "#src/components/workflow/workflow-run-shared";
-import { isCompactCardZoom } from "#src/components/workflow/workflow-viewport";
+import {
+  type CardTier,
+  cardTierAtZoom,
+} from "#src/components/workflow/workflow-viewport";
 import {
   COMPACT_MARK_PX,
+  NUMBER_TIER_PX,
   COMPACT_TITLE_BOX,
   COMPACT_TITLE_LINE_HEIGHT,
   type CompactTitleFit,
@@ -170,9 +174,12 @@ const NodeStatusChip = ({
 export const NodeStatusMark = ({
   status,
   testSkipped,
+  placement = "corner",
 }: {
   status?: NodeProps["status"];
   testSkipped: boolean;
+  /** "corner" inside a card's top-right corner, "inline" in a row of marks. */
+  placement?: "corner" | "inline" | undefined;
 }) => {
   if (!status || status === "idle") {
     return null;
@@ -182,7 +189,10 @@ export const NodeStatusMark = ({
   return (
     <div
       aria-label={label}
-      className="pointer-events-none absolute top-1.5 right-2 z-10 rounded-full bg-card"
+      className={cn(
+        "pointer-events-none rounded-full bg-card",
+        placement === "corner" ? "absolute top-1.5 right-2 z-10" : "shrink-0"
+      )}
       data-slot="node-status-mark"
       role="status"
       title={label}
@@ -375,13 +385,63 @@ export const NodeDescription = ({
 };
 
 /**
- * Whether cards draw their compact form at the canvas's current zoom. The
- * selector maps the zoom to a boolean, so a card re-renders when the zoom
- * crosses `WORKFLOW_COMPACT_CARD_ZOOM` and never on the frames between.
+ * The form cards draw at the canvas's current zoom. The selector maps the zoom
+ * to one of three values, so a card re-renders when the zoom crosses
+ * `WORKFLOW_COMPACT_CARD_ZOOM` or `WORKFLOW_NUMBER_CARD_ZOOM` and never on the
+ * frames between.
+ */
+export function useCardTier(): CardTier {
+  return useStore((state) => cardTierAtZoom(state.transform[2]));
+}
+
+/**
+ * Whether cards draw less than the full card, compact or by number alone, for
+ * the captions and labels that only the full card has room to show.
  */
 export function useCompactCard(): boolean {
-  return useStore((state) => isCompactCardZoom(state.transform[2]));
+  return useStore((state) => cardTierAtZoom(state.transform[2]) !== "full");
 }
+
+/**
+ * The whole content of a card at the lowest tier: the kind's `glyph` beside
+ * the step's number, or the glyph alone for a card with no number, at
+ * `NUMBER_TIER_PX` and grown against the zoom so it never draws under 11px on
+ * screen. `marks` keep the issue badge or the disabled mark in the card's top
+ * left. The card keeps its size, so its handles and connections stay put.
+ */
+export const NodeNumberBody = ({
+  glyph,
+  value,
+  marks,
+}: {
+  glyph: ReactNode;
+  value: number | undefined;
+  marks?: ReactNode;
+}) => (
+  <div
+    className="flex h-full w-full items-center justify-center"
+    data-slot="node-number-body"
+  >
+    {marks ? (
+      <div
+        className="absolute top-1.5 left-2 flex items-center gap-1"
+        data-slot="node-number-marks"
+      >
+        {marks}
+      </div>
+    ) : null}
+    <span
+      className="flex items-center gap-2 font-semibold leading-none tabular-nums"
+      data-slot="node-number-mark"
+      style={{ fontSize: NUMBER_TIER_PX }}
+    >
+      {glyph}
+      {value === undefined ? null : (
+        <span data-slot="node-step-number">{value}</span>
+      )}
+    </span>
+  </div>
+);
 
 /**
  * A step's number in run order, set before its title on a full card and in

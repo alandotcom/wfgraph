@@ -1,6 +1,7 @@
 /** Shared viewport limits and fitting rules for the workflow canvas. */
 
 import { getViewportForBounds } from "@xyflow/react";
+import { COMPACT_TITLE_MIN_PX } from "#src/components/flow-elements/compact-card";
 import {
   REVEAL_CONTEXT_PX,
   REVEAL_PADDING_PX,
@@ -17,6 +18,19 @@ export const WORKFLOW_FIT_VIEW_MAX_ZOOM = 1;
  * side of the switch.
  */
 export const WORKFLOW_COMPACT_CARD_ZOOM = 11 / 14;
+
+/**
+ * Below this zoom every card draws only its step number, large, beside its
+ * kind's glyph. It is the zoom at which a compact card's smallest title,
+ * `COMPACT_TITLE_MIN_PX`, draws at 11px on screen, so no title shows smaller.
+ */
+export const WORKFLOW_NUMBER_CARD_ZOOM = 11 / COMPACT_TITLE_MIN_PX;
+
+/**
+ * What a card draws at a zoom: the full card, the compact card with its
+ * number and title, or the number alone.
+ */
+export type CardTier = "full" | "compact" | "number";
 
 type Viewport = { x: number; y: number; zoom: number };
 type Bounds = { x: number; y: number; width: number; height: number };
@@ -205,9 +219,12 @@ export function viewportFromWorldCamera(
   };
 }
 
-/** Whether cards draw their compact form at `zoom`. */
-export function isCompactCardZoom(zoom: number): boolean {
-  return zoom < WORKFLOW_COMPACT_CARD_ZOOM;
+/** The form every card draws at `zoom`. */
+export function cardTierAtZoom(zoom: number): CardTier {
+  if (zoom >= WORKFLOW_COMPACT_CARD_ZOOM) {
+    return "full";
+  }
+  return zoom >= WORKFLOW_NUMBER_CARD_ZOOM ? "compact" : "number";
 }
 
 /**

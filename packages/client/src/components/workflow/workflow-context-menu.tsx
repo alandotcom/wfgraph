@@ -11,6 +11,8 @@ import {
   Plus,
   SlidersHorizontal,
   Trash2,
+  Maximize2,
+  Minimize2,
   Ungroup,
 } from "lucide-react";
 import { useCallback, useRef } from "react";
@@ -41,6 +43,10 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
 import { canUngroup } from "#src/lib/node-group";
+import {
+  collapsedGroupIdsAtom,
+  toggleGroupCollapsedAtom,
+} from "#src/lib/collapsed-groups";
 import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
 import { analyzeGroupableSelection } from "@wfgraph/shared/graph/node-group";
@@ -104,6 +110,8 @@ export function WorkflowContextMenu({
   const duplicateSelection = useSetAtom(duplicateSelectionAtom);
   const groupSelected = useSetAtom(groupSelectionAtom);
   const ungroupSelected = useSetAtom(ungroupNodeAtom);
+  const toggleGroupCollapsed = useSetAtom(toggleGroupCollapsedAtom);
+  const collapsedGroupIds = useAtomValue(collapsedGroupIdsAtom);
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
   const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
@@ -124,6 +132,8 @@ export function WorkflowContextMenu({
   // frame is organization only and has no enabled state of its own.
   const canToggleEnabled = clicked?.data.type === "action";
   const clickedIsGroup = isGroupNode(clicked);
+  const clickedCollapsed =
+    clicked !== undefined && collapsedGroupIds.has(clicked.id);
 
   // Deleting a step is one undo step, as it is from the Backspace key, so it
   // happens at once with no confirmation.
@@ -233,6 +243,14 @@ export function WorkflowContextMenu({
     groupSelected({ selectedIds: menuState.selectedIds ?? new Set() });
     onClose();
   }, [canEdit, menuState, groupSelected, onClose]);
+
+  // Collapsing is the viewer's own view, so it needs no edit grant.
+  const handleToggleCollapsed = useCallback(() => {
+    if (menuState?.nodeId) {
+      toggleGroupCollapsed(menuState.nodeId);
+    }
+    onClose();
+  }, [menuState, toggleGroupCollapsed, onClose]);
 
   const handleUngroup = useCallback(() => {
     if (canEdit && menuState?.nodeId) {
@@ -419,6 +437,13 @@ export function WorkflowContextMenu({
               icon={<Ungroup />}
               label="Ungroup"
               onClick={handleUngroup}
+            />
+          ) : null}
+          {clickedIsGroup ? (
+            <MenuItem
+              icon={clickedCollapsed ? <Maximize2 /> : <Minimize2 />}
+              label={clickedCollapsed ? "Expand group" : "Collapse group"}
+              onClick={handleToggleCollapsed}
             />
           ) : null}
           <MenuSeparator />

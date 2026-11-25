@@ -12,6 +12,14 @@
  */
 export const COMPACT_MARK_PX = 22;
 
+/**
+ * The size of a card's number and glyph at the lowest tier, where the card
+ * shows nothing else. It draws at 11px on screen down to zoom 0.2, and
+ * `globals.css` grows it against the zoom below that, so a number stays
+ * readable down to the canvas's minimum zoom.
+ */
+export const NUMBER_TIER_PX = 56;
+
 /** The box a compact card gives its title, in canvas pixels. */
 export const COMPACT_TITLE_BOX = { width: 164, height: 76 } as const;
 

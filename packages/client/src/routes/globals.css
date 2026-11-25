@@ -442,9 +442,30 @@
   scale: clamp(1, calc(1 / var(--rf-zoom, 1)), 3);
 }
 
+/* At the lowest card tier a card's number and glyph, its marks and status,
+   and a Group region header's glyph and step count grow against the zoom, so
+   each stays at 11px on screen or more down to the canvas's minimum zoom.
+   `scale` changes no layout, so zooming stays a pure transform. */
+.react-flow__node [data-slot="node-number-mark"] {
+  scale: max(1, calc(11 / (56 * var(--rf-zoom, 1))));
+}
+.react-flow__node [data-slot="node-number-marks"] {
+  transform-origin: top left;
+  scale: max(1, calc(11 / (22 * var(--rf-zoom, 1))));
+}
+.react-flow__node [data-card-form="number"] > [data-slot="node-status-mark"] {
+  transform-origin: top right;
+  scale: max(1, calc(11 / (22 * var(--rf-zoom, 1))));
+}
+.react-flow__node [data-slot="group-region-header-mark"] {
+  transform-origin: left center;
+  scale: max(1, calc(11 / (36 * var(--rf-zoom, 1))));
+}
+
 /* A compact card's title runs toward its top-right corner, so its change
    marker straddles that corner and grows from its centre, clear of the title. */
-.react-flow__node [data-card-form="compact"] > .comparison-marker {
+.react-flow__node [data-card-form="compact"] > .comparison-marker,
+.react-flow__node [data-card-form="number"] > .comparison-marker {
   top: 0;
   right: 0;
   translate: 50% -50%;

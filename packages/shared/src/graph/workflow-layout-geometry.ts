@@ -38,8 +38,11 @@ export function eventSplitCardWidth(outletCount: number): number {
  * draws its header and the same padding above and to the left of that box.
  */
 export const GROUP_REGION_PADDING = 24;
-/** The height of a Group region's header, which names and selects the Group. */
-export const GROUP_REGION_HEADER_HEIGHT = 40;
+/**
+ * The height of a Group region's header, which names and selects the Group:
+ * room for its name on two lines at a compact card's smallest title size.
+ */
+export const GROUP_REGION_HEADER_HEIGHT = 56;
 
 type RegionMember = {
   position: { x: number; y: number };
