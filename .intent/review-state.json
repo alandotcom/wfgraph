@@ -4182,16 +4182,15 @@
       ]
     },
     "source:packages/core/src/backend/agent/model.test.ts": {
-      "fingerprint": "a6b02fcd28413f72c5ee7d59faea7a6412fea5aec2296917c7f6a39501d83bf4",
+      "fingerprint": "0026e0b7d8c12dc9fe35a8452e8a9f614d155dbbabfc9c889e72a7f8ff770c89",
       "snapshot": {
-        "packages/core/src/backend/agent/model.test.ts": "fe8794e6ec82be3368af1b0045b1841a4b61ff2f6d0b3d9d0e35d7c4ca47977b"
+        "packages/core/src/backend/agent/model.test.ts": null
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "6060fdea2859d30d78cc4739e1a33aaa5e2bcbee",
       "outcome": "out-of-scope",
-      "reason": "The Anthropic model layer and its settings. The adopter-visible facts, the high default effort and the measured model, are in the build-agent skill and docs/embedding.md.",
+      "reason": "The file was the unit test of agentModelLayer, the one function that built a model layer for all four providers. This branch deleted it with that function, and its cases now live beside each provider module as openai.test.ts, anthropic.test.ts, openrouter.test.ts and openai-compatible.test.ts under packages/core/src/backend/agent/providers/. A test file states no adopter task, so no skill teaches it.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "git diff origin/main...HEAD --stat shows packages/core/src/backend/agent/model.test.ts deleted and the four provider test files added. pnpm run test passed with 6,904 tests at 513383f3, and a review pass compared the removed cases with the new ones and found each one present."
       ]
     },
     "source:packages/core/src/backend/agent/model.ts": {
