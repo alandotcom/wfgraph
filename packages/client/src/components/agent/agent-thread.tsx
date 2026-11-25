@@ -1,5 +1,5 @@
 /**
- * The chat itself: the message list, the composer, and the agent's working-out.
+ * The conversation itself: the message list and the agent's working-out.
  *
  * The working-out is assistant-ui's, not ours. `AssistantMessage` below is the
  * composition their chain-of-thought guide ships, over the elements vendored
@@ -17,7 +17,6 @@
 import {
   ActionBarPrimitive,
   AuiIf,
-  ComposerPrimitive,
   ErrorPrimitive,
   groupPartByType,
   MessagePartPrimitive,
@@ -29,16 +28,18 @@ import {
 import {
   AlertCircleIcon,
   ArrowDownIcon,
-  ArrowUpIcon,
   CheckIcon,
   CopyIcon,
   RotateCcwIcon,
-  SquareIcon,
   Undo2Icon,
 } from "lucide-react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { AgentMarkdown } from "#src/components/agent/agent-markdown";
+import {
+  attachedStepText,
+  readAttachedSteps,
+} from "#src/components/agent/attached-steps";
 import {
   nodeChangeSummary,
   omittedMessagesNotice,
@@ -60,7 +61,6 @@ import {
   ToolGroupTrigger,
 } from "#src/components/agent/elements/tool-group";
 import { Button } from "#src/components/ui/button";
-import { useAfterCommit } from "#src/hooks/effects";
 import {
   agentReasoningLabel,
   agentToolLabel,
@@ -210,13 +210,38 @@ function EmptyThread() {
   );
 }
 
+/** The steps a message was sent with, as the chips it was written beside. */
+function AttachedStepChips() {
+  const custom = useAuiState((state) => state.message.metadata.custom);
+  const steps = readAttachedSteps(custom);
+  if (steps.length === 0) {
+    return null;
+  }
+  return (
+    <ul
+      aria-label="Attached steps"
+      className="flex flex-wrap justify-end gap-1"
+    >
+      {steps.map((step) => (
+        <li
+          className="rounded-md border bg-card px-1.5 py-0.5 text-muted-foreground text-xs"
+          key={step.id}
+        >
+          {attachedStepText(step)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function UserMessage() {
   return (
     <MessagePrimitive.Root
       aria-label="You"
-      className="flex justify-end"
+      className="flex flex-col items-end gap-1"
       role="article"
     >
+      <AttachedStepChips />
       <div className="max-w-[85%] whitespace-pre-wrap rounded-lg bg-secondary px-3 py-2 text-secondary-foreground text-sm">
         <MessagePrimitive.Parts>
           {({ part }) => (part.type === "text" ? <PartText /> : null)}
@@ -423,102 +448,11 @@ function OmittedMessagesNotice() {
 }
 
 /**
- * The composer, pinned to the bottom of the card.
- *
- * It sits inside the scroll viewport rather than below it, so it is held to the
- * same reading column the messages are, at whatever width the card is dragged
- * or expanded to. Its footer pins it down and keeps it there once the thread is
- * taller than the card, with the conversation scrolling behind it.
+ * The conversation: the messages, the empty state's suggestions, and the
+ * scroll-to-latest control. The composer is its own prompt line on the canvas,
+ * below this panel.
  */
-function Composer() {
-  return (
-    <ComposerPrimitive.Root className="flex items-end gap-2 rounded-md border border-input bg-input/20 px-2 py-1.5 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring">
-      <ComposerPrimitive.Input
-        autoFocus
-        className="max-h-32 min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground md:text-sm"
-        placeholder="Ask about this workflow, or describe a change"
-        rows={1}
-      />
-      <AuiIf condition={(state) => !state.thread.isRunning}>
-        <ComposerPrimitive.Send asChild>
-          <Button
-            aria-label="Send"
-            className="mb-1"
-            size="icon-sm"
-            type="submit"
-          >
-            <ArrowUpIcon />
-          </Button>
-        </ComposerPrimitive.Send>
-      </AuiIf>
-      <AuiIf condition={(state) => state.thread.isRunning}>
-        <ComposerPrimitive.Cancel asChild>
-          <Button
-            aria-label="Stop"
-            className="mb-1"
-            size="icon-sm"
-            variant="outline"
-          >
-            <SquareIcon />
-          </Button>
-        </ComposerPrimitive.Cancel>
-      </AuiIf>
-    </ComposerPrimitive.Root>
-  );
-}
-
-/**
- * Keep what the reader is looking at where it is while the composer grows.
- *
- * The composer sits at the end of the scrolled column, so a second line of
- * input lengthens that column and the pinned composer then covers the message
- * it grew over. Adding the same number of pixels to the scroll position moves
- * the conversation up by exactly what the composer took, which reads as the
- * message staying put.
- *
- * Driven off the composer's text rather than a resize observer: the text is
- * what makes the field grow, and it is already state React commits.
- */
-function useComposerGrowthScroll(): {
-  viewport: React.RefObject<HTMLDivElement | null>;
-  footer: React.RefObject<HTMLDivElement | null>;
-} {
-  const viewport = useRef<HTMLDivElement>(null);
-  const footer = useRef<HTMLDivElement>(null);
-  const measured = useRef<number | null>(null);
-  const text = useAuiState((state) => state.composer.text);
-
-  useAfterCommit(text, () => {
-    const scroller = viewport.current;
-    const field = footer.current;
-    if (!(scroller && field)) {
-      return;
-    }
-
-    const height = field.offsetHeight;
-    const previous = measured.current;
-    measured.current = height;
-
-    // The first measurement has nothing to compare against, a height of zero
-    // means the field has not been laid out yet, and an unchanged height means
-    // this keystroke did not grow the field. The composer grows on about one
-    // keystroke in forty, and a scroll write on the other thirty-nine fires a
-    // scroll event that cancels any smooth scroll in flight.
-    if (previous === null || height === 0 || height === previous) {
-      return;
-    }
-
-    scroller.scrollTop += height - previous;
-  });
-
-  return { viewport, footer };
-}
-
 export function AgentThread() {
-  // The refs belong to the hook: it is the only thing that reads either, and
-  // the thread just hands each to the element it names.
-  const { viewport, footer } = useComposerGrowthScroll();
-
   return (
     <ThreadPrimitive.Root className="relative flex min-h-0 flex-1 flex-col">
       {/*
@@ -530,20 +464,11 @@ export function AgentThread() {
       <ThreadPrimitive.Viewport
         aria-label="Conversation"
         className="relative flex min-h-0 flex-1 flex-col overflow-y-auto"
-        ref={viewport}
         tabIndex={0}
         turnAnchor="top"
       >
-        {/*
-          One column, centred and held to a reading width: expanding the panel
-          over the editor makes the card wide enough that a line of prose would
-          otherwise run past what anyone can track back to the next line.
-        */}
-        <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-4">
-          {/* The clearance the scroll-to-bottom button needs above the pinned
-              composer: it floats 44px over the footer, so anything less leaves
-              it sitting on the last line of the reply. */}
-          <div className="mb-14 flex flex-col gap-4">
+        <div className="flex w-full flex-1 flex-col px-4 pt-4">
+          <div className="flex flex-col gap-4">
             <EmptyThread />
             <ThreadPrimitive.Messages>
               {({ message }) =>
@@ -551,16 +476,9 @@ export function AgentThread() {
               }
             </ThreadPrimitive.Messages>
           </div>
-          {/*
-            `mt-auto` pins the composer to the bottom of the card, and `sticky`
-            keeps it there once the thread is taller than the card, with the
-            conversation scrolling behind it. Inside the viewport rather than
-            below it so it shares the reading column the messages are held to.
-          */}
-          <ThreadPrimitive.ViewportFooter
-            className="sticky bottom-0 mt-auto flex flex-col gap-2 bg-popover pt-4 pb-4"
-            ref={footer}
-          >
+          {/* `sticky` keeps the notice and the scroll control at the bottom of
+              the panel once the thread is taller than it. */}
+          <ThreadPrimitive.ViewportFooter className="sticky bottom-0 mt-auto flex flex-col gap-2 bg-popover pt-4 pb-3">
             <ThreadPrimitive.ScrollToBottom asChild>
               <Button
                 aria-label="Scroll to the latest"
@@ -572,7 +490,6 @@ export function AgentThread() {
               </Button>
             </ThreadPrimitive.ScrollToBottom>
             <OmittedMessagesNotice />
-            <Composer />
           </ThreadPrimitive.ViewportFooter>
         </div>
       </ThreadPrimitive.Viewport>

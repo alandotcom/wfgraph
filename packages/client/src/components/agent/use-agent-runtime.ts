@@ -22,6 +22,7 @@ import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
 import type { AgentTurnRecord } from "@wfgraph/shared/rpc/agent-stream";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import { readAttachedSteps } from "#src/components/agent/attached-steps";
 import { agentThreadHistory } from "#src/components/agent/thread-storage";
 import { recordAgentTurnUndoPointAtom } from "#src/components/agent/turn-undo";
 import type { AgentTurnMetadata } from "#src/components/agent/turn-metadata";
@@ -42,7 +43,6 @@ import {
 } from "#src/lib/workflow-graph-store";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
 import { activeAgentTurnIdAtom } from "#src/lib/workflow-ui-store";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 
 /** Text, reasoning and tool calls, in the order the turn produced them. */
@@ -176,7 +176,12 @@ export function useAgentRuntime(workflowId: string) {
           });
         };
 
-        const selectedNodeIds = [...appStore.get(activeSelectionAtom).nodeIds];
+        // What "this step" means in the message being sent: the steps the
+        // person attached to it, and nothing they did not attach.
+        const selectedNodeIds = readAttachedSteps(
+          messages.findLast((message) => message.role === "user")?.metadata
+            .custom
+        ).map((step) => step.id);
         const sent = fitAgentMessages(
           toAgentMessages(messages),
           JSON.stringify({ workflowId, selectedNodeIds, graph, messages: [] })
@@ -197,7 +202,6 @@ export function useAgentRuntime(workflowId: string) {
               workflowId,
               messages: sent.messages,
               graph,
-              // What "this step" means in the message being sent.
               selectedNodeIds,
             },
             { signal: abortSignal }

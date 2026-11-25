@@ -3,8 +3,8 @@ import type { WorkspaceView } from "#src/lib/workflow-navigation-state";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 
 /**
- * Editor chrome: which view is active, which tab the details column shows,
- * which run is on screen.
+ * Editor chrome: which view is active, whether the agent's conversation is
+ * open, which run is on screen.
  *
  * None of this belongs to the graph, so this module does not import
  * `workflow-graph-store`. Authorization is server state and each UI surface
@@ -58,12 +58,35 @@ export type WorkflowGraphUpdate = {
 export const workflowGraphUpdateAtom = atom<WorkflowGraphUpdate | null>(null);
 
 /**
- * The details column's tab: the selection's details, or the build agent. The
- * agent's conversation stays mounted under either tab.
+ * Whether the build agent's conversation is open above its composer on the
+ * canvas. Closed, the composer is one prompt line and the conversation is kept.
  */
-export type DetailsTab = "details" | "agent";
+export const agentConversationOpenAtom = atom(false);
 
-export const detailsTabAtom = atom<DetailsTab>("details");
+/**
+ * A request to put the cursor in the agent's composer, with text to place in
+ * it when `text` is set. `sequence` tells two requests apart. The composer
+ * answers it once and opens the conversation.
+ */
+export type AgentComposerFocusRequest = {
+  sequence: number;
+  text: string | undefined;
+};
+
+export const agentComposerFocusRequestAtom =
+  atom<AgentComposerFocusRequest | null>(null);
+
+/**
+ * Focus the agent's composer and open its conversation, as the palette's
+ * Agent command and "Describe it to the agent" do.
+ */
+export const focusAgentComposerAtom = atom(null, (get, set, text?: string) => {
+  set(agentConversationOpenAtom, true);
+  set(agentComposerFocusRequestAtom, {
+    sequence: (get(agentComposerFocusRequestAtom)?.sequence ?? 0) + 1,
+    text,
+  });
+});
 
 /**
  * The run the canvas is painting, as the route names it. It reports a run only

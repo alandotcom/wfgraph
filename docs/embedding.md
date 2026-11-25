@@ -400,7 +400,7 @@ inspects its runs. Each workspace is three columns: the outline of the workflow 
 order on the left, the canvas in the centre, and the details column on the right. The
 details column shows the selected object's editor, or with nothing selected the workflow's
 own details and issues; in Runs it shows the run list, a run, or a run node's evidence. The
-build agent is the details column's second tab. **Publish** opens a review sheet over the
+build agent is a prompt line at the bottom of the canvas. **Publish** opens a review sheet over the
 details column that lists each edit the draft makes to the published version, in the order
 a run reaches it, and ends in the decision to publish. Version history opens what each past
 version changed in the same sheet.
@@ -643,11 +643,12 @@ local and perform no asynchronous fanout.
 
 ## The build agent
 
-The editor's Agent panel is a chat that reads the catalog and edits the open
-workflow. It is off until `agent` names a model, and the editor then shows no
-panel. Each model provider has its own entry, and `agent` takes what that entry's
+The editor's build agent is a chat on the canvas that reads the catalog and edits the
+open workflow. It is off until `agent` names a model, and the editor then shows no
+prompt line. Each model provider has its own entry, and `agent` takes what that entry's
 function returns. A turn runs on the server against that provider. A turn's history,
-the graph the editor holds, and the canvas selection arrive with each request, and
+the graph the editor holds, and the steps the person attached to the message arrive with
+each request, and
 nothing about a conversation is stored on the server.
 
 ```ts
@@ -673,7 +674,7 @@ Each provider function takes these options:
 
 | Option               | Required                 | Description                                                                                                                                                                                          |
 | -------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apiKey`             | No                       | The provider's API key. Absent or blank leaves the build agent off, and the editor then shows no chat panel. `wfOpenAiCompatible` sends it as a bearer token only when it is set                     |
+| `apiKey`             | No                       | The provider's API key. Absent or blank leaves the build agent off, and the editor then shows no prompt line. `wfOpenAiCompatible` sends it as a bearer token only when it is set                    |
 | `model`              | All but `wfOpenAi`       | Model id the agent runs against. `wfOpenAi` defaults to a current OpenAI model                                                                                                                       |
 | `reasoningEffort`    | No                       | How hard the model thinks before answering. For `wfOpenAi`: `none`, `low`, `medium`, `high`, `xhigh`, or `max`, defaulting to `medium`. The provider table names the others                          |
 | `baseUrl`            | For `wfOpenAiCompatible` | The endpoint to call in place of the provider's own. For `wfOpenAiCompatible` it is what turns the agent on                                                                                          |

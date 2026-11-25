@@ -196,6 +196,48 @@ function FloatingDetails({
 }
 
 /**
+ * The pixels the agent's box keeps clear at the left of the canvas, for the
+ * zoom controls in the bottom-left corner.
+ */
+const COMPOSER_LEFT_CLEARANCE_PX = 64;
+
+/** The gap between the agent's box and the canvas box's right edge. */
+const COMPOSER_RIGHT_GAP_PX = 12;
+
+/**
+ * The box the agent's prompt line and conversation are laid out in: the
+ * height of the canvas less 12px at the top and bottom, clear of the zoom
+ * controls on the left, and clear of floating details on the right while it
+ * is open. It takes no pointer events itself, so the canvas around the line
+ * stays usable.
+ */
+function ComposerBox({
+  floatingDetails,
+  children,
+}: {
+  floatingDetails: boolean;
+  children: ReactNode;
+}) {
+  const preferences = useAtomValue(columnPreferencesAtom);
+  return (
+    <div
+      className="pointer-events-none absolute inset-y-3 z-10"
+      data-slot="agent-composer-box"
+      style={{
+        left: COMPOSER_LEFT_CLEARANCE_PX,
+        right: floatingDetails
+          ? columnWidth("details", preferences) +
+            FLOAT_INSET_PX +
+            COMPOSER_RIGHT_GAP_PX
+          : COMPOSER_RIGHT_GAP_PX,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
  * Opens floating details when the selection comes to hold something and closes
  * it when the selection empties. Each opening for a selection asks the canvas
  * camera to show the selected nodes beside the panel, which moves the camera
@@ -232,16 +274,19 @@ function useDetailsFloatFollowsSelection(input: {
  * The editor below the toolbar on a phone: the outline fills the width, and
  * the toolbar's Map shows the canvas in its place. The canvas stays mounted
  * under the outline, so its camera and selection survive the switch; it leaves
- * keyboard and screen reader navigation while the outline covers it. Details
- * open as sheets over either one.
+ * keyboard and screen reader navigation while the outline covers it. The
+ * agent's prompt line sits at the bottom of either one, and details open as
+ * sheets over both.
  */
 function PhoneMain({
   outline,
+  composer,
   phone,
   showsMap,
   children,
 }: {
   outline: ReactNode;
+  composer: ReactNode;
   phone: ReactNode;
   showsMap: boolean;
   children: ReactNode;
@@ -266,6 +311,11 @@ function PhoneMain({
           </section>
         </MobileRevealCovered>
       )}
+      {composer ? (
+        <div className="pointer-events-none absolute inset-0 z-10">
+          {composer}
+        </div>
+      ) : null}
       {phone}
     </div>
   );
@@ -284,12 +334,18 @@ export function EditorColumns({
   outline,
   canvas,
   details,
+  composer,
   phone,
   overlay,
 }: {
   outline: ReactNode;
   canvas: ReactNode;
   details: ReactNode;
+  /**
+   * The build agent's prompt line and conversation, which float at the bottom
+   * of the canvas clear of the zoom controls and of floating details.
+   */
+  composer?: ReactNode;
   /**
    * What a phone layers over the outline or the canvas: the agent and the
    * sheets that show details.
@@ -327,7 +383,12 @@ export function EditorColumns({
         className="relative flex min-h-0 min-w-0 flex-1"
         data-slot="editor-columns"
       >
-        <PhoneMain outline={outline} phone={phone} showsMap={showsMap}>
+        <PhoneMain
+          composer={composer}
+          outline={outline}
+          phone={phone}
+          showsMap={showsMap}
+        >
           {canvas}
         </PhoneMain>
         {overlay}
@@ -344,6 +405,11 @@ export function EditorColumns({
       data-slot="canvas-box"
     >
       {canvas}
+      {composer ? (
+        <ComposerBox floatingDetails={shapes.details === "floating"}>
+          {composer}
+        </ComposerBox>
+      ) : null}
       {docksDetails ? null : (
         <FloatingDetails open={shapes.details === "floating"}>
           {details}

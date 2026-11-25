@@ -73,7 +73,7 @@ import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-d
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
 import { useWorkflowCommands } from "#src/components/workflow/use-workflow-commands";
 import { useColumnControls } from "#src/components/workflow/columns/use-column-controls";
-import { showAgentTabAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { focusAgentComposerAtom } from "#src/lib/workflow-ui-store";
 import { isAgentEnabled } from "#src/lib/extensions";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
@@ -703,7 +703,7 @@ function useWorkflowMenuCommands(
   const openRename = useSetAtom(openRenameWorkflowDialogAtom);
   const columns = useColumnControls();
   const isMobile = useIsMobile();
-  const showAgentTab = useSetAtom(showAgentTabAtom);
+  const focusAgentComposer = useSetAtom(focusAgentComposerAtom);
   const commands: PaletteMenuCommand[] = [];
   if (offers.rename) {
     commands.push({
@@ -764,7 +764,7 @@ function useWorkflowMenuCommands(
       keywords: "Agent build assistant chat describe AI",
       disabled: false,
       Icon: Sparkles,
-      execute: showAgentTab,
+      execute: () => focusAgentComposer(),
     });
   }
   if (workflowId !== undefined) {

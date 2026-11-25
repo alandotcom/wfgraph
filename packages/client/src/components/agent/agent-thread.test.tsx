@@ -40,11 +40,6 @@ describe("AgentThread", () => {
       await screen.findByText("Ask the agent, or build with it")
     ).toBeTruthy();
     expect(
-      screen.getByPlaceholderText(
-        "Ask about this workflow, or describe a change"
-      )
-    ).toBeTruthy();
-    expect(
       screen.getByRole("button", { name: "Why did the last run fail?" })
     ).toBeTruthy();
   });
@@ -216,13 +211,6 @@ describe("AgentThread", () => {
 
     fireEvent.click(screen.getByText("1 tool call"));
     expect(await screen.findByText(/Read the slack.post action/)).toBeTruthy();
-  });
-
-  it("offers a way to send, and a way to stop once a turn is running", async () => {
-    renderThread([]);
-
-    expect(await screen.findByLabelText("Send")).toBeTruthy();
-    expect(screen.queryByLabelText("Stop")).toBeNull();
   });
 
   it("shows what a finished turn cost under it", async () => {

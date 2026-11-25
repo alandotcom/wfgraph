@@ -140,6 +140,8 @@ export function shortcutReference(
           keys: [COLUMN_SHORTCUT_KEYS.details],
         },
         { label: "Go back in details", keys: ["Esc"] },
+        { label: "Send a message to the agent", keys: [enter] },
+        { label: "Close the agent's conversation", keys: ["Esc"] },
       ],
     },
     {

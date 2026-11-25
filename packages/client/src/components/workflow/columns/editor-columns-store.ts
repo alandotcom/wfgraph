@@ -9,7 +9,6 @@
 import { atom } from "jotai";
 import { Option, Schema } from "effect";
 import { readCookie, writeCookie } from "#src/lib/preference-cookies";
-import { detailsTabAtom } from "#src/lib/workflow-ui-store";
 
 export type ColumnSide = "outline" | "details";
 
@@ -258,26 +257,3 @@ export function detailsToggle(input: {
   }
   return input.shape === "floating" ? "close-float" : "float";
 }
-
-/**
- * Show one tab of the details column, for a command that asks for that tab by
- * name: "Describe it to the agent", or an issue's Edit. Details that is not
- * docked floats in to show it.
- */
-const showDetailsColumnTabAtom = atom(
-  null,
-  (_get, set, tab: "details" | "agent") => {
-    set(detailsTabAtom, tab);
-    set(detailsFloatOpenAtom, true);
-  }
-);
-
-/** Show the build agent in the details column. */
-export const showAgentTabAtom = atom(null, (_get, set) => {
-  set(showDetailsColumnTabAtom, "agent");
-});
-
-/** Show the Details tab of the details column. */
-export const showDetailsTabAtom = atom(null, (_get, set) => {
-  set(showDetailsColumnTabAtom, "details");
-});

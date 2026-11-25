@@ -470,7 +470,7 @@ The editor's inspector, the right of its three columns, always present beside
 the canvas. With an object selected it holds that object's editor; with
 nothing selected in Draft it holds the workflow's own details and issues. In
 Runs it holds the run list or a run at Browse, and a run node's evidence at
-Focus. Its second tab holds the Build Agent. Draft, each run, and each entered
+Focus. Draft, each run, and each entered
 Group remember their own inspected object, scroll position, and camera. While
 the review sheet Publish opens is on screen, it covers the details column. On a
 phone a sequence of sheets takes its place.
@@ -480,8 +480,8 @@ sidebar, inspector panel
 ### Build Agent
 
 **Build Agent**:
-The chat in the details column's Agent tab that reads the extension catalog and
-the open workflow, then edits the canvas on the Workflow Builder's behalf. It writes
+The chat on the canvas, a prompt line with its conversation above it, that
+reads the extension catalog and the open workflow, then edits the canvas on the Workflow Builder's behalf. It writes
 through the same tools a person's clicks write through, so what it produces is
 a workflow like any other. Turned on by a host passing a model key; absent
 otherwise, panel and all.

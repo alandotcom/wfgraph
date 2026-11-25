@@ -19,7 +19,7 @@ import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
-import { showAgentTabAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { focusAgentComposerAtom } from "#src/lib/workflow-ui-store";
 import {
   hasSchedule,
   readLifecycleRules,
@@ -49,7 +49,7 @@ export function EmptyWorkflowStart() {
 function StartingMoves({ lifecycle }: { lifecycle: WorkflowNode }) {
   const store = useStore();
   const openLifecycleSection = useOpenLifecycleSection(lifecycle.id);
-  const showAgentTab = useSetAtom(showAgentTabAtom);
+  const focusAgentComposer = useSetAtom(focusAgentComposerAtom);
   const rules = readLifecycleRules(lifecycle.data.config);
   const hasStart = (rules?.startEvents.length ?? 0) > 0 || hasSchedule(rules);
   const x =
@@ -89,7 +89,7 @@ function StartingMoves({ lifecycle }: { lifecycle: WorkflowNode }) {
         </Button>
         {isAgentEnabled() ? (
           <Button
-            onClick={showAgentTab}
+            onClick={() => focusAgentComposer()}
             size="sm"
             type="button"
             variant="outline"

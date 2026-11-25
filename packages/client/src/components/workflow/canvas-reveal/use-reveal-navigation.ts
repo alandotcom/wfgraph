@@ -25,7 +25,7 @@ import {
   recordInspectorSectionAtom,
   setWorkspaceSelectionAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import { showDetailsTabAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { detailsFloatOpenAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { requestRevealPlacementAtom } from "./reveal-requests";
 
 /** The object an inspector shows and the section it shows for that object. */
@@ -52,8 +52,8 @@ type RunNodeInspection = {
 export type RevealNavigation = {
   /**
    * Select the node `nodeId` alone and show its inspector: the details
-   * column's Details tab, brought back when collapsed, or on a phone the summary sheet, or the full-screen inspector for `level`
-   * "focus". An `origin` records where a desktop jump started, which Back
+   * column, floating over the canvas where it is not docked, or on a phone the
+   * summary sheet, or the full-screen inspector for `level` "focus". An `origin` records where a desktop jump started, which Back
    * returns to. On desktop a jump with no origin also asks the camera to show
    * the node, which moves it only when the node is not fully in view.
    */
@@ -217,7 +217,7 @@ export function useRevealNavigation(): RevealNavigation {
       store.set(inspectRunNodeAtom, { ...input, opensFocus: opensEvidence });
     return {
       openNode: ({ address, nodeId, origin }) => {
-        store.set(showDetailsTabAtom);
+        store.set(detailsFloatOpenAtom, true);
         if (origin !== undefined) {
           store.set(openNodeRevealFromOriginAtom, { address, nodeId, origin });
           return;
@@ -232,7 +232,7 @@ export function useRevealNavigation(): RevealNavigation {
         });
       },
       openSection: (input) => {
-        store.set(showDetailsTabAtom);
+        store.set(detailsFloatOpenAtom, true);
         store.set(openInspectorSectionAtom, input);
       },
       recordSection: ({ address, nodeId, section }) =>

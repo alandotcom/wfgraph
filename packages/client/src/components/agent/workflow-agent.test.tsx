@@ -1,68 +1,266 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AgentPanel } from "#src/components/agent/agent-panel";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  AGENT_COMPOSER_PLACEHOLDER,
+  WorkflowAgentView,
+} from "#src/components/agent/workflow-agent";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
+import {
+  loadWorkflowGraphAtom,
+  selectOnlyNodeAtom,
+} from "#src/lib/workflow-graph-store";
+import { openReviewPageAtom } from "#src/lib/workflow-review-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  agentConversationOpenAtom,
+  focusAgentComposerAtom,
+} from "#src/lib/workflow-ui-store";
+import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
+/** The bodies of the chat requests sent, read as text. */
+let sentBodies: string[] = [];
+
 beforeEach(() => {
   installAuthorizationGrantsForTests(WfGraphOperationIds);
+  sentBodies = [];
+  // A chat request that never answers, so the agent stays at work.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sentBodies.push(String(init?.body ?? ""));
+      return new Promise<Response>(() => {});
+    })
+  );
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   resetAuthorizationGrantsForTests();
   localStorage.clear();
 });
 
-function renderOpenPanel() {
+function renderAgent() {
   const store = createStore();
+  store.set(currentWorkflowIdAtom, "workflow_1");
+  store.set(loadWorkflowGraphAtom, {
+    nodes: [
+      {
+        id: "send",
+        type: "action",
+        position: { x: 0, y: 0 },
+        data: {
+          label: "Send 24-hour reminder",
+          type: "action",
+          config: {},
+        },
+      },
+    ],
+    edges: [],
+  });
+  showWorkspaceRoute(store, {});
   render(
     <JotaiProvider store={store}>
       <ExtensionCatalogProvider value={emptyExtensionCatalog}>
-        <AgentPanel workflowId="workflow_1" />
+        <WorkflowAgentView variant="canvas" workflowId="workflow_1" />
       </ExtensionCatalogProvider>
     </JotaiProvider>
   );
+  const field = () => screen.getByPlaceholderText(AGENT_COMPOSER_PLACEHOLDER);
+  const conversation = () =>
+    screen.queryByRole("region", { name: "Agent conversation" });
+  const type = (text: string) =>
+    fireEvent.change(field(), { target: { value: text } });
+  return { store, field, conversation, type };
 }
 
-describe("AgentPanel", () => {
-  function storeThread(text: string) {
-    localStorage.setItem(
-      "wfgraph:agent-thread:workflow_1",
-      JSON.stringify({
-        version: 1,
-        messages: [
-          {
-            parentId: null,
-            message: {
-              id: "m1",
-              role: "user",
-              createdAt: "2026-11-11T10:00:00.000Z",
-              content: [{ type: "text", text }],
-              attachments: [],
-              metadata: { custom: {} },
-            },
+function storeThread(text: string) {
+  localStorage.setItem(
+    "wfgraph:agent-thread:workflow_1",
+    JSON.stringify({
+      version: 1,
+      messages: [
+        {
+          parentId: null,
+          message: {
+            id: "m1",
+            role: "user",
+            createdAt: "2026-11-11T10:00:00.000Z",
+            content: [{ type: "text", text }],
+            attachments: [],
+            metadata: { custom: {} },
           },
-        ],
+        },
+      ],
+    })
+  );
+}
+
+describe("WorkflowAgentView", () => {
+  it("rests as one prompt line, and focusing it opens the conversation", async () => {
+    const { field, conversation } = renderAgent();
+    expect(conversation()).toBeNull();
+
+    act(() => {
+      field().focus();
+    });
+
+    expect(conversation()).not.toBeNull();
+    expect(
+      await within(conversation() as HTMLElement).findByText(
+        "Explain this workflow"
+      )
+    ).toBeTruthy();
+  });
+
+  it("collapses on Escape and on its close control, keeping the conversation", async () => {
+    storeThread("Add a Slack step");
+    const { field, conversation } = renderAgent();
+    act(() => {
+      field().focus();
+    });
+    expect(await screen.findByText("Add a Slack step")).toBeTruthy();
+
+    fireEvent.keyDown(field(), { key: "Escape" });
+    expect(conversation()).toBeNull();
+    expect(document.activeElement).toBe(field());
+
+    fireEvent.click(field());
+    act(() => {
+      field().blur();
+      field().focus();
+    });
+    expect(conversation()).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close conversation" }));
+    expect(conversation()).toBeNull();
+
+    act(() => {
+      field().blur();
+      field().focus();
+    });
+    expect(screen.getByText("Add a Slack step")).toBeTruthy();
+  });
+
+  it("marks the line while the agent works with the conversation collapsed", async () => {
+    const { field, conversation, type } = renderAgent();
+    expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
+    type("What does this workflow do?");
+    fireEvent.keyDown(field(), { key: "Enter" });
+
+    await waitFor(() => expect(sentBodies).toHaveLength(1));
+    expect(conversation()).not.toBeNull();
+    expect(await screen.findByRole("button", { name: "Stop" })).toBeTruthy();
+    expect(
+      screen.queryByRole("img", { name: "The agent is working" })
+    ).toBeNull();
+
+    fireEvent.keyDown(field(), { key: "Escape" });
+    expect(
+      await screen.findByRole("img", { name: "The agent is working" })
+    ).toBeTruthy();
+  });
+
+  it("offers the selected step as a chip, sends it only once attached, and lets it be removed", async () => {
+    const { store, field, type } = renderAgent();
+    act(() => {
+      store.set(selectOnlyNodeAtom, "send");
+    });
+    const offer = await screen.findByRole("button", {
+      name: /^Attach .*Send 24-hour reminder$/,
+    });
+
+    fireEvent.click(offer);
+    const chip = screen.getByText(/Send 24-hour reminder/, {
+      selector: '[data-slot="agent-attached-step"]',
+    });
+    expect(chip).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Remove .*Send 24-hour reminder$/ })
+    );
+    expect(
+      document.querySelector('[data-slot="agent-attached-step"]')
+    ).toBeNull();
+
+    // Sent with nothing attached, the request names no step.
+    type("Explain this step");
+    fireEvent.keyDown(field(), { key: "Enter" });
+    await waitFor(() => expect(sentBodies).toHaveLength(1));
+    expect(sentBodies[0]).toContain('"selectedNodeIds":[]');
+  });
+
+  it("sends an attached step with the message and shows it in the thread", async () => {
+    const { store, type, conversation } = renderAgent();
+    act(() => {
+      store.set(selectOnlyNodeAtom, "send");
+    });
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /^Attach .*Send 24-hour reminder$/,
       })
     );
-  }
+    type("Shorten this message");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
-  it("restores the stored thread when the panel opens", async () => {
-    storeThread("Add a Slack step");
-    renderOpenPanel();
+    await waitFor(() => expect(sentBodies).toHaveLength(1));
+    expect(sentBodies[0]).toContain('"selectedNodeIds":["send"]');
+    const sent = within(conversation() as HTMLElement).getByRole("list", {
+      name: "Attached steps",
+    });
+    expect(sent.textContent).toContain("Send 24-hour reminder");
+    expect(
+      document.querySelector('[data-slot="agent-attached-step"]')
+    ).toBeNull();
+  });
 
-    expect(await screen.findByText("Add a Slack step")).toBeTruthy();
+  it("takes the cursor, and the text an entry point brings, when asked", async () => {
+    const { store, field, conversation } = renderAgent();
+    act(() => {
+      store.set(focusAgentComposerAtom, "Add a reminder the day before");
+    });
+
+    await waitFor(() => expect(document.activeElement).toBe(field()));
+    expect((field() as HTMLTextAreaElement).value).toBe(
+      "Add a reminder the day before"
+    );
+    expect(store.get(agentConversationOpenAtom)).toBe(true);
+    expect(conversation()).not.toBeNull();
+  });
+
+  it("hides while the review sheet is open", () => {
+    const { store } = renderAgent();
+    const agent = document.querySelector<HTMLElement>(
+      '[data-slot="workflow-agent"]'
+    );
+    expect(agent?.className).not.toContain("hidden");
+
+    act(() => {
+      store.set(openReviewPageAtom, {
+        workflowId: "workflow_1",
+        page: { kind: "history" },
+      });
+    });
+    expect(agent?.className).toContain("hidden");
   });
 
   it("clears the thread and its stored copy on New conversation", async () => {
     storeThread("Add a Slack step");
-    renderOpenPanel();
+    const { field } = renderAgent();
+    act(() => {
+      field().focus();
+    });
     await screen.findByText("Add a Slack step");
 
     fireEvent.click(screen.getByRole("button", { name: "New conversation" }));

@@ -9,7 +9,7 @@ import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
 import { EditorColumns } from "#src/components/workflow/columns/editor-columns";
 import { DetailsColumn } from "#src/components/workflow/details/details-column";
-import { PhoneAgent } from "#src/components/workflow/details/phone-agent";
+import { WorkflowAgent } from "#src/components/agent/workflow-agent";
 import { OutlineColumn } from "#src/components/workflow/outline/outline-column";
 import { ReviewSheet } from "#src/components/workflow/review/review-sheet";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
@@ -168,15 +168,13 @@ const WorkflowEditor = () => {
                   <WorkflowCanvas canEdit={canUpdate} />
                 </MobileRevealCovered>
               }
+              composer={<WorkflowAgent />}
               details={<DetailsColumn />}
               outline={<OutlineColumn />}
               phone={
-                <>
-                  <PhoneAgent />
-                  {/* Below `md` details are a sequence of sheets over the
-                    outline or the canvas. */}
-                  <MobileReveal />
-                </>
+                // Below `md` details are a sequence of sheets over the outline
+                // or the canvas.
+                <MobileReveal />
               }
               overlay={
                 // The review sheet covers the details column and reaches over

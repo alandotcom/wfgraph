@@ -230,7 +230,7 @@ The editor shell is inset 12px from the viewport on all four sides at `md` and a
 
 **The Overlay Rule.** Anything at shadow-lg must be dismissible. If it can't be dismissed, it isn't floating, and it doesn't get the shadow.
 
-**The Scrim Rule.** A modal layer dims the page behind it with `bg-scrim`: black at 40% in both themes, with no blur, so dark mode darkens too. Dialogs, alert dialogs, stacked overlays, the phone drawer and the expanded build agent all use it. The command palette uses none, because the canvas it acts on stays readable behind it. A stacked overlay shares the dialog's container and motion: Popover fill, 14px radius, hairline ring, shadow-lg, and a 200ms fade with a 95% zoom.
+**The Scrim Rule.** A modal layer dims the page behind it with `bg-scrim`: black at 40% in both themes, with no blur, so dark mode darkens too. Dialogs, alert dialogs, stacked overlays and the phone drawer all use it. The command palette uses none, because the canvas it acts on stays readable behind it. A stacked overlay shares the dialog's container and motion: Popover fill, 14px radius, hairline ring, shadow-lg, and a 200ms fade with a 95% zoom.
 
 ## 5. Components
 
@@ -346,17 +346,37 @@ they dock or collapse the column. With nothing selected nothing floats, and the
 rail control or `]` opens the panel on the workflow's own details. Under
 reduced motion the panel appears and leaves without sliding.
 
-The details column has two tabs in its header, **Details** and **Agent**.
-Details shows what the selection shows, under a header naming the object, the
-path from the workflow through any Group to it, and its status. With nothing
+The details column's header reads **Details**. It shows what the selection
+shows, under a header naming the object, the path from the workflow through
+any Group to it, and its status. With nothing
 selected in Draft it shows the workflow's own details: its name with
 **Rename**, its description, its publication state and Published mode, and its
 issues, each with an **Edit** that selects the step and puts the cursor in the
-field the issue names. Agent holds the build agent's conversation and **New
-conversation**. The conversation stays mounted under Details, so a turn in
-progress keeps going.
+field the issue names.
 
-A workflow that holds only its Lifecycle Node shows its starting moves one rank below that card, in a dashed block on the canvas: one line saying it has no steps yet, then **Choose what starts it**, **Add step**, and **Describe it to the agent** when the host runs the build agent. The first opens the Lifecycle node with its Start Events editor open and leaves once a Start Event or schedule exists. The block leaves once the workflow has a step. The build agent's empty panel offers **Explain this workflow** and **Why did the last run fail?**, and each sends at once.
+The build agent works on the whole workflow, so it sits on the canvas rather
+than in the details column. In Draft and Runs, for a viewer who may use it on
+a server that offers one, one prompt line floats at the bottom centre of the
+canvas, up to 560px wide, on the card surface with a hairline border and
+shadow-sm, clear of the zoom controls on the left and of floating details on
+the right. Its placeholder reads "Ask about this workflow, or describe a
+change". Focusing it, or sending, opens the conversation directly above it: a
+Popover-filled panel up to 560px wide and 60% of the canvas tall, with a
+hairline ring and shadow-lg, holding the thread, the suggestions, tool
+activity, errors, **New conversation**, and **Close conversation**. That
+control and Escape collapse it back to the line and keep the conversation; the
+line then shows a small dot while the agent works or after it replied. With a
+step selected, the line offers it as a chip, such as "+ Step 4 · Send 24-hour
+reminder"; pressing it attaches the step to the message being written, its ×
+removes it, and nothing is attached unless the person attaches it. A sent
+message shows its attached step above it in the thread. The command palette's
+**Agent** and **Describe it to the agent** put the cursor in the line. Opening
+or closing the conversation moves no camera and no column, and neither ever
+changes the canvas box. Opening a workflow, Fit view, and a placement keep
+cards clear of the line. While the review sheet is open the line and the
+conversation hide, since the canvas is read-only then.
+
+A workflow that holds only its Lifecycle Node shows its starting moves one rank below that card, in a dashed block on the canvas: one line saying it has no steps yet, then **Choose what starts it**, **Add step**, and **Describe it to the agent** when the host runs the build agent. The first opens the Lifecycle node with its Start Events editor open and leaves once a Start Event or schedule exists. The block leaves once the workflow has a step. The build agent's empty conversation offers **Explain this workflow** and **Why did the last run fail?**, and each sends at once.
 
 On a phone the zoom controls sit in a row along the bottom edge. The zoom
 controls draw on the card surface, so the graph never shows through them.
@@ -570,9 +590,9 @@ Below `md`, 900px, the outline is the editor's main view and fills the width.
 A **Map** control in the toolbar shows the canvas in the outline's place, and
 pressing it again returns to the outline. The canvas under the outline keeps
 its camera and leaves the tab order. The column collapse controls are absent.
-**Agent**, from the command palette or **Describe it to the agent**, covers
-both views with the agent's conversation under a header whose Back returns to
-them. Details are a sequence of sheets over the outline or the canvas.
+The agent's prompt line sits at the bottom of either view, above the status
+strip, and its conversation covers the whole view under a header whose Back
+returns to it. Details are a sequence of sheets over the outline or the canvas.
 Selecting a step, Condition, Lifecycle node, Event Split,
 collapsed Group, or connection opens its summary sheet over the bottom of the
 canvas, which stays pannable and zoomable above it. It reads the object the way
