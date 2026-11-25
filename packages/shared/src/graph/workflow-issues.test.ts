@@ -132,6 +132,40 @@ describe("collectWorkflowIssues", () => {
     expect(hasBlockingWorkflowIssues(issues)).toBe(true);
   });
 
+  it("blocks on a Wait Duration that cannot be read, in Publish's words", () => {
+    const issues = collectWorkflowIssues({
+      nodes: [
+        actionNode(
+          "w1",
+          { actionType: "Wait", waitMode: "delay", waitDuration: "banana" },
+          "Wait a day"
+        ),
+      ],
+      edges: [],
+      catalog,
+      integrations: [],
+    });
+
+    expect(issues).toEqual([
+      {
+        kind: "missing_required_field",
+        severity: "blocking",
+        nodeId: "w1",
+        nodeLabel: "Wait a day",
+        fieldKey: "waitDuration",
+        fieldLabel: "Duration",
+        unreadable: true,
+        message: 'Node "Wait a day" has a "Duration" value that cannot be read',
+      },
+    ]);
+    expect(
+      groupWorkflowIssuesForOverlay(issues).missingRequiredFields[0]
+        ?.missingFields
+    ).toEqual([
+      { fieldKey: "waitDuration", fieldLabel: "Duration", unreadable: true },
+    ]);
+  });
+
   it("reports a missing connection as blocking", () => {
     const issues = collectWorkflowIssues({
       nodes: [

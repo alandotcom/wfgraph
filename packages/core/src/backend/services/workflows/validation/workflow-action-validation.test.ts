@@ -132,6 +132,25 @@ describe("validateWorkflowActionConfigs", () => {
     }
   });
 
+  it("names a Duration that cannot be read in the editor's words", () => {
+    const result = validateWorkflowActionConfigs(
+      [
+        createLifecycleNode(),
+        createActionNode({
+          actionType: "Wait",
+          waitMode: "delay",
+          waitDuration: "abc",
+        }),
+      ],
+      builtInCatalog
+    );
+
+    expect(result).toEqual({
+      valid: false,
+      error: 'Node "Action" has a "Duration" value that cannot be read',
+    });
+  });
+
   it("accepts an event Wait without delay fields", () => {
     const result = validateWorkflowActionConfigs(
       [

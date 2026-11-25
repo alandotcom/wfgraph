@@ -533,6 +533,25 @@ describe("NodeConfigPanel Wait mode", () => {
     ).toBeTruthy();
   });
 
+  it("marks a Duration that cannot be read and leaves a readable one alone", async () => {
+    const unreadable = renderWaitPanel({
+      waitMode: "delay",
+      waitDuration: "banana5s",
+    });
+    const field = await unreadable.view.findByRole("textbox", {
+      name: "Duration",
+    });
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    unreadable.view.unmount();
+
+    const readable = renderWaitPanel({ waitMode: "delay", waitDuration: "1h" });
+    expect(
+      (
+        await readable.view.findByRole("textbox", { name: "Duration" })
+      ).getAttribute("aria-invalid")
+    ).toBeNull();
+  });
+
   it("uses the default past-time help for an unknown stored option", async () => {
     const { view } = renderWaitPanel({
       waitMode: "delay",

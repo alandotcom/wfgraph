@@ -4,6 +4,7 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import {
   getMissingRequiredFieldsForNodes,
+  requiredFieldMessage,
   type ResolveActionByType,
 } from "@wfgraph/shared/actions/action-config-validation";
 import { ACTION_TYPE_CONFIG_KEY } from "@wfgraph/shared/graph/node-config";
@@ -39,6 +40,18 @@ export function validateWorkflowActionConfigs(
       return {
         valid: false,
         error: `Node "${firstIssue.nodeLabel}" has no action selected`,
+      };
+    }
+
+    // A value that cannot be read is answered in the editor's own sentence, so
+    // Publish and the issue list name the problem in the same words.
+    const unreadable = firstIssue.missingFields.find(
+      (field) => field.unreadable
+    );
+    if (unreadable) {
+      return {
+        valid: false,
+        error: requiredFieldMessage(firstIssue.nodeLabel, unreadable),
       };
     }
 

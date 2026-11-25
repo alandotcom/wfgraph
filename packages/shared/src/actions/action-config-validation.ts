@@ -10,13 +10,42 @@ import {
 } from "#src/lifecycle/wait-subscription";
 import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
 import { parseTimeOfDayMinutes } from "#src/utils/wait-allowed-hours";
-import { parsePositiveDurationMs } from "#src/utils/wait-time";
+import { parseDurationMs, parsePositiveDurationMs } from "#src/utils/wait-time";
 import type { WorkflowNode } from "#src/graph/types";
 
 export type MissingRequiredField = {
   fieldKey: string;
   fieldLabel: string;
+  /** Set when the field holds a value that cannot be read; absent when it is empty. */
+  unreadable?: true | undefined;
 };
+
+/**
+ * The sentence the editor's issue list and Publish both give for one field, so
+ * the two never describe the same problem in different words.
+ */
+export function requiredFieldMessage(
+  nodeLabel: string,
+  field: MissingRequiredField
+): string {
+  return field.unreadable
+    ? `Node "${nodeLabel}" has a "${field.fieldLabel}" value that cannot be read`
+    : `Node "${nodeLabel}" is missing required field "${field.fieldLabel}"`;
+}
+
+/**
+ * Whether a Wait's Duration holds text the engine cannot read as a duration. A
+ * blank value is a missing field, and a template is read when the run reaches
+ * the step, so neither counts.
+ */
+export function waitDurationCannotBeRead(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    !isBlank(value) &&
+    findTemplateTokens(value).length === 0 &&
+    parseDurationMs(value) === null
+  );
+}
 
 export type MissingRequiredFieldInfo = {
   nodeId: string;
@@ -174,6 +203,12 @@ function getWaitMissingRequiredFields(
     missing.push({
       fieldKey: "waitDuration",
       fieldLabel: WAIT_FIELD_LABELS.waitDuration,
+    });
+  } else if (waitDurationCannotBeRead(config.waitDuration)) {
+    missing.push({
+      fieldKey: "waitDuration",
+      fieldLabel: WAIT_FIELD_LABELS.waitDuration,
+      unreadable: true,
     });
   }
 

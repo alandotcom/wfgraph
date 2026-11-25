@@ -126,6 +126,43 @@ describe("getNodeMissingRequiredFields", () => {
     ]);
   });
 
+  it.each(["abc", "5sabc", "banana5s", "10s5sabc"])(
+    "reports a Duration of %s as a value that cannot be read",
+    (waitDuration) => {
+      const result = getNodeMissingRequiredFields({
+        node: createActionNode({
+          actionType: "Wait",
+          waitMode: "delay",
+          waitDuration,
+        }),
+        resolveActionByType,
+      });
+
+      expect(result?.missingFields).toEqual([
+        { fieldKey: "waitDuration", fieldLabel: "Duration", unreadable: true },
+      ]);
+    }
+  );
+
+  it.each([
+    "24h",
+    "1h 30m",
+    "3600000",
+    "P1D",
+    "{{@lifecycle_1:Lifecycle.delay}}",
+  ])("accepts a Duration of %s", (waitDuration) => {
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode({
+        actionType: "Wait",
+        waitMode: "delay",
+        waitDuration,
+      }),
+      resolveActionByType,
+    });
+
+    expect(result).toBeNull();
+  });
+
   it("requires a maximum lateness duration for that delay gate", () => {
     const result = getNodeMissingRequiredFields({
       node: createActionNode({

@@ -9,8 +9,10 @@ import { groupBy, uniq, uniqBy } from "es-toolkit/array";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import {
   getMissingRequiredFieldsForNodes,
+  requiredFieldMessage,
   type ResolveActionByType,
 } from "#src/actions/action-config-validation";
+import { omitUndefined } from "#src/utils/omit-undefined";
 import {
   collectEntityStateConditionReferences,
   collectNodeOutputConditionReferences,
@@ -87,6 +89,8 @@ export type MissingRequiredFieldIssue = {
   nodeLabel: string;
   fieldKey: string;
   fieldLabel: string;
+  /** Set when the field holds a value that cannot be read; absent when it is empty. */
+  unreadable?: true | undefined;
   message: string;
 };
 
@@ -263,6 +267,8 @@ export type MissingRequiredFieldGroup = {
   missingFields: Array<{
     fieldKey: string;
     fieldLabel: string;
+    /** Set when the field holds a value that cannot be read; absent when it is empty. */
+    unreadable?: true | undefined;
   }>;
 };
 
@@ -428,15 +434,18 @@ function collectMissingRequiredFieldIssues(input: {
     nodes: input.nodes,
     resolveActionByType: resolveActionFromCatalog(input.catalog),
   }).flatMap((nodeIssue) =>
-    nodeIssue.missingFields.map((field) => ({
-      kind: "missing_required_field" as const,
-      severity: "blocking" as const,
-      nodeId: nodeIssue.nodeId,
-      nodeLabel: nodeIssue.nodeLabel,
-      fieldKey: field.fieldKey,
-      fieldLabel: field.fieldLabel,
-      message: `Node "${nodeIssue.nodeLabel}" is missing required field "${field.fieldLabel}"`,
-    }))
+    nodeIssue.missingFields.map((field) =>
+      omitUndefined({
+        kind: "missing_required_field" as const,
+        severity: "blocking" as const,
+        nodeId: nodeIssue.nodeId,
+        nodeLabel: nodeIssue.nodeLabel,
+        fieldKey: field.fieldKey,
+        fieldLabel: field.fieldLabel,
+        unreadable: field.unreadable,
+        message: requiredFieldMessage(nodeIssue.nodeLabel, field),
+      })
+    )
   );
 }
 
@@ -1128,7 +1137,12 @@ export function groupWorkflowIssuesForOverlay(
       byKind.missing_required_field,
       (node, nodeIssues) => ({
         ...node,
-        missingFields: nodeIssues.map(issueFieldEntry),
+        missingFields: nodeIssues.map((issue) =>
+          omitUndefined({
+            ...issueFieldEntry(issue),
+            unreadable: issue.unreadable,
+          })
+        ),
       })
     ),
     missingIntegrations: missingIntegrationsByType.map((typeIssues) => ({

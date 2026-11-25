@@ -346,11 +346,11 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
           </div>
         )}
 
-        {/* Missing Required Fields Section */}
+        {/* Required fields that are empty or hold a value that cannot be read */}
         {missingRequiredFields.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-medium text-muted-foreground text-sm">
-              Missing Required Fields
+              Required Fields
             </h4>
             {missingRequiredFields.map((node) => (
               <div key={node.nodeId}>

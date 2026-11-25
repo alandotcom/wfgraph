@@ -388,6 +388,43 @@ describe("WorkflowIssuesOverlay", () => {
     const onGoToStep = vi.fn();
     const message =
       'Node "Route" tests score, which "Lifecycle" and "Score" all offer, and reads it from "Score". Pick the field again to name the step it comes from.';
+  it("tells an empty required field from one that cannot be read", () => {
+    const onGoToStep = vi.fn();
+    const { getByRole, getByText } = renderIssues(
+      issuesModel({
+        totalIssues: 2,
+        draftRunBlockingCount: 2,
+        missingRequiredFields: [
+          {
+            nodeId: "wait",
+            nodeLabel: "Wait a day",
+            missingFields: [
+              {
+                fieldKey: "waitDuration",
+                fieldLabel: "Duration",
+                unreadable: true,
+              },
+            ],
+          },
+          {
+            nodeId: "notify",
+            nodeLabel: "Notify",
+            missingFields: [{ fieldKey: "channel", fieldLabel: "Channel" }],
+          },
+        ],
+      }),
+      { onGoToStep }
+    );
+
+    expect(getByText("Required Fields")).toBeTruthy();
+    expect(getByText("Duration cannot be read")).toBeTruthy();
+    expect(getByText("Channel is missing")).toBeTruthy();
+    fireEvent.click(
+      getByRole("button", { name: "Edit Duration in Wait a day" })
+    );
+    expect(onGoToStep).toHaveBeenCalledWith("wait", "waitDuration");
+  });
+
     const { getByRole, getByText } = renderIssues(
       issuesModel({
         totalIssues: 1,

@@ -46,6 +46,7 @@ import {
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import { waitDurationCannotBeRead } from "@wfgraph/shared/actions/action-config-validation";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   DEFAULT_WAIT_TIMEOUT,
@@ -375,6 +376,7 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
         <div className="space-y-2">
           <WaitFieldLabel
             htmlFor="waitDuration"
+            id="waitDuration-label"
             label={WAIT_FIELD_LABELS.waitDuration}
           >
             Enter 24h, 90m, milliseconds, or an ISO 8601 duration such as P1D.
@@ -384,6 +386,8 @@ function DelayWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
             disabled={disabled}
             fieldType={WAIT_VALUE_TARGETS.waitDuration.type}
             id="waitDuration"
+            invalid={waitDurationCannotBeRead(configuredWaitDuration)}
+            labelledBy="waitDuration-label"
             onChange={(value) => onUpdateConfig({ waitDuration: value })}
             placeholder="24h, 90m, 3600000, or P1D"
             value={configuredWaitDuration}
