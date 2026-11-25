@@ -370,6 +370,27 @@
     animation: none !important;
   }
 
+  /* Every popup that enters through tw-animate-css (dialogs, alert dialogs,
+     menus, popovers, selects, tooltips, the command palette) keeps its fade and
+     loses its zoom, slide and blur. The variables are what the `enter` and
+     `exit` keyframes read, and `!important` is what beats a
+     `data-open:zoom-in-95` class, which outranks `motion-reduce:animate-none`
+     on specificity and kept the keyframe running. */
+  *,
+  ::before,
+  ::after {
+    --tw-enter-scale: 1 !important;
+    --tw-exit-scale: 1 !important;
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+    --tw-enter-blur: 0 !important;
+    --tw-exit-blur: 0 !important;
+    --tw-enter-rotate: 0 !important;
+    --tw-exit-rotate: 0 !important;
+  }
+
   /* Panel and node transitions collapse to an instant state change rather than
      being removed, so hierarchy and position still update. */
   .node-container,
@@ -401,6 +422,14 @@
 .group-node-container[data-selected="true"] {
   outline: calc(4px / var(--rf-zoom, 1)) solid var(--selection);
   outline-offset: calc(3px / var(--rf-zoom, 1));
+}
+
+/* A change marker on a canvas card grows as the canvas zooms out, so its 12px
+   letter still reads at 12px on screen. Changes opens near 0.5 zoom, where an
+   unscaled letter measured 5px. The cap of 3 keeps the disc inside the card. */
+.react-flow__node .comparison-marker {
+  transform-origin: top right;
+  scale: clamp(1, calc(1 / var(--rf-zoom, 1)), 3);
 }
 
 /* The canvas publishes a two-state zoom presentation once per viewport move.
@@ -439,14 +468,6 @@
 
 /* The attribution and the MiniMap sit beside open Canvas Reveal, whose covered
    width the canvas box publishes as `--reveal-occupied-width`. The panel's own
-/* A change marker on a canvas card grows as the canvas zooms out, so its 12px
-   letter still reads at 12px on screen. Changes opens near 0.5 zoom, where an
-   unscaled letter measured 5px. The cap of 3 keeps the disc inside the card. */
-.react-flow__node .comparison-marker {
-  transform-origin: top right;
-  scale: clamp(1, calc(1 / var(--rf-zoom, 1)), 3);
-}
-
    margin keeps the gap to Reveal's edge. The extra classes outrank React Flow's
    `.react-flow__panel.right`, which loads after this file. */
 .react-flow .react-flow__panel.react-flow__attribution.right,
