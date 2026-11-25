@@ -210,8 +210,10 @@ function RegionHeader({
             className="size-[0.8em] shrink-0 text-muted-foreground"
             strokeWidth={2}
           />
-          {/* Written out, so the count is not read as a step number. */}
-          <span className="font-normal text-muted-foreground">
+          {/* Written out, so the count is not read as a step number. Set in
+            foreground, since Graphite Mid measures 4.42:1 on the Canvas
+            Region fill. */}
+          <span className="font-normal text-foreground">
             {memberCount === 1 ? "1 step" : `${memberCount} steps`}
           </span>
           {markStatus ? (

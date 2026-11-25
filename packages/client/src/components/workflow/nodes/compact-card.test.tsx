@@ -792,7 +792,8 @@ describe("the number tier, below a compact title's 11px", () => {
       "[data-slot='group-region-header-mark']"
     );
     expect(mark?.querySelector("svg")).not.toBeNull();
-    expect(view.getByText("0 steps")).toBeTruthy();
+    // In foreground: Graphite Mid on the region's fill is under 4.5:1.
+    expect(view.getByText("0 steps").className).toContain("text-foreground");
     expect(view.queryByRole("button", { name: /Collapse group/ })).toBeNull();
   });
 
