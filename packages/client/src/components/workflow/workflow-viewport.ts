@@ -134,14 +134,14 @@ function viewportShowsGraph(input: {
  * leave.
  *
  * The zoom fits the whole graph with the padding and the ceiling of zoom 1
- * that Fit view uses, and never goes above `zoomLimit`. `zoomLimit` is that
- * ceiling when a workflow opens, and the current zoom when a view changes, so
- * a view change never zooms in. The outline beside the canvas carries each
- * step's text, so the canvas opens on the workflow's shape. The Lifecycle card
- * sits at the top center of `usable` when the graph shows whole there. A graph
- * that fits but would clip at that anchor is centered. A graph too large to
- * fit even at `WORKFLOW_CANVAS_MIN_ZOOM` keeps the anchor and runs off the
- * bottom edge.
+ * that Fit view uses, and never goes below `WORKFLOW_NUMBER_CARD_ZOOM`, so a
+ * workflow opens with every card showing its title. It never goes above
+ * `zoomLimit`, which is that ceiling when a workflow opens and the current zoom
+ * when a view changes, so a view change never zooms in. The Lifecycle card sits
+ * at the top center of `usable` when the graph shows whole there. A graph that
+ * fits but would clip at that anchor is centered. A graph that does not fit at
+ * the compact tier's lowest zoom keeps the anchor and runs off the bottom edge;
+ * Fit view still fits it whole.
  */
 export function openingViewport(input: {
   usable: Bounds;
@@ -158,7 +158,10 @@ export function openingViewport(input: {
     WORKFLOW_FIT_VIEW_MAX_ZOOM,
     WORKFLOW_FIT_VIEW_PADDING
   );
-  const zoom = Math.min(input.zoomLimit, fitted.zoom);
+  const zoom = Math.min(
+    input.zoomLimit,
+    Math.max(fitted.zoom, WORKFLOW_NUMBER_CARD_ZOOM)
+  );
   const anchored = lifecycleAnchorViewport({
     canvasWidth: usable.width,
     nodePosition: input.lifecycle.nodePosition,

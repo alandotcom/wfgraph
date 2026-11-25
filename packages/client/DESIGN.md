@@ -294,12 +294,14 @@ segmented control precedes the Run split button and **Publish** at desktop
 widths. Below `md` the two views sit at the top of the toolbar's overflow
 menu, the active one checked, above the run commands and **Publish**. The
 columns, editing lock, and status strip always follow the same active view.
-A workflow opens fitted to the whole graph, with the padding **Fit view** uses
-and no higher than 100%, so a small workflow is not blown up. The outline
-carries each step's text, so the canvas opens on the workflow's shape. The
-Lifecycle card sits at the top center of the usable canvas. A graph that fits
-but would clip at that anchor is centered, and a graph too large to fit at the
-lowest zoom runs off the bottom edge. A camera remembered for the view wins. When a resolved
+A workflow opens with its cards readable. The camera fits the whole graph, with
+the padding **Fit view** uses and no higher than 100%, so a small workflow is
+not blown up, when that leaves every card at the compact form or larger, with
+its number and title. Otherwise it opens at the compact form's lowest zoom,
+0.52. The Lifecycle card sits at the top center of the usable canvas. A graph
+that fits but would clip at that anchor is centered, and a graph that does not
+fit at 0.52 runs off the bottom edge. **Fit view** still fits the whole graph,
+and the number-only form is there for a person who zooms out. A camera remembered for the view wins. When a resolved
 view changes to a view with no remembered camera, the canvas places the graph
 the same way, never zooming in past the zoom it had. A run that failed, is
 waiting, or was canceled then moves the least distance that puts the step where

@@ -26,9 +26,11 @@ import {
 import { REVEAL_PADDING_PX } from "./canvas-reveal/reveal-geometry";
 import { useOpeningCamera } from "./use-opening-camera";
 import {
+  cardTierAtZoom,
   WORKFLOW_CANVAS_MIN_ZOOM,
   WORKFLOW_FIT_VIEW_MAX_ZOOM,
   WORKFLOW_FIT_VIEW_PADDING,
+  WORKFLOW_NUMBER_CARD_ZOOM,
 } from "./workflow-viewport";
 
 const CANVAS = { width: 1200, height: 800 };
@@ -207,7 +209,7 @@ beforeEach(() => {
 });
 
 describe("useOpeningCamera", () => {
-  it("opens a large Draft fitted whole with the Lifecycle card at the top center, in one move", async () => {
+  it("opens a large Draft on titled cards with the Lifecycle card at the top center, in one move", async () => {
     const camera = await renderOpeningCamera({
       nodes: LARGE_GRAPH,
       search: {},
@@ -218,7 +220,12 @@ describe("useOpeningCamera", () => {
     expectSteadyCamera(camera.motion.moves, camera.start);
     expect(camera.motion.moves).toHaveLength(1);
     const viewport = camera.viewport();
-    expect(viewport.zoom).toBeCloseTo(LARGE_GRAPH_FITTED_ZOOM);
+    // Fitting it whole would draw every card by number alone, so the camera
+    // opens at the compact tier's lowest zoom and the graph runs off the
+    // bottom edge.
+    expect(LARGE_GRAPH_FITTED_ZOOM).toBeLessThan(WORKFLOW_NUMBER_CARD_ZOOM);
+    expect(viewport.zoom).toBe(WORKFLOW_NUMBER_CARD_ZOOM);
+    expect(cardTierAtZoom(viewport.zoom)).toBe("compact");
     const lifecycle = screenBox(LARGE_GRAPH[0], viewport);
     expect((lifecycle.left + lifecycle.right) / 2).toBeCloseTo(
       CANVAS.width / 2
@@ -238,7 +245,7 @@ describe("useOpeningCamera", () => {
     expectSteadyCamera(camera.motion.moves, camera.start);
     expect(camera.motion.moves).toHaveLength(1);
     const viewport = camera.viewport();
-    expect(viewport.zoom).toBeCloseTo(LARGE_GRAPH_FITTED_ZOOM);
+    expect(viewport.zoom).toBe(WORKFLOW_NUMBER_CARD_ZOOM);
     const stopped = screenBox(LARGE_GRAPH[2], viewport);
     expect(stopped.left).toBeGreaterThanOrEqual(REVEAL_PADDING_PX);
     expect(stopped.right).toBeLessThanOrEqual(CANVAS.width - REVEAL_PADDING_PX);

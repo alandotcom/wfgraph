@@ -121,11 +121,12 @@ describe("workflow viewport policy", () => {
     ).toEqual({ x: 204, y: -32, zoom: 1 });
   });
 
-  it("opens a large graph fitted whole, at the zoom Fit view chooses", () => {
-    // About the seeded 16-step workflow in a three-column editor: the canvas
-    // between the outline and the details column.
+  it("opens a large graph fitted whole, at the zoom Fit view chooses, when every card keeps its title there", () => {
+    // A graph wider than the canvas between the outline and the details
+    // column, which Fit view fits at about 0.56, above the compact tier's
+    // lowest zoom.
     const usable = { x: 0, y: 0, width: 700, height: 798 };
-    const graphBounds = { x: 0, y: 0, width: 1050, height: 1370 };
+    const graphBounds = { x: 0, y: 0, width: 1050, height: 1000 };
     const viewport = openingViewport({
       usable,
       graphBounds,
@@ -143,6 +144,7 @@ describe("workflow viewport policy", () => {
     );
     expect(viewport.zoom).toBe(fitView.zoom);
     expect(viewport.zoom).toBeLessThan(1);
+    expect(cardTierAtZoom(viewport.zoom)).toBe("compact");
     // Every card is on screen.
     expect(viewport.x + graphBounds.x * viewport.zoom).toBeGreaterThanOrEqual(
       0
@@ -217,7 +219,7 @@ describe("workflow viewport policy", () => {
     ).toEqual({ x: 102, y: 347, zoom: 0.5 });
   });
 
-  it("keeps the Lifecycle anchor for a graph too large to fit at the minimum zoom, which runs off the bottom edge", () => {
+  it("keeps the Lifecycle anchor for a graph too large to fit at the compact tier, which runs off the bottom edge", () => {
     expect(
       openingViewport({
         usable: { x: 0, y: 0, width: 1000, height: 800 },
@@ -226,9 +228,9 @@ describe("workflow viewport policy", () => {
         zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
       })
     ).toEqual({
-      x: 500 - 296 * WORKFLOW_CANVAS_MIN_ZOOM,
-      y: 48 - 80 * WORKFLOW_CANVAS_MIN_ZOOM,
-      zoom: WORKFLOW_CANVAS_MIN_ZOOM,
+      x: 500 - 296 * WORKFLOW_NUMBER_CARD_ZOOM,
+      y: 48 - 80 * WORKFLOW_NUMBER_CARD_ZOOM,
+      zoom: WORKFLOW_NUMBER_CARD_ZOOM,
     });
   });
 
@@ -243,19 +245,34 @@ describe("workflow viewport policy", () => {
     expect(cardTierAtZoom(WORKFLOW_CANVAS_MIN_ZOOM)).toBe("number");
   });
 
-  it("opens the seeded 16-step workflow, Group in place, on number cards", () => {
+  it("opens the seeded 16-step workflow on titled cards, with the Lifecycle card at the top centre", () => {
     // The canvas between the outline and the details column of a 1512 by 982
     // window, where the 16-step workflow with its Group drawn in place fits
-    // at about 0.37: a compact title would draw at about 8px there.
+    // whole only at about 0.37, which would draw every card by number alone.
+    const usable = { x: 0, y: 0, width: 770, height: 872 };
     const viewport = openingViewport({
-      usable: { x: 0, y: 0, width: 770, height: 872 },
+      usable,
       graphBounds: { x: 0, y: 0, width: 1050, height: 1960 },
       lifecycle: { nodePosition: { x: 429, y: 0 }, nodeWidth: 192 },
       zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
     });
 
-    expect(viewport.zoom).toBeCloseTo(0.37, 2);
-    expect(cardTierAtZoom(viewport.zoom)).toBe("number");
+    expect(viewport.zoom).toBe(WORKFLOW_NUMBER_CARD_ZOOM);
+    expect(cardTierAtZoom(viewport.zoom)).toBe("compact");
+    // The Lifecycle card's centre sits at the canvas's centre, 48px down.
+    expect(viewport.x + (429 + 96) * viewport.zoom).toBeCloseTo(385);
+    expect(viewport.y).toBe(48);
+  });
+
+  it("keeps a lower zoom a person chose when a view changes", () => {
+    const viewport = openingViewport({
+      usable: { x: 0, y: 0, width: 770, height: 872 },
+      graphBounds: { x: 0, y: 0, width: 1050, height: 1960 },
+      lifecycle: { nodePosition: { x: 429, y: 0 }, nodeWidth: 192 },
+      zoomLimit: 0.3,
+    });
+
+    expect(viewport.zoom).toBe(0.3);
   });
 });
 
