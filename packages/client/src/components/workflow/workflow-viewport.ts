@@ -47,11 +47,12 @@ export function lifecycleAnchorViewport(input: {
 }
 
 /**
- * The lowest zoom a workflow opens at. A step's 14px title renders at 12.6px
- * there, above the 12px floor of the type scale, so every title on screen can
- * be read without zooming in.
+ * The lowest zoom a workflow opens at. A step's 12px captions (its
+ * description, outlet labels, edge labels and run status chip) render at
+ * 12px there, the floor of the type scale, so every line on screen can be
+ * read without zooming in.
  */
-export const WORKFLOW_READABLE_ZOOM = 0.9;
+export const WORKFLOW_READABLE_ZOOM = 1;
 
 /** Screen pixels between the top of the usable canvas and an anchored Lifecycle card. */
 const LIFECYCLE_TOP_PX = 48;

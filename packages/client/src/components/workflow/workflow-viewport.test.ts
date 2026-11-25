@@ -130,8 +130,8 @@ describe("workflow viewport policy", () => {
     });
 
     expect(viewport.zoom).toBe(WORKFLOW_READABLE_ZOOM);
-    // A 14px title renders at 12px or more.
-    expect(14 * viewport.zoom).toBeGreaterThanOrEqual(12);
+    // A 12px caption renders at 12px or more.
+    expect(12 * viewport.zoom).toBeGreaterThanOrEqual(12);
     const lifecycleCenter = viewport.x + (429 + 192 / 2) * viewport.zoom;
     expect(lifecycleCenter).toBeCloseTo(usable.width / 2);
     expect(viewport.y).toBe(48);
@@ -193,7 +193,11 @@ describe("workflow viewport policy", () => {
         lifecycle: { nodePosition: { x: 200, y: 80 }, nodeWidth: 192 },
         zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
       })
-    ).toEqual({ x: 500 - 296 * WORKFLOW_READABLE_ZOOM, y: -24, zoom: 0.9 });
+    ).toEqual({
+      x: 500 - 296 * WORKFLOW_READABLE_ZOOM,
+      y: 48 - 80 * WORKFLOW_READABLE_ZOOM,
+      zoom: WORKFLOW_READABLE_ZOOM,
+    });
   });
 
   it("uses one discrete overview presentation for zoomed-out graphs", () => {
