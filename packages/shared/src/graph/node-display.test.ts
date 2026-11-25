@@ -5,8 +5,8 @@ import {
 } from "#src/extensions/catalog";
 import {
   currentTemplateDisplayText,
+  currentTokenDisplay,
   currentTokenDisplayText,
-  tokenSourceIsLive,
 } from "#src/graph/node-display";
 import {
   ENTITY_STATE_SOURCE_ID,
@@ -68,7 +68,7 @@ function tokenOf(raw: string) {
   return token;
 }
 
-describe("currentTokenDisplayText", () => {
+describe("currentTokenDisplay", () => {
   it("names a renamed step by its current label", () => {
     const token = tokenOf(
       formatTemplateToken({
@@ -101,10 +101,10 @@ describe("currentTokenDisplayText", () => {
     const token = tokenOf(patientToken);
     const nodes = [member, lifecycleTracking("crm/patient")];
 
-    expect(currentTokenDisplayText(token, nodes, catalog)).toBe(
-      "Patient.status"
-    );
-    expect(tokenSourceIsLive(token, nodes, catalog)).toBe(true);
+    expect(currentTokenDisplay(token, nodes, catalog)).toEqual({
+      text: "Patient.status",
+      sourceIsLive: true,
+    });
   });
 
   // The badge draws such a token broken, holding the label it was written
@@ -117,10 +117,10 @@ describe("currentTokenDisplayText", () => {
     (_case, nodes) => {
       const token = tokenOf(patientToken);
 
-      expect(currentTokenDisplayText(token, nodes, catalog)).toBe(
-        "Old Patient.status"
-      );
-      expect(tokenSourceIsLive(token, nodes, catalog)).toBe(false);
+      expect(currentTokenDisplay(token, nodes, catalog)).toEqual({
+        text: "Old Patient.status",
+        sourceIsLive: false,
+      });
     }
   );
 

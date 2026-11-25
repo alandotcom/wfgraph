@@ -1,8 +1,5 @@
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import {
-  currentTokenDisplayText,
-  tokenSourceIsLive,
-} from "@wfgraph/shared/graph/node-display";
+import { currentTokenDisplay } from "@wfgraph/shared/graph/node-display";
 import { parseTemplate } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 
@@ -384,22 +381,19 @@ export function createBadgeEditor(
         continue;
       }
 
-      const badge = document.createElement("span");
-      badge.className = tokenSourceIsLive(
+      const display = currentTokenDisplay(
         segment.token,
         renderOptions.nodes,
         catalog
-      )
+      );
+      const badge = document.createElement("span");
+      badge.className = display.sourceIsLive
         ? LIVE_BADGE_CLASS
         : BROKEN_BADGE_CLASS;
       badge.contentEditable = "false";
       // The raw token is what `readText` reads back out of the DOM.
       badge.setAttribute("data-template", segment.token.raw);
-      badge.textContent = currentTokenDisplayText(
-        segment.token,
-        renderOptions.nodes,
-        catalog
-      );
+      badge.textContent = display.text;
       appendCaretStop();
       container.appendChild(badge);
       appendCaretStop();

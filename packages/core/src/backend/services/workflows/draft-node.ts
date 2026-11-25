@@ -6,6 +6,7 @@
  */
 
 import { Effect } from "effect";
+import { STEP_INTERNAL_INPUT_KEYS } from "#src/backend/extensions/steps/step-handler";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
@@ -27,14 +28,11 @@ import {
   type TemplateToken,
 } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
-import {
-  flattenConfigFields,
-  literalFieldKeys,
-  templateJsonFieldShapes,
-} from "@wfgraph/shared/plugins/action-fields";
+import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import {
   readConfigValue,
   type TemplateConfigRules,
+  templateConfigRules,
 } from "@wfgraph/shared/plugins/template-config";
 import {
   type JsonObject,
@@ -85,7 +83,8 @@ export type WfGraphDraftRow = {
  * runs. `template` is a string the engine resolves references in, `rows` is a
  * `key-value` field whose row values it resolves one at a time, and `value` is
  * handed to the step as stored, such as a value that is not a string or a
- * string under a `literal` field.
+ * string under a `literal` field. A `key-value` field whose text is not a list
+ * of rows is answered as `template`, since the engine reads it as one.
  */
 export type WfGraphDraftField =
   | { kind: "template"; segments: readonly WfGraphDraftSegment[] }
@@ -113,9 +112,11 @@ export type WfGraphDraftNode = {
   revision: number;
   /**
    * For a node running a host action, one entry per input the action declares
-   * and the node stores, in the declared order. Empty for any other node,
-   * including an integration action, a built-in such as Wait, and an action
-   * the catalog does not hold.
+   * and the node stores, in the declared order, except that an integer-like
+   * key comes first, as in any JavaScript object. An input named `actionType`
+   * or `integrationId` has no entry, since the step never receives it. Empty
+   * for any other node, including an integration action, a built-in such as
+   * Wait, and an action the catalog does not hold.
    */
   fields: Record<string, WfGraphDraftField>;
 };
@@ -177,7 +178,7 @@ function draftField(
   if (reading.kind === "template") {
     return {
       kind: "template",
-      segments: templateSegments(reading.value, workflow),
+      segments: templateSegments(reading.text, workflow),
     };
   }
   if (reading.kind === "key-value") {
@@ -189,10 +190,21 @@ function draftField(
       })),
     };
   }
-  // The `stored` reading. The `provider-fields` reading needs a field type
-  // that a host action's `configFields` type excludes.
+  if (reading.kind === "provider-fields") {
+    // A host action's `configFields` type excludes the `provider-fields` type.
+    return { kind: "value", value };
+  }
+  reading.kind satisfies "stored";
   return { kind: "value", value };
 }
+
+/**
+ * The keys the engine removes from a step's input before the step reads it,
+ * so a host action input declared under one of them never reaches the step.
+ */
+const STEP_INTERNAL_KEYS: ReadonlySet<string> = new Set(
+  STEP_INTERNAL_INPUT_KEYS
+);
 
 function draftFields(
   actionId: string | undefined,
@@ -206,15 +218,13 @@ function draftFields(
   if (!action || action.integration !== undefined) {
     return {};
   }
-  const rules: TemplateConfigRules = {
-    literalKeys: new Set(literalFieldKeys(action.configFields)),
-    jsonShapes: new Map(templateJsonFieldShapes(action.configFields)),
-  };
+  const rules = templateConfigRules(action.configFields);
   return Object.fromEntries(
     flattenConfigFields(action.configFields).flatMap((field) => {
-      const value = Object.hasOwn(config, field.key)
-        ? config[field.key]
-        : undefined;
+      const value =
+        Object.hasOwn(config, field.key) && !STEP_INTERNAL_KEYS.has(field.key)
+          ? config[field.key]
+          : undefined;
       return value === undefined
         ? []
         : [[field.key, draftField(field.key, value, rules, workflow)]];

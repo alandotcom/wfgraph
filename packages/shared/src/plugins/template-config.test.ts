@@ -75,7 +75,7 @@ describe("readConfigValue", () => {
   it("reads a plain string as one template", () => {
     expect(readConfigValue("subject", entityToken, rules)).toEqual({
       kind: "template",
-      value: entityToken,
+      text: entityToken,
     });
   });
 
@@ -122,7 +122,7 @@ describe("readConfigValue", () => {
   it("reads key-value text that holds no rows as one template", () => {
     expect(readConfigValue("headers", "not rows", rules)).toEqual({
       kind: "template",
-      value: "not rows",
+      text: "not rows",
     });
   });
 
@@ -142,7 +142,7 @@ describe("readConfigValue", () => {
   it("reads provider-fields text that holds no entries as one template", () => {
     expect(readConfigValue("variables", "[1, 2]", rules)).toEqual({
       kind: "template",
-      value: "[1, 2]",
+      text: "[1, 2]",
     });
   });
 });

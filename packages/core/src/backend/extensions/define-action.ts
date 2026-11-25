@@ -36,7 +36,7 @@ import {
 import { asStandardSchema } from "@wfgraph/shared/types/schema";
 import {
   type ActionLink,
-  actionLinksProblem,
+  checkActionLinks,
 } from "@wfgraph/shared/extensions/action-links";
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import {
@@ -263,10 +263,9 @@ function inferOptionFields(
 }
 
 /**
- * The links with their label and url trimmed, or undefined for an action that
- * declares none. Throws when `actionLinksProblem` refuses the trimmed links,
- * prefixing its sentence with the action id and the link's position counted
- * from 1.
+ * The links `checkActionLinks` answers, or undefined for an action that
+ * declares none. Throws when `checkActionLinks` refuses one, prefixing its
+ * sentence with the action id.
  */
 function normalizeActionLinks(
   actionId: string,
@@ -275,17 +274,11 @@ function normalizeActionLinks(
   if (!links || links.length === 0) {
     return undefined;
   }
-  const trimmed = links.map((link) => ({
-    label: link.label.trim(),
-    url: link.url.trim(),
-  }));
-  const refusal = actionLinksProblem(trimmed);
-  if (refusal) {
-    throw new Error(
-      `Action "${actionId}" link ${refusal.index + 1}: ${refusal.problem}`
-    );
+  const checked = checkActionLinks(links);
+  if (!checked.valid) {
+    throw new Error(`Action "${actionId}" ${checked.problem}`);
   }
-  return trimmed;
+  return checked.links;
 }
 
 function normalizeActionIdentity(

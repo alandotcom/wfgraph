@@ -813,12 +813,12 @@ export function ActionConfig({
   const handleCategoryChange = (newCategory: string) => {
     const firstAction = categories[newCategory]?.[0];
     if (firstAction) {
-      onUpdateConfig({ actionType: firstAction.id });
+      onUpdateConfig({ [ACTION_TYPE_CONFIG_KEY]: firstAction.id });
     }
   };
 
   const handleActionTypeChange = (value: string) => {
-    onUpdateConfig({ actionType: value });
+    onUpdateConfig({ [ACTION_TYPE_CONFIG_KEY]: value });
   };
 
   const catalogAction = actionType

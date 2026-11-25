@@ -6,6 +6,8 @@
  */
 
 import { Schema } from "effect";
+import { omit } from "es-toolkit/object";
+import { ACTION_TYPE_CONFIG_KEY } from "@wfgraph/shared/graph/node-config";
 import { readAs } from "@wfgraph/shared/types/schema";
 
 /**
@@ -53,7 +55,19 @@ type StepInputWithInternalFields = StepInput & {
 };
 
 /**
- * The step's own config, with the three keys the engine's dispatch owns removed.
+ * The keys the engine's dispatch owns in a step's input record: the run
+ * context, the action id and the connection id. `stripInternalFields` removes
+ * them before a step reads its input, so a step never receives an input of its
+ * own declared under one of these names.
+ */
+export const STEP_INTERNAL_INPUT_KEYS = [
+  "_context",
+  ACTION_TYPE_CONFIG_KEY,
+  "integrationId",
+] as const;
+
+/**
+ * The step's own config, with `STEP_INTERNAL_INPUT_KEYS` removed.
  *
  * A run log shows what the node was configured with, so `_context` and the two
  * fields naming the action and its connection come out. A step that hands its
@@ -62,13 +76,6 @@ type StepInputWithInternalFields = StepInput & {
  */
 export function stripInternalFields<T extends StepInputWithInternalFields>(
   input: T
-): Omit<T, "_context" | "actionType" | "integrationId"> {
-  const {
-    _context: _ignoredContext,
-    actionType: _ignoredActionType,
-    integrationId: _ignoredIntegrationId,
-    ...result
-  } = input;
-
-  return result;
+): Omit<T, (typeof STEP_INTERNAL_INPUT_KEYS)[number]> {
+  return omit(input, STEP_INTERNAL_INPUT_KEYS);
 }

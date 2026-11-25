@@ -310,17 +310,17 @@ not exist. Otherwise it answers a `WfGraphDraftNode`:
   integration action, and a node whose action the calling app or runner does not register
   each answer `fields: {}`.
 - For a host action node, `fields` holds one entry per input the action declares and the
-  node stores, in the order the action declares them. A field declared inside a group has
-  an entry too, and a stored key the action does not declare has none.
+  node stores. A field declared inside a group has an entry too, and a stored key the
+  action does not declare has none. An input named `actionType` or `integrationId` has no
+  entry, because the engine removes both before the step reads its input.
 - Each entry follows how the engine reads that input when the step runs.
   `{ kind: "template", segments }` is a string the engine resolves references in.
   `{ kind: "rows", rows }` is a `key-value` field, with one `{ name, segments }` per row:
   the engine resolves each row's value as its own template and leaves the name as
-  written. `{ kind: "value", value }` is handed to the step as stored: a value that is not
-  a string, or a string under a `literal: true` field or an input named `actionType`,
-  `condition` or `conditionModel`. A
-  `key-value` field whose text holds no rows is a `template`, since the engine reads it as
-  one.
+  written. `{ kind: "value", value }` is handed to the step as stored, which covers a value
+  that is not a string and a string the engine resolves no reference in, such as one under
+  a `literal: true` field. A `key-value` field whose text is not a list of rows is a
+  `template`, since the engine reads it as one.
 - A segment is `{ kind: "text", text }` or `{ kind: "reference", source, fieldPath, display }`.
   `source` is `{ kind: "step", nodeId }` for another step's output or
   `{ kind: "entity", entityType }` for the run's Entity state, where `entityType` is the

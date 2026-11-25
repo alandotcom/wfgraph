@@ -1,49 +1,67 @@
 import { describe, expect, it } from "vitest";
 import {
-  actionLinksProblem,
   actionLinkUrlProblem,
+  checkActionLinks,
   fillActionLinkUrl,
 } from "#src/extensions/action-links";
 
-describe("actionLinksProblem", () => {
-  it("answers undefined for a list of valid links", () => {
+describe("checkActionLinks", () => {
+  it("answers a list of valid links", () => {
     expect(
-      actionLinksProblem([
+      checkActionLinks([
         { label: "Members", url: "/members/{nodeId}" },
         { label: "Orders", url: "https://app.example.com/orders" },
       ])
-    ).toBeUndefined();
+    ).toEqual({
+      valid: true,
+      links: [
+        { label: "Members", url: "/members/{nodeId}" },
+        { label: "Orders", url: "https://app.example.com/orders" },
+      ],
+    });
+  });
+
+  it("trims each label and url", () => {
+    expect(
+      checkActionLinks([{ label: "  Members ", url: " /members/{nodeId}  " }])
+    ).toEqual({
+      valid: true,
+      links: [{ label: "Members", url: "/members/{nodeId}" }],
+    });
   });
 
   it("names a blank label", () => {
     expect(
-      actionLinksProblem([
+      checkActionLinks([
         { label: "Members", url: "/members" },
         { label: " ", url: "/orders" },
       ])
-    ).toEqual({ index: 1, problem: "the label is blank" });
+    ).toEqual({ valid: false, problem: "link 2: the label is blank" });
   });
 
   it("names the position of the earlier link holding the same label", () => {
     expect(
-      actionLinksProblem([
+      checkActionLinks([
         { label: "Members", url: "/members" },
         { label: "Orders", url: "/orders" },
-        { label: "Members", url: "/members/all" },
+        { label: " Members", url: "/members/all" },
       ])
-    ).toEqual({ index: 2, problem: "the label is the same as link 1's" });
+    ).toEqual({
+      valid: false,
+      problem: "link 3: the label is the same as link 1's",
+    });
   });
 
   it("names the url problem of the link that has one", () => {
     expect(
-      actionLinksProblem([
+      checkActionLinks([
         { label: "Members", url: "/members" },
         { label: "Orders", url: "//evil.example.com/orders" },
       ])
     ).toEqual({
-      index: 1,
+      valid: false,
       problem:
-        "the url starts with // or /\\, which a browser reads as another origin",
+        "link 2: the url starts with // or /\\, which a browser reads as another origin",
     });
   });
 });

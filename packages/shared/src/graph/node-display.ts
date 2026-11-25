@@ -95,25 +95,32 @@ function liveTokenSourceLabel(
 }
 
 /**
- * Whether the workflow made of `nodes` still offers the source a token reads
- * from. `currentTokenDisplayText` shows a token this answers false for by its
- * stored label.
+ * What a builder reads for one token, and whether the workflow made of
+ * `nodes` still offers the source the token reads from. `text` is the name of
+ * that source, then the path. The name is a step's display name from `nodes`,
+ * or the catalog label of the Entity the workflow tracks. The label stored in
+ * the token answers when `sourceIsLive` is false, which keeps what the token
+ * was written to read in view.
  */
-export function tokenSourceIsLive(
-  token: Pick<TemplateToken, "nodeId" | "sourceType">,
+export function currentTokenDisplay(
+  token: Pick<
+    TemplateToken,
+    "nodeId" | "sourceType" | "nodeLabel" | "fieldPath"
+  >,
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
-): boolean {
-  return liveTokenSourceLabel(token, nodes, catalog) !== undefined;
+): { text: string; sourceIsLive: boolean } {
+  const liveLabel = liveTokenSourceLabel(token, nodes, catalog);
+  return {
+    text: templateTokenDisplayText({
+      nodeLabel: liveLabel ?? token.nodeLabel,
+      fieldPath: token.fieldPath,
+    }),
+    sourceIsLive: liveLabel !== undefined,
+  };
 }
 
-/**
- * What a builder reads for one token: the name of the source it reads from,
- * then the path. The name is a step's display name from `nodes`, or the
- * catalog label of the Entity the workflow tracks. The label stored in the
- * token answers when the workflow no longer offers the source, which keeps
- * what the token was written to read in view.
- */
+/** The `text` of `currentTokenDisplay`, for a caller that needs no more. */
 export function currentTokenDisplayText(
   token: Pick<
     TemplateToken,
@@ -122,10 +129,7 @@ export function currentTokenDisplayText(
   nodes: readonly WorkflowNode[],
   catalog: ExtensionCatalog
 ): string {
-  return templateTokenDisplayText({
-    nodeLabel: liveTokenSourceLabel(token, nodes, catalog) ?? token.nodeLabel,
-    fieldPath: token.fieldPath,
-  });
+  return currentTokenDisplay(token, nodes, catalog).text;
 }
 
 /**

@@ -135,7 +135,8 @@ The page reads the node with `app.workflows.readDraftNode({ workflowId, nodeId }
 workflow or node, else the label, `actionId`, the draft `revision`, and `fields`:
 for a host action node, each declared input read as the engine reads it, a
 `template` of text and reference segments, `rows` for a `key-value` field, or a
-stored `value`; every other node answers no fields. It
+stored `value`. An input named `actionType` or `integrationId` has no entry,
+since the step never receives it, and every other node answers no fields. It
 applies no `auth`, so the route authorizes the reader first. The editor starts a
 save when the link is clicked and does not wait for it, so the page reads again
 when its tab is shown. Copy the route from `docs/embedding.md` ("Action links and

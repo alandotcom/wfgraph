@@ -4,7 +4,12 @@ import {
   templateReferencesInString,
   type ConfigTemplateReference,
 } from "#src/graph/node-references";
-import type { TemplateJsonShape } from "#src/plugins/action-fields";
+import {
+  type ActionConfigField,
+  literalFieldKeys,
+  type TemplateJsonShape,
+  templateJsonFieldShapes,
+} from "#src/plugins/action-fields";
 import {
   type KeyValueRow,
   readKeyValueRows,
@@ -38,6 +43,22 @@ export type TemplateConfigRules = {
 };
 
 /**
+ * The rules for a node whose action declares `configFields`: its `literal`
+ * keys and its JSON-backed keys, groups flattened. `activeKeys` is for a Wait,
+ * whose current shape reads only some of its keys.
+ */
+export function templateConfigRules(
+  configFields: readonly ActionConfigField[],
+  activeKeys?: ReadonlySet<string>
+): TemplateConfigRules {
+  return {
+    literalKeys: new Set(literalFieldKeys(configFields)),
+    jsonShapes: new Map(templateJsonFieldShapes(configFields)),
+    activeKeys,
+  };
+}
+
+/**
  * Transform each string an action consumes as a template.
  *
  * JSON-backed fields are decoded before visiting their values so token parsing
@@ -67,7 +88,7 @@ export type ConfigValueReading =
   /** Handed to the step as stored, with no reference resolved in it. */
   | { kind: "stored" }
   /** One template string, resolved as a whole. */
-  | { kind: "template"; value: string }
+  | { kind: "template"; text: string }
   /** `key-value` rows: each row's value is a template, its name is not. */
   | { kind: "key-value"; rows: KeyValueRow[] }
   /** `provider-fields` entries: each string entry is a template. */
@@ -102,7 +123,7 @@ export function readConfigValue(
       return { kind: "provider-fields", entries };
     }
   }
-  return { kind: "template", value };
+  return { kind: "template", text: value };
 }
 
 /** One config value with each template string in it transformed. */
@@ -117,7 +138,7 @@ function mapConfigValue(
     return value;
   }
   if (reading.kind === "template") {
-    return transform({ configKey, field: configKey, value: reading.value });
+    return transform({ configKey, field: configKey, value: reading.text });
   }
   if (reading.kind === "key-value") {
     return JSON.stringify(

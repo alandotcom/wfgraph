@@ -572,7 +572,7 @@ function actionNode(input: {
       type: "action",
       description: input.description,
       config: {
-        actionType: input.actionId,
+        [ACTION_TYPE_CONFIG_KEY]: input.actionId,
         ...toConfigRecord(input.config ?? []),
       },
     },

@@ -88,8 +88,11 @@ const sendEmail: WorkflowNode = {
   },
 };
 
-/** The send-email node holding `config` and nothing else. */
-function sendEmailWith(config: Record<string, unknown>): WorkflowNode {
+/**
+ * The action node `send-1` holding `config` and nothing else, so `config`'s
+ * `actionType` names the action it runs.
+ */
+function actionNodeWith(config: Record<string, unknown>): WorkflowNode {
   return { ...sendEmail, data: { ...sendEmail.data, config } };
 }
 
@@ -137,6 +140,23 @@ const sendEmailAction: ActionMetadata = {
   outputFields: [],
 };
 
+/**
+ * A host action declaring inputs under the names of the two keys the engine
+ * removes from a step's input before the step reads it.
+ */
+const tagAction: ActionMetadata = {
+  id: "members/tag",
+  label: "Tag Member",
+  description: "Tags a member.",
+  category: "Members",
+  configFields: [
+    { key: "actionType", label: "Action type", type: "template-input" },
+    { key: "integrationId", label: "Integration", type: "template-input" },
+    { key: "tag", label: "Tag", type: "template-input" },
+  ],
+  outputFields: [],
+};
+
 /** An integration action that declares the key its node stores. */
 const integrationAction: ActionMetadata = {
   id: "mail/send",
@@ -162,7 +182,7 @@ const waitAction: ActionMetadata = {
 };
 
 const catalogLayer = stubExtensionCatalog({
-  actions: [sendEmailAction, integrationAction, waitAction],
+  actions: [sendEmailAction, tagAction, integrationAction, waitAction],
   entities: [
     {
       type: "member",
@@ -188,6 +208,25 @@ function read(
       )
     )
   );
+}
+
+/**
+ * The fields `readDraftNode` answers for the action node holding `config`, in
+ * a workflow that also holds `others`. The node runs `members/send-email`
+ * unless `config` names another action.
+ */
+function fieldsOf(
+  config: Record<string, unknown>,
+  others: WorkflowNode[] = []
+) {
+  return read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
+    Effect.succeed(
+      stored([
+        ...others,
+        actionNodeWith({ actionType: "members/send-email", ...config }),
+      ])
+    )
+  ).pipe(Effect.map((node) => node?.fields));
 }
 
 describe("readDraftNode", () => {
@@ -285,15 +324,9 @@ describe("readDraftNode", () => {
     () =>
       Effect.gen(function* () {
         const raw = `{{@${ENTITY_STATE_SOURCE_ID}:Member.firstName}}`;
-        const node = yield* read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
-          Effect.succeed(
-            stored([
-              sendEmailWith({ actionType: "members/send-email", subject: raw }),
-            ])
-          )
-        );
+        const fields = yield* fieldsOf({ subject: raw });
 
-        assert.deepStrictEqual(node?.fields, {
+        assert.deepStrictEqual(fields, {
           subject: {
             kind: "template",
             segments: [{ kind: "text", text: raw }],
@@ -302,19 +335,34 @@ describe("readDraftNode", () => {
       })
   );
 
-  effectIt.effect("leaves actionId off a node that is not an action", () =>
+  effectIt.effect.each([
+    {
+      kind: "a group node",
+      node: {
+        id: "group-1",
+        type: "group",
+        position: { x: 0, y: 0 },
+        data: { label: "Lookups", type: "group", config: {} },
+      } satisfies WorkflowNode,
+    },
+    {
+      kind: "a Lifecycle node",
+      node: {
+        ...tracksMember,
+        data: {
+          ...tracksMember.data,
+          config: {
+            ...tracksMember.data.config,
+            testPayloads: { manual: { memberId: "mem_1" } },
+          },
+        },
+      } satisfies WorkflowNode,
+    },
+  ])("answers no actionId and no fields for $kind", ({ node: stepNode }) =>
     Effect.gen(function* () {
-      const node = yield* read({ workflowId: "wf_1", nodeId: "group-1" }, () =>
-        Effect.succeed(
-          stored([
-            {
-              id: "group-1",
-              type: "group",
-              position: { x: 0, y: 0 },
-              data: { label: "Lookups", type: "group", config: {} },
-            },
-          ])
-        )
+      const node = yield* read(
+        { workflowId: "wf_1", nodeId: stepNode.id },
+        () => Effect.succeed(stored([stepNode]))
       );
 
       assert.isDefined(node);
@@ -324,76 +372,40 @@ describe("readDraftNode", () => {
   );
 
   effectIt.effect(
-    "leaves out a stored key the host action does not declare",
+    "answers the declared fields in the declared order, leaving out a stored key the action does not declare",
     () =>
       Effect.gen(function* () {
-        const node = yield* read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
-          Effect.succeed(
-            stored([
-              sendEmailWith({
-                actionType: "members/send-email",
-                subject: "Welcome",
-                internalNote: "draft two",
-              }),
-            ])
-          )
-        );
-
-        assert.deepStrictEqual(node?.fields, {
-          subject: {
-            kind: "template",
-            segments: [{ kind: "text", text: "Welcome" }],
-          },
+        const fields = yield* fieldsOf({
+          headers: "[]",
+          internalNote: "draft two",
+          priority: 1,
+          subject: "Welcome",
         });
+
+        assert.deepStrictEqual(Object.keys(fields ?? {}), [
+          "subject",
+          "priority",
+          "headers",
+        ]);
       })
   );
 
-  effectIt.effect("answers the declared fields in the declared order", () =>
-    Effect.gen(function* () {
-      const node = yield* read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
-        Effect.succeed(
-          stored([
-            sendEmailWith({
-              headers: "[]",
-              priority: 1,
-              actionType: "members/send-email",
-              subject: "Welcome",
-            }),
-          ])
-        )
-      );
+  // The engine removes both keys from the step's input before the step reads
+  // it, so the step never receives an input declared under either name.
+  effectIt.effect(
+    "answers no field for an input named actionType or integrationId",
+    () =>
+      Effect.gen(function* () {
+        const fields = yield* fieldsOf({
+          actionType: "members/tag",
+          integrationId: "int_1",
+          tag: "vip",
+        });
 
-      assert.deepStrictEqual(Object.keys(node?.fields ?? {}), [
-        "subject",
-        "priority",
-        "headers",
-      ]);
-    })
-  );
-
-  effectIt.effect("answers no fields for a Lifecycle node", () =>
-    Effect.gen(function* () {
-      const node = yield* read({ workflowId: "wf_1", nodeId: "entry" }, () =>
-        Effect.succeed(
-          stored([
-            {
-              ...tracksMember,
-              data: {
-                ...tracksMember.data,
-                config: {
-                  ...tracksMember.data.config,
-                  testPayloads: { manual: { memberId: "mem_1" } },
-                },
-              },
-            },
-          ])
-        )
-      );
-
-      assert.isDefined(node);
-      assert.notProperty(node, "actionId");
-      assert.deepStrictEqual(node?.fields, {});
-    })
+        assert.deepStrictEqual(fields, {
+          tag: { kind: "template", segments: [{ kind: "text", text: "vip" }] },
+        });
+      })
   );
 
   effectIt.effect("answers no fields for an integration action node", () =>
@@ -401,7 +413,7 @@ describe("readDraftNode", () => {
       const node = yield* read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
         Effect.succeed(
           stored([
-            sendEmailWith({
+            actionNodeWith({
               actionType: "mail/send",
               integrationId: "int_1",
               subject: `Hi ${entityToken}`,
@@ -420,7 +432,7 @@ describe("readDraftNode", () => {
       const node = yield* read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
         Effect.succeed(
           stored([
-            sendEmailWith({
+            actionNodeWith({
               actionType: BUILT_IN_ACTION_IDS.wait,
               duration: "5",
             }),
@@ -440,7 +452,7 @@ describe("readDraftNode", () => {
         const node = yield* read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
           Effect.succeed(
             stored([
-              sendEmailWith({
+              actionNodeWith({
                 actionType: "members/archived-action",
                 subject: "Welcome",
               }),
@@ -459,19 +471,12 @@ describe("readDraftNode", () => {
     "answers a literal field and a condition input as stored values",
     () =>
       Effect.gen(function* () {
-        const node = yield* read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
-          Effect.succeed(
-            stored([
-              sendEmailWith({
-                actionType: "members/send-email",
-                testAddress: `test+${stepToken}@example.com`,
-                condition: entityToken,
-              }),
-            ])
-          )
-        );
+        const fields = yield* fieldsOf({
+          testAddress: `test+${stepToken}@example.com`,
+          condition: entityToken,
+        });
 
-        assert.deepStrictEqual(node?.fields, {
+        assert.deepStrictEqual(fields, {
           testAddress: {
             kind: "value",
             value: `test+${stepToken}@example.com`,
@@ -485,23 +490,17 @@ describe("readDraftNode", () => {
     "reads a key-value field as rows, each value split and each name as written",
     () =>
       Effect.gen(function* () {
-        const node = yield* read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
-          Effect.succeed(
-            stored([
-              tracksMember,
-              lookup,
-              sendEmailWith({
-                actionType: "members/send-email",
-                headers: JSON.stringify([
-                  { name: stepToken, value: `Hello ${entityToken}` },
-                  { name: "X-Plain", value: "fixed" },
-                ]),
-              }),
-            ])
-          )
+        const fields = yield* fieldsOf(
+          {
+            headers: JSON.stringify([
+              { name: stepToken, value: `Hello ${entityToken}` },
+              { name: "X-Plain", value: "fixed" },
+            ]),
+          },
+          [tracksMember, lookup]
         );
 
-        assert.deepStrictEqual(node?.fields, {
+        assert.deepStrictEqual(fields, {
           headers: {
             kind: "rows",
             rows: [
@@ -529,21 +528,12 @@ describe("readDraftNode", () => {
 
   // The engine resolves such text as one template, so the read does too.
   effectIt.effect(
-    "reads a key-value field whose text holds no rows as one template",
+    "reads a key-value field whose text is not a list of rows as one template",
     () =>
       Effect.gen(function* () {
-        const node = yield* read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
-          Effect.succeed(
-            stored([
-              sendEmailWith({
-                actionType: "members/send-email",
-                headers: "not rows",
-              }),
-            ])
-          )
-        );
+        const fields = yield* fieldsOf({ headers: "not rows" });
 
-        assert.deepStrictEqual(node?.fields, {
+        assert.deepStrictEqual(fields, {
           headers: {
             kind: "template",
             segments: [{ kind: "text", text: "not rows" }],
@@ -554,18 +544,9 @@ describe("readDraftNode", () => {
 
   effectIt.effect("answers a field declared inside a group", () =>
     Effect.gen(function* () {
-      const node = yield* read({ workflowId: "wf_1", nodeId: "send-1" }, () =>
-        Effect.succeed(
-          stored([
-            sendEmailWith({
-              actionType: "members/send-email",
-              replyTo: "team@example.com",
-            }),
-          ])
-        )
-      );
+      const fields = yield* fieldsOf({ replyTo: "team@example.com" });
 
-      assert.deepStrictEqual(node?.fields, {
+      assert.deepStrictEqual(fields, {
         replyTo: {
           kind: "template",
           segments: [{ kind: "text", text: "team@example.com" }],

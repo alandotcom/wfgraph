@@ -1,11 +1,7 @@
 /** @jsxImportSource hono/jsx */
 /* oxlint-disable react/react-in-jsx-scope, react/jsx-key -- this file uses Hono's JSX runtime, which renders once on the server and reads no keys. */
 
-import type {
-  WfGraphDraftField,
-  WfGraphDraftNode,
-  WfGraphDraftSegment,
-} from "@wfgraph/core";
+import type { WfGraphDraftField, WfGraphDraftNode } from "@wfgraph/core";
 
 /**
  * Reloads the page whenever its tab is shown again. The editor starts a save
@@ -25,46 +21,24 @@ const previewCss = String.raw`
 `;
 
 /**
- * Template segments as text. A reference shows as a bracketed placeholder,
- * such as [Patient.status], where a real preview would put the value this
- * app holds for it.
+ * One input as text. A reference shows as a bracketed placeholder, such as
+ * [Patient.status], where a real preview would put the value this app holds
+ * for it. This app's action declares text inputs only, so any other kind of
+ * field is printed as JSON.
  */
-function Segments({ segments }: { segments: readonly WfGraphDraftSegment[] }) {
+function FieldValue({ field }: { field: WfGraphDraftField }) {
+  if (field.kind !== "template") {
+    return <p class="value">{JSON.stringify(field)}</p>;
+  }
   return (
-    <>
-      {segments.map((segment) =>
+    <p class="value">
+      {field.segments.map((segment) =>
         segment.kind === "text" ? (
           segment.text
         ) : (
           <span class="reference">[{segment.display}]</span>
         )
       )}
-    </>
-  );
-}
-
-/** One input as text, with a key-value field as one line per row. */
-function FieldValue({ field }: { field: WfGraphDraftField }) {
-  if (field.kind === "value") {
-    return <p class="value">{JSON.stringify(field.value)}</p>;
-  }
-  if (field.kind === "rows") {
-    return (
-      <dl>
-        {field.rows.map((row) => (
-          <>
-            <dt>{row.name}</dt>
-            <dd class="value">
-              <Segments segments={row.segments} />
-            </dd>
-          </>
-        ))}
-      </dl>
-    );
-  }
-  return (
-    <p class="value">
-      <Segments segments={field.segments} />
     </p>
   );
 }

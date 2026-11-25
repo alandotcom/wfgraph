@@ -65,18 +65,18 @@ import {
 } from "#src/lifecycle/wait-subscription";
 import {
   type ConfigTemplateReference,
+  ENTITY_STATE_SOURCE_ID,
   isEntityStateSourceId,
   referenceFieldForPath,
   templateTokenDisplayText,
 } from "#src/graph/node-references";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
 import { upstreamNodeIdsOver } from "#src/graph/upstream-nodes";
+import { flattenConfigFields } from "#src/plugins/action-fields";
 import {
-  flattenConfigFields,
-  literalFieldKeys,
-  templateJsonFieldShapes,
-} from "#src/plugins/action-fields";
-import { extractConsumedTemplateReferences } from "#src/plugins/template-config";
+  extractConsumedTemplateReferences,
+  templateConfigRules,
+} from "#src/plugins/template-config";
 import { type JsonObject, readJsonObjectLeniently } from "#src/types/json";
 import { asNonEmptyString } from "#src/types/string";
 
@@ -518,16 +518,12 @@ function consumedReferencesOf(input: {
   action: ActionMetadata | undefined;
 }): ConfigTemplateReference[] {
   const waitNode = isWaitNode(input.node);
-  const configFields = input.action?.configFields ?? [];
   return extractConsumedTemplateReferences(
     input.config,
-    {
-      literalKeys: new Set(literalFieldKeys(configFields)),
-      jsonShapes: new Map(templateJsonFieldShapes(configFields)),
-      activeKeys: waitNode
-        ? new Set<string>(waitTemplateKeysIn(input.config))
-        : undefined,
-    },
+    templateConfigRules(
+      input.action?.configFields ?? [],
+      waitNode ? new Set<string>(waitTemplateKeysIn(input.config)) : undefined
+    ),
     waitNode ? waitMatchTemplateStringsIn(input.config) : []
   );
 }
@@ -625,8 +621,19 @@ function collectBrokenReferenceIssues(input: {
         nodeLabel,
         fieldKey: CONDITION_MODEL_FIELD_KEY,
         fieldLabel: CONDITION_MODEL_FIELD_LABEL,
-        referencedNodeId: "$entity",
-        displayText: `${reference.entityType}.${reference.fieldPath}`,
+        referencedNodeId: ENTITY_STATE_SOURCE_ID,
+        // The catalog label when the workflow tracks this Entity, and the raw
+        // Entity type otherwise.
+        displayText: currentTokenDisplayText(
+          {
+            nodeId: ENTITY_STATE_SOURCE_ID,
+            sourceType: reference.entityType,
+            nodeLabel: reference.entityType,
+            fieldPath: reference.fieldPath,
+          },
+          input.nodes,
+          input.catalog
+        ),
         message: `Node "${nodeLabel}" references unavailable Entity data in Continue when`,
       });
     }
@@ -684,19 +691,6 @@ export function collectReferenceNotUpstreamIssues(input: {
     outlet: LIFECYCLE_CANCELED_HANDLE,
     edges: input.edges,
   });
-  const labelOf = (node: WorkflowNode): string => {
-    const actionType = readConfigTrimmedString(
-      node.data.config,
-      ACTION_TYPE_CONFIG_KEY
-    );
-    return workflowNodeLabel({
-      node,
-      actionLabel: actionType
-        ? findAction(input.catalog, actionType)?.label
-        : undefined,
-      actionType,
-    });
-  };
 
   return input.nodes.flatMap((node) => {
     if (node.data.type !== "action" || node.data.enabled === false) {
@@ -730,7 +724,11 @@ export function collectReferenceNotUpstreamIssues(input: {
 
     const upstream = upstreamOf(node.id);
     const readsStartedSide = canceledSide.has(node.id);
-    const nodeLabel = labelOf(node);
+    const nodeLabel = workflowNodeLabel({
+      node,
+      actionLabel: action?.label,
+      actionType,
+    });
     const readable = (referenced: WorkflowNode) =>
       upstream.has(referenced.id) ||
       (readsStartedSide && startedSide.has(referenced.id));
@@ -752,11 +750,10 @@ export function collectReferenceNotUpstreamIssues(input: {
           fieldKey: reference.field,
           fieldLabel,
           referencedNodeId: referenced.id,
-          displayText: currentTokenDisplayText(
-            reference,
-            input.nodes,
-            input.catalog
-          ),
+          displayText: templateTokenDisplayText({
+            nodeLabel: referencedLabel,
+            fieldPath: reference.fieldPath,
+          }),
           message: `Node "${nodeLabel}" reads "${referencedLabel}" in ${fieldLabel}, but no path leads from "${referencedLabel}" to "${nodeLabel}". Reference only a node upstream of "${nodeLabel}", or move "${nodeLabel}" below "${referencedLabel}".`,
         },
       ];
