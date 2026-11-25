@@ -8,8 +8,11 @@
 
 import { compact, partition, uniqBy } from "es-toolkit/array";
 import { useAtomValue } from "jotai";
+import { ArrowRight } from "lucide-react";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { Button } from "#src/components/ui/button";
+import { useGroupScopeNavigation } from "#src/components/workflow/use-group-scope-navigation";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
 import {
   comparisonFields,
@@ -35,12 +38,13 @@ import {
   comparisonBaseLabel,
   describeInspection,
   describeValidationDifference,
+  hasValidationToShow,
   inspectChange,
   issueIdentity,
   nodeValidationSides,
   type ChangedObject,
 } from "./changes-summary";
-import { EnterGroupButton, Section } from "./reveal-sections";
+import { Section } from "./reveal-sections";
 
 /**
  * The differences of the changed node `object` in `payload`. `objects` is the
@@ -111,7 +115,7 @@ export function ChangeDifferences({
         />
       ) : null}
       {inspection.groupFrame ? (
-        <EnterGroupButton groupId={inspection.nodeId} />
+        <RowEnterGroupButton groupId={inspection.nodeId} />
       ) : null}
     </>
   );
@@ -207,7 +211,8 @@ function StepProperties({
  * How the step's validation differs between the published version and the
  * draft, each side checked by the editor's issue checks against the extensions
  * available now. Missing connection issues are left out, since a published
- * version's connections are not part of the comparison.
+ * version's connections are not part of the comparison. A step with no issue
+ * in either version shows no section.
  */
 function StepValidation({
   change,
@@ -224,6 +229,9 @@ function StepValidation({
     nodeId: change.nodeId,
     catalog,
   });
+  if (!hasValidationToShow(sides)) {
+    return null;
+  }
   const lists = compact(
     (
       [
@@ -305,5 +313,25 @@ function ChangedObjectList({
         ))}
       </ul>
     </Section>
+  );
+}
+
+/**
+ * Enter group, at the end of an open Group's row. It is an outline button,
+ * because the filled button is kept for the view's primary action.
+ */
+function RowEnterGroupButton({ groupId }: { groupId: string }) {
+  const { enterGroup } = useGroupScopeNavigation();
+  return (
+    <div className="flex justify-end px-4 pt-1 pb-3">
+      <Button
+        onClick={() => enterGroup(groupId)}
+        type="button"
+        variant="outline"
+      >
+        Enter group
+        <ArrowRight data-icon="inline-end" />
+      </Button>
+    </div>
   );
 }

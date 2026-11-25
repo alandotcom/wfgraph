@@ -863,6 +863,22 @@ function describeValidationSide(
 }
 
 /**
+ * Whether a change row has validation worth a section: a version holds an
+ * issue, or a version cannot be checked. A step with no issue in any version
+ * that holds it has nothing to report there.
+ */
+export function hasValidationToShow(input: {
+  before: NodeValidationSide;
+  after: NodeValidationSide;
+}): boolean {
+  return [input.before, input.after].some(
+    (side) =>
+      side.kind === "unknown" ||
+      (side.kind === "checked" && side.issues.length > 0)
+  );
+}
+
+/**
  * How the node's validation differs between the sides: the issues the draft
  * adds and resolves, or that both sides agree. When a side does not hold the
  * node or cannot be checked, each side is described alone.

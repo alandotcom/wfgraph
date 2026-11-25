@@ -23,6 +23,7 @@ import {
   describeInspection,
   describeMembershipChange,
   describeValidationDifference,
+  hasValidationToShow,
   initiallyOpenChangeRows,
   inspectChange,
   issueIdentity,
@@ -441,6 +442,22 @@ describe("describeValidationDifference", () => {
   });
   const absent = { kind: "absent" as const };
   const unknown = { kind: "unknown" as const };
+
+  it("shows a section only when a version holds an issue or cannot be checked", () => {
+    expect(hasValidationToShow({ before: checked(), after: checked() })).toBe(
+      false
+    );
+    expect(hasValidationToShow({ before: absent, after: checked() })).toBe(
+      false
+    );
+    expect(
+      hasValidationToShow({
+        before: checked(issue("subject")),
+        after: checked(),
+      })
+    ).toBe(true);
+    expect(hasValidationToShow({ before: absent, after: unknown })).toBe(true);
+  });
 
   it("counts the issues the draft adds and resolves", () => {
     expect(
