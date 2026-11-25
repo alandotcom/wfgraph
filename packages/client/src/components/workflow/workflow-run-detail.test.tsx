@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, within } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
+import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import type {
   ExecutionEvent,
   WorkflowExecution,
@@ -20,6 +22,7 @@ import {
 import { type RunExecutorHold, WorkflowRunDetail } from "./workflow-run-detail";
 import type { ExecutorSchedule } from "#src/lib/run-executor-activity";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
+import { formatExactTime } from "@wfgraph/shared/utils/time";
 
 const BASE_EXECUTION: WorkflowExecution = {
   cancelledAt: null,
@@ -73,29 +76,35 @@ function renderDetail(
   return {
     store,
     ...render(
-      <JotaiProvider store={store}>
-        <ExtensionCatalogProvider
-          value={extras?.catalog ?? emptyExtensionCatalog}
-        >
-          <IntegrationUiProvider value={{}}>
-            <WorkflowRunDetail
-              events={extras?.events ?? []}
-              execution={execution}
-              exit={extras?.exit ?? null}
-              executor={extras?.executor ?? null}
-              focusLogId={extras?.focusLogId}
-              onFocusRestored={extras?.onFocusRestored}
-              onSelectLog={extras?.onSelectLog ?? vi.fn()}
-              isCanceling={false}
-              isResuming={false}
-              logs={extras?.logs ?? []}
-              onCancel={vi.fn(() => undefined)}
-              onResume={vi.fn(() => undefined)}
-              waits={extras?.waits ?? []}
-            />
-          </IntegrationUiProvider>
-        </ExtensionCatalogProvider>
-      </JotaiProvider>
+      // The failure summary reads the Connection list and can open a
+      // Connection's dialog, so the detail renders inside both providers.
+      <QueryClientProvider client={new QueryClient()}>
+        <JotaiProvider store={store}>
+          <OverlayProvider>
+            <ExtensionCatalogProvider
+              value={extras?.catalog ?? emptyExtensionCatalog}
+            >
+              <IntegrationUiProvider value={{}}>
+                <WorkflowRunDetail
+                  events={extras?.events ?? []}
+                  execution={execution}
+                  exit={extras?.exit ?? null}
+                  executor={extras?.executor ?? null}
+                  focusLogId={extras?.focusLogId}
+                  onFocusRestored={extras?.onFocusRestored}
+                  onSelectLog={extras?.onSelectLog ?? vi.fn()}
+                  isCanceling={false}
+                  isResuming={false}
+                  logs={extras?.logs ?? []}
+                  onCancel={vi.fn(() => undefined)}
+                  onResume={vi.fn(() => undefined)}
+                  waits={extras?.waits ?? []}
+                />
+              </IntegrationUiProvider>
+            </ExtensionCatalogProvider>
+          </OverlayProvider>
+        </JotaiProvider>
+      </QueryClientProvider>
     ),
   };
 }
@@ -632,6 +641,47 @@ describe("WorkflowRunDetail", () => {
       expect(onSelectLog).toHaveBeenCalledWith(logs[3]);
     });
 
+    // The band states the failure once, so the failed row does not repeat it.
+    it("states the failure in the band and leaves it off the failed row", () => {
+      const view = renderDetail(failed, { logs });
+
+      expect(view.getAllByText("Request failed")).toHaveLength(1);
+      expect(
+        within(
+          view.getByRole("button", { name: "Step d, Failed" })
+        ).queryByText("Request failed")
+      ).toBeNull();
+    });
+
+    it("words an Entity the app did not find and keeps the stored error", () => {
+      const view = renderDetail(
+        {
+          ...failed,
+          error: 'Entity "patient" was not found for node data',
+        },
+        {
+          catalog: {
+            ...emptyExtensionCatalog,
+            entities: [
+              {
+                type: "patient",
+                label: "Patient",
+                stateFields: [],
+                stateSchemaDigest: "",
+              },
+            ],
+          },
+        }
+      );
+
+      expect(
+        view.getByText("The app found no Patient for this run.")
+      ).toBeTruthy();
+      expect(
+        view.getByText('Entity "patient" was not found for node data')
+      ).toBeTruthy();
+    });
+
     it("keeps every step of a completed run in view", () => {
       const view = renderDetail(
         { ...BASE_EXECUTION, status: "completed" },
@@ -645,6 +695,96 @@ describe("WorkflowRunDetail", () => {
         view.queryByRole("button", { name: /successful steps/ })
       ).toBeNull();
     });
+  });
+
+  // A test run calls every handler, and a handler that sends nothing still
+  // succeeds, so the journey names the skip and never folds it away.
+  it("reads a step a test run skipped as skipped, and keeps it out of a fold", () => {
+    const skippedStep = (id: string, minute: number) => ({
+      id,
+      nodeId: `node_${id}`,
+      nodeName: `Step ${id}`,
+      nodeType: "action",
+      status: "success" as const,
+      startedAt: new Date(`2026-02-22T10:0${minute}:00Z`),
+      completedAt: new Date(`2026-02-22T10:0${minute}:01Z`),
+      duration: "12",
+      error: null,
+      retries: 0,
+      retryLimit: 4,
+      output: id === "b" ? { status: "skipped" } : { status: "sent" },
+    });
+    const logs = [
+      skippedStep("a", 0),
+      skippedStep("b", 1),
+      skippedStep("c", 2),
+      skippedStep("d", 3),
+    ];
+    const view = renderDetail(
+      { ...BASE_EXECUTION, status: "failed", runMode: "test" },
+      { logs }
+    );
+
+    const entry = view.getByRole("button", {
+      name: "Step b, Skipped (test run)",
+    });
+    expect(within(entry).getByText("Skipped (test run)").className).toContain(
+      "text-muted-foreground"
+    );
+
+    // The same output in a run with Live recipients claims nothing.
+    view.unmount();
+    const live = renderDetail(
+      { ...BASE_EXECUTION, status: "completed", runMode: "live" },
+      { logs }
+    );
+    expect(
+      live.getByRole("button", { name: "Step b, Successful" })
+    ).toBeTruthy();
+  });
+
+  it("words a run's activity, with its clock time and stored type", () => {
+    const view = renderDetail(
+      { ...BASE_EXECUTION, status: "failed" },
+      {
+        catalog: {
+          ...emptyExtensionCatalog,
+          events: [
+            {
+              name: "appointment.updated",
+              label: "Appointment updated",
+              payloadFields: [],
+            },
+          ],
+        },
+        events: [
+          {
+            id: "event_1",
+            eventType: "run_started",
+            message:
+              "Event-triggered run of v4 started for appointment.updated, to test recipients",
+            metadata: null,
+            createdAt: new Date("2026-02-22T10:00:00Z"),
+          },
+          {
+            id: "event_2",
+            eventType: "run_failed",
+            message: "Run completed with errors",
+            metadata: null,
+            createdAt: new Date("2026-02-22T10:01:00Z"),
+          },
+        ],
+      }
+    );
+
+    fireEvent.click(view.getByRole("button", { name: /Activity · 2/ }));
+    expect(view.getByText("Started by Appointment updated")).toBeTruthy();
+    expect(view.getByText("Run failed")).toBeTruthy();
+    expect(view.queryByText("Run completed with errors")).toBeNull();
+    expect(view.getByText("run_failed")).toBeTruthy();
+    expect(
+      view.getByText(formatExactTime(new Date("2026-02-22T10:01:00Z")))
+    ).toBeTruthy();
   });
 
   it("names the Events a wait is for by their labels", () => {

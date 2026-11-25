@@ -6,6 +6,7 @@ import { Button } from "#src/components/ui/button";
 import { useIntegrationUi } from "#src/components/integration-ui-provider";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { getClientLogger } from "#src/lib/logger";
+import { TEST_RUN_SKIP_LABEL } from "#src/lib/test-run-skip";
 import { cn } from "@wfgraph/shared/utils";
 import {
   type ActionMetadata,
@@ -171,6 +172,20 @@ export function runNodeEvidenceLabel(status: RunNodeEvidenceStatus): {
     return { text: "Retrying", tone: "warning" };
   }
   return { text: nodeStatusLabel(status), tone: nodeStatusTone(status) };
+}
+
+/**
+ * How a step's run status reads where a step a test run skipped must not read
+ * Successful: "Skipped (test run)" in the muted tone when `testSkipped`, and
+ * `runNodeEvidenceLabel` otherwise.
+ */
+export function stepRunStatusLabel(
+  status: RunNodeEvidenceStatus,
+  testSkipped: boolean
+): { text: string; tone: StatusTone } {
+  return testSkipped
+    ? { text: TEST_RUN_SKIP_LABEL, tone: "muted" }
+    : runNodeEvidenceLabel(status);
 }
 
 /** How `formatDuration` reads any duration under one second. */

@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useRef } from "react";
 import { cn } from "@wfgraph/shared/utils";
@@ -20,10 +21,13 @@ import { WorkflowRunDetail } from "#src/components/workflow/workflow-run-detail"
 import { WorkflowRunNodeEvidence } from "#src/components/workflow/workflow-run-node-evidence";
 import {
   groupRunStatusTone,
-  runNodeEvidenceLabel,
   runStatusLabel,
   runStatusTone,
+  stepRunStatusLabel,
 } from "#src/components/workflow/workflow-run-shared";
+import { runTitle } from "#src/components/workflow/workflow-run-summary-row";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   RunsEmptyState,
   RunsListNotices,
@@ -42,7 +46,6 @@ import {
   workspaceRouteSearch,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
-import { runShortId } from "#src/lib/workflow-run-labels";
 import {
   activeWorkspaceAddressAtom,
   clearRunNodeInspectionAtom,
@@ -79,23 +82,31 @@ const RUNS_FOCUS_TOGGLE_TEXT = {
  */
 type RunsHeaderTarget =
   | { kind: "run" }
-  | { kind: "node"; title: string; status: RunNodeEvidenceStatus }
+  | {
+      kind: "node";
+      title: string;
+      status: RunNodeEvidenceStatus;
+      /** Whether the shown execution did nothing because the run is a test. */
+      testSkipped: boolean;
+    }
   | { kind: "group"; title: string; status: GroupRunStatus };
 
 /**
  * The Runs header model. The run list names the workflow and Runs with no
- * Back. A run is titled by `runShortId`, the identifier every Runs surface
- * prints for it, and carries its status and Back. A node or Group target adds
- * itself to the path and is titled by its name. A node carries the shown
- * execution's status, or "Not run" for a node with no execution, and a Group
- * carries its run status.
+ * Back. A run is titled by `runTitle`, its Event label and start time, and
+ * carries its status and Back; the path's Runs segment then opens the run
+ * list through `openRunList`. A node or Group target adds itself to the path
+ * and is titled by its name. A node carries the shown execution's status, or
+ * "Not run" for a node with no execution, and a Group carries its run status.
  */
 function runsHeaderModel(input: {
   workflowName: string;
   openRun: OpenRunIdentity | null;
   target: RunsHeaderTarget;
+  catalog: ExtensionCatalog;
+  openRunList: () => void;
 }): RevealHeaderModel {
-  const { workflowName, openRun, target } = input;
+  const { workflowName, openRun, target, catalog } = input;
   const list: RevealHeaderModel = {
     workspaceLabel: "Runs",
     title: "Runs",
@@ -113,6 +124,7 @@ function runsHeaderModel(input: {
     path: [...list.path, title],
     status,
     showsBack: true,
+    pathLink: { index: list.path.length - 1, onSelect: input.openRunList },
   });
   if (openRun === null) {
     return list;
@@ -124,7 +136,7 @@ function runsHeaderModel(input: {
     return runHeader("Run unavailable", null);
   }
   const { execution } = openRun;
-  const run = runHeader(`Run ${runShortId(execution.id)}`, {
+  const run = runHeader(runTitle(execution, catalog), {
     text: runStatusLabel(execution.status),
     tone: runStatusTone(execution.status),
   });
@@ -141,7 +153,7 @@ function runsHeaderModel(input: {
             text: groupRunStatusLabel(target.status),
             tone: groupRunStatusTone(target.status),
           }
-        : runNodeEvidenceLabel(target.status),
+        : stepRunStatusLabel(target.status, target.testSkipped),
   };
 }
 
@@ -156,7 +168,9 @@ function useRunsHeaderModel(
   level: OpenRevealLevel
 ): RevealHeaderModel {
   const workflowName = useAtomValue(currentWorkflowNameAtom);
+  const catalog = useExtensionCatalog();
   const openRun = useOpenRunIdentity();
+  const openRunList = useOpenRunList();
   const shownRun = openRun?.kind === "run" ? openRun : null;
   const { runsTarget } = subject;
   const evidence = useRunNodeEvidence(
@@ -177,6 +191,7 @@ function useRunsHeaderModel(
           kind: "node",
           title: evidence.title,
           status: evidence.status,
+          testSkipped: evidence.testSkip !== null,
         }
       : groupSummary !== null
         ? {
@@ -185,7 +200,30 @@ function useRunsHeaderModel(
             status: groupSummary.status,
           }
         : { kind: "run" };
-  return runsHeaderModel({ workflowName, openRun, target });
+  return runsHeaderModel({
+    workflowName,
+    openRun,
+    target,
+    catalog,
+    openRunList,
+  });
+}
+
+/**
+ * Opens the run list from an open run, the way Back from the run overview
+ * does: the run's history entry is replaced by the list, and the list puts
+ * focus on that run's row.
+ */
+function useOpenRunList(): () => void {
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
+  const address = useAtomValue(activeWorkspaceAddressAtom);
+  const requestRowFocus = useSetAtom(runRowFocusRequestAtom);
+  const executionId =
+    address.key.workspace === "runs" ? address.key.executionId : null;
+  return () => {
+    requestRowFocus(executionId);
+    void navigate({ search: { view: "runs" }, replace: true });
+  };
 }
 
 /**

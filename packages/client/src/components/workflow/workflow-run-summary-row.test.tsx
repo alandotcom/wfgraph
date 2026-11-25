@@ -61,7 +61,7 @@ const BASE_EXECUTION: WorkflowExecution = {
 };
 
 describe("WorkflowRunSummaryRow", () => {
-  it("titles a run by its Event's label and keeps its short id secondary", () => {
+  it("titles a run by its Event's label and its start time, with no id", () => {
     const onClick = vi.fn(() => undefined);
     const view = render(
       <WorkflowRunSummaryRow
@@ -73,7 +73,10 @@ describe("WorkflowRunSummaryRow", () => {
     const row = view.getByTestId("workflow-run-summary-row");
     expect(view.getByText("Appointment updated")).toBeTruthy();
     expect(view.getByText("appt_42")).toBeTruthy();
-    expect(view.getByText(runShortId(BASE_EXECUTION.id))).toBeTruthy();
+    expect(
+      view.getByText(formatExactTime(BASE_EXECUTION.startedAt))
+    ).toBeTruthy();
+    expect(view.queryByText(runShortId(BASE_EXECUTION.id))).toBeNull();
     expect(view.getByText("v7 · Test")).toBeTruthy();
 
     fireEvent.click(row);
@@ -415,9 +418,11 @@ describe("WorkflowRunSummaryRow", () => {
     expect(onCancel).toHaveBeenCalledWith(BASE_EXECUTION.id);
   });
 
-  it("names a run by its short id in the list and the header", () => {
+  // The short id is for a developer, so it is one detail row of the header and
+  // never part of a list row.
+  it("prints a run's short id in the header's Run row and not in the list", () => {
     const row = render(<WorkflowRunSummaryRow execution={BASE_EXECUTION} />);
-    expect(row.getByText(runShortId(BASE_EXECUTION.id))).toBeTruthy();
+    expect(row.queryByText(runShortId(BASE_EXECUTION.id))).toBeNull();
     row.unmount();
 
     const header = render(

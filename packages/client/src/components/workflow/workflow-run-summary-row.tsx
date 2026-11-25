@@ -3,7 +3,7 @@ import { useRef } from "react";
 import { Button } from "#src/components/ui/button";
 import { useAfterCommit } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
-import { formatExactTime, getRelativeTime } from "@wfgraph/shared/utils/time";
+import { formatExactTime } from "@wfgraph/shared/utils/time";
 import {
   type ExtensionCatalog,
   findEvent,
@@ -75,7 +75,7 @@ type RunIdentitySource = Pick<
  * it, and keeps the Event's machine name as `eventName`. A scheduled run
  * carries no payload and its Entity Value is the workflow's own
  * (`workflow:<id>`), so it is titled by its source, with the schedule that
- * started it beneath. A run nothing else names is titled by `runShortId`.
+ * started it beneath. A run nothing else names is titled "Run".
  */
 export function getRunIdentity(
   execution: RunIdentitySource,
@@ -92,6 +92,19 @@ export function getRunIdentity(
       : { ...named, context: null };
   }
   return { eventName: null, ...unnamedRunIdentity(execution, entity) };
+}
+
+/**
+ * The name a run goes by where it is the one object shown: its title and the
+ * minute it started, such as "Appointment created · Nov 25, 7:42 AM". The Runs
+ * header, its path and the phone's Back label use it, so a person can name a
+ * run to someone else without quoting an id.
+ */
+export function runTitle(
+  execution: RunIdentitySource & Pick<WorkflowExecution, "startedAt">,
+  catalog: ExtensionCatalog
+): string {
+  return `${getRunIdentity(execution, catalog).title} · ${formatExactTime(execution.startedAt)}`;
 }
 
 /** The title of a run no Event started, and the line beneath it. */
@@ -122,7 +135,7 @@ function unnamedRunIdentity(
   if (execution.startSource === "manual") {
     return { title: "Manual run", context: null };
   }
-  return { title: `Run ${runShortId(execution.id)}`, context: null };
+  return { title: "Run", context: null };
 }
 
 function relevantLog(logs: ExecutionLog[], status: ExecutionLog["status"]) {
@@ -220,8 +233,9 @@ function ListSummary({
       <div className="min-w-0">
         <div className="flex items-baseline justify-between gap-2">
           <span className="truncate font-medium text-sm">{identity.title}</span>
+          {/* The start time in the format the run's header names it by. */}
           <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
-            {getRelativeTime(execution.startedAt)}
+            {formatExactTime(execution.startedAt)}
           </span>
         </div>
         {identity.context ? (
@@ -230,8 +244,6 @@ function ListSummary({
           </p>
         ) : null}
         <p className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-muted-foreground text-xs">
-          <span className="font-mono">{runShortId(execution.id)}</span>
-          <span aria-hidden="true">·</span>
           <span
             className={listStatusTextClass(
               activityLabel?.warns === true

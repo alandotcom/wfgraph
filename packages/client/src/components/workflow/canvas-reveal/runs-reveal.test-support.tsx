@@ -67,8 +67,29 @@ import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import type { JsonObject } from "@wfgraph/shared/types/json";
+import { formatExactTime } from "@wfgraph/shared/utils/time";
 
 type RawExecution = WorkflowRunRpcFixture["items"][number];
+
+/**
+ * A start time of its own for each run id, a minute past 10:00 UTC set by the
+ * id's characters, so two runs a test tells apart have different titles.
+ */
+function startedAtFor(id: string): string {
+  const minute =
+    Array.from({ length: id.length }, (_, index) =>
+      id.charCodeAt(index)
+    ).reduce((sum, code) => sum + code, 0) % 60;
+  return `2026-03-01T10:${String(minute).padStart(2, "0")}:00.000Z`;
+}
+
+/**
+ * The title the Runs header gives a run `execution` built: its Event, which
+ * the test catalog does not label, and its start time.
+ */
+export function runHeading(id: string): string {
+  return `app/appointment.created · ${formatExactTime(new Date(startedAtFor(id)))}`;
+}
 
 export function execution(
   id: string,
@@ -79,7 +100,7 @@ export function execution(
     id,
     workflowId: "wf_1",
     status,
-    startedAt: "2026-03-01T10:00:00.000Z",
+    startedAt: startedAtFor(id),
     completedAt: null,
     waitingAt: null,
     cancelledAt: null,

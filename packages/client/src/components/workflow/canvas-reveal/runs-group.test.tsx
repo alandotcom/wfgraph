@@ -12,6 +12,7 @@ import {
   removeRunsRevealRpc,
   renderRunsReveal,
   served,
+  runHeading,
 } from "./runs-reveal.test-support";
 
 beforeEach(() => {
@@ -68,13 +69,15 @@ describe("Runs Group summary", () => {
     };
     const { view, store, router, aside, title, path, evidence, canvasNode } =
       await renderRunsReveal({ view: "runs", executionId: "exec_f" });
-    await waitFor(() => expect(title()).toBe("Run exec_f"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_f")));
 
     fireEvent.click(await canvasNode("Outreach"));
     const summary = await view.findByTestId("runs-group-summary");
     expect(aside()?.dataset.level).toBe("browse");
     expect(title()).toBe("Outreach");
-    expect(path()).toBe("Appointment reminders › Runs › Run exec_f › Outreach");
+    expect(path()).toBe(
+      `Appointment reminders › Runs › ${runHeading("exec_f")} › Outreach`
+    );
     expect(aside()?.querySelector("header")?.textContent).toContain("Failed");
     expect(
       within(summary).getByText("2 of 3 steps reached, 1 failed")
@@ -142,7 +145,7 @@ describe("Runs Group summary", () => {
     };
     const { view, store, router, aside, title, escape, canvasNode } =
       await renderRunsReveal({ view: "runs", executionId: "exec_e" });
-    await waitFor(() => expect(title()).toBe("Run exec_e"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_e")));
 
     fireEvent.click(await canvasNode("Outreach"));
     const summary = await view.findByTestId("runs-group-summary");
@@ -160,7 +163,7 @@ describe("Runs Group summary", () => {
       groupId: "grp",
     });
     expect(store.get(selectedNodeAtom)).toBe("send");
-    expect(title()).toBe("Run exec_e");
+    expect(title()).toBe(runHeading("exec_e"));
 
     // The Group scope returns to the overview with the Group card selected.
     escape();
@@ -179,7 +182,7 @@ describe("Runs Group summary", () => {
 
     // The Group summary returns to the run overview.
     escape();
-    await waitFor(() => expect(title()).toBe("Run exec_e"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_e")));
     expect(store.get(selectedNodeAtom)).toBeNull();
     expect(view.queryByTestId("runs-group-summary")).toBeNull();
 
@@ -209,7 +212,7 @@ describe("Runs Group summary", () => {
     };
     const { view, store, aside, title, back, canvasNode } =
       await renderRunsReveal({ view: "runs", executionId: "exec_s" });
-    await waitFor(() => expect(title()).toBe("Run exec_s"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_s")));
 
     const card = await canvasNode("Outreach");
     card.focus();
@@ -221,7 +224,7 @@ describe("Runs Group summary", () => {
     expect(within(summary).getByText("3 of 3 steps reached")).toBeTruthy();
 
     back();
-    await waitFor(() => expect(title()).toBe("Run exec_s"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_s")));
     expect(store.get(selectedNodeAtom)).toBeNull();
     expect(aside()?.dataset.level).toBe("browse");
     expect(view.queryByTestId("runs-group-summary")).toBeNull();
@@ -277,7 +280,7 @@ describe("Runs Group summary", () => {
     };
     const { view, store, aside, title, back, show, canvasNode } =
       await renderRunsReveal({ view: "runs", executionId: "exec_w" });
-    await waitFor(() => expect(title()).toBe("Run exec_w"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_w")));
 
     fireEvent.click(view.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(aside()?.dataset.level).toBe("closed"));
@@ -299,7 +302,7 @@ describe("Runs Group summary", () => {
     expect(store.get(selectedNodeAtom)).toBe("grp");
 
     await show({ view: "runs", executionId: "exec_r" });
-    await waitFor(() => expect(title()).toBe("Run exec_r"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_r")));
     fireEvent.click(await canvasNode("Outreach"));
     await waitFor(() =>
       expect(aside()?.querySelector("header")?.textContent).toContain("Reached")

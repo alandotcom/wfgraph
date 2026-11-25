@@ -1,5 +1,13 @@
 import { Handle, Position } from "@xyflow/react";
-import { Ban, Check, Hourglass, Loader2, RotateCw, XCircle } from "lucide-react";
+import {
+  Ban,
+  Check,
+  CircleSlash,
+  Hourglass,
+  Loader2,
+  RotateCw,
+  XCircle,
+} from "lucide-react";
 import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { AnimatedBorder } from "#src/components/ui/animated-border";
 import { Card, CardTitle } from "#src/components/ui/card";
@@ -9,7 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
-import { runNodeEvidenceLabel } from "#src/components/workflow/workflow-run-shared";
+import { stepRunStatusLabel } from "#src/components/workflow/workflow-run-shared";
 import { useElementOverflow } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
 
@@ -27,6 +35,12 @@ export type NodeProps = ComponentProps<typeof Card> & {
     | "error"
     | "cancelled"
     | undefined;
+  /**
+   * Whether a successful step did nothing because the run has Test
+   * recipients. The card then keeps its resting border and its chip reads
+   * "Skipped (test run)", so a green border never claims a send.
+   */
+  testSkipped?: boolean | undefined;
   selected?: boolean | undefined;
   /** The card side a `true` source handle sits on. Bottom when unset. */
   sourcePosition?: Position | undefined;
@@ -42,11 +56,17 @@ export type NodeProps = ComponentProps<typeof Card> & {
 // Run status is worn as a border color, which a colorblind user cannot read and
 // a screen reader cannot see at all. This chip is the text equivalent: every
 // non-idle status renders its word next to its icon, in the words
-// `runNodeEvidenceLabel` gives every surface that names a step's run status,
+// `stepRunStatusLabel` gives every surface that names a step's run status,
 // and the whole thing is a live region so status transitions are announced.
 // The tint and the icon carry the signal and the word is foreground text,
-// because a signal's text on its own tint measures under 4.5:1.
+// because a signal's text on its own tint measures under 4.5:1. `skipped` is
+// a successful step a test run did nothing at, which claims no signal.
 const STATUS_CHIP = {
+  skipped: {
+    Icon: CircleSlash,
+    className: "bg-muted",
+    iconClassName: "text-muted-foreground",
+  },
   running: {
     Icon: Loader2,
     className: "bg-primary/5",
@@ -79,25 +99,38 @@ const STATUS_CHIP = {
   },
 } as const;
 
-const NodeStatusChip = ({ status }: { status?: NodeProps["status"] }) => {
+// The chip straddles the card's top edge at the right, half above the card, so
+// it never shares a box with the type icon centred inside. The card fill under
+// the tint keeps the border from showing through the chip.
+const NodeStatusChip = ({
+  status,
+  testSkipped,
+}: {
+  status?: NodeProps["status"];
+  testSkipped: boolean;
+}) => {
   if (!status || status === "idle") {
     return null;
   }
 
-  const chip = STATUS_CHIP[status];
+  const chip = STATUS_CHIP[testSkipped ? "skipped" : status];
   return (
     <div
-      className={cn(
-        "absolute top-2 right-2 z-10 flex items-center gap-1 rounded-sm py-0.5 pr-2 pl-1.5 font-medium text-foreground text-xs leading-none",
-        chip.className
-      )}
+      className="absolute top-0 right-2 z-10 -translate-y-1/2 rounded-sm bg-card"
       role="status"
     >
-      <chip.Icon
-        className={cn("size-3", chip.iconClassName)}
-        strokeWidth={2.5}
-      />
-      {runNodeEvidenceLabel(status).text}
+      <div
+        className={cn(
+          "flex items-center gap-1 rounded-sm py-0.5 pr-2 pl-1.5 font-medium text-foreground text-xs leading-none",
+          chip.className
+        )}
+      >
+        <chip.Icon
+          className={cn("size-3", chip.iconClassName)}
+          strokeWidth={2.5}
+        />
+        {stepRunStatusLabel(status, testSkipped).text}
+      </div>
     </div>
   );
 };
@@ -171,6 +204,7 @@ export const Node = ({
   className,
   selected = false,
   status,
+  testSkipped = false,
   sourcePosition = Position.Bottom,
   targetPosition = Position.Top,
   isConnectable,
@@ -183,7 +217,7 @@ export const Node = ({
       // still steps up to 2px below, so a run reads as a change in weight and
       // not only in colour.
       "node-container relative flex flex-col items-center justify-center gap-0 overflow-visible rounded-md border-[1.5px] border-canvas-line bg-card p-0 shadow-none transition-[background-color,border-color,opacity] duration-150 ease-out",
-      status === "success" && "border-2 border-success",
+      status === "success" && !testSkipped && "border-2 border-success",
       status === "error" && "border-2 border-destructive",
       status === "cancelled" && "border-2 border-cancelled",
       className
@@ -192,7 +226,10 @@ export const Node = ({
     {...props}
   >
     {status === "running" && <AnimatedBorder />}
-    <NodeStatusChip status={status} />
+    <NodeStatusChip
+      status={status}
+      testSkipped={testSkipped && status === "success"}
+    />
     {renderHandles("target", handles.target, targetPosition, isConnectable)}
     {renderHandles("source", handles.source, sourcePosition, isConnectable)}
     {props.children}

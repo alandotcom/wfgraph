@@ -25,6 +25,7 @@ import {
   type ChosenRunExecution,
 } from "#src/lib/workflow-navigation-state";
 import { singleSelectedNodeId } from "#src/lib/canvas-selection";
+import { testRunSkip } from "#src/lib/test-run-skip";
 
 /**
  * Whether the graph a run pinned is on the canvas: `ready` once it is,
@@ -176,6 +177,13 @@ export type RunNodeEvidence = {
   executionStatuses: readonly RunNodeEvidenceStatus[];
   /** The status of `shownExecution` in those words, or `none` for no execution. */
   status: RunNodeEvidenceStatus;
+  /**
+   * Why `shownExecution` did nothing in a run with Test recipients, as
+   * `testRunSkip` says it, or null when it did its work.
+   */
+  testSkip: string | null;
+  /** The run's recipients, which decide whether an execution's skip is a test skip. */
+  runMode: "live" | "test";
   pinnedGraph: PinnedGraphState;
   /** Whether the pinned graph is on the canvas and does not hold the node. */
   removed: boolean;
@@ -241,6 +249,15 @@ export function buildRunNodeEvidence(input: {
     shownExecution: shown,
     executionStatuses: executions.map(statusOf),
     status: shown === null ? "none" : statusOf(shown),
+    runMode: execution.runMode,
+    testSkip:
+      shown === null
+        ? null
+        : testRunSkip({
+            runMode: execution.runMode,
+            status: shown.status,
+            output: shown.output,
+          }),
     pinnedGraph: input.pinnedGraph,
     removed: input.pinnedGraph === "ready" && node === undefined,
     config: node?.data.config ?? null,

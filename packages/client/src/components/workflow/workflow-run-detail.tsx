@@ -1,7 +1,7 @@
 import { Hourglass, XCircle } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { Fragment, type RefObject, useState } from "react";
-import { formatExactTime, getRelativeTime } from "@wfgraph/shared/utils/time";
+import { formatExactTime } from "@wfgraph/shared/utils/time";
 import { useNowMs } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
 import {
@@ -22,6 +22,7 @@ import {
   isRunInProgress,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
+import { runActivitySentence } from "#src/lib/run-activity";
 import { orderedRunLogs } from "#src/lib/run-node-evidence";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -39,6 +40,7 @@ import {
   WorkflowRunSummaryRow,
 } from "./workflow-run-summary-row";
 import { compact } from "es-toolkit/array";
+import { RunFailureText } from "./workflow-run-failure";
 import { WorkflowRunNodeIndex } from "./workflow-run-timeline";
 
 export type WorkflowRunDetailProps = {
@@ -412,9 +414,13 @@ export function WorkflowRunDetail({
                   "Run failed"
                 )}
               </h3>
-              <p className="mt-1 break-words text-xs">
-                {failedLog?.error ?? execution.error}
-              </p>
+              <div className="mt-1">
+                <RunFailureText
+                  className="text-xs"
+                  error={failedLog?.error ?? execution.error ?? ""}
+                  nodeId={failedLog?.nodeId ?? null}
+                />
+              </div>
             </section>
           ) : null}
 
@@ -425,30 +431,40 @@ export function WorkflowRunDetail({
             focusLogId={focusLogId}
             foldSuccessful={execution.status === "failed"}
             logs={sortedLogs}
+            failureStatedLogId={
+              execution.status === "failed" ? (failedLog?.id ?? null) : null
+            }
             onFocusRestored={onFocusRestored}
             retryingNodeIds={retryingNodeIds}
+            runMode={execution.runMode}
             waitingNodeIds={waitingNodeIds}
             onSelect={onSelectLog}
           />
 
           {events.length > 0 ? (
             <CollapsibleSection title={`Activity · ${events.length}`}>
+              {/* Each entry is a sentence in the Runs view's words, its clock
+                  time, and its stored type as secondary text for a developer. */}
               <div className="space-y-2">
                 {events.map((event) => (
                   <div
-                    className="flex items-center justify-between gap-2"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2"
                     key={event.id}
                   >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium text-xs">
-                        {event.message}
-                      </div>
-                      <div className="truncate text-muted-foreground text-xs">
-                        {event.eventType}
-                      </div>
+                    <div className="break-words font-medium text-xs">
+                      {runActivitySentence({
+                        event,
+                        run: execution,
+                        eventLabel: (name) => eventLabel(catalog, name),
+                        nodeName: (nodeId) =>
+                          nameOf({ nodeId, nodeName: null }),
+                      })}
                     </div>
                     <div className="shrink-0 text-muted-foreground text-xs">
-                      {getRelativeTime(event.createdAt)}
+                      {formatExactTime(event.createdAt)}
+                    </div>
+                    <div className="truncate font-mono text-muted-foreground text-xs">
+                      {event.eventType}
                     </div>
                   </div>
                 ))}

@@ -182,7 +182,7 @@ export async function answerWorkflowRunRpc(
           startEventName: listed?.startEventName ?? null,
           entityValue: listed?.entityValue ?? null,
           error: null,
-          startedAt: "2026-03-01T10:00:00.000Z",
+          startedAt: listed?.startedAt ?? "2026-03-01T10:00:00.000Z",
           scheduledFor: listed?.scheduledFor ?? null,
           scheduleDescription: listed?.scheduleDescription ?? null,
           completedAt: "2026-03-01T10:00:30.000Z",

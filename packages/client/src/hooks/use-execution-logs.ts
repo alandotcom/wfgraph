@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
-import { toExecutionLogsByNodeId } from "#src/lib/execution-logs";
+import {
+  toExecutionLogsByNodeId,
+  toTestSkippedNodeIds,
+} from "#src/lib/execution-logs";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
@@ -34,4 +37,26 @@ export function useExecutionLogsByNode(): Record<string, ExecutionLogEntry> {
   });
 
   return data ?? NO_LOGS;
+}
+
+const NO_NODE_IDS: ReadonlySet<string> = new Set();
+
+/**
+ * The nodes of the run the user is looking at whose latest execution did
+ * nothing because the run has Test recipients. It observes the same query as
+ * `useExecutionLogsByNode`, so it adds no request.
+ */
+export function useTestSkippedNodeIds(): ReadonlySet<string> {
+  const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
+  const { data } = useQuery({
+    ...orpcQuery.workflow.getExecutionLogs.queryOptions({
+      input: { executionId: selectedExecutionId ?? "" },
+      select: toTestSkippedNodeIds,
+    }),
+    enabled:
+      selectedExecutionId !== null &&
+      can(WfGraphOperations.workflowGetExecutionLogs.id),
+  });
+
+  return data ?? NO_NODE_IDS;
 }

@@ -21,6 +21,7 @@ import {
   runsRpc,
   served,
   serveEvents,
+  runHeading,
 } from "./runs-reveal.test-support";
 
 beforeEach(() => {
@@ -62,7 +63,7 @@ describe("Runs Focus node evidence", () => {
       canvasNode,
       overviewScroller,
     } = await renderRunsReveal({ view: "runs", executionId: "exec_s" });
-    await waitFor(() => expect(title()).toBe("Run exec_s"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_s")));
 
     const node = await canvasNode("Send reminder");
     node.focus();
@@ -70,7 +71,7 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(title()).toBe("Send reminder");
     expect(path()).toBe(
-      "Appointment reminders › Runs › Run exec_s › Send reminder"
+      `Appointment reminders › Runs › ${runHeading("exec_s")} › Send reminder`
     );
     expect(aside()?.querySelector("header")?.textContent).toContain(
       "Successful"
@@ -111,7 +112,7 @@ describe("Runs Focus node evidence", () => {
     );
     await afterPaint();
     expect(overviewScroller()?.scrollTop).toBe(90);
-    expect(title()).toBe("Run exec_s");
+    expect(title()).toBe(runHeading("exec_s"));
   });
 
   it("shows a failed node's error", async () => {
@@ -134,7 +135,7 @@ describe("Runs Focus node evidence", () => {
       view: "runs",
       executionId: "exec_f",
     });
-    await waitFor(() => expect(title()).toBe("Run exec_f"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_f")));
 
     fireEvent.click(await canvasNode("Send reminder"));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
@@ -144,6 +145,40 @@ describe("Runs Focus node evidence", () => {
     ).toBeTruthy();
     expect(
       within(evidence()).getByText("SMTP refused the message")
+    ).toBeTruthy();
+  });
+
+  // A test run calls the handler, which answers that it sent nothing. The
+  // evidence and its header say so instead of Successful.
+  it("says a step a test run skipped did nothing, and why", async () => {
+    served.items = [{ ...execution("exec_t", "completed"), runMode: "test" }];
+    served.graphs = {
+      ver_exec_t: labelledGraph([{ id: "thanks", label: "Send thank-you" }]),
+    };
+    served.logsByExecutionId = {
+      exec_t: [
+        log({
+          id: "log_t",
+          nodeId: "thanks",
+          nodeName: "Send thank-you",
+          status: "success",
+          output: { status: "skipped" },
+        }),
+      ],
+    };
+    const { aside, title, evidence, canvasNode } = await renderRunsReveal({
+      view: "runs",
+      executionId: "exec_t",
+    });
+    await waitFor(() => expect(title()).toBe(runHeading("exec_t")));
+
+    fireEvent.click(await canvasNode("Send thank-you"));
+    await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
+    expect(aside()?.querySelector("header")?.textContent).toContain(
+      "Skipped (test run)"
+    );
+    expect(
+      within(evidence()).getByText("The app skips this step in a test run.")
     ).toBeTruthy();
   });
 
@@ -186,7 +221,7 @@ describe("Runs Focus node evidence", () => {
     const { view, aside, title, evidence, canvasNode } = await renderRunsReveal(
       { view: "runs", executionId: "exec_w" }
     );
-    await waitFor(() => expect(title()).toBe("Run exec_w"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_w")));
 
     fireEvent.click(await canvasNode("Wait for reply"));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
@@ -252,7 +287,7 @@ describe("Runs Focus node evidence", () => {
       view: "runs",
       executionId: "exec_r",
     });
-    await waitFor(() => expect(title()).toBe("Run exec_r"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_r")));
 
     fireEvent.click(await canvasNode("Wait for reply"));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
@@ -295,7 +330,7 @@ describe("Runs Focus node evidence", () => {
       view: "runs",
       executionId: "exec_c",
     });
-    await waitFor(() => expect(title()).toBe("Run exec_c"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_c")));
 
     fireEvent.click(await canvasNode("Send reminder"));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
@@ -353,7 +388,7 @@ describe("Runs Focus node evidence", () => {
     };
     const { view, store, aside, title, show, evidence, canvasNode } =
       await renderRunsReveal({ view: "runs", executionId: "exec_m" });
-    await waitFor(() => expect(title()).toBe("Run exec_m"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_m")));
     await canvasNode("Loop step");
 
     fireEvent.click(
@@ -443,7 +478,7 @@ describe("Runs Focus node evidence", () => {
       view: "runs",
       executionId: "exec_g",
     });
-    await waitFor(() => expect(title()).toBe("Run exec_g"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_g")));
 
     fireEvent.click(await canvasNode("Reminders"));
     await waitFor(() => expect(store.get(selectedNodeAtom)).toBe("grp"));
@@ -472,7 +507,7 @@ describe("Runs Focus node evidence", () => {
     };
     const { view, store, aside, title, escape, evidence, canvasNode } =
       await renderRunsReveal({ view: "runs", executionId: "exec_x" });
-    await waitFor(() => expect(title()).toBe("Run exec_x"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_x")));
     await canvasNode("Send reminder");
 
     fireEvent.click(view.getByRole("button", { name: "Old step, Successful" }));
@@ -529,7 +564,7 @@ describe("Runs Focus node evidence", () => {
       view: "runs",
       executionId: "exec_u",
     });
-    await waitFor(() => expect(title()).toBe("Run exec_u"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_u")));
 
     fireEvent.click(
       view.getByRole("button", { name: "Send reminder, Successful" })
@@ -566,7 +601,7 @@ describe("Runs Focus node evidence", () => {
     };
     const { view, store, router, aside, title, escape, evidence, canvasNode } =
       await renderRunsReveal({ view: "runs", executionId: "exec_g" });
-    await waitFor(() => expect(title()).toBe("Run exec_g"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_g")));
     await canvasNode("Send reminder");
 
     fireEvent.click(
@@ -620,7 +655,7 @@ describe("Runs Focus node evidence", () => {
       view: "runs",
       executionId: "exec_s",
     });
-    await waitFor(() => expect(title()).toBe("Run exec_s"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_s")));
     const preference = () =>
       document.cookie
         .split("; ")
@@ -643,7 +678,7 @@ describe("Runs Focus node evidence", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Open inspector" }));
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
-    expect(title()).toBe("Run exec_s");
+    expect(title()).toBe(runHeading("exec_s"));
     expect(preference()).toBe("canvas-reveal-closed=false");
   });
 
@@ -664,7 +699,7 @@ describe("Runs Focus node evidence", () => {
     };
     const { view, store, aside, title, clickPane, canvasNode } =
       await renderRunsReveal({ view: "runs", executionId: "exec_x" });
-    await waitFor(() => expect(title()).toBe("Run exec_x"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_x")));
     await canvasNode("Send reminder");
 
     fireEvent.click(view.getByRole("button", { name: "Old step, Successful" }));
@@ -675,7 +710,7 @@ describe("Runs Focus node evidence", () => {
     });
 
     clickPane();
-    await waitFor(() => expect(title()).toBe("Run exec_x"));
+    await waitFor(() => expect(title()).toBe(runHeading("exec_x")));
     expect(store.get(activeChosenExecutionAtom)).toBeNull();
     expect(view.queryByTestId("run-node-evidence")).toBeNull();
     expect(aside()?.dataset.level).toBe("browse");

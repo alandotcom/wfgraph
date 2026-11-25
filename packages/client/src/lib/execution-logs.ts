@@ -18,6 +18,7 @@ import {
   type ListActivity,
   withExecutorReading,
 } from "#src/lib/run-executor-activity";
+import { testRunSkip } from "#src/lib/test-run-skip";
 
 /**
  * The shapes a workflow run takes on the client, and the pure functions that
@@ -290,6 +291,26 @@ export function toExecutionLogsByNodeId(
   payload: ExecutionLogsResult
 ): Record<string, ExecutionLogEntry> {
   return createExecutionLogsMap(toExecutionLogs(payload));
+}
+
+/**
+ * The ids of the nodes whose latest execution did nothing because the run has
+ * Test recipients, as `testRunSkip` decides it. The canvas chip reads these as
+ * "Skipped (test run)" in place of Successful.
+ */
+export function toTestSkippedNodeIds(
+  payload: ExecutionLogsResult
+): ReadonlySet<string> {
+  const { runMode } = payload.execution;
+  return new Set(
+    Object.values(createExecutionLogsMap(toExecutionLogs(payload)))
+      .filter(
+        (log) =>
+          testRunSkip({ runMode, status: log.status, output: log.output }) !==
+          null
+      )
+      .map((log) => log.nodeId)
+  );
 }
 
 /**

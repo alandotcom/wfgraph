@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { useAfterCommit } from "#src/hooks/effects";
 import { type ExecutionLog } from "#src/lib/execution-logs";
+import { testRunSkip } from "#src/lib/test-run-skip";
 import {
   listDuration,
   listStatusTextClass,
@@ -9,6 +10,7 @@ import {
   nodeStatusTone,
   runNodeEvidenceLabel,
   statusToneDotClass,
+  stepRunStatusLabel,
 } from "./workflow-run-shared";
 
 /** No node ids, as one stable array. */
@@ -26,23 +28,27 @@ type JourneyItem =
   | { kind: "fold"; logs: ExecutionLog[] };
 
 /**
- * `logs` with every run of `MIN_FOLDED_ENTRIES` or more consecutive successful
- * entries folded into one item.
+ * `logs` with every run of `MIN_FOLDED_ENTRIES` or more consecutive entries
+ * that `foldable` accepts folded into one item.
  */
-function foldSuccessfulRuns(logs: readonly ExecutionLog[]): JourneyItem[] {
-  // Consecutive entries, split wherever an entry's success differs from the
-  // one before it.
+function foldSuccessfulRuns(
+  logs: readonly ExecutionLog[],
+  foldable: (log: ExecutionLog) => boolean
+): JourneyItem[] {
+  // Consecutive entries, split wherever an entry's foldability differs from
+  // the one before it.
   const stretches = logs.reduce<ExecutionLog[][]>((result, log) => {
     const last = result.at(-1);
     const continues =
-      last !== undefined &&
-      (last[0]?.status === "success") === (log.status === "success");
+      last?.[0] !== undefined && foldable(last[0]) === foldable(log);
     return continues
       ? [...result.slice(0, -1), [...last, log]]
       : [...result, [log]];
   }, []);
   return stretches.flatMap((stretch): JourneyItem[] =>
-    stretch[0]?.status === "success" && stretch.length >= MIN_FOLDED_ENTRIES
+    stretch[0] !== undefined &&
+    foldable(stretch[0]) &&
+    stretch.length >= MIN_FOLDED_ENTRIES
       ? [{ kind: "fold", logs: stretch }]
       : stretch.map((log) => ({ kind: "entry", log }))
   );
@@ -62,6 +68,10 @@ function foldSuccessfulRuns(logs: readonly ExecutionLog[]): JourneyItem[] {
  * sits near the top. A focus request for a folded entry expands the journey.
  * A status word reads in its signal color only where the entry needs
  * attention; a successful entry's word is muted and its dot keeps the color.
+ * In a run with Test recipients, a successful entry whose step did nothing
+ * reads "Skipped (test run)" with a muted dot, and is never folded.
+ * The entry named by `failureStatedLogId` leaves its error out, because the
+ * run's failure band above the journey states it.
  */
 export function WorkflowRunNodeIndex({
   logs,
@@ -72,8 +82,14 @@ export function WorkflowRunNodeIndex({
   retryingNodeIds = NO_NODES,
   waitingNodeIds = NO_NODES,
   foldSuccessful = false,
+  runMode,
+  failureStatedLogId = null,
 }: {
   logs: ExecutionLog[];
+  /** The run's recipients, which decide whether a step's skip is a test skip. */
+  runMode: "live" | "test";
+  /** The failed entry whose error the run's failure band already states. */
+  failureStatedLogId?: string | null | undefined;
   exit?: { nodeLabel: string } | undefined;
   focusLogId?: string | null | undefined;
   onFocusRestored?: (() => void) | undefined;
@@ -87,7 +103,14 @@ export function WorkflowRunNodeIndex({
 }) {
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const [expanded, setExpanded] = useState(false);
-  const folded = foldSuccessful ? foldSuccessfulRuns(logs) : null;
+  const skipOf = (log: ExecutionLog) =>
+    testRunSkip({ runMode, status: log.status, output: log.output });
+  const folded = foldSuccessful
+    ? foldSuccessfulRuns(
+        logs,
+        (log) => log.status === "success" && skipOf(log) === null
+      )
+    : null;
   // A focus request for an entry inside a fold shows every entry, and keeps
   // them shown once the request is answered, so the focused row stays mounted.
   const focusInFold =
@@ -159,14 +182,17 @@ export function WorkflowRunNodeIndex({
             log.status === "running" || log.status === "pending";
           const waiting = unfinished && waitingNodeIds.includes(log.nodeId);
           const retrying = retryingNodeIds.includes(log.nodeId);
+          const skipped = skipOf(log) !== null;
           const status = retrying
             ? runNodeEvidenceLabel("retrying")
             : waiting
               ? runNodeEvidenceLabel("waiting")
-              : {
-                  text: nodeStatusLabel(log.status),
-                  tone: nodeStatusTone(log.status),
-                };
+              : skipped
+                ? stepRunStatusLabel("success", true)
+                : {
+                    text: nodeStatusLabel(log.status),
+                    tone: nodeStatusTone(log.status),
+                  };
           return (
             <li className="relative pl-5" key={log.id}>
               {hasNext ? (
@@ -204,7 +230,7 @@ export function WorkflowRunNodeIndex({
                   <span className="block truncate font-medium text-sm">
                     {log.nodeName || log.nodeType}
                   </span>
-                  {log.error ? (
+                  {log.error && log.id !== failureStatedLogId ? (
                     <span className="block truncate text-destructive text-xs">
                       {log.error}
                     </span>

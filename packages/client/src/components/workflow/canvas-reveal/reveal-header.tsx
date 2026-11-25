@@ -14,6 +14,11 @@ export type RevealHeaderModel = {
   title: string;
   /** Ancestors of the shown object, outermost first, ending with the object. */
   path: readonly string[];
+  /**
+   * The one ancestor in `path`, by index, that opens when pressed, and what
+   * pressing it does. The Runs header uses it to reach the run list.
+   */
+  pathLink?: { index: number; onSelect: () => void } | undefined;
   /** A step's validation status or a run's status, in its signal color. */
   status: { text: string; tone: StatusTone } | null;
   /** Whether Back is offered. Close is always offered. */
@@ -36,6 +41,38 @@ export type RevealHeaderControls = {
   titleRef: Ref<HTMLHeadingElement>;
   focusToggleRef: Ref<HTMLButtonElement>;
 };
+
+/**
+ * The path's segments joined by "›", with the segment `link` names as a button
+ * that runs its `onSelect`.
+ */
+function RevealPath({
+  path,
+  link,
+}: {
+  path: readonly string[];
+  link: RevealHeaderModel["pathLink"];
+}) {
+  const linked = link === undefined ? undefined : path[link.index];
+  if (link === undefined || linked === undefined) {
+    return path.join(" › ");
+  }
+  const before = path.slice(0, link.index);
+  const after = path.slice(link.index + 1);
+  return (
+    <>
+      {before.map((segment) => `${segment} › `).join("")}
+      <button
+        className="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+        onClick={link.onSelect}
+        type="button"
+      >
+        {linked}
+      </button>
+      {after.map((segment) => ` › ${segment}`).join("")}
+    </>
+  );
+}
 
 /**
  * Canvas Reveal's context header: the workspace, the object shown, the path to
@@ -111,7 +148,7 @@ export function RevealHeader({
             className="min-w-0 truncate text-muted-foreground text-xs"
             data-slot="reveal-path"
           >
-            {model.path.join(" › ")}
+            <RevealPath link={model.pathLink} path={model.path} />
           </p>
           {status ? (
             <span

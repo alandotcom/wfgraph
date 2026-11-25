@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NodeDescription } from "#src/components/flow-elements/node";
+import { Node, NodeDescription } from "#src/components/flow-elements/node";
 
 type ResizeObserverCallback = ConstructorParameters<typeof ResizeObserver>[0];
 
@@ -146,5 +146,45 @@ describe("NodeDescription", () => {
     fireEvent.click(description);
 
     expect(onNodeClick).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Node status chip", () => {
+  function renderCard(status: "success" | "error", testSkipped: boolean) {
+    return render(
+      <Node
+        handles={{ target: false, source: false }}
+        isConnectable={false}
+        status={status}
+        testSkipped={testSkipped}
+      />
+    );
+  }
+
+  // The chip sits across the card's top edge, so it never shares a box with
+  // the type icon centred in the card body.
+  it("hangs the chip across the card's top edge", () => {
+    const view = renderCard("success", false);
+    const chip = view.getByRole("status");
+    expect(chip.textContent).toBe("Successful");
+    expect(chip.className).toContain("top-0");
+    expect(chip.className).toContain("-translate-y-1/2");
+  });
+
+  // A test run that sent nothing must not wear the border of a send.
+  it("reads a step a test run skipped as skipped, on the resting border", () => {
+    const view = renderCard("success", true);
+    expect(view.getByRole("status").textContent).toBe("Skipped (test run)");
+    expect(view.container.firstElementChild?.className).not.toContain(
+      "border-success"
+    );
+  });
+
+  it("keeps a failed step's face whatever its output said", () => {
+    const view = renderCard("error", true);
+    expect(view.getByRole("status").textContent).toBe("Failed");
+    expect(view.container.firstElementChild?.className).toContain(
+      "border-destructive"
+    );
   });
 });

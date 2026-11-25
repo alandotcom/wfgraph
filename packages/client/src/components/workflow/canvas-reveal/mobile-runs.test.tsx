@@ -23,6 +23,7 @@ import {
   runsRpc,
   served,
   waitingRun,
+  runHeading,
 } from "./runs-reveal.test-support";
 
 /** Happy-dom's viewport, which the `md` media query answers from. */
@@ -126,7 +127,9 @@ describe("mobile Runs sequence", () => {
 
     press("Show Runs");
     // The first visit opens the newest run in the run's own sheet.
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_b"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_b"))
+    );
     expect(router.state.location.search).toEqual({
       view: "runs",
       executionId: "exec_b",
@@ -144,7 +147,9 @@ describe("mobile Runs sequence", () => {
     await waitFor(() => expect(document.activeElement).toBe(rows()[0]));
 
     fireEvent.click(rows()[1]);
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
     expect(router.state.location.search).toEqual({
       view: "runs",
       executionId: "exec_a",
@@ -166,10 +171,10 @@ describe("mobile Runs sequence", () => {
     expect(canvasCovered()).toBe(true);
     expect(store.get(selectedNodeAtom)).toBe("send");
 
-    press("Back to Run exec_a");
+    press(`Back to ${runHeading("exec_a")}`);
     await waitFor(() => expect(sheet()?.dataset.level).toBe("summary"));
     expect(canvasCovered()).toBe(false);
-    expect(sheetTitle()?.textContent).toBe("Run exec_a");
+    expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"));
     await waitFor(() =>
       expect(document.activeElement).toBe(
         view.getByRole("button", { name: "Send reminder, Successful" })
@@ -199,7 +204,9 @@ describe("mobile Runs sequence", () => {
     } = await renderMobileRuns({ view: "runs", executionId: "exec_a" });
 
     press("Configuration");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
     scrollTo(80);
     const camera = { centerX: 12, centerY: 34, zoom: 0.75 };
     act(() => {
@@ -214,14 +221,14 @@ describe("mobile Runs sequence", () => {
     await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
     expect(levels()).toEqual(["summary:address", "inspector:send"]);
 
-    press("Back to Run exec_a");
+    press(`Back to ${runHeading("exec_a")}`);
     await waitFor(() => expect(sheet()?.dataset.level).toBe("summary"));
     expect(store.get(activeWorkspaceCamerasAtom).mobile).toEqual(camera);
     expect(store.get(selectedNodeAtom)).toBe("send");
     await afterPaint();
     expect(scroller()?.scrollTop).toBe(80);
     // With the node still selected, the run's sheet offers its evidence again.
-    expect(sheetTitle()?.textContent).toBe("Run exec_a");
+    expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"));
     press("Show evidence");
     await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
   });
@@ -233,12 +240,14 @@ describe("mobile Runs sequence", () => {
       executionId: "exec_a",
     });
     press("Configuration");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
     const node = await canvasNode("Send reminder");
     fireEvent.click(node);
     await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
 
-    press("Back to Run exec_a");
+    press(`Back to ${runHeading("exec_a")}`);
     await waitFor(() => expect(sheet()?.dataset.level).toBe("summary"));
     await afterPaint();
     expect(document.activeElement).toBe(node);
@@ -250,7 +259,9 @@ describe("mobile Runs sequence", () => {
       { view: "runs", executionId: "exec_a" }
     );
     press("Configuration");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
 
     // Starting a run replaces the route with the run list, then opens the new
     // run, as `useWorkflowHandlers` navigates.
@@ -271,7 +282,9 @@ describe("mobile Runs sequence", () => {
         search: { view: "runs", executionId: "exec_c" },
       });
     });
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_c"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_c"))
+    );
     expect(levels()).toEqual(["summary:address"]);
     expect(sheet()?.dataset.level).toBe("summary");
   });
@@ -282,13 +295,17 @@ describe("mobile Runs sequence", () => {
       await renderMobileRuns({ view: "runs" });
     press("Configuration");
     // The first visit opens the newest run; Back reaches the list.
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_b"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_b"))
+    );
     press("Back to Runs");
     await waitFor(() => expect(rows()).toHaveLength(2));
     scrollTo(40);
 
     fireEvent.click(rows()[1]);
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
     press("Back to Runs");
     await waitFor(() => expect(rows()).toHaveLength(2));
     await afterPaint();
@@ -300,12 +317,16 @@ describe("mobile Runs sequence", () => {
     const { router, sheet, sheetTitle, rows, press, escape, canvasNode } =
       await renderMobileRuns({ view: "runs", executionId: "exec_a" });
     press("Configuration");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
     fireEvent.click(await canvasNode("Send reminder"));
     await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
 
     act(() => escape());
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
     act(() => escape());
     await waitFor(() => expect(rows()).toHaveLength(2));
     expect(router.state.location.search).toEqual({ view: "runs" });
@@ -318,11 +339,13 @@ describe("mobile Runs sequence", () => {
     const { router, sheet, sheetTitle, press, levels, canvasNode, evidence } =
       await renderMobileRuns({ view: "runs", executionId: "exec_a" });
     press("Configuration");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
     fireEvent.click(await canvasNode("Send reminder"));
     await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
 
-    press("Back to Run exec_a");
+    press(`Back to ${runHeading("exec_a")}`);
     await waitFor(() => expect(sheet()?.dataset.level).toBe("summary"));
     press("Show evidence");
     await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
@@ -342,8 +365,10 @@ describe("mobile Runs sequence", () => {
     await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
     expect(levels()).toEqual(["summary:address", "inspector:send"]);
     expect(within(evidence()).getByText(/patient@example.com/)).toBeTruthy();
-    press("Back to Run exec_a");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    press(`Back to ${runHeading("exec_a")}`);
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
   });
 });
 
@@ -377,7 +402,9 @@ describe("mobile Runs under polling and late responses", () => {
       canvasNode,
     } = await renderMobileRuns({ view: "runs", executionId: "exec_r" });
     press("Configuration");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_r"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_r"))
+    );
     fireEvent.click(await canvasNode("Send reminder"));
     await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
 
@@ -422,19 +449,25 @@ describe("mobile Runs under polling and late responses", () => {
       executionId: "exec_a",
     });
     press("Configuration");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
     press("Back to Runs");
     await waitFor(() => expect(rows()).toHaveLength(2));
     fireEvent.click(rows()[0]);
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_b"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_b"))
+    );
 
     await act(async () => {
       releaseEarlier?.();
     });
     await afterPaint();
-    expect(sheetTitle()?.textContent).toBe("Run exec_b");
+    expect(sheetTitle()?.textContent).toBe(runHeading("exec_b"));
     await show({ view: "runs", executionId: "exec_a" });
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
   });
 });
 
@@ -457,7 +490,9 @@ describe("mobile Runs states", () => {
       executionId: "exec_w",
     });
     press("Configuration");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_w"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_w"))
+    );
     expect(
       await view.findByRole("heading", { name: "Waiting at Wait in exec_w" })
     ).toBeTruthy();
@@ -572,7 +607,9 @@ describe("mobile Runs states", () => {
     const { view, sheet, sheetTitle, press, levels, canvasNode } =
       await renderMobileRuns({ view: "runs", executionId: "exec_g" });
     press("Configuration");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_g"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_g"))
+    );
 
     fireEvent.click(await canvasNode("Outreach"));
     expect(await view.findByTestId("runs-group-summary")).toBeTruthy();
@@ -580,8 +617,10 @@ describe("mobile Runs states", () => {
     expect(levels()).toEqual(["summary:address"]);
     expect(sheetTitle()?.textContent).toBe("Outreach");
 
-    press("Back to Run exec_g");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_g"));
+    press(`Back to ${runHeading("exec_g")}`);
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_g"))
+    );
     expect(view.queryByTestId("runs-group-summary")).toBeNull();
   });
 });
@@ -592,7 +631,9 @@ describe("mobile Runs accessibility", () => {
     const { view, sheet, sheetTitle, press, canvasNode } =
       await renderMobileRuns({ view: "runs", executionId: "exec_a" });
     press("Configuration");
-    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Run exec_a"));
+    await waitFor(() =>
+      expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"))
+    );
     const region = () => view.getByRole("region", { name: "Runs inspector" });
     expect(region().classList.contains("mobile-reveal")).toBe(true);
     expect(sheetTitle()?.tagName).toBe("H2");
@@ -606,9 +647,11 @@ describe("mobile Runs accessibility", () => {
     expect(
       within(region()).queryAllByRole("button", { name: topology })
     ).toEqual([]);
-    const back = view.getByRole("button", { name: "Back to Run exec_a" });
+    const back = view.getByRole("button", {
+      name: `Back to ${runHeading("exec_a")}`,
+    });
     expect(back.className).toContain("h-11");
-    press("Back to Run exec_a");
+    press(`Back to ${runHeading("exec_a")}`);
     press("Back to Runs");
     await waitFor(() => expect(sheetTitle()?.textContent).toBe("Runs"));
     expect(

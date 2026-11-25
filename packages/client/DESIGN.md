@@ -263,7 +263,7 @@ All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, 
 
 The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: a 16px integration icon, a 14px semibold title that wraps to two lines, and a one-line description at detail zoom. A Condition holding more than one rule leads that line with how many must match, such as "All of 2 rules", because its title names one question. The overview presentation hides descriptions while retaining card geometry. Event Split is wider at 264px on purpose, because it carries two labelled outlets. A collapsed Group draws at the same 192×112. The card is flat; elevation on the canvas would compete with the status border.
 
-At rest the border is 1.5px of Canvas Line. Status is worn on that same border, stepping up to 2px: Signal Green for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. A step the run is parked on keeps the resting border and shows a Waiting chip, and a step the executor is retrying after a failure keeps it too and shows a Retrying chip in Signal Amber. Every status also renders its word in a chip, so the border is never the only carrier. The chip reads Running, Waiting, Retrying, Successful, Failed, or Canceled, the same words a run's Group card, Group summary, and member rows use for that step. Focus shifts the border to Graphite Ink rather than the ring color, because the resting border already sits at the ring's lightness and the shift would otherwise read as nothing.
+At rest the border is 1.5px of Canvas Line. Status is worn on that same border, stepping up to 2px: Signal Green for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. A step the run is parked on keeps the resting border and shows a Waiting chip, and a step the executor is retrying after a failure keeps it too and shows a Retrying chip in Signal Amber. Every status also renders its word in a chip, so the border is never the only carrier. The chip straddles the card's top edge at the right, so it never covers the type icon. The chip reads Running, Waiting, Retrying, Successful, Failed, or Canceled, the same words a run's Group card, Group summary, and member rows use for that step. A successful step that did nothing because the run has Test recipients keeps the resting border and reads "Skipped (test run)" on its chip, its journey entry, and its evidence, which says why in one sentence. Focus shifts the border to Graphite Ink rather than the ring color, because the resting border already sits at the ring's lightness and the shift would otherwise read as nothing.
 
 The workflow overview draws each Group as one collapsed card: solid Graphite Wash behind a 1.5px Canvas Line border, a title band holding the Group icon, the label, the issue badge, and an **Enter group** arrow, and below a rule an optional one-line description above the number of steps, or on a run's canvas above the Group's run status and step counts. The description uses the same detail-zoom visibility and overflow tooltip as a step's description. The Wash is what separates a Group from a step, and it inverts on its own in dark. Its members never expand in place. Edges entering the Group attach to the card's one top handle, and edges leaving it attach to its one bottom handle, which carries no label. Every edge from inside the Group to the same outside step draws as one edge from that handle, and when every edge it stands for leaves by the same Condition branch, it carries that branch's True or False label. While nothing leaves the Group, dragging from the bottom handle to an outside step adds a connection from each terminal non-Condition member. Unused Condition outlets stay unwired, so taking an unused branch ends the path without running the outside step. If only unused Condition outlets remain, the editor asks the builder to open the Group and choose a branch. A join the rules refuse, such as terminal steps on opposite branches of one Condition, is refused with its notice. Once the Group continues, dragging from the bottom handle adds a connection from the outlets it already continues by. Deleting an edge drawn from the card deletes every connection it stands for, and an outlet entering the Group at several steps draws one edge onto the card, whose deletion deletes the connection to each of those steps. Changing which branch continues is done on the focused Group canvas.
 
@@ -438,13 +438,20 @@ Cancellation Failures, a muted line naming the host's run retention window when
 the host deletes old runs, and the run rows. The All Runs list on the workflows
 page states the same window under its title. Selecting a run adds a browser history
 entry and puts the graph version the run pinned on the canvas. The header then
-titles the run by its short id, shows its status, and offers **Back**. The short
-id is the last eight characters of the run's id, and the run's row, its summary
-and the status strip print the same one. A run's row and summary are titled by
-the label of the Event that started it.
+titles the run by the label of the Event that started it and its start time,
+such as "Appointment created · Nov 25, 7:42 AM", shows its status, and offers
+**Back**. The path and the phone's Back label use the same title, and the
+path's **Runs** segment opens the run list the way **Back** does. A run's row
+leads with the same label and start time and prints no id. The short id, the
+last eight characters of the run's id, is a detail row of the run's summary and
+appears in the status strip.
 Browse holds the run's start identity, outcome, timing, and entity, then its
 active waits with **Resume now**, **Cancel**, exit details, the failure summary,
-the node journey, and activity. In a failed run the journey folds each stretch
+the node journey, and activity. The failure summary states the cause once, in a
+plain sentence above the stored error. When a step's Connection refused or
+lacked its credentials, the sentence names the Connection and offers **Edit
+connection**. Activity entries read in the Runs view's words, with a clock time
+and the stored type as secondary text. In a failed run the journey folds each stretch
 of three or more successful steps into one row, so the failed step stays in
 view. **Back** and Escape on a run replace the history
 entry with the run list and put focus on that run's row, or on the header title

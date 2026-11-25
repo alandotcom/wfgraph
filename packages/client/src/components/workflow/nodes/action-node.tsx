@@ -58,7 +58,10 @@ import {
   workflowNodeSize,
 } from "#src/lib/workflow-node-dimensions";
 import { useAfterPaint, useNowMs } from "#src/hooks/effects";
-import { useExecutionLogsByNode } from "#src/hooks/use-execution-logs";
+import {
+  useExecutionLogsByNode,
+  useTestSkippedNodeIds,
+} from "#src/hooks/use-execution-logs";
 import {
   alongOutletSide,
   BranchOutletLabel,
@@ -485,6 +488,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
   const executionLogs = useExecutionLogsByNode();
   const nodeLog = executionLogs[id];
+  const testSkipped = useTestSkippedNodeIds().has(id);
   const actionType = readConfigString(data?.config, ACTION_TYPE_CONFIG_KEY);
   const isConditionAction = isConditionActionType(actionType);
   const isEventSplitAction = isEventSplitActionType(actionType);
@@ -544,6 +548,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
         sourcePosition={outlet}
         status={status}
         style={workflowNodeSize()}
+        testSkipped={testSkipped}
         targetPosition={targetPosition}
       >
         <ComparisonMarker comparison={data[COMPARISON_NODE_ANNOTATION]} />
@@ -648,6 +653,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
       selected={selected}
       sourcePosition={outlet}
       status={status}
+      testSkipped={testSkipped}
       style={workflowNodeSize(
         isEventSplitAction
           ? eventSplitCardWidth(splitOutlets.length)

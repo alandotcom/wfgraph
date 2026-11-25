@@ -14,12 +14,14 @@ import {
 import { Section } from "./canvas-reveal/reveal-sections";
 import { RUN_POLL_MS } from "./use-workflow-runs";
 import { waitingSummary } from "./workflow-run-detail";
+import { RunFailureText } from "./workflow-run-failure";
+import { testRunSkip } from "#src/lib/test-run-skip";
 import {
   CopyButton,
   formatDuration,
   JSON_PRE_CLASS,
-  runNodeEvidenceLabel,
   statusToneTextClass,
+  stepRunStatusLabel,
   JsonWithLinks,
   OutputDisplay,
 } from "./workflow-run-shared";
@@ -67,20 +69,27 @@ function Payload({
 function ExecutionList({
   executions,
   statuses,
+  runMode,
   shown,
   onChoose,
 }: {
   executions: readonly ExecutionLog[];
   /** The status of each execution, in the order of `executions`. */
   statuses: readonly RunNodeEvidenceStatus[];
+  runMode: "live" | "test";
   shown: ExecutionLog;
   onChoose: (logId: string) => void;
 }) {
   return (
     <ul aria-label="Executions" className="space-y-1">
       {executions.map((execution, index) => {
-        const status = runNodeEvidenceLabel(
-          statuses[index] ?? execution.status
+        const status = stepRunStatusLabel(
+          statuses[index] ?? execution.status,
+          testRunSkip({
+            runMode,
+            status: execution.status,
+            output: execution.output,
+          }) !== null
         );
         return (
           <li key={execution.id}>
@@ -135,7 +144,10 @@ export function WorkflowRunNodeEvidence({
 }) {
   const catalog = useExtensionCatalog();
   const { shownExecution: shown, executions } = evidence;
-  const status = runNodeEvidenceLabel(evidence.status);
+  const status = stepRunStatusLabel(
+    evidence.status,
+    evidence.testSkip !== null
+  );
   const executionNumber = shown ? executions.indexOf(shown) + 1 : 0;
   const unfinished =
     shown !== null &&
@@ -185,6 +197,7 @@ export function WorkflowRunNodeEvidence({
               <ExecutionList
                 executions={executions}
                 onChoose={onChooseExecution}
+                runMode={evidence.runMode}
                 shown={shown}
                 statuses={evidence.executionStatuses}
               />
@@ -222,6 +235,9 @@ export function WorkflowRunNodeEvidence({
                   : "The run ended before this execution recorded a finish."}
               </p>
             ) : null}
+            {evidence.testSkip === null ? null : (
+              <p className="text-sm">{evidence.testSkip}</p>
+            )}
             {retriesSummary === null ? null : (
               <p className="text-sm">{retriesSummary}</p>
             )}
@@ -229,9 +245,11 @@ export function WorkflowRunNodeEvidence({
 
           {shown.status === "error" && shown.error ? (
             <Section title="Error">
-              <p className="break-words text-destructive text-sm">
-                {shown.error}
-              </p>
+              <RunFailureText
+                className="text-sm"
+                error={shown.error}
+                nodeId={evidence.nodeId}
+              />
             </Section>
           ) : null}
 
@@ -311,19 +329,23 @@ export function WorkflowRunNodeEvidence({
 
       {shown ? (
         <>
-          <Section title="Result">
-            {isNotNil(shown.output) ? (
-              <OutputDisplay
-                actionType={shown.nodeType}
-                input={shown.input}
-                output={shown.output}
-              />
-            ) : (
-              <p className="text-muted-foreground text-xs">
-                No result was recorded.
-              </p>
-            )}
-          </Section>
+          {/* A failed step's result repeats the error the Error section
+              states, so it is left to the Output payload. */}
+          {shown.status === "error" ? null : (
+            <Section title="Result">
+              {isNotNil(shown.output) ? (
+                <OutputDisplay
+                  actionType={shown.nodeType}
+                  input={shown.input}
+                  output={shown.output}
+                />
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  No result was recorded.
+                </p>
+              )}
+            </Section>
+          )}
           <Payload
             emptyText="No input was recorded."
             title="Input"
