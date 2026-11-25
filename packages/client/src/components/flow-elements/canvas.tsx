@@ -56,6 +56,11 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
       // Group needs a multi-select; xyflow defaults this to Meta/Control only.
       multiSelectionKeyCode={["Meta", "Control", "Shift"]}
       panActivationKeyCode={null}
+      // Two-finger scroll and a plain wheel pan in both directions. A trackpad
+      // pinch arrives as a wheel event with ctrlKey set, and React Flow zooms
+      // that at the pointer, as it does a wheel turned while the zoom
+      // activation key (Cmd on a Mac, Ctrl elsewhere) is held.
+      panOnScroll
       selectionOnDrag={false}
       zoomOnDoubleClick={false}
       zoomOnPinch
