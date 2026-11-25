@@ -379,7 +379,10 @@ function describeUnit(
  * An action the catalog does not hold is named as such, since its id is not a
  * word a reader knows.
  */
-function stepLabel(catalog: ExtensionCatalog, node: WorkflowNode): string {
+export function stepLabel(
+  catalog: ExtensionCatalog,
+  node: WorkflowNode
+): string {
   if (!isBlank(node.data.label) || isGroupNode(node)) {
     return getNodeDisplayName(catalog, node);
   }
@@ -704,11 +707,21 @@ function lowerFirstVerb(text: string): string {
 // ---------------------------------------------------------------------------
 // Waits.
 
+/** What reading a Wait's timing needs: the graph's nodes and the catalog. */
+type WaitTimingGraph = {
+  nodesById: ReadonlyMap<string, WorkflowNode>;
+  catalog: ExtensionCatalog;
+};
+
 /**
- * How long a Wait waits, in words, or null when its settings name no time this
- * can read, such as a duration a template fills in.
+ * How long a Wait waits, in words, such as "1 hour 30 minutes" or "until 24
+ * hours before Starts at", or null when its settings name no time this can
+ * read, such as a duration a template fills in.
  */
-function waitTiming(graph: Graph, node: WorkflowNode): string | null {
+export function waitTiming(
+  graph: WaitTimingGraph,
+  node: WorkflowNode
+): string | null {
   const config = node.data.config ?? {};
   if (readConfigString(config, "waitMode") === "event") {
     const events = readWaitSubscriptions(config).map((subscription) =>
@@ -744,7 +757,10 @@ function waitTiming(graph: Graph, node: WorkflowNode): string | null {
  * A Wait's target time in words: the label of the field one template reference
  * reads, or a fixed date in UTC.
  */
-function waitTargetWords(graph: Graph, value: unknown): string | null {
+function waitTargetWords(
+  graph: WaitTimingGraph,
+  value: unknown
+): string | null {
   if (typeof value !== "string" || isBlank(value)) {
     return null;
   }
@@ -766,7 +782,7 @@ function waitTargetWords(graph: Graph, value: unknown): string | null {
  * otherwise, and a label made from the path's last key where neither declares it.
  */
 function tokenFieldLabel(
-  graph: Graph,
+  graph: WaitTimingGraph,
   nodeId: string,
   fieldPath: string
 ): string {
@@ -817,22 +833,66 @@ function utcDateWords(date: Date): string {
 // ---------------------------------------------------------------------------
 // Lifecycle Rules.
 
+/**
+ * One thing that starts or stops a run: the Events that share a filter, or a
+ * Schedule, as `subject`, and the filter in words as `condition`.
+ */
+export type LifecycleClause = {
+  kind: "event" | "schedule";
+  /** "Appointment created or Appointment rescheduled", or "Every Monday at 7:00 AM (UTC)". */
+  subject: string;
+  /** The filter in words, or null when the Events have none. */
+  condition: string | null;
+};
+
+/** What starts a run, one clause per filter group of Start Events and per Schedule. */
+export function startClauses(
+  rules: LifecycleRules | undefined,
+  catalog: ExtensionCatalog
+): LifecycleClause[] {
+  const events = filterGroups(rules?.startEvents ?? [], (name) =>
+    rules ? readStartFilter(rules, name) : undefined
+  ).map((group): LifecycleClause => ({
+    kind: "event",
+    subject: orList(group.eventNames.map((name) => eventLabel(catalog, name))),
+    condition: filterCondition(group, catalog),
+  }));
+  const schedules = (rules?.schedules ?? []).map(
+    (schedule): LifecycleClause => ({
+      kind: "schedule",
+      subject:
+        cronShape(schedule.cron).kind === "custom"
+          ? `On the custom schedule ${schedule.cron} (${schedule.timeZone})`
+          : describeCronSchedule(schedule),
+      condition: null,
+    })
+  );
+  return [...events, ...schedules];
+}
+
+/** What stops a run in progress, one clause per filter group of Cancel Events. */
+export function stopClauses(
+  rules: LifecycleRules | undefined,
+  catalog: ExtensionCatalog
+): LifecycleClause[] {
+  return filterGroups(rules?.cancelEvents ?? [], (name) =>
+    rules ? readCancelFilter(rules, name) : undefined
+  ).map((group) => ({
+    kind: "event",
+    subject: orList(group.eventNames.map((name) => eventLabel(catalog, name))),
+    condition: filterCondition(group, catalog),
+  }));
+}
+
 function startSentences(
   rules: LifecycleRules | undefined,
   catalog: ExtensionCatalog
 ): string[] {
-  const eventSentences = filterGroups(rules?.startEvents ?? [], (name) =>
-    rules ? readStartFilter(rules, name) : undefined
-  ).map(
-    (group) =>
-      `Starts when ${orList(group.eventNames.map((name) => eventLabel(catalog, name)))} arrives${filterClause(group, catalog)}.`
+  const sentences = startClauses(rules, catalog).map((clause) =>
+    clause.kind === "event"
+      ? `Starts when ${clause.subject} arrives${conditionClause(clause.condition)}.`
+      : `Starts ${lowerFirst(clause.subject)}.`
   );
-  const scheduleSentences = (rules?.schedules ?? []).map((schedule) =>
-    cronShape(schedule.cron).kind === "custom"
-      ? `Starts on the custom schedule ${schedule.cron} (${schedule.timeZone}).`
-      : `Starts ${lowerFirst(describeCronSchedule(schedule))}.`
-  );
-  const sentences = [...eventSentences, ...scheduleSentences];
   if (sentences.length > 0) {
     return sentences;
   }
@@ -848,15 +908,13 @@ function stopSentences(
   catalog: ExtensionCatalog,
   canceled: readonly Item[]
 ): string[] {
-  const groups = filterGroups(rules?.cancelEvents ?? [], (name) =>
-    rules ? readCancelFilter(rules, name) : undefined
-  );
-  if (groups.length === 0) {
+  const clauses = stopClauses(rules, catalog);
+  if (clauses.length === 0) {
     return [];
   }
-  const sentences = groups.map(
-    (group) =>
-      `${orList(group.eventNames.map((name) => eventLabel(catalog, name)))} stops a run in progress${filterClause(group, catalog)}.`
+  const sentences = clauses.map(
+    (clause) =>
+      `${clause.subject} stops a run in progress${conditionClause(clause.condition)}.`
   );
   return canceled.length === 0
     ? sentences
@@ -878,19 +936,27 @@ function filterGroups(
 }
 
 /** ", if Status is one of scheduled or confirmed", or nothing for no filter. */
-function filterClause(group: FilterGroup, catalog: ExtensionCatalog): string {
+function conditionClause(condition: string | null): string {
+  return condition === null ? "" : `, if ${condition}`;
+}
+
+/** "Status is one of scheduled or confirmed", or null for no filter. */
+function filterCondition(
+  group: FilterGroup,
+  catalog: ExtensionCatalog
+): string | null {
   if (group.filter === undefined) {
-    return "";
+    return null;
   }
   const parsed = parseConditionModel(group.filter);
   if (!parsed.valid) {
-    return ", if its filter matches";
+    return "its filter matches";
   }
   const events = compact(
     group.eventNames.map((name) => findEvent(catalog, name))
   );
   const fields = events.flatMap((event) => event.payloadFields);
-  return `, if ${modelWords(parsed.model, fields, catalog)}`;
+  return modelWords(parsed.model, fields, catalog);
 }
 
 // ---------------------------------------------------------------------------
@@ -988,7 +1054,10 @@ function orList(items: readonly string[]): string {
 }
 
 /** An Event's label, or a phrase saying the app no longer declares it. */
-function eventLabel(catalog: ExtensionCatalog, eventName: string): string {
+export function eventLabel(
+  catalog: ExtensionCatalog,
+  eventName: string
+): string {
   return (
     findEvent(catalog, eventName)?.label ??
     "an Event this app no longer declares"
