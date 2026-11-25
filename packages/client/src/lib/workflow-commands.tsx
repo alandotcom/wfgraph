@@ -11,7 +11,6 @@ import {
   Plus,
   Redo2,
   RefreshCcw,
-  Save,
   Undo2,
   Upload,
 } from "lucide-react";
@@ -26,7 +25,6 @@ import {
 
 export type WorkflowCommandId =
   | "add-step"
-  | "save"
   | "run-draft"
   | "run-published"
   | "show-runs"
@@ -79,7 +77,6 @@ type WorkflowCommandState = {
   readonly canRedo: boolean;
   readonly canReflow: boolean;
   readonly canEdit: boolean;
-  readonly canSave: boolean;
   readonly canRunDraft: boolean;
   readonly canRunPublished: boolean;
   readonly canViewRuns: boolean;
@@ -97,7 +94,6 @@ type WorkflowCommandState = {
 
 type WorkflowCommandCallbacks = {
   readonly addStep: () => void;
-  readonly save: () => void;
   readonly runDraft: () => void;
   readonly runPublished: () => void;
   readonly showRuns: () => void;
@@ -277,15 +273,6 @@ export function workflowCommands({
       execute: callbacks.addStep,
     },
     {
-      id: "save",
-      group: "workflow",
-      label: "Save workflow",
-      keywords: "Save workflow changes",
-      hint: shortcuts.save,
-      disabled: !state.canSave,
-      execute: callbacks.save,
-    },
-    {
       id: "run-draft",
       group: "workflow",
       label: "Run draft",
@@ -454,8 +441,6 @@ export function WorkflowCommandIcon({
   switch (id) {
     case "add-step":
       return <Plus className={className} />;
-    case "save":
-      return <Save className={className} />;
     case "run-draft":
       return <Play className={className} />;
     case "run-published":

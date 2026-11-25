@@ -85,10 +85,6 @@ export function useWorkflowCommands({
       canRedo: state.canRedo,
       canReflow,
       canEdit: state.canUpdate,
-      canSave:
-        Boolean(state.currentWorkflowId) &&
-        !state.isGenerating &&
-        state.canUpdate,
       canRunDraft: state.canExecute && state.canUpdate && !editingLocked,
       canRunPublished:
         state.canExecute && state.canReadVersionGraph && !editingLocked,
@@ -132,7 +128,6 @@ export function useWorkflowCommands({
     shortcuts,
     callbacks: {
       addStep: onAddStep,
-      save: () => void actions.handleSave(),
       runDraft: () => void actions.handleExecute("draft"),
       runPublished: () => void actions.handleExecute("published"),
       showRuns: workspaceNavigation.showRuns,

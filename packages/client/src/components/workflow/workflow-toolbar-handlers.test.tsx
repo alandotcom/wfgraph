@@ -752,6 +752,32 @@ describe("useWorkflowActions Group problems", () => {
   });
 });
 
+describe("useWorkflowActions Cmd+S", () => {
+  // The draft saves by itself, so the chord does nothing a person can see,
+  // and the browser's Save page dialog stays shut.
+  it("refuses the browser's save and sends nothing", async () => {
+    const requests = serveRunRequests({});
+    const view = renderProbe({
+      probe: <IssueGateProbe workflowState={state()} />,
+    });
+    await view.findByRole("button", { name: "Start publish" });
+
+    const event = new KeyboardEvent("keydown", {
+      key: "s",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(event);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(requests).toEqual([]);
+  });
+});
+
 describe("useWorkflowActions Publish and the save", () => {
   it("saves before the review only when the draft has unsaved changes", async () => {
     const requests = serveRunRequests({});

@@ -36,7 +36,7 @@ const pinnedRunGraphAtom = atom<PinnedRunGraph | null>(null);
  * The published graph a selected run pinned, shown on the canvas instead of the
  * draft so node statuses land on the shape the run actually walked. Cleared
  * when the run is deselected. Never saved: draft atoms stay draft-only so a
- * Cmd+S or toolbar save cannot persist the run graph over the editor's draft.
+ * save cannot persist the run graph over the editor's draft.
  *
  * Reads as null outside Runs, on the same route address
  * `selectedExecutionIdAtom` reads, because the two describe one run and must go

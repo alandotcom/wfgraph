@@ -297,8 +297,8 @@ export function CommandPalette({
   // springing back the moment the browser's Back button returns to it.
   useAfterCommit(workflowId, () => setPalette(null));
 
-  // Capture phase for the same reason Cmd+S takes it one level up: a focused
-  // field on the canvas would otherwise see the chord first. The chord opens
+  // Capture phase, because a focused field on the canvas would otherwise see
+  // the chord first. The chord opens
   // the palette from a text field too, since a field has no Cmd+K of its own.
   // While the palette is up the chord toggles it shut, and while another dialog
   // or a menu is open the chord does nothing.

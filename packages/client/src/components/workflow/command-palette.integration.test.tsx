@@ -169,9 +169,8 @@ describe("the command palette", () => {
     });
     await openedPalette(rendered);
 
-    expect(
-      rendered.getByRole("option", { name: /^Save workflow/ })
-    ).toBeTruthy();
+    // The draft saves by itself, so no row offers to save it.
+    expect(rendered.queryByRole("option", { name: /^Save/ })).toBeNull();
     expect(
       rendered.getByRole("option", { name: "Switch to Runs" })
     ).toBeTruthy();
@@ -192,10 +191,6 @@ describe("the command palette", () => {
       expect(rendered.getByRole("option", { name: label })).toBeTruthy();
     }
 
-    fireEvent.click(rendered.getByRole("option", { name: /^Save workflow/ }));
-    expect(rendered.actions.handleSave).toHaveBeenCalledOnce();
-
-    pressCommandK();
     fireEvent.click(rendered.getByRole("option", { name: "Publish v2" }));
     expect(rendered.actions.handlePublish).toHaveBeenCalledOnce();
 
@@ -703,8 +698,8 @@ describe("the command palette", () => {
     const rendered = renderChrome(ToolbarActions);
     await openedPalette(rendered);
 
-    const save = rendered.getByRole("option", { name: /^Save workflow/ });
-    expect(save.querySelector('[data-slot="kbd"]')?.textContent).toMatch(/S$/);
+    const undo = rendered.getByRole("option", { name: /^Undo/ });
+    expect(undo.querySelector('[data-slot="kbd"]')?.textContent).toMatch(/Z$/);
   });
 
   /** Take the "Add step" item, which is the way to the second page. */
@@ -824,12 +819,15 @@ describe("the command palette", () => {
     const input = await openedPalette(rendered);
 
     const addStep = rendered.getByRole("option", { name: /^Add step/ });
-    const save = rendered.getByRole("option", { name: /^Save workflow/ });
 
     fireEvent.keyDown(input, { key: "ArrowDown" });
 
-    expect(save.hasAttribute("data-highlighted")).toBe(true);
-    expect(addStep.hasAttribute("data-highlighted")).toBe(false);
+    const highlighted = document.querySelector(
+      "[role='option'][data-highlighted]"
+    );
+    expect(highlighted).not.toBeNull();
+    expect(highlighted).not.toBe(addStep);
+    expect(highlighted?.hasAttribute("data-disabled")).toBe(false);
   });
 
   /**

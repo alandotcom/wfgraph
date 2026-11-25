@@ -35,7 +35,6 @@ export type EditorShortcutLabels = {
   group: string;
   paste: string;
   run: string;
-  save: string;
   undo: string;
   redo: string;
   palette: string;
@@ -52,7 +51,6 @@ export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
         group: "⌘G",
         paste: "⌘V",
         run: "⌘↵",
-        save: "⌘S",
         undo: "⌘Z",
         redo: "⇧⌘Z",
         palette: "⌘K",
@@ -65,7 +63,6 @@ export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
         group: "Ctrl+G",
         paste: "Ctrl+V",
         run: "Ctrl+Enter",
-        save: "Ctrl+S",
         undo: "Ctrl+Z",
         redo: "Ctrl+Shift+Z",
         palette: "Ctrl+K",
@@ -130,7 +127,6 @@ export function shortcutReference(
     {
       title: "Editor",
       entries: [
-        { label: "Save workflow", keys: [keys.save] },
         { label: "Run draft", keys: [keys.run] },
         { label: "Undo", keys: [keys.undo] },
         { label: "Redo", keys: [keys.redo] },

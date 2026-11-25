@@ -59,7 +59,6 @@ import {
  * starts it is disabled while it runs.
  */
 export type WorkflowToolbarActions = {
-  handleSave: () => Promise<void>;
   handleExecute: (graph: WorkflowRunGraph) => Promise<void>;
   handleClearWorkflow: () => void;
   handleDeleteWorkflow: () => void;
@@ -103,7 +102,6 @@ export function useWorkflowActions(
     currentWorkflowId,
     edges,
     hasUnsavedChanges,
-    isGenerating,
     nodes,
     publication,
     userIntegrations,
@@ -117,32 +115,16 @@ export function useWorkflowActions(
     saveWorkflow,
   });
 
-  const handleSave = useCallback(async () => {
-    if (!currentWorkflowId || isGenerating || !canUpdate) {
-      return;
+  // The draft saves by itself, so Cmd+S has nothing to do. It is still
+  // refused, because the browser's own answer is a Save page dialog that
+  // would download the editor's HTML.
+  const refuseSaveShortcut = useCallback((event: KeyboardEvent) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "s") {
+      event.preventDefault();
     }
-    await saveWorkflow({ nodes, edges }, { immediate: true });
-  }, [canUpdate, currentWorkflowId, edges, isGenerating, nodes, saveWorkflow]);
+  }, []);
 
-  // Cmd+S shares the command palette's save path, so an explicit save and the
-  // shortcut cannot race the autosave queue differently. The browser's own Save
-  // page dialog is refused even while a dialog or menu holds the keyboard and
-  // the save itself waits.
-  const handleSaveShortcut = useCallback(
-    (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "s") {
-        event.preventDefault();
-        if (!editorChordAllowed(event, { inTextFields: true })) {
-          return;
-        }
-        event.stopPropagation();
-        void handleSave();
-      }
-    },
-    [handleSave]
-  );
-
-  useDomEvent(document, "keydown", handleSaveShortcut, { capture: true });
+  useDomEvent(document, "keydown", refuseSaveShortcut, { capture: true });
 
   // Cmd+Enter runs the draft. The listener sits beside handleExecute so the
   // shortcut and the split button's face make the same call. A published run
@@ -361,7 +343,6 @@ export function useWorkflowActions(
   };
 
   return {
-    handleSave,
     handleExecute,
     handleClearWorkflow,
     handleDeleteWorkflow,

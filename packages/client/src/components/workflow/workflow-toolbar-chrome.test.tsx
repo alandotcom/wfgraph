@@ -675,7 +675,6 @@ describe("ToolbarActions menu", () => {
     // exists: the shortcuts are the item's promise, not decoration.
     for (const label of [
       /^Add step/,
-      /^Save workflow/,
       /^Undo/,
       /^Redo/,
       /^Tidy layout/,

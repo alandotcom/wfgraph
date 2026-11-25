@@ -18,7 +18,6 @@ function commandInput(
       canEdit: true,
       canRunDraft: true,
       canRunPublished: true,
-      canSave: true,
       canViewVersionHistory: true,
       canViewRuns: true,
       canPublish: true,
@@ -48,7 +47,6 @@ function commandInput(
       paste: "Cmd+V",
       redo: "Cmd+Shift+Z",
       run: "Cmd+Enter",
-      save: "Cmd+S",
       undo: "Cmd+Z",
     },
     callbacks: {
@@ -63,7 +61,6 @@ function commandInput(
       reflow: vi.fn(),
       runDraft: vi.fn(),
       runPublished: vi.fn(),
-      save: vi.fn(),
       showVersionHistory: vi.fn(),
       showRuns: vi.fn(),
       undo: vi.fn(),
@@ -78,7 +75,6 @@ describe("workflowCommands", () => {
 
     expect(commands.map((command) => command.id)).toEqual(
       expect.arrayContaining([
-        "save",
         "show-runs",
         "review-changes",
         "version-history",
@@ -86,13 +82,11 @@ describe("workflowCommands", () => {
       ])
     );
 
-    commands.find((command) => command.id === "save")?.execute();
     commands.find((command) => command.id === "show-runs")?.execute();
     commands.find((command) => command.id === "version-history")?.execute();
     commands.find((command) => command.id === "review-changes")?.execute();
     commands.find((command) => command.id === "publish")?.execute();
 
-    expect(input.callbacks.save).toHaveBeenCalledOnce();
     expect(input.callbacks.showRuns).toHaveBeenCalledOnce();
     expect(input.callbacks.showVersionHistory).toHaveBeenCalledOnce();
     // Review changes opens the sheet Publish opens.
@@ -173,7 +167,6 @@ describe("workflowCommands", () => {
     expect(disabled("copy-selection")).toBe(false);
     expect(disabled("run-draft")).toBe(false);
     expect(disabled("publish")).toBe(false);
-    expect(disabled("save")).toBe(false);
   });
 
   /**
@@ -197,9 +190,9 @@ describe("workflowCommands", () => {
     expect(test.find((command) => command.id === "run-published")?.detail).toBe(
       "Test recipients"
     );
-    expect(test.find((command) => command.id === "save")?.consequential).toBe(
-      undefined
-    );
+    expect(
+      test.find((command) => command.id === "show-runs")?.consequential
+    ).toBe(undefined);
   });
 
   // The toolbar's run control already offers both runs, and Publish opens the
