@@ -215,7 +215,7 @@ describe("useRevealCamera", () => {
       .find((node) => !["near", "low"].includes(node.id));
     if (!copy) throw new Error("no copy was added");
     // React Flow holds the copy once the canvas paints it.
-    camera.setFlowNodes(camera.store.get(nodesAtom));
+    await camera.run(() => camera.setFlowNodes(camera.store.get(nodesAtom)));
     await camera.settle();
 
     expect(camera.moves).toHaveLength(1);
