@@ -55,6 +55,9 @@ jobs:
       - name: Smoke test packed core
         run: pnpm run package:smoke
 
+      - name: Smoke test pnpm run start
+        run: pnpm run start:smoke
+
   tests:
     runs-on: ubuntu-latest
 
