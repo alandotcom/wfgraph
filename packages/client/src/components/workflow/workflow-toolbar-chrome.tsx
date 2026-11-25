@@ -780,8 +780,8 @@ function CommandMenuItem({ command }: { command: WorkflowCommand }) {
 
 /**
  * The one menu for the open workflow, under its name: Rename, Duplicate,
- * Pause or Resume, Version history, Review changes, Copy workflow ID and
- * Delete. What is about the app rather than this workflow is under Settings.
+ * Version history, Review changes, Copy workflow ID and Delete. Pause and
+ * Resume are in the publication chip's menu, beside the state they change. What is about the app rather than this workflow is under Settings.
  */
 export function WorkflowMenuComponent({
   workflowId,
@@ -799,7 +799,6 @@ export function WorkflowMenuComponent({
 
   // Each operation keeps its own authorization check.
   const offers = workflowMenuOffers(state, workflowId);
-  const pause = useSetWorkflowPaused(workflowId);
   const publicationCommands = usePublicationCommands(state, actions);
   const currentWorkflowId = state.currentWorkflowId;
   // The names the server would refuse, which is every workflow's but this one's.
@@ -849,15 +848,6 @@ export function WorkflowMenuComponent({
                 <Copy />
               )}
               Duplicate workflow
-            </DropdownMenuItem>
-          ) : null}
-          {offers.togglePause ? (
-            <DropdownMenuItem
-              disabled={pause.isPending}
-              onClick={() => pause.setPaused(!offers.isPaused)}
-            >
-              {offers.isPaused ? <Play /> : <Pause />}
-              {offers.isPaused ? "Resume workflow" : "Pause workflow"}
             </DropdownMenuItem>
           ) : null}
           {currentWorkflowId ? (

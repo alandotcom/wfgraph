@@ -727,8 +727,9 @@ graph share the column height.
 The 44px editor toolbar spans the full editor shell. Workflow navigation,
 the workflow's menu under its name, and **Settings** form the leading group.
 The workflow's menu holds everything about this workflow: **Rename**,
-**Duplicate workflow**, **Pause workflow** or **Resume workflow**, **Version
-history**, **Review changes**, **Copy workflow ID** and **Delete workflow**.
+**Duplicate workflow**, **Version history**, **Review changes**, **Copy
+workflow ID** and **Delete workflow**. Pause and Resume are in the
+publication chip's menu, beside the state they change.
 **Settings** holds what is about the app: **Connections**, **Theme** and
 **Keyboard shortcuts**. There is no save command, because the draft saves by
 itself; Cmd+S (Ctrl+S) does nothing and keeps the browser's save dialog shut. Below
@@ -759,8 +760,7 @@ desktop control is disabled. In Runs, disabled Run and Publish
 controls say "Switch to Draft to run." or "Switch to Draft to publish." in a
 tooltip, and their menu rows say it in a detail line. A paused workflow starts
 no run, so in Draft both run commands are disabled and say "Resume the workflow
-to run." The workflow's menu offers **Pause workflow** or **Resume workflow**
-once a version is published. **Configuration** stays beside that menu as an icon
+to run." **Configuration** stays beside that menu as an icon
 button, because the details column is absent at that width. In Draft it opens the
 selected object's summary sheet, and in Runs the sheet of the run list or the run.
 
@@ -773,8 +773,8 @@ to them. Every dialog returns focus to the control that opened it, including
 one opened from a menu row or the command palette.
 
 The command palette reaches every menu command by the words its row uses: the
-workflow menu's **Rename**, **Duplicate workflow**, **Pause workflow** or
-**Resume workflow**, **Copy workflow ID**, and **Go to workflow…**; and the
+workflow menu's **Rename**, **Duplicate workflow**, **Copy workflow ID**, and
+**Go to workflow…**, the chip's **Pause workflow** or **Resume workflow**; and the
 Settings menu's **Connections** and **Theme**. With one step selected in an
 editable Draft, the palette opens on a group headed by that step, "Step 4 ·
 Send 24-hour reminder", holding what its context menu and details column offer,

@@ -835,7 +835,6 @@ describe("WorkflowMenuComponent", () => {
       expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
         "Rename",
         "Duplicate workflow",
-        "Pause workflow",
         "Version history",
         "Review changes",
         "Copy workflow ID",
