@@ -281,17 +281,20 @@ describe("useRevealCamera", () => {
   it("answers a request for another address once that address shows", async () => {
     const camera = renderCamera();
     await camera.settle();
-    const group = workspaceAddressFromSearch("wf_1", { group: "group_1" });
+    const run = workspaceAddressFromSearch("wf_1", {
+      view: "runs",
+      executionId: "run_1",
+    });
     await camera.run(() =>
       camera.store.set(requestRevealPlacementAtom, {
-        addressId: workspaceAddressId(group),
+        addressId: workspaceAddressId(run),
         nodeIds: ["far"],
       })
     );
     expect(camera.moves).toEqual([]);
 
     await camera.run(() =>
-      showWorkspaceRoute(camera.store, { group: "group_1" })
+      showWorkspaceRoute(camera.store, { view: "runs", executionId: "run_1" })
     );
     expect(camera.moves).toHaveLength(1);
   });

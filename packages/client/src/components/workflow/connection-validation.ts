@@ -60,18 +60,17 @@ function endpointRefusal(
 
 /**
  * Resolve handles and collapsed Group ports without validating a partial graph.
- * Focused stubs must first pass through `storedCanvasConnection` and set
- * `throughBoundaryStub`. Callers validate the complete additions before storing.
+ * A Group drawn in place connects at its member steps, so a connection between
+ * a member and any other step is stored as drawn. Callers validate the
+ * complete additions, with the Group rules, before storing.
  */
 export function expandConnection({
   connection,
-  throughBoundaryStub = false,
   nodes,
   storeEdges,
   catalog,
 }: {
   connection: RequestedConnection;
-  throughBoundaryStub?: boolean | undefined;
   nodes: WorkflowNode[];
   storeEdges: WorkflowEdge[];
   catalog: ExtensionCatalog;
@@ -90,21 +89,6 @@ export function expandConnection({
   const targetNode = nodes.find((node) => node.id === targetNodeId);
   const refusal = endpointRefusal(sourceNode, targetNode);
   if (refusal !== null) return { refusal };
-  // A focused Group canvas paints members under their stored ids, so a
-  // connection there between two members is stored as an interior edge. Any
-  // other connection between a member and a step outside its Group goes through
-  // the Group's collapsed card on the overview.
-  if (
-    !throughBoundaryStub &&
-    (sourceNode?.parentId || targetNode?.parentId) &&
-    sourceNode?.parentId !== targetNode?.parentId
-  ) {
-    return {
-      refusal:
-        "Connect two steps inside the same Group, or connect the Group card.",
-    };
-  }
-
   const connectionId = connection.id ?? null;
   const sourceHandle = normalizeSourceHandleForConnection({
     nodes,
@@ -137,7 +121,8 @@ export function expandConnection({
       groupOutlet(nodes, storeEdges, sourceNodeId).ports.length === 0
     ) {
       return {
-        refusal: "Open this Group and connect the branch you want to continue.",
+        refusal:
+          "Expand this Group and connect the branch you want to continue.",
       };
     }
     return {
@@ -146,7 +131,7 @@ export function expandConnection({
         edges: storeEdges,
         node: targetNode,
       })
-        ? 'This outlet already enters the Group. To connect it to another step inside, open the Group and drag from its "Incoming from" stub.'
+        ? "This outlet already enters the Group. Expand the Group to connect it to another step inside."
         : "These steps are already connected from this outlet.",
     };
   }

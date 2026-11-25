@@ -18,10 +18,7 @@ import { useCallback } from "react";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { CanvasPosition } from "#src/lib/command-palette";
-import {
-  activeSelectionAtom,
-  activeWorkspaceAddressAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { isConditionActionNode } from "@wfgraph/shared/conditions/condition-branch";
 import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
 import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
@@ -33,6 +30,7 @@ import {
   addStepAfterAtom,
   canvasEdgesAtom,
   canvasNodesAtom,
+  canvasPlacementNodesAtom,
   edgesAtom,
   insertStepOnEdgeAtom,
   nodesAtom,
@@ -60,11 +58,11 @@ export type AddStepRequest = {
 /**
  * Returns a function that creates a step, selects it, and opens its
  * configuration. With one step selected the step goes on that step's outlet.
- * With nothing selected on the overview, a Started path with one open end
- * gains the step there. Otherwise it stands alone in clear canvas. On a
- * focused Group canvas the step becomes a member of that Group, which places
- * it from the Group's layout. Does nothing when React Flow is not on screen to
- * measure, and shows the refusal when the Group rules refuse the step.
+ * With nothing selected, a Started path with one open end gains the step
+ * there. Otherwise it stands alone in clear canvas. A step added after a
+ * member joins that member's Group, and a step placed inside a Group's region
+ * joins that Group. Does nothing when React Flow is not on screen to measure,
+ * and shows the refusal when the Group rules refuse the step.
  */
 export function useAddStep(): (request: AddStepRequest) => void {
   const store = useStore();
@@ -72,7 +70,7 @@ export function useAddStep(): (request: AddStepRequest) => void {
   const addNode = useSetAtom(addNodeAtom);
   const addStepAfter = useSetAtom(addStepAfterAtom);
   const catalog = useExtensionCatalog();
-  const { getInternalNode, screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition } = useReactFlow();
 
   return useCallback(
     ({ actionType, at }: AddStepRequest) => {
@@ -81,13 +79,11 @@ export function useAddStep(): (request: AddStepRequest) => void {
         at ??
         (source
           ? positionAfter(store, source.nodeId)
-          : // The painted canvas of the active scope. On the overview a Group
-            // is its collapsed card and its members take no room.
+          : // The painted canvas, each member at its canvas position.
             canvasCentre(
-              store.get(canvasNodesAtom),
+              store.get(canvasPlacementNodesAtom),
               store.get(canvasEdgesAtom),
-              screenToFlowPosition,
-              (nodeId) => getInternalNode(nodeId)?.internals.positionAbsolute
+              screenToFlowPosition
             ));
       if (!position) {
         return;
@@ -99,15 +95,7 @@ export function useAddStep(): (request: AddStepRequest) => void {
         source ? addStepAfter({ node, source, catalog }) : addNode(node)
       );
     },
-    [
-      addNode,
-      addStepAfter,
-      catalog,
-      getInternalNode,
-      newStep,
-      screenToFlowPosition,
-      store,
-    ]
+    [addNode, addStepAfter, catalog, newStep, screenToFlowPosition, store]
   );
 }
 
@@ -168,7 +156,7 @@ export function useInsertStepOnEdge(): (input: { edgeId: string }) => void {
 
 /**
  * The outlet a step added with no place named goes on. With a selection it is
- * `selectedStepOutlet`. With nothing selected on the overview it is the
+ * `selectedStepOutlet`. With nothing selected it is the
  * Started path's one open end, such as the Lifecycle Node's Started outlet in
  * a new workflow. Null otherwise, and the step stands alone.
  */
@@ -178,9 +166,6 @@ function outletForNewStep(
 ): { nodeId: string; handle: string | null } | null {
   if (store.get(activeSelectionAtom).nodeIds.length > 0) {
     return selectedStepOutlet(store);
-  }
-  if (store.get(activeWorkspaceAddressAtom).scope.kind === "group") {
-    return null;
   }
   return soleStartedPathEnd({
     nodes: store.get(nodesAtom),
@@ -218,16 +203,15 @@ function selectedStepOutlet(
 }
 
 /**
- * Where a step added after the step `sourceId` goes: one rank past it, moved
- * clear of the cards and connections already there. Null when the canvas
- * holds no such step. A focused Group ignores it and places the step from the
- * Group's layout.
+ * Where a step added after the step `sourceId` goes, as a canvas point: one
+ * rank past it, moved clear of the cards and connections already there. Null
+ * when the canvas holds no such step.
  */
 function positionAfter(
   store: ReturnType<typeof useStore>,
   sourceId: string
 ): { x: number; y: number } | null {
-  const nodes = store.get(canvasNodesAtom);
+  const nodes = store.get(canvasPlacementNodesAtom);
   const source = nodes.find((node) => node.id === sourceId);
   if (!source) {
     return null;
@@ -297,10 +281,7 @@ function canvasCentre(
   screenToFlowPosition: (point: { x: number; y: number }) => {
     x: number;
     y: number;
-  },
-  absolutePositionForId: (
-    nodeId: string
-  ) => { readonly x: number; readonly y: number } | undefined
+  }
 ): { x: number; y: number } | null {
   const pane = document.querySelector(".react-flow");
   if (!pane) {
@@ -319,6 +300,6 @@ function canvasCentre(
       x: centre.x - WORKFLOW_NODE_WIDTH / 2,
       y: centre.y - WORKFLOW_NODE_HEIGHT / 2,
     },
-    canvasObstacles({ nodes, edges, absolutePositionForId })
+    canvasObstacles({ nodes, edges })
   );
 }

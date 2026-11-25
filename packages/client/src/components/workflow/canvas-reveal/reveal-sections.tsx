@@ -1,12 +1,9 @@
 /**
- * The pieces every the details column body is built from: a titled section, the
- * validation issue list of one node, and the Enter group command.
+ * The pieces every details column body is built from: a titled section and the
+ * validation issue list of one node.
  */
 
-import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { Button } from "#src/components/ui/button";
-import { useGroupScopeNavigation } from "#src/components/workflow/use-group-scope-navigation";
 import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
 
 /**
@@ -100,25 +97,5 @@ export function NodeIssueList({
         );
       })}
     </ul>
-  );
-}
-
-/**
- * Enter group at the end of a Group's summary, which opens the focused canvas
- * of `groupId` in the active workspace.
- */
-export function EnterGroupButton({ groupId }: { groupId: string }) {
-  const { enterGroup } = useGroupScopeNavigation();
-  return (
-    <div className="border-t px-4 py-3">
-      <Button
-        className="w-full"
-        onClick={() => enterGroup(groupId)}
-        type="button"
-      >
-        Enter group
-        <ArrowRight data-icon="inline-end" />
-      </Button>
-    </div>
   );
 }

@@ -23,7 +23,7 @@ import {
   findAction,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
-import type { DesktopScopePresentation } from "#src/lib/workflow-navigation-state";
+import type { DesktopPresentation } from "#src/lib/workflow-navigation-state";
 import {
   activeRevealPresentationAtom,
   activeWorkspaceAddressAtom,
@@ -76,7 +76,6 @@ import {
   RunsBody,
   RunsHeader,
   RunsMobileHeader,
-  unwindMobileRuns,
   unwindRuns,
 } from "./runs-browse";
 import { StepEditor, StepSummarySheet } from "./step-browse";
@@ -116,7 +115,7 @@ export type RevealHeaderContext = {
   workflowName: string;
   catalog: ExtensionCatalog;
   /** The active scope's desktop presentation, which records where a jump began. */
-  presentation: DesktopScopePresentation;
+  presentation: DesktopPresentation;
 };
 
 /** What a kind's mobile sheet `Header` component receives from the shell. */
@@ -441,8 +440,8 @@ const CONDITION_KIND: RevealKind = {
 };
 
 /**
- * A Draft Group frame on the overview: its label and description, its
- * summary, Enter group, and its commands. A phone shows the summary on a
+ * A Draft Group frame: its label and description, its summary, and its
+ * commands. A phone shows the summary on a
  * summary sheet and the rest in the full-screen editor.
  */
 const GROUP_KIND: RevealKind = {
@@ -520,7 +519,7 @@ const RUNS_KIND: RevealKind = {
   Browse: RunsBody,
   Focus: RunsBody,
   unwind: unwindRuns,
-  mobile: { Header: RunsMobileHeader, unwind: unwindMobileRuns },
+  mobile: { Header: RunsMobileHeader, unwind: unwindRuns },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: false,
 };

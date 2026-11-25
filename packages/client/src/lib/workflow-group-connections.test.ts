@@ -8,10 +8,7 @@ import {
   connectionRefusalReason,
   planConnection,
 } from "#src/components/workflow/connection-validation";
-import {
-  boundaryStubId,
-  storedCanvasConnection,
-} from "#src/lib/group-scope-canvas";
+import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
 import {
   addStepAfterAtom,
   canvasEdgesAtom,
@@ -32,7 +29,6 @@ import {
 } from "#src/lib/workflow-graph-types";
 import { historyAtom } from "#src/lib/workflow-graph-cells";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
-import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import {
   updateMock,
   lifecycle,
@@ -180,7 +176,7 @@ describe("a Group with no connected branch to continue", () => {
         catalog: emptyExtensionCatalog,
       })
     ).toEqual({
-      refusal: "Open this Group and connect the branch you want to continue.",
+      refusal: "Expand this Group and connect the branch you want to continue.",
     });
     await tick();
     expect(graphOf(store)).toEqual(before);
@@ -191,7 +187,6 @@ describe("a Group with no connected branch to continue", () => {
         nodes: before.nodes,
         storeEdges: before.edges,
         connection: { source: "gate", sourceHandle: "false", target: "after" },
-        throughBoundaryStub: true,
         catalog: emptyExtensionCatalog,
       })
     ).toEqual({
@@ -201,8 +196,9 @@ describe("a Group with no connected branch to continue", () => {
 });
 
 describe("parallel ingress fan-out", () => {
-  it("groups a fan-out that Publish accepts and paints one inlet on the card", () => {
+  it("groups a fan-out that Publish accepts and paints one inlet on the collapsed card", () => {
     const { store, frameId, grouped } = groupedFanOut();
+    store.set(collapsedGroupIdsAtom, new Set([frameId]));
 
     expect(grouped.edges).toEqual(fanOutGraph().edges);
     expect(groupContractViolations(grouped)).toEqual([]);
@@ -214,8 +210,9 @@ describe("parallel ingress fan-out", () => {
     ]);
   });
 
-  it("deletes the painted inlet with every edge it stands for, and reconnects the same fan-out", async () => {
+  it("deletes a collapsed card's painted inlet with every edge it stands for, and reconnects the same fan-out", async () => {
     const { store, frameId, grouped } = groupedFanOut();
+    store.set(collapsedGroupIdsAtom, new Set([frameId]));
 
     store.set(deleteEdgeAtom, "qualify-read");
     await tick();
@@ -292,12 +289,17 @@ describe("parallel ingress fan-out", () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it("deletes and adds one child connection from the focused canvas", async () => {
-    const { store, frameId, grouped } = groupedFanOut();
-    showWorkspaceRoute(store, { group: frameId });
+  it("deletes and adds one member connection on a Group drawn in place", async () => {
+    const { store, grouped } = groupedFanOut();
 
-    // The focused canvas paints each ingress edge under its stored id, so the
-    // removal takes that edge and leaves its sibling.
+    // A Group drawn in place paints each edge into a member under its stored
+    // id, so the removal takes that edge and leaves its sibling.
+    expect(
+      store
+        .get(canvasEdgesAtom)
+        .filter((item) => item.source === "qualify")
+        .map((item) => item.id)
+    ).toEqual(["qualify-read", "qualify-profile"]);
     store.set(deleteEdgeAtom, "qualify-profile");
     await tick();
     expect(edgeIds(store)).toEqual([
@@ -309,56 +311,30 @@ describe("parallel ingress fan-out", () => {
     ]);
     expect(lastSaved().edges).toEqual(store.get(edgesAtom));
 
-    // Once `qualify` enters the Group, a connection onto the collapsed card
-    // reaches only `read`, so the refusal points at the "Incoming from" stub.
+    // The same outlet connects straight to another member.
+    const connection = {
+      source: "qualify",
+      target: "profile",
+      sourceHandle: null,
+      targetHandle: null,
+    };
     expect(
       connectionRefusalReason({
-        connection: { source: "qualify", target: frameId },
-        nodes: store.get(nodesAtom),
-        storeEdges: store.get(edgesAtom),
-        catalog: emptyExtensionCatalog,
-      })
-    ).toBe(
-      'This outlet already enters the Group. To connect it to another step inside, open the Group and drag from its "Incoming from" stub.'
-    );
-
-    // A drag from the ingress stub onto `profile` names the stub.
-    const translated = storedCanvasConnection(
-      {
-        source: boundaryStubId("ingress", { nodeId: "qualify", handle: null }),
-        target: "profile",
-        sourceHandle: null,
-        targetHandle: null,
-      },
-      store.get(canvasNodesAtom)
-    );
-    if ("refusal" in translated) {
-      throw new Error("expected the stub drag to store a connection");
-    }
-    expect(
-      connectionRefusalReason({
-        ...translated,
+        connection,
         nodes: store.get(nodesAtom),
         storeEdges: store.get(edgesAtom),
         catalog: emptyExtensionCatalog,
       })
     ).toBeNull();
     store.set(connectNodesAtom, {
-      connection: { id: "again", ...translated.connection },
-      throughBoundaryStub: translated.throughBoundaryStub,
+      connection: { id: "again", ...connection },
       catalog: emptyExtensionCatalog,
     });
     await tick();
-    expect(store.get(edgesAtom).at(-1)).toEqual({
-      id: "again",
-      source: "qualify",
-      target: "profile",
-      sourceHandle: null,
-      targetHandle: null,
-    });
+    expect(store.get(edgesAtom).at(-1)).toEqual({ id: "again", ...connection });
     expect(groupContractViolations(graphOf(store))).toEqual([]);
 
-    // Deleting a selected ingress edge in the focused scope takes that edge.
+    // Deleting a selected edge into a member takes that edge alone.
     store.set(activeSelectionAtom, { nodeIds: [], edgeIds: ["qualify-read"] });
     store.set(deleteSelectedItemsAtom);
     await tick();
@@ -371,36 +347,19 @@ describe("parallel ingress fan-out", () => {
     expectEverySaveWhole();
 
     store.set(undoAtom);
-    expect(edgeIds(store)).toEqual([
-      "start-qualify",
-      "start-other",
-      "qualify-read",
-      "read-send",
-      "send-after",
-      "again",
-    ]);
     store.set(undoAtom);
-    expect(edgeIds(store)).toEqual([
-      "start-qualify",
-      "start-other",
-      "qualify-read",
-      "read-send",
-      "send-after",
-    ]);
     store.set(undoAtom);
     expect(graphOf(store)).toEqual(grouped);
   });
 });
 
 describe("connection planning", () => {
-  it("refuses a cycle inside a focused Group before saving or recording history", async () => {
+  it("refuses a cycle inside a Group before saving or recording history", async () => {
     const store = createGraphStore({
       nodes: [lifecycle(), lookup("read"), lookup("send")],
       edges: [edge("read-send", "read", "send")],
     });
     store.set(groupSelectionAtom, { selectedIds: new Set(["read", "send"]) });
-    const frameId = store.get(nodesAtom).find(isGroupNode)!.id;
-    showWorkspaceRoute(store, { group: frameId });
     await tick();
     vi.clearAllMocks();
     const grouped = graphOf(store);
@@ -437,6 +396,8 @@ describe("connection planning", () => {
 
   it("stores exactly the additions the preview planned against the same graph", async () => {
     const { store, frameId } = groupedFanOut();
+    // Collapsed, the card's inlet stands for both edges into the Group.
+    store.set(collapsedGroupIdsAtom, new Set([frameId]));
     store.set(deleteEdgeAtom, "qualify-read");
     await tick();
     const connection = { source: "other", target: frameId };
@@ -465,7 +426,7 @@ describe("connection planning", () => {
     ).toEqual(committed.additions);
   });
 
-  it("refuses at commit a member connected to a step outside its Group, which the preview refuses", async () => {
+  it("refuses at commit an outside step entering a member from a second outlet, as Publish does", async () => {
     const { store, grouped } = groupedFanOut();
     const history = store.get(historyAtom);
 
@@ -476,7 +437,7 @@ describe("connection planning", () => {
       })
     ).toEqual({
       refusal:
-        "Connect two steps inside the same Group, or connect the Group card.",
+        'The Group "Group" is already entered from "qualify". A Group is entered from one outlet, so remove that connection first.',
     });
     await tick();
     expect(graphOf(store)).toEqual(grouped);
@@ -556,7 +517,7 @@ function joinGraph(): Graph {
 }
 
 describe("joins inside a Group", () => {
-  function focusedJoinGroup() {
+  function joinGroup() {
     const store = createGraphStore(joinGraph());
     store.set(groupSelectionAtom, {
       selectedIds: new Set(["a", "b", "e", "w", "c", "k", "m", "j"]),
@@ -564,26 +525,18 @@ describe("joins inside a Group", () => {
     const frameId =
       store.get(nodesAtom).find((node) => isGroupNode(node))?.id ?? "";
     expect(frameId).not.toBe("");
-    showWorkspaceRoute(store, { group: frameId });
     vi.clearAllMocks();
     return { store, frameId };
   }
 
-  /** The refusal for a drag on the focused canvas from `source` onto `target`. */
+  /** The refusal for a drag on the canvas from `source` onto `target`. */
   function dragRefusal(
     store: Store,
     source: string,
     target: string
   ): string | null {
-    const translated = storedCanvasConnection(
-      { source, target, sourceHandle: null, targetHandle: null },
-      store.get(canvasNodesAtom)
-    );
-    if ("refusal" in translated) {
-      return translated.refusal;
-    }
     return connectionRefusalReason({
-      ...translated,
+      connection: { source, target, sourceHandle: null, targetHandle: null },
       nodes: store.get(nodesAtom),
       storeEdges: store.get(edgesAtom),
       catalog: emptyExtensionCatalog,
@@ -600,7 +553,7 @@ describe("joins inside a Group", () => {
   }
 
   it("converges an unconditional fan-out on a join that continues through one port", async () => {
-    const { store } = focusedJoinGroup();
+    const { store } = joinGroup();
 
     expect(dragRefusal(store, "e", "j")).toBeNull();
     store.set(connectNodesAtom, {
@@ -621,14 +574,10 @@ describe("joins inside a Group", () => {
   });
 
   it("refuses a branch into an inside join from the Group's outside port, as Publish does", async () => {
-    const { store } = focusedJoinGroup();
+    const { store } = joinGroup();
     const history = store.get(historyAtom);
 
-    const refusal = dragRefusal(
-      store,
-      boundaryStubId("ingress", { nodeId: "qualify", handle: null }),
-      "j"
-    );
+    const refusal = dragRefusal(store, "qualify", "j");
     const [violation] = groupContractViolations(
       withEdge(store, "qualify", "j")
     );
@@ -638,7 +587,6 @@ describe("joins inside a Group", () => {
     expect(
       store.set(connectNodesAtom, {
         connection: { id: "qualify-j", source: "qualify", target: "j" },
-        throughBoundaryStub: true,
         catalog: emptyExtensionCatalog,
       })
     ).toEqual({ refusal });
@@ -649,7 +597,7 @@ describe("joins inside a Group", () => {
   });
 
   it("refuses a Wait on a join arm with the draft save's own reason", () => {
-    const { store } = focusedJoinGroup();
+    const { store } = joinGroup();
 
     const refusal = dragRefusal(store, "w", "j");
     expect(refusal).toBe(
@@ -659,7 +607,7 @@ describe("joins inside a Group", () => {
   });
 
   it("refuses a join arm a Condition can leave unreached, as Publish does", async () => {
-    const { store } = focusedJoinGroup();
+    const { store } = joinGroup();
 
     const refusal = dragRefusal(store, "k", "j");
     const [violation] = groupContractViolations(withEdge(store, "k", "j"));

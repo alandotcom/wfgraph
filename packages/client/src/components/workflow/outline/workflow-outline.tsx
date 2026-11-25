@@ -28,11 +28,8 @@ import { runEvidenceOriginAtom } from "#src/components/workflow/run-evidence-ori
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { useInspectRunNode } from "#src/components/workflow/use-run-node-evidence";
 import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
-import { scopeOfNode } from "#src/lib/workflow-scope-graph";
-import {
-  scopeId,
-  workspaceAddressId,
-} from "#src/lib/workflow-navigation-state";
+import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
+import { expandGroupAtom } from "#src/lib/collapsed-groups";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { Input } from "#src/components/ui/input";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
@@ -353,21 +350,24 @@ export function WorkflowOutline({
       return;
     }
     if (view === "runs") {
-      // On a run the row shows the step's evidence, entering its Group as the
-      // failure summary's link does, and Back and Escape return to the row.
+      // On a run the row shows the step's evidence on the one canvas, and
+      // Back and Escape return to the row. A step in a Group the viewer
+      // collapsed draws its Group in place again.
       inspectRunNode({ nodeId, logId: null });
       const origin = store.get(runEvidenceOriginAtom);
       if (origin?.nodeId === nodeId) {
         store.set(runEvidenceOriginAtom, { ...origin, fromOutline: true });
       }
-      const active = store.get(activeWorkspaceAddressAtom);
-      const nodes = store.get(executionOverlayGraphAtom)?.nodes ?? [];
-      if (scopeId(scopeOfNode(nodes, nodeId)) === scopeId(active.scope)) {
-        requestPlacement({
-          addressId: workspaceAddressId(active),
-          nodeIds: [nodeId],
-        });
+      const parentId = store
+        .get(executionOverlayGraphAtom)
+        ?.nodes.find((node) => node.id === nodeId)?.parentId;
+      if (parentId !== undefined) {
+        store.set(expandGroupAtom, parentId);
       }
+      requestPlacement({
+        addressId: workspaceAddressId(store.get(activeWorkspaceAddressAtom)),
+        nodeIds: [nodeId],
+      });
       return;
     }
     if (workflowId !== null) {

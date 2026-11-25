@@ -63,11 +63,8 @@ import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { ActionNode } from "./nodes/action-node";
 import { AddNode } from "./nodes/add-node";
 import { GroupNode } from "./nodes/group-node";
-import { groupBoundaryNodeTypes } from "./nodes/group-boundary-node";
-import { GroupScopeBar } from "./group-scope-bar";
-import { useGroupScopeNavigation } from "./use-group-scope-navigation";
-import { withoutProjectedDimensions } from "#src/lib/group-scope-canvas";
-import { scopeId } from "#src/lib/workflow-navigation-state";
+import { withoutProjectedDimensions } from "#src/lib/group-canvas";
+import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { editFocusTarget } from "./canvas-reveal/reveal-edit-target";
 import { requestRevealEditFocusAtom } from "./canvas-reveal/reveal-requests";
@@ -127,26 +124,21 @@ const nodeTypes = {
   action: ActionNode,
   add: AddNode,
   group: GroupNode,
-  ...groupBoundaryNodeTypes,
 };
 
 export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const catalog = useExtensionCatalog();
-  // What the active scope paints, and every node of the graph, which the
-  // connection rules read because a Group frame stands for its members.
-  // A phone lays a focused Group out top to bottom whatever its stored
-  // direction, which changes only what the canvas paints.
-  // Every raw-sync read below is fed by a synchronizer that can write before
+  // What the canvas paints, and every node of the graph, which the
+  // connection rules read because a collapsed Group card stands for its
+  // members. Every raw-sync read below is fed by a synchronizer that can write before
   // normal subscriptions mount.
   const canvasGraph = useAtomValueRawSync(canvasGraphAtom);
   const { nodes, edges } = canvasGraph;
   const graphNodes = useAtomValueRawSync(displayNodesAtom);
-  const { scope, key: workspaceKey } = useAtomValueRawSync(
-    activeWorkspaceAddressAtom
-  );
+  const { key: workspaceKey } = useAtomValueRawSync(activeWorkspaceAddressAtom);
+  const collapsedGroupIds = useAtomValueRawSync(collapsedGroupIdsAtom);
   const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
   const topologyAuthoring = useTopologyAuthoring();
-  const { onNodeDoubleClick } = useGroupScopeNavigation();
   const storeEdges = useAtomValue(edgesAtom);
   // Draft edits and run-overlay viewing are mutually exclusive: mutating while
   // the overlay is up would write the draft under a canvas that is not showing
@@ -187,7 +179,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   // element identity until the graph or catalog actually changes.
   const accessibleGraph = accessibleGraphElements(nodes, edges, catalog);
   // The node whose measurement tells the first placement that React Flow holds
-  // the graph, which the placement pins near the top when the scope asks.
+  // the graph, which the placement pins near the top.
   const anchorNode = accessibleGraph.nodes.find(
     (node) => node.id === canvasGraph.anchor?.nodeId
   );
@@ -208,7 +200,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     executionOverlay,
     comparison,
     draftEdges: storeEdges,
-    scope: scopeId(scope),
+    collapsedGroupIds,
   });
   const resolvedWorkspacePresentation =
     workspaceView === "runs" ? executionOverlay : null;
@@ -290,7 +282,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const [readyWorkflowId, setReadyWorkflowId] = useState<string | null>(null);
   const isCanvasReady =
     currentWorkflowId !== null && readyWorkflowId === currentWorkflowId;
-  // The workspace camera restores a scope's saved camera before paint, and
+  // The workspace camera restores an address's saved camera before paint, and
   // the placement camera runs after paint, so a placement always compares
   // against the restored camera.
   const insertStepOnEdge = useInsertStepOnEdge();
@@ -384,7 +376,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       nodeWidth: lifecycleAnchor.width,
     };
     if (!canvasGraph.anchor?.pinToTop) {
-      // A focused Group has no Lifecycle card to open at.
+      // A graph with no Lifecycle card has nothing to anchor the opening on.
       fittedWorkflowIdRef.current = currentWorkflowId;
       const savedViewport = workspaceCamera.savedViewport();
       if (savedViewport) {
@@ -556,7 +548,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     onConnectEnd,
     wasNodeJustCreatedFromConnection,
   } = useCanvasConnections({
-    nodes,
     graphNodes,
     storeEdges,
     catalog,
@@ -666,7 +657,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
           onEdgeContextMenu={topologyLocked ? undefined : onEdgeContextMenu}
           onEdgesChange={graphEditingLocked ? undefined : handleEdgesChange}
           onNodeClick={isGenerating ? undefined : onNodeClick}
-          onNodeDoubleClick={onNodeDoubleClick}
           onNodeContextMenu={topologyLocked ? undefined : onNodeContextMenu}
           onNodesChange={
             graphEditingLocked ? onLockedNodesChange : handleNodesChange
@@ -696,9 +686,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
           </Panel>
           {/* A workflow with nothing but its Lifecycle Node shows how to
                 begin, wherever the canvas can add a step. */}
-          {interaction.insertsNodes && scope.kind === "overview" ? (
-            <EmptyWorkflowStart />
-          ) : null}
+          {interaction.insertsNodes ? <EmptyWorkflowStart /> : null}
           {showMinimap && (
             // maskColor and nodeColor default to hardcoded light-mode values that
             // never invert: the viewport rectangle was invisible in light (1.05:1)
@@ -716,8 +704,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
           )}
         </Canvas>
       </InsertStepSlot.Provider>
-
-      <GroupScopeBar />
 
       {/* Context Menu */}
       <WorkflowContextMenu

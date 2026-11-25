@@ -7,10 +7,10 @@ import {
   inspectionInGraph,
   recoveredRouteSearch,
   rememberRouteSearch,
-  scopeNavigationAt,
+  workspaceNavigationAt,
   selectionInGraph,
   selectionWithChanges,
-  updateScopeNavigation,
+  updateWorkspaceNavigation,
   withCamera,
   withDesktopRevealLevel,
   withInspectedOrigin,
@@ -53,7 +53,6 @@ describe("workspace addresses", () => {
       {},
       { view: "runs" },
       { view: "runs", executionId: "exec_1" },
-      { view: "runs", executionId: "exec_1", group: "group_1" },
     ];
     const addresses = searches.map((search) =>
       workspaceAddressFromSearch("workflow_1", search)
@@ -63,63 +62,62 @@ describe("workspace addresses", () => {
       "draft",
       "runs",
       "run:exec_1",
-      "run:exec_1",
     ]);
     expect(addresses.map(workspaceRouteSearch)).toEqual(searches);
   });
-});
 
-describe("updateScopeNavigation", () => {
-  it("keeps the overview and one retained Group scope per key", () => {
-    const overview = workspaceAddressFromSearch("workflow_1", {});
-    const groupOne = workspaceAddressFromSearch("workflow_1", {
+  it("reads an older link's Group key as the same address and never writes it", () => {
+    const address = workspaceAddressFromSearch("workflow_1", {
+      view: "runs",
+      executionId: "exec_1",
       group: "group_1",
     });
-    const groupTwo = workspaceAddressFromSearch("workflow_1", {
-      group: "group_2",
-    });
-    const select =
-      (id: string) => (scope: Parameters<typeof withSelection>[0]) =>
-        withSelection(scope, { nodeIds: [id], edgeIds: [] });
 
-    let navigation = updateScopeNavigation(
+    expect(workspaceRouteSearch(address)).toEqual({
+      view: "runs",
+      executionId: "exec_1",
+    });
+  });
+});
+
+describe("updateWorkspaceNavigation", () => {
+  it("keeps one navigation per workspace key", () => {
+    const draft = workspaceAddressFromSearch("workflow_1", {});
+    const run = runAddress("exec_1");
+    const select =
+      (id: string) => (workspace: Parameters<typeof withSelection>[0]) =>
+        withSelection(workspace, { nodeIds: [id], edgeIds: [] });
+
+    let navigation = updateWorkspaceNavigation(
       EMPTY_WORKFLOW_NAVIGATION,
-      overview,
+      draft,
       select("trigger")
     );
-    navigation = updateScopeNavigation(navigation, groupOne, select("child"));
+    navigation = updateWorkspaceNavigation(navigation, run, select("child"));
 
-    expect(scopeNavigationAt(navigation, overview).selection.nodeIds).toEqual([
+    expect(workspaceNavigationAt(navigation, draft).selection.nodeIds).toEqual([
       "trigger",
     ]);
-    expect(scopeNavigationAt(navigation, groupOne).selection.nodeIds).toEqual([
+    expect(workspaceNavigationAt(navigation, run).selection.nodeIds).toEqual([
       "child",
-    ]);
-
-    navigation = updateScopeNavigation(navigation, groupTwo, select("other"));
-    expect(scopeNavigationAt(navigation, groupOne).selection).toEqual(
-      EMPTY_SELECTION
-    );
-    expect(scopeNavigationAt(navigation, overview).selection.nodeIds).toEqual([
-      "trigger",
     ]);
   });
 
   it("answers the same navigation when the update changes nothing", () => {
     const address = workspaceAddressFromSearch("workflow_1", {});
-    const navigation = updateScopeNavigation(
+    const navigation = updateWorkspaceNavigation(
       EMPTY_WORKFLOW_NAVIGATION,
       address,
       (scope) => withDesktopRevealLevel(scope, "focus")
     );
 
     expect(
-      updateScopeNavigation(navigation, address, (scope) =>
+      updateWorkspaceNavigation(navigation, address, (scope) =>
         withDesktopRevealLevel(scope, "focus")
       )
     ).toBe(navigation);
     expect(
-      updateScopeNavigation(navigation, address, (scope) =>
+      updateWorkspaceNavigation(navigation, address, (scope) =>
         withSelection(scope, { nodeIds: [], edgeIds: [] })
       )
     ).toBe(navigation);
@@ -130,13 +128,13 @@ describe("updateScopeNavigation", () => {
       EMPTY_WORKFLOW_NAVIGATION,
       runAddress("exec_0")
     );
-    navigation = updateScopeNavigation(
+    navigation = updateWorkspaceNavigation(
       navigation,
       runAddress("exec_0"),
       (scope) => withDesktopRevealLevel(scope, "focus")
     );
     for (let index = 1; index <= RETAINED_KEYS_PER_VIEW + 2; index++) {
-      navigation = updateScopeNavigation(
+      navigation = updateWorkspaceNavigation(
         navigation,
         runAddress(`exec_${index}`),
         (scope) => withDesktopRevealLevel(scope, "browse")
@@ -181,13 +179,10 @@ describe("selection", () => {
     );
   });
 
-  it("empties every Draft scope and keeps the rest", () => {
+  it("empties the Draft selection and keeps the rest", () => {
     const overview = workspaceAddressFromSearch("workflow_1", {});
-    const group = workspaceAddressFromSearch("workflow_1", {
-      group: "group_1",
-    });
     const run = runAddress("exec_1");
-    let navigation = updateScopeNavigation(
+    let navigation = updateWorkspaceNavigation(
       EMPTY_WORKFLOW_NAVIGATION,
       overview,
       (scope) =>
@@ -196,26 +191,20 @@ describe("selection", () => {
           "focus"
         )
     );
-    navigation = updateScopeNavigation(navigation, group, (scope) =>
-      withSelection(scope, { nodeIds: ["child"], edgeIds: [] })
-    );
-    navigation = updateScopeNavigation(navigation, run, (scope) =>
+    navigation = updateWorkspaceNavigation(navigation, run, (scope) =>
       withSelection(scope, { nodeIds: ["run_step"], edgeIds: [] })
     );
 
     const cleared = withoutDraftSelections(navigation);
 
-    expect(scopeNavigationAt(cleared, overview).selection).toEqual(
+    expect(workspaceNavigationAt(cleared, overview).selection).toEqual(
       EMPTY_SELECTION
     );
-    expect(scopeNavigationAt(cleared, group).selection).toEqual(
-      EMPTY_SELECTION
-    );
-    expect(scopeNavigationAt(cleared, run).selection).toEqual({
+    expect(workspaceNavigationAt(cleared, run).selection).toEqual({
       nodeIds: ["run_step"],
       edgeIds: [],
     });
-    expect(scopeNavigationAt(cleared, overview).desktop.revealLevel).toBe(
+    expect(workspaceNavigationAt(cleared, overview).desktop.revealLevel).toBe(
       "focus"
     );
     expect(withoutDraftSelections(cleared)).toBe(cleared);
@@ -223,7 +212,10 @@ describe("selection", () => {
 });
 
 describe("chosen run node executions", () => {
-  const scope = scopeNavigationAt(EMPTY_WORKFLOW_NAVIGATION, runAddress("e"));
+  const scope = workspaceNavigationAt(
+    EMPTY_WORKFLOW_NAVIGATION,
+    runAddress("e")
+  );
   const execution = { nodeId: "step", logId: "log_1" };
 
   it("keeps a chosen execution while the selection holds its node alone", () => {
@@ -265,12 +257,12 @@ describe("rememberRouteSearch", () => {
     );
     navigation = rememberRouteSearch(
       navigation,
-      workspaceAddressFromSearch("workflow_1", { group: "group_1" })
+      workspaceAddressFromSearch("workflow_1", {})
     );
 
     expect(navigation.searches).toEqual({
       runs: { view: "runs", executionId: "exec_1" },
-      draft: { group: "group_1" },
+      draft: {},
     });
     expect(rememberRouteSearch(navigation, runAddress("exec_1"))).toBe(
       navigation
@@ -281,7 +273,7 @@ describe("rememberRouteSearch", () => {
 describe("camera snapshots", () => {
   it("keeps desktop and mobile cameras apart", () => {
     const address = workspaceAddressFromSearch("workflow_1", {});
-    const navigation = updateScopeNavigation(
+    const navigation = updateWorkspaceNavigation(
       EMPTY_WORKFLOW_NAVIGATION,
       address,
       (scope) =>
@@ -291,7 +283,7 @@ describe("camera snapshots", () => {
           { centerX: 3, centerY: 4, zoom: 0.5 }
         )
     );
-    const scope = scopeNavigationAt(navigation, address);
+    const scope = workspaceNavigationAt(navigation, address);
 
     expect(scope.desktop.camera).toEqual({ centerX: 1, centerY: 2, zoom: 1 });
     expect(scope.mobile.camera).toEqual({ centerX: 3, centerY: 4, zoom: 0.5 });
@@ -313,16 +305,13 @@ describe("recovery", () => {
   });
 
   it("settles a route on the nearest address the editor can open", () => {
-    const base = { groupMissing: false, runMissing: false };
+    const base = { runMissing: false };
     const valid: WorkflowRouteSearch = { view: "runs", executionId: "exec_1" };
 
     expect(recoveredRouteSearch({ ...base, search: valid })).toBe(valid);
+    // An older link's Group key is always dropped.
     expect(
-      recoveredRouteSearch({
-        ...base,
-        search: { group: "group_9" },
-        groupMissing: true,
-      })
+      recoveredRouteSearch({ ...base, search: { group: "group_9" } })
     ).toEqual({});
     expect(
       recoveredRouteSearch({
@@ -335,8 +324,8 @@ describe("recovery", () => {
 });
 
 describe("cameraStep", () => {
-  const draft = { addressId: "workflow_1|draft|overview" };
-  const run = { addressId: "workflow_1|run:exec_1|overview" };
+  const draft = { addressId: "workflow_1|draft" };
+  const run = { addressId: "workflow_1|run:exec_1" };
   const saved = { centerX: 10, centerY: 20, zoom: 0.8 };
   const placed = { moving: false, shownPlaced: true, nextPlaced: true };
 
@@ -410,7 +399,7 @@ describe("cameraStep", () => {
 
 describe("details column state", () => {
   const nodeSelection = (id: string) => ({ nodeIds: [id], edgeIds: [] });
-  const EMPTY = scopeNavigationAt(
+  const EMPTY = workspaceNavigationAt(
     EMPTY_WORKFLOW_NAVIGATION,
     workspaceAddressFromSearch("workflow_1", {})
   );

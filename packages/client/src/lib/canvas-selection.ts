@@ -8,7 +8,7 @@
 import type {
   CanvasSelection,
   InspectedObject,
-  ScopeNavigation,
+  WorkspaceNavigation,
 } from "#src/lib/workflow-navigation-state";
 
 function sameIds(left: readonly string[], right: readonly string[]): boolean {
@@ -35,9 +35,9 @@ export function sameSelection(
  * ends the jump `inspectedOrigin` recorded, so the origin is cleared.
  */
 export function withSelection(
-  scope: ScopeNavigation,
+  scope: WorkspaceNavigation,
   selection: CanvasSelection
-): ScopeNavigation {
+): WorkspaceNavigation {
   if (sameSelection(scope.selection, selection)) {
     return scope;
   }

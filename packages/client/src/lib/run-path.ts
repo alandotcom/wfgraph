@@ -79,7 +79,7 @@ function outletTaken(exit: NodeExit, handle: string | null | undefined) {
 
 /**
  * The mark of the outlet `handle` of the node `nodeId`, or null while it is
- * undecided. A Condition's unconnected branch and a "Path ends" stub read it.
+ * undecided. A Condition's unconnected branch reads it.
  */
 export function runPathOutletMark(
   path: RunPath,

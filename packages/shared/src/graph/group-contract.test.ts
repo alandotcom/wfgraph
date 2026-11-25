@@ -437,7 +437,7 @@ describe("addedContinuationRefusal", () => {
         additions: [link("user", "archive"), link("issues", "archive")],
       })
     ).toBe(
-      'The Group "Lookups" would continue to 2 steps from 2 outlets inside it. Connect every outlet that leaves a Group to the same step, or continue from one outlet on the Group\'s own canvas.'
+      'The Group "Lookups" would continue to 2 steps from 2 outlets inside it. Connect every outlet that leaves a Group to the same step, or continue from one outlet inside the Group.'
     );
   });
 });

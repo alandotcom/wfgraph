@@ -15,9 +15,7 @@ import {
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   cameraStep,
-  scopeId,
   workspaceAddressId,
-  workspaceKeyId,
   type FormFactor,
   type WorkspaceAddress,
   type WorldCamera,
@@ -51,16 +49,16 @@ type PendingPlacement = {
 };
 
 /**
- * Remembers the camera of each workspace scope, separately for desktop and
+ * Remembers the camera of each workspace address, separately for desktop and
  * mobile. React Flow's viewport stays the live camera; a world-space snapshot
  * is stored when a movement ends, when the canvas changes size, and when the
- * scope is left, and never while a movement or animation is in progress.
+ * address is left, and never while a movement or animation is in progress.
  *
  * `isCanvasPlaced` answers whether the canvas has made its first placement for
  * a workflow. Before that, the viewport is not a camera anyone chose.
- * `paintedNodes` are the nodes this render paints for the active scope. Moving
- * between the overview and a focused Group of one workspace, or to the other
- * form factor, where no camera is saved fits the camera to them before paint.
+ * `paintedNodes` are the nodes this render paints for the active address.
+ * Moving to the other form factor where no camera is saved fits the camera to
+ * them before paint.
  *
  * The media query can report a form factor change before React Flow measures
  * the resized canvas. The camera the change asks for is placed at once and held
@@ -73,11 +71,11 @@ export function useWorkspaceCamera(input: {
   isCanvasPlaced: (workflowId: string) => boolean;
   paintedNodes: readonly WorkflowNode[];
 }): {
-  /** The viewport saved for the presented scope, when one exists. */
+  /** The viewport saved for the presented address, when one exists. */
   savedViewport: () => Viewport | null;
   /**
    * Place the camera after the presented graph was replaced. Answers false when
-   * the scope has no saved camera on its first placement, which leaves the
+   * the address has no saved camera on its first placement, which leaves the
    * canvas's own placement rule to run.
    */
   placeReplacedGraph: () => boolean;
@@ -122,7 +120,7 @@ export function useWorkspaceCamera(input: {
     if (input.paintedNodes.length === 0) {
       return;
     }
-    // React Flow has not installed the nodes of a scope just reached, so the
+    // React Flow has not installed the nodes of an address just reached, so the
     // bounds come from the painted nodes themselves.
     const options = workflowFitViewOptions(0);
     void setViewport(
@@ -180,12 +178,6 @@ export function useWorkspaceCamera(input: {
     placedSlotRef.current = null;
     pendingRef.current = null;
     const size = canvasSize();
-    const scopeChanged =
-      shown !== null &&
-      shown.formFactor === formFactor &&
-      shown.address.workflowId === address.workflowId &&
-      workspaceKeyId(shown.address.key) === workspaceKeyId(address.key) &&
-      scopeId(shown.address.scope) !== scopeId(address.scope);
     // A form factor's first visit fits its own canvas dimensions; later visits
     // restore the camera saved for that form factor.
     const formFactorChanged =
@@ -194,7 +186,7 @@ export function useWorkspaceCamera(input: {
       workspaceAddressId(shown.address) === workspaceAddressId(address);
     const placement: PendingPlacement["placement"] | null = step.restore
       ? { kind: "restore", camera: step.restore }
-      : (scopeChanged || formFactorChanged) &&
+      : formFactorChanged &&
           input.isCanvasPlaced(address.workflowId) &&
           store.get(activeWorkspaceCamerasAtom)[formFactor] === null
         ? { kind: "fit" }

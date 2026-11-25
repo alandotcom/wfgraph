@@ -26,7 +26,7 @@ import { useIsMobile } from "#src/hooks/use-mobile";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
-import { scopeOfNode } from "#src/lib/workflow-scope-graph";
+import { expandGroupAtom } from "#src/lib/collapsed-groups";
 import {
   workspaceAddressFromSearch,
   workspaceRouteSearch,
@@ -162,18 +162,17 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
   return useCallback(
     (nodeId: string, fieldKey?: string) => {
       // The step is selected in the Draft address the route is about to show,
-      // so the selection is Draft's own whichever workspace asked. A Group
-      // member shows on its focused Group canvas and any other step on the
-      // overview.
+      // so the selection is Draft's own whichever workspace asked. A step in
+      // a Group the viewer collapsed draws its Group in place again.
       const nodes = store.get(nodesAtom);
       const node = nodes.find((item) => item.id === nodeId);
-      const address = {
-        ...workspaceAddressFromSearch(
-          store.get(currentWorkflowIdAtom) ?? "",
-          store.get(rememberedRouteSearchesAtom).draft ?? {}
-        ),
-        scope: scopeOfNode(nodes, nodeId),
-      };
+      if (node?.parentId !== undefined) {
+        store.set(expandGroupAtom, node.parentId);
+      }
+      const address = workspaceAddressFromSearch(
+        store.get(currentWorkflowIdAtom) ?? "",
+        store.get(rememberedRouteSearchesAtom).draft ?? {}
+      );
       const search = workspaceRouteSearch(address);
       setWorkspaceSelection({
         address,

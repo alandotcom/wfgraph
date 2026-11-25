@@ -24,7 +24,7 @@ import {
   type GroupPort,
 } from "@wfgraph/shared/graph/group-boundary";
 import type { RevealBodyProps } from "./reveal-kinds";
-import { EnterGroupButton, NodeIssueList, Section } from "./reveal-sections";
+import { NodeIssueList, Section } from "./reveal-sections";
 
 /**
  * Steps named by port, one row each. A port leaving by a Condition branch names
@@ -232,9 +232,8 @@ function GroupSummarySections({
 }
 
 /**
- * The inspector of a collapsed Group: its label and description, editable in
- * place, then its summary, Enter group, which opens the focused Group canvas,
- * and Ungroup and Delete Group and steps. Nothing expands in place.
+ * The inspector of a Group: its label and description, editable in place,
+ * then its summary, and Ungroup and Delete Group and steps.
  */
 export function GroupEditor({ subject, frame, focusField }: RevealBodyProps) {
   const nodes = useAtomValue(nodesAtom);
@@ -257,16 +256,15 @@ export function GroupEditor({ subject, frame, focusField }: RevealBodyProps) {
         focusField={focusField}
         groupId={groupId}
       />
-      <EnterGroupButton groupId={groupId} />
       <NodeControls className="border-t px-4 pt-3" frame={frame} node={node} />
     </div>
   );
 }
 
 /**
- * The summary sheet of a collapsed Group on a phone: its description, its
- * summary, and Enter group. The full-screen editor holds the label,
- * description, Ungroup, and Delete Group and steps.
+ * The summary sheet of a Group on a phone: its description and its summary.
+ * The full-screen editor holds the label, description, Ungroup, and Delete
+ * Group and steps.
  */
 export function GroupSummarySheet({ subject, focusField }: RevealBodyProps) {
   const nodes = useAtomValue(nodesAtom);
@@ -283,7 +281,6 @@ export function GroupSummarySheet({ subject, focusField }: RevealBodyProps) {
         focusField={focusField}
         groupId={groupId}
       />
-      <EnterGroupButton groupId={groupId} />
     </div>
   );
 }

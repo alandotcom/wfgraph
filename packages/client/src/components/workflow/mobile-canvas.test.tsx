@@ -8,13 +8,7 @@ import {
   RouterProvider,
   type SearchSchemaInput,
 } from "@tanstack/react-router";
-import {
-  act,
-  fireEvent,
-  render,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,12 +26,10 @@ import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
-import { boundaryStubId } from "#src/lib/group-scope-canvas";
 import { historyAtom } from "#src/lib/workflow-graph-cells";
 import {
   edgesAtom,
   loadWorkflowGraphAtom,
-  nodesAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type {
@@ -49,13 +41,10 @@ import {
   autosaveDelayAtom,
   currentWorkflowIdAtom,
   currentWorkflowNameAtom,
-  hasUnsavedChangesAtom,
   workflowApiAtom,
 } from "#src/lib/workflow-save-store";
 import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import {
-  activeMobileSheetsAtom,
-  activeSelectionAtom,
   activeWorkspaceAddressAtom,
   activeWorkspaceCamerasAtom,
   recordWorkspaceCameraAtom,
@@ -63,12 +52,6 @@ import {
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { setViewportWidth } from "#src/lib/viewport-test-support";
-
-/** The id of the focused canvas stub standing for the outside step `qualify`. */
-const INGRESS_STUB = boundaryStubId("ingress", {
-  nodeId: "qualify",
-  handle: null,
-});
 
 const catalog: ExtensionCatalog = {
   entities: [],
@@ -286,174 +269,7 @@ afterEach(() => {
   resetAuthorizationGrantsForTests();
 });
 
-describe("the mobile Draft Group sequence", () => {
-  it("goes from the Workflow to the Group summary, the focused Group, and a child inspector, and Back restores each level", async () => {
-    const editor = await renderEditor();
-    const { view, store, router, search, sheet, scroller, scrollTo } = editor;
-
-    // Workflow: the Group card opens its summary sheet.
-    await editor.tapNode("outreach");
-    const summary = view.getByRole("region", { name: "Group inspector" });
-    expect(summary.dataset.level).toBe("summary");
-    expect(
-      within(summary).getByRole("heading", { name: "Initial outreach" })
-    ).toBeTruthy();
-    expect(
-      within(summary).queryByRole("group", { name: "Layout direction" })
-    ).toBeNull();
-    await waitFor(() =>
-      expect(document.activeElement?.textContent).toBe("Initial outreach")
-    );
-    scrollTo(80);
-
-    // Group summary: Enter group opens the focused Group, whose Workflow
-    // control takes focus and is a finger's size.
-    fireEvent.click(
-      within(summary).getByRole("button", { name: /Enter group/ })
-    );
-    await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
-    await waitFor(() => expect(editor.canvasNode("welcome")).not.toBeNull());
-    expect(sheet()).toBeNull();
-    const leave = view.getByRole("button", { name: "Workflow" });
-    expect(leave.className).toContain("max-md:h-11");
-    await waitFor(() => expect(document.activeElement).toBe(leave));
-
-    // Focused Group: a child opens its summary, whose Back names the Group.
-    await editor.tapNode("case_study");
-    const childSummary = view.getByRole("region", { name: "Step inspector" });
-    expect(childSummary.dataset.level).toBe("summary");
-    expect(
-      view.getByRole("button", { name: "Back to Initial outreach" })
-    ).toBeTruthy();
-    expect(view.queryByRole("button", { name: "Close" })).toBeNull();
-    scrollTo(30);
-
-    // Child inspector: existing configuration is edited and autosaves.
-    fireEvent.click(view.getByRole("button", { name: "Edit step" }));
-    expect(sheet()?.dataset.level).toBe("inspector");
-    await waitFor(() => expect(scroller()?.scrollTop).toBe(0));
-    fireEvent.change(view.getByLabelText("Label"), {
-      target: { value: "Send the case study" },
-    });
-    expect(
-      store.get(nodesAtom).find((node) => node.id === "case_study")?.data.label
-    ).toBe("Send the case study");
-    await waitFor(() => expect(editor.update).toHaveBeenCalled());
-    scrollTo(60);
-
-    // Browser Back from the inspector leaves the Group for the Workflow with
-    // the Group summary at its scroll, and Forward returns to the inspector at
-    // its scroll.
-    await act(async () => {
-      router.history.back();
-    });
-    await waitFor(() => expect(search()).toEqual({}));
-    await waitFor(() =>
-      expect(
-        view.getByRole("region", { name: "Group inspector" }).dataset.level
-      ).toBe("summary")
-    );
-    await waitFor(() => expect(scroller()?.scrollTop).toBe(80));
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["outreach"]);
-
-    await act(async () => {
-      router.history.forward();
-    });
-    await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
-    await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
-    await waitFor(() => expect(scroller()?.scrollTop).toBe(60));
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["case_study"]);
-
-    // Back steps down one sheet at a time to the focused Group canvas, and
-    // leaves the camera where the person left it.
-    const inspectorCamera = { centerX: 40, centerY: 40, zoom: 0.6 };
-    editor.recordCamera(inspectorCamera);
-    fireEvent.click(view.getByRole("button", { name: "Back to Summary" }));
-    expect(sheet()?.dataset.level).toBe("summary");
-    expect(editor.shownCamera()).toEqual(inspectorCamera);
-    await waitFor(() => expect(scroller()?.scrollTop).toBe(30));
-    await waitFor(() =>
-      expect(document.activeElement?.textContent).toBe("Edit step")
-    );
-    fireEvent.click(
-      view.getByRole("button", { name: "Back to Initial outreach" })
-    );
-    expect(sheet()).toBeNull();
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["case_study"]);
-    expect(editor.shownCamera()).toEqual(inspectorCamera);
-
-    // Workflow returns to the overview with the Group summary, its scroll and
-    // the control that entered the Group.
-    fireEvent.click(view.getByRole("button", { name: "Workflow" }));
-    await waitFor(() => expect(search()).toEqual({}));
-    await waitFor(() =>
-      expect(
-        view.getByRole("region", { name: "Group inspector" }).dataset.level
-      ).toBe("summary")
-    );
-    await waitFor(() => expect(scroller()?.scrollTop).toBe(80));
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["outreach"]);
-    await waitFor(() =>
-      expect(document.activeElement?.textContent).toContain("Enter group")
-    );
-
-    await act(async () => {
-      fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
-    });
-    expect(sheet()).toBeNull();
-    expect(store.get(activeMobileSheetsAtom)).toEqual([]);
-  });
-
-  it("draws the focused Group top to bottom and offers no topology edit on its members or stubs", async () => {
-    const editor = await renderEditor("?group=outreach");
-    const { view, store } = editor;
-    await waitFor(() => expect(editor.canvasNode("welcome")).not.toBeNull());
-    const storedNodes = store.get(nodesAtom);
-    const storedEdges = store.get(edgesAtom);
-
-    expect(editor.handleSides("welcome")).toEqual(["top", "bottom"]);
-    expect(editor.handleSides(INGRESS_STUB)).toEqual(["bottom"]);
-
-    // No member or stub can be dragged, and the stub offers no connection.
-    for (const id of ["welcome", "case_study", INGRESS_STUB]) {
-      expect(editor.canvasNode(id)?.classList.contains("draggable")).toBe(
-        false
-      );
-    }
-    const stubHandle = editor
-      .canvasNode(INGRESS_STUB)
-      ?.querySelector<HTMLElement>(".react-flow__handle");
-    expect(stubHandle?.classList.contains("connectable")).toBe(false);
-    expect(stubHandle?.classList.contains("connectablestart")).toBe(false);
-
-    // A drag from the ingress stub onto a member stores nothing.
-    const memberTarget = editor
-      .canvasNode("case_study")
-      ?.querySelector<HTMLElement>(".react-flow__handle-top");
-    await act(async () => {
-      fireEvent.pointerDown(stubHandle as HTMLElement, { button: 0 });
-      fireEvent.pointerMove(memberTarget as HTMLElement);
-      fireEvent.pointerUp(memberTarget as HTMLElement);
-    });
-
-    // A shift-press selects one step alone.
-    await editor.tapNode("welcome");
-    await act(async () => {
-      fireEvent.keyDown(document.body, { key: "Shift" });
-      fireEvent.click(editor.canvasNode("case_study") as HTMLElement, {
-        shiftKey: true,
-      });
-      fireEvent.keyUp(document.body, { key: "Shift" });
-    });
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["case_study"]);
-
-    expect(view.queryByRole("button", { name: "Tidy layout" })).toBeNull();
-    expect(store.get(nodesAtom)).toBe(storedNodes);
-    expect(store.get(edgesAtom)).toBe(storedEdges);
-    expect(store.get(historyAtom)).toEqual([]);
-    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
-  });
-
+describe("the canvas on a phone", () => {
   it("leaves a step's handles unconnectable on a phone, so a touch or tap on one starts no connection", async () => {
     const editor = await renderEditor();
     const { view, store } = editor;
@@ -493,40 +309,5 @@ describe("the mobile Draft Group sequence", () => {
     expect(source.classList.contains("clickconnecting")).toBe(false);
     expect(store.get(edgesAtom)).toBe(storedEdges);
     expect(store.get(historyAtom)).toEqual([]);
-  });
-
-  it("keeps the same Group geometry across desktop and mobile, changing nothing stored", async () => {
-    setViewportWidth(1440);
-    const editor = await renderEditor("?group=outreach");
-    const { store } = editor;
-    await waitFor(() => expect(editor.canvasNode("welcome")).not.toBeNull());
-    const storedNodes = store.get(nodesAtom);
-    const storedEdges = store.get(edgesAtom);
-    expect(editor.handleSides("welcome")).toEqual(["top", "bottom"]);
-    // Happy-dom's media query listener starts out believing the query does not
-    // match, so the first move below `md` from a wide viewport reports no
-    // change. One narrow and wide round trip puts the listener in step.
-    await editor.resize(390);
-    await editor.resize(1440);
-
-    await editor.resize(390);
-    await waitFor(() =>
-      expect(editor.handleSides("welcome")).toEqual(["top", "bottom"])
-    );
-
-    await editor.resize(1440);
-    await waitFor(() =>
-      expect(editor.handleSides("welcome")).toEqual(["top", "bottom"])
-    );
-
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    expect(store.get(nodesAtom)).toBe(storedNodes);
-    expect(store.get(edgesAtom)).toBe(storedEdges);
-    expect(
-      store.get(nodesAtom).find((node) => node.id === "outreach")?.data.config
-    ).toEqual({});
-    expect(store.get(historyAtom)).toEqual([]);
-    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
-    expect(editor.update).not.toHaveBeenCalled();
   });
 });

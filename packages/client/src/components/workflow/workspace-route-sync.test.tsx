@@ -260,41 +260,19 @@ describe("WorkspaceRouteSync", () => {
     await waitFor(() => expect(search()).toEqual({ view: "runs" }));
   });
 
-  it("exits and re-enters a Group with Back and Forward", async () => {
-    stubServer();
-    const { router, store, search } = await renderEditorRoute(
-      "/workflows/workflow_1"
-    );
-    await act(() =>
-      router.navigate({
-        to: "/workflows/$workflowId",
-        params: { workflowId: "workflow_1" },
-        search: { group: "group_1" },
-      })
-    );
-    act(() => store.set(selectOnlyNodeAtom, "child_step"));
-    expect(selectionState(store)).toEqual(selectedNodes(["child_step"]));
-
-    await act(async () => router.history.back());
-    await waitFor(() => expect(search()).toEqual({}));
-    expect(store.get(selectedNodeAtom)).toBeNull();
-    expect(selectionState(store)).toEqual(selectedNodes([]));
-
-    await act(async () => router.history.forward());
-    await waitFor(() => expect(search()).toEqual({ group: "group_1" }));
-    expect(store.get(selectedNodeAtom)).toBe("child_step");
-    expect(selectionState(store)).toEqual(selectedNodes(["child_step"]));
-  });
-
-  it("restricts a focused Group's selection to its members while nodes move", async () => {
+  it("lands an older Group link on the Group's first step and drops the key", async () => {
     stubServer();
     const { store, search } = await renderEditorRoute(
       "/workflows/workflow_1?group=group_1"
     );
-    await waitFor(() => expect(search()).toEqual({ group: "group_1" }));
 
-    act(() => store.set(selectOnlyNodeAtom, "draft_step"));
-    await waitFor(() => expect(store.get(selectedNodeAtom)).toBeNull());
+    await waitFor(() => expect(search()).toEqual({}));
+    expect(store.get(selectedNodeAtom)).toBe("child_step");
+  });
+
+  it("keeps a member selected on the one canvas while nodes move", async () => {
+    stubServer();
+    const { store, search } = await renderEditorRoute("/workflows/workflow_1");
 
     act(() => store.set(selectOnlyNodeAtom, "child_step"));
     act(() =>
@@ -309,18 +287,7 @@ describe("WorkspaceRouteSync", () => {
     );
 
     expect(store.get(selectedNodeAtom)).toBe("child_step");
-    expect(search()).toEqual({ group: "group_1" });
-  });
-
-  it("drops a Group member from the overview selection", async () => {
-    stubServer();
-    const { store } = await renderEditorRoute("/workflows/workflow_1");
-
-    act(() => store.set(selectOnlyNodeAtom, "child_step"));
-    await waitFor(() => expect(store.get(selectedNodeAtom)).toBeNull());
-
-    act(() => store.set(selectOnlyNodeAtom, "group_1"));
-    expect(store.get(selectedNodeAtom)).toBe("group_1");
+    expect(search()).toEqual({});
   });
 
   it("subscribes to a graph structure a position-only change leaves alone", () => {
@@ -363,13 +330,14 @@ describe("WorkspaceRouteSync", () => {
     await waitFor(() => expect(store.get(selectedNodeAtom)).toBeNull());
   });
 
-  it("returns a route naming a missing Group to the overview", async () => {
+  it("drops an older link's key that names no Group, selecting nothing", async () => {
     stubServer();
-    const { search } = await renderEditorRoute(
+    const { store, search } = await renderEditorRoute(
       "/workflows/workflow_1?group=child_step"
     );
 
     await waitFor(() => expect(search()).toEqual({}));
+    expect(store.get(selectedNodeAtom)).toBeNull();
   });
 
   it("returns a missing run to the run list", async () => {

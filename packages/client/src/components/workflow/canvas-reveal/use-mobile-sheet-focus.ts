@@ -37,7 +37,7 @@ function openerIn(sheet: HTMLElement, opener: Opener): HTMLElement | null {
  * just left or the canvas node that opened the evidence; `backFocusTarget`;
  * the control that opened the removed sheet; the title of the sheet on screen.
  * A control focused after Back is scrolled into view when it is out of view.
- * A sheet whose control moved to another address, as Enter group does, gets
+ * A sheet whose control moved to another address, as opening a run does, gets
  * focus back on that control when its address shows again. Closing the last
  * sheet in the same address returns focus to its canvas node when focus had
  * been inside the sheet. `sheetKey` names the sheet on screen and is null while

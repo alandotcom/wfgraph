@@ -9,9 +9,10 @@ import {
   groupSelection,
   removeGroupWithMembers,
   removeNodes,
-  storedEdgeIdsForPaintedEdge,
   ungroupNode,
 } from "#src/lib/node-group";
+import { storedEdgeIdsForPaintedEdge } from "#src/lib/group-canvas";
+import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
 import { generateId } from "@wfgraph/shared/utils/id";
 import type { WorkflowNode, WorkflowEdge } from "#src/lib/workflow-graph-types";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -32,10 +33,7 @@ import {
   EMPTY_SELECTION,
   selectionInGraph,
 } from "#src/lib/workflow-navigation-state";
-import {
-  activeSelectionAtom,
-  activeWorkspaceAddressAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 
 /**
  * Wrap a selection `analyzeGroupableSelection` accepts in a Group frame, as one
@@ -162,10 +160,10 @@ function deleteItems(
   }
   const nodes = get(nodesStateAtom);
   const edges = get(edgesStateAtom);
-  const scope = get(activeWorkspaceAddressAtom).scope;
+  const collapsedGroupIds = get(collapsedGroupIdsAtom);
   const removedEdges = new Set(
     input.edgeIds.flatMap((edgeId) =>
-      storedEdgeIdsForPaintedEdge({ nodes, edges, edgeId, scope })
+      storedEdgeIdsForPaintedEdge({ nodes, edges, edgeId, collapsedGroupIds })
     )
   );
   const next =
@@ -229,7 +227,6 @@ export const connectNodesAtom = atom(
     set,
     input: {
       connection: RequestedConnection & { id: string };
-      throughBoundaryStub?: boolean | undefined;
       catalog: ExtensionCatalog;
     }
   ): ConnectionPlan | null => {
@@ -241,7 +238,6 @@ export const connectNodesAtom = atom(
     const currentEdges = get(edgesStateAtom);
     const plan = planConnection({
       connection: requested,
-      throughBoundaryStub: input.throughBoundaryStub,
       nodes: get(nodesStateAtom),
       storeEdges: currentEdges,
       catalog: input.catalog,

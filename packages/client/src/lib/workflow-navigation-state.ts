@@ -16,16 +16,18 @@ import {
   objectInGraph,
   withMobileSummaryOf,
   withoutMobileSheets,
-  type MobileScopePresentation,
+  type MobilePresentation,
 } from "#src/lib/mobile-sheet-navigation";
 
 export type WorkspaceView = "draft" | "runs";
 
 /**
  * The editor route search. `view` names Runs, and an absent `view` is Draft.
- * `executionId` belongs to Runs, and `group` names the Group any workspace is
- * focused on. `review` asks Draft to open the review sheet once, which the
- * editor answers and then drops from the route.
+ * `executionId` belongs to Runs. `review` asks Draft to open the review sheet
+ * once, which the editor answers and then drops from the route. `group` is
+ * only ever read from an older link, which named a Group the editor once
+ * showed on a canvas of its own: the editor selects that Group's first step
+ * and drops the key.
  */
 export type WorkflowRouteSearch = {
   view?: "runs" | undefined;
@@ -39,15 +41,10 @@ export type WorkspaceKey =
   | { workspace: "draft" }
   | { workspace: "runs"; executionId: string | null };
 
-export type WorkspaceScope =
-  | { kind: "overview" }
-  | { kind: "group"; groupId: string };
-
-/** One scope of one workspace key inside one workflow. */
+/** One workspace key inside one workflow. */
 export type WorkspaceAddress = {
   workflowId: string;
   key: WorkspaceKey;
-  scope: WorkspaceScope;
 };
 
 export type FormFactor = "desktop" | "mobile";
@@ -81,8 +78,8 @@ export type InspectedObject = { kind: "node" | "edge"; id: string };
 export type InspectedOrigin = { nodeId: string };
 
 /**
- * The nodes and edges selected in one scope, by id, each id listed once. React
- * Flow's `selected` flags on the canvas are painted from this value.
+ * The nodes and edges selected in one address, by id, each id listed once.
+ * React Flow's `selected` flags on the canvas are painted from this value.
  */
 export type CanvasSelection = {
   nodeIds: readonly string[];
@@ -92,19 +89,19 @@ export type CanvasSelection = {
 /** One React Flow `select` change: an id and whether it is now selected. */
 export type SelectionChange = { id: string; selected: boolean };
 
-/** What one form factor shows for one scope. */
-export type ScopePresentation = { camera: WorldCamera | null };
+/** What one form factor shows for one address. */
+export type FormFactorPresentation = { camera: WorldCamera | null };
 
 /**
  * The desktop presentation adds the details column. A null `revealLevel`
- * belongs to a scope that has never set one, which shows Browse. `inspected`
+ * belongs to an address that has never set one, which shows Browse. `inspected`
  * is the object `inspectorScroll` (pixels from the top, per level) and
  * `inspectorSection` belong to. `inspectorSection` is the id of the section a
  * sectioned inspector has open for editing, and null when none is open.
  * `inspectedOrigin` is where a jump to `inspected` started. It lasts while the
  * selection holds `inspected` alone.
  */
-export type DesktopScopePresentation = ScopePresentation & {
+export type DesktopPresentation = FormFactorPresentation & {
   revealLevel: RevealLevel | null;
   inspected: InspectedObject | null;
   inspectorScroll: Readonly<Record<RevealLevel, number>>;
@@ -128,18 +125,12 @@ export type ChosenRunExecution = { nodeId: string; logId: string };
  * nothing selected, to a node no canvas selection can hold, such as one the
  * run's graph lacks. Only a run address writes it.
  */
-export type ScopeNavigation = {
+export type WorkspaceNavigation = {
   selection: CanvasSelection;
-  desktop: DesktopScopePresentation;
-  mobile: MobileScopePresentation;
+  desktop: DesktopPresentation;
+  mobile: MobilePresentation;
   showSuperseded: boolean;
   chosenExecution: ChosenRunExecution | null;
-};
-
-/** A key's overview scope and the one focused Group scope it last held. */
-export type WorkspaceNavigation = {
-  overview: ScopeNavigation;
-  group: { groupId: string; navigation: ScopeNavigation } | null;
 };
 
 export type WorkflowNavigation = {
@@ -158,7 +149,7 @@ export type WorkflowNavigation = {
   hasNamedRun: boolean;
 };
 
-/** The graph facts recovery needs: which nodes, Groups, and edges exist. */
+/** The graph facts recovery needs: which nodes and edges exist. */
 export type NavigationGraph = {
   nodes: ReadonlyArray<{
     id: string;
@@ -171,11 +162,9 @@ export type NavigationGraph = {
 /** How many run keys one workflow retains besides the run Runs reopens. */
 export const RETAINED_KEYS_PER_VIEW = 10;
 
-const OVERVIEW_SCOPE: WorkspaceScope = { kind: "overview" };
-
 export const EMPTY_SELECTION: CanvasSelection = { nodeIds: [], edgeIds: [] };
 
-export const EMPTY_SCOPE_NAVIGATION: ScopeNavigation = {
+export const EMPTY_WORKSPACE_NAVIGATION: WorkspaceNavigation = {
   selection: EMPTY_SELECTION,
   desktop: {
     camera: null,
@@ -206,12 +195,8 @@ export function workspaceKeyId(key: WorkspaceKey): string {
   return key.executionId === null ? "runs" : `run:${key.executionId}`;
 }
 
-export function scopeId(scope: WorkspaceScope): string {
-  return scope.kind === "overview" ? "overview" : `group:${scope.groupId}`;
-}
-
 export function workspaceAddressId(address: WorkspaceAddress): string {
-  return `${address.workflowId}|${workspaceKeyId(address.key)}|${scopeId(address.scope)}`;
+  return `${address.workflowId}|${workspaceKeyId(address.key)}`;
 }
 
 /** The address a validated route search names inside one workflow. */
@@ -223,27 +208,20 @@ export function workspaceAddressFromSearch(
     search.view === "runs"
       ? { workspace: "runs", executionId: search.executionId ?? null }
       : { workspace: "draft" };
-  const scope: WorkspaceScope =
-    search.group === undefined
-      ? OVERVIEW_SCOPE
-      : { kind: "group", groupId: search.group };
-  return { workflowId, key, scope };
+  return { workflowId, key };
 }
 
 /** The route search that names one address, with no undefined keys. */
 export function workspaceRouteSearch(
   address: WorkspaceAddress
 ): WorkflowRouteSearch {
-  const { key, scope } = address;
+  const { key } = address;
   const search: WorkflowRouteSearch = {};
   if (key.workspace === "runs") {
     search.view = "runs";
     if (key.executionId !== null) {
       search.executionId = key.executionId;
     }
-  }
-  if (scope.kind === "group") {
-    search.group = scope.groupId;
   }
   return search;
 }
@@ -261,53 +239,35 @@ export function sameRouteSearch(
 }
 
 /** The navigation stored for one address, or the empty navigation. */
-export function scopeNavigationAt(
+export function workspaceNavigationAt(
   navigation: WorkflowNavigation,
   address: WorkspaceAddress
-): ScopeNavigation {
-  const entry = navigation.workspaces.get(workspaceKeyId(address.key));
-  if (!entry) {
-    return EMPTY_SCOPE_NAVIGATION;
-  }
-  if (address.scope.kind === "overview") {
-    return entry.overview;
-  }
-  return entry.group?.groupId === address.scope.groupId
-    ? entry.group.navigation
-    : EMPTY_SCOPE_NAVIGATION;
+): WorkspaceNavigation {
+  return (
+    navigation.workspaces.get(workspaceKeyId(address.key)) ??
+    EMPTY_WORKSPACE_NAVIGATION
+  );
 }
 
 /**
  * Apply `update` to the navigation of one address. A written key moves to the
  * end of the recency order. Run keys past `RETAINED_KEYS_PER_VIEW` are dropped
- * oldest first, keeping the one Runs reopens. Writing a Group scope other than
- * the retained one replaces it, since a key holds at most one Group scope.
+ * oldest first, keeping the one Runs reopens.
  */
-export function updateScopeNavigation(
+export function updateWorkspaceNavigation(
   navigation: WorkflowNavigation,
   address: WorkspaceAddress,
-  update: (scope: ScopeNavigation) => ScopeNavigation
+  update: (workspace: WorkspaceNavigation) => WorkspaceNavigation
 ): WorkflowNavigation {
-  const current = scopeNavigationAt(navigation, address);
+  const current = workspaceNavigationAt(navigation, address);
   const next = update(current);
   if (next === current) {
     return navigation;
   }
   const keyId = workspaceKeyId(address.key);
-  const entry = navigation.workspaces.get(keyId) ?? {
-    overview: EMPTY_SCOPE_NAVIGATION,
-    group: null,
-  };
-  const nextEntry: WorkspaceNavigation =
-    address.scope.kind === "overview"
-      ? { ...entry, overview: next }
-      : {
-          ...entry,
-          group: { groupId: address.scope.groupId, navigation: next },
-        };
   const workspaces = new Map(navigation.workspaces);
   workspaces.delete(keyId);
-  workspaces.set(keyId, nextEntry);
+  workspaces.set(keyId, next);
   return {
     ...navigation,
     workspaces: evictOldKeys(workspaces, navigation.searches),
@@ -366,13 +326,13 @@ export function rememberRouteSearch(
 }
 
 export function withChosenExecution(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   chosenExecution: ChosenRunExecution | null
-): ScopeNavigation {
-  return scope.chosenExecution?.nodeId === chosenExecution?.nodeId &&
-    scope.chosenExecution?.logId === chosenExecution?.logId
-    ? scope
-    : { ...scope, chosenExecution };
+): WorkspaceNavigation {
+  return workspace.chosenExecution?.nodeId === chosenExecution?.nodeId &&
+    workspace.chosenExecution?.logId === chosenExecution?.logId
+    ? workspace
+    : { ...workspace, chosenExecution };
 }
 
 function idsWithChanges(
@@ -429,8 +389,8 @@ export function selectionInGraph(
 }
 
 /**
- * The navigation with the selection emptied in every scope of the Draft key,
- * the key a Draft graph load replaces the graph of. Run keys keep their
+ * The navigation with the selection emptied in the Draft key, the key a Draft
+ * graph load replaces the graph of. Run keys keep their
  * selections, and every key keeps its cameras, levels, remembered searches,
  * and order.
  */
@@ -443,7 +403,7 @@ export function withoutDraftSelections(
     if (keyId !== DRAFT_KEY_ID) {
       return item;
     }
-    const next = workspaceWithoutSelections(entry);
+    const next = withoutSelection(entry);
     return next === entry ? item : [keyId, next];
   });
   return cleared === entries
@@ -451,41 +411,19 @@ export function withoutDraftSelections(
     : { ...navigation, workspaces: new Map(cleared) };
 }
 
-/** The scope with nothing selected and no mobile sheet open. */
-function withoutSelection(scope: ScopeNavigation): ScopeNavigation {
-  return withoutMobileSheets(withSelection(scope, EMPTY_SELECTION));
-}
-
-function workspaceWithoutSelections(
-  entry: WorkspaceNavigation
-): WorkspaceNavigation {
-  const overview = withoutSelection(entry.overview);
-  const groupNavigation = entry.group
-    ? withoutSelection(entry.group.navigation)
-    : null;
-  if (
-    overview === entry.overview &&
-    groupNavigation === (entry.group?.navigation ?? null)
-  ) {
-    return entry;
-  }
-  return {
-    overview,
-    group:
-      entry.group && groupNavigation
-        ? { groupId: entry.group.groupId, navigation: groupNavigation }
-        : null,
-  };
+/** The workspace with nothing selected and no mobile sheet open. */
+function withoutSelection(workspace: WorkspaceNavigation): WorkspaceNavigation {
+  return withoutMobileSheets(withSelection(workspace, EMPTY_SELECTION));
 }
 
 /** Set the level the desktop details column shows Runs at. */
 export function withDesktopRevealLevel(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   revealLevel: RevealLevel
-): ScopeNavigation {
-  return scope.desktop.revealLevel === revealLevel
-    ? scope
-    : { ...scope, desktop: { ...scope.desktop, revealLevel } };
+): WorkspaceNavigation {
+  return workspace.desktop.revealLevel === revealLevel
+    ? workspace
+    : { ...workspace, desktop: { ...workspace.desktop, revealLevel } };
 }
 
 /**
@@ -497,21 +435,21 @@ export function withDesktopRevealLevel(
  * single object closes the mobile sheets.
  */
 export function withInspectedSelection(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   selection: CanvasSelection
-): ScopeNavigation {
+): WorkspaceNavigation {
   const selected = selectedObject(selection);
   if (selected === null) {
-    return withoutMobileSheets(withSelection(scope, selection));
+    return withoutMobileSheets(withSelection(workspace, selection));
   }
-  if (sameObject(selectedObject(scope.selection), selected)) {
-    return withSelection(scope, selection);
+  if (sameObject(selectedObject(workspace.selection), selected)) {
+    return withSelection(workspace, selection);
   }
   const withNext = withMobileSummaryOf(
-    withSelection(scope, selection),
+    withSelection(workspace, selection),
     selected
   );
-  if (sameObject(scope.desktop.inspected, selected)) {
+  if (sameObject(workspace.desktop.inspected, selected)) {
     return withNext;
   }
   return {
@@ -519,7 +457,7 @@ export function withInspectedSelection(
     desktop: {
       ...withNext.desktop,
       inspected: selected,
-      inspectorScroll: EMPTY_SCOPE_NAVIGATION.desktop.inspectorScroll,
+      inspectorScroll: EMPTY_WORKSPACE_NAVIGATION.desktop.inspectorScroll,
       inspectorSection: null,
       inspectedOrigin: null,
     },
@@ -528,29 +466,29 @@ export function withInspectedSelection(
 
 /** Record how far the inspector at one level is scrolled. */
 export function withInspectorScroll(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   level: RevealLevel,
   top: number
-): ScopeNavigation {
-  const stored = scope.desktop.inspectorScroll;
+): WorkspaceNavigation {
+  const stored = workspace.desktop.inspectorScroll;
   return stored[level] === top
-    ? scope
+    ? workspace
     : {
-        ...scope,
+        ...workspace,
         desktop: {
-          ...scope.desktop,
+          ...workspace.desktop,
           inspectorScroll: { ...stored, [level]: top },
         },
       };
 }
 
 export function withShowSuperseded(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   showSuperseded: boolean
-): ScopeNavigation {
-  return scope.showSuperseded === showSuperseded
-    ? scope
-    : { ...scope, showSuperseded };
+): WorkspaceNavigation {
+  return workspace.showSuperseded === showSuperseded
+    ? workspace
+    : { ...workspace, showSuperseded };
 }
 
 /**
@@ -558,40 +496,40 @@ export function withShowSuperseded(
  * none. Another section starts its Focus scroll at the top.
  */
 export function withInspectorSection(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   section: string | null
-): ScopeNavigation {
-  return scope.desktop.inspectorSection === section
-    ? scope
+): WorkspaceNavigation {
+  return workspace.desktop.inspectorSection === section
+    ? workspace
     : {
-        ...scope,
+        ...workspace,
         desktop: {
-          ...scope.desktop,
+          ...workspace.desktop,
           inspectorSection: section,
-          inspectorScroll: { ...scope.desktop.inspectorScroll, focus: 0 },
+          inspectorScroll: { ...workspace.desktop.inspectorScroll, focus: 0 },
         },
       };
 }
 
 /** Record where a jump to the inspected object started. */
 export function withInspectedOrigin(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   inspectedOrigin: InspectedOrigin | null
-): ScopeNavigation {
-  return scope.desktop.inspectedOrigin === inspectedOrigin
-    ? scope
-    : { ...scope, desktop: { ...scope.desktop, inspectedOrigin } };
+): WorkspaceNavigation {
+  return workspace.desktop.inspectedOrigin === inspectedOrigin
+    ? workspace
+    : { ...workspace, desktop: { ...workspace.desktop, inspectedOrigin } };
 }
 
 /**
- * The scope without an inspected object the graph no longer holds, and without
+ * The workspace without an inspected object the graph no longer holds, and without
  * the scroll and section recorded for it, on either form factor.
  */
 export function inspectionInGraph(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   graph: NavigationGraph
-): ScopeNavigation {
-  const withSheets = mobileSheetsInGraph(scope, graph);
+): WorkspaceNavigation {
+  const withSheets = mobileSheetsInGraph(workspace, graph);
   const { inspected } = withSheets.desktop;
   if (inspected === null || objectInGraph(inspected, graph)) {
     return withSheets;
@@ -601,7 +539,7 @@ export function inspectionInGraph(
     desktop: {
       ...withSheets.desktop,
       inspected: null,
-      inspectorScroll: EMPTY_SCOPE_NAVIGATION.desktop.inspectorScroll,
+      inspectorScroll: EMPTY_WORKSPACE_NAVIGATION.desktop.inspectorScroll,
       inspectorSection: null,
       inspectedOrigin: null,
     },
@@ -609,46 +547,41 @@ export function inspectionInGraph(
 }
 
 export function withCamera(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   formFactor: FormFactor,
   camera: WorldCamera
-): ScopeNavigation {
-  const stored = scope[formFactor].camera;
+): WorkspaceNavigation {
+  const stored = workspace[formFactor].camera;
   if (
     stored?.centerX === camera.centerX &&
     stored.centerY === camera.centerY &&
     stored.zoom === camera.zoom
   ) {
-    return scope;
+    return workspace;
   }
   return formFactor === "desktop"
-    ? { ...scope, desktop: { ...scope.desktop, camera } }
-    : { ...scope, mobile: { ...scope.mobile, camera } };
+    ? { ...workspace, desktop: { ...workspace.desktop, camera } }
+    : { ...workspace, mobile: { ...workspace.mobile, camera } };
 }
 
 /**
- * The route search recovery settles on for what the editor could open.
- *
- * `groupMissing` drops the Group, and `runMissing` returns Runs to the run
- * list.
+ * The route search recovery settles on for what the editor could open. It
+ * never keeps an older link's `group`, and `runMissing` returns Runs to the
+ * run list.
  */
 export function recoveredRouteSearch(input: {
   search: WorkflowRouteSearch;
-  groupMissing: boolean;
   runMissing: boolean;
 }): WorkflowRouteSearch {
   const { search } = input;
   const next: WorkflowRouteSearch = { ...search };
-  if (input.groupMissing) {
-    delete next.group;
-  }
+  delete next.group;
   if (
     search.view === "runs" &&
     input.runMissing &&
     search.executionId !== undefined
   ) {
     delete next.executionId;
-    delete next.group;
   }
   return sameRouteSearch(next, search) ? search : next;
 }

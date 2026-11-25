@@ -11,16 +11,11 @@ import {
   canvasNodesAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
-  onNodesChangeAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import type { WorkflowRouteSearch } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
-import {
-  expectSteadyCamera,
-  recordCameraMotion,
-} from "#src/components/workflow/camera-motion-test-support";
 import { useWorkspaceCamera } from "./use-workspace-camera";
 
 const CANVAS = { width: 1200, height: 800 };
@@ -211,84 +206,7 @@ function onScreen(
   );
 }
 
-describe("useWorkspaceCamera across Group scopes", () => {
-  it.each([
-    ["desktop", 1440],
-    ["mobile", 390],
-  ])(
-    "fits a first visit, then restores the overview and the Group separately on %s",
-    async (_formFactor, width) => {
-      setViewportWidth(width);
-      const camera = renderCamera();
-      await camera.pan({ x: -100, y: -50, zoom: 0.8 });
-
-      await camera.show({ group: "g" });
-      expect(camera.moves).toHaveLength(1);
-      const members = camera.store.get(canvasNodesAtom);
-      expect(members.every((node) => onScreen(node, camera.viewport()))).toBe(
-        true
-      );
-      await camera.pan({ x: 300, y: 200, zoom: 1.2 });
-
-      await camera.show({});
-      expect(camera.viewport().x).toBeCloseTo(-100);
-      expect(camera.viewport().y).toBeCloseTo(-50);
-      expect(camera.viewport().zoom).toBeCloseTo(0.8);
-
-      await camera.show({ group: "g" });
-      expect(camera.viewport().x).toBeCloseTo(300);
-      expect(camera.viewport().y).toBeCloseTo(200);
-      expect(camera.viewport().zoom).toBeCloseTo(1.2);
-    }
-  );
-
-  it("fits a first visit to the canvas in one placement", async () => {
-    const camera = renderCamera();
-    const motion = recordCameraMotion(camera.flow());
-    const start = camera.viewport();
-
-    await camera.show({ group: "g" });
-
-    expectSteadyCamera(motion.moves, start);
-    const usable = { width: CANVAS.width, height: CANVAS.height };
-    const members = camera.store.get(canvasNodesAtom);
-    expect(members.length).toBeGreaterThan(0);
-    expect(
-      members.every((node) => {
-        const viewport = camera.viewport();
-        const right =
-          (node.position.x + (node.width ?? 0)) * viewport.zoom + viewport.x;
-        return onScreen(node, viewport, usable) && right <= usable.width;
-      })
-    ).toBe(true);
-  });
-
-  it("keeps the focused camera on the members after the collapsed card moves", async () => {
-    const camera = renderCamera();
-    await camera.show({ group: "g" });
-    const focused = camera.store.get(canvasNodesAtom);
-    const saved = camera.viewport();
-    await camera.pan(saved);
-
-    await camera.show({});
-    await act(async () => {
-      camera.store.set(onNodesChangeAtom, [
-        { type: "position", id: "g", position: { x: 2400, y: 1800 } },
-      ]);
-    });
-    await camera.show({ group: "g" });
-
-    expect(
-      camera.store.get(canvasNodesAtom).map((node) => node.position)
-    ).toEqual(focused.map((node) => node.position));
-    expect(camera.viewport()).toEqual(saved);
-    expect(
-      camera.store
-        .get(canvasNodesAtom)
-        .every((node) => onScreen(node, camera.viewport()))
-    ).toBe(true);
-  });
-
+describe("useWorkspaceCamera with Groups drawn in place", () => {
   it("keeps separate desktop and mobile cameras over the same stored Group positions", async () => {
     const camera = renderCamera({
       nodes: NODES,
@@ -296,7 +214,6 @@ describe("useWorkspaceCamera across Group scopes", () => {
     });
     await camera.settleViewportListener();
     const stored = camera.store.get(nodesAtom);
-    await camera.show({ group: "g" });
     const desktop = { x: 300, y: 200, zoom: 1.2 };
     await camera.pan(desktop);
 

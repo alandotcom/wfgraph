@@ -5,7 +5,7 @@
 
 import { nodesAtom, selectOnlyNodeAtom } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import type { DesktopScopePresentation } from "#src/lib/workflow-navigation-state";
+import type { DesktopPresentation } from "#src/lib/workflow-navigation-state";
 import { activeRevealPresentationAtom } from "#src/lib/workflow-workspace-navigation";
 import type { RevealKind } from "./reveal-kinds";
 import type { RevealSubject } from "./reveal-subject";
@@ -16,7 +16,7 @@ import type { RevealSubject } from "./reveal-subject";
  * holds the origin, and otherwise null.
  */
 export function inspectedOriginNodeId(input: {
-  presentation: DesktopScopePresentation;
+  presentation: DesktopPresentation;
   subject: RevealSubject;
   nodes: readonly WorkflowNode[];
 }): string | null {

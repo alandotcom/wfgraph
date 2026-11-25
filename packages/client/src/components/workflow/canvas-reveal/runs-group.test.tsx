@@ -2,7 +2,6 @@ import { fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { canvasRevealAtom } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   afterPaint,
   execution,
@@ -46,7 +45,7 @@ const CONTINUING = [
 ] as const;
 
 describe("Runs Group summary", () => {
-  it("summarizes a failed Group from its members and opens a member's evidence inside the Group", async () => {
+  it("summarizes a failed Group from its members and opens a member's evidence on the one canvas", async () => {
     served.items = [execution("exec_f", "failed")];
     served.graphs = { ver_exec_f: labelledGraph(STEPS, GROUP, CONTINUING) };
     served.logsByExecutionId = {
@@ -105,36 +104,19 @@ describe("Runs Group summary", () => {
     fireEvent.click(
       within(steps).getByRole("button", { name: "Send reminder, Failed" })
     );
-    await waitFor(() =>
-      expect(router.state.location.search).toEqual({
-        view: "runs",
-        executionId: "exec_f",
-        group: "grp",
-      })
-    );
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
-    expect(store.get(activeWorkspaceAddressAtom).scope).toEqual({
-      kind: "group",
-      groupId: "grp",
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_f",
     });
     expect(store.get(selectedNodeAtom)).toBe("send");
     expect(title()).toBe("Send reminder");
     expect(
       within(evidence()).getByText("SMTP refused the message")
     ).toBeTruthy();
-
-    // Browser Back leaves the Group and returns to the Group's summary.
-    await router.history.back();
-    await waitFor(() =>
-      expect(store.get(activeWorkspaceAddressAtom).scope).toEqual({
-        kind: "overview",
-      })
-    );
-    await waitFor(() => expect(title()).toBe("Outreach"));
-    expect(view.getByTestId("runs-group-summary")).toBeTruthy();
   });
 
-  it("unwinds Escape from member evidence opened through the summary to the Group scope, the Group summary, the run, and the run list", async () => {
+  it("unwinds Escape from member evidence opened through the summary to the run and then the run list", async () => {
     served.items = [execution("exec_e", "failed")];
     served.graphs = { ver_exec_e: labelledGraph(STEPS, GROUP, CONTINUING) };
     served.logsByExecutionId = {
@@ -159,35 +141,11 @@ describe("Runs Group summary", () => {
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(title()).toBe("Send reminder");
 
-    // Focus steps back to Browse in the Group scope, with the step selected.
+    // Focus steps back to the run's Browse, with the step selected.
     escape();
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
-    expect(store.get(activeWorkspaceAddressAtom).scope).toEqual({
-      kind: "group",
-      groupId: "grp",
-    });
     expect(store.get(selectedNodeAtom)).toBe("send");
     expect(title()).toBe(runHeading("exec_e"));
-
-    // The Group scope returns to the overview with the Group card selected.
-    escape();
-    await waitFor(() =>
-      expect(store.get(activeWorkspaceAddressAtom).scope).toEqual({
-        kind: "overview",
-      })
-    );
-    expect(router.state.location.search).toEqual({
-      view: "runs",
-      executionId: "exec_e",
-    });
-    expect(store.get(selectedNodeAtom)).toBe("grp");
-    await waitFor(() => expect(title()).toBe("Outreach"));
-    expect(view.getByTestId("runs-group-summary")).toBeTruthy();
-
-    // The Group summary returns to the run overview.
-    escape();
-    await waitFor(() => expect(title()).toBe(runHeading("exec_e")));
-    expect(store.get(selectedNodeAtom)).toBeNull();
     expect(view.queryByTestId("runs-group-summary")).toBeNull();
 
     // The run overview returns to the run list.

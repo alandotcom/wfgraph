@@ -1,16 +1,15 @@
 /**
- * The mobile Reveal sequence as navigation state: the sheets one scope keeps
+ * The mobile Reveal sequence as navigation state: the sheets one address keeps
  * open below `md`, and the pure reducers that open, close, scroll, and section
  * them. Each reducer answers its input unchanged when nothing needed to change.
  */
 
-import { takeWhile } from "es-toolkit/array";
 import {
   type CanvasSelection,
   type InspectedObject,
   type NavigationGraph,
-  type ScopeNavigation,
-  type ScopePresentation,
+  type WorkspaceNavigation,
+  type FormFactorPresentation,
 } from "#src/lib/workflow-navigation-state";
 import { sameObject, withSelection } from "#src/lib/canvas-selection";
 
@@ -40,7 +39,7 @@ export type MobileSheet = {
  * first sheet opened first. The number of sheets is the sheet depth, and Back
  * removes the last sheet. No sheets means the canvas shows alone.
  */
-export type MobileScopePresentation = ScopePresentation & {
+export type MobilePresentation = FormFactorPresentation & {
   sheets: readonly MobileSheet[];
 };
 
@@ -76,15 +75,17 @@ export function mobileSheetKey(input: {
 }
 
 /** The last mobile sheet, or null while the canvas shows alone. */
-export function topMobileSheet(scope: ScopeNavigation): MobileSheet | null {
-  return scope.mobile.sheets.at(-1) ?? null;
+export function topMobileSheet(
+  workspace: WorkspaceNavigation
+): MobileSheet | null {
+  return workspace.mobile.sheets.at(-1) ?? null;
 }
 
 function withMobileSheets(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   sheets: readonly MobileSheet[]
-): ScopeNavigation {
-  return { ...scope, mobile: { ...scope.mobile, sheets } };
+): WorkspaceNavigation {
+  return { ...workspace, mobile: { ...workspace.mobile, sheets } };
 }
 
 /**
@@ -94,27 +95,31 @@ function withMobileSheets(
  * selection, as Back does.
  */
 export function mobileSheetsInGraph(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   graph: NavigationGraph
-): ScopeNavigation {
-  const { sheets } = scope.mobile;
+): WorkspaceNavigation {
+  const { sheets } = workspace.mobile;
   const kept = sheets.filter(
     (sheet) => sheet.inspected === null || objectInGraph(sheet.inspected, graph)
   );
   if (kept.length === sheets.length) {
-    return scope;
+    return workspace;
   }
   const shown = kept.at(-1)?.inspected ?? null;
   const selected =
     shown !== null && !sameObject(shown, sheets.at(-1)?.inspected ?? null)
-      ? withSelection(scope, selectionOf(shown))
-      : scope;
+      ? withSelection(workspace, selectionOf(shown))
+      : workspace;
   return withMobileSheets(selected, kept);
 }
 
 /** Close every mobile sheet. */
-export function withoutMobileSheets(scope: ScopeNavigation): ScopeNavigation {
-  return scope.mobile.sheets.length === 0 ? scope : withMobileSheets(scope, []);
+export function withoutMobileSheets(
+  workspace: WorkspaceNavigation
+): WorkspaceNavigation {
+  return workspace.mobile.sheets.length === 0
+    ? workspace
+    : withMobileSheets(workspace, []);
 }
 
 /**
@@ -122,18 +127,18 @@ export function withoutMobileSheets(scope: ScopeNavigation): ScopeNavigation {
  * the only sheet already is that summary.
  */
 export function withMobileSummaryOf(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   inspected: InspectedObject
-): ScopeNavigation {
-  const { sheets } = scope.mobile;
+): WorkspaceNavigation {
+  const { sheets } = workspace.mobile;
   if (
     sheets.length === 1 &&
     sheets[0].level === "summary" &&
     sameObject(sheets[0].inspected, inspected)
   ) {
-    return scope;
+    return workspace;
   }
-  return withMobileSheets(scope, [
+  return withMobileSheets(workspace, [
     { level: "summary", inspected, scroll: 0, section: null },
   ]);
 }
@@ -146,14 +151,14 @@ export function withMobileSummaryOf(
  * canvas.
  */
 export function withMobileSheet(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   input: {
     level: MobileRevealLevel;
     inspected: InspectedObject;
     section?: string | null | undefined;
   }
-): ScopeNavigation {
-  const selected = withSelection(scope, selectionOf(input.inspected));
+): WorkspaceNavigation {
+  const selected = withSelection(workspace, selectionOf(input.inspected));
   const top = topMobileSheet(selected);
   if (
     top !== null &&
@@ -191,14 +196,18 @@ export function withMobileSheet(
  * shows. Removing the only sheet, or uncovering an address sheet, keeps the
  * selection, as leaving desktop Focus or closing desktop Reveal does.
  */
-export function withoutTopMobileSheet(scope: ScopeNavigation): ScopeNavigation {
-  const { sheets } = scope.mobile;
+export function withoutTopMobileSheet(
+  workspace: WorkspaceNavigation
+): WorkspaceNavigation {
+  const { sheets } = workspace.mobile;
   if (sheets.length === 0) {
-    return scope;
+    return workspace;
   }
   const remaining = sheets.slice(0, -1);
   const shown = remaining.at(-1)?.inspected ?? null;
-  const selected = shown ? withSelection(scope, selectionOf(shown)) : scope;
+  const selected = shown
+    ? withSelection(workspace, selectionOf(shown))
+    : workspace;
   return withMobileSheets(selected, remaining);
 }
 
@@ -219,36 +228,27 @@ const ADDRESS_SHEET: MobileSheet = {
  * as it is.
  */
 export function withMobileAddressSheet(
-  scope: ScopeNavigation
-): ScopeNavigation {
-  return scope.mobile.sheets.length === 0
-    ? withMobileSheets(scope, [ADDRESS_SHEET])
-    : scope;
+  workspace: WorkspaceNavigation
+): WorkspaceNavigation {
+  return workspace.mobile.sheets.length === 0
+    ? withMobileSheets(workspace, [ADDRESS_SHEET])
+    : workspace;
 }
 
 /**
- * The sequence an address opens when the route reaches it from `source`, an
- * address of the same workspace. It changes only a scope with no sheet open
- * reached from a source with a sheet open. Another scope of the same key opens
- * the address sheets the source sequence starts with, each at its top, so Back
- * walks the same address sheets; any other address opens its address sheet.
+ * The sequence an address opens when the route reaches it from another address
+ * of the same workspace whose sheets were `sourceSheets`. It changes only an
+ * address with no sheet open reached from one with a sheet open, which then
+ * opens its address sheet.
  */
 export function withMobileSequenceFrom(
-  scope: ScopeNavigation,
-  source: { sheets: readonly MobileSheet[]; sameKey: boolean }
-): ScopeNavigation {
-  if (scope.mobile.sheets.length > 0 || source.sheets.length === 0) {
-    return scope;
+  workspace: WorkspaceNavigation,
+  sourceSheets: readonly MobileSheet[]
+): WorkspaceNavigation {
+  if (workspace.mobile.sheets.length > 0 || sourceSheets.length === 0) {
+    return workspace;
   }
-  const carried = source.sameKey
-    ? takeWhile(source.sheets, (sheet) => sheet.inspected === null).map(
-        (sheet) => ({ ...sheet, scroll: 0 })
-      )
-    : [];
-  return withMobileSheets(
-    scope,
-    carried.length > 0 ? carried : [ADDRESS_SHEET]
-  );
+  return withMobileSheets(workspace, [ADDRESS_SHEET]);
 }
 
 /**
@@ -260,10 +260,10 @@ export function withMobileSequenceFrom(
  * that writes it in the same navigation update.
  */
 export function withMobileInspectorOverAddress(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   inspected: InspectedObject
-): ScopeNavigation {
-  const { sheets } = scope.mobile;
+): WorkspaceNavigation {
+  const { sheets } = workspace.mobile;
   const top = sheets.at(-1);
   const inspector: MobileSheet = {
     level: "inspector",
@@ -272,15 +272,15 @@ export function withMobileInspectorOverAddress(
     section: null,
   };
   if (top === undefined) {
-    return withMobileSheets(scope, [ADDRESS_SHEET, inspector]);
+    return withMobileSheets(workspace, [ADDRESS_SHEET, inspector]);
   }
   if (top.level !== "inspector" || top.inspected === null) {
-    return withMobileSheets(scope, [...sheets, inspector]);
+    return withMobileSheets(workspace, [...sheets, inspector]);
   }
   if (sameObject(top.inspected, inspected)) {
-    return scope;
+    return workspace;
   }
-  return withMobileSheets(scope, [...sheets.slice(0, -1), inspector]);
+  return withMobileSheets(workspace, [...sheets.slice(0, -1), inspector]);
 }
 
 function selectionOf(object: InspectedObject): CanvasSelection {
@@ -295,19 +295,19 @@ function selectionOf(object: InspectedObject): CanvasSelection {
  * before Back or a new selection never lands on the next sheet.
  */
 function withTopMobileSheet(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   inspected: InspectedObject,
   update: (sheet: MobileSheet) => MobileSheet
-): ScopeNavigation {
-  const { sheets } = scope.mobile;
+): WorkspaceNavigation {
+  const { sheets } = workspace.mobile;
   const top = sheets.at(-1);
   if (!top || !sameObject(top.inspected, inspected)) {
-    return scope;
+    return workspace;
   }
   const next = update(top);
   return next === top
-    ? scope
-    : withMobileSheets(scope, [...sheets.slice(0, -1), next]);
+    ? workspace
+    : withMobileSheets(workspace, [...sheets.slice(0, -1), next]);
 }
 
 /**
@@ -317,15 +317,15 @@ function withTopMobileSheet(
  * selection never lands on a different sheet.
  */
 export function withMobileSheetScroll(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   input: {
     depth: number;
     level: MobileRevealLevel;
     inspected: InspectedObject | null;
     top: number;
   }
-): ScopeNavigation {
-  const { sheets } = scope.mobile;
+): WorkspaceNavigation {
+  const { sheets } = workspace.mobile;
   const sheet = sheets.at(input.depth - 1);
   if (
     input.depth < 1 ||
@@ -334,10 +334,10 @@ export function withMobileSheetScroll(
     !sameObject(sheet.inspected, input.inspected) ||
     sheet.scroll === input.top
   ) {
-    return scope;
+    return workspace;
   }
   return withMobileSheets(
-    scope,
+    workspace,
     sheets.map((item, index) =>
       index === input.depth - 1 ? { ...item, scroll: input.top } : item
     )
@@ -349,11 +349,11 @@ export function withMobileSheetScroll(
  * scroll at the top.
  */
 export function withMobileSheetSection(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   inspected: InspectedObject,
   section: string | null
-): ScopeNavigation {
-  return withTopMobileSheet(scope, inspected, (sheet) =>
+): WorkspaceNavigation {
+  return withTopMobileSheet(workspace, inspected, (sheet) =>
     sheet.section === section ? sheet : { ...sheet, section, scroll: 0 }
   );
 }

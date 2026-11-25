@@ -45,7 +45,6 @@ import {
   activeWorkspaceAddressAtom,
   recordInspectorScrollAtom,
   openInspectorSectionAtom,
-  recordInspectorSectionAtom,
   setWorkspaceRevealLevelAtom,
   activeWorkspaceCamerasAtom,
   forgetWorkflowNavigationAtom,
@@ -94,7 +93,6 @@ describe("active workspace address", () => {
     expect(store.get(activeWorkspaceAddressAtom)).toEqual({
       workflowId: "workflow_1",
       key: { workspace: "runs", executionId: "run_1" },
-      scope: { kind: "overview" },
     });
     expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
     expect(store.get(selectedExecutionIdAtom)).toBe("run_1");
@@ -113,7 +111,6 @@ describe("active workspace address", () => {
     expect(store.get(activeWorkspaceAddressAtom)).toEqual({
       workflowId: "workflow_2",
       key: { workspace: "draft" },
-      scope: { kind: "overview" },
     });
     expect(store.get(selectedExecutionIdAtom)).toBeNull();
   });
@@ -121,10 +118,10 @@ describe("active workspace address", () => {
   it("remembers the search each view last showed", () => {
     const store = draftStore();
     showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
-    showWorkspaceRoute(store, { group: "group_1" });
+    showWorkspaceRoute(store, {});
 
     expect(store.get(rememberedRouteSearchesAtom)).toEqual({
-      draft: { group: "group_1" },
+      draft: {},
       runs: { view: "runs", executionId: "run_1" },
     });
   });
@@ -175,23 +172,6 @@ describe("selection", () => {
     showWorkspaceRoute(store, { view: "runs" });
     expect(store.get(selectedEdgeAtom)).toBe("run_list_edge");
     expect(store.get(selectedNodeAtom)).toBeNull();
-  });
-
-  it("paints a focused Group scope's selection apart from the overview's", () => {
-    const store = draftStore();
-    store.set(selectOnlyNodeAtom, "draft_step");
-
-    showWorkspaceRoute(store, { group: "group_1" });
-    expect(store.get(selectedNodeAtom)).toBeNull();
-    expect(paintedSelection(store)).toEqual({ nodeIds: [], edgeIds: [] });
-    store.set(selectOnlyNodeAtom, "child_step");
-
-    showWorkspaceRoute(store, {});
-    expect(store.get(selectedNodeAtom)).toBe("draft_step");
-    expect(paintedSelection(store).nodeIds).toEqual(["draft_step"]);
-    showWorkspaceRoute(store, { group: "group_1" });
-    expect(store.get(selectedNodeAtom)).toBe("child_step");
-    expect(paintedSelection(store).nodeIds).toEqual(["child_step"]);
   });
 
   it("keeps a Draft multi-selection from React Flow changes in the address", () => {
@@ -316,63 +296,6 @@ describe("desktop details level", () => {
     });
   });
 
-  it("keeps each scope's Focus level, inspected step, and scroll apart", () => {
-    const store = draftStore();
-    store.set(selectOnlyNodeAtom, "draft_step");
-    const draft = store.get(activeWorkspaceAddressAtom);
-    store.set(setWorkspaceRevealLevelAtom, { address: draft, level: "focus" });
-    store.set(recordInspectorScrollAtom, {
-      address: draft,
-      inspectedId: "draft_step",
-      level: "focus",
-      top: 240,
-    });
-
-    showWorkspaceRoute(store, { group: "group_1" });
-    store.set(selectOnlyNodeAtom, "child_step");
-    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
-    expect(store.get(activeRevealPresentationAtom).inspectorScroll).toEqual({
-      browse: 0,
-      focus: 0,
-    });
-
-    showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
-    showWorkspaceRoute(store, {});
-    expect(store.get(activeDesktopRevealLevelAtom)).toBe("focus");
-    expect(store.get(activeRevealPresentationAtom)).toMatchObject({
-      inspected: { kind: "node", id: "draft_step" },
-      inspectorScroll: { browse: 0, focus: 240 },
-    });
-  });
-
-  it("keeps each scope's inspector section apart and drops one for another object", () => {
-    const store = draftStore();
-    store.set(selectOnlyNodeAtom, "draft_step");
-    const draft = store.get(activeWorkspaceAddressAtom);
-    store.set(recordInspectorSectionAtom, {
-      address: draft,
-      inspectedId: "draft_step",
-      section: "validation",
-    });
-    store.set(recordInspectorSectionAtom, {
-      address: draft,
-      inspectedId: "child_step",
-      section: "connections",
-    });
-    expect(store.get(activeRevealPresentationAtom).inspectorSection).toBe(
-      "validation"
-    );
-
-    showWorkspaceRoute(store, { group: "group_1" });
-    store.set(selectOnlyNodeAtom, "child_step");
-    expect(store.get(activeRevealPresentationAtom).inspectorSection).toBeNull();
-
-    showWorkspaceRoute(store, {});
-    expect(store.get(activeRevealPresentationAtom).inspectorSection).toBe(
-      "validation"
-    );
-  });
-
   it("opens another object with a section open in one write", () => {
     const store = draftStore();
     store.set(selectOnlyNodeAtom, "draft_step");
@@ -447,7 +370,7 @@ describe("desktop details level", () => {
 });
 
 describe("cameras", () => {
-  it("keeps desktop and mobile cameras apart for the same scope", () => {
+  it("keeps desktop and mobile cameras apart for the same address", () => {
     const store = draftStore();
     const address = store.get(activeWorkspaceAddressAtom);
     store.set(recordWorkspaceCameraAtom, {
@@ -465,7 +388,7 @@ describe("cameras", () => {
       desktop: { centerX: 100, centerY: 50, zoom: 0.8 },
       mobile: { centerX: 12, centerY: 400, zoom: 1.4 },
     });
-    showWorkspaceRoute(store, { group: "group_1" });
+    showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
     expect(store.get(activeWorkspaceCamerasAtom)).toEqual({
       desktop: null,
       mobile: null,
@@ -492,16 +415,8 @@ describe("mobile Reveal sheets", () => {
       inspected: { kind: "node", id: "send" },
     });
 
-    // A Group scope of the same run opens the address sheets beneath the
-    // evidence, so Back from it walks to the run list.
-    showWorkspaceRoute(store, {
-      view: "runs",
-      executionId: "exec_1",
-      group: "group_1",
-    });
-    expect(inspectedIds()).toEqual([undefined]);
-
     // An address that keeps sheets of its own keeps its depth.
+    showWorkspaceRoute(store, { view: "runs" });
     showWorkspaceRoute(store, { view: "runs", executionId: "exec_1" });
     expect(inspectedIds()).toEqual([undefined, "send"]);
 
@@ -511,7 +426,7 @@ describe("mobile Reveal sheets", () => {
     expect(inspectedIds()).toEqual([]);
   });
 
-  it("keeps each scope's sheets and restores the covered camera on Back", () => {
+  it("keeps each address's sheets and restores the covered camera on Back", () => {
     const store = draftStore();
     const overview = store.get(activeWorkspaceAddressAtom);
     store.set(selectOnlyNodeAtom, "draft_step");
@@ -530,12 +445,8 @@ describe("mobile Reveal sheets", () => {
       store.get(activeMobileSheetsAtom).map((sheet) => sheet.level)
     ).toEqual(["summary", "inspector"]);
 
-    showWorkspaceRoute(store, { group: "group_1" });
+    showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
     expect(store.get(activeMobileSheetsAtom)).toEqual([]);
-    store.set(selectOnlyNodeAtom, "child_step");
-    expect(
-      store.get(activeMobileSheetsAtom).map((sheet) => sheet.inspected?.id)
-    ).toEqual(["child_step"]);
 
     showWorkspaceRoute(store, {});
     expect(

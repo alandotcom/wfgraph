@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
-import { RANK_SPACING } from "@wfgraph/shared/graph/workflow-layout-geometry";
 import {
-  GROUP_BOUNDARY_NODE_TYPES,
-  GROUP_BOUNDARY_STUB_HEIGHT,
-} from "#src/lib/group-scope-canvas";
+  GROUP_REGION_INSET,
+  groupRegionBox,
+} from "@wfgraph/shared/graph/workflow-layout-geometry";
 import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
 import {
   applyNodeLayoutAtom,
@@ -18,7 +17,6 @@ import {
   ungroupNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { historyAtom } from "#src/lib/workflow-graph-cells";
-import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import {
   createGraphStore,
   ungroupedGraph,
@@ -28,29 +26,34 @@ import {
   updateMock,
 } from "./workflow-group-mutations-test-support";
 
-async function focusedStore() {
+async function groupedStore() {
   const store = createGraphStore(ungroupedGraph());
   store.set(groupSelectionAtom, { selectedIds: new Set(["a", "b", "c"]) });
   const frame = store.get(nodesAtom).find(isGroupNode);
   if (!frame) throw new Error("expected Group");
-  showWorkspaceRoute(store, { group: frame.id });
   await tick();
   vi.clearAllMocks();
   return { store, frame };
 }
 
 describe("stored Group layout", () => {
-  it("entering, painting and leaving a Group writes no coordinates or history", async () => {
-    const { store } = await focusedStore();
+  it("paints each member at its stored position inside a region sized to them, writing nothing", async () => {
+    const { store, frame } = await groupedStore();
     const before = graphOf(store);
     const history = store.get(historyAtom);
     const canvas = store.get(canvasGraphAtom);
-    for (const member of before.nodes.filter((node) => node.parentId)) {
-      expect(
-        canvas.nodes.find((node) => node.id === member.id)?.position
-      ).toEqual(member.position);
+    const members = before.nodes.filter((node) => node.parentId === frame.id);
+    for (const member of members) {
+      expect(canvas.nodes.find((node) => node.id === member.id)).toMatchObject({
+        position: member.position,
+        parentId: frame.id,
+        extent: "parent",
+      });
     }
-    showWorkspaceRoute(store, {});
+    expect(canvas.nodes.find((node) => node.id === frame.id)).toMatchObject({
+      position: frame.position,
+      ...groupRegionBox(members),
+    });
     await tick();
     expect(graphOf(store)).toEqual(before);
     expect(store.get(historyAtom)).toBe(history);
@@ -58,7 +61,7 @@ describe("stored Group layout", () => {
   });
 
   it("saves a drag of one member as one undo step, without moving siblings or its frame", async () => {
-    const { store } = await focusedStore();
+    const { store } = await groupedStore();
     const before = graphOf(store);
     const history = store.get(historyAtom).length;
     for (const [x, dragging] of [
@@ -89,68 +92,50 @@ describe("stored Group layout", () => {
     ).toEqual({ x: 560, y: 720 });
   });
 
-  it("Tidies members with stubs, persisting only member coordinates in one undo step", async () => {
-    const { store, frame } = await focusedStore();
+  it("Tidies each Group's members inside its region and the graph around it in one undo step", async () => {
+    const { store, frame } = await groupedStore();
     const before = graphOf(store);
-    const painted = store.get(canvasGraphAtom);
     const result = layoutWorkflowNodes({
-      ...painted,
+      nodes: store.get(nodesAtom),
+      edges: graphOf(store).edges,
       catalog: emptyExtensionCatalog,
     });
-    const ingress = result.nodes.find(
-      (node) => node.type === GROUP_BOUNDARY_NODE_TYPES.ingress
-    )!;
-    const firstMember = result.nodes.find((node) => node.id === "a")!;
-    expect(firstMember.position.y - ingress.position.y).toBe(
-      GROUP_BOUNDARY_STUB_HEIGHT + RANK_SPACING
-    );
     store.set(applyNodeLayoutAtom, result.nodes);
     await tick();
     const after = graphOf(store);
     expect(after.edges).toBe(before.edges);
-    expect(after.nodes.map((node) => node.id)).toEqual(
-      before.nodes.map((node) => node.id)
-    );
-    for (const node of before.nodes) {
-      const updated = after.nodes.find((item) => item.id === node.id);
-      if (node.parentId === frame.id) {
-        expect(updated).toEqual({
-          ...node,
-          position: result.nodes.find((item) => item.id === node.id)?.position,
-        });
-      } else expect(updated).toBe(node);
+    const members = after.nodes.filter((node) => node.parentId === frame.id);
+    // Members start at the region's corner and stay inside it.
+    expect(Math.min(...members.map((node) => node.position.x))).toBe(0);
+    expect(Math.min(...members.map((node) => node.position.y))).toBe(0);
+    const laidFrame = after.nodes.find((node) => node.id === frame.id);
+    expect(laidFrame).toMatchObject(groupRegionBox(members));
+    // No step outside the Group overlaps the region's outline.
+    const outline = {
+      left: (laidFrame?.position.x ?? 0) - GROUP_REGION_INSET.left,
+      top: (laidFrame?.position.y ?? 0) - GROUP_REGION_INSET.top,
+      right: (laidFrame?.position.x ?? 0) + (laidFrame?.width ?? 0),
+      bottom: (laidFrame?.position.y ?? 0) + (laidFrame?.height ?? 0),
+    };
+    for (const node of after.nodes.filter(
+      (item) => item.parentId === undefined && item.id !== frame.id
+    )) {
+      const right = node.position.x + (node.width ?? 192);
+      const bottom = node.position.y + (node.height ?? 112);
+      const overlaps =
+        node.position.x < outline.right &&
+        right > outline.left &&
+        node.position.y < outline.bottom &&
+        bottom > outline.top;
+      expect(overlaps).toBe(false);
     }
     expectEverySaveWhole();
     store.set(undoAtom);
     expect(graphOf(store)).toEqual(before);
   });
 
-  it("does not save or add history when another Tidy moves only derived stubs", async () => {
-    const { store } = await focusedStore();
-    const tidy = () =>
-      store.set(
-        applyNodeLayoutAtom,
-        layoutWorkflowNodes({
-          ...store.get(canvasGraphAtom),
-          catalog: emptyExtensionCatalog,
-        }).nodes
-      );
-    tidy();
-    await tick();
-    const before = graphOf(store);
-    const history = store.get(historyAtom);
-    vi.clearAllMocks();
-    tidy();
-    expect(graphOf(store).nodes).toEqual(before.nodes);
-    tidy();
-    await tick();
-    expect(graphOf(store).nodes).toBe(before.nodes);
-    expect(store.get(historyAtom)).toBe(history);
-    expect(updateMock).not.toHaveBeenCalled();
-  });
-
   it("ungroups without changing the relative arrangement a person dragged", async () => {
-    const { store, frame } = await focusedStore();
+    const { store, frame } = await groupedStore();
     store.set(onNodesChangeAtom, [
       {
         id: "a",

@@ -1,169 +1,68 @@
 /**
- * The overview paints collapsed Groups. A focused Group paints members at their
- * stored, frame-relative positions and derives boundary stubs from those cards.
- * Projection never writes positions; dragging, adding steps and Tidy own them.
+ * How the canvas paints Groups: in place, as a region around its members, or
+ * as one card when the viewer collapsed it. A region's node box is sized from
+ * its members' stored local positions; members stay React Flow child nodes of
+ * the frame, held inside it. Projection never writes positions or sizes.
  */
 import { omit } from "es-toolkit/object";
-import { sortBy } from "es-toolkit/array";
-import {
-  analyzeGroupBoundary,
-  type GroupPort,
-  isGroupNode,
-} from "@wfgraph/shared/graph/group-boundary";
-import { groupPortKey } from "@wfgraph/shared/graph/group-port-key";
-import {
-  rectanglesOverlap,
-  type NodeRectangle,
-} from "@wfgraph/shared/graph/node-placement";
+import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import {
   displayEdgesForGroups,
-  groupEndPorts,
+  fanOutStoreEdgeIds,
 } from "@wfgraph/shared/graph/node-group";
-import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
-import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import { type NodeChange, Position } from "@xyflow/react";
-import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
 import {
-  GROUP_BOUNDARY_STUB_PORT,
-  type GroupBoundaryStubPort,
-  type WorkflowEdge,
-  type WorkflowNode,
-} from "#src/lib/workflow-graph-types";
+  GROUP_REGION_INSET,
+  groupRegionBox,
+} from "@wfgraph/shared/graph/workflow-layout-geometry";
+import type { NodeChange } from "@xyflow/react";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
-  RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
 
 export type CanvasGraph = { nodes: WorkflowNode[]; edges: WorkflowEdge[] };
-export type ScopeCanvasGraph = CanvasGraph & {
+export type PaintedCanvasGraph = CanvasGraph & {
   anchor: { nodeId: string; pinToTop: boolean } | null;
-  /** Only painted frames and stubs have measurements that must not be stored. */
+  /** Only painted frames have measurements that must not be stored. */
   projectedNodeIds: ReadonlySet<string>;
 };
 
-export const GROUP_BOUNDARY_NODE_TYPES = {
-  ingress: "groupIngress",
-  continuation: "groupContinuation",
-  end: "groupEnd",
-} as const;
-export const GROUP_BOUNDARY_STUB_HEIGHT = 40;
-export const GROUP_END_STUB_LABEL = "Path ends";
-type StubDirection = keyof typeof GROUP_BOUNDARY_NODE_TYPES;
-type EdgeRole = "interior" | "ingress" | "continuation";
 const CARD_SIZE = { width: WORKFLOW_NODE_WIDTH, height: WORKFLOW_NODE_HEIGHT };
-const HANDLES = {
-  sourcePosition: Position.Bottom,
-  targetPosition: Position.Top,
-};
-// Stored ids are trimmed by the schema, so this prefix cannot collide with one.
-const PAINTED_ID_PREFIX = " group-";
 
-export function boundaryStubId(
-  direction: StubDirection,
-  port: GroupPort
-): string {
-  return `${PAINTED_ID_PREFIX}${direction}:${groupPortKey(port)}`;
-}
-
-function stubPortOf(
-  nodeId: string | null,
-  paintedNodes: readonly WorkflowNode[]
-): GroupBoundaryStubPort | null {
-  const node = paintedNodes.find((item) => item.id === nodeId);
-  const stubTypes: readonly (string | undefined)[] = Object.values(
-    GROUP_BOUNDARY_NODE_TYPES
+/**
+ * `nodes` as the frame-aware edge helpers should read them: a member of a
+ * Group drawn in place loses its `parentId`, because its edges attach to the
+ * member itself, and only a collapsed Group's members keep it, so their
+ * boundary edges paint on the collapsed card.
+ */
+export function groupingAsPainted(
+  nodes: readonly WorkflowNode[],
+  collapsedGroupIds: ReadonlySet<string>
+): WorkflowNode[] {
+  return nodes.map((node) =>
+    node.parentId !== undefined && !collapsedGroupIds.has(node.parentId)
+      ? omit(node, ["parentId"])
+      : node
   );
-  return node && stubTypes.includes(node.type)
-    ? (node.data[GROUP_BOUNDARY_STUB_PORT] ?? null)
-    : null;
 }
 
-export type StoredCanvasConnection<C> =
-  | { connection: C; throughBoundaryStub: boolean }
-  | { refusal: string };
-
-/** Translate a stub into its stored port, refusing connections between stubs. */
-export function storedCanvasConnection<
-  C extends {
-    source: string | null;
-    target: string | null;
-    sourceHandle?: string | null | undefined;
-    targetHandle?: string | null | undefined;
-  },
->(
-  connection: C,
-  paintedNodes: readonly WorkflowNode[]
-): StoredCanvasConnection<C> {
-  const source = stubPortOf(connection.source, paintedNodes);
-  const target = stubPortOf(connection.target, paintedNodes);
-  if (
-    (source !== null && target !== null) ||
-    (source !== null && source.direction !== "ingress") ||
-    (target !== null && target.direction !== "continuation")
-  ) {
-    return { refusal: "Connect to a step inside the Group." };
-  }
-  if (source !== null) {
-    return {
-      connection: {
-        ...connection,
-        source: source.port.nodeId,
-        sourceHandle: source.port.handle,
-      },
-      throughBoundaryStub: true,
-    };
-  }
-  if (target !== null) {
-    return {
-      connection: {
-        ...connection,
-        target: target.port.nodeId,
-        targetHandle: target.port.handle,
-      },
-      throughBoundaryStub: true,
-    };
-  }
-  return { connection, throughBoundaryStub: false };
-}
-
-const paintedBoundaryEdges: Record<
-  Exclude<EdgeRole, "interior">,
-  WeakMap<WorkflowEdge, WorkflowEdge>
-> = {
-  ingress: new WeakMap(),
-  continuation: new WeakMap(),
-};
-
-/** Boundary edges retain their stored ids, so selection and deletion stay exact. */
-function focusedEdge(edge: WorkflowEdge, role: EdgeRole): WorkflowEdge {
-  if (role === "interior") return edge;
-  const cached = paintedBoundaryEdges[role].get(edge);
-  if (cached) return cached;
-  const painted: WorkflowEdge =
-    role === "ingress"
-      ? {
-          ...omit(edge, ["sourceHandle"]),
-          source: boundaryStubId("ingress", {
-            nodeId: edge.source,
-            handle: edge.sourceHandle ?? null,
-          }),
-          data: omitUndefined({
-            ...edge.data,
-            displayLabel:
-              getConditionBranchDisplayLabel(edge.sourceHandle) ??
-              edge.data?.displayLabel,
-          }),
-        }
-      : {
-          ...omit(edge, ["targetHandle"]),
-          target: boundaryStubId("continuation", {
-            nodeId: edge.target,
-            handle: edge.targetHandle ?? null,
-          }),
-        };
-  paintedBoundaryEdges[role].set(edge, painted);
-  return painted;
+/**
+ * The stored edge ids that deleting the painted edge `edgeId` removes. A
+ * painted edge on a collapsed Group card stands for every stored edge it
+ * collapses; every other painted edge is the stored edge of the same id.
+ */
+export function storedEdgeIdsForPaintedEdge(input: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  edgeId: string;
+  collapsedGroupIds: ReadonlySet<string>;
+}): string[] {
+  return fanOutStoreEdgeIds(
+    groupingAsPainted(input.nodes, input.collapsedGroupIds),
+    input.edges,
+    input.edgeId
+  );
 }
 
 const collapsedFrames = new WeakMap<WorkflowNode, WorkflowNode>();
@@ -174,433 +73,94 @@ function collapsedFrame(frame: WorkflowNode): WorkflowNode {
     ...frame,
     ...CARD_SIZE,
     measured: CARD_SIZE,
-    style: omit(frame.style ?? {}, ["width", "height"]),
+    style: { ...omit(frame.style ?? {}, ["width", "height"]), ...CARD_SIZE },
   };
   collapsedFrames.set(frame, collapsed);
   return collapsed;
 }
 
-export function overviewCanvasGraph(input: CanvasGraph): ScopeCanvasGraph {
+const regionFrames = new WeakMap<WorkflowNode, WorkflowNode>();
+function regionFrame(
+  frame: WorkflowNode,
+  members: readonly WorkflowNode[]
+): WorkflowNode {
+  const box = groupRegionBox(members);
+  const cached = regionFrames.get(frame);
+  if (cached?.width === box.width && cached.height === box.height) {
+    return cached;
+  }
+  const region: WorkflowNode = {
+    ...frame,
+    ...box,
+    measured: box,
+    style: { ...omit(frame.style ?? {}, ["width", "height"]), ...box },
+  };
+  regionFrames.set(frame, region);
+  return region;
+}
+
+const regionMembers = new WeakMap<WorkflowNode, WorkflowNode>();
+/** A member drawn in its region: movable, connectable, and held inside it. */
+function regionMember(member: WorkflowNode): WorkflowNode {
+  const cached = regionMembers.get(member);
+  if (cached) return cached;
+  const painted: WorkflowNode = {
+    ...omit(member, ["draggable", "connectable", "expandParent"]),
+    extent: "parent",
+  };
+  regionMembers.set(member, painted);
+  return painted;
+}
+
+/**
+ * The one canvas: every step, each Group drawn in place around its members,
+ * except the Groups in `collapsedGroupIds`, which draw as one card standing
+ * for their members, with the boundary edges painted on the card.
+ */
+export function workflowCanvasGraph(
+  input: CanvasGraph & { collapsedGroupIds: ReadonlySet<string> }
+): PaintedCanvasGraph {
   const lifecycle = input.nodes.find((node) => node.data.type === "lifecycle");
   const anchor = lifecycle ? { nodeId: lifecycle.id, pinToTop: true } : null;
   const frameIds = new Set(
     input.nodes.filter(isGroupNode).map((node) => node.id)
   );
-  if (frameIds.size === 0)
+  if (frameIds.size === 0) {
     return { ...input, anchor, projectedNodeIds: frameIds };
+  }
+  const membersByFrame = Map.groupBy(
+    input.nodes.filter(
+      (node) => node.parentId !== undefined && frameIds.has(node.parentId)
+    ),
+    (node) => node.parentId ?? ""
+  );
   const nodes = input.nodes.flatMap((node) => {
-    if (isGroupNode(node)) return [collapsedFrame(node)];
-    return node.parentId !== undefined && frameIds.has(node.parentId)
+    if (isGroupNode(node)) {
+      return [
+        input.collapsedGroupIds.has(node.id)
+          ? collapsedFrame(node)
+          : regionFrame(node, membersByFrame.get(node.id) ?? []),
+      ];
+    }
+    if (node.parentId === undefined || !frameIds.has(node.parentId)) {
+      return [node];
+    }
+    return input.collapsedGroupIds.has(node.parentId)
       ? []
-      : [node];
+      : [regionMember(node)];
   });
   const shownIds = new Set(nodes.map((node) => node.id));
-  const edges = displayEdgesForGroups(input.nodes, input.edges).filter(
+  const painted =
+    input.collapsedGroupIds.size === 0
+      ? input.edges
+      : displayEdgesForGroups(
+          groupingAsPainted(input.nodes, input.collapsedGroupIds),
+          input.edges
+        );
+  const edges = painted.filter(
     (edge) => shownIds.has(edge.source) && shownIds.has(edge.target)
   );
   return { nodes, edges, anchor, projectedNodeIds: frameIds };
-}
-
-const boundaryStubs = new WeakMap<WorkflowNode, Map<string, WorkflowNode>>();
-let endStubs = new Map<string, WorkflowNode>();
-function boundaryStub(input: {
-  direction: StubDirection;
-  step: WorkflowNode;
-  port: GroupPort;
-  position: { x: number; y: number };
-}): WorkflowNode {
-  const { step, position } = input;
-  const id = boundaryStubId(input.direction, input.port);
-  const cache =
-    input.direction === "end"
-      ? endStubs
-      : (boundaryStubs.get(step) ?? new Map<string, WorkflowNode>());
-  if (input.direction !== "end") boundaryStubs.set(step, cache);
-  const cached = cache.get(id);
-  if (
-    cached?.position.x === position.x &&
-    cached.position.y === position.y &&
-    cached.data.type === step.data.type
-  )
-    return cached;
-  const size = {
-    width: WORKFLOW_NODE_WIDTH,
-    height: GROUP_BOUNDARY_STUB_HEIGHT,
-  };
-  const names =
-    input.direction === "end"
-      ? { label: GROUP_END_STUB_LABEL, type: step.data.type }
-      : omitUndefined({
-          label: step.data.label,
-          type: step.data.type,
-          config: step.data.config,
-        });
-  const stub: WorkflowNode = {
-    id,
-    type: GROUP_BOUNDARY_NODE_TYPES[input.direction],
-    position,
-    ...HANDLES,
-    ...size,
-    measured: size,
-    selectable: false,
-    draggable: false,
-    deletable: false,
-    focusable: false,
-    data: {
-      ...names,
-      [GROUP_BOUNDARY_STUB_PORT]: {
-        direction: input.direction,
-        port: input.port,
-      },
-    },
-  };
-  if (input.direction === "end") stub.connectable = false;
-  cache.set(id, stub);
-  return stub;
-}
-
-const projectedMembers = new WeakMap<WorkflowNode, WorkflowNode>();
-/** Removing the frame changes no coordinate: stored member positions are local. */
-function projectedMember(member: WorkflowNode): WorkflowNode {
-  const cached = projectedMembers.get(member);
-  if (cached) return cached;
-  const projected: WorkflowNode = {
-    ...omit(member, [
-      "parentId",
-      "extent",
-      "expandParent",
-      "connectable",
-      "draggable",
-    ]),
-    width: member.width ?? WORKFLOW_NODE_WIDTH,
-    height: member.height ?? WORKFLOW_NODE_HEIGHT,
-    measured: member.measured ?? CARD_SIZE,
-    ...HANDLES,
-  };
-  projectedMembers.set(member, projected);
-  return projected;
-}
-
-const END_EDGE_ID_PREFIX = `${PAINTED_ID_PREFIX}end-edge:`;
-
-/** Whether `edge` is the painted edge from an outlet to its "Path ends" stub. */
-export function isPathEndEdge(edge: WorkflowEdge): boolean {
-  return edge.id.startsWith(END_EDGE_ID_PREFIX);
-}
-
-let endEdges = new Map<string, WorkflowEdge>();
-function endEdge(port: GroupPort): WorkflowEdge {
-  const id = `${END_EDGE_ID_PREFIX}${groupPortKey(port)}`;
-  return (
-    endEdges.get(id) ?? {
-      id,
-      source: port.nodeId,
-      sourceHandle: port.handle,
-      target: boundaryStubId("end", port),
-      selectable: false,
-      deletable: false,
-      focusable: false,
-      data: { insertable: false },
-    }
-  );
-}
-
-function workflowNodeDimensions(node: WorkflowNode) {
-  return {
-    width: node.measured?.width ?? node.width ?? WORKFLOW_NODE_WIDTH,
-    height: node.measured?.height ?? node.height ?? WORKFLOW_NODE_HEIGHT,
-  };
-}
-
-/** Centre a stub on the cards it meets, one rank above or below those cards. */
-function stubPosition(
-  cards: readonly WorkflowNode[],
-  direction: StubDirection
-): { x: number; y: number } {
-  const left = Math.min(...cards.map((node) => node.position.x));
-  const right = Math.max(
-    ...cards.map((node) => node.position.x + workflowNodeDimensions(node).width)
-  );
-  return {
-    x: (left + right - WORKFLOW_NODE_WIDTH) / 2,
-    y:
-      direction === "ingress"
-        ? Math.min(...cards.map((node) => node.position.y)) -
-          RANK_SPACING -
-          GROUP_BOUNDARY_STUB_HEIGHT
-        : Math.max(
-            ...cards.map(
-              (node) => node.position.y + workflowNodeDimensions(node).height
-            )
-          ) + RANK_SPACING,
-  };
-}
-
-const separatedStubs = new WeakMap<WorkflowNode, WorkflowNode>();
-
-/** The nearest horizontal slot that clears members and follows the preceding stub. */
-function clearStubX(input: {
-  x: number;
-  y: number;
-  minimumX: number;
-  obstacles: NodeRectangle[];
-}): number {
-  const obstacles = input.obstacles.filter(
-    (obstacle) =>
-      obstacle.y < input.y + GROUP_BOUNDARY_STUB_HEIGHT &&
-      obstacle.y + obstacle.height > input.y
-  );
-  const candidates = [
-    Math.max(input.x, input.minimumX),
-    ...obstacles.flatMap((obstacle) => [
-      obstacle.x - WORKFLOW_NODE_WIDTH,
-      obstacle.x + obstacle.width,
-    ]),
-  ]
-    .filter((x) => x >= input.minimumX)
-    .map((x) => ({ x, distance: Math.abs(x - input.x) }));
-  // The rightmost obstacle boundary (or minimumX beyond it) is always clear.
-  return sortBy(candidates, ["distance", "x"]).find(({ x }) =>
-    obstacles.every(
-      (obstacle) =>
-        !rectanglesOverlap(
-          {
-            x,
-            y: input.y,
-            width: WORKFLOW_NODE_WIDTH,
-            height: GROUP_BOUNDARY_STUB_HEIGHT,
-          },
-          obstacle
-        )
-    )
-  )!.x;
-}
-
-/** Separate stubs near their anchors, preserving branch order and clearing members. */
-function separateBoundaryStubs(
-  stubs: WorkflowNode[],
-  edges: WorkflowEdge[],
-  members: WorkflowNode[]
-): WorkflowNode[] {
-  const gap = 24;
-  const obstacles = members.map((member) => {
-    const size = workflowNodeDimensions(member);
-    return {
-      x: member.position.x - gap,
-      y: member.position.y - gap,
-      width: size.width + 2 * gap,
-      height: size.height + 2 * gap,
-    };
-  });
-  const edgesByTarget = Map.groupBy(edges, (edge) => edge.target);
-  const branchOrder = (stub: WorkflowNode) => {
-    const incoming = edgesByTarget.get(stub.id);
-    const handle = incoming?.length === 1 ? incoming[0]?.sourceHandle : null;
-    return handle === "true" ? -1 : handle === "false" ? 1 : 0;
-  };
-  const bands: WorkflowNode[][] = [];
-  // Build connected vertical intervals, including stubs under staggered cards.
-  for (const stub of sortBy(stubs, [(node) => node.position.y])) {
-    const band = bands.at(-1);
-    const last = band?.at(-1);
-    if (
-      band &&
-      last &&
-      stub.position.y < last.position.y + GROUP_BOUNDARY_STUB_HEIGHT + gap
-    )
-      band.push(stub);
-    else bands.push([stub]);
-  }
-  const positions = new Map(
-    bands.flatMap((band) => {
-      const ordered = sortBy(band, [(node) => node.position.x, branchOrder]);
-      let right = -Infinity;
-      const placed = ordered.map((stub) => {
-        const x = Math.max(stub.position.x, right + gap);
-        right = x + WORKFLOW_NODE_WIDTH;
-        return { stub, x };
-      });
-      const last = ordered.at(-1)!;
-      const shift = (right - last.position.x - WORKFLOW_NODE_WIDTH) / 2;
-      let minimumX = -Infinity;
-      return placed.map(({ stub, x }): [string, number] => {
-        const clearedX = clearStubX({
-          x: x - shift,
-          y: stub.position.y,
-          minimumX,
-          obstacles,
-        });
-        minimumX = clearedX + WORKFLOW_NODE_WIDTH + gap;
-        return [stub.id, clearedX];
-      });
-    })
-  );
-  return stubs.map((stub) => {
-    const x = positions.get(stub.id);
-    if (x === undefined || x === stub.position.x) return stub;
-    const cached = separatedStubs.get(stub);
-    if (cached?.position.x === x) return cached;
-    const shifted = { ...stub, position: { ...stub.position, x } };
-    separatedStubs.set(stub, shifted);
-    return shifted;
-  });
-}
-
-const bentEdges = new WeakMap<WorkflowEdge, WorkflowEdge>();
-/** Forward edges entering the same row share the midpoint of its nearest gap. */
-function rowBends(
-  nodes: WorkflowNode[],
-  edges: WorkflowEdge[]
-): WorkflowEdge[] {
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const rowBottoms = new Map<number, number>();
-  for (const edge of edges) {
-    const source = byId.get(edge.source);
-    const target = byId.get(edge.target);
-    if (!source || !target) continue;
-    const bottom = source.position.y + workflowNodeDimensions(source).height;
-    if (bottom < target.position.y)
-      rowBottoms.set(
-        target.position.y,
-        Math.max(rowBottoms.get(target.position.y) ?? bottom, bottom)
-      );
-  }
-  return edges.map((edge) => {
-    const source = byId.get(edge.source);
-    const target = byId.get(edge.target);
-    const bottom = target && rowBottoms.get(target.position.y);
-    if (
-      !source ||
-      !target ||
-      bottom === undefined ||
-      source.position.y + workflowNodeDimensions(source).height >=
-        target.position.y
-    )
-      return edge;
-    const centerY = (bottom + target.position.y) / 2;
-    const cached = bentEdges.get(edge);
-    if (cached?.data?.centerY === centerY) return cached;
-    const bent = { ...edge, data: { ...edge.data, centerY } };
-    bentEdges.set(edge, bent);
-    return bent;
-  });
-}
-
-export function focusedGroupCanvasGraph(
-  input: CanvasGraph & { groupId: string }
-): ScopeCanvasGraph | null {
-  if (
-    !input.nodes.some((node) => node.id === input.groupId && isGroupNode(node))
-  )
-    return null;
-  const storedMembers = input.nodes.filter(
-    (node) => node.parentId === input.groupId
-  );
-  const firstMember = storedMembers[0];
-  if (!firstMember)
-    return { nodes: [], edges: [], anchor: null, projectedNodeIds: new Set() };
-  const byId = new Map(input.nodes.map((node) => [node.id, node]));
-  const members = storedMembers.map(projectedMember);
-  const memberById = new Map(members.map((node) => [node.id, node]));
-  const boundary = analyzeGroupBoundary({
-    memberIds: members.map((node) => node.id),
-    edges: input.edges,
-  });
-  const endPorts = groupEndPorts({ nodes: input.nodes, boundary });
-  const ingress = boundary.externalIngress.flatMap((port) => {
-    const step = byId.get(port.nodeId);
-    const cards = boundary.ingressEdges.flatMap((edge) => {
-      const member = memberById.get(edge.target);
-      return member &&
-        edge.source === port.nodeId &&
-        (edge.sourceHandle ?? null) === port.handle
-        ? [member]
-        : [];
-    });
-    return step && cards.length
-      ? [
-          boundaryStub({
-            direction: "ingress",
-            step,
-            port,
-            position: stubPosition(cards, "ingress"),
-          }),
-        ]
-      : [];
-  });
-  const continuations = [
-    ...Map.groupBy(boundary.continuationEdges, (edge) =>
-      groupPortKey({ nodeId: edge.target, handle: edge.targetHandle ?? null })
-    ).values(),
-  ].flatMap((edges) => {
-    const first = edges[0];
-    const step = first && byId.get(first.target);
-    const cards = edges.flatMap((edge) => {
-      const member = memberById.get(edge.source);
-      return member ? [member] : [];
-    });
-    return first && step && cards.length
-      ? [
-          boundaryStub({
-            direction: "continuation",
-            step,
-            port: { nodeId: first.target, handle: first.targetHandle ?? null },
-            position: stubPosition(cards, "continuation"),
-          }),
-        ]
-      : [];
-  });
-  const ends = endPorts.flatMap((port) => {
-    const member = memberById.get(port.nodeId);
-    return member
-      ? [
-          boundaryStub({
-            direction: "end",
-            step: member,
-            port,
-            position: stubPosition([member], "end"),
-          }),
-        ]
-      : [];
-  });
-  const paintedEndEdges = endPorts.map(endEdge);
-  endEdges = new Map(paintedEndEdges.map((edge) => [edge.id, edge]));
-  endStubs = new Map(ends.map((node) => [node.id, node]));
-  const edges = [
-    ...boundary.interiorEdges,
-    ...boundary.ingressEdges.map((edge) => focusedEdge(edge, "ingress")),
-    ...boundary.continuationEdges.map((edge) =>
-      focusedEdge(edge, "continuation")
-    ),
-    ...paintedEndEdges,
-  ];
-  const stubs = separateBoundaryStubs(
-    [...ingress, ...continuations, ...ends],
-    edges,
-    members
-  );
-  const nodes = [
-    ...stubs.slice(0, ingress.length),
-    ...members,
-    ...stubs.slice(ingress.length),
-  ];
-  return {
-    nodes,
-    edges: rowBends(nodes, edges),
-    anchor: { nodeId: firstMember.id, pinToTop: false },
-    projectedNodeIds: new Set(
-      [...ingress, ...continuations, ...ends].map((node) => node.id)
-    ),
-  };
-}
-
-export function scopeCanvasGraph(
-  input: CanvasGraph & { scope: WorkspaceScope }
-): ScopeCanvasGraph {
-  return input.scope.kind === "group"
-    ? (focusedGroupCanvasGraph({ ...input, groupId: input.scope.groupId }) ??
-        overviewCanvasGraph(input))
-    : overviewCanvasGraph(input);
 }
 
 export function withoutProjectedDimensions(
@@ -611,4 +171,175 @@ export function withoutProjectedDimensions(
     (change) => change.type !== "dimensions" || !projectedNodeIds.has(change.id)
   );
   return kept.length === changes.length ? changes : kept;
+}
+
+type Point = { x: number; y: number };
+
+/**
+ * Where `node` sits on the canvas: its own position, plus its frame's when it
+ * is a member, since a member's stored position is local to its frame.
+ */
+export function absolutePosition(
+  node: Pick<WorkflowNode, "position" | "parentId">,
+  nodes: readonly WorkflowNode[]
+): Point {
+  if (node.parentId === undefined) {
+    return node.position;
+  }
+  const frame = nodes.find((item) => item.id === node.parentId);
+  return frame
+    ? {
+        x: frame.position.x + node.position.x,
+        y: frame.position.y + node.position.y,
+      }
+    : node.position;
+}
+
+/**
+ * The Group drawn in place whose region holds `point`, header and padding
+ * included, or null. A collapsed Group holds no point, since its members are
+ * not drawn.
+ */
+export function groupRegionAt(input: {
+  point: Point;
+  nodes: readonly WorkflowNode[];
+  collapsedGroupIds: ReadonlySet<string>;
+}): string | null {
+  const { point } = input;
+  const frame = input.nodes.find((node) => {
+    if (!isGroupNode(node) || input.collapsedGroupIds.has(node.id)) {
+      return false;
+    }
+    const box = groupRegionBox(
+      input.nodes.filter((member) => member.parentId === node.id)
+    );
+    return (
+      point.x >= node.position.x - GROUP_REGION_INSET.left &&
+      point.y >= node.position.y - GROUP_REGION_INSET.top &&
+      point.x <= node.position.x + box.width &&
+      point.y <= node.position.y + box.height
+    );
+  });
+  return frame?.id ?? null;
+}
+
+/**
+ * The Group a step added or pasted beside `nodeIds` joins: the one Group that
+ * holds every one of them as a member, or null.
+ */
+export function sharedGroupOf(
+  nodeIds: readonly string[],
+  nodes: readonly WorkflowNode[]
+): string | null {
+  const parents = new Set(
+    nodeIds.map((id) => nodes.find((node) => node.id === id)?.parentId ?? null)
+  );
+  const [only] = parents;
+  return parents.size === 1 && only !== undefined ? only : null;
+}
+
+/**
+ * `inserted` with each node whose frame came with it left alone and every
+ * other node made a member of `groupId`, its canvas position turned local to
+ * the frame and kept inside the frame's node box. Answers `inserted` itself
+ * when `groupId` is null or names no frame in `nodes`.
+ */
+export function joinGroup(input: {
+  inserted: WorkflowNode[];
+  groupId: string | null;
+  nodes: readonly WorkflowNode[];
+}): WorkflowNode[] {
+  const frame =
+    input.groupId === null
+      ? undefined
+      : input.nodes.find((node) => node.id === input.groupId);
+  if (!frame || !isGroupNode(frame)) {
+    return input.inserted;
+  }
+  const insertedIds = new Set(input.inserted.map((node) => node.id));
+  return input.inserted.map((node) =>
+    node.parentId !== undefined && insertedIds.has(node.parentId)
+      ? node
+      : {
+          ...node,
+          parentId: frame.id,
+          position: {
+            x: Math.max(0, node.position.x - frame.position.x),
+            y: Math.max(0, node.position.y - frame.position.y),
+          },
+        }
+  );
+}
+
+const placedMembers = new WeakMap<WorkflowNode, WorkflowNode>();
+const placedRegions = new WeakMap<WorkflowNode, WorkflowNode>();
+/**
+ * `nodes` in one coordinate space for placement rules: each member at its
+ * canvas position, with no `parentId`, and each Group drawn in place as its
+ * whole outline, header and padding included, so a new step lands clear of
+ * it. A rule's answer for a member is turned back into a stored position with
+ * `storedPosition`.
+ */
+export function canvasPlacementNodes(
+  nodes: readonly WorkflowNode[]
+): WorkflowNode[] {
+  const regionIds = new Set(
+    nodes.flatMap((node) =>
+      node.parentId === undefined ? [] : [node.parentId]
+    )
+  );
+  return nodes.map((node) => {
+    if (regionIds.has(node.id)) {
+      const cached = placedRegions.get(node);
+      if (cached) return cached;
+      const width =
+        (node.measured?.width ?? node.width ?? WORKFLOW_NODE_WIDTH) +
+        GROUP_REGION_INSET.left;
+      const height =
+        (node.measured?.height ?? node.height ?? WORKFLOW_NODE_HEIGHT) +
+        GROUP_REGION_INSET.top;
+      const outline: WorkflowNode = {
+        ...node,
+        position: {
+          x: node.position.x - GROUP_REGION_INSET.left,
+          y: node.position.y - GROUP_REGION_INSET.top,
+        },
+        width,
+        height,
+        measured: { width, height },
+      };
+      placedRegions.set(node, outline);
+      return outline;
+    }
+    if (node.parentId === undefined) {
+      return node;
+    }
+    const position = absolutePosition(node, nodes);
+    const cached = placedMembers.get(node);
+    if (cached?.position.x === position.x && cached.position.y === position.y) {
+      return cached;
+    }
+    const placed = { ...omit(node, ["parentId", "extent"]), position };
+    placedMembers.set(node, placed);
+    return placed;
+  });
+}
+
+/**
+ * The position to store for the node `nodeId` that placement put at the
+ * canvas point `at`: local to its frame for a member, `at` itself otherwise.
+ */
+export function storedPosition(
+  nodeId: string,
+  at: Point,
+  nodes: readonly WorkflowNode[]
+): Point {
+  const node = nodes.find((item) => item.id === nodeId);
+  if (node?.parentId === undefined) {
+    return at;
+  }
+  const frame = nodes.find((item) => item.id === node.parentId);
+  return frame
+    ? { x: at.x - frame.position.x, y: at.y - frame.position.y }
+    : at;
 }

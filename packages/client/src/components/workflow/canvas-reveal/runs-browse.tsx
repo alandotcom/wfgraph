@@ -34,15 +34,12 @@ import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { groupLabel } from "#src/lib/workflow-graph-types";
 import {
   type RevealLevel,
-  type WorkspaceAddress,
   workspaceAddressId,
-  workspaceRouteSearch,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import {
   activeWorkspaceAddressAtom,
   clearRunNodeInspectionAtom,
-  inspectRunNodeAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import {
   type GroupRunStatus,
@@ -252,9 +249,8 @@ export function RunsHeader({
 /**
  * Back and Escape on Runs. At Focus they return to the run's Browse and ask it
  * to focus the journey entry or canvas node that opened the evidence. On a
- * Group's summary they return to the run overview with focus on the Group
- * card. In a Group's scope they return to the overview scope with the Group
- * card selected and its summary shown. On the run overview they replace the
+ * Group's summary they return to the run overview with focus on the Group.
+ * On the run overview they replace the
  * route with the run list and ask the list to focus that run's row. On the run
  * list they run the shell's own step back, which returns focus to the canvas.
  */
@@ -266,7 +262,7 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
   replaceRouteSearch,
 }) => {
   const address = store.get(activeWorkspaceAddressAtom);
-  const { key, scope } = address;
+  const { key } = address;
   const target = subject.runsTarget;
   const stored = store.get(runEvidenceOriginAtom);
   const origin =
@@ -296,42 +292,8 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
     store.set(clearRunNodeInspectionAtom);
     return;
   }
-  if (scope.kind === "group") {
-    const overview: WorkspaceAddress = {
-      ...address,
-      scope: { kind: "overview" },
-    };
-    store.set(inspectRunNodeAtom, {
-      address: overview,
-      nodeId: scope.groupId,
-      executionLogId: null,
-      selectsNode: true,
-      opensFocus: false,
-    });
-    store.set(runBrowseFocusRequestAtom, {
-      nodeId: scope.groupId,
-      logId: null,
-    });
-    replaceRouteSearch(workspaceRouteSearch(overview));
-    return;
-  }
   store.set(runRowFocusRequestAtom, key.executionId);
   replaceRouteSearch({ view: "runs" });
-};
-
-/**
- * Back and Escape on a Runs sheet below `md`. Inside a focused Group, Back on
- * the run's sheet removes that sheet and leaves the Group's canvas showing, as
- * the first sheet of every workspace does there; **Workflow** and browser Back
- * leave the Group. Every other sheet answers as `unwindRuns` does.
- */
-export const unwindMobileRuns: NonNullable<RevealKind["unwind"]> = (input) => {
-  const { scope } = input.store.get(activeWorkspaceAddressAtom);
-  if (scope.kind === "group" && input.level === "browse") {
-    input.unwindLevel();
-    return;
-  }
-  unwindRuns(input);
 };
 
 /**
@@ -437,7 +399,6 @@ export function RunsBody({ subject, level, mobile }: RevealBodyProps) {
       ) : null}
       {openRun !== null && shownGroup !== null ? (
         <RunsGroupSummary
-          groupId={shownGroup.groupId}
           // Each Group starts its summary from the top.
           key={shownGroup.groupId}
           logs={openRun.run.logs}

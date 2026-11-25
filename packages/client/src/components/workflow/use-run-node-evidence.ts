@@ -5,7 +5,6 @@
  * holds what opened it.
  */
 
-import { useNavigate } from "@tanstack/react-router";
 import { atom, useAtomValue, useSetAtom, useStore } from "jotai";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import {
@@ -30,19 +29,13 @@ import {
   projectedRunStatusAtom,
   runNodeEvidenceStatusesAtom,
 } from "#src/lib/workflow-graph-store";
-import { scopeOfNode } from "#src/lib/workflow-scope-graph";
-import {
-  scopeId,
-  type WorkspaceAddress,
-  workspaceAddressId,
-  workspaceRouteSearch,
-} from "#src/lib/workflow-navigation-state";
+import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
+import { expandGroupAtom } from "#src/lib/collapsed-groups";
 import {
   activeChosenExecutionAtom,
   activeWorkspaceAddressAtom,
   chooseRunExecutionAtom,
 } from "#src/lib/workflow-workspace-navigation";
-import { requestRevealPlacementAtom } from "./canvas-reveal/reveal-requests";
 import { useRevealNavigation } from "./canvas-reveal/use-reveal-navigation";
 import { runEvidenceOriginAtom } from "./run-evidence-origin";
 
@@ -130,9 +123,9 @@ export function useRunGroupSummary(
 
 /**
  * Show a run node's evidence from outside the canvas, in the details column or
- * the mobile evidence inspector. A node in the pinned graph is selected in the
- * scope that shows it: a Group member on its Group's focused canvas, reached by
- * pushing that scope's route. A node the pinned graph lacks, or any node while
+ * the mobile evidence inspector. A node in the pinned graph is selected on the
+ * one canvas, its Group drawn in place if the viewer collapsed it, and placed
+ * in view. A node the pinned graph lacks, or any node while
  * that graph loads, is carried by the chosen execution with nothing selected. A
  * null `logId` chooses no execution, so the latest shows, and marks the canvas
  * node as what opened the evidence.
@@ -142,18 +135,16 @@ export function useInspectRunNode(): (input: {
   logId: string | null;
 }) => void {
   const store = useStore();
-  const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const navigation = useRevealNavigation();
-  const requestPlacement = useSetAtom(requestRevealPlacementAtom);
   return ({ nodeId, logId }) => {
-    const active = store.get(activeWorkspaceAddressAtom);
-    const nodes = store.get(executionOverlayGraphAtom)?.nodes ?? [];
-    const inGraph = nodes.some((node) => node.id === nodeId);
-    const scope = scopeOfNode(nodes, nodeId);
-    const address: WorkspaceAddress =
-      inGraph && scopeId(scope) !== scopeId(active.scope)
-        ? { ...active, scope }
-        : active;
+    const address = store.get(activeWorkspaceAddressAtom);
+    const node = store
+      .get(executionOverlayGraphAtom)
+      ?.nodes.find((item) => item.id === nodeId);
+    const inGraph = node !== undefined;
+    if (node?.parentId !== undefined) {
+      store.set(expandGroupAtom, node.parentId);
+    }
     store.set(runEvidenceOriginAtom, {
       addressId: workspaceAddressId(address),
       nodeId,
@@ -166,13 +157,6 @@ export function useInspectRunNode(): (input: {
       selectsNode: inGraph,
       opensEvidence: true,
     });
-    if (address !== active) {
-      requestPlacement({
-        addressId: workspaceAddressId(address),
-        nodeIds: [nodeId],
-      });
-      void navigate({ search: workspaceRouteSearch(address) });
-    }
   };
 }
 

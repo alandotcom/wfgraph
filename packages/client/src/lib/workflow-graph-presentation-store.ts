@@ -23,27 +23,20 @@ import {
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
 import {
-  isPathEndEdge,
-  scopeCanvasGraph,
-  type ScopeCanvasGraph,
-} from "#src/lib/group-scope-canvas";
-import {
-  type RunPath,
-  type RunPathMark,
-  runPath,
-  runPathOutletMark,
-} from "#src/lib/run-path";
+  canvasPlacementNodes,
+  workflowCanvasGraph,
+  type PaintedCanvasGraph,
+} from "#src/lib/group-canvas";
+import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
+import { type RunPath, type RunPathMark, runPath } from "#src/lib/run-path";
 import {
   edgesStateAtom,
   executionOverlayGraphAtom,
   nodesStateAtom,
 } from "#src/lib/workflow-graph-cells";
-import { graphStructureKey } from "#src/lib/workflow-scope-graph";
+import { graphStructureKey } from "#src/lib/workflow-graph-structure";
 import { type NavigationGraph } from "#src/lib/workflow-navigation-state";
-import {
-  activeSelectionAtom,
-  activeWorkspaceAddressAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   isReviewOpenAtom,
   reviewDisplayGraphAtom,
@@ -337,7 +330,7 @@ export const canvasIssuesByNodeIdAtom = atom((get) => {
 
 /**
  * Every node of the active workspace, painted without modifying the stored
- * graph, whichever scope the canvas shows.
+ * graph.
  */
 export const displayNodesAtom = atom((get) => {
   const view = get(workflowWorkspaceViewAtom);
@@ -354,14 +347,18 @@ export const displayNodesAtom = atom((get) => {
   // The selection wears the solid halo. The step a list points at, an edit
   // in the review sheet or a row of the outline, wears a soft tint ring that
   // cannot be mistaken for it. While the sheet is open the canvas holds no
-  // selection. A step inside a Group also marks the Group's card, which stands
-  // for it on the overview; the focused Group canvas draws no card for the
-  // Group itself.
+  // selection. A step inside a Group the viewer collapsed also marks the
+  // Group's card, which stands for it.
   const highlighted = get(reviewHighlightAtom);
-  const highlightedParent =
+  const parentOfHighlighted =
     highlighted === null
       ? undefined
       : nodes.find((node) => node.id === highlighted)?.parentId;
+  const highlightedParent =
+    parentOfHighlighted !== undefined &&
+    get(collapsedGroupIdsAtom).has(parentOfHighlighted)
+      ? parentOfHighlighted
+      : undefined;
   const pointedIds = new Set(compact([highlighted, highlightedParent]));
   const selectedIds = new Set(
     comparison ? [] : get(activeSelectionAtom).nodeIds
@@ -472,10 +469,10 @@ function runPathRank(edge: WorkflowEdge): number {
 
 /**
  * The stored edges of the active workspace, painted with inactive branches,
- * the open run's path, and selection, before `scopeCanvasGraph` places them on
- * Group frames or stubs. On a run's canvas the taken edges come first: the
- * overview draws the edges a Group card stands for as one, keeping the first,
- * so that edge reads as taken when any edge it stands for was.
+ * the open run's path, and selection, before `workflowCanvasGraph` places them
+ * on the canvas. On a run's canvas the taken edges come first: a collapsed
+ * Group card draws the edges it stands for as one, keeping the first, so that
+ * edge reads as taken when any edge it stands for was.
  */
 const paintedEdgesAtom = atom((get) => {
   const view = get(workflowWorkspaceViewAtom);
@@ -522,38 +519,33 @@ const paintedEdgesAtom = atom((get) => {
 });
 
 /**
- * Every form factor paints the same stored positions for the active scope. On
- * a run's canvas the edge to a "Path ends" stub takes its outlet's mark, and
- * the taken edges are drawn last, so the path stays on top where edges cross.
+ * Every form factor paints the same stored positions on one canvas, with each
+ * Group drawn in place unless the viewer collapsed it. On a run's canvas the
+ * taken edges are drawn last, so the path stays on top where edges cross.
  */
-export const canvasGraphAtom = atom((get): ScopeCanvasGraph => {
-  const graph = scopeCanvasGraph({
+export const canvasGraphAtom = atom((get): PaintedCanvasGraph => {
+  const graph = workflowCanvasGraph({
     nodes: get(displayNodesAtom),
     edges: get(paintedEdgesAtom),
-    scope: get(activeWorkspaceAddressAtom).scope,
+    collapsedGroupIds: get(collapsedGroupIdsAtom),
   });
-  const path = get(runPathAtom);
-  if (path === null) {
-    return graph;
-  }
-  const edges = mapOrSame(graph.edges, (edge) =>
-    isPathEndEdge(edge)
-      ? withRunPathMark(
-          edge,
-          runPathOutletMark(path, edge.source, edge.sourceHandle)
-        )
-      : edge
-  );
-  return {
-    ...graph,
-    edges: sortBy(edges, [(edge) => -runPathRank(edge)]),
-  };
+  return get(runPathAtom) === null
+    ? graph
+    : { ...graph, edges: sortBy(graph.edges, [(edge) => -runPathRank(edge)]) };
 });
 
-/** The nodes `canvasGraphAtom` paints for the active scope. */
+/** The nodes `canvasGraphAtom` paints. */
 export const canvasNodesAtom = atom((get) => get(canvasGraphAtom).nodes);
 
-/** The edges `canvasGraphAtom` paints for the active scope. */
+/**
+ * The nodes `canvasGraphAtom` paints, each at its canvas position, for the
+ * rules that place a new step clear of the cards already there.
+ */
+export const canvasPlacementNodesAtom = atom((get) =>
+  canvasPlacementNodes(get(canvasNodesAtom))
+);
+
+/** The edges `canvasGraphAtom` paints. */
 export const canvasEdgesAtom = atom((get) => get(canvasGraphAtom).edges);
 
 /**

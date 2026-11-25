@@ -16,7 +16,7 @@ import {
 import {
   workspaceAddressId,
   type CanvasSelection,
-  type DesktopScopePresentation,
+  type DesktopPresentation,
   type RevealLevel,
   type WorkspaceAddress,
 } from "#src/lib/workflow-navigation-state";
@@ -38,7 +38,7 @@ export type CanvasRevealState = {
   subject: RevealSubject | null;
   /** The level shown, after the subject's levels apply. */
   level: RevealLevel;
-  presentation: DesktopScopePresentation;
+  presentation: DesktopPresentation;
 };
 
 export const canvasRevealAtom = atom((get): CanvasRevealState => {

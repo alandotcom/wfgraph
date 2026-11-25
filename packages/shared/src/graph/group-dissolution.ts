@@ -32,8 +32,8 @@ export type ReleaseMember<N extends DissolvableNode> = (input: {
 }) => N;
 
 /**
- * Where a member of a dissolved frame lands: where the focused Group canvas
- * draws it, translated by the frame's position. Members retain their relative
+ * Where a member of a dissolved frame lands: where its region draws it, its
+ * local position translated by the frame's position. Members retain their relative
  * arrangement, then move together by
  * `offsetClearOfRectangles`, down and right until no card the overview draws
  * overlaps them. Those cards are every top-level node in `graph` except a

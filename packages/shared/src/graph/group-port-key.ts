@@ -1,6 +1,6 @@
 /**
- * The text key naming one Group port inside a painted id, such as a collapsed
- * card's outlet handle or a focused Group's boundary stub. Two different ports
+ * The text key naming one Group port, such as a collapsed card's outlet
+ * handle. Two different ports
  * never share a key, and every node id and handle the graph schema accepts has
  * one, including a string holding a lone UTF-16 surrogate. A key is an opaque
  * React Flow id and no caller reads a port back out of it.

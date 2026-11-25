@@ -13,11 +13,7 @@ import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
-import {
-  GROUP_BOUNDARY_STUB_PORT,
-  type WorkflowEdge,
-  type WorkflowNode,
-} from "#src/lib/workflow-graph-types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { descendantsOf } from "@wfgraph/shared/graph/descendants";
 import {
   offsetClearOfRectangles,
@@ -157,8 +153,8 @@ export type InsertionRowPlan = {
  * Open one row where a downward connection reaches its target. The inserted
  * step takes the target's old position, while the target and its downstream
  * cards move together. Sibling branches and horizontal positions stay fixed.
- * Derived boundary stubs follow their anchors when the canvas is projected
- * again. Non-downward connections keep their caller-provided placement.
+ * Non-downward connections keep their caller-provided placement. `nodes` are
+ * in one coordinate space, as `canvasPlacementNodes` gives them.
  */
 export function insertionRowPlan(
   nodes: readonly WorkflowNode[],
@@ -179,12 +175,7 @@ export function insertionRowPlan(
     position: { ...target.position },
     movedNodes: new Map(
       nodes
-        .filter(
-          (node) =>
-            node.type !== "add" &&
-            node.data[GROUP_BOUNDARY_STUB_PORT] === undefined &&
-            movedNodeIds.has(node.id)
-        )
+        .filter((node) => node.type !== "add" && movedNodeIds.has(node.id))
         .map((node) => [
           node.id,
           { x: node.position.x, y: node.position.y + rowHeight },

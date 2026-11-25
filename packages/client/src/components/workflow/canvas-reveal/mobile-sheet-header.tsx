@@ -10,20 +10,16 @@ import type { RevealHeaderModel } from "./reveal-header";
  * the shell answers through the kind's mobile unwind. `openInspector` opens the
  * inspector over the sheet, and is null when the sheet offers none. `titleRef`
  * goes on the sheet title, which takes focus as a sheet opens.
- * `scopeBackLabel` is the focused Group's name on the first sheet inside that
- * Group, whose canvas Back leaves showing, and null on every other sheet.
  */
 export type MobileSheetControls = {
   back: () => void;
   openInspector: (() => void) | null;
   titleRef: RefObject<HTMLHeadingElement | null>;
-  scopeBackLabel: string | null;
 };
 
 /**
- * The header of a mobile Reveal sheet. Back is named for the controls'
- * `scopeBackLabel` when it has one, and for the kind's `backLabel` otherwise;
- * with neither, the sheet offers Close. The sheet's title and status follow,
+ * The header of a mobile Reveal sheet. Back is named for the kind's
+ * `backLabel`; without one, the sheet offers Close. The sheet's title and status follow,
  * and then the inspector control named `inspectorLabel`, shown when the sheet
  * offers an inspector and the kind names the control.
  */
@@ -41,7 +37,7 @@ export function MobileSheetHeader({
   controls: MobileSheetControls;
 }) {
   const { back, openInspector, titleRef } = controls;
-  const shownBackLabel = controls.scopeBackLabel ?? backLabel;
+  const shownBackLabel = backLabel;
   return (
     <header className="flex shrink-0 items-center gap-1 border-b px-2 py-1">
       {shownBackLabel === null ? null : (

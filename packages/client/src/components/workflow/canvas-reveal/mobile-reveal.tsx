@@ -11,14 +11,9 @@ import {
 } from "#src/components/workflow/node-config-panel";
 import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
-import {
-  nodesAtom,
-  presentedGraphAtom,
-  selectedNodeAtom,
-} from "#src/lib/workflow-graph-store";
+import { nodesAtom, selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import {
   comparisonNodeTitle,
-  scopeGroupLabel,
   type WorkflowNode,
 } from "#src/lib/workflow-graph-types";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
@@ -169,14 +164,7 @@ export function MobileReveal() {
   const shellOwnsScroll = mobile?.shellOwnsScroll ?? kind?.shellOwnsScroll;
   const heading = useSheetHeading(state, kind);
   const nodes = useAtomValue(nodesAtom);
-  const presentedNodes = useAtomValue(presentedGraphAtom)?.nodes;
   const catalog = useExtensionCatalog();
-  // The first sheet inside a focused Group leads back to that Group's canvas,
-  // and its Back control is named for the Group in every workspace.
-  const scopeBackLabel =
-    state && state.beneath === null
-      ? scopeGroupLabel(presentedNodes ?? [], state.address.scope)
-      : null;
   const inspected = state?.sheet.inspected ?? null;
   const sheetKey = state?.sheetKey ?? null;
 
@@ -289,7 +277,6 @@ export function MobileReveal() {
     openInspector:
       offersInspector && !isInspector ? () => openInspector() : null,
     titleRef,
-    scopeBackLabel,
   };
   const level: RevealLevel = isInspector ? "focus" : "browse";
   const Body =

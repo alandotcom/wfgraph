@@ -4,10 +4,7 @@ import { nodeOutputConditionPath } from "@wfgraph/shared/conditions/conditions";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { installAuthorizationGrantsForTests } from "#src/lib/authorization-test-support";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
-import {
-  activeChosenExecutionAtom,
-  activeWorkspaceAddressAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeChosenExecutionAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   WfGraphOperationIds,
   WfGraphOperations,
@@ -735,7 +732,7 @@ describe("Runs Focus node evidence", () => {
     );
   });
 
-  it("enters a collapsed Group's view for a member reached from the outline on the overview", async () => {
+  it("shows a Group member's evidence on the one canvas from its outline row", async () => {
     served.items = [execution("exec_g", "completed")];
     served.graphs = {
       ver_exec_g: labelledGraph(
@@ -770,19 +767,11 @@ describe("Runs Focus node evidence", () => {
     await canvasNode("Send reminder");
 
     fireEvent.click(await outlineRow("Send reminder"));
-    await waitFor(() =>
-      expect(router.state.location.search).toEqual({
-        view: "runs",
-        executionId: "exec_g",
-        group: "grp",
-      })
-    );
-    expect(router.history.canGoBack()).toBe(true);
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     await afterPaint();
-    expect(store.get(activeWorkspaceAddressAtom).scope).toEqual({
-      kind: "group",
-      groupId: "grp",
+    expect(router.state.location.search).toEqual({
+      view: "runs",
+      executionId: "exec_g",
     });
     expect(store.get(selectedNodeAtom)).toBe("send");
     expect(title()).toBe("Send reminder");

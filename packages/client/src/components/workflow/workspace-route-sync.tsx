@@ -7,8 +7,10 @@ import { requestedReviewAtom } from "#src/lib/workflow-review-store";
 import {
   presentedGraphAtom,
   presentedGraphStructureAtom,
+  selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
-import { graphInScope, groupScopeExists } from "#src/lib/workflow-scope-graph";
+import { firstStepOfGroup } from "#src/lib/workflow-graph-structure";
+import { stepNumbersAtom } from "#src/lib/step-numbers";
 import {
   recoveredRouteSearch,
   selectionInGraph,
@@ -46,18 +48,19 @@ function recoveryGraph(inputs: RecoveryInputs): NavigationGraph | null {
   return inputs.routeReady ? inputs.presentedGraph : null;
 }
 
+/**
+ * The route search recovery replaces `search` with. An older link's `group`
+ * waits for the graph, since the step it lands on is read from that graph.
+ */
 function recoveredSearch(
   inputs: RecoveryInputs,
   search: WorkflowRouteSearch,
   runMissing: boolean
 ): WorkflowRouteSearch {
-  const graph = recoveryGraph(inputs);
-  return recoveredRouteSearch({
-    search,
-    groupMissing:
-      graph !== null && !groupScopeExists(inputs.address.scope, graph),
-    runMissing,
-  });
+  if (search.group !== undefined && recoveryGraph(inputs) === null) {
+    return search;
+  }
+  return recoveredRouteSearch({ search, runMissing });
 }
 
 /**
@@ -134,10 +137,9 @@ function useWorkspaceRouteSync(): void {
     presentedGraph: store.get(presentedGraphAtom),
   });
 
-  // Selected ids, and the object the details column inspects, that the active scope
-  // does not show are dropped: ids the presented graph no longer holds, Group
-  // members on the overview, and anything outside a focused Group. The key
-  // names only the graph structure, so moving a node does not run it again.
+  // Selected ids, and the object the details column inspects, that the
+  // presented graph no longer holds are dropped. The key names only the graph
+  // structure, so moving a node does not run it again.
   const renderedGraph = recoveryGraph(renderedInputs);
   const hasSelection =
     selection.nodeIds.length > 0 || selection.edgeIds.length > 0;
@@ -149,12 +151,11 @@ function useWorkspaceRouteSync(): void {
       const inputs = storedInputs();
       const graph = recoveryGraph(inputs);
       if (graph) {
-        const shown = graphInScope(graph, inputs.address.scope);
         store.set(
           activeSelectionAtom,
-          selectionInGraph(store.get(activeSelectionAtom), shown)
+          selectionInGraph(store.get(activeSelectionAtom), graph)
         );
-        store.set(keepActiveInspectionInGraphAtom, shown);
+        store.set(keepActiveInspectionInGraphAtom, graph);
       }
     }
   );
@@ -181,9 +182,24 @@ function useWorkspaceRouteSync(): void {
     () => {
       const inputs = storedInputs();
       const next = recoveredSearch(inputs, search, runMissing);
-      if (inputs.routeReady && next !== search) {
-        void navigate({ search: next, replace: true });
+      if (!inputs.routeReady || next === search) {
+        return;
       }
+      // An older link named a Group the editor once showed on a canvas of
+      // its own. The Group now draws in place, so the link selects its first
+      // step on the one canvas.
+      const graph = recoveryGraph(inputs);
+      if (search.group !== undefined && graph !== null) {
+        const stepId = firstStepOfGroup({
+          graph,
+          groupId: search.group,
+          stepNumbers: store.get(stepNumbersAtom),
+        });
+        if (stepId !== null) {
+          store.set(selectOnlyNodeAtom, stepId);
+        }
+      }
+      void navigate({ search: next, replace: true });
     }
   );
 }

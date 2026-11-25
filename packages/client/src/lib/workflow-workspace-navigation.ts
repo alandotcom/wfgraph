@@ -15,8 +15,8 @@ import {
   inspectionInGraph,
   rememberRouteSearch,
   revealFollowsSelection,
-  scopeNavigationAt,
-  updateScopeNavigation,
+  workspaceNavigationAt,
+  updateWorkspaceNavigation,
   withCamera,
   withDesktopRevealLevel,
   withInspectedOrigin,
@@ -27,15 +27,14 @@ import {
   withShowSuperseded,
   withoutDraftSelections,
   workspaceAddressFromSearch,
-  workspaceAddressId,
   type CanvasSelection,
-  type DesktopScopePresentation,
+  type DesktopPresentation,
   type FormFactor,
   type InspectedOrigin,
   type NavigationGraph,
   type RevealLevel,
   type ChosenRunExecution,
-  type ScopeNavigation,
+  type WorkspaceNavigation,
   type WorkflowNavigation,
   type WorkflowRouteSearch,
   type WorkspaceAddress,
@@ -93,10 +92,10 @@ export const updateAddressNavigationAtom = atom(
     _get,
     set,
     address: WorkspaceAddress,
-    update: (scope: ScopeNavigation) => ScopeNavigation
+    update: (workspace: WorkspaceNavigation) => WorkspaceNavigation
   ) => {
     set(writeNavigationAtom, address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, address, update)
+      updateWorkspaceNavigation(navigation, address, update)
     );
   }
 );
@@ -105,8 +104,8 @@ export const updateAddressNavigationAtom = atom(
 export function addressNavigation(
   get: Getter,
   address: WorkspaceAddress
-): ScopeNavigation {
-  return scopeNavigationAt(navigationFor(get, address.workflowId), address);
+): WorkspaceNavigation {
+  return workspaceNavigationAt(navigationFor(get, address.workflowId), address);
 }
 
 /**
@@ -131,18 +130,13 @@ export const applyWorkspaceRouteAtom = atom(
       previous.key.workspace === next.key.workspace &&
       !revealFollowsSelection(next.key.workspace);
     set(writeNavigationAtom, route.workflowId, (navigation) =>
-      updateScopeNavigation(
+      updateWorkspaceNavigation(
         rememberRouteSearch(navigation, next),
         next,
-        (scope) =>
+        (workspace) =>
           carriesSequence
-            ? withMobileSequenceFrom(scope, {
-                sheets: previousSheets,
-                sameKey:
-                  workspaceAddressId({ ...previous, scope: next.scope }) ===
-                  workspaceAddressId(next),
-              })
-            : scope
+            ? withMobileSequenceFrom(workspace, previousSheets)
+            : workspace
       )
     );
   }
@@ -160,14 +154,6 @@ export const activeWorkspaceAddressAtom = atom<WorkspaceAddress>((get) => {
     route?.workflowId === workflowId ? route.search : {}
   );
 });
-
-/**
- * Whether the active address shows a focused Group canvas. The focused canvas
- * lays its steps out from the Group's topology, so Tidy layout reads this.
- */
-export const groupScopeActiveAtom = atom(
-  (get) => get(activeWorkspaceAddressAtom).scope.kind === "group"
-);
 
 /**
  * The route search each view of the open workflow last showed. A view with no
@@ -192,9 +178,9 @@ export const hasNamedRunAtom = atom((get): boolean => {
   return workflowId ? navigationFor(get, workflowId).hasNamedRun : false;
 });
 
-const activeScopeNavigationAtom = atom((get): ScopeNavigation => {
+const activeWorkspaceNavigationAtom = atom((get): WorkspaceNavigation => {
   const address = get(activeWorkspaceAddressAtom);
-  return scopeNavigationAt(navigationFor(get, address.workflowId), address);
+  return workspaceNavigationAt(navigationFor(get, address.workflowId), address);
 });
 
 /**
@@ -203,7 +189,7 @@ const activeScopeNavigationAtom = atom((get): ScopeNavigation => {
  * the graph, its undo history, or its save.
  */
 export const activeSelectionAtom = atom(
-  (get) => get(activeScopeNavigationAtom).selection,
+  (get) => get(activeWorkspaceNavigationAtom).selection,
   (get, set, selection: CanvasSelection) => {
     set(setWorkspaceSelectionAtom, {
       address: get(activeWorkspaceAddressAtom),
@@ -228,8 +214,8 @@ export const setWorkspaceSelectionAtom = atom(
       ? withInspectedSelection
       : withSelection;
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, input.address, (scope) =>
-        write(scope, input.selection)
+      updateWorkspaceNavigation(navigation, input.address, (workspace) =>
+        write(workspace, input.selection)
       )
     );
   }
@@ -255,12 +241,12 @@ export const clearDraftSelectionsAtom = atom(
  */
 export const activeDesktopRevealLevelAtom = atom(
   (get): RevealLevel =>
-    get(activeScopeNavigationAtom).desktop.revealLevel ?? "browse"
+    get(activeWorkspaceNavigationAtom).desktop.revealLevel ?? "browse"
 );
 
 /** The desktop details column state stored for the active address. */
 export const activeRevealPresentationAtom = atom(
-  (get): DesktopScopePresentation => get(activeScopeNavigationAtom).desktop
+  (get): DesktopPresentation => get(activeWorkspaceNavigationAtom).desktop
 );
 
 /** Set the desktop details column level of a named address. */
@@ -268,8 +254,8 @@ export const setWorkspaceRevealLevelAtom = atom(
   null,
   (_get, set, input: { address: WorkspaceAddress; level: RevealLevel }) => {
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, input.address, (scope) =>
-        withDesktopRevealLevel(scope, input.level)
+      updateWorkspaceNavigation(navigation, input.address, (workspace) =>
+        withDesktopRevealLevel(workspace, input.level)
       )
     );
   }
@@ -295,10 +281,10 @@ export const recordInspectorScrollAtom = atom(
     }
   ) => {
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, input.address, (scope) =>
-        (scope.desktop.inspected?.id ?? null) === input.inspectedId
-          ? withInspectorScroll(scope, input.level, input.top)
-          : scope
+      updateWorkspaceNavigation(navigation, input.address, (workspace) =>
+        (workspace.desktop.inspected?.id ?? null) === input.inspectedId
+          ? withInspectorScroll(workspace, input.level, input.top)
+          : workspace
       )
     );
   }
@@ -321,10 +307,10 @@ export const recordInspectorSectionAtom = atom(
     }
   ) => {
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, input.address, (scope) =>
-        scope.desktop.inspected?.id === input.inspectedId
-          ? withInspectorSection(scope, input.section)
-          : scope
+      updateWorkspaceNavigation(navigation, input.address, (workspace) =>
+        workspace.desktop.inspected?.id === input.inspectedId
+          ? withInspectorSection(workspace, input.section)
+          : workspace
       )
     );
   }
@@ -353,8 +339,8 @@ export const openInspectorSectionAtom = atom(
     }
   ) => {
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, input.address, (scope) =>
-        withInspectorSection(selectFromOrigin(scope, input), input.section)
+      updateWorkspaceNavigation(navigation, input.address, (workspace) =>
+        withInspectorSection(selectFromOrigin(workspace, input), input.section)
       )
     );
   }
@@ -376,8 +362,8 @@ export const openNodeRevealFromOriginAtom = atom(
     }
   ) => {
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, input.address, (scope) =>
-        selectFromOrigin(scope, input)
+      updateWorkspaceNavigation(navigation, input.address, (workspace) =>
+        selectFromOrigin(workspace, input)
       )
     );
   }
@@ -385,17 +371,17 @@ export const openNodeRevealFromOriginAtom = atom(
 
 /** Select `nodeId` alone, then record `origin` when one is named. */
 function selectFromOrigin(
-  scope: ScopeNavigation,
+  workspace: WorkspaceNavigation,
   input: {
     address: WorkspaceAddress;
     nodeId: string;
     origin?: InspectedOrigin | undefined;
   }
-): ScopeNavigation {
+): WorkspaceNavigation {
   const select = revealFollowsSelection(input.address.key.workspace)
     ? withInspectedSelection
     : withSelection;
-  const selected = select(scope, { nodeIds: [input.nodeId], edgeIds: [] });
+  const selected = select(workspace, { nodeIds: [input.nodeId], edgeIds: [] });
   return input.origin === undefined
     ? selected
     : withInspectedOrigin(selected, input.origin);
@@ -407,8 +393,8 @@ export const keepActiveInspectionInGraphAtom = atom(
   (get, set, graph: NavigationGraph) => {
     const address = get(activeWorkspaceAddressAtom);
     set(writeNavigationAtom, address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, address, (scope) =>
-        inspectionInGraph(scope, graph)
+      updateWorkspaceNavigation(navigation, address, (workspace) =>
+        inspectionInGraph(workspace, graph)
       )
     );
   }
@@ -419,12 +405,12 @@ export const keepActiveInspectionInGraphAtom = atom(
  * keeps its own value, so a return to that list restores it.
  */
 export const activeShowSupersededAtom = atom(
-  (get) => get(activeScopeNavigationAtom).showSuperseded,
+  (get) => get(activeWorkspaceNavigationAtom).showSuperseded,
   (get, set, showSuperseded: boolean) => {
     const address = get(activeWorkspaceAddressAtom);
     set(writeNavigationAtom, address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, address, (scope) =>
-        withShowSuperseded(scope, showSuperseded)
+      updateWorkspaceNavigation(navigation, address, (workspace) =>
+        withShowSuperseded(workspace, showSuperseded)
       )
     );
   }
@@ -433,7 +419,7 @@ export const activeShowSupersededAtom = atom(
 /** The run node execution chosen in the active address, or null. */
 export const activeChosenExecutionAtom = atom(
   (get): ChosenRunExecution | null =>
-    get(activeScopeNavigationAtom).chosenExecution
+    get(activeWorkspaceNavigationAtom).chosenExecution
 );
 
 /**
@@ -457,9 +443,9 @@ export const inspectRunNodeAtom = atom(
     }
   ) => {
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, input.address, (scope) => {
+      updateWorkspaceNavigation(navigation, input.address, (workspace) => {
         const selected = withSelection(
-          scope,
+          workspace,
           input.selectsNode
             ? { nodeIds: [input.nodeId], edgeIds: [] }
             : EMPTY_SELECTION
@@ -486,8 +472,8 @@ export const inspectRunNodeAtom = atom(
 export const clearRunNodeInspectionAtom = atom(null, (get, set) => {
   const address = get(activeWorkspaceAddressAtom);
   set(writeNavigationAtom, address.workflowId, (navigation) =>
-    updateScopeNavigation(navigation, address, (scope) =>
-      withChosenExecution(withSelection(scope, EMPTY_SELECTION), null)
+    updateWorkspaceNavigation(navigation, address, (workspace) =>
+      withChosenExecution(withSelection(workspace, EMPTY_SELECTION), null)
     )
   );
 });
@@ -501,8 +487,8 @@ export const chooseRunExecutionAtom = atom(
   (get, set, chosen: ChosenRunExecution) => {
     const address = get(activeWorkspaceAddressAtom);
     set(writeNavigationAtom, address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, address, (scope) =>
-        withChosenExecution(scope, chosen)
+      updateWorkspaceNavigation(navigation, address, (workspace) =>
+        withChosenExecution(workspace, chosen)
       )
     );
   }
@@ -510,14 +496,18 @@ export const chooseRunExecutionAtom = atom(
 
 /** The mobile Reveal sheets open in the active address, the first opened first. */
 export const activeMobileSheetsAtom = atom(
-  (get): readonly MobileSheet[] => get(activeScopeNavigationAtom).mobile.sheets
+  (get): readonly MobileSheet[] =>
+    get(activeWorkspaceNavigationAtom).mobile.sheets
 );
 
 /** The camera saved for each form factor of the active address. */
 export const activeWorkspaceCamerasAtom = atom(
   (get): Readonly<Record<FormFactor, WorldCamera | null>> => {
-    const scope = get(activeScopeNavigationAtom);
-    return { desktop: scope.desktop.camera, mobile: scope.mobile.camera };
+    const workspace = get(activeWorkspaceNavigationAtom);
+    return {
+      desktop: workspace.desktop.camera,
+      mobile: workspace.mobile.camera,
+    };
   }
 );
 
@@ -534,8 +524,8 @@ export const recordWorkspaceCameraAtom = atom(
     }
   ) => {
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, input.address, (scope) =>
-        withCamera(scope, input.formFactor, input.camera)
+      updateWorkspaceNavigation(navigation, input.address, (workspace) =>
+        withCamera(workspace, input.formFactor, input.camera)
       )
     );
   }

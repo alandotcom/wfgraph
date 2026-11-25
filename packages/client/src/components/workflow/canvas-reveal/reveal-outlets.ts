@@ -10,7 +10,6 @@ import {
   getEdgeParams,
   getWorkflowEdgePath,
 } from "#src/components/flow-elements/edge-path";
-import type { EditorEdgeData } from "#src/lib/workflow-graph-types";
 import type { Rect } from "./reveal-geometry";
 
 /**
@@ -25,7 +24,6 @@ export type OutletEdge = {
   target: string;
   sourceHandle?: string | null | undefined;
   targetHandle?: string | null | undefined;
-  data?: Pick<EditorEdgeData, "centerY"> | undefined;
 };
 
 function union(rects: readonly Rect[]): Rect {
@@ -81,7 +79,6 @@ export function outletPlacement(input: {
       targetX: tx,
       targetY: ty,
       targetPosition: targetPos,
-      centerY: edge.data?.centerY,
     });
     return [
       {

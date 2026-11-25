@@ -75,9 +75,7 @@ const Animated = memo(function Animated({
   // would draw at 6px when the whole workflow is fitted, and the outline
   // names every outlet in words.
   const isCompact = useCompactCard();
-  // A painted connection that stands for nothing stored, such as the edge to a
-  // "Path ends" stub, takes no control: there is nothing to insert into.
-  const insertStep = data?.insertable === false ? null : insertStepOnEdge;
+
 
   if (!(sourceNode && targetNode)) {
     return null;
@@ -97,7 +95,6 @@ const Animated = memo(function Animated({
     targetX: tx,
     targetY: ty,
     targetPosition: targetPos,
-    centerY: data?.centerY,
   };
   const [edgePath, labelX, labelY] = getWorkflowEdgePath(pathInput);
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
@@ -142,18 +139,18 @@ const Animated = memo(function Animated({
           animation: marches ? "dashdraw 0.5s linear infinite" : undefined,
         }}
       />
-      {insertStep && (
+      {insertStepOnEdge && (
         <g
           aria-label="Insert step"
           className="insert-step-control cursor-pointer opacity-0 outline-none transition-opacity duration-150 focus-visible:opacity-100 motion-reduce:transition-none"
           onClick={(event) => {
             event.stopPropagation();
-            insertStep({ edgeId: id });
+            insertStepOnEdge({ edgeId: id });
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
-              insertStep({ edgeId: id });
+              insertStepOnEdge({ edgeId: id });
             }
           }}
           role="button"

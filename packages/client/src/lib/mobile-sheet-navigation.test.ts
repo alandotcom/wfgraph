@@ -12,8 +12,8 @@ import {
   EMPTY_SELECTION,
   EMPTY_WORKFLOW_NAVIGATION,
   inspectionInGraph,
-  scopeNavigationAt,
-  updateScopeNavigation,
+  workspaceNavigationAt,
+  updateWorkspaceNavigation,
   withoutDraftSelections,
   withInspectedSelection,
   workspaceAddressFromSearch,
@@ -29,7 +29,7 @@ const graph = {
 };
 
 describe("mobile Reveal sheets", () => {
-  const EMPTY = scopeNavigationAt(
+  const EMPTY = workspaceNavigationAt(
     EMPTY_WORKFLOW_NAVIGATION,
     workspaceAddressFromSearch("workflow_1", {})
   );
@@ -192,13 +192,13 @@ describe("mobile Reveal sheets", () => {
 
   it("empties the sheets with the selection when a Draft graph loads", () => {
     const address = workspaceAddressFromSearch("workflow_1", {});
-    const navigation = updateScopeNavigation(
+    const navigation = updateWorkspaceNavigation(
       EMPTY_WORKFLOW_NAVIGATION,
       address,
       (scope) => withInspectedSelection(scope, nodeSelection("trigger"))
     );
     expect(
-      scopeNavigationAt(withoutDraftSelections(navigation), address).mobile
+      workspaceNavigationAt(withoutDraftSelections(navigation), address).mobile
         .sheets
     ).toEqual([]);
   });
@@ -268,42 +268,22 @@ describe("mobile Reveal sheets", () => {
     expect(recovered.selection).toBe(selected.selection);
   });
 
-  it("carries the address sheets a source sequence starts with into another scope of its key, and one address sheet elsewhere", () => {
-    const address = {
-      level: "summary" as const,
-      inspected: null,
-      scroll: 30,
-      section: null,
-    };
+  it("opens one address sheet at an address reached from one with a sheet open", () => {
     const source = [
-      address,
-      { ...address, section: "changes" },
       {
-        level: "inspector" as const,
-        inspected: node("send"),
-        scroll: 0,
-        section: null,
+        level: "summary" as const,
+        inspected: null,
+        scroll: 30,
+        section: "changes",
       },
     ];
-    expect(
-      withMobileSequenceFrom(EMPTY, { sheets: source, sameKey: true }).mobile
-        .sheets
-    ).toEqual([
-      { ...address, scroll: 0 },
-      { ...address, scroll: 0, section: "changes" },
+    expect(withMobileSequenceFrom(EMPTY, source).mobile.sheets).toEqual([
+      { level: "summary", inspected: null, scroll: 0, section: null },
     ]);
-    expect(
-      withMobileSequenceFrom(EMPTY, { sheets: source, sameKey: false }).mobile
-        .sheets
-    ).toEqual([{ ...address, scroll: 0 }]);
 
     const open = withMobileAddressSheet(EMPTY);
-    expect(
-      withMobileSequenceFrom(open, { sheets: source, sameKey: true })
-    ).toBe(open);
-    expect(withMobileSequenceFrom(EMPTY, { sheets: [], sameKey: true })).toBe(
-      EMPTY
-    );
+    expect(withMobileSequenceFrom(open, source)).toBe(open);
+    expect(withMobileSequenceFrom(EMPTY, [])).toBe(EMPTY);
   });
 
   it("pushes an inspector over an address sheet that is not an inspector", () => {

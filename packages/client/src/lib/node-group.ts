@@ -16,13 +16,11 @@ import {
 import {
   analyzeGroupableSelection,
   childIdsOfGroup,
-  fanOutStoreEdgeIds,
   orderGroupParentsFirst,
   undersizedGroupIds,
   type GroupAnalysis,
 } from "@wfgraph/shared/graph/node-group";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
-import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
 import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
@@ -195,27 +193,6 @@ export function removeGroupWithMembers(input: {
 /** Whether this step has a frame to leave: a frame itself, or a member. */
 export function canUngroup(node: WorkflowNode | undefined): boolean {
   return Boolean(node && (isGroupNode(node) || node.parentId));
-}
-
-/**
- * The stored edge ids that deleting the painted edge `edgeId` removes. On the
- * overview, a painted edge on a collapsed card stands for every stored edge
- * `fanOutStoreEdgeIds` collapses onto it. A focused Group paints each stored
- * edge under its own id, so there the painted edge is that one stored edge.
- * Empty when no stored edge has the id.
- */
-export function storedEdgeIdsForPaintedEdge(input: {
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-  edgeId: string;
-  scope: WorkspaceScope;
-}): string[] {
-  if (input.scope.kind === "group") {
-    return input.edges.some((edge) => edge.id === input.edgeId)
-      ? [input.edgeId]
-      : [];
-  }
-  return fanOutStoreEdgeIds(input.nodes, input.edges, input.edgeId);
 }
 
 /**

@@ -3,11 +3,6 @@ import {
   connectionHandleTypesMatch,
   connectionRefusalReason,
 } from "#src/components/workflow/connection-validation";
-import {
-  boundaryStubId,
-  focusedGroupCanvasGraph,
-  storedCanvasConnection,
-} from "#src/lib/group-scope-canvas";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
@@ -93,7 +88,7 @@ describe("connectionHandleTypesMatch", () => {
     expect(connectionHandleTypesMatch("target", "target")).toBe(false);
   });
 
-  it("accepts two members of one Group and refuses a member with an outside step", () => {
+  it("connects a member to another member or straight to a step outside its Group", () => {
     const first = { ...actionNode("First"), parentId: "group" };
     const second = { ...actionNode("Second"), parentId: "group" };
     const outside = actionNode("Outside");
@@ -112,16 +107,12 @@ describe("connectionHandleTypesMatch", () => {
       });
 
     expect(refusal(first.id, second.id)).toBeNull();
-    expect(refusal(first.id, outside.id)).toBe(
-      "Connect two steps inside the same Group, or connect the Group card."
-    );
-    expect(refusal(outside.id, second.id)).toBe(
-      "Connect two steps inside the same Group, or connect the Group card."
-    );
+    expect(refusal(first.id, outside.id)).toBeNull();
+    expect(refusal(outside.id, second.id)).toBeNull();
   });
 });
 
-describe("connectionRefusalReason for a drag from an ingress stub", () => {
+describe("connectionRefusalReason for a second entry into a Group", () => {
   const frame: WorkflowNode = {
     id: "group",
     type: "group",
@@ -138,47 +129,32 @@ describe("connectionRefusalReason for a drag from an ingress stub", () => {
   });
 
   /**
-   * Drags from the stub for the outlet `handle` of `outside` onto the member
-   * `second` on the focused Group, where that outlet already enters `first`.
+   * The outlet `handle` of `outside` already enters the member `first`; the
+   * graph and the connection from that same outlet onto the member `second`.
    */
-  function dragFromStub(outside: WorkflowNode, handle: string) {
+  function fanOutFrom(outside: WorkflowNode, handle: string) {
     const nodes = [outside, frame, member("first"), member("second")];
     const storeEdges: WorkflowEdge[] = [
       { id: "in", source: outside.id, target: "first", sourceHandle: handle },
     ];
-    const painted = focusedGroupCanvasGraph({
-      nodes,
-      edges: storeEdges,
-      groupId: "group",
-    });
-    const translated = storedCanvasConnection(
-      {
-        source: boundaryStubId("ingress", { nodeId: outside.id, handle }),
-        target: "second",
-        sourceHandle: null,
-        targetHandle: null,
-      },
-      painted?.nodes ?? []
-    );
-    if ("refusal" in translated) {
-      throw new Error(translated.refusal);
-    }
-    return { nodes, storeEdges, translated };
+    const connection = {
+      source: outside.id,
+      target: "second",
+      sourceHandle: handle,
+      targetHandle: null,
+    };
+    return { nodes, storeEdges, connection };
   }
 
   it("accepts a fan-out from a Condition branch and keeps the branch", () => {
-    const { nodes, storeEdges, translated } = dragFromStub(
+    const { nodes, storeEdges, connection } = fanOutFrom(
       builtIn("check", BUILT_IN_ACTION_IDS.condition),
       "false"
     );
 
-    expect(translated.connection).toMatchObject({
-      source: "check",
-      sourceHandle: "false",
-    });
     expect(
       connectionRefusalReason({
-        ...translated,
+        connection,
         nodes,
         storeEdges,
         catalog: emptyExtensionCatalog,
@@ -187,7 +163,6 @@ describe("connectionRefusalReason for a drag from an ingress stub", () => {
     expect(
       connectionRefusalReason({
         connection: { source: "Outside", target: "second" },
-        throughBoundaryStub: true,
         nodes: [...nodes, actionNode("Outside")],
         storeEdges,
         catalog: emptyExtensionCatalog,
@@ -198,18 +173,14 @@ describe("connectionRefusalReason for a drag from an ingress stub", () => {
   });
 
   it("accepts a fan-out from an Event Split outlet and keeps the outlet", () => {
-    const { nodes, storeEdges, translated } = dragFromStub(
+    const { nodes, storeEdges, connection } = fanOutFrom(
       builtIn("split", BUILT_IN_ACTION_IDS.eventSplit),
       "event:signup"
     );
 
-    expect(translated.connection).toMatchObject({
-      source: "split",
-      sourceHandle: "event:signup",
-    });
     expect(
       connectionRefusalReason({
-        ...translated,
+        connection,
         nodes,
         storeEdges,
         catalog: emptyExtensionCatalog,
@@ -218,7 +189,6 @@ describe("connectionRefusalReason for a drag from an ingress stub", () => {
     expect(
       connectionRefusalReason({
         connection: { source: "Outside", target: "second" },
-        throughBoundaryStub: true,
         nodes: [...nodes, actionNode("Outside")],
         storeEdges,
         catalog: emptyExtensionCatalog,

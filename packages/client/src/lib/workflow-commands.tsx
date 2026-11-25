@@ -93,8 +93,6 @@ type WorkflowCommandState = {
   readonly canPaste: boolean;
   readonly canGroupSelection: boolean;
   readonly editingLocked: boolean;
-  /** Whether the canvas shows a focused Group. */
-  readonly groupScopeActive: boolean;
 };
 
 type WorkflowCommandCallbacks = {

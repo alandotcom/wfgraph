@@ -299,7 +299,7 @@ export function addedContinuationRefusal(input: {
       continue;
     }
     const groupName = `"${labelOf(groupId, nodeById)}"`;
-    return `The Group ${groupName} would continue to ${withAdditions.externalTargets.length} steps from ${withAdditions.internalContinuation.length} outlets inside it. Connect every outlet that leaves a Group to the same step, or continue from one outlet on the Group's own canvas.`;
+    return `The Group ${groupName} would continue to ${withAdditions.externalTargets.length} steps from ${withAdditions.internalContinuation.length} outlets inside it. Connect every outlet that leaves a Group to the same step, or continue from one outlet inside the Group.`;
   }
   return null;
 }

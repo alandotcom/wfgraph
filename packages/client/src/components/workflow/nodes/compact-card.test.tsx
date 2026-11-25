@@ -1,11 +1,4 @@
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRoute,
-  createRouter,
-  RouterProvider,
-} from "@tanstack/react-router";
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactFlowProvider, useStoreApi } from "@xyflow/react";
 import { createStore, Provider } from "jotai";
@@ -18,6 +11,7 @@ import { GroupNode } from "#src/components/workflow/nodes/group-node";
 import { LifecycleNode } from "#src/components/workflow/nodes/lifecycle-node";
 import { WORKFLOW_COMPACT_CARD_ZOOM } from "#src/components/workflow/workflow-viewport";
 import { stepNumbersAtom } from "#src/lib/step-numbers";
+import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
 import {
   COMPARISON_NODE_ANNOTATION,
   type WorkflowNodeData,
@@ -54,9 +48,11 @@ function renderAtZoom(input: {
   card: ReactNode;
   zoom: number;
   numbers?: ReadonlyMap<string, number>;
+  collapsedGroupIds?: ReadonlySet<string>;
 }) {
   const store = createStore();
   store.set(stepNumbersAtom, input.numbers ?? new Map());
+  store.set(collapsedGroupIdsAtom, input.collapsedGroupIds ?? new Set());
   let flow: ReturnType<typeof useStoreApi> | null = null;
   function CaptureFlow() {
     flow = useStoreApi();
@@ -268,49 +264,59 @@ describe("the Lifecycle card's compact form", () => {
   });
 });
 
-describe("a Group card's compact form", () => {
-  async function renderGroup(input: {
+describe("a Group on the canvas", () => {
+  function renderGroup(input: {
     zoom: number;
     numbers?: ReadonlyMap<string, number>;
+    collapsed?: boolean;
   }) {
-    const card = (
-      <GroupNode
-        data={{
-          label: "Reminder sequence",
-          description: "Two reminders before the visit",
-          type: "group",
-          config: {},
-        }}
-        id="reminders"
-        type="group"
-        {...requiredNodeProps}
-      />
-    );
-    const rootRoute = createRootRoute();
-    const workflowRoute = createRoute({
-      getParentRoute: () => rootRoute,
-      path: "/workflows/$workflowId",
-      component: () => card,
-    });
-    const router = createRouter({
-      routeTree: rootRoute.addChildren([workflowRoute]),
-      history: createMemoryHistory({ initialEntries: ["/workflows/wf_1"] }),
-    });
-    // The router resolves its first match in a microtask, which mounts the
-    // card.
-    const result = renderAtZoom({
-      card: <RouterProvider router={router} />,
+    return renderAtZoom({
+      card: (
+        <GroupNode
+          data={{
+            label: "Reminder sequence",
+            description: "Two reminders before the visit",
+            type: "group",
+            config: {},
+          }}
+          id="reminders"
+          type="group"
+          {...requiredNodeProps}
+        />
+      ),
       zoom: input.zoom,
       ...(input.numbers ? { numbers: input.numbers } : {}),
+      collapsedGroupIds: new Set(input.collapsed ? ["reminders"] : []),
     });
-    await act(async () => {
-      await router.load();
-    });
-    return result;
   }
 
-  it("draws its label beside the Group glyph, and its number when it has one", async () => {
-    const unnumbered = await renderGroup({ zoom: 0.5 });
+  const header = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>("[data-slot='group-region-header']");
+
+  it("draws in place as a region whose header names it, with its number", () => {
+    const { view } = renderGroup({
+      zoom: 1,
+      numbers: new Map([["reminders", 5]]),
+    });
+
+    expect(
+      view.getByTestId("group-node-reminders").getAttribute("data-group-form")
+    ).toBe("region");
+    expect(header(view.container)?.textContent).toContain("Reminder sequence");
+    expect(stepNumber(view.container)).toBe("5");
+    // The region has no handles of its own: connections attach to members.
+    expect(view.container.querySelector(".react-flow__handle")).toBeNull();
+  });
+
+  it("sets the region's header in the compact type size when zoomed out", () => {
+    const { view } = renderGroup({ zoom: 0.5 });
+
+    expect(header(view.container)?.style.fontSize).toBe("22px");
+    expect(compactBody(view.container)).toBeNull();
+  });
+
+  it("draws one card the viewer collapsed it to, with its glyph or number", () => {
+    const unnumbered = renderGroup({ zoom: 0.5, collapsed: true });
     const body = compactBody(unnumbered.view.container);
     expect(body?.textContent).toBe("Reminder sequence");
     expect(body?.querySelector("svg")).not.toBeNull();
@@ -319,24 +325,39 @@ describe("a Group card's compact form", () => {
     ).toBeNull();
     unnumbered.view.unmount();
 
-    const numbered = await renderGroup({
-      zoom: 0.5,
-      numbers: new Map([["reminders", 5]]),
-    });
-    expect(compactBody(numbered.view.container)?.textContent).toBe(
-      "5Reminder sequence"
-    );
-  });
-
-  it("draws the full card, with its number in the title band, at detail zoom", async () => {
-    const { view } = await renderGroup({
+    const numbered = renderGroup({
       zoom: 1,
       numbers: new Map([["reminders", 5]]),
+      collapsed: true,
     });
+    expect(compactBody(numbered.view.container)).toBeNull();
+    expect(stepNumber(numbered.view.container)).toBe("5");
+    expect(
+      numbered.view.getByText("Two reminders before the visit")
+    ).toBeTruthy();
+    expect(
+      numbered.view.getByRole("button", {
+        name: "Expand group Reminder sequence",
+      })
+    ).toBeTruthy();
+  });
 
-    expect(compactBody(view.container)).toBeNull();
-    expect(stepNumber(view.container)).toBe("5");
-    expect(view.getByText("Two reminders before the visit")).toBeTruthy();
+  it("collapses from the region's header and expands from the card", () => {
+    const { view } = renderGroup({ zoom: 1 });
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Collapse group Reminder sequence" })
+    );
+    expect(
+      view.getByTestId("group-node-reminders").getAttribute("data-group-form")
+    ).toBe("card");
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Expand group Reminder sequence" })
+    );
+    expect(
+      view.getByTestId("group-node-reminders").getAttribute("data-group-form")
+    ).toBe("region");
   });
 });
 

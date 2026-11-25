@@ -13,21 +13,19 @@ import {
 import type { ExecutionLog } from "#src/lib/execution-logs";
 import { runNodeTitle } from "#src/lib/run-node-evidence";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { EnterGroupButton, Section } from "./reveal-sections";
+import { Section } from "./reveal-sections";
 
 /**
  * A Group card's summary in Runs Browse: the Group's run status, its member
  * counts, and each member with its own status. The Group records nothing in a
- * run, so choosing a member enters the Group and opens that member's evidence
+ * run, so choosing a member selects it on the canvas and opens its evidence
  * in Focus.
  */
 export function RunsGroupSummary({
-  groupId,
   summary,
   nodes,
   logs,
 }: {
-  groupId: string;
   summary: GroupRunSummary;
   nodes: readonly WorkflowNode[];
   logs: readonly ExecutionLog[];
@@ -84,8 +82,6 @@ export function RunsGroupSummary({
           })}
         </ul>
       </Section>
-
-      <EnterGroupButton groupId={groupId} />
     </div>
   );
 }

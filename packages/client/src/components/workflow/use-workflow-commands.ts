@@ -23,7 +23,6 @@ import {
   hasCopiedSelectionAtom,
   pasteCopiedSelectionAtom,
 } from "#src/lib/workflow-graph-store";
-import { groupScopeActiveAtom } from "#src/lib/workflow-workspace-navigation";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import {
   isWorkflowPublishDisabled,
@@ -42,7 +41,6 @@ export function useWorkflowCommands({
   onAddStep: () => void;
 }) {
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
-  const groupScopeActive = useAtomValue(groupScopeActiveAtom);
   const topologyAuthoring = useTopologyAuthoring();
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const copySelection = useSetAtom(copySelectionAtom);
@@ -130,7 +128,6 @@ export function useWorkflowCommands({
       canGroupSelection:
         state.canUpdate && grouping.ok && !editingLocked && topologyAuthoring,
       editingLocked,
-      groupScopeActive,
     },
     shortcuts,
     callbacks: {

@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import {
-  canvasNodesAtom,
   edgesAtom,
   groupSelectionAtom,
   nodesAtom,
@@ -48,7 +47,6 @@ function renderConnections(store: Store) {
   return renderHook(
     () =>
       useCanvasConnections({
-        nodes: store.get(canvasNodesAtom),
         graphNodes: store.get(nodesAtom),
         storeEdges: store.get(edgesAtom),
         catalog,
@@ -140,7 +138,6 @@ describe("useCanvasConnections connect gesture", () => {
     const { result, rerender } = renderHook(
       ({ locked }: { locked: boolean }) =>
         useCanvasConnections({
-          nodes: store.get(canvasNodesAtom),
           graphNodes: store.get(nodesAtom),
           storeEdges: store.get(edgesAtom),
           catalog,

@@ -10,7 +10,7 @@ import type {
   WorkflowIssue,
 } from "@wfgraph/shared/graph/workflow-issues";
 import type {
-  DesktopScopePresentation,
+  DesktopPresentation,
   InspectedOrigin,
 } from "#src/lib/workflow-navigation-state";
 import {
@@ -156,7 +156,7 @@ export function useLifecycleOpenSection(nodeId: string): {
  * open for editing in the details column, or null for none.
  */
 export function lifecycleOpenSection(
-  presentation: DesktopScopePresentation,
+  presentation: DesktopPresentation,
   nodeId: string
 ): LifecycleSectionId | null {
   return presentation.inspected?.id === nodeId

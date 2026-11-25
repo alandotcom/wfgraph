@@ -269,10 +269,10 @@ and the stored edges: the outside steps that enter the Group, the members they
 enter, the members whose edges leave it, the outside steps those edges reach,
 and the members where a path ends inside it. A frame has no enabled state or
 run behavior of its own. Its config holds one key, `direction`, vertical or
-horizontal, which decides only how the editor draws its members when the Group
-is entered. The editor shows a Group on the workflow canvas as one collapsed
-card with one outlet, and entering the Group shows its members on a canvas of
-their own, where a step added, pasted or duplicated becomes a member.
+horizontal, which the editor does not read. The editor draws a Group in place
+on the one workflow canvas, as a region around its members, which are ordinary
+steps whose connections attach to them; a viewer can collapse it to one card
+with one inlet and one outlet for the session.
 Removing a frame ungroups its members and keeps every stored edge, and an edit
 that leaves a Group with fewer than two steps ungroups it the same way. The
 editor groups a selection only when the Group it would form meets the Publish

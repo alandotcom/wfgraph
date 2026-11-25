@@ -32,10 +32,6 @@ import {
   connectionRefusalReason,
 } from "./connection-validation";
 import { showGraphEditRefusal } from "./graph-edit-refusal";
-import {
-  storedCanvasConnection,
-  type StoredCanvasConnection,
-} from "#src/lib/group-scope-canvas";
 
 /** The handle a connection drag started from. */
 type ConnectGesture = {
@@ -56,9 +52,6 @@ interface UseCanvasConnectionsResult {
 }
 
 export function useCanvasConnections(input: {
-  /** The painted nodes of the active scope, which a stub connection on a
-   * focused Group translates against. */
-  nodes: WorkflowNode[];
   /** Every node of the graph, which the connection rules read because a Group
    * frame stands for its members. */
   graphNodes: WorkflowNode[];
@@ -74,7 +67,6 @@ export function useCanvasConnections(input: {
   };
 }): UseCanvasConnectionsResult {
   const {
-    nodes,
     graphNodes,
     storeEdges,
     catalog,
@@ -95,26 +87,20 @@ export function useCanvasConnections(input: {
     []
   );
 
-  // A painted connection on a focused Group names stubs; the rules and the
-  // store read the stored connection each stub stands for, translated once
-  // here. The refusal previews `planConnection` against the painted graph.
+  // The refusal previews `planConnection` against the stored graph.
   const connectionOutcome = useCallback(
     (
       painted: XYFlowConnection | XYFlowEdge
-    ): StoredCanvasConnection<XYFlowConnection | XYFlowEdge> => {
-      const stored = storedCanvasConnection(painted, nodes);
-      if ("refusal" in stored) {
-        return stored;
-      }
+    ): { connection: XYFlowConnection | XYFlowEdge } | { refusal: string } => {
       const refusal = connectionRefusalReason({
-        ...stored,
+        connection: painted,
         nodes: graphNodes,
         storeEdges,
         catalog,
       });
-      return refusal === null ? stored : { refusal };
+      return refusal === null ? { connection: painted } : { refusal };
     },
-    [catalog, graphNodes, nodes, storeEdges]
+    [catalog, graphNodes, storeEdges]
   );
 
   const isValidConnection = useCallback(
@@ -152,7 +138,6 @@ export function useCanvasConnections(input: {
       showGraphEditRefusal(
         connectNodes({
           connection: { ...outcome.connection, id: generateId() },
-          throughBoundaryStub: outcome.throughBoundaryStub,
           catalog,
         })
       );
@@ -274,24 +259,18 @@ export function useCanvasConnections(input: {
         fromSource ? gesture.handleId : null
       );
       const targetHandle = fromSource ? null : gesture.handleId;
-      // A drag from an "Incoming from" stub names the outside outlet it stands
-      // for. The store plans the connection with the new step in the graph, so
-      // on a focused Group the step joins the Group first.
-      const stored = storedCanvasConnection(
-        { source: sourceId, target: targetId, sourceHandle, targetHandle },
-        nodes
-      );
-      if ("refusal" in stored) {
-        showGraphEditRefusal(stored);
-        return;
-      }
-
       // Adding the node makes it the selection, and the step and its
-      // connection are one undo step.
+      // connection are one undo step. The store plans the connection with the
+      // new step in the graph, after it joins the Group it was dropped in.
       const added = addConnectedNode({
         node: newNode,
-        connection: { ...stored.connection, id: generateId() },
-        throughBoundaryStub: stored.throughBoundaryStub,
+        connection: {
+          source: sourceId,
+          target: targetId,
+          sourceHandle,
+          targetHandle,
+          id: generateId(),
+        },
         catalog,
       });
       showGraphEditRefusal(added);
@@ -314,7 +293,6 @@ export function useCanvasConnections(input: {
       screenToFlowPosition,
       addConnectedNode,
       catalog,
-      nodes,
       selectOnlyNode,
       normalizeSourceHandleForConnection,
       isValidConnection,

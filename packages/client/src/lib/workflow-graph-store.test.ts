@@ -75,6 +75,7 @@ import {
 import { savedWorkflow, unreadableDraft } from "./workflow-save-test-support";
 import { PASTE_OFFSET } from "#src/lib/copy-selection";
 import { reviewHighlightAtom } from "#src/lib/workflow-review-store";
+import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
 import { POINTED_NODE_CLASS } from "#src/lib/workflow-graph-presentation-store";
 import { formatTemplateToken } from "@wfgraph/shared/graph/node-references";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
@@ -591,7 +592,16 @@ describe("graph history", () => {
   });
 });
 
-describe("the collapsed Group card's one outlet", () => {
+describe("the one outlet of a Group the viewer collapsed", () => {
+  /** A graph store showing the Group "g" collapsed to its card. */
+  function collapsedGroupStore(
+    ...input: Parameters<typeof createGraphStore>
+  ): ReturnType<typeof createGraphStore> {
+    const store = createGraphStore(...input);
+    store.set(collapsedGroupIdsAtom, new Set(["g"]));
+    return store;
+  }
+
   function groupedLookup(id: string): WorkflowNode {
     return groupedChild(id, "g");
   }
@@ -643,7 +653,7 @@ describe("the collapsed Group card's one outlet", () => {
 
   /** Two parallel members entered from the Lifecycle Node, as a person groups them. */
   function parallelStore() {
-    return createGraphStore(
+    return collapsedGroupStore(
       [
         lifecycleNode("t"),
         multiExitGroupNode("g"),
@@ -714,13 +724,13 @@ describe("the collapsed Group card's one outlet", () => {
 
     expect(plan).toEqual({
       refusal:
-        'The Group "Group" would continue to 2 steps from 2 outlets inside it. Connect every outlet that leaves a Group to the same step, or continue from one outlet on the Group\'s own canvas.',
+        'The Group "Group" would continue to 2 steps from 2 outlets inside it. Connect every outlet that leaves a Group to the same step, or continue from one outlet inside the Group.',
     });
     expect(store.get(edgesAtom)).toBe(before);
   });
 
   it("asks for an explicit branch when the Group ends at an unwired Condition", () => {
-    const store = createGraphStore(
+    const store = collapsedGroupStore(
       [
         lifecycleNode("t"),
         multiExitGroupNode("g"),
@@ -748,13 +758,13 @@ describe("the collapsed Group card's one outlet", () => {
         catalog: emptyCatalog,
       })
     ).toEqual({
-      refusal: "Open this Group and connect the branch you want to continue.",
+      refusal: "Expand this Group and connect the branch you want to continue.",
     });
     expect(store.get(edgesAtom)).toBe(before);
   });
 
   it("adds a step after the Group's continuing branch alone once one branch continues", () => {
-    const store = createGraphStore(
+    const store = collapsedGroupStore(
       [
         multiExitGroupNode("g"),
         conditionMember("gate"),
@@ -1419,7 +1429,7 @@ describe("displayNodesAtom memoization", () => {
     ]);
   });
 
-  it("puts the pointed tint on the step the review sheet points at and on its Group's card", () => {
+  it("puts the pointed tint on the step the review sheet points at, and on its Group's card while collapsed", () => {
     const nodes = [groupNode("group"), groupedChild("member", "group")];
     const store = createGraphStore([...nodes, actionNode("selected")]);
     showWorkspaceRoute(store, {});
@@ -1441,6 +1451,8 @@ describe("displayNodesAtom memoization", () => {
     expect(haloed()).toEqual([]);
     store.set(reviewHighlightAtom, "member");
     expect(haloed()).toEqual([]);
+    expect(pointed(store)).toEqual(["member"]);
+    store.set(collapsedGroupIdsAtom, new Set(["group"]));
     expect(pointed(store)).toEqual(["group", "member"]);
     store.set(reviewHighlightAtom, null);
     expect(pointed(store)).toEqual([]);
@@ -1463,7 +1475,7 @@ describe("displayNodesAtom memoization", () => {
 
     store.set(reviewHighlightAtom, "member");
     expect(haloed()).toEqual(["selected"]);
-    expect(pointed(store)).toEqual(["group", "member"]);
+    expect(pointed(store)).toEqual(["member"]);
     store.set(reviewHighlightAtom, null);
     expect(haloed()).toEqual(["selected"]);
     expect(pointed(store)).toEqual([]);
@@ -1728,9 +1740,10 @@ describe("run path", () => {
     ).toBe(true);
   });
 
-  it("marks a Group card's edge taken when any edge it stands for was", () => {
+  it("marks a collapsed Group card's edge taken when any edge it stands for was", () => {
     const store = createGraphStore(...standardGraph());
     showWorkspaceRoute(store, { view: "runs" });
+    store.set(collapsedGroupIdsAtom, new Set(["g"]));
     store.set(executionOverlayGraphAtom, {
       nodes: [
         lifecycleNode("t"),
@@ -1755,9 +1768,9 @@ describe("run path", () => {
     expect(leaving.map((item) => item.data?.runPath)).toEqual(["taken"]);
   });
 
-  it("marks the edge to a focused Group's Path ends stub by its outlet", () => {
+  it("marks a member's own edges on a Group drawn in place", () => {
     const store = createGraphStore(...standardGraph());
-    showWorkspaceRoute(store, { view: "runs", group: "g" });
+    showWorkspaceRoute(store, { view: "runs" });
     store.set(executionOverlayGraphAtom, {
       nodes: [
         lifecycleNode("t"),
@@ -1765,20 +1778,24 @@ describe("run path", () => {
         conditionNode("m", "g"),
         actionNode("after"),
       ],
-      edges: [edge("t-m", "t", "m"), branch("m-true", "m", "after", "true")],
+      edges: [
+        edge("t-m", "t", "m"),
+        branch("m-true", "m", "after", "true"),
+        branch("m-false", "m", "after", "false"),
+      ],
     });
     store.set(projectRunLogsAtom, {
       executionStatus: "completed",
-      logs: [ran("t"), ran("m", { condition: false })],
+      logs: [ran("t"), ran("m", { condition: false }), ran("after")],
     });
 
-    const ends = store
-      .get(canvasEdgesAtom)
-      .filter((item) => item.data?.insertable === false);
-    expect(ends.map((item) => [item.sourceHandle, item.data?.runPath])).toEqual(
-      [["false", "taken"]]
+    const runPathById = Object.fromEntries(
+      store
+        .get(canvasEdgesAtom)
+        .filter((item) => item.source === "m")
+        .map((item) => [item.id, item.data?.runPath])
     );
-    expect(runPathOf(store)["m-true"]).toBe("not-taken");
+    expect(runPathById).toEqual({ "m-true": "not-taken", "m-false": "taken" });
   });
 });
 

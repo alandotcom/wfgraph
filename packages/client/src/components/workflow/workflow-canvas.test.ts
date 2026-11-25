@@ -24,6 +24,9 @@ function lifecycleNode(x: number): WorkflowNode {
   };
 }
 
+/** One set for every render, as the store hands the canvas between toggles. */
+const NO_COLLAPSED_GROUPS: ReadonlySet<string> = new Set<string>();
+
 describe("canvasNodeWithInitialDimensions", () => {
   it("keeps an unmeasured replacement node visible while React Flow installs it", () => {
     const node = lifecycleNode(0);
@@ -233,7 +236,7 @@ describe("useSynchronizedCanvas", () => {
             executionOverlay,
             comparison: null,
             draftEdges,
-            scope: "overview",
+            collapsedGroupIds: NO_COLLAPSED_GROUPS,
           }),
           synchronizePresentation,
           viewportCorrection,
@@ -302,6 +305,23 @@ describe("useSynchronizedCanvas", () => {
 });
 
 describe("canvasSynchronizationKey", () => {
+  it("installs the graph again when the viewer collapses or expands a Group", () => {
+    const draftEdges: WorkflowEdge[] = [];
+    const key = (collapsedGroupIds: ReadonlySet<string>) =>
+      canvasSynchronizationKey({
+        workspaceView: "draft",
+        executionOverlay: null,
+        comparison: null,
+        draftEdges,
+        collapsedGroupIds,
+      });
+    const collapsed = new Set(["g"]);
+
+    expect(key(NO_COLLAPSED_GROUPS)).toBe(key(NO_COLLAPSED_GROUPS));
+    expect(key(collapsed)).not.toBe(key(NO_COLLAPSED_GROUPS));
+    expect(key(collapsed)).toBe(key(collapsed));
+  });
+
   it("synchronizes again when same-workflow hydration replaces the Draft edges", () => {
     const lifecycle = lifecycleNode(100);
     const synchronizePresentation = vi.fn(() => true);
@@ -326,7 +346,7 @@ describe("canvasSynchronizationKey", () => {
             executionOverlay,
             comparison: null,
             draftEdges,
-            scope: "overview",
+            collapsedGroupIds: NO_COLLAPSED_GROUPS,
           }),
           synchronizePresentation,
           viewportCorrection: null,

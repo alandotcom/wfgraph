@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
-import { boundaryStubId } from "#src/lib/group-scope-canvas";
+import { groupContractViolations } from "@wfgraph/shared/graph/group-contract";
+import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
 import { overlappingCardIds } from "@wfgraph/shared/graph/node-placement-test-support";
 import {
   addConnectedNodeAtom,
@@ -10,6 +11,7 @@ import {
   canvasEdgesAtom,
   insertStepOnEdgeAtom,
   canvasNodesAtom,
+  canvasPlacementNodesAtom,
   copySelectionAtom,
   deleteEdgeAtom,
   deleteGroupWithMembersAtom,
@@ -34,7 +36,6 @@ import {
   RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
 } from "#src/lib/workflow-node-dimensions";
-import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import {
   updateMock,
   ungroupedGraph,
@@ -389,37 +390,43 @@ describe("Group mutations on the canvas", () => {
   });
 });
 
-describe("Authoring inside a focused Group", () => {
+describe("Authoring inside a Group drawn in place", () => {
   const catalog = { entities: [], events: [], integrations: [], actions: [] };
 
-  /** The grouped fixture with the Group entered, and the new frame's id. */
-  function enteredStore(): { store: Store; frameId: string } {
-    const grouped = groupedStore();
-    showWorkspaceRoute(grouped.store, { group: grouped.frameId });
-    return grouped;
-  }
-
-  function newStep(id: string): WorkflowNode {
+  function newStep(
+    id: string,
+    position: { x: number; y: number } = { x: 900, y: 900 }
+  ): WorkflowNode {
     return {
       id,
       type: "action",
-      position: { x: 900, y: 900 },
+      position,
       data: { label: id, type: "action", config: {}, status: "idle" },
     };
   }
 
-  it("adds a step as a member of the Group, selected, in one undo step", async () => {
-    const { store, frameId } = enteredStore();
+  /** A canvas point inside the region of the Group `frameId`. */
+  function insideRegion(store: Store, frameId: string) {
+    const frame = store.get(nodesAtom).find((node) => node.id === frameId);
+    return {
+      x: (frame?.position.x ?? 0) + 10,
+      y: (frame?.position.y ?? 0) + 10,
+    };
+  }
+
+  it("adds a step placed inside a Group's region as a member, selected, in one undo step", async () => {
+    const { store, frameId } = groupedStore();
     const before = graphOf(store);
 
-    expect(store.set(addNodeAtom, newStep("added"))).toEqual({
-      inserted: true,
-    });
+    expect(
+      store.set(addNodeAtom, newStep("added", insideRegion(store, frameId)))
+    ).toEqual({ inserted: true });
     await tick();
 
     const added = store.get(nodesAtom).find((node) => node.id === "added");
     expect(added?.parentId).toBe(frameId);
-    expect(added?.position).toEqual({ x: 900, y: 900 });
+    // Stored local to the frame.
+    expect(added?.position).toEqual({ x: 10, y: 10 });
     expect(membersOf(store, frameId)).toEqual(["a", "b", "c", "added"]);
     expect(store.get(selectedNodeAtom)).toBe("added");
     expect(store.get(canvasNodesAtom).some((node) => node.id === "added")).toBe(
@@ -433,12 +440,12 @@ describe("Authoring inside a focused Group", () => {
     expect(membersOf(store, frameId)).toEqual(["a", "b", "c", "added"]);
   });
 
-  it("adds a step after a member and connects it in the same undo step", () => {
-    const { store, frameId } = enteredStore();
+  it("adds a step dropped inside the region after a member and connects it in the same undo step", () => {
+    const { store, frameId } = groupedStore();
     const before = graphOf(store);
 
     const outcome = store.set(addConnectedNodeAtom, {
-      node: newStep("after-a"),
+      node: newStep("after-a", insideRegion(store, frameId)),
       connection: {
         id: "a-after-a",
         source: "a",
@@ -446,7 +453,6 @@ describe("Authoring inside a focused Group", () => {
         sourceHandle: null,
         targetHandle: null,
       },
-      throughBoundaryStub: false,
       catalog,
     });
 
@@ -459,7 +465,7 @@ describe("Authoring inside a focused Group", () => {
     expect(graphOf(store)).toEqual(before);
   });
 
-  it("opens a member row and reprojects its continuation stub", () => {
+  it("opens a member row and moves what follows down, inside and outside the Group", () => {
     const rowHeight = WORKFLOW_NODE_HEIGHT + RANK_SPACING;
     const store = createGraphStore({
       nodes: [
@@ -480,14 +486,6 @@ describe("Authoring inside a focused Group", () => {
         edge("b-after", "b", "after"),
       ],
     });
-    showWorkspaceRoute(store, { group: "g" });
-    const continuationId = boundaryStubId("continuation", {
-      nodeId: "after",
-      handle: null,
-    });
-    const continuationBefore = store
-      .get(canvasNodesAtom)
-      .find((node) => node.id === continuationId)?.position;
     const before = graphOf(store);
 
     expect(
@@ -507,21 +505,19 @@ describe("Authoring inside a focused Group", () => {
       x: 0,
       y: rowHeight * 2,
     });
+    // The step after the Group follows its branch down by one row, as the
+    // region grows by one.
     expect(nodes.find((node) => node.id === "after")?.position).toEqual({
       x: 0,
-      y: 600,
+      y: 600 + rowHeight,
     });
-    expect(
-      store.get(canvasNodesAtom).find((node) => node.id === continuationId)
-        ?.position.y
-    ).toBe((continuationBefore?.y ?? 0) + rowHeight);
 
     store.set(undoAtom);
     expect(graphOf(store)).toEqual(before);
   });
 
   it("pastes and duplicates a copied member as a member of the Group", async () => {
-    const { store, frameId } = enteredStore();
+    const { store, frameId } = groupedStore();
     store.set(selectOnlyNodeAtom, "a");
     store.set(copySelectionAtom);
 
@@ -547,9 +543,9 @@ describe("Authoring inside a focused Group", () => {
   });
 
   it.each(["paste", "duplicate"] as const)(
-    "places a focused %s clear of local members, regardless of the frame position",
+    "places a %s of a member clear of the cards around it, wherever the frame sits",
     (mode) => {
-      const { store, frameId } = enteredStore();
+      const { store, frameId } = groupedStore();
       store.set(
         nodesStateAtom,
         store.get(nodesStateAtom).map((node) => ({
@@ -573,7 +569,7 @@ describe("Authoring inside a focused Group", () => {
       ).toEqual({ inserted: true });
       const insertedId = store.get(selectedNodeAtom);
       expect(
-        overlappingCardIds(store.get(canvasNodesAtom)).filter((pair) =>
+        overlappingCardIds(store.get(canvasPlacementNodesAtom)).filter((pair) =>
           pair.includes(insertedId!)
         )
       ).toEqual([]);
@@ -581,8 +577,8 @@ describe("Authoring inside a focused Group", () => {
   );
 
   it.each([false, true])(
-    "inserts before a diamond join atomically (focused Group: %s)",
-    (focused) => {
+    "inserts before a diamond join atomically (inside a Group: %s)",
+    (grouped) => {
       const store = createGraphStore({
         nodes: [
           lifecycle(),
@@ -593,7 +589,7 @@ describe("Authoring inside a focused Group", () => {
             data: { label: "Group", type: "group" },
           },
           ...["a", "b", "c", "join"].map((id) =>
-            focused ? { ...lookup(id), parentId: "g" } : lookup(id)
+            grouped ? { ...lookup(id), parentId: "g" } : lookup(id)
           ),
         ],
         edges: [
@@ -604,7 +600,6 @@ describe("Authoring inside a focused Group", () => {
           edge("cj", "c", "join"),
         ],
       });
-      if (focused) showWorkspaceRoute(store, { group: "g" });
       const before = graphOf(store);
       expect(
         store.set(addStepAfterAtom, {
@@ -707,7 +702,8 @@ describe("Authoring inside a focused Group", () => {
     const { store, frameId } = groupedStore();
     store.set(selectOnlyNodeAtom, frameId);
     store.set(copySelectionAtom);
-    showWorkspaceRoute(store, { group: frameId });
+    // With a member selected, the paste would join that member's Group.
+    store.set(selectOnlyNodeAtom, "a");
     const before = graphOf(store);
     const history = store.get(historyAtom);
 
@@ -719,11 +715,11 @@ describe("Authoring inside a focused Group", () => {
   });
 
   it("refuses a step whose connection the planner refuses, adding neither", () => {
-    const { store } = enteredStore();
+    const { store } = groupedStore();
     const before = graphOf(store);
 
-    // A drag onto the "Continues to after" stub from a new member that nothing
-    // reaches would join `after` from an unreachable branch.
+    // A drag from a new step that nothing reaches onto `after` would join
+    // `after` from an unreachable branch.
     const outcome = store.set(addConnectedNodeAtom, {
       node: newStep("orphan"),
       connection: {
@@ -733,7 +729,6 @@ describe("Authoring inside a focused Group", () => {
         sourceHandle: null,
         targetHandle: null,
       },
-      throughBoundaryStub: true,
       catalog,
     });
 
@@ -768,7 +763,6 @@ describe("Authoring inside a focused Group", () => {
           edge("find-next", "findIssues", "next"),
         ],
       });
-      showWorkspaceRoute(store, { group: "g" });
       vi.clearAllMocks();
       return store;
     }
@@ -806,20 +800,26 @@ describe("Authoring inside a focused Group", () => {
       expect(graphOf(store)).toEqual(before);
     });
 
-    it("keeps one exit and no path ends when a step is added after each member", () => {
+    it("keeps the Group's one exit when a step is added after each member", () => {
       const store = continuingStore();
       addAfter(store, "getUser", "first");
       addAfter(store, "findIssues", "second");
 
-      const painted = store.get(canvasNodesAtom);
-      expect(
-        painted
-          .filter((node) => node.type === "groupEnd")
-          .map((node) => node.id)
-      ).toEqual([]);
-      expect(
-        painted.filter((node) => node.type === "groupContinuation")
-      ).toHaveLength(1);
+      expect(membersOf(store, "g")).toEqual([
+        "getUser",
+        "findIssues",
+        "first",
+        "second",
+      ]);
+      expect(groupContractViolations(graphOf(store))).toEqual([]);
+      expect(links(store)).toEqual([
+        "findIssues>second",
+        "first>next",
+        "getUser>first",
+        "life>findIssues",
+        "life>getUser",
+        "second>next",
+      ]);
     });
 
     it("puts a step inside a member's connection to the outside step", () => {
@@ -869,6 +869,7 @@ describe("Authoring inside a focused Group", () => {
             edge("an", "a", "next"),
           ],
         });
+        store.set(collapsedGroupIdsAtom, new Set(["g"]));
         const outcome =
           mode === "after"
             ? store.set(addStepAfterAtom, {
@@ -929,7 +930,6 @@ describe("Authoring inside a focused Group", () => {
         store.set(addConnectedNodeAtom, {
           node: newStep("branch"),
           connection: { id: "a-branch", source: "a", target: "branch" },
-          throughBoundaryStub: false,
           catalog,
         })
       ).toEqual({ inserted: true });
@@ -998,7 +998,7 @@ describe("Authoring inside a focused Group", () => {
       expect(graphOf(store)).toEqual(before);
     });
 
-    it("inserts after an Incoming from stub without leaving a parallel ingress", () => {
+    it("adds a step after the outside outlet entering a Group, outside it, without a parallel ingress", () => {
       const store = createGraphStore({
         nodes: [
           lifecycle(),
@@ -1013,18 +1013,11 @@ describe("Authoring inside a focused Group", () => {
         ],
         edges: [edge("start-a", "life", "a", "started"), edge("a-b", "a", "b")],
       });
-      showWorkspaceRoute(store, { group: "g" });
       vi.clearAllMocks();
 
       const outcome = store.set(addStepAfterAtom, {
         node: newStep("beside"),
-        source: {
-          nodeId: boundaryStubId("ingress", {
-            nodeId: "life",
-            handle: "started",
-          }),
-          handle: null,
-        },
+        source: { nodeId: "life", handle: "started" },
         catalog,
       });
 
@@ -1035,6 +1028,7 @@ describe("Authoring inside a focused Group", () => {
           .map((item) => `${item.source}>${item.target}`)
           .toSorted()
       ).toEqual(["a>b", "beside>a", "life>beside"]);
+      expect(membersOf(store, "g")).toEqual(["a", "b"]);
     });
   });
 });

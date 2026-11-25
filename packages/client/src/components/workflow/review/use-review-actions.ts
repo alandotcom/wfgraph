@@ -5,7 +5,6 @@
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import { useSetAtom, useStore } from "jotai";
 import { toast } from "sonner";
 import { can } from "#src/lib/authorization";
@@ -21,11 +20,8 @@ import {
   installRestoredWorkflowAtom,
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
-import {
-  scopeId,
-  workspaceAddressId,
-  workspaceRouteSearch,
-} from "#src/lib/workflow-navigation-state";
+import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
+import { expandGroupAtom } from "#src/lib/collapsed-groups";
 import { clearPublicationReviewAtom } from "#src/lib/workflow-publication-review-store";
 import {
   clearReviewPagesAtom,
@@ -39,7 +35,6 @@ import {
   currentWorkflowIdAtom,
   saveWorkflowAtom,
 } from "#src/lib/workflow-save-store";
-import { scopeOfNode } from "#src/lib/workflow-scope-graph";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { requestRevealPlacementAtom } from "../canvas-reveal/reveal-requests";
@@ -72,7 +67,6 @@ export type ReviewActions = {
 export function useReviewActions(): ReviewActions {
   const store = useStore();
   const queryClient = useQueryClient();
-  const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const openPage = useSetAtom(openReviewPageAtom);
   const closePage = useSetAtom(closeReviewPageAtom);
   const clearPages = useSetAtom(clearReviewPagesAtom);
@@ -192,19 +186,18 @@ export function useReviewActions(): ReviewActions {
   };
 
   const showOnCanvas = (nodeId: string) => {
-    const nodes = store.get(displayNodesAtom);
-    if (!nodes.some((node) => node.id === nodeId)) return;
-    const active = store.get(activeWorkspaceAddressAtom);
-    const scope = scopeOfNode(nodes, nodeId);
-    const target = { ...active, scope };
+    const node = store.get(displayNodesAtom).find((item) => item.id === nodeId);
+    if (!node) return;
+    // A step in a Group the viewer collapsed draws its Group in place again,
+    // so the step has a card to place.
+    if (node.parentId !== undefined) {
+      store.set(expandGroupAtom, node.parentId);
+    }
     setHighlight(nodeId);
     requestPlacement({
-      addressId: workspaceAddressId(target),
+      addressId: workspaceAddressId(store.get(activeWorkspaceAddressAtom)),
       nodeIds: [nodeId],
     });
-    if (scopeId(scope) !== scopeId(active.scope)) {
-      void navigate({ search: workspaceRouteSearch(target) });
-    }
   };
 
   return {

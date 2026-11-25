@@ -415,10 +415,11 @@ the selection. Nothing in the details column changes the saved draft except the 
 made in it.
 
 The editor keeps the workspace address in the page's query string: `view` (`runs`,
-absent for Draft), `executionId`, and `group`. Browser Back and Forward move between those
-addresses, and a copied link opens the same run or Group. A link carrying `review=true`
-opens Draft with the review sheet. Draft, each run, and each entered Group keep their own
-selection, inspected object, scroll position, and camera while the page is open.
+absent for Draft) and `executionId`. Browser Back and Forward move between those
+addresses, and a copied link opens the same run. A link carrying `review=true`
+opens Draft with the review sheet. Draft and each run keep their own selection, inspected
+object, scroll position, and camera while the page is open. A link carrying the `group`
+key an older editor wrote opens the workflow with that Group's first step selected.
 
 ### Groups
 
@@ -426,23 +427,21 @@ A Workflow Builder groups two or more steps with **Group** in the canvas context
 **Group selection** in the command palette. A Group organizes the canvas and leaves every
 run unchanged: the engine walks the same stored edges whether or not a step sits in a
 Group, and a Group writes no run log, result, or retry of its own. The workflow canvas
-shows a Group as one collapsed card, and entering the Group opens a canvas of its members.
-A connection dragged from the card's one outlet keeps the Group's existing continuation
-ports. If nothing leaves the Group yet, it connects from each terminal non-Condition step.
-Unused Condition outlets stay unwired: a False branch with no steps ends the path and
-does not run the step after the Group. If only unused Condition outlets remain, open
-the Group and choose a branch to continue. Deleting the card's outgoing connection
-deletes each stored edge it represents. On an entered Group's
-canvas a Workflow Builder adds, pastes, duplicates, connects, disables, and deletes steps,
-and a step added, pasted, or duplicated there becomes a member of that Group. Members
-keep their stored positions and can be dragged. **Tidy layout** arranges the entered
-Group's members in one undoable edit without moving its frame or outside steps.
+draws a Group in place as a region around its member steps, and connections into and out
+of the Group attach to the steps they connect. Members are moved inside their region,
+and a step added after a member, placed inside the region, or pasted or duplicated beside
+a selected member joins that Group. **Tidy layout** arranges each Group's members inside
+its region and then the whole graph around each region, in one undoable edit. A Workflow
+Builder can collapse a Group to one card for their own view; collapsing stores nothing.
+A connection dragged from a collapsed card's one outlet keeps the Group's existing
+continuation ports. If nothing leaves the Group yet, it connects from each terminal
+non-Condition step. Unused Condition outlets stay unwired: a False branch with no steps
+ends the path and does not run the step after the Group. If only unused Condition outlets
+remain, expand the Group and connect the branch to continue. Deleting the card's outgoing
+connection deletes each stored edge it represents.
 **Add step after** inserts a step between the chosen outlet and its existing targets;
 dragging an outlet into empty canvas creates a branch with no automatic rejoin.
-To change which branch continues, use the entered canvas: each edge to a
-"Continues to" stub can be deleted on its own, and dragging from a step onto a "Continues
-to" stub connects that step alone to the outside step the stub names.
-In **Runs** the card shows the Group's run status and step counts. The review sheet lists
+In **Runs** the region's header shows the Group's run status and step counts. The review sheet lists
 a Group's own edits, and a step moving between Groups, under "Does not change what runs".
 
 Version 1 Groups follow these rules:
@@ -478,7 +477,7 @@ place, and details open as a sequence of sheets over either one. A Workflow Buil
 the configuration of an existing step, run, publish, undo, and redo, as their grants
 allow. The graph's shape cannot be edited on a phone: steps cannot be added, moved,
 deleted, pasted, duplicated, grouped, or ungrouped, and connections cannot be drawn.
-An entered Group uses the same stored member positions on a phone as on desktop.
+The canvas a phone shows draws each Group in place at the same stored positions as on desktop.
 
 ## Authentication and authorization
 

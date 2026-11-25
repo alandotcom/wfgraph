@@ -20,6 +20,7 @@ import { ExtensionCatalogProvider } from "#src/components/extension-catalog-prov
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { WorkflowOutline } from "#src/components/workflow/outline/workflow-outline";
+import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
 import { commandPaletteAtom } from "#src/lib/command-palette-store";
 import type { ExecutionLog } from "#src/lib/execution-logs";
 import {
@@ -28,6 +29,7 @@ import {
   projectRunLogsAtom,
   projectRunProgressAtom,
   selectOnlyNodeAtom,
+  selectedNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   beginPublicationReviewAtom,
@@ -224,20 +226,25 @@ describe("WorkflowOutline", () => {
     );
   });
 
-  it("enters the Group to select a step inside it", async () => {
-    const { router } = renderOutline();
+  it("selects a step inside a Group on the one canvas, drawing its Group in place", async () => {
+    const { router, store } = renderOutline();
     await tree();
+    act(() =>
+      store.set(collapsedGroupIdsAtom, new Set(["Pre-visit reminders"]))
+    );
 
     fireEvent.click(row("Send 24-hour reminder"));
 
     await waitFor(() =>
-      expect(router.state.location.search).toMatchObject({
-        group: "Pre-visit reminders",
-      })
+      expect(store.get(selectedNodeAtom)).toBe("Send 24-hour reminder")
     );
+    expect(store.get(collapsedGroupIdsAtom).has("Pre-visit reminders")).toBe(
+      false
+    );
+    expect(router.state.location.search).toEqual({});
   });
 
-  it("puts the halo on a row's card while the row is pointed at", async () => {
+  it("puts the pointed tint on a row's card while the row is pointed at", async () => {
     const { store } = renderOutline();
     await tree();
 

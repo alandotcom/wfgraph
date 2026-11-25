@@ -151,36 +151,37 @@ export function useFitWorkflowGraph(input: {
   });
 }
 
-const scopedPresentations = new WeakMap<object, Map<string, object>>();
+const pairedPresentations = new WeakMap<object, WeakMap<object, object>>();
 
 /**
  * The key the canvas installs its graph on: the presented run, the comparison
- * the review sheet shows, or the Draft's stored edges, paired with the
- * `scopeId` of the scope shown. The
- * pair is one object per source and scope, so moving between the overview and a
- * focused Group installs the next graph and a repaint of either does not.
+ * the review sheet shows, or the Draft's stored edges, paired with the set of
+ * Groups the viewer collapsed. The pair is one object per source and set, so
+ * collapsing or expanding a Group installs the next graph and a repaint of
+ * either does not.
  */
 export function canvasSynchronizationKey({
   workspaceView,
   executionOverlay,
   comparison,
   draftEdges,
-  scope,
+  collapsedGroupIds,
 }: {
   workspaceView: "draft" | "runs";
   executionOverlay: object | null;
   comparison: object | null;
   draftEdges: WorkflowEdge[];
-  scope: string;
+  collapsedGroupIds: ReadonlySet<string>;
 }): object {
   const source =
     workspaceView === "runs"
       ? (executionOverlay ?? EMPTY_RUN_PRESENTATION)
       : (comparison ?? draftEdges);
-  const byScope = scopedPresentations.get(source) ?? new Map<string, object>();
-  scopedPresentations.set(source, byScope);
-  const key = byScope.get(scope) ?? { source, scope };
-  byScope.set(scope, key);
+  const bySet =
+    pairedPresentations.get(source) ?? new WeakMap<object, object>();
+  pairedPresentations.set(source, bySet);
+  const key = bySet.get(collapsedGroupIds) ?? { source, collapsedGroupIds };
+  bySet.set(collapsedGroupIds, key);
   return key;
 }
 

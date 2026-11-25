@@ -17,14 +17,9 @@ import {
   findAction,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
-import {
-  isGroupNode,
-  type GroupPort,
-} from "@wfgraph/shared/graph/group-boundary";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { isBlank } from "@wfgraph/shared/types/string";
 import type { RunPathMark } from "#src/lib/run-path";
-import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
 
 export type { NodeRunStatus, PersistedNodeData };
 export type {
@@ -75,28 +70,12 @@ export const COMPARISON_GROUP_ANNOTATION: unique symbol = Symbol(
   "wfgraph.comparison.group"
 );
 
-/**
- * The port a boundary stub on a focused Group canvas stands for: an outside
- * port for an ingress or continuation stub, or a member outlet where a path
- * ends for an end stub.
- */
-export type GroupBoundaryStubPort = {
-  direction: "ingress" | "continuation" | "end";
-  port: GroupPort;
-};
-
-/** Collision-proof key for the port a boundary stub's data carries. */
-export const GROUP_BOUNDARY_STUB_PORT: unique symbol = Symbol(
-  "wfgraph.group.boundaryStubPort"
-);
-
 export type EditorNodeData = PersistedNodeData & {
   /** Open persisted node data can legitimately use this string key. */
   comparison?: unknown;
   status?: NodeRunStatus | undefined;
   issues?: NodeIssueSummary | undefined;
   [COMPARISON_NODE_ANNOTATION]?: ComparisonNodeAnnotation | undefined;
-  [GROUP_BOUNDARY_STUB_PORT]?: GroupBoundaryStubPort | undefined;
   [COMPARISON_GROUP_ANNOTATION]?: ComparisonGroupAnnotation | undefined;
 };
 
@@ -110,13 +89,6 @@ export type EditorEdgeData = Record<string, unknown> & {
    * any other canvas and while the run may still take it.
    */
   runPath?: RunPathMark | undefined;
-  /**
-   * False on a painted connection that stands for no stored edge, such as the
-   * one to a "Path ends" stub, which offers no Insert step control.
-   */
-  insertable?: boolean | undefined;
-  /** Shared bend for forward edges entering the same focused Group row. */
-  centerY?: number | undefined;
   [COMPARISON_EDGE_ANNOTATION]?: ComparisonEdgeAnnotation | undefined;
 };
 
@@ -149,21 +121,6 @@ export const COMPARISON_CHANGE_KIND_LABEL: Readonly<
 /** The name a Group shows: its label, or "Group" when the label is blank. */
 export function groupLabel(label: string | undefined): string {
   return label === undefined || isBlank(label) ? "Group" : label;
-}
-
-/**
- * The name of the Group a focused canvas `scope` shows, found among `nodes`.
- * Null on the overview, and while `nodes` holds no Group frame with that id.
- */
-export function scopeGroupLabel(
-  nodes: readonly WorkflowNode[],
-  scope: WorkspaceScope
-): string | null {
-  if (scope.kind !== "group") {
-    return null;
-  }
-  const frame = nodes.find((node) => node.id === scope.groupId);
-  return isGroupNode(frame) ? groupLabel(frame?.data.label) : null;
 }
 
 /** A comparison names an unavailable action safely rather than exposing its id. */

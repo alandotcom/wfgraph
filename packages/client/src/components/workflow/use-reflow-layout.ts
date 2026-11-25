@@ -1,23 +1,23 @@
 /**
  * The graph's tidy-up pass, shared by the canvas control at bottom left and the
  * Actions menu's "Tidy layout" so the two cannot drift into different rules.
- * A focused Group lays out its members with boundary stubs as pseudo-nodes.
- * Only member positions are stored. Phones offer no topology authoring.
+ * Each Group's members are laid out first, inside the region they fill, and
+ * the whole graph then around each region. A Group the viewer collapsed keeps
+ * its region's room, since collapsing changes nothing stored. Phones offer no
+ * topology authoring.
  */
 
 import { useReactFlow } from "@xyflow/react";
-import { useAtomValue, useAtomValueRawSync, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useCallback } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { layoutWorkflowNodes } from "#src/components/workflow/workflow-layout";
 import {
   applyNodeLayoutAtom,
   canvasEditingLockedAtom,
-  canvasGraphAtom,
   edgesAtom,
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
-import { groupScopeActiveAtom } from "#src/lib/workflow-workspace-navigation";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import { workflowFitViewOptions } from "./workflow-viewport";
 import { useTopologyAuthoring } from "./canvas-interaction";
@@ -46,14 +46,9 @@ export function useReflowLayout(): {
   canReflow: boolean;
   reflow: () => void;
 } {
-  const nodes = useAtomValue(nodesAtom);
-  const edges = useAtomValue(edgesAtom);
+  const layoutNodes = useAtomValue(nodesAtom);
+  const layoutEdges = useAtomValue(edgesAtom);
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
-  // Route synchronization can establish Group scope before subscriptions mount.
-  const groupScopeActive = useAtomValueRawSync(groupScopeActiveAtom);
-  const canvasGraph = useAtomValueRawSync(canvasGraphAtom);
-  const layoutNodes = groupScopeActive ? canvasGraph.nodes : nodes;
-  const layoutEdges = groupScopeActive ? canvasGraph.edges : edges;
   const topologyAuthoring = useTopologyAuthoring();
   const applyNodeLayout = useSetAtom(applyNodeLayoutAtom);
   const catalog = useExtensionCatalog();
