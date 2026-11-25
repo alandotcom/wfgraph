@@ -361,7 +361,11 @@ export const getIntegrationFromActionType = (
   return integrationLabel || action?.category || "System";
 };
 
-const ProviderLogo = ({
+/**
+ * The glyph a step card leads with: the built-in node's accent glyph, the
+ * integration's icon, or a bolt. The outline's rows show the same glyph.
+ */
+export const ProviderLogo = ({
   actionType,
   catalog,
   className = NODE_ICON_CLASS,
