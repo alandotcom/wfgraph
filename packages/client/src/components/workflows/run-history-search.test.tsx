@@ -41,7 +41,7 @@ describe("RunHistorySearch", () => {
 
     expect(view.getByRole("option", { name: "Status" })).toBeTruthy();
     expect(view.getByRole("option", { name: "Workflow" })).toBeTruthy();
-    expect(view.getByRole("option", { name: "Recipients" })).toBeTruthy();
+    expect(view.getByRole("option", { name: "Published mode" })).toBeTruthy();
     expect(view.getByRole("option", { name: "Source" })).toBeTruthy();
     expect(view.getByRole("option", { name: "Event" })).toBeTruthy();
     expect(view.getByRole("option", { name: "Entity" })).toBeTruthy();
@@ -73,16 +73,16 @@ describe("RunHistorySearch", () => {
     fireEvent.focus(
       view.getByRole("combobox", { name: "Search and filter runs" })
     );
-    fireEvent.click(view.getByRole("option", { name: "Recipients" }));
-    fireEvent.click(view.getByRole("option", { name: "Recipients is" }));
+    fireEvent.click(view.getByRole("option", { name: "Published mode" }));
+    fireEvent.click(view.getByRole("option", { name: "Published mode is" }));
     fireEvent.click(view.getByRole("option", { name: "Test" }));
 
     fireEvent.click(
-      view.getByRole("button", { name: "Remove Recipients is Test" })
+      view.getByRole("button", { name: "Remove Published mode is Test" })
     );
 
     expect(
-      view.queryByRole("button", { name: "Remove Recipients is Test" })
+      view.queryByRole("button", { name: "Remove Published mode is Test" })
     ).toBeNull();
   });
 

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  PAUSED_RUN_REASON,
   draftViewReason,
   isWorkflowPublishDisabled,
+  runDisabledReason,
   workflowCommands,
 } from "#src/lib/workflow-commands";
 
@@ -30,6 +32,7 @@ function commandInput(
       groupScopeActive: false,
       hasNodes: true,
       isExecuting: false,
+      isPaused: false,
       isPreflighting: false,
       isGenerating: false,
       workflowMode: "live",
@@ -300,6 +303,38 @@ describe("workflowCommands", () => {
     }
   });
 
+  it("names views and Publish in the toolbar's words", () => {
+    const labels = new Map(
+      workflowCommands(commandInput({ publishedVersion: 7 })).map((command) => [
+        command.id,
+        command.label,
+      ])
+    );
+
+    expect(labels.get("show-runs")).toBe("Switch to Runs");
+    expect(labels.get("show-changes")).toBe("Switch to Changes");
+    expect(labels.get("publish")).toBe("Publish v8");
+    expect(
+      workflowCommands(commandInput({ publishedVersion: undefined })).find(
+        (command) => command.id === "publish"
+      )?.label
+    ).toBe("Publish");
+  });
+
+  it("offers no run while the workflow is paused, and says why", () => {
+    const commands = workflowCommands(commandInput({ isPaused: true }));
+    const runDraft = commands.find((command) => command.id === "run-draft");
+    const runPublished = commands.find(
+      (command) => command.id === "run-published"
+    );
+
+    expect(runDraft?.disabled).toBe(true);
+    expect(runDraft?.detail).toBe(PAUSED_RUN_REASON);
+    expect(runPublished?.disabled).toBe(true);
+    expect(runPublished?.detail).toBe(PAUSED_RUN_REASON);
+    expect(runPublished?.consequential).toBe(false);
+  });
+
   it("disables both run commands while a run is already in flight", () => {
     const commands = workflowCommands(commandInput({ isExecuting: true }));
 
@@ -376,5 +411,17 @@ describe("draftViewReason", () => {
     expect(draftViewReason("changes", "publish")).toBe(
       "Switch to Draft to publish."
     );
+  });
+});
+
+describe("runDisabledReason", () => {
+  it("sends the reader to Draft first, then names the pause", () => {
+    expect(runDisabledReason({ view: "runs", isPaused: true })).toBe(
+      "Switch to Draft to run."
+    );
+    expect(runDisabledReason({ view: "draft", isPaused: true })).toBe(
+      PAUSED_RUN_REASON
+    );
+    expect(runDisabledReason({ view: "draft", isPaused: false })).toBeNull();
   });
 });

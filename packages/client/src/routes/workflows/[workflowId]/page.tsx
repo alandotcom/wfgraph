@@ -115,13 +115,13 @@ const WorkflowEditor = () => {
             <div className="absolute inset-0 z-20 flex items-center justify-center">
               <div className="rounded-lg border bg-background p-8 text-center shadow-lg">
                 <h1 className="mb-2 font-semibold text-2xl">
-                  Workflow Not Found
+                  Workflow not found
                 </h1>
                 <p className="mb-6 text-muted-foreground">
                   The workflow you're looking for doesn't exist or has been
                   deleted.
                 </p>
-                <Button render={<Link to="/" />}>Go to Dashboard</Button>
+                <Button render={<Link to="/" />}>Go to Workflows</Button>
               </div>
             </div>
           )}
@@ -130,13 +130,13 @@ const WorkflowEditor = () => {
             <div className="absolute inset-0 z-20 flex items-center justify-center">
               <div className="rounded-lg border bg-background p-8 text-center shadow-lg">
                 <h1 className="mb-2 font-semibold text-2xl">
-                  Couldn't Load Workflow
+                  Couldn't load workflow
                 </h1>
                 <p className="mb-6 text-muted-foreground">
                   {workflowLoadError}
                 </p>
                 <Button onClick={() => window.location.reload()}>
-                  Try Again
+                  Try again
                 </Button>
               </div>
             </div>

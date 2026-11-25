@@ -79,8 +79,8 @@ export type RunFilterValueOption = {
 export const RUN_FILTER_FIELD_LABELS: Record<RunFilterField, string> = {
   status: "Status",
   workflow: "Workflow",
-  mode: "Recipients",
-  graph: "Graph",
+  mode: "Published mode",
+  graph: "Version",
   source: "Source",
   event: "Event",
   entity: "Entity",
@@ -271,8 +271,8 @@ function runSearchText(run: RunHistorySearchRow): string {
     // The stored kind, so a search for "draft" matches `draft_snapshot` and one
     // for "published" matches `published`.
     run.versionKind,
-    // The label the Graph column prints, so a search for "v7" keeps the runs of
-    // published version 7.
+    // The version the Version column prints, so a search for "v7" keeps the
+    // runs of published version 7.
     runGraphLabel(run),
     run.startSource,
     run.startEventName,

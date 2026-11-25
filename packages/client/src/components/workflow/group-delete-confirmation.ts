@@ -10,10 +10,10 @@ export function deleteGroupWithStepsConfirmation(
   onConfirm: () => void
 ): ConfirmRequest & { confirmVariant: "destructive" } {
   return {
-    title: "Delete Group and Steps",
+    title: "Delete Group and steps",
     message:
       "Are you sure you want to delete this Group and every step inside it? The steps' connections are deleted too.",
-    confirmLabel: "Delete Group and Steps",
+    confirmLabel: "Delete Group and steps",
     confirmVariant: "destructive",
     onConfirm,
   };

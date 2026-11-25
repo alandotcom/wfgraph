@@ -2,7 +2,6 @@ import { compact } from "es-toolkit/array";
 import { useAtomValue, useSetAtom } from "jotai";
 import { Eraser, MousePointerClick, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
-import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
 import {
   deleteEdgeAtom,
@@ -21,6 +20,8 @@ import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 import { useTopologyCapabilities } from "./canvas-interaction";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import { NodePropertiesForm } from "./node-properties-form";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { workflowNodeAriaLabel } from "#src/lib/workflow-graph-types";
 
 /**
  * Configuring the selected node, edge, or the workflow itself.
@@ -164,6 +165,7 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
   const { canDelete } = useTopologyCapabilities();
   const deleteEdge = useSetAtom(deleteEdgeAtom);
   const deleteSelectedItems = useSetAtom(deleteSelectedItemsAtom);
+  const catalog = useExtensionCatalog();
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedEdge = edges.find((edge) => edge.id === selectedEdgeId);
@@ -202,25 +204,25 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
     " and "
   );
 
-  const confirmDeleteEdge = () => {
+  // Deleting a connection is one undo step, as deleting a step is, so it
+  // happens at once with no confirmation.
+  const deleteSelectedEdge = () => {
     if (!selectedEdgeId) {
       return;
     }
-    frame.confirm({
-      title: "Delete Connection",
-      message:
-        "Are you sure you want to delete this connection? This action cannot be undone.",
-      confirmLabel: "Delete",
-      onConfirm: () => {
-        deleteEdge(selectedEdgeId);
-        frame.dismiss?.();
-      },
-    });
+    deleteEdge(selectedEdgeId);
+    frame.dismiss?.();
+  };
+
+  // A connection is named by the steps it joins, as the canvas names them.
+  const stepName = (nodeId: string) => {
+    const node = nodes.find((candidate) => candidate.id === nodeId);
+    return node ? workflowNodeAriaLabel(node.data, catalog) : "Missing step";
   };
 
   const confirmDeleteSelection = () => {
     frame.confirm({
-      title: "Delete Selected Items",
+      title: "Delete selected items",
       message: deleteSelectionMessage({
         deletedText,
         frameCount: selectedFrameCount,
@@ -263,21 +265,17 @@ export function NodeConfigPanel({ frame }: { frame: NodeConfigFrame }) {
       return (
         <div className="space-y-4 p-4">
           <div className="space-y-2">
-            <Label htmlFor="edge-id">Connection ID</Label>
-            <Input disabled id="edge-id" value={selectedEdge.id} />
+            <Label>From</Label>
+            <p className="text-sm">{stepName(selectedEdge.source)}</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edge-source">Source</Label>
-            <Input disabled id="edge-source" value={selectedEdge.source} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edge-target">Target</Label>
-            <Input disabled id="edge-target" value={selectedEdge.target} />
+            <Label>To</Label>
+            <p className="text-sm">{stepName(selectedEdge.target)}</p>
           </div>
 
           {canDelete ? (
             <div className="flex items-center gap-2 pt-4">
-              <Button onClick={confirmDeleteEdge} size="sm" variant="outline">
+              <Button onClick={deleteSelectedEdge} size="sm" variant="outline">
                 <Trash2 className="mr-2 size-4 text-destructive" />
                 <span className="text-destructive">Delete</span>
               </Button>

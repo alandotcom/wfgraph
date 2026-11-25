@@ -1,4 +1,5 @@
 import { useAtomValue, useSetAtom } from "jotai";
+import { useId } from "react";
 import { Eye, EyeOff, Trash2, Ungroup } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import { can } from "#src/lib/authorization";
@@ -17,29 +18,41 @@ import { deleteGroupWithStepsConfirmation } from "./group-delete-confirmation";
 import type { NodeConfigFrame } from "./node-config-panel";
 
 /**
- * The Enabled or Disabled toggle of one step. A disabled step stays in the
- * graph and the run skips it. Disabled while the build agent is editing.
+ * Turns one step off or on. A disabled step stays in the graph, and a run
+ * that reaches it stops on that path: the step and everything after it on the
+ * path do not run. The button names the action it takes, and a caption beside
+ * it states that consequence in both states. Disabled while the build agent
+ * is editing.
  */
 function StepEnableToggle({ node }: { node: WorkflowNode }) {
   const isGenerating = useAtomValue(isGeneratingAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
+  const consequenceId = useId();
   const isDisabled = node.data.enabled === false;
   return (
-    <Button
-      disabled={isGenerating}
-      onClick={() =>
-        updateNodeData({ id: node.id, data: { enabled: isDisabled } })
-      }
-      size="sm"
-      variant="outline"
-    >
-      {isDisabled ? (
-        <EyeOff className="mr-2 size-4" />
-      ) : (
-        <Eye className="mr-2 size-4" />
-      )}
-      {isDisabled ? "Disabled" : "Enabled"}
-    </Button>
+    <>
+      <Button
+        aria-describedby={consequenceId}
+        disabled={isGenerating}
+        onClick={() =>
+          updateNodeData({ id: node.id, data: { enabled: isDisabled } })
+        }
+        size="sm"
+        variant="outline"
+      >
+        {isDisabled ? (
+          <Eye className="mr-2 size-4" />
+        ) : (
+          <EyeOff className="mr-2 size-4" />
+        )}
+        {isDisabled ? "Enable step" : "Disable step"}
+      </Button>
+      <span className="text-muted-foreground text-xs" id={consequenceId}>
+        {isDisabled
+          ? "Runs stop at this step."
+          : "Disabling ends the path at this step."}
+      </span>
+    </>
   );
 }
 
@@ -103,7 +116,7 @@ export function NodeControls({
     return null;
   }
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
       {/* A Group frame is organization only and has no enabled state. */}
       {node.data.type === "action" ? <StepEnableToggle node={node} /> : null}
       {topology.canUngroup(node) ? (
@@ -130,7 +143,7 @@ export function NodeControls({
           variant="outline"
         >
           <Trash2 className="mr-2 size-4 text-destructive" />
-          <span className="text-destructive">Delete Group and Steps</span>
+          <span className="text-destructive">Delete Group and steps</span>
         </Button>
       ) : (
         <DeleteStepButton frame={frame} nodeId={node.id} />

@@ -60,6 +60,7 @@ import {
   type WorkflowPatch,
 } from "#src/lib/workflow-save-store";
 import { ApiError } from "#src/lib/rpc-client";
+import { PAUSED_RUN_REASON } from "#src/lib/workflow-commands";
 import {
   readEntryLifecycleRules,
   readEntryTestPayloads,
@@ -278,7 +279,7 @@ export function useWorkflowHandlers({
       return null;
     }
     if (!currentWorkflowId) {
-      toast.error("Please save the workflow before executing");
+      toast.error("Save the workflow before you run it.");
       return null;
     }
 
@@ -414,7 +415,14 @@ export function useWorkflowHandlers({
       return;
     }
     if (!currentWorkflowId) {
-      toast.error("Please save the workflow before executing");
+      toast.error("Save the workflow before you run it.");
+      return;
+    }
+    // Every control that offers a run is disabled while the workflow is
+    // paused. Cmd+Enter reaches here without passing those controls, so it
+    // says the same reason rather than starting a run the server ignores.
+    if (publication?.isPaused === true) {
+      toast.info(PAUSED_RUN_REASON);
       return;
     }
 
@@ -440,9 +448,7 @@ export function useWorkflowHandlers({
       }
       const facts = await readPublishedGraphFacts(publishedVersionId);
       if (!facts) {
-        toast.error(
-          `Could not read Published v${target.publishedVersion}. Try again.`
-        );
+        toast.error(`Could not read v${target.publishedVersion}. Try again.`);
         return;
       }
       openRunOverlay(target, facts);

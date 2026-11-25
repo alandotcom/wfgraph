@@ -346,7 +346,7 @@ describe("WorkflowIssuesOverlay", () => {
       })
     );
 
-    expect(getByText("Group Problems")).toBeTruthy();
+    expect(getByText("Group problems")).toBeTruthy();
     expect(getByText("Lookups")).toBeTruthy();
     expect(getByText('Group "Lookups" needs at least two steps')).toBeTruthy();
     expect(
@@ -382,7 +382,7 @@ describe("WorkflowIssuesOverlay", () => {
       { onGoToStep }
     );
 
-    expect(getByText("Lifecycle Problems")).toBeTruthy();
+    expect(getByText("Lifecycle problems")).toBeTruthy();
     expect(getByText("Start Filter reads an undeclared path")).toBeTruthy();
     fireEvent.click(getByRole("button", { name: "Open Lifecycle" }));
     expect(onGoToStep).toHaveBeenCalledWith("lifecycle", undefined);
@@ -416,7 +416,7 @@ describe("WorkflowIssuesOverlay", () => {
       { onGoToStep }
     );
 
-    expect(getByText("Required Fields")).toBeTruthy();
+    expect(getByText("Required fields")).toBeTruthy();
     expect(getByText("Duration cannot be read")).toBeTruthy();
     expect(getByText("Channel is missing")).toBeTruthy();
     fireEvent.click(
@@ -473,7 +473,7 @@ describe("WorkflowIssuesOverlay", () => {
       { onGoToStep }
     );
 
-    expect(getByText("Fields Offered by Several Steps")).toBeTruthy();
+    expect(getByText("Fields offered by several steps")).toBeTruthy();
     expect(getByText(message)).toBeTruthy();
     fireEvent.click(getByRole("button", { name: "Review the rules in Route" }));
     expect(onGoToStep).toHaveBeenCalledWith("route", "conditionModel");

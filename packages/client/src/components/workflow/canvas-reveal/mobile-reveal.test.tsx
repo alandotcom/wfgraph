@@ -311,7 +311,15 @@ describe("mobile Reveal for an ordinary step", () => {
     expect(store.get(hasUnsavedChangesAtom)).toBe(true);
     await waitFor(() => expect(update).toHaveBeenCalled());
 
-    expect(view.getByRole("button", { name: "Enabled" })).toBeTruthy();
+    // The control states its consequence: a run stops at a disabled step.
+    expect(
+      view
+        .getByRole("button", { name: "Disable step" })
+        .getAttribute("aria-describedby")
+    ).toBeTruthy();
+    expect(
+      view.getByText("Disabling ends the path at this step.")
+    ).toBeTruthy();
     expect(view.queryByRole("button", { name: "Delete" })).toBeNull();
   });
 });

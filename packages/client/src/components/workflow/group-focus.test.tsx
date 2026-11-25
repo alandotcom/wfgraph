@@ -880,7 +880,7 @@ describe("the collapsed Group overview", () => {
       </JotaiProvider>
     );
     expect(
-      view.getByRole("button", { name: /Delete Group and Steps/ })
+      view.getByRole("button", { name: /Delete Group and steps/ })
     ).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: /Ungroup/ }));
@@ -1420,7 +1420,7 @@ describe("the focused Group canvas", () => {
 
     await waitFor(() => expect(pane()).toBeTruthy());
     fireEvent.contextMenu(pane() as HTMLElement);
-    expect(menuButton(/^Add Step/).hasAttribute("disabled")).toBe(false);
+    expect(menuButton(/^Add step/).hasAttribute("disabled")).toBe(false);
     closeMenu();
     const member = view.container.querySelector<HTMLElement>(
       '.react-flow__node[data-id="welcome"]'
@@ -1446,7 +1446,7 @@ describe("the focused Group canvas", () => {
     );
     expect(store.get(historyAtom)).toHaveLength(3);
 
-    const reflow = view.getByRole("button", { name: "Reflow nodes" });
+    const reflow = view.getByRole("button", { name: "Tidy layout" });
     expect(reflow.hasAttribute("disabled")).toBe(false);
   });
 
@@ -1480,7 +1480,7 @@ describe("the focused Group canvas", () => {
       await renderEditor("?group=outreach");
     await waitFor(() => expect(renderedNodeIds()).toContain("welcome"));
     const before = store.get(nodesAtom);
-    fireEvent.click(view.getByRole("button", { name: "Reflow nodes" }));
+    fireEvent.click(view.getByRole("button", { name: "Tidy layout" }));
     expect(store.get(historyAtom)).toHaveLength(1);
     for (const node of before.filter((item) => !item.parentId)) {
       expect(store.get(nodesAtom).find((item) => item.id === node.id)).toBe(

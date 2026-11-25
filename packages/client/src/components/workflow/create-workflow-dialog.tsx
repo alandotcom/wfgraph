@@ -28,7 +28,8 @@ function buildNextWorkflowName(existingWorkflowNames: string[]): string {
   const existingNames = new Set(
     existingWorkflowNames.map((name) => name.toLowerCase())
   );
-  const baseName = "New Workflow";
+  // Named apart from the "New workflow" command that creates it.
+  const baseName = "Untitled workflow";
 
   if (!existingNames.has(baseName.toLowerCase())) {
     return baseName;
@@ -108,7 +109,7 @@ export function CreateWorkflowDialog({
     <Dialog onOpenChange={handleOpenChange} open={open}>
       <DialogContent showCloseButton={!isCreating}>
         <DialogHeader>
-          <DialogTitle>Create Workflow</DialogTitle>
+          <DialogTitle>Create workflow</DialogTitle>
           <DialogDescription>
             Choose a name for the new workflow.
           </DialogDescription>
@@ -153,7 +154,7 @@ export function CreateWorkflowDialog({
             Cancel
           </Button>
           <Button disabled={isCreating} onClick={createWorkflow} type="button">
-            {isCreating ? "Creating..." : "Create Workflow"}
+            {isCreating ? "Creating..." : "Create workflow"}
           </Button>
         </DialogFooter>
       </DialogContent>

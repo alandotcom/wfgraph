@@ -79,7 +79,7 @@ export type ContextMenuState = {
 
 type WorkflowContextMenuProps = {
   canEdit: boolean;
-  /** Whether Add Step, Paste, and Duplicate may insert steps. */
+  /** Whether Add step, Paste, and Duplicate may insert steps. */
   canInsert: boolean;
   menuState: ContextMenuState;
   onClose: () => void;
@@ -167,24 +167,15 @@ export function WorkflowContextMenu({
     onClose();
   }, [canEdit, clicked, isDisabled, onClose, updateNodeData]);
 
+  // Deleting a connection is one undo step, as deleting a step is, so it
+  // happens at once with no confirmation.
   const handleDeleteEdge = useCallback(() => {
     if (canEdit && menuState?.edgeId) {
       const edgeId = menuState.edgeId;
       onClose();
-      openOverlay(ConfirmOverlay, {
-        title: "Delete Connection",
-        message:
-          "Are you sure you want to delete this connection? This action cannot be undone.",
-        confirmLabel: "Delete",
-        confirmVariant: "destructive" as const,
-        onConfirm: () => {
-          if (canEdit) {
-            deleteEdge(edgeId);
-          }
-        },
-      });
+      deleteEdge(edgeId);
     }
-  }, [canEdit, menuState, deleteEdge, onClose, openOverlay]);
+  }, [canEdit, menuState, deleteEdge, onClose]);
 
   // Straight to the node types, carrying the spot the user right-clicked:
   // someone who opened this menu on the graph has already said where the step
@@ -418,7 +409,7 @@ export function WorkflowContextMenu({
           {clickedIsGroup ? (
             <MenuItem
               icon={<Trash2 className="size-4" />}
-              label="Delete Group and Steps"
+              label="Delete Group and steps"
               onClick={handleDeleteGroupWithSteps}
               variant="destructive"
             />
@@ -444,7 +435,7 @@ export function WorkflowContextMenu({
           />
           <MenuItem
             icon={<Link2Off className="size-4" />}
-            label="Delete Connection"
+            label="Delete connection"
             onClick={handleDeleteEdge}
             variant="destructive"
           />
@@ -456,7 +447,7 @@ export function WorkflowContextMenu({
           <MenuItem
             disabled={!canInsert}
             icon={<Plus className="size-4" />}
-            label="Add Step"
+            label="Add step"
             onClick={handleAddStep}
           />
           <MenuItem

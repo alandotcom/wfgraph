@@ -447,7 +447,7 @@ describe("the mobile Draft Group sequence", () => {
     });
     expect(store.get(activeSelectionAtom).nodeIds).toEqual(["case_study"]);
 
-    expect(view.queryByRole("button", { name: "Reflow nodes" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Tidy layout" })).toBeNull();
     expect(store.get(nodesAtom)).toBe(storedNodes);
     expect(store.get(edgesAtom)).toBe(storedEdges);
     expect(store.get(historyAtom)).toEqual([]);

@@ -1,6 +1,7 @@
 import { createStore } from "jotai";
 import { describe, expect, it } from "vitest";
 import {
+  collectAllWorkflowIssues,
   hasBlockingWorkflowIssuesAtom,
   sameIssues,
   summarizeNodeIssues,
@@ -9,6 +10,7 @@ import {
 } from "#src/lib/workflow-issues-store";
 import { nodeIssueLabel } from "#src/components/flow-elements/node-issue-badge";
 import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
+import type { WorkflowNode as PersistedWorkflowNode } from "@wfgraph/shared/graph/types";
 
 function missingField(nodeId: string, fieldKey: string): WorkflowIssue {
   return {
@@ -178,5 +180,34 @@ describe("summarizeNodeIssues", () => {
       "1 issue"
     );
     expect(nodeIssueLabel(undefined)).toBe("");
+  });
+});
+
+describe("collectAllWorkflowIssues", () => {
+  const catalog = { entities: [], events: [], integrations: [], actions: [] };
+  const step = (id: string, label?: string): PersistedWorkflowNode => ({
+    id,
+    type: "action",
+    position: { x: 0, y: 0 },
+    data: { label: label ?? "", type: "action" },
+  });
+
+  it("names a step by its place when another step shares its name, never by its id", () => {
+    const issues = collectAllWorkflowIssues({
+      nodes: [step("send", "Send email"), step("a1"), step("a2")],
+      edges: [
+        { id: "e1", source: "send", target: "a1" },
+        { id: "e2", source: "a1", target: "a2" },
+      ],
+      catalog,
+      integrations: [],
+      providerIssues: [missingField("a2", "message")],
+    });
+
+    const labels = new Map(
+      issues.map((issue) => [issue.nodeId, issue.nodeLabel])
+    );
+    expect(labels.get("a2")).toBe("Action (after Action)");
+    expect([...labels.values()].join(" ")).not.toMatch(/a1|a2/);
   });
 });

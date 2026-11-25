@@ -130,57 +130,60 @@ const NO_WORKFLOWS: WorkflowSummaryPayload[] = [];
 const OPENABLE_ROW_CLASS = "cursor-pointer hover:bg-muted/60 active:bg-muted";
 
 /**
- * Active, Paused or Never published, as a neutral fact marked by a green dot
- * only when the workflow is active. A workflow with no published version runs
- * nothing, so it reads as the editor's badge does rather than as active. Amber
- * belongs to the Published mode label, so a row's two dots never share a color.
+ * The one status a workflow row states, answering whether it reaches anyone
+ * now. A paused workflow starts no run, and a workflow with no published
+ * version has nothing an Event can start, so neither shows a Published mode.
+ * Otherwise the row shows the Published mode, Live or Test.
+ */
+type WorkflowRowState = "paused" | "never_published" | "live" | "test";
+
+function workflowRowState(
+  workflow: Pick<
+    WorkflowSummaryPayload,
+    "isPaused" | "publishedVersionId" | "mode"
+  >
+): WorkflowRowState {
+  if (workflow.isPaused) {
+    return "paused";
+  }
+  if (workflow.publishedVersionId === undefined) {
+    return "never_published";
+  }
+  return workflow.mode;
+}
+
+const WORKFLOW_ROW_STATE_LABELS: Record<WorkflowRowState, string> = {
+  paused: "Paused",
+  never_published: "Never published",
+  live: publishedModeWord("live"),
+  test: publishedModeWord("test"),
+};
+
+/**
+ * A workflow's state as a dot beside a word in foreground text. A Live
+ * workflow reaches real recipients, so its dot is filled green; Test fills
+ * Amber, as the status strip's Published mode does. Paused and Never published
+ * reach no one and keep an outline dot in the muted tone.
  */
 function WorkflowStateLabel({
   workflow,
 }: {
   workflow: WorkflowSummaryPayload;
 }) {
-  const isActive =
-    !workflow.isPaused && workflow.publishedVersionId !== undefined;
-  const label = workflow.isPaused
-    ? "Paused"
-    : isActive
-      ? "Active"
-      : "Never published";
+  const state = workflowRowState(workflow);
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-foreground text-xs">
       <Circle
         aria-hidden
         className={cn(
           "size-2.5 transition-colors duration-200",
-          isActive ? "fill-current text-success" : "text-muted-foreground"
+          state === "live" && "fill-current text-success",
+          state === "test" && "fill-current text-warning",
+          (state === "paused" || state === "never_published") &&
+            "text-muted-foreground"
         )}
       />
-      {label}
-    </span>
-  );
-}
-
-/**
- * Published mode as the status strip shows it: a filled dot and the word in
- * Amber for Test, an outline dot and the muted foreground for Live. Amber sits
- * on the dot and the word rather than behind them, because each light token
- * clears 4.5:1 as text on Paper and falls below it on its own 10% tint.
- */
-function PublishedModeLabel({ mode }: { mode: WorkflowMode }) {
-  const isTestMode = mode === "test";
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-xs transition-colors duration-200",
-        isTestMode ? "text-warning" : "text-muted-foreground"
-      )}
-    >
-      <Circle
-        aria-hidden
-        className={cn("size-2.5", isTestMode && "fill-current")}
-      />
-      {publishedModeWord(mode)}
+      {WORKFLOW_ROW_STATE_LABELS[state]}
     </span>
   );
 }
@@ -366,9 +369,9 @@ export default function WorkflowsPage() {
   // view that a different id would clear.
   const setPublishedMode = useMutation(
     orpcQuery.workflow.update.mutationOptions({
-      // The "Published mode" cell in this table shows the setting being
-      // written, and the table is mounted while the write lands. Refetch the
-      // list rather than only marking it stale.
+      // The State cell in this table shows the setting being written, and
+      // the table is mounted while the write lands. Refetch the list rather
+      // than only marking it stale.
       onSuccess: async (_payload, { mode }) => {
         await refreshWorkflowList(queryClient);
         // `update` can write other fields, so its `mode` is optional. This page
@@ -515,7 +518,7 @@ export default function WorkflowsPage() {
       );
 
       const title =
-        workflowIds.length === 1 ? "Delete Workflow" : "Delete Workflows";
+        workflowIds.length === 1 ? "Delete workflow" : "Delete workflows";
       const description =
         workflowIds.length === 1
           ? `This will permanently delete "${workflowNames[0]}" and all of its runs and events. This cannot be undone.`
@@ -561,8 +564,8 @@ export default function WorkflowsPage() {
 
     // `table-fixed` gives every column but Name a fixed slot, so a long name
     // truncates instead of wrapping and every row keeps one height. Below
-    // `md` the State, Published mode and Updated columns drop out and the
-    // name cell carries State and Published mode on a second line.
+    // `md` the State and Updated columns drop out and the name cell carries
+    // State on a second line.
     return (
       <table className="w-full table-fixed text-left text-sm">
         <thead className="sticky top-0 z-10 bg-card text-muted-foreground text-xs">
@@ -579,11 +582,8 @@ export default function WorkflowsPage() {
               </th>
             ) : null}
             <th className="px-2 font-medium">Name</th>
-            <th className="hidden w-32 px-2 font-medium md:table-cell">
+            <th className="hidden w-36 px-2 font-medium md:table-cell">
               State
-            </th>
-            <th className="hidden w-28 whitespace-nowrap px-2 font-medium md:table-cell">
-              Published mode
             </th>
             <th className="hidden w-16 px-2 font-medium md:table-cell">
               Updated
@@ -600,6 +600,10 @@ export default function WorkflowsPage() {
             const isTestMode = workflow.mode === "test";
             const toggleAction = workflow.isPaused ? "resume" : "pause";
             const toggleActionLabel = workflow.isPaused ? "Resume" : "Pause";
+            // A workflow with no published version starts no run, so there
+            // is nothing for a pause to stop. A paused one can still resume.
+            const offersPauseToggle =
+              workflow.isPaused || workflow.publishedVersionId !== undefined;
 
             return (
               <tr
@@ -659,14 +663,10 @@ export default function WorkflowsPage() {
                   </div>
                   <div className="mt-0.5 flex items-center gap-3 md:hidden">
                     <WorkflowStateLabel workflow={workflow} />
-                    <PublishedModeLabel mode={workflow.mode} />
                   </div>
                 </td>
                 <td className="hidden px-2 md:table-cell">
                   <WorkflowStateLabel workflow={workflow} />
-                </td>
-                <td className="hidden px-2 md:table-cell">
-                  <PublishedModeLabel mode={workflow.mode} />
                 </td>
                 <td className="hidden px-2 text-muted-foreground text-xs tabular-nums md:table-cell">
                   <time
@@ -706,7 +706,7 @@ export default function WorkflowsPage() {
                             : "Set Published mode to Test"}
                         </DropdownMenuItem>
                       ) : null}
-                      {canBulkLifecycle ? (
+                      {canBulkLifecycle && offersPauseToggle ? (
                         <DropdownMenuItem
                           disabled={lifecycleAction !== null}
                           onClick={() => {
@@ -766,7 +766,7 @@ export default function WorkflowsPage() {
               }}
               type="button"
             >
-              New Workflow
+              New workflow
             </Button>
           ) : null}
         </header>

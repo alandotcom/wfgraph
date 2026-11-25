@@ -40,14 +40,14 @@ describe("WorkflowPublicationBadge", () => {
         hasUnpublishedChanges: true,
         publishedVersion: 7,
       })
-    ).toBe("Unpublished changes since version 7");
+    ).toBe("Unpublished changes since v7");
     expect(
       publicationLabel({
         isPublished: true,
         hasUnpublishedChanges: false,
         publishedVersion: 7,
       })
-    ).toBe("Published version 7");
+    ).toBe("Published v7");
   });
 
   it("shows Never published before the first publish", () => {

@@ -14,6 +14,7 @@ import {
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
   hasDraftRunBlockingIssues,
+  workflowNodeLabel,
 } from "#src/graph/workflow-issues";
 import {
   LIFECYCLE_CANCELED_HANDLE,
@@ -1429,5 +1430,23 @@ describe("findUnconfiguredIntegrationNodes", () => {
         integrationLabel: "Slack",
       },
     ]);
+  });
+});
+
+describe("workflowNodeLabel", () => {
+  it("names a step with no label and no action by its kind, never by its id", () => {
+    const node = {
+      id: "01a0c626-13a8-7790-a798-11bc1f8f9994",
+      type: "action",
+      position: { x: 0, y: 0 },
+      data: { label: "", type: "action" as const },
+    };
+
+    expect(workflowNodeLabel({ node })).toBe("Action");
+    expect(
+      workflowNodeLabel({
+        node: { ...node, data: { label: "", type: "lifecycle" } },
+      })
+    ).toBe("Lifecycle");
   });
 });

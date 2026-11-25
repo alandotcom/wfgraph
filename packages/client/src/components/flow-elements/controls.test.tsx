@@ -29,7 +29,7 @@ describe("Controls", () => {
       </ReactFlowProvider>
     );
 
-    fireEvent.click(getByRole("button", { name: "Reflow nodes" }));
+    fireEvent.click(getByRole("button", { name: "Tidy layout" }));
     expect(onReflow).toHaveBeenCalledTimes(1);
   });
 
@@ -40,7 +40,7 @@ describe("Controls", () => {
       </ReactFlowProvider>
     );
 
-    const button = getByRole("button", { name: "Reflow nodes" });
+    const button = getByRole("button", { name: "Tidy layout" });
     expect(button.hasAttribute("disabled")).toBe(true);
   });
 

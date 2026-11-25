@@ -67,6 +67,8 @@ type WorkflowCommandState = {
   readonly workflowMode: WorkflowMode;
   /** The published version's number, absent until the first publish. */
   readonly publishedVersion?: number | undefined;
+  /** Whether the workflow is paused, which refuses every manual run. */
+  readonly isPaused: boolean;
   readonly isExecuting: boolean;
   readonly isPreflighting: boolean;
   readonly isGenerating: boolean;
@@ -145,6 +147,26 @@ export function draftViewReason(
     : "Switch to Draft to run.";
 }
 
+/**
+ * Why both run commands are off while the workflow is paused. A pause makes
+ * the server record every manual run as ignored, the Draft run included.
+ */
+export const PAUSED_RUN_REASON = "Resume the workflow to run.";
+
+/**
+ * Why a run command is off for a reason the person can act on: the view comes
+ * first, because switching to Draft is the step before anything else.
+ */
+export function runDisabledReason(input: {
+  view: WorkflowWorkspaceView;
+  isPaused: boolean;
+}): string | null {
+  return (
+    draftViewReason(input.view, "run") ??
+    (input.isPaused ? PAUSED_RUN_REASON : null)
+  );
+}
+
 /** The publish gate shared by the command controller and toolbar button. */
 export function isWorkflowPublishDisabled({
   editingLocked,
@@ -183,15 +205,20 @@ export type WorkflowRunEligibility = {
   readonly hasNodes: boolean;
   /** The published version's number, absent until the first publish. */
   readonly publishedVersion?: number | undefined;
+  /** Whether the workflow is paused, which refuses every manual run. */
+  readonly isPaused?: boolean | undefined;
 };
 
 /**
- * The conditions both run commands need: a saved workflow, and no run already
- * in flight from this editor. Canvas state is checked elsewhere, because a
- * published version is frozen and the canvas cannot affect it.
+ * The conditions both run commands need: a saved workflow that is not paused,
+ * and no run already in flight from this editor. Canvas state is checked
+ * elsewhere, because a published version is frozen and the canvas cannot
+ * affect it.
  */
 function isRunUnavailable(state: WorkflowRunEligibility): boolean {
-  return state.isExecuting || !state.currentWorkflowId;
+  return (
+    state.isExecuting || !state.currentWorkflowId || state.isPaused === true
+  );
 }
 
 /**
@@ -214,6 +241,18 @@ export function isDraftRunDisabled(state: WorkflowRunEligibility): boolean {
  */
 export function isPublishedRunDisabled(state: WorkflowRunEligibility): boolean {
   return isRunUnavailable(state) || state.publishedVersion === undefined;
+}
+
+/**
+ * The Publish control's label, which names the version a press creates:
+ * "Publish v8" after v7, and "Publish" before the first publish.
+ */
+export function publishCommandLabel(
+  publishedVersion: number | undefined
+): string {
+  return publishedVersion === undefined
+    ? "Publish"
+    : `Publish v${publishedVersion + 1}`;
 }
 
 /** The command policy shared by the menu and command palette. */
@@ -251,8 +290,9 @@ export function workflowCommands({
       group: "workflow",
       label: "Run draft",
       // A draft run always reaches test recipients, so the detail says so in
-      // the words the Published mode menu uses for the same fact.
-      detail: "Test recipients",
+      // the words the Published mode menu uses for the same fact. While the
+      // workflow is paused the detail gives the reason the row is off.
+      detail: state.isPaused ? PAUSED_RUN_REASON : "Test recipients",
       keywords: "Run draft canvas execute test start trigger",
       hint: shortcuts.run,
       // The toolbar's run control offers this already; the palette is the
@@ -277,37 +317,41 @@ export function workflowCommands({
         : "Run published version",
       // Who the run reaches is the one fact the version number leaves out, and
       // the Published mode menu already owns the words for it.
-      detail: hasPublishedVersion
-        ? publishedModeChoice(state.workflowMode).description
-        : NOTHING_PUBLISHED_LABEL,
+      detail: !hasPublishedVersion
+        ? NOTHING_PUBLISHED_LABEL
+        : state.isPaused
+          ? PAUSED_RUN_REASON
+          : publishedModeChoice(state.workflowMode).description,
       keywords: "Run published version live test execute start trigger",
       disabled: !state.canRunPublished || isPublishedRunDisabled(state),
       paletteOnly: true,
       // A live run is the only one that reaches real recipients, so the palette
       // requires an arrow key on this row before Return takes it.
-      consequential: hasPublishedVersion && state.workflowMode === "live",
+      consequential:
+        hasPublishedVersion && !state.isPaused && state.workflowMode === "live",
       execute: callbacks.runPublished,
     },
     {
       id: "show-runs",
       group: "workflow",
-      label: "Go to run history",
-      keywords: "Go to run history runs executions activity",
+      // The toolbar's own words: the view is named Runs there.
+      label: "Switch to Runs",
+      keywords: "Switch to Runs run history executions activity",
       disabled: !state.canViewRuns,
       execute: callbacks.showRuns,
     },
     {
       id: "show-changes",
       group: "workflow",
-      label: "Go to version history",
-      keywords: "Go to version history changes versions published compare",
+      label: "Switch to Changes",
+      keywords: "Switch to Changes version history versions published compare",
       disabled: !state.canViewChanges,
       execute: callbacks.showChanges,
     },
     {
       id: "publish",
       group: "workflow",
-      label: "Publish workflow",
+      label: publishCommandLabel(state.publishedVersion),
       keywords: "Publish workflow version release",
       disabled: !state.canPublish,
       execute: callbacks.publish,

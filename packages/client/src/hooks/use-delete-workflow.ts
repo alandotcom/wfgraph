@@ -29,7 +29,7 @@ export function useDeleteWorkflow() {
   return useMutation(
     orpcQuery.workflow.delete.mutationOptions({
       onSuccess: async (_result, input) => {
-        toast.success("Workflow deleted successfully");
+        toast.success("Workflow deleted");
         forgetWorkflowNavigation(input.workflowId);
         // The runs cascade with the workflow, so the dashboard's run history is
         // wrong too.
@@ -39,7 +39,7 @@ export function useDeleteWorkflow() {
         ]);
         await navigate({ to: "/", replace: true });
       },
-      meta: { errorMessage: "Failed to delete workflow. Please try again." },
+      meta: { errorMessage: "Could not delete the workflow. Try again." },
     })
   );
 }

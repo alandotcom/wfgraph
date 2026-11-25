@@ -11,12 +11,21 @@
  */
 
 import { atom } from "jotai";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import {
+  type ExtensionCatalog,
+  findAction,
+} from "@wfgraph/shared/extensions/catalog";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  readConfigString,
+} from "@wfgraph/shared/graph/node-config";
 import {
   collectWorkflowIssues,
   hasBlockingWorkflowIssues,
+  workflowNodeLabel,
   type WorkflowIssue,
 } from "@wfgraph/shared/graph/workflow-issues";
+import { distinctNodeNames } from "#src/lib/node-place";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
 import type { NodeIssueSummary } from "#src/lib/workflow-graph-types";
 
@@ -57,7 +66,7 @@ export function collectAllWorkflowIssues(input: {
   integrations: ReadonlyArray<{ id: string; type: string }>;
   providerIssues: readonly WorkflowIssue[];
 }): WorkflowIssue[] {
-  return [
+  const issues = [
     ...collectWorkflowIssues({
       nodes: input.nodes,
       edges: input.edges,
@@ -66,6 +75,35 @@ export function collectAllWorkflowIssues(input: {
     }),
     ...input.providerIssues,
   ];
+  if (issues.length === 0) {
+    return issues;
+  }
+  // The issues list heads each row with the step's name, so two steps under
+  // one name, such as two unnamed "Action" steps, are told apart by where
+  // they sit in the graph.
+  const names = distinctNodeNames({
+    nodes: input.nodes,
+    edges: input.edges,
+    nameOf: (node) => {
+      const actionType = readConfigString(
+        node.data.config,
+        ACTION_TYPE_CONFIG_KEY
+      );
+      return workflowNodeLabel({
+        node,
+        actionLabel: actionType
+          ? findAction(input.catalog, actionType)?.label
+          : undefined,
+        actionType,
+      });
+    },
+  });
+  return issues.map((issue) => {
+    const name = names.get(issue.nodeId);
+    return name === undefined || name === issue.nodeLabel
+      ? issue
+      : { ...issue, nodeLabel: name };
+  });
 }
 
 /**

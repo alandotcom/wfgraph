@@ -3,7 +3,8 @@
  *
  * Two states share one height. While the draft is on screen, the strip shows
  * the publication badge, the Published mode control beside the version that
- * mode governs, the save state and the issue count. With a run pinned to the
+ * mode governs, whether the workflow is paused, the save state and the issue
+ * count. With a run pinned to the
  * canvas it shows the run and a way back to the draft. Both render inside the same fixed-height row on
  * purpose: the strip is a `shrink-0` sibling of the canvas box, so any change in
  * its height comes straight out of React Flow's, which measures what it is given
@@ -27,6 +28,7 @@ import {
   ChevronDown,
   Circle,
   Clock3,
+  Pause,
   RefreshCw,
 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
@@ -47,6 +49,7 @@ import {
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
 import { useSetPublishedMode } from "#src/hooks/use-set-published-mode";
+import { useSetWorkflowPaused } from "#src/hooks/use-set-workflow-paused";
 import { WorkflowIssuesChip } from "#src/components/workflow/workflow-issues-chip";
 import { WorkflowPublicationBadge } from "#src/components/workflow/workflow-publication-badge";
 import {
@@ -155,11 +158,24 @@ function StatusItems({ children }: { children: React.ReactNode }) {
 const PUBLISHED_MODES = ["live", "test"] as const;
 
 /**
+ * The Published mode control's face. "Live" or "Test" alone once a version
+ * exists, because the badge beside it already reads "Published v5". Before the
+ * first publish the mode governs nothing that can run, so the face says when
+ * it starts to apply: "Live on publish".
+ */
+export function publishedModeFaceLabel(input: {
+  workflowMode: "live" | "test";
+  publishedVersion: number | undefined;
+}): string {
+  const word = publishedModeWord(input.workflowMode);
+  return input.publishedVersion === undefined ? `${word} on publish` : word;
+}
+
+/**
  * The Published mode control, placed next to the badge that names the version.
  *
- * The label is "Live" or "Test" alone, because the badge beside it already
- * reads "Published version 5". Test uses the warning tone and a filled dot;
- * Live uses an outline, so the mode does not rely on color alone.
+ * Test uses the warning tone and a filled dot; Live uses an outline, so the
+ * mode does not rely on color alone.
  *
  * `useSetPublishedMode` performs the change, on one press in either direction.
  * A viewer who does not own the workflow sees the same control with no menu,
@@ -174,7 +190,7 @@ function PublishedModeControl({
   const canUpdate = can(WfGraphOperations.workflowUpdate.id);
   const setPublishedMode = useSetPublishedMode();
   const isTest = workflowMode === "test";
-  const label = publishedModeWord(workflowMode);
+  const label = publishedModeFaceLabel({ workflowMode, publishedVersion });
   const faceClass = cn(
     "h-6 shrink-0 px-1.5 font-medium",
     isTest && "text-warning hover:text-warning"
@@ -286,6 +302,38 @@ function PublishedModeControl({
   );
 }
 
+/**
+ * "Paused" and the way to resume, shown only while the workflow is paused. A
+ * pause refuses every new run, so the strip states it beside the version and
+ * mode it holds back. Graphite, as DESIGN.md keeps a paused workflow.
+ */
+function PausedStatus({ workflowId }: { workflowId: string | undefined }) {
+  const canResume = can(WfGraphOperations.workflowBulkLifecycle.id);
+  const { setPaused, isPending } = useSetWorkflowPaused(workflowId);
+
+  return (
+    <>
+      <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap font-medium text-foreground">
+        <Pause aria-hidden className="size-3" />
+        Paused
+      </span>
+      {canResume ? (
+        <Button
+          className="h-6 shrink-0"
+          disabled={isPending}
+          onClick={() => setPaused(false)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          Resume
+        </Button>
+      ) : null}
+      <StripDivider />
+    </>
+  );
+}
+
 function DraftStatus({ workflowId }: { workflowId?: string | undefined }) {
   const remoteDraftChange = useAtomValue(remoteDraftChangeAtom);
   // A newer draft is learned of two ways: the draft stream observes it beside
@@ -319,6 +367,9 @@ function DraftStatus({ workflowId }: { workflowId?: string | undefined }) {
               publishedVersion={publication.publishedVersion}
             />
             <StripDivider />
+            {publication.isPaused ? (
+              <PausedStatus workflowId={workflowId} />
+            ) : null}
           </>
         )}
         {/* Not gated on the payload, unlike the badges above: a canvas nobody
@@ -431,9 +482,9 @@ function ChangesStatus() {
           <>
             <StripDivider />
             <span className="shrink-0 whitespace-nowrap">
-              {baseVersion ? `Version ${baseVersion}` : "No published version"}
+              {baseVersion ? `v${baseVersion}` : "No published version"}
               {" → "}
-              proposed version {session.payload.proposedVersion}
+              proposed v{session.payload.proposedVersion}
             </span>
           </>
         ) : null}

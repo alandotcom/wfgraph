@@ -165,7 +165,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
         {invalidGroups.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-medium text-muted-foreground text-sm">
-              Group Problems
+              Group problems
             </h4>
             {invalidGroups.map((group) => (
               <div className="flex items-start gap-3" key={group.nodeId}>
@@ -199,7 +199,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
         {invalidLifecycleRules.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-medium text-muted-foreground text-sm">
-              Lifecycle Problems
+              Lifecycle problems
             </h4>
             {invalidLifecycleRules.map((lifecycle) => (
               <div className="flex items-start gap-3" key={lifecycle.nodeId}>
@@ -234,7 +234,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
         {brokenReferences.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-medium text-muted-foreground text-sm">
-              Broken References
+              Broken references
             </h4>
             {brokenReferences.map((broken) => (
               <div key={broken.nodeId}>
@@ -273,7 +273,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
         {unverifiedProviderFields.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-medium text-muted-foreground text-sm">
-              Fields Not Verified
+              Fields not verified
             </h4>
             <div className="space-y-1 text-muted-foreground text-xs">
               <p>
@@ -317,7 +317,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
         {sharedConditionPaths.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-medium text-muted-foreground text-sm">
-              Fields Offered by Several Steps
+              Fields offered by several steps
             </h4>
             {sharedConditionPaths.map((condition) => (
               <div className="flex items-start gap-3" key={condition.nodeId}>
@@ -354,7 +354,7 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
         {missingRequiredFields.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-medium text-muted-foreground text-sm">
-              Required Fields
+              Required fields
             </h4>
             {missingRequiredFields.map((node) => (
               <div key={node.nodeId}>

@@ -453,9 +453,9 @@ export function EditConnectionOverlay({
 
   const offerToSaveAnyway = (reason: string) => {
     push(ConfirmOverlay, {
-      title: "Connection Test Failed",
+      title: "Connection test failed",
       message: `${reason}\n\nDo you want to save anyway?`,
-      confirmLabel: "Save Anyway",
+      confirmLabel: "Save anyway",
       onConfirm: saveConnection,
     });
   };

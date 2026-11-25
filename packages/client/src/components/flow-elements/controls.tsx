@@ -126,12 +126,12 @@ export const Controls = ({
       </Button>
       {onReflow ? (
         <Button
-          aria-label="Reflow nodes"
+          aria-label="Tidy layout"
           className="size-11 md:size-7"
           disabled={!canReflow}
           onClick={onReflow}
           size="icon"
-          title="Reflow nodes"
+          title="Tidy layout"
           variant="outline"
         >
           <RefreshCcw className="size-4" />

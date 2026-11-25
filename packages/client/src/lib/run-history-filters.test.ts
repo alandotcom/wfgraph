@@ -206,7 +206,7 @@ describe("filterRuns", () => {
     ).toEqual(["exec_1"]);
   });
 
-  it("matches a free-text search for 'draft' against Graph=Draft rows", () => {
+  it("matches a free-text search for 'draft' against Version=Draft rows", () => {
     const withDraft = [
       ...rows,
       run({
@@ -225,7 +225,7 @@ describe("filterRuns", () => {
     ).toEqual(["exec_4"]);
   });
 
-  it("matches a free-text search for a version number against its Graph label", () => {
+  it("matches a free-text search for a version number against its Version label", () => {
     const withVersions = [
       run({ id: "exec_5", versionNumber: 7 }),
       run({ id: "exec_6", versionNumber: 12 }),

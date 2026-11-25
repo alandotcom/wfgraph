@@ -430,7 +430,7 @@ function expectNoTopologyAuthoring(editor: {
   canvasNode: (id: string) => HTMLElement | null;
 }) {
   const topology =
-    /^(Delete|Duplicate|Group steps|Ungroup|Add step|Tidy layout|Reflow nodes|Reset comparison layout)/;
+    /^(Delete|Duplicate|Group steps|Ungroup|Add step|Tidy layout|Reset comparison layout)/;
   expect(editor.view.queryAllByRole("button", { name: topology })).toEqual([]);
   for (const node of editor.view.container.querySelectorAll<HTMLElement>(
     ".react-flow__node"

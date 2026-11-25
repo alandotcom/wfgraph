@@ -271,9 +271,9 @@ export function ConfigureConnectionOverlay({
 
   const offerToSaveAnyway = (reason: string) => {
     push(ConfirmOverlay, {
-      title: "Connection Test Failed",
+      title: "Connection test failed",
       message: `${reason}\n\nDo you want to save anyway?`,
-      confirmLabel: "Save Anyway",
+      confirmLabel: "Save anyway",
       onConfirm: saveConnection,
     });
   };
@@ -281,7 +281,7 @@ export function ConfigureConnectionOverlay({
   const handleSave = async () => {
     const hasConfig = hasProvidedConfigValues(config);
     if (!hasConfig) {
-      toast.error("Please enter credentials");
+      toast.error("Enter the credentials.");
       return;
     }
 
@@ -314,7 +314,7 @@ export function ConfigureConnectionOverlay({
     }
     const hasConfig = hasProvidedConfigValues(config);
     if (!hasConfig) {
-      toast.error("Please enter credentials first");
+      toast.error("Enter the credentials first.");
       return;
     }
 

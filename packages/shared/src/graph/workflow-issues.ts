@@ -336,7 +336,9 @@ function resolveActionFromCatalog(
 }
 
 /**
- * What a node is called in an issue, which is what the badge and the list read.
+ * What a node is called in an issue, which is what the badge and the list read:
+ * its label, else its action's label, else what kind of node it is, as the
+ * canvas card titles it. A node id is never a name a person can match to a card.
  *
  * Exported because the client raises issues the shared collector cannot: a
  * provider-backed field's requirements are answered by the operator's own
@@ -357,7 +359,13 @@ export function workflowNodeLabel(input: {
   if (input.actionType) {
     return input.actionType;
   }
-  return input.node.id;
+  if (input.node.data.type === "lifecycle") {
+    return "Lifecycle";
+  }
+  if (input.node.data.type === "group") {
+    return "Group";
+  }
+  return "Action";
 }
 
 /**

@@ -76,13 +76,22 @@ function renderNodeMenu(
     edges: [],
   }
 ) {
+  return renderMenu(
+    {
+      type: "node",
+      nodeId: typeof node === "string" ? node : node.id,
+      position: { x: 0, y: 0 },
+    },
+    graph
+  );
+}
+
+function renderMenu(
+  menuState: ContextMenuState,
+  graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }
+) {
   const store = createStore();
   store.set(loadWorkflowGraphAtom, graph);
-  const menuState: ContextMenuState = {
-    type: "node",
-    nodeId: typeof node === "string" ? node : node.id,
-    position: { x: 0, y: 0 },
-  };
   const view = render(
     <JotaiProvider store={store}>
       <QueryClientProvider client={new QueryClient()}>
@@ -147,7 +156,7 @@ describe("WorkflowContextMenu", () => {
       groupGraph()
     );
 
-    fireEvent.click(getByRole("button", { name: "Delete Group and Steps" }));
+    fireEvent.click(getByRole("button", { name: "Delete Group and steps" }));
 
     const dialog = await findByRole("dialog");
     expect(store.get(nodesAtom).map((node) => node.id)).toEqual([
@@ -156,10 +165,24 @@ describe("WorkflowContextMenu", () => {
       "b",
     ]);
     fireEvent.click(
-      within(dialog).getByRole("button", { name: "Delete Group and Steps" })
+      within(dialog).getByRole("button", { name: "Delete Group and steps" })
     );
 
     expect(store.get(nodesAtom)).toEqual([]);
+    expect(store.get(edgesAtom)).toEqual([]);
+  });
+
+  // Undo restores a deleted connection, as it restores a deleted step, so
+  // neither asks for confirmation.
+  it("deletes a connection at once, with no confirmation", () => {
+    const { getByRole, queryByRole, store } = renderMenu(
+      { type: "edge", edgeId: "a-b", position: { x: 0, y: 0 } },
+      groupGraph()
+    );
+
+    fireEvent.click(getByRole("button", { name: "Delete connection" }));
+
+    expect(queryByRole("dialog")).toBeNull();
     expect(store.get(edgesAtom)).toEqual([]);
   });
 

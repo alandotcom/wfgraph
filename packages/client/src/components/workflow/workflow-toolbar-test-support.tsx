@@ -127,6 +127,7 @@ export function state(): WorkflowToolbarState {
     userIntegrations: [],
     publication: {
       isPublished: true,
+      isPaused: false,
       hasUnpublishedChanges: true,
       publishedVersionId: "version_7",
       publishedVersion: 7,

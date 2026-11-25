@@ -97,11 +97,12 @@ function workflowPayload(overrides: {
   publishedVersionId?: string | undefined;
   hasUnpublishedChanges: boolean;
   mode: "live" | "test";
+  isPaused?: boolean;
 }) {
   return {
     id: WORKFLOW_ID,
     name: "Workflow",
-    isPaused: false,
+    isPaused: overrides.isPaused ?? false,
     mode: overrides.mode,
     visibility: "private",
     createdAt: "2026-03-01T09:00:00.000Z",
@@ -142,6 +143,7 @@ async function renderStrip(
     canUpdate?: boolean;
     mode?: "live" | "test";
     published?: boolean;
+    paused?: boolean;
   } = {}
 ) {
   const store = createStore();
@@ -165,6 +167,7 @@ async function renderStrip(
       hasUnpublishedChanges: true,
       mode: options.mode ?? "live",
       publishedVersionId: options.published ? "ver_1" : undefined,
+      isPaused: options.paused ?? false,
     })
   );
 
@@ -263,9 +266,7 @@ describe("WorkflowStatusStrip", () => {
     const { view } = await renderStrip({ mode: "test", published: true });
 
     await waitFor(() => {
-      expect(
-        view.getByText("Unpublished changes since version 1")
-      ).toBeTruthy();
+      expect(view.getByText("Unpublished changes since v1")).toBeTruthy();
     });
     expect(view.queryByText("Test mode")).toBeNull();
     expect(view.getByText("Saved")).toBeTruthy();
@@ -316,7 +317,7 @@ describe("WorkflowStatusStrip", () => {
   });
 
   it("keeps execution mode out of the status row", async () => {
-    const { view } = await renderStrip({ mode: "test" });
+    const { view } = await renderStrip({ mode: "test", published: true });
 
     // The status row only exists once `getById` has answered. Waiting for the
     // mode button is what makes the missing label mean anything.
@@ -337,10 +338,31 @@ describe("WorkflowStatusStrip", () => {
     expect(mode.textContent).toContain("Test");
     expect(mode.className).toContain("text-warning");
 
-    const badge = view.getByText("Unpublished changes since version 1");
+    const badge = view.getByText("Unpublished changes since v1");
     expect(
       badge.compareDocumentPosition(mode) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
+  });
+
+  it("says Paused beside the version and mode, with Resume, while the workflow is paused", async () => {
+    const { view } = await renderStrip({ published: true, paused: true });
+
+    const mode = await view.findByRole("button", {
+      name: "Published mode: Live",
+    });
+    const paused = view.getByText("Paused");
+    expect(
+      mode.compareDocumentPosition(paused) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(view.getByRole("button", { name: "Resume" })).toBeTruthy();
+  });
+
+  it("says nothing about pausing while the workflow runs", async () => {
+    const { view } = await renderStrip({ published: true });
+
+    await view.findByRole("button", { name: "Published mode: Live" });
+    expect(view.queryByText("Paused")).toBeNull();
+    expect(view.queryByRole("button", { name: "Resume" })).toBeNull();
   });
 
   it("describes each mode in one clause", async () => {
@@ -368,9 +390,12 @@ describe("WorkflowStatusStrip", () => {
   it("says when the mode takes effect before the first publish", async () => {
     const { view } = await renderStrip();
 
+    // "Never published" beside a bare "Live" read as sending to real people,
+    // so the face itself says the mode waits for the first publish.
     const mode = await view.findByRole("button", {
-      name: "Published mode: Live",
+      name: "Published mode: Live on publish",
     });
+    expect(mode.textContent).toContain("Live on publish");
     fireEvent.keyDown(mode, { key: "ArrowDown" });
     fireEvent.keyUp(mode, { key: "ArrowDown" });
 

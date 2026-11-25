@@ -14,7 +14,7 @@ import { useAtomValue } from "jotai";
 import { Menubar } from "@base-ui/react/menubar";
 import { UserMenu } from "#src/components/workflows/user-menu";
 import {
-  DashboardLink,
+  WorkflowsPageLink,
   CommandPaletteTrigger,
   FindNodeTrigger,
   RunPublishMenuItems,
@@ -253,7 +253,7 @@ export function WorkflowToolbarChrome({
           className="flex min-w-0 flex-1 items-center gap-1 md:min-w-max md:gap-2 md:flex-none md:pr-72 min-[70rem]:min-w-0 min-[70rem]:max-w-[calc(50%-10rem)] min-[70rem]:flex-1 min-[70rem]:overflow-x-auto min-[70rem]:overscroll-contain min-[70rem]:pr-0"
           data-slot="workflow-toolbar-left"
         >
-          <DashboardLink />
+          <WorkflowsPageLink />
           <Separator
             className="data-vertical:h-4 data-vertical:self-center"
             orientation="vertical"

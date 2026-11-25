@@ -149,12 +149,17 @@ describe("WorkflowsPage workflow list", () => {
     resetAuthorizationGrantsForTests();
   });
 
-  function summary(id: string, name: string, publishedVersionId?: string) {
+  function summary(
+    id: string,
+    name: string,
+    publishedVersionId?: string,
+    overrides: { isPaused?: boolean; mode?: "live" | "test" } = {}
+  ) {
     return omitUndefined({
       id,
       name,
-      isPaused: false,
-      mode: "live",
+      isPaused: overrides.isPaused ?? false,
+      mode: overrides.mode ?? "live",
       visibility: "private",
       createdAt: "2026-03-01T10:00:00.000Z",
       updatedAt: "2026-03-01T10:00:00.000Z",
@@ -162,19 +167,53 @@ describe("WorkflowsPage workflow list", () => {
     });
   }
 
-  it("says a workflow that was never published is not active", async () => {
+  it("states one status per workflow, and a mode only once a version exists", async () => {
+    stubDashboardRpc(null, [
+      summary("workflow_1", "Draft only"),
+      summary("workflow_2", "Running", "version_1"),
+      summary("workflow_3", "Rehearsal", "version_2", { mode: "test" }),
+      summary("workflow_4", "On hold", "version_3", { isPaused: true }),
+    ]);
+    const { view } = await renderWorkflowsPage();
+
+    const rowText = async (name: string) =>
+      (await view.findByText(name)).closest("tr")?.textContent ?? "";
+
+    // A Published mode of Live beside "Never published" read as sending.
+    expect(await rowText("Draft only")).toContain("Never published");
+    expect(await rowText("Draft only")).not.toContain("Live");
+    expect(await rowText("Running")).toContain("Live");
+    expect(await rowText("Rehearsal")).toContain("Test");
+    expect(await rowText("On hold")).toContain("Paused");
+    expect(await rowText("On hold")).not.toContain("Live");
+    expect(
+      view.queryByRole("columnheader", { name: "Published mode" })
+    ).toBeNull();
+  });
+
+  it("offers Pause only for a workflow that has a published version", async () => {
     stubDashboardRpc(null, [
       summary("workflow_1", "Draft only"),
       summary("workflow_2", "Running", "version_1"),
     ]);
     const { view } = await renderWorkflowsPage();
 
-    const draftRow = (await view.findByText("Draft only")).closest("tr");
-    const runningRow = view.getByText("Running").closest("tr");
+    const menuItems = async (name: string) => {
+      fireEvent.click(
+        await view.findByRole("button", { name: `Actions for ${name}` })
+      );
+      const items = (await view.findAllByRole("menuitem")).map(
+        (item) => item.textContent
+      );
+      fireEvent.keyDown(document.activeElement ?? document.body, {
+        key: "Escape",
+      });
+      await waitFor(() => expect(view.queryByRole("menu")).toBeNull());
+      return items;
+    };
 
-    expect(draftRow?.textContent).toContain("Never published");
-    expect(draftRow?.textContent).not.toContain("Active");
-    expect(runningRow?.textContent).toContain("Active");
+    expect(await menuItems("Draft only")).not.toContain("Pause");
+    expect(await menuItems("Running")).toContain("Pause");
   });
 });
 

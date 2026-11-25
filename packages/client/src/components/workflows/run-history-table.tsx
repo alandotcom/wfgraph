@@ -27,10 +27,7 @@ import { useListActivityLabel } from "#src/components/workflow/use-list-activity
 import { getRunIdentity } from "#src/components/workflow/workflow-run-summary-row";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import {
-  runGraphLabel,
-  runRecipientsLabel,
-} from "#src/lib/workflow-run-labels";
+import { runGraphRecipientsLabel } from "#src/lib/workflow-run-labels";
 import {
   formatExactTime,
   getCompactRelativeTime,
@@ -116,13 +113,13 @@ const PAGE_SIZE = 50;
 const VIEWPORT_HEIGHT_PX = 512;
 
 /**
- * Six columns from `md` up. Below it a row keeps the workflow, the status and
+ * Five columns from `md` up. Below it a row keeps the workflow, the status and
  * the start time, and the columns in `WIDE_ONLY_COLUMNS` drop out, so the
  * workflow's name keeps its room on a phone.
  */
 const GRID_COLUMNS =
-  "grid-cols-[minmax(0,1fr)_7.5rem_3.5rem] md:grid-cols-[minmax(0,1.6fr)_7.5rem_4.5rem_4.5rem_4.5rem_4.5rem]";
-const WIDE_ONLY_COLUMNS = new Set(["runMode", "graph", "duration"]);
+  "grid-cols-[minmax(0,1fr)_7.5rem_3.5rem] md:grid-cols-[minmax(0,1.6fr)_7.5rem_6rem_4.5rem_4.5rem]";
+const WIDE_ONLY_COLUMNS = new Set(["version", "duration"]);
 
 /** The class that hides a cell or header below `md` when its column is wide-only. */
 function columnVisibilityClass(columnId: string): string | undefined {
@@ -171,8 +168,8 @@ function formatRunDuration(duration: string | null): string {
 }
 
 /**
- * The value the Graph column sorts on. It orders the version numbers the column
- * shows, and ranks a draft run below v1 so snapshots group at one end instead of
+ * The value the Version column sorts on. It orders the version numbers the
+ * column shows, and ranks a draft run below v1 so snapshots group at one end instead of
  * tying with every published run.
  */
 function graphRank(row: RunHistoryTableRow): number {
@@ -226,22 +223,15 @@ function createRunHistoryColumns(
       sortFn: "alphanumeric",
       cell: (info) => <RunHistoryStatus run={info.row.original} />,
     }),
-    columnHelper.accessor("runMode", {
-      header: "Recipients",
-      sortFn: "alphanumeric",
-      cell: (info) => (
-        <span className="text-muted-foreground text-xs">
-          {runRecipientsLabel(info.getValue())}
-        </span>
-      ),
-    }),
+    // One column for the version a run pinned and who it reached, in the Run
+    // control's words: "v7 · Live", or "Draft · Test" for a Draft run.
     columnHelper.accessor(graphRank, {
-      id: "graph",
-      header: "Graph",
+      id: "version",
+      header: "Version",
       sortFn: "basic",
       cell: (info) => (
-        <span className="text-muted-foreground text-xs">
-          {runGraphLabel(info.row.original)}
+        <span className="whitespace-nowrap text-muted-foreground text-xs">
+          {runGraphRecipientsLabel(info.row.original)}
         </span>
       ),
     }),

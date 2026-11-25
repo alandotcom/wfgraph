@@ -127,14 +127,15 @@ describe("RunHistoryTable", () => {
 
     expect(view.getByRole("button", { name: "Workflow" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Status" })).toBeTruthy();
-    expect(view.getByRole("button", { name: "Graph" })).toBeTruthy();
+    expect(view.getByRole("button", { name: "Version" })).toBeTruthy();
     expect(view.getByText("Onboarding")).toBeTruthy();
     expect(view.getByText("Billing")).toBeTruthy();
     expect(view.getByText("Failed")).toBeTruthy();
-    // Billing and the draft-snapshot row are both test-mode runs.
-    expect(view.getAllByText("Test")).toHaveLength(2);
-    // Onboarding and Billing both pin to published version 4.
-    expect(view.getAllByText("v4")).toHaveLength(2);
+    // One Version column names the version and the recipients together, in
+    // the Run control's words.
+    expect(view.getByText("v4 · Live")).toBeTruthy();
+    expect(view.getByText("v4 · Test")).toBeTruthy();
+    expect(view.getByText("Draft · Test")).toBeTruthy();
   });
 
   it("names a scheduled run by the schedule that started it", () => {
@@ -240,7 +241,7 @@ describe("RunHistoryTable", () => {
     );
   });
 
-  it("labels a draft-snapshot run's row as Draft in the Graph column", () => {
+  it("labels a draft-snapshot run's row as Draft in the Version column", () => {
     const view = render(
       <RunHistoryTable
         hasNextPage={false}
@@ -256,11 +257,10 @@ describe("RunHistoryTable", () => {
 
     // Only the draft-snapshot run (exec_3, "Reminder") gets the label; the
     // published-graph test run (exec_2, "Billing") names its version instead.
-    expect(view.getByText("Draft")).toBeTruthy();
-    expect(view.getAllByText("Draft")).toHaveLength(1);
+    expect(view.getAllByText("Draft · Test")).toHaveLength(1);
   });
 
-  it("orders the Graph column by the version number it prints", () => {
+  it("orders the Version column by the version number it prints", () => {
     // v11 sorts above v4 as a number and below it as a string, and the draft
     // snapshot carries no number. These rows show whether the header sorts on
     // the number or on the printed label.
@@ -271,6 +271,7 @@ describe("RunHistoryTable", () => {
         workflowName: "Canvas",
         versionKind: "draft_snapshot",
         versionNumber: null,
+        runMode: "test",
       }),
       run({ id: "exec_c", workflowName: "Four", versionNumber: 4 }),
     ];
@@ -290,13 +291,15 @@ describe("RunHistoryTable", () => {
     const graphCells = () =>
       [...view.container.querySelectorAll("span")]
         .map((cell) => cell.textContent ?? "")
-        .filter((label) => label === "Draft" || label.startsWith("v"));
+        .filter(
+          (label) => label.startsWith("Draft ·") || label.startsWith("v")
+        );
 
     // A numbered column opens on its highest value, as Duration does.
-    fireEvent.click(view.getByRole("button", { name: "Graph" }));
-    expect(graphCells()).toEqual(["v11", "v4", "Draft"]);
-    fireEvent.click(view.getByRole("button", { name: "Graph" }));
-    expect(graphCells()).toEqual(["Draft", "v4", "v11"]);
+    fireEvent.click(view.getByRole("button", { name: "Version" }));
+    expect(graphCells()).toEqual(["v11 · Live", "v4 · Live", "Draft · Test"]);
+    fireEvent.click(view.getByRole("button", { name: "Version" }));
+    expect(graphCells()).toEqual(["Draft · Test", "v4 · Live", "v11 · Live"]);
   });
 
   it("opens a run from the workflow name", () => {

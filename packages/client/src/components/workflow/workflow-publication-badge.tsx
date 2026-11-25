@@ -32,8 +32,8 @@ export function publicationLabel({
     return hasUnpublishedChanges ? "Unpublished changes" : "Published";
   }
   return hasUnpublishedChanges
-    ? `Unpublished changes since version ${publishedVersion}`
-    : `Published version ${publishedVersion}`;
+    ? `Unpublished changes since v${publishedVersion}`
+    : `Published v${publishedVersion}`;
 }
 
 export function WorkflowPublicationBadge(props: WorkflowPublicationBadgeProps) {

@@ -19,6 +19,7 @@ import {
   NodeConfigPanel,
 } from "#src/components/workflow/node-config-panel";
 import {
+  edgesAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
   selectOnlyNodeAtom,
@@ -339,6 +340,38 @@ describe("NodeConfigPanel config scoping", () => {
   });
 });
 
+describe("NodeConfigPanel connection", () => {
+  it("names a connection by its steps and deletes it at once", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const connection: WorkflowEdge = {
+      id: "edge_1",
+      source: "lifecycle_1",
+      target: "lifecycle_2",
+    };
+    const first = lifecycleNode("lifecycle_1");
+    const second = lifecycleNode("lifecycle_2");
+    const { view, store, confirmed } = renderPanel({
+      nodes: [
+        { ...first, data: { ...first.data, label: "Start" } },
+        { ...second, data: { ...second.data, label: "Finish" } },
+      ],
+      edges: [connection],
+    });
+    act(() =>
+      store.set(activeSelectionAtom, { nodeIds: [], edgeIds: ["edge_1"] })
+    );
+
+    expect(await view.findByText("Start")).toBeTruthy();
+    expect(view.getByText("Finish")).toBeTruthy();
+    expect(view.queryByText("edge_1")).toBeNull();
+
+    fireEvent.click(view.getByRole("button", { name: "Delete" }));
+
+    expect(confirmed).toEqual([]);
+    expect(store.get(edgesAtom)).toEqual([]);
+  });
+});
+
 describe("NodeConfigPanel multiple selection", () => {
   it("counts steps and connections together in the selection summary", async () => {
     const connection: WorkflowEdge = {
@@ -398,7 +431,7 @@ describe("NodeConfigPanel multiple selection", () => {
 });
 
 describe("NodeConfigPanel on a Group frame", () => {
-  it("asks for the destructive Delete Group and Steps confirmation", async () => {
+  it("asks for the destructive Delete Group and steps confirmation", async () => {
     installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
     const member = (id: string): WorkflowNode => ({
       id,
@@ -418,13 +451,13 @@ describe("NodeConfigPanel on a Group frame", () => {
     });
 
     fireEvent.click(
-      await view.findByRole("button", { name: "Delete Group and Steps" })
+      await view.findByRole("button", { name: "Delete Group and steps" })
     );
 
     expect(confirmed).toMatchObject([
       {
-        title: "Delete Group and Steps",
-        confirmLabel: "Delete Group and Steps",
+        title: "Delete Group and steps",
+        confirmLabel: "Delete Group and steps",
         confirmVariant: "destructive",
       },
     ]);

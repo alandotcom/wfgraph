@@ -1095,11 +1095,11 @@ describe("Canvas Reveal over a React Flow canvas", () => {
     const { view, select, escape, level } = await renderReveal({}, flow);
     await select("send");
     fireEvent.click(view.getByRole("button", { name: "Open canvas menu" }));
-    expect(view.getByRole("button", { name: /Add Step/ })).toBeTruthy();
+    expect(view.getByRole("button", { name: /Add step/ })).toBeTruthy();
 
     await escape(document.body);
 
-    expect(view.queryByRole("button", { name: /Add Step/ })).toBeNull();
+    expect(view.queryByRole("button", { name: /Add step/ })).toBeNull();
     expect(level()).toBe("browse");
   });
 });

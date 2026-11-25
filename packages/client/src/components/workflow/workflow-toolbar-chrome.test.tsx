@@ -95,6 +95,7 @@ describe("ToolbarActions publish gating", () => {
         hasUnsavedChanges: false,
         publication: {
           isPublished: true,
+          isPaused: false,
           hasUnpublishedChanges: false,
           publishedVersionId: "version_1",
           publishedVersion: 1,
@@ -114,7 +115,11 @@ describe("ToolbarActions publish gating", () => {
     const { findByRole } = renderChrome(ToolbarActions, {
       state: {
         hasUnsavedChanges: false,
-        publication: { isPublished: false, hasUnpublishedChanges: false },
+        publication: {
+          isPublished: false,
+          isPaused: false,
+          hasUnpublishedChanges: false,
+        },
       },
     });
 
@@ -129,6 +134,7 @@ describe("ToolbarActions publish gating", () => {
         hasUnsavedChanges: true,
         publication: {
           isPublished: true,
+          isPaused: false,
           hasUnpublishedChanges: false,
           publishedVersionId: "version_1",
           publishedVersion: 1,
@@ -279,6 +285,7 @@ describe("WorkflowToolbarChrome", () => {
         state: {
           publication: {
             isPublished: true,
+            isPaused: false,
             hasUnpublishedChanges: false,
             publishedVersionId: "version_1",
             publishedVersion: 1,
@@ -313,7 +320,7 @@ describe("WorkflowToolbarChrome", () => {
   it("puts navigation, Actions and Settings on the left and the views and Publish on the right", async () => {
     const { findByRole } = renderChrome(WorkflowToolbarChrome);
 
-    const dashboard = await findByRole("link", { name: "Dashboard" });
+    const dashboard = await findByRole("link", { name: "Workflows" });
     const workflow = await findByRole("menuitem", { name: "Workflow" });
     const actions = await findByRole("menuitem", { name: "Actions" });
     const settings = await findByRole("menuitem", { name: "Settings" });
@@ -363,6 +370,7 @@ describe("WorkflowToolbarChrome", () => {
         workflowMode: "test",
         publication: {
           isPublished: true,
+          isPaused: false,
           hasUnpublishedChanges: false,
           publishedVersionId: "version_7",
           publishedVersion: 7,
@@ -384,6 +392,7 @@ describe("WorkflowToolbarChrome", () => {
         nodes: [],
         publication: {
           isPublished: true,
+          isPaused: false,
           hasUnpublishedChanges: true,
           publishedVersionId: "version_7",
           publishedVersion: 7,
@@ -504,6 +513,7 @@ describe("WorkflowToolbarChrome", () => {
             workflowMode: "test",
             publication: {
               isPublished: true,
+              isPaused: false,
               hasUnpublishedChanges: false,
               publishedVersionId: "version_7",
               publishedVersion: 7,
@@ -553,6 +563,7 @@ describe("WorkflowToolbarChrome", () => {
           nodes: [],
           publication: {
             isPublished: true,
+            isPaused: false,
             hasUnpublishedChanges: true,
             publishedVersionId: "version_7",
             publishedVersion: 7,
@@ -703,6 +714,7 @@ describe("WorkflowToolbarChrome operation grants", () => {
         canPublish: false,
         publication: {
           isPublished: true,
+          isPaused: false,
           hasUnpublishedChanges: false,
           publishedVersionId: "version_1",
           publishedVersion: 1,

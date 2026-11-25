@@ -156,6 +156,7 @@ describe("the command palette", () => {
       state: {
         publication: {
           isPublished: true,
+          isPaused: false,
           hasUnpublishedChanges: true,
           publishedVersionId: "version_1",
           publishedVersion: 1,
@@ -169,14 +170,12 @@ describe("the command palette", () => {
       rendered.getByRole("option", { name: /^Save workflow/ })
     ).toBeTruthy();
     expect(
-      rendered.getByRole("option", { name: "Go to run history" })
+      rendered.getByRole("option", { name: "Switch to Runs" })
     ).toBeTruthy();
     expect(
-      rendered.getByRole("option", { name: "Go to version history" })
+      rendered.getByRole("option", { name: "Switch to Changes" })
     ).toBeTruthy();
-    expect(
-      rendered.getByRole("option", { name: "Publish workflow" })
-    ).toBeTruthy();
+    expect(rendered.getByRole("option", { name: "Publish v2" })).toBeTruthy();
     for (const label of [
       /^Fit view/,
       /^Copy selection/,
@@ -191,13 +190,11 @@ describe("the command palette", () => {
     expect(rendered.actions.handleSave).toHaveBeenCalledOnce();
 
     pressCommandK();
-    fireEvent.click(rendered.getByRole("option", { name: "Publish workflow" }));
+    fireEvent.click(rendered.getByRole("option", { name: "Publish v2" }));
     expect(rendered.actions.handlePublish).toHaveBeenCalledOnce();
 
     pressCommandK();
-    fireEvent.click(
-      rendered.getByRole("option", { name: "Go to run history" })
-    );
+    fireEvent.click(rendered.getByRole("option", { name: "Switch to Runs" }));
     // The command names Runs in the route, which `WorkspaceRouteSync` applies.
     await waitFor(() =>
       expect(rendered.router.state.location.search).toEqual({ view: "runs" })
@@ -237,6 +234,7 @@ describe("the command palette", () => {
       state: {
         publication: {
           isPublished: true,
+          isPaused: false,
           hasUnpublishedChanges: true,
           publishedVersionId: "version_1",
           publishedVersion: 1,
@@ -248,7 +246,7 @@ describe("the command palette", () => {
 
     fireEvent.change(input, { target: { value: "publish" } });
 
-    const publish = rendered.getByRole("option", { name: "Publish workflow" });
+    const publish = rendered.getByRole("option", { name: "Publish v2" });
     expect(publish.hasAttribute("data-highlighted")).toBe(true);
     expect(rendered.getAllByRole("option")[0]).toBe(publish);
   });
@@ -434,7 +432,7 @@ describe("the command palette", () => {
 
     fireEvent.change(input, { target: { value: "notify" } });
     const result = rendered.getByRole("option", {
-      name: /Notify customer — In Customer updates · notify_customer/,
+      name: "Notify customer — In Customer updates",
     });
 
     fireEvent.click(result);
@@ -770,6 +768,7 @@ describe("the command palette", () => {
         workflowMode: "live",
         publication: {
           isPublished: true,
+          isPaused: false,
           hasUnpublishedChanges: true,
           publishedVersionId: "version_5",
           publishedVersion: 5,

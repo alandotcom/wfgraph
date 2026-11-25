@@ -211,10 +211,10 @@ export function useWorkflowActions(
       return;
     }
     openOverlay(ConfirmOverlay, {
-      title: "Clear Workflow",
+      title: "Clear workflow",
       message:
         "Remove every step and connection? The Lifecycle Node is kept, and this saves right away.",
-      confirmLabel: "Clear Workflow",
+      confirmLabel: "Clear workflow",
       confirmVariant: "destructive" as const,
       destructive: true,
       onConfirm: () => {
@@ -228,9 +228,9 @@ export function useWorkflowActions(
       return;
     }
     openOverlay(ConfirmOverlay, {
-      title: "Delete Workflow",
+      title: "Delete workflow",
       message: `Are you sure you want to delete "${workflowName}"? This will permanently delete the workflow. This cannot be undone.`,
-      confirmLabel: "Delete Workflow",
+      confirmLabel: "Delete workflow",
       confirmVariant: "destructive" as const,
       destructive: true,
       onConfirm: () => {
@@ -251,7 +251,7 @@ export function useWorkflowActions(
   const duplicateWorkflow = useMutation(
     orpcQuery.workflow.duplicate.mutationOptions({
       onSuccess: async (payload) => {
-        toast.success("Workflow duplicated successfully");
+        toast.success("Workflow duplicated");
         await loadWorkflows();
         await navigate({
           to: "/workflows/$workflowId",
@@ -440,7 +440,7 @@ export function useWorkflowActions(
           // The version exists whether or not the review that asked for it is
           // still open, and any route load ends every review. Only closing
           // the review is held to its epoch.
-          toast.success(`Published version ${payload.publishedVersion}`);
+          toast.success(`Published v${payload.publishedVersion}`);
           // A warning never stops a publish, so each one follows the success.
           for (const warning of payload.warnings) {
             const message = publishWarningMessage(warning);

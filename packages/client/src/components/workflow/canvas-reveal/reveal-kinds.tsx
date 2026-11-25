@@ -262,7 +262,11 @@ function stepHeaderModel(
       parentGroupLabel,
       title,
     ]),
-    status: issueStatus(issues),
+    // A disabled step is not ready for anything: a run stops on reaching it.
+    status:
+      node?.data.enabled === false
+        ? { text: "Disabled", tone: "muted" }
+        : issueStatus(issues),
     showsBack: true,
   };
 }

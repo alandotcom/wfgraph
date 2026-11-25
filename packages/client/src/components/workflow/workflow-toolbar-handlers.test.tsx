@@ -414,7 +414,11 @@ describe("useWorkflowActions Run graph selection", () => {
 
     const neverPublished = {
       ...state(),
-      publication: { isPublished: false, hasUnpublishedChanges: false },
+      publication: {
+        isPublished: false,
+        isPaused: false,
+        hasUnpublishedChanges: false,
+      },
     };
     const view = renderProbe({
       probe: <RunGraphProbe workflowState={neverPublished} />,
@@ -440,6 +444,7 @@ describe("useWorkflowActions Run graph selection", () => {
       hasUnsavedChanges: false,
       publication: {
         isPublished: true,
+        isPaused: false,
         hasUnpublishedChanges: false,
         publishedVersionId: "version_7",
         publishedVersion: 7,
@@ -577,7 +582,11 @@ describe("useWorkflowActions Run graph selection", () => {
 
     const neverPublished = {
       ...state(),
-      publication: { isPublished: false, hasUnpublishedChanges: false },
+      publication: {
+        isPublished: false,
+        isPaused: false,
+        hasUnpublishedChanges: false,
+      },
     };
     const view = renderProbe({
       probe: <RunGraphProbe workflowState={neverPublished} />,
@@ -1311,6 +1320,7 @@ describe("useWorkflowActions publication preflight", () => {
     const firstState = state();
     firstState.publication = {
       isPublished: false,
+      isPaused: false,
       hasUnpublishedChanges: false,
     };
     const view = renderProbe({
@@ -1538,7 +1548,7 @@ describe("useWorkflowActions publication preflight", () => {
     });
 
     await waitFor(() =>
-      expect(successToast).toHaveBeenCalledWith("Published version 8")
+      expect(successToast).toHaveBeenCalledWith("Published v8")
     );
     act(() => store.set(currentWorkflowIdAtom, workflowId));
     expect(store.get(currentWorkflowDraftRevisionAtom)).toBe(3);

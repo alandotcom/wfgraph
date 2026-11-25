@@ -80,6 +80,7 @@ export function useWorkflowCommands({
       currentWorkflowId: state.currentWorkflowId,
       workflowMode: state.workflowMode,
       publishedVersion: state.publication?.publishedVersion,
+      isPaused: state.publication?.isPaused === true,
       isExecuting: state.isExecuting,
       isPreflighting: actions.isPreflighting,
       isGenerating: state.isGenerating,

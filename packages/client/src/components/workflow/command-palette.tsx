@@ -16,6 +16,7 @@ import { Autocomplete } from "@base-ui/react/autocomplete";
 import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type { BaseUIEvent } from "@base-ui/react/types";
 import { compact, partition, uniq } from "es-toolkit/array";
+import { upperFirst } from "es-toolkit/string";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { ChevronLeft, Search } from "lucide-react";
 import {
@@ -66,7 +67,9 @@ import {
 import {
   canvasEditingLockedAtom,
   displayNodesAtom,
+  presentedGraphAtom,
 } from "#src/lib/workflow-graph-store";
+import { nodePlaces } from "#src/lib/node-place";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
@@ -209,6 +212,8 @@ function keepFocusOnInput(event: ReactMouseEvent) {
 
 /** One identity for the page that has none, so the memo below can return it. */
 const NO_GROUPS: readonly PaletteGroup[] = [];
+/** The edge list while no graph is presented, one array so the memo holds. */
+const NO_EDGES: readonly { source: string; target: string }[] = [];
 
 /** The toast id, so holding the chord down replaces the notice rather than stacking it. */
 const REFUSAL_TOAST_ID = "command-palette-refused";
@@ -299,6 +304,9 @@ function CommandPaletteDialog({
   const catalog = useExtensionCatalog();
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const displayNodes = useAtomValue(displayNodesAtom);
+  // The edges of the graph on the canvas. A drag replaces nodes and keeps this
+  // array, so it does not by itself rebuild the search rows.
+  const presentedEdges = useAtomValue(presentedGraphAtom)?.edges ?? NO_EDGES;
   const focusNode = useFocusWorkflowNode();
   const addStep = useAddStep();
   const topologyAuthoring = useTopologyAuthoring();
@@ -399,6 +407,13 @@ function CommandPaletteDialog({
         workflowNodeAriaLabel(node.data, catalog),
       ])
     );
+    // What tells two steps with one name apart: their Group and the step
+    // before them. The id stays searchable and never shows.
+    const places = nodePlaces({
+      nodes: displayNodes,
+      edges: presentedEdges,
+      nameOf: (node) => labels.get(node.id) ?? "Unknown step",
+    });
     return displayNodes
       .filter((node) => node.type !== "add" && node.hidden !== true)
       .map((node) => {
@@ -406,6 +421,7 @@ function CommandPaletteDialog({
         const groupLabel = node.parentId
           ? labels.get(node.parentId)
           : undefined;
+        const place = places.get(node.id);
         const configuredActionId =
           typeof node.data.config?.actionType === "string" &&
           node.data.config.actionType.trim()
@@ -417,7 +433,7 @@ function CommandPaletteDialog({
         return {
           id: `node:${node.id}`,
           label,
-          detail: groupLabel ? `In ${groupLabel} · ${node.id}` : node.id,
+          detail: place ? upperFirst(place) : undefined,
           keywords: uniq(
             compact([
               label,
@@ -443,6 +459,7 @@ function CommandPaletteDialog({
   }, [
     catalog,
     displayNodes,
+    presentedEdges,
     focusNode,
     focusRevealTitle,
     palette.workflowId,

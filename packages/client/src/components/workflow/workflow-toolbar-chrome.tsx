@@ -1,5 +1,5 @@
 /**
- * The menu bar's controls: the dashboard link, the workflow menu, the Actions
+ * The menu bar's controls: the Workflows page link, the workflow menu, the Actions
  * menu, the palette's trigger and Publish. Behaviour hooks live in
  * `workflow-toolbar-handlers`.
  *
@@ -17,6 +17,7 @@ import {
   Copy,
   Eraser,
   Loader2,
+  Pause,
   Pencil,
   Play,
   Plus,
@@ -63,6 +64,9 @@ import {
 } from "#src/lib/workflow-ui-store";
 import { WorkflowIcon } from "#src/components/ui/workflow-icon";
 import { CommandPalette } from "#src/components/workflow/command-palette";
+import { useSetWorkflowPaused } from "#src/hooks/use-set-workflow-paused";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { PublishReviewDialog } from "#src/components/workflow/publish-review-dialog";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
@@ -78,6 +82,8 @@ import {
   isDraftRunDisabled,
   isPublishedRunDisabled,
   isWorkflowPublishDisabled,
+  publishCommandLabel,
+  runDisabledReason,
   type WorkflowCommand,
 } from "#src/lib/workflow-commands";
 import {
@@ -113,20 +119,19 @@ export async function copyWorkflowId(workflowId: string) {
 /** The height every control in the bar shares: 28px inside a 44px row. */
 const BAR_CONTROL_SIZE = "default" as const;
 
-/** The way out of the editor, kept out of the workflow menu on purpose: it used
- *  to be the first item inside that dropdown, which is a place nobody looks for
- *  navigation. */
-export function DashboardLink() {
+/** The way out of the editor to the Workflows page. It sits outside the
+ *  workflow menu, because a dropdown is a place nobody looks for navigation. */
+export function WorkflowsPageLink() {
   return (
     // A router link wearing the button's styles rather than a `Button` handed a
     // link to render: Base UI's button either logs that its element is not a
     // <button>, or takes `nativeButton={false}` and announces this link as a
     // button. It stays a link, which is what makes middle-click and the context
-    // menu open the dashboard in a tab.
+    // menu open the Workflows page in a tab.
     <Link
-      aria-label="Dashboard"
+      aria-label="Workflows"
       className={buttonVariants({ size: "icon", variant: "secondary" })}
-      title="Dashboard"
+      title="Workflows"
       to="/"
     >
       <WorkflowIcon className="size-3.5" />
@@ -281,6 +286,7 @@ function runEligibility(
     isGenerating: state.isGenerating,
     hasNodes: state.nodes.some((node) => node.type !== "add"),
     publishedVersion: state.publication?.publishedVersion,
+    isPaused: state.publication?.isPaused === true,
     canRunDraft: state.canExecute && state.canUpdate && !editingLocked,
     canRunPublished:
       state.canExecute && state.canReadVersionGraph && !editingLocked,
@@ -318,7 +324,7 @@ function runCommands(
   view: WorkflowWorkspaceView
 ): readonly [RunCommand, ...RunCommand[]] {
   const eligibility = runEligibility(state, actions, editingLocked);
-  const reason = draftViewReason(view, "run");
+  const reason = runDisabledReason({ view, isPaused: eligibility.isPaused });
 
   return [
     {
@@ -391,8 +397,6 @@ function usePublishGate(
 ) {
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const view = useAtomValue(workflowWorkspaceViewAtom);
-  const publishedVersion = state.publication?.publishedVersion;
-  const proposedVersion = publishedVersion ? publishedVersion + 1 : undefined;
 
   return {
     disabled:
@@ -412,9 +416,7 @@ function usePublishGate(
     // exactly which version a press creates.
     label: actions.isPublishing
       ? "Publishing"
-      : proposedVersion
-        ? `Publish v${proposedVersion}`
-        : "Publish",
+      : publishCommandLabel(state.publication?.publishedVersion),
   };
 }
 
@@ -712,10 +714,12 @@ export function ToolbarPublishControls({
 
 /**
  * The workflow's own menu: what can be done to this workflow, which workflow is
- * open, and its id.
+ * open, and a way to copy its id.
  *
  * Rename, Clear and Delete are here because the properties panel that used to
- * hold them shows an empty state whenever nothing is selected.
+ * hold them shows an empty state whenever nothing is selected. Pause and
+ * Resume are here because a pause changes whether the workflow starts runs,
+ * and the status strip says "Paused" while it is in effect.
  */
 export function WorkflowMenuComponent({
   workflowId,
@@ -742,6 +746,14 @@ export function WorkflowMenuComponent({
   const canDuplicate = Boolean(workflowId) && state.canDuplicate;
   const canDelete = Boolean(workflowId) && state.canDelete;
   const currentWorkflowId = state.currentWorkflowId;
+  const isPaused = state.publication?.isPaused === true;
+  // A workflow with no published version starts no run, so there is nothing
+  // for a pause to stop. A paused one can always resume.
+  const canTogglePause =
+    Boolean(workflowId) &&
+    can(WfGraphOperations.workflowBulkLifecycle.id) &&
+    (isPaused || state.publication?.isPublished === true);
+  const pause = useSetWorkflowPaused(workflowId);
   // The names the server would refuse, which is every workflow's but this one's.
   const otherWorkflowNames = state.allWorkflows
     .filter((workflow) => workflow.id !== currentWorkflowId)
@@ -770,7 +782,7 @@ export function WorkflowMenuComponent({
           <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
-          {canRename || canDuplicate ? (
+          {canRename || canDuplicate || canTogglePause ? (
             <>
               {canRename ? (
                 <DropdownMenuItem
@@ -794,6 +806,15 @@ export function WorkflowMenuComponent({
                     <Copy />
                   )}
                   Duplicate workflow
+                </DropdownMenuItem>
+              ) : null}
+              {canTogglePause ? (
+                <DropdownMenuItem
+                  disabled={pause.isPending}
+                  onClick={() => pause.setPaused(!isPaused)}
+                >
+                  {isPaused ? <Play /> : <Pause />}
+                  {isPaused ? "Resume workflow" : "Pause workflow"}
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuSeparator />
@@ -878,22 +899,15 @@ export function WorkflowMenuComponent({
           {currentWorkflowId && (
             <>
               <DropdownMenuSeparator />
-              {/* The id is what a support conversation asks for, and it is the
-                  last thing the panel held that had nowhere else to go. It is a
-                  menu item that copies rather than a line of text: `role="menu"`
-                  holds items, groups and separators, and a screen reader skips
-                  anything else in there entirely. */}
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Workflow ID</DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => void copyWorkflowId(currentWorkflowId)}
-                >
-                  <Copy />
-                  <span className="truncate font-mono">
-                    {currentWorkflowId}
-                  </span>
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
+              {/* The id is what a support conversation asks for. The row copies
+                  it without printing it, the way the workflows page's row menu
+                  does, so a 36-character id stays out of the default view. */}
+              <DropdownMenuItem
+                onClick={() => void copyWorkflowId(currentWorkflowId)}
+              >
+                <Copy />
+                Copy workflow ID
+              </DropdownMenuItem>
             </>
           )}
         </DropdownMenuContent>

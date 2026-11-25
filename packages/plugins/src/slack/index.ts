@@ -166,7 +166,7 @@ export const slack = (options?: SlackOptions) => {
           },
           {
             key: "testBehavior",
-            label: "Test Mode Behavior",
+            label: "In test runs",
             type: "select",
             defaultValue: "log_only",
             options: [
@@ -255,7 +255,7 @@ export const slack = (options?: SlackOptions) => {
           },
           {
             key: "testBehavior",
-            label: "Test Mode Behavior",
+            label: "In test runs",
             type: "select",
             defaultValue: "log_only",
             options: [

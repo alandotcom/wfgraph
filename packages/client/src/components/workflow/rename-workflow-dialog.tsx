@@ -88,7 +88,7 @@ export function RenameWorkflowDialog({
     <Dialog onOpenChange={handleOpenChange} open={open}>
       <DialogContent showCloseButton={!isRenaming}>
         <DialogHeader>
-          <DialogTitle>Rename Workflow</DialogTitle>
+          <DialogTitle>Rename workflow</DialogTitle>
           <DialogDescription>
             The name identifies this workflow everywhere it is listed.
           </DialogDescription>
