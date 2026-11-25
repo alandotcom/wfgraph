@@ -97,3 +97,23 @@ export function crossedRegionHeaders(input: {
       : [];
   });
 }
+
+/**
+ * Where a downward connection makes its horizontal run when it crosses a
+ * region's header band on the way: halfway between its source and the top of
+ * the highest band it crosses, so the run stays visible above the header and
+ * only the vertical drop passes under it. Undefined when the connection
+ * crosses no band below its source, which leaves the run at its midpoint.
+ */
+export function bendAboveHeaders(input: {
+  sourceY: number;
+  targetY: number;
+  bands: readonly FlowRect[];
+}): number | undefined {
+  const tops = input.bands
+    .map((band) => band.y)
+    .filter((top) => top > input.sourceY && top < input.targetY);
+  return tops.length === 0
+    ? undefined
+    : (input.sourceY + Math.min(...tops)) / 2;
+}

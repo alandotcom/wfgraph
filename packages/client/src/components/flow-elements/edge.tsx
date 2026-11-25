@@ -10,6 +10,7 @@ import { cn } from "@wfgraph/shared/utils";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
 import { useCompactCard } from "#src/components/flow-elements/node";
 import {
+  bendAboveHeaders,
   crossedRegionHeaders,
   type FlowRect,
   getEdgeParams,
@@ -172,17 +173,9 @@ const Animated = memo(function Animated({
     targetHandleId
   );
 
-  const pathInput = {
-    sourceX: sx,
-    sourceY: sy,
-    sourcePosition: sourcePos,
-    targetX: tx,
-    targetY: ty,
-    targetPosition: targetPos,
-  };
-  const [edgePath, labelX, labelY] = getWorkflowEdgePath(pathInput);
   // A connection into or out of a Group region passes under the region's
-  // header, so the Group's name and marks are never struck through.
+  // header, so the Group's name and marks are never struck through, and makes
+  // its horizontal run above the header rather than under it.
   const headerBands = crossedRegionHeaders({
     sourceRegionId: sourceNode.parentId,
     targetRegionId: targetNode.parentId,
@@ -193,6 +186,16 @@ const Animated = memo(function Animated({
           ? flowBox(targetRegion)
           : undefined,
   });
+  const pathInput = {
+    sourceX: sx,
+    sourceY: sy,
+    sourcePosition: sourcePos,
+    targetX: tx,
+    targetY: ty,
+    targetPosition: targetPos,
+    centerY: bendAboveHeaders({ sourceY: sy, targetY: ty, bands: headerBands }),
+  };
+  const [edgePath, labelX, labelY] = getWorkflowEdgePath(pathInput);
   const maskId = headerBands.length > 0 ? `edge-header-mask-${id}` : null;
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
   // `canvasEdgesAtom` sets `inactive` on every edge landing where the run

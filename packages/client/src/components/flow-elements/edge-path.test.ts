@@ -5,6 +5,7 @@ import {
   GROUP_REGION_INSET,
 } from "@wfgraph/shared/graph/workflow-layout-geometry";
 import {
+  bendAboveHeaders,
   crossedRegionHeaders,
   getEdgeParams,
   getWorkflowEdgePath,
@@ -226,5 +227,24 @@ describe("crossedRegionHeaders", () => {
         regionBox,
       })
     ).toEqual([]);
+  });
+});
+
+describe("bendAboveHeaders", () => {
+  const band = { x: 0, y: 200, width: 400, height: 56 };
+
+  it("bends a downward connection halfway between its source and the band it crosses", () => {
+    expect(bendAboveHeaders({ sourceY: 100, targetY: 280, bands: [band] })).toBe(
+      150
+    );
+  });
+
+  it("leaves a connection that crosses no band below its source at its midpoint", () => {
+    expect(bendAboveHeaders({ sourceY: 100, targetY: 280, bands: [] })).toBe(
+      undefined
+    );
+    expect(
+      bendAboveHeaders({ sourceY: 300, targetY: 500, bands: [band] })
+    ).toBe(undefined);
   });
 });
