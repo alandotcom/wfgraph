@@ -17,15 +17,18 @@ export type {
   WfGraphDraftField,
   WfGraphDraftNode,
   WfGraphDraftReferenceSource,
+  WfGraphDraftRow,
   WfGraphDraftSegment,
 } from "#src/backend/services/workflows/draft-node";
 
 export type WfGraphWorkflows = {
   /**
-   * One node of a workflow's saved draft, with each top-level config string
-   * read as text and references. Answers null when the workflow or the node
-   * does not exist. Reads what the last save stored, so an edit the editor
-   * has not saved yet is missing.
+   * One node of a workflow's saved draft. For a node running a host action,
+   * `fields` holds each declared input the node stores, read the way the
+   * engine reads it, with templates as text and references; any other node
+   * answers no fields. Answers null when the workflow or the node does not
+   * exist. Reads what the last save stored, so an edit the editor has not
+   * saved yet is missing.
    *
    * Applies no `auth`, and the editor shows an Action Link to every reader,
    * viewers included. A host calls it only after authorizing the request it

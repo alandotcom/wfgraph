@@ -133,7 +133,9 @@ except for a node whose id is `.` or `..`, which gets no link.
 The page reads the node with `app.workflows.readDraftNode({ workflowId, nodeId })`
 (also on `createWfGraphRunner`, not on `wfWorker`). It answers null for a missing
 workflow or node, else the label, `actionId`, the draft `revision`, and `fields`:
-each config string as text and reference segments, other values as they are. It
+for a host action node, each declared input read as the engine reads it, a
+`template` of text and reference segments, `rows` for a `key-value` field, or a
+stored `value`; every other node answers no fields. It
 applies no `auth`, so the route authorizes the reader first. The editor starts a
 save when the link is clicked and does not wait for it, so the page reads again
 when its tab is shown. Copy the route from `docs/embedding.md` ("Action links and

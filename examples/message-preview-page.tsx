@@ -1,7 +1,11 @@
 /** @jsxImportSource hono/jsx */
 /* oxlint-disable react/react-in-jsx-scope, react/jsx-key -- this file uses Hono's JSX runtime, which renders once on the server and reads no keys. */
 
-import type { WfGraphDraftField, WfGraphDraftNode } from "@wfgraph/core";
+import type {
+  WfGraphDraftField,
+  WfGraphDraftNode,
+  WfGraphDraftSegment,
+} from "@wfgraph/core";
 
 /**
  * Reloads the page whenever its tab is shown again. The editor starts a save
@@ -21,23 +25,46 @@ const previewCss = String.raw`
 `;
 
 /**
- * One config value as text. A reference shows as a bracketed placeholder,
+ * Template segments as text. A reference shows as a bracketed placeholder,
  * such as [Patient.status], where a real preview would put the value this
  * app holds for it.
  */
-function FieldValue({ field }: { field: WfGraphDraftField }) {
-  if (field.kind === "value") {
-    return <p class="value">{JSON.stringify(field.value)}</p>;
-  }
+function Segments({ segments }: { segments: readonly WfGraphDraftSegment[] }) {
   return (
-    <p class="value">
-      {field.segments.map((segment) =>
+    <>
+      {segments.map((segment) =>
         segment.kind === "text" ? (
           segment.text
         ) : (
           <span class="reference">[{segment.display}]</span>
         )
       )}
+    </>
+  );
+}
+
+/** One input as text, with a key-value field as one line per row. */
+function FieldValue({ field }: { field: WfGraphDraftField }) {
+  if (field.kind === "value") {
+    return <p class="value">{JSON.stringify(field.value)}</p>;
+  }
+  if (field.kind === "rows") {
+    return (
+      <dl>
+        {field.rows.map((row) => (
+          <>
+            <dt>{row.name}</dt>
+            <dd class="value">
+              <Segments segments={row.segments} />
+            </dd>
+          </>
+        ))}
+      </dl>
+    );
+  }
+  return (
+    <p class="value">
+      <Segments segments={field.segments} />
     </p>
   );
 }

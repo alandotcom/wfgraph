@@ -305,9 +305,21 @@ not exist. Otherwise it answers a `WfGraphDraftNode`:
   node runs. `actionId` is absent for any other node.
 - `revision` is the draft revision the node was read at. Every save of the draft raises it,
   so a page that reads again can tell a newer save apart.
-- `fields` holds one entry per top-level config key, the stored action id excluded. A string
-  value is `{ kind: "template", segments }`, and every other value is
-  `{ kind: "value", value }`, passed on unchanged.
+- `fields` has entries only for a node running a host action, one the calling app or runner
+  registers with `defineAction`. A Lifecycle node, a built-in such as Wait or Condition, an
+  integration action, and a node whose action the calling app or runner does not register
+  each answer `fields: {}`.
+- For a host action node, `fields` holds one entry per input the action declares and the
+  node stores, in the order the action declares them. A field inside a group counts the
+  same as one beside it, and a stored key the action does not declare is left out.
+- Each entry follows how the engine reads that input when the step runs.
+  `{ kind: "template", segments }` is a string the engine resolves references in.
+  `{ kind: "rows", rows }` is a `key-value` field, with one `{ name, segments }` per row:
+  the engine resolves each row's value as its own template and leaves the name as
+  written. `{ kind: "value", value }` is handed to the step as stored: a value that is not
+  a string, or a string under a `literal: true` field or an input named `condition`. A
+  `key-value` field whose text holds no rows is a `template`, since the engine reads it as
+  one.
 - A segment is `{ kind: "text", text }` or `{ kind: "reference", source, fieldPath, display }`.
   `source` is `{ kind: "step", nodeId }` for another step's output or
   `{ kind: "entity", entityType }` for the run's Entity state, where `entityType` is the

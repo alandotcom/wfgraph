@@ -1,8 +1,9 @@
 /**
  * One node of a workflow's saved draft, for a host's own page; like every
  * `app.workflows` read it applies no `auth`. Answers null when the workflow or
- * the node does not exist. Fails with `InternalFailure`, after one error
- * record, when storage refuses the read or the stored graph does not decode.
+ * the node does not exist. Only a host action's declared inputs become fields,
+ * each read the way the engine reads it. Fails with `InternalFailure`, after
+ * one error record, when storage refuses the read or the graph does not decode.
  */
 
 import { Effect } from "effect";
@@ -10,12 +11,13 @@ import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { isBuiltInActionId } from "@wfgraph/shared/actions/built-in-actions";
 import {
-  ACTION_TYPE_CONFIG_KEY,
-  actionTypeOf,
-} from "@wfgraph/shared/graph/node-config";
+  type ExtensionCatalog,
+  findAction,
+} from "@wfgraph/shared/extensions/catalog";
+import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import {
   currentTokenDisplayText,
   getNodeDisplayName,
@@ -27,6 +29,16 @@ import {
 } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import {
+  flattenConfigFields,
+  literalFieldKeys,
+  templateJsonFieldShapes,
+} from "@wfgraph/shared/plugins/action-fields";
+import {
+  readConfigValue,
+  type TemplateConfigRules,
+} from "@wfgraph/shared/plugins/template-config";
+import {
+  type JsonObject,
   type JsonValue,
   readJsonObjectLeniently,
 } from "@wfgraph/shared/types/json";
@@ -61,12 +73,24 @@ export type WfGraphDraftSegment =
       display: string;
     };
 
+/** One row of a key-value field. */
+export type WfGraphDraftRow = {
+  /** The row's name as written. The engine resolves no reference in it. */
+  name: string;
+  /** The row's value, read as a template. */
+  segments: readonly WfGraphDraftSegment[];
+};
+
 /**
- * One top-level config value. A string is a template, read as segments; any
- * other value is passed on unchanged.
+ * One input of a host action, read the way the engine reads it when the step
+ * runs. `template` is a string the engine resolves references in, `rows` is a
+ * `key-value` field whose row values it resolves one at a time, and `value` is
+ * handed to the step as stored: a value that is not a string, or a string
+ * under a `literal` field.
  */
 export type WfGraphDraftField =
   | { kind: "template"; segments: readonly WfGraphDraftSegment[] }
+  | { kind: "rows"; rows: readonly WfGraphDraftRow[] }
   | { kind: "value"; value: JsonValue };
 
 /** The saved draft a node's references are named against. */
@@ -88,7 +112,12 @@ export type WfGraphDraftNode = {
    * it, so a page that reads again can tell a newer save apart.
    */
   revision: number;
-  /** One entry per top-level config key, the stored action id excluded. */
+  /**
+   * For a node running a host action, one entry per input the action declares
+   * and the node stores, in the declared order. Empty for any other node,
+   * including an integration action, a built-in such as Wait, and an action
+   * the catalog does not hold.
+   */
   fields: Record<string, WfGraphDraftField>;
 };
 
@@ -127,21 +156,76 @@ function referenceSegment(
   };
 }
 
+/** A template string as text and reference segments. */
+function templateSegments(
+  text: string,
+  workflow: DraftWorkflow
+): WfGraphDraftSegment[] {
+  return parseTemplate(text).map((segment) =>
+    segment.kind === "literal"
+      ? { kind: "text", text: segment.text }
+      : referenceSegment(segment.token, workflow)
+  );
+}
+
 function draftField(
+  key: string,
   value: JsonValue,
+  rules: TemplateConfigRules,
   workflow: DraftWorkflow
 ): WfGraphDraftField {
-  if (typeof value !== "string") {
-    return { kind: "value", value };
+  const reading = readConfigValue(key, value, rules);
+  if (reading.kind === "template") {
+    return {
+      kind: "template",
+      segments: templateSegments(reading.value, workflow),
+    };
   }
-  return {
-    kind: "template",
-    segments: parseTemplate(value).map((segment) =>
-      segment.kind === "literal"
-        ? { kind: "text", text: segment.text }
-        : referenceSegment(segment.token, workflow)
-    ),
+  if (reading.kind === "key-value") {
+    return {
+      kind: "rows",
+      rows: reading.rows.map((row) => ({
+        name: row.name,
+        segments: templateSegments(row.value, workflow),
+      })),
+    };
+  }
+  // The `stored` reading, and the `provider-fields` one, which no host action
+  // input reads as: a host action's `configFields` type has no such field. The
+  // stored value is answered as is.
+  return { kind: "value", value };
+}
+
+/**
+ * The fields of a node running `actionId`: the host action's declared inputs
+ * the node stores, and none for a node running anything else.
+ */
+function draftFields(
+  actionId: string | undefined,
+  config: JsonObject,
+  workflow: DraftWorkflow
+): Record<string, WfGraphDraftField> {
+  const action =
+    actionId === undefined || isBuiltInActionId(actionId)
+      ? undefined
+      : findAction(workflow.catalog, actionId);
+  if (!action || action.integration !== undefined) {
+    return {};
+  }
+  const rules: TemplateConfigRules = {
+    literalKeys: new Set(literalFieldKeys(action.configFields)),
+    jsonShapes: new Map(templateJsonFieldShapes(action.configFields)),
   };
+  return Object.fromEntries(
+    flattenConfigFields(action.configFields).flatMap((field) => {
+      const value = Object.hasOwn(config, field.key)
+        ? config[field.key]
+        : undefined;
+      return value === undefined
+        ? []
+        : [[field.key, draftField(field.key, value, rules, workflow)]];
+    })
+  );
 }
 
 /** The logger a failed read writes its one record to, the ids as fields. */
@@ -187,21 +271,18 @@ export const readDraftNode = Effect.fn("readDraftNode")(
       return null;
     }
 
-    const draftWorkflow: DraftWorkflow = { nodes, catalog };
-    const config = readJsonObjectLeniently(node.data.config) ?? {};
-    const fields = Object.fromEntries(
-      Object.entries(config)
-        .filter(([key]) => key !== ACTION_TYPE_CONFIG_KEY)
-        .map(([key, value]) => [key, draftField(value, draftWorkflow)])
-    );
-
+    const actionId = actionTypeOf(node);
     const draftNode: WfGraphDraftNode = omitUndefined({
       workflowId: workflow.id,
       nodeId: node.id,
       label: getNodeDisplayName(catalog, node),
-      actionId: actionTypeOf(node),
+      actionId,
       revision: workflow.draftRevision,
-      fields,
+      fields: draftFields(
+        actionId,
+        readJsonObjectLeniently(node.data.config) ?? {},
+        { nodes, catalog }
+      ),
     });
     return draftNode;
   },
