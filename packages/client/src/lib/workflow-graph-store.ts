@@ -772,12 +772,28 @@ export const addStepAfterAtom = atom(
         collapsedGroupIds: get(collapsedGroupIdsAtom),
       })
     );
+    // A step put between an outlet and the one step it leads to takes that
+    // step's place, and the step and everything below it move down a row,
+    // as a step put inside a connection does, so the new card is drawn
+    // between the two it connects.
+    const only = outgoing.length === 1 ? outgoing[0] : undefined;
+    const rowPlan = only
+      ? insertionRowPlan(
+          canvasPlacementNodes(get(paintedNodesAtom)),
+          get(paintedEdgesAtom),
+          only.source,
+          only.target
+        )
+      : null;
+    const node = rowPlan
+      ? { ...input.node, position: rowPlan.position }
+      : input.node;
     // A step added after a member joins that member's Group.
     return insertClonedSubgraph(
       get,
       set,
       {
-        nodes: [input.node],
+        nodes: [node],
         edges: [],
         joinsGroup: sharedGroupOf([input.source.nodeId], get(nodesStateAtom)),
       },
@@ -786,10 +802,11 @@ export const addStepAfterAtom = atom(
             nodes: get(nodesStateAtom),
             edges: get(edgesStateAtom),
             edgeIds: removeEdgeIds,
-            node: input.node,
+            node,
             catalog: input.catalog,
           })
-        : { connections, catalog: input.catalog }
+        : { connections, catalog: input.catalog },
+      rowPlan?.movedNodes
     );
   }
 );

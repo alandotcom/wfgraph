@@ -997,6 +997,46 @@ describe("Authoring inside a Group drawn in place", () => {
       expect(graphOf(store)).toEqual(before);
     });
 
+    it("draws a step added between an outlet and the one step it leads to between them", () => {
+      const rowHeight = WORKFLOW_NODE_HEIGHT + RANK_SPACING;
+      const store = createGraphStore({
+        nodes: [
+          lifecycle(),
+          lookup("a"),
+          { ...lookup("b", 120), position: { x: 120, y: 400 } },
+          { ...lookup("child", 120), position: { x: 120, y: 600 } },
+        ],
+        edges: [
+          edge("start-a", "life", "a", "started"),
+          edge("a-b", "a", "b"),
+          edge("b-child", "b", "child"),
+        ],
+      });
+
+      // The outline's "/" asks for a step after `a`, placed wherever the
+      // caller put it.
+      expect(
+        store.set(addStepAfterAtom, {
+          node: newStep("between"),
+          source: { nodeId: "a", handle: null },
+          catalog,
+        })
+      ).toEqual({ inserted: true });
+
+      const positions = new Map(
+        store.get(nodesAtom).map((node) => [node.id, node.position])
+      );
+      expect(positions.get("between")).toEqual({ x: 120, y: 400 });
+      expect(positions.get("b")).toEqual({ x: 120, y: 400 + rowHeight });
+      expect(positions.get("child")).toEqual({ x: 120, y: 600 + rowHeight });
+      expect(links(store)).toEqual([
+        "a>between",
+        "b>child",
+        "between>b",
+        "life>a",
+      ]);
+    });
+
     it("adds a step after the outside outlet entering a Group, outside it, without a parallel ingress", () => {
       const store = createGraphStore({
         nodes: [
