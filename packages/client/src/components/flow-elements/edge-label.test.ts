@@ -50,4 +50,23 @@ describe("workflowEdgeAriaLabel", () => {
       })
     ).toBe("Condition to Archive lead, Removed in comparison");
   });
+
+  it("says whether the run took the edge on a run's canvas", () => {
+    expect(
+      workflowEdgeAriaLabel({
+        sourceLabel: "Condition",
+        targetLabel: "Send message",
+        sourceHandleId: "false",
+        data: { runPath: "taken" },
+      })
+    ).toBe("Condition to Send message, False branch, taken by this run");
+    expect(
+      workflowEdgeAriaLabel({
+        sourceLabel: "Condition",
+        targetLabel: "Archive lead",
+        sourceHandleId: "true",
+        data: { runPath: "not-taken" },
+      })
+    ).toBe("Condition to Archive lead, True branch, not taken by this run");
+  });
 });

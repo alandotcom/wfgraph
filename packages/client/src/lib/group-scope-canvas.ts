@@ -281,9 +281,16 @@ function projectedMember(member: WorkflowNode): WorkflowNode {
   return projected;
 }
 
+const END_EDGE_ID_PREFIX = `${PAINTED_ID_PREFIX}end-edge:`;
+
+/** Whether `edge` is the painted edge from an outlet to its "Path ends" stub. */
+export function isPathEndEdge(edge: WorkflowEdge): boolean {
+  return edge.id.startsWith(END_EDGE_ID_PREFIX);
+}
+
 let endEdges = new Map<string, WorkflowEdge>();
 function endEdge(port: GroupPort): WorkflowEdge {
-  const id = `${PAINTED_ID_PREFIX}end-edge:${groupPortKey(port)}`;
+  const id = `${END_EDGE_ID_PREFIX}${groupPortKey(port)}`;
   return (
     endEdges.get(id) ?? {
       id,

@@ -17,8 +17,11 @@ import type {
   RunNodeEvidenceStatus,
 } from "@wfgraph/shared/graph/group-run-status";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
+import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { type JsonValue, readJsonValue } from "@wfgraph/shared/types/json";
 import { readAs } from "@wfgraph/shared/types/schema";
+import { TemplateText } from "./template-text";
 
 /**
  * How a status reads on screen, for the two vocabularies that reach these.
@@ -441,7 +444,67 @@ function humanizeKey(key: string): string {
     .join(" ");
 }
 
-function ScalarValue({ value }: { value: string | number | boolean | null }) {
+/** Text longer than this many characters is shortened until it is expanded. */
+const LONG_TEXT_LENGTH = 200;
+/** Text with more lines than this is shortened until it is expanded. */
+const LONG_TEXT_LINES = 4;
+
+/**
+ * A recorded text value. A template reference reads as the badge the editor
+ * draws, against `nodes`, the graph the run pinned, and long text shows four
+ * lines with **Show full value**, as the Changes view does.
+ */
+function TextValue({
+  value,
+  nodes,
+}: {
+  value: string;
+  nodes: readonly WorkflowNode[] | undefined;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const content =
+    nodes !== undefined && findTemplateTokens(value).length > 0 ? (
+      <TemplateText nodes={nodes} text={value} />
+    ) : (
+      value
+    );
+  const long =
+    value.length > LONG_TEXT_LENGTH ||
+    value.split("\n").length > LONG_TEXT_LINES;
+  if (!long) {
+    return <span className="break-words whitespace-pre-wrap">{content}</span>;
+  }
+  return (
+    <span className="flex flex-col items-start gap-1">
+      <span
+        className={cn(
+          "break-words whitespace-pre-wrap",
+          !expanded && "line-clamp-4"
+        )}
+      >
+        {content}
+      </span>
+      <Button
+        aria-expanded={expanded}
+        className="h-auto px-0 text-xs"
+        onClick={() => setExpanded(!expanded)}
+        size="sm"
+        type="button"
+        variant="link"
+      >
+        {expanded ? "Show less" : "Show full value"}
+      </Button>
+    </span>
+  );
+}
+
+function ScalarValue({
+  value,
+  nodes,
+}: {
+  value: string | number | boolean | null;
+  nodes?: readonly WorkflowNode[] | undefined;
+}) {
   if (value === null || value === "") {
     return <span className="text-muted-foreground italic">Empty</span>;
   }
@@ -463,7 +526,19 @@ function ScalarValue({ value }: { value: string | number | boolean | null }) {
       </a>
     );
   }
-  return <span className="break-words whitespace-pre-wrap">{value}</span>;
+  return <TextValue nodes={nodes} value={value} />;
+}
+
+/**
+ * One value a run recorded, read inline: a scalar as the evidence reads it,
+ * and an object or a list as compact JSON.
+ */
+export function RecordedValue({ value }: { value: JsonValue }) {
+  return isScalar(value) ? (
+    <ScalarValue value={value} />
+  ) : (
+    <code className="break-all font-mono">{JSON.stringify(value)}</code>
+  );
 }
 
 function isScalar(value: JsonValue): value is string | number | boolean | null {
@@ -486,7 +561,19 @@ function withJsonKeys<Value extends JsonValue>(values: Value[]) {
   });
 }
 
-function JsonFields({ value }: { value: { [key: string]: JsonValue } }) {
+/** What labels a recorded value's fields, and the graph its references name. */
+type ValueReading = {
+  /** A label for each top-level key, such as an action's field labels. */
+  labels?: ReadonlyMap<string, string> | undefined;
+  /** The graph the run pinned, which template references are read against. */
+  nodes?: readonly WorkflowNode[] | undefined;
+};
+
+function JsonFields({
+  value,
+  labels,
+  nodes,
+}: ValueReading & { value: { [key: string]: JsonValue } }) {
   const entries = Object.entries(value);
   if (entries.length === 0) {
     return <span className="text-muted-foreground text-xs italic">Empty</span>;
@@ -495,7 +582,12 @@ function JsonFields({ value }: { value: { [key: string]: JsonValue } }) {
   return (
     <dl className="divide-y divide-border/70 border-y">
       {entries.map(([key, fieldValue]) => (
-        <JsonProperty key={key} label={humanizeKey(key)} value={fieldValue} />
+        <JsonProperty
+          key={key}
+          label={labels?.get(key) ?? humanizeKey(key)}
+          nodes={nodes}
+          value={fieldValue}
+        />
       ))}
     </dl>
   );
@@ -538,13 +630,21 @@ function CollectionDisclosure({
   );
 }
 
-function JsonProperty({ label, value }: { label: string; value: JsonValue }) {
+function JsonProperty({
+  label,
+  value,
+  nodes,
+}: {
+  label: string;
+  value: JsonValue;
+  nodes: readonly WorkflowNode[] | undefined;
+}) {
   if (isScalar(value)) {
     return (
       <div className="grid min-h-9 grid-cols-[minmax(5.5rem,0.85fr)_minmax(0,1.15fr)] items-start gap-3 py-2 text-xs">
         <dt className="text-muted-foreground">{label}</dt>
         <dd className="min-w-0">
-          <ScalarValue value={value} />
+          <ScalarValue nodes={nodes} value={value} />
         </dd>
       </div>
     );
@@ -552,7 +652,7 @@ function JsonProperty({ label, value }: { label: string; value: JsonValue }) {
 
   if (Array.isArray(value)) {
     if (value.length === 0) {
-      return <JsonProperty label={label} value={null} />;
+      return <JsonProperty label={label} nodes={nodes} value={null} />;
     }
     if (value.length <= 4 && areScalars(value)) {
       return (
@@ -562,7 +662,7 @@ function JsonProperty({ label, value }: { label: string; value: JsonValue }) {
             {withJsonKeys(value).map((entry, index) => (
               <span className="inline-flex gap-1.5" key={entry.key}>
                 {index > 0 ? <span aria-hidden="true">·</span> : null}
-                <ScalarValue value={entry.value} />
+                <ScalarValue nodes={nodes} value={entry.value} />
               </span>
             ))}
           </dd>
@@ -580,6 +680,7 @@ function JsonProperty({ label, value }: { label: string; value: JsonValue }) {
             <JsonProperty
               key={entry.key}
               label={`Item ${index + 1}`}
+              nodes={nodes}
               value={entry.value}
             />
           ))}
@@ -594,12 +695,21 @@ function JsonProperty({ label, value }: { label: string; value: JsonValue }) {
       label={label}
       summary={`${fieldCount} ${fieldCount === 1 ? "field" : "fields"}`}
     >
-      <JsonFields value={value} />
+      <JsonFields nodes={nodes} value={value} />
     </CollectionDisclosure>
   );
 }
 
-export function JsonPropertyInspector({ value }: { value: unknown }) {
+/**
+ * A recorded value as labeled rows: each field of an object under its label
+ * from `labels`, or its key made readable, and nested objects and lists
+ * behind a disclosure.
+ */
+export function JsonPropertyInspector({
+  value,
+  labels,
+  nodes,
+}: ValueReading & { value: unknown }) {
   const json = readJsonValue(value);
   if (json === null && value !== null) {
     return <p className="text-muted-foreground text-xs">Result unavailable.</p>;
@@ -607,14 +717,33 @@ export function JsonPropertyInspector({ value }: { value: unknown }) {
   if (isScalar(json)) {
     return (
       <div className="text-sm">
-        <ScalarValue value={json} />
+        <ScalarValue nodes={nodes} value={json} />
       </div>
     );
   }
   if (Array.isArray(json)) {
-    return <JsonProperty label="Items" value={json} />;
+    return <JsonProperty label="Items" nodes={nodes} value={json} />;
   }
-  return <JsonFields value={json} />;
+  return <JsonFields labels={labels} nodes={nodes} value={json} />;
+}
+
+/**
+ * Whether an action's output has a display of its own: its integration's
+ * renderer, or an image it returned inline. Any other output reads as labeled
+ * values.
+ */
+export function useHasOutputDisplay(
+  actionType: string | undefined,
+  output: unknown
+): boolean {
+  const catalog = useExtensionCatalog();
+  const integrationUi = useIntegrationUi();
+  const CustomComponent = actionType
+    ? findOutputComponent(integrationUi, findAction(catalog, actionType))
+    : undefined;
+  return (
+    CustomComponent !== undefined || readBase64ImageOutput(output) !== null
+  );
 }
 
 export function OutputDisplay({

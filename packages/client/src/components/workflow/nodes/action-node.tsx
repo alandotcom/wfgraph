@@ -19,6 +19,8 @@ import { ComparisonMarker } from "#src/components/flow-elements/comparison-marke
 import { Dialog, DialogContent, DialogTitle } from "#src/components/ui/dialog";
 import { readBase64ImageOutput } from "#src/components/workflow/workflow-run-shared";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
+import { runPathAtom } from "#src/lib/workflow-graph-store";
+import { runPathOutletMark } from "#src/lib/run-path";
 import {
   COMPARISON_NODE_ANNOTATION,
   comparisonNodeTitle,
@@ -493,6 +495,11 @@ export const ActionNode = memo((props: ActionNodeProps) => {
   const isConditionAction = isConditionActionType(actionType);
   const isEventSplitAction = isEventSplitActionType(actionType);
   const splitOutlets = useEventSplitOutlets(isEventSplitAction ? id : null);
+  // On a run's canvas, which outlets of a Condition or an Event Split the run
+  // left by. Null on every other canvas.
+  const runPath = useAtomValue(runPathAtom);
+  const outletMark = (handle: string) =>
+    runPath === null ? null : runPathOutletMark(runPath, id, handle);
   const runtimeWaitPreview = useRuntimeWaitPreview(
     actionType ?? "",
     selectedExecutionId,
@@ -681,6 +688,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
             handleId="true"
             offset={CONDITION_TRUE_OUTLET_OFFSET}
             outlet={outlet}
+            runPath={outletMark("true")}
           >
             True
           </BranchOutletLabel>
@@ -689,6 +697,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
             handleId="false"
             offset={CONDITION_FALSE_OUTLET_OFFSET}
             outlet={outlet}
+            runPath={outletMark("false")}
           >
             False
           </BranchOutletLabel>
@@ -702,6 +711,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
             key={event.name}
             offset={eventSplitOutletOffset(index, splitOutlets.length)}
             outlet={outlet}
+            runPath={outletMark(eventSplitOutlet(event.name))}
             title={event.name}
           >
             {event.label}

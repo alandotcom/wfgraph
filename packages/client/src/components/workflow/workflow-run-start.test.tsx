@@ -97,6 +97,37 @@ const statuses: Record<string, string> = { exec_a: "completed" };
 let heldExecute = deferred<Response>();
 const executeCalls: unknown[] = [];
 
+/** The logs read of a run that has recorded no step yet. */
+function emptyLogsPayload(executionId: string) {
+  return {
+    execution: {
+      id: executionId,
+      workflowId,
+      workflowVersionId: "ver_7",
+      versionKind: "published",
+      versionNumber: 7,
+      status: statuses[executionId] ?? "running",
+      input: {},
+      output: {},
+      error: null,
+      startedAt: "2026-08-23T15:00:00.000Z",
+      scheduledFor: null,
+      scheduleDescription: null,
+      completedAt: null,
+      duration: null,
+      runMode: "test",
+      startSource: "manual",
+      startEventName: null,
+      entityValue: null,
+    },
+    logs: [],
+    retryLimit: 4,
+    waits: [],
+    exit: null,
+    schedule: null,
+  };
+}
+
 function workflowPayload() {
   return {
     id: workflowId,
@@ -143,8 +174,15 @@ beforeEach(() => {
             retryingNodeIds: [],
           });
         }
-        case "workflow/getExecutionLogs":
-          return new Promise<Response>(() => undefined);
+        // The run status projection reads the logs to draw the run's path,
+        // and a run start refreshes that read, so it has to be answered.
+        // These cases are about Run's busy state, which no log row decides.
+        case "workflow/getExecutionLogs": {
+          const executionId = String(
+            (input as { executionId?: unknown }).executionId
+          );
+          return rpcJsonResponse(emptyLogsPayload(executionId));
+        }
         case "workflow/execute":
           executeCalls.push(input);
           return heldExecute.promise;

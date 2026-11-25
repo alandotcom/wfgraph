@@ -74,9 +74,10 @@ describe("RunStatusProjection", () => {
     });
   });
 
-  it("marks a newly parked Wait on a phone with no run logs read", async () => {
+  it("marks a newly parked Wait on a phone from the status read, and reads the logs once to catch the run's path up", async () => {
     // Below `md` with no sheet open, no Runs body is mounted, so the status
-    // read is the only request the run's progress makes.
+    // read is what marks each step. The canvas draws the run's path from its
+    // logs, which are read again only when the status read shows a step moved.
     setViewportWidth(390);
     served.items = [execution("exec_m", "running")];
     served.graphs = { ver_exec_m: labelledGraph(STEPS) };
@@ -109,7 +110,12 @@ describe("RunStatusProjection", () => {
     await waitFor(() => expect(statuses().get("w")).toBe("waiting"), {
       timeout: 2000,
     });
-    expect(callCount("workflow/getExecutionLogs")).toBe(logReads);
+    // `send` finished and `w` started, so the logs are read once more. An open
+    // wait changes no step's status, so it costs no read of its own.
+    await waitFor(
+      () => expect(callCount("workflow/getExecutionLogs")).toBe(logReads + 1),
+      { timeout: 3000 }
+    );
   });
 
   it("replaces the previous run's statuses with each run's own on a run switch", async () => {

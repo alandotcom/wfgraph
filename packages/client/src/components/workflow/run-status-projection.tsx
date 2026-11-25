@@ -3,17 +3,23 @@ import { useAtomValue, useAtomValueRawSync, useSetAtom } from "jotai";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { useAfterCommit } from "#src/hooks/effects";
 import { can } from "#src/lib/authorization";
-import { isRunInProgress } from "#src/lib/execution-logs";
+import {
+  isRunInProgress,
+  logsBehindStatusRead,
+  toRunPathSource,
+} from "#src/lib/execution-logs";
 import { runNodeEvidenceStatuses } from "#src/lib/run-node-evidence";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
   isExecutionOverlayActiveAtom,
+  projectRunLogsAtom,
   projectRunProgressAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   runStartInFlightAtom,
   selectedExecutionIdAtom,
 } from "#src/lib/workflow-ui-store";
+import { RUN_POLL_MS } from "./use-workflow-runs";
 
 /** How often a run that is still going has its progress read back. */
 const RUN_STATUS_POLL_MS = 500;
@@ -30,7 +36,7 @@ const RUN_STATUS_POLL_MS = 500;
  *
  * Private to `RunStatusProjection`, the headless component the editor mounts.
  */
-function useRunStatusProjection(): void {
+function useRunStatusProjection(): RunStatusRead | undefined {
   // Route and overlay synchronizers can write these before subscriptions mount.
   const selectedExecutionId = useAtomValueRawSync(selectedExecutionIdAtom);
   const isExecutionOverlayActive = useAtomValueRawSync(
@@ -99,13 +105,67 @@ function useRunStatusProjection(): void {
       });
     }
   );
+  return executionStatus;
+}
+
+/** What one status read of the open run answers. */
+type RunStatusRead = {
+  status: string;
+  nodeStatuses: readonly { nodeId: string; status: string }[];
+};
+
+/**
+ * The open run's logs, written where the canvas reads the path the run took.
+ * The read is the Runs view's own query key, so the cache answers both from
+ * one entry. The canvas shows the path with Canvas Reveal closed, when no Runs
+ * view polls the logs, so they are read again whenever `statusRead`, the
+ * status poll's latest answer, shows a step moved since they were read. A run
+ * whose steps stand still costs no logs read.
+ *
+ * Private to `RunStatusProjection`.
+ */
+function useRunPathProjection(statusRead: RunStatusRead | undefined): void {
+  const selectedExecutionId = useAtomValueRawSync(selectedExecutionIdAtom);
+  const projectRunLogs = useSetAtom(projectRunLogsAtom);
+  const logsQuery = useQuery({
+    ...orpcQuery.workflow.getExecutionLogs.queryOptions({
+      input: { executionId: selectedExecutionId ?? "" },
+      select: toRunPathSource,
+    }),
+    enabled:
+      selectedExecutionId !== null &&
+      can(WfGraphOperations.workflowGetExecutionLogs.id),
+    staleTime: 0,
+    // Compared against this render's status read, so the interval runs only
+    // while the logs are behind and stops on the read that catches up.
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return data !== undefined &&
+        statusRead !== undefined &&
+        logsBehindStatusRead(toRunPathSource(data), statusRead)
+        ? RUN_POLL_MS
+        : false;
+    },
+  });
+  const source = selectedExecutionId === null ? undefined : logsQuery.data;
+
+  // The run path is drawn from the store, so this writes a server response
+  // into it. The key names the run and the moment of the read, so opening
+  // another run replaces the previous run's logs.
+  useAfterCommit(
+    `${selectedExecutionId ?? ""}:${source === undefined ? "none" : logsQuery.dataUpdatedAt}`,
+    () => {
+      projectRunLogs(source ?? null);
+    }
+  );
 }
 
 /**
- * Headless owner of the open run's status projection. Mount it once on the
- * workflow editor.
+ * Headless owner of the open run's status projection and of the logs its
+ * path on the canvas is drawn from. Mount it once on the workflow editor.
  */
 export function RunStatusProjection() {
-  useRunStatusProjection();
+  const statusRead = useRunStatusProjection();
+  useRunPathProjection(statusRead);
   return null;
 }

@@ -1,12 +1,34 @@
+import { useAtomValue } from "jotai";
+import { Check, ChevronRight, X } from "lucide-react";
+import { useState } from "react";
 import { compact } from "es-toolkit/array";
 import { isNotNil } from "es-toolkit/predicate";
 import { cn } from "@wfgraph/shared/utils";
+import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
+import { reconcileModelWithFields } from "@wfgraph/shared/conditions/conditions";
+import {
+  type ExtensionCatalog,
+  findAction,
+} from "@wfgraph/shared/extensions/catalog";
+import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
+import { referenceFieldLabel } from "@wfgraph/shared/graph/node-references";
+import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import { Button } from "#src/components/ui/button";
 import type { ExecutionLog } from "#src/lib/execution-logs";
 import { formatExactTime } from "@wfgraph/shared/utils/time";
 import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import type {
+  ComparedValue,
+  ConditionDecision,
+  ConditionRuleEvidence,
+} from "#src/lib/condition-decision";
 import type { RunNodeEvidence } from "#src/lib/run-node-evidence";
+import { getUpstreamConditionFields } from "#src/lib/upstream-node-fields";
+import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import { ConditionSummary } from "./config/condition-summary";
+import { conditionLogicSentence } from "./canvas-reveal/condition-reveal-summary";
 import {
   finishedRetriesSummary,
   nodeRetrySummary,
@@ -20,10 +42,13 @@ import {
   CopyButton,
   formatDuration,
   JSON_PRE_CLASS,
+  JsonPropertyInspector,
+  RecordedValue,
   statusToneTextClass,
   stepRunStatusLabel,
   JsonWithLinks,
   OutputDisplay,
+  useHasOutputDisplay,
 } from "./workflow-run-shared";
 
 /** A notice at the top of the evidence about what it can and cannot show. */
@@ -63,6 +88,291 @@ function Payload({
         <p className="text-muted-foreground text-xs">{emptyText}</p>
       )}
     </Section>
+  );
+}
+
+/**
+ * The recorded JSON behind one **Show raw data** disclosure: the compiled
+ * expression, the input, the output and the configuration exactly as stored,
+ * each with its Copy button, for a developer.
+ */
+function RawData({
+  input,
+  output,
+  config,
+  configNote,
+}: {
+  input: unknown;
+  output: unknown;
+  config: Readonly<Record<string, unknown>> | null;
+  /** What stands in for the configuration when the pinned graph lacks it. */
+  configNote: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="border-t px-4 py-3">
+      <Button
+        aria-expanded={open}
+        className="-ml-2"
+        onClick={() => setOpen(!open)}
+        size="sm"
+        type="button"
+        variant="ghost"
+      >
+        <ChevronRight
+          aria-hidden="true"
+          className={cn(
+            "size-3 text-muted-foreground transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none",
+            open && "rotate-90"
+          )}
+        />
+        {open ? "Hide raw data" : "Show raw data"}
+      </Button>
+      {open ? (
+        <div className="-mx-4" data-slot="run-evidence-raw-data">
+          <Payload
+            emptyText="No input was recorded."
+            title="Input"
+            value={input}
+          />
+          <Payload
+            emptyText="No output was recorded."
+            title="Output"
+            value={output}
+          />
+          {config ? (
+            <Payload
+              emptyText="No configuration was recorded."
+              title="Configuration"
+              value={config}
+            />
+          ) : (
+            <Section title="Configuration">
+              <p className="text-muted-foreground text-xs">{configNote}</p>
+            </Section>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * The labels an action's catalog entry gives the keys of its recorded input,
+ * from its config fields, and of its recorded output, from its top-level
+ * output fields. A key the catalog does not name reads as itself, made
+ * readable.
+ */
+function actionFieldLabels(
+  catalog: ExtensionCatalog,
+  actionType: string
+): { input: ReadonlyMap<string, string>; output: ReadonlyMap<string, string> } {
+  const action = findAction(catalog, actionType);
+  return {
+    input: new Map(
+      flattenConfigFields(action?.configFields ?? []).map((field) => [
+        field.key,
+        field.label,
+      ])
+    ),
+    output: new Map(
+      (action?.outputFields ?? [])
+        .filter((field) => !field.path.includes("."))
+        .map((field) => [field.path, referenceFieldLabel(field)])
+    ),
+  };
+}
+
+/** A recorded input or output as labeled values, or a line saying none was. */
+function LabeledValues({
+  title,
+  value,
+  labels,
+  nodes,
+  emptyText,
+}: {
+  title: string;
+  value: unknown;
+  labels: ReadonlyMap<string, string>;
+  nodes: readonly WorkflowNode[];
+  emptyText: string;
+}) {
+  return (
+    <Section title={title}>
+      {isNotNil(value) ? (
+        <JsonPropertyInspector labels={labels} nodes={nodes} value={value} />
+      ) : (
+        <p className="text-muted-foreground text-xs">{emptyText}</p>
+      )}
+    </Section>
+  );
+}
+
+/** "A", "A and B", or "A, B, and C". */
+function listOfNames(names: readonly string[]): string {
+  return new Intl.ListFormat("en", { type: "conjunction" }).format(names);
+}
+
+/** What a run recorded about one rule: whether it matched, and its value. */
+function RuleEvidenceLine({
+  evidence,
+}: {
+  evidence: ConditionRuleEvidence | undefined;
+}) {
+  if (
+    evidence === undefined ||
+    (evidence.matched === null && evidence.compared === null)
+  ) {
+    return null;
+  }
+  return (
+    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground text-xs">
+      {evidence.matched === null ? null : (
+        <span className="inline-flex items-center gap-1 text-foreground">
+          {evidence.matched ? (
+            <Check aria-hidden="true" className="size-3" strokeWidth={2.5} />
+          ) : (
+            <X aria-hidden="true" className="size-3" strokeWidth={2.5} />
+          )}
+          {evidence.matched ? "Matched" : "Did not match"}
+        </span>
+      )}
+      {evidence.compared === null ? null : (
+        <ComparedValueText compared={evidence.compared} />
+      )}
+    </p>
+  );
+}
+
+function ComparedValueText({ compared }: { compared: ComparedValue }) {
+  if (compared.kind === "missing") {
+    return <span>Not set in this run</span>;
+  }
+  return (
+    <span className="inline-flex min-w-0 items-baseline gap-1">
+      Value in this run:
+      <span className="text-foreground">
+        <RecordedValue value={compared.value} />
+      </span>
+    </span>
+  );
+}
+
+/**
+ * A Condition's execution read as the decision it made: the branch it took
+ * and where that branch continues, then each rule as the sentence the editor
+ * builds for it, with whether the rule matched and the value it compared
+ * where the run recorded them.
+ */
+function ConditionDecisionSections({
+  nodeId,
+  decision,
+}: {
+  nodeId: string;
+  decision: ConditionDecision;
+}) {
+  const catalog = useExtensionCatalog();
+  const graph = useAtomValue(executionOverlayGraphAtom);
+  const nodes = graph?.nodes ?? [];
+  const fields = getUpstreamConditionFields({
+    currentNodeId: nodeId,
+    nodes,
+    edges: graph?.edges ?? [],
+    catalog,
+  });
+  const targets = compact(
+    decision.continuesTo.map((targetId) => {
+      const target = nodes.find((node) => node.id === targetId);
+      return target ? getNodeDisplayName(catalog, target) : null;
+    })
+  );
+  const model =
+    decision.model === null
+      ? null
+      : reconcileModelWithFields(
+          decision.model,
+          new Map(fields.map((field) => [field.path, field]))
+        );
+  return (
+    <>
+      <Section title="Decision">
+        <p className="font-medium text-sm">
+          Took {getConditionBranchDisplayLabel(decision.branch)}
+        </p>
+        <p className="text-sm">
+          {targets.length > 0
+            ? `Continues to ${listOfNames(targets)}.`
+            : "The path ends here."}
+        </p>
+      </Section>
+      <Section title="Rules">
+        {model === null ? (
+          <p className="text-muted-foreground text-xs">
+            The rules this run used can't be read.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm">{conditionLogicSentence(model)}</p>
+            <ConditionSummary
+              fields={fields}
+              model={model}
+              nodes={nodes}
+              ruleDetails={
+                new Map(
+                  [...decision.rules].map(([ruleId, evidence]) => [
+                    ruleId,
+                    <RuleEvidenceLine evidence={evidence} key={ruleId} />,
+                  ])
+                )
+              }
+            />
+          </div>
+        )}
+      </Section>
+    </>
+  );
+}
+
+/**
+ * Any other step's execution read in words: its integration's own display of
+ * the result where it has one, then the input and the output as labeled
+ * values under the action's field labels.
+ */
+function StepValueSections({ execution }: { execution: ExecutionLog }) {
+  const catalog = useExtensionCatalog();
+  const nodes = useAtomValue(executionOverlayGraphAtom)?.nodes ?? [];
+  const hasOutputDisplay = useHasOutputDisplay(
+    execution.nodeType,
+    execution.output
+  );
+  const labels = actionFieldLabels(catalog, execution.nodeType);
+  return (
+    <>
+      {/* A failed step's result repeats the error the Error section states. */}
+      {hasOutputDisplay && execution.status !== "error" ? (
+        <Section title="Result">
+          <OutputDisplay
+            actionType={execution.nodeType}
+            input={execution.input}
+            output={execution.output}
+          />
+        </Section>
+      ) : null}
+      <LabeledValues
+        emptyText="No input was recorded."
+        labels={labels.input}
+        nodes={nodes}
+        title="Input"
+        value={execution.input}
+      />
+      <LabeledValues
+        emptyText="No output was recorded."
+        labels={labels.output}
+        nodes={nodes}
+        title="Output"
+        value={execution.output}
+      />
+    </>
   );
 }
 
@@ -124,7 +434,10 @@ function ExecutionList({
 /**
  * The recorded evidence of one node in one run: its executions, timing, error or
  * cancellation, a step the executor is retrying, the wait it holds with
- * Resume, its activity, result, input, output, and configuration. An execution
+ * Resume, what it did in words, its activity, and its recorded input, output
+ * and configuration as raw JSON behind **Show raw data**. A Condition says the
+ * branch it took and each rule; any other step shows its input and output as
+ * labeled values. An execution
  * is one time the run reached the node; a finished one says which try it
  * ended on when its steps were retried. Notices say
  * when the node is gone from the pinned graph, when that graph is loading or
@@ -305,6 +618,15 @@ export function WorkflowRunNodeEvidence({
         </Section>
       ) : null}
 
+      {shown === null ? null : evidence.condition ? (
+        <ConditionDecisionSections
+          decision={evidence.condition}
+          nodeId={evidence.nodeId}
+        />
+      ) : (
+        <StepValueSections execution={shown} />
+      )}
+
       <Section title="Activity">
         {evidence.activity.length > 0 ? (
           <ol className="space-y-1.5">
@@ -327,53 +649,18 @@ export function WorkflowRunNodeEvidence({
         )}
       </Section>
 
-      {shown ? (
-        <>
-          {/* A failed step's result repeats the error the Error section
-              states, so it is left to the Output payload. */}
-          {shown.status === "error" ? null : (
-            <Section title="Result">
-              {isNotNil(shown.output) ? (
-                <OutputDisplay
-                  actionType={shown.nodeType}
-                  input={shown.input}
-                  output={shown.output}
-                />
-              ) : (
-                <p className="text-muted-foreground text-xs">
-                  No result was recorded.
-                </p>
-              )}
-            </Section>
-          )}
-          <Payload
-            emptyText="No input was recorded."
-            title="Input"
-            value={shown.input}
-          />
-          <Payload
-            emptyText="No output was recorded."
-            title="Output"
-            value={shown.output}
-          />
-        </>
-      ) : null}
-
-      {evidence.config ? (
-        <Payload
-          emptyText="No configuration was recorded."
-          title="Configuration"
-          value={evidence.config}
-        />
-      ) : (
-        <Section title="Configuration">
-          <p className="text-muted-foreground text-xs">
-            {evidence.pinnedGraph === "loading"
-              ? "Loading the configuration this run used."
-              : "The configuration this run used is unavailable."}
-          </p>
-        </Section>
-      )}
+      {/* Keyed by the execution shown, so each step opens words first. */}
+      <RawData
+        config={evidence.config}
+        key={`${evidence.nodeId}:${shown?.id ?? ""}`}
+        configNote={
+          evidence.pinnedGraph === "loading"
+            ? "Loading the configuration this run used."
+            : "The configuration this run used is unavailable."
+        }
+        input={shown?.input}
+        output={shown?.output}
+      />
     </div>
   );
 }

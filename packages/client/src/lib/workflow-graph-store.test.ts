@@ -40,6 +40,7 @@ import {
   selectOnlyNodeAtom,
   recordObservedRemoteDraftRevisionAtom,
   remoteDraftChangeAtom,
+  projectRunLogsAtom,
   setNodeStatusesAtom,
   deleteCanvasSelectionAtom,
   redoAtom,
@@ -1542,6 +1543,148 @@ describe("run status", () => {
       store.get(displayNodesAtom).find((node) => node.id === "a")?.data
         .status ?? "idle"
     ).toBe("idle");
+  });
+});
+
+describe("run path", () => {
+  function conditionNode(id: string, parentId?: string): WorkflowNode {
+    return {
+      ...actionNode(id),
+      ...(parentId === undefined ? {} : { parentId }),
+      data: {
+        label: id,
+        type: "action",
+        config: { actionType: BUILT_IN_ACTION_IDS.condition },
+      },
+    };
+  }
+
+  function branch(
+    id: string,
+    source: string,
+    target: string,
+    sourceHandle: "true" | "false"
+  ): WorkflowEdge {
+    return { id, source, target, sourceHandle };
+  }
+
+  function ran(nodeId: string, output?: unknown) {
+    return {
+      id: `log_${nodeId}`,
+      nodeId,
+      nodeName: nodeId,
+      nodeType: "action",
+      status: "success" as const,
+      startedAt: new Date("2026-03-01T10:00:00Z"),
+      completedAt: null,
+      duration: null,
+      output,
+      error: null,
+      retries: 0,
+      retryLimit: 3,
+    };
+  }
+
+  function runPathOf(store: Store) {
+    return Object.fromEntries(
+      store.get(canvasEdgesAtom).map((item) => [item.id, item.data?.runPath])
+    );
+  }
+
+  it("marks the edges a finished run took and draws them last", () => {
+    const store = createGraphStore(...standardGraph());
+    showWorkspaceRoute(store, { view: "runs" });
+    store.set(executionOverlayGraphAtom, {
+      nodes: [
+        lifecycleNode("t"),
+        conditionNode("c"),
+        actionNode("yes"),
+        actionNode("no"),
+      ],
+      edges: [
+        edge("t-c", "t", "c"),
+        branch("c-no", "c", "no", "false"),
+        branch("c-yes", "c", "yes", "true"),
+      ],
+    });
+    store.set(projectRunLogsAtom, {
+      executionStatus: "completed",
+      logs: [ran("t"), ran("c", { condition: false }), ran("no")],
+    });
+
+    expect(runPathOf(store)).toEqual({
+      "t-c": "taken",
+      "c-no": "taken",
+      "c-yes": "not-taken",
+    });
+    expect(store.get(canvasEdgesAtom).at(0)?.id).toBe("c-yes");
+  });
+
+  it("leaves the Draft canvas unmarked", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(projectRunLogsAtom, {
+      executionStatus: "completed",
+      logs: [ran("t"), ran("a")],
+    });
+
+    expect(
+      store
+        .get(canvasEdgesAtom)
+        .every((item) => item.data?.runPath === undefined)
+    ).toBe(true);
+  });
+
+  it("marks a Group card's edge taken when any edge it stands for was", () => {
+    const store = createGraphStore(...standardGraph());
+    showWorkspaceRoute(store, { view: "runs" });
+    store.set(executionOverlayGraphAtom, {
+      nodes: [
+        lifecycleNode("t"),
+        groupNode("g"),
+        conditionNode("m", "g"),
+        actionNode("after"),
+      ],
+      edges: [
+        edge("t-m", "t", "m"),
+        branch("m-true", "m", "after", "true"),
+        branch("m-false", "m", "after", "false"),
+      ],
+    });
+    store.set(projectRunLogsAtom, {
+      executionStatus: "completed",
+      logs: [ran("t"), ran("m", { condition: false }), ran("after")],
+    });
+
+    const leaving = store
+      .get(canvasEdgesAtom)
+      .filter((item) => item.source === "g" && item.target === "after");
+    expect(leaving.map((item) => item.data?.runPath)).toEqual(["taken"]);
+  });
+
+  it("marks the edge to a focused Group's Path ends stub by its outlet", () => {
+    const store = createGraphStore(...standardGraph());
+    showWorkspaceRoute(store, { view: "runs", group: "g" });
+    store.set(executionOverlayGraphAtom, {
+      nodes: [
+        lifecycleNode("t"),
+        groupNode("g"),
+        conditionNode("m", "g"),
+        actionNode("after"),
+      ],
+      edges: [edge("t-m", "t", "m"), branch("m-true", "m", "after", "true")],
+    });
+    store.set(projectRunLogsAtom, {
+      executionStatus: "completed",
+      logs: [ran("t"), ran("m", { condition: false })],
+    });
+
+    const ends = store
+      .get(canvasEdgesAtom)
+      .filter((item) => item.data?.insertable === false);
+    expect(ends.map((item) => [item.sourceHandle, item.data?.runPath])).toEqual(
+      [["false", "taken"]]
+    );
+    expect(runPathOf(store)["m-true"]).toBe("not-taken");
   });
 });
 

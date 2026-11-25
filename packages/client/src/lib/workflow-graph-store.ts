@@ -112,8 +112,10 @@ export {
   presentedGraphAtom,
   presentedGraphStructureAtom,
   projectedRunStatusAtom,
+  projectRunLogsAtom,
   projectRunProgressAtom,
   runNodeEvidenceStatusesAtom,
+  runPathAtom,
   setNodeStatusesAtom,
 } from "#src/lib/workflow-graph-presentation-store";
 export {

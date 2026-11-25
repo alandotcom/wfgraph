@@ -1,5 +1,7 @@
 import { fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { nodeOutputConditionPath } from "@wfgraph/shared/conditions/conditions";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { installAuthorizationGrantsForTests } from "#src/lib/authorization-test-support";
 import { selectedNodeAtom } from "#src/lib/workflow-graph-store";
 import {
@@ -490,6 +492,157 @@ describe("Runs Focus node evidence", () => {
     expect(view.getByTestId("runs-group-summary")).toBeTruthy();
   });
 
+  // A Condition's evidence leads with the branch it took, then reads each rule
+  // as a sentence, and keeps the compiled expression behind Show raw data.
+  it("reads a Condition's evidence as the decision it made", async () => {
+    const remindersOn = nodeOutputConditionPath("lookup", "remindersOn") ?? "";
+    served.items = [execution("exec_c", "completed")];
+    served.graphs = {
+      ver_exec_c: createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "lookup",
+            type: "action",
+            position: { x: 0, y: 0 },
+            data: {
+              label: "Look up visit",
+              type: "action",
+              config: { actionType: "host/lookup" },
+            },
+          },
+          {
+            id: "check",
+            type: "action",
+            position: { x: 0, y: 200 },
+            data: {
+              label: "Reminders on?",
+              type: "action",
+              config: {
+                actionType: "Condition",
+                condition: `${remindersOn} == true`,
+                conditionModel: JSON.stringify({
+                  version: 2,
+                  groupLogic: "and",
+                  groups: [
+                    {
+                      id: "group_1",
+                      logic: "and",
+                      conditions: [
+                        {
+                          id: "rule_on",
+                          field: remindersOn,
+                          fieldType: "boolean",
+                          operator: "is_true",
+                        },
+                      ],
+                    },
+                  ],
+                }),
+              },
+            },
+          },
+          {
+            id: "remind",
+            type: "action",
+            position: { x: 0, y: 400 },
+            data: {
+              label: "Send reminder",
+              type: "action",
+              config: { actionType: "host/send" },
+            },
+          },
+        ],
+        edges: [
+          { id: "e_lookup", source: "lookup", target: "check" },
+          {
+            id: "e_true",
+            source: "check",
+            target: "remind",
+            sourceHandle: "true",
+          },
+        ],
+      }),
+    };
+    served.logsByExecutionId = {
+      exec_c: [
+        log({
+          id: "log_lookup",
+          nodeId: "lookup",
+          nodeName: "Look up visit",
+          status: "success",
+          output: { remindersOn: false },
+        }),
+        log({
+          id: "log_check",
+          nodeId: "check",
+          nodeName: "Reminders on?",
+          status: "success",
+          startedAt: "2026-03-01T10:00:01.000Z",
+          input: { condition: false, expression: `${remindersOn} == true` },
+          output: { condition: false },
+        }),
+      ],
+    };
+    const { aside, title, evidence, canvasNode } = await renderRunsReveal({
+      view: "runs",
+      executionId: "exec_c",
+    });
+    await waitFor(() => expect(title()).toBe(runHeading("exec_c")));
+
+    fireEvent.click(await canvasNode("Reminders on?"));
+    await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
+    const shown = within(evidence());
+    expect(shown.getByText("Took False")).toBeTruthy();
+    expect(shown.getByText("The path ends here.")).toBeTruthy();
+    expect(
+      shown.getByText("True when the rule matches, and False otherwise.")
+    ).toBeTruthy();
+    expect(shown.getByText("Did not match")).toBeTruthy();
+    expect(shown.getByText("Value in this run:")).toBeTruthy();
+    expect(shown.queryByText(/== true/)).toBeNull();
+
+    fireEvent.click(shown.getByRole("button", { name: "Show raw data" }));
+    // The recorded input and the configuration each hold the expression.
+    expect(shown.getAllByText(/== true/)).toHaveLength(2);
+    expect(shown.getByRole("button", { name: "Hide raw data" })).toBeTruthy();
+  });
+
+  it("shows a step's input and output as labeled values before its raw data", async () => {
+    served.items = [execution("exec_s", "completed")];
+    served.graphs = {
+      ver_exec_s: labelledGraph([{ id: "send", label: "Send reminder" }]),
+    };
+    served.logsByExecutionId = {
+      exec_s: [
+        log({
+          id: "log_s",
+          nodeId: "send",
+          nodeName: "Send reminder",
+          status: "success",
+          input: { toAddress: "ada@example.com" },
+          output: { messageId: "msg_42" },
+        }),
+      ],
+    };
+    const { aside, title, evidence, canvasNode } = await renderRunsReveal({
+      view: "runs",
+      executionId: "exec_s",
+    });
+    await waitFor(() => expect(title()).toBe(runHeading("exec_s")));
+
+    fireEvent.click(await canvasNode("Send reminder"));
+    await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
+    const shown = within(evidence());
+    expect(shown.getByText("To Address")).toBeTruthy();
+    expect(shown.getByText("ada@example.com")).toBeTruthy();
+    expect(shown.getByText("Message ID")).toBeTruthy();
+    expect(shown.queryByRole("button", { name: "Copy" })).toBeNull();
+
+    fireEvent.click(shown.getByRole("button", { name: "Show raw data" }));
+    expect(shown.getAllByRole("button", { name: "Copy" })).toHaveLength(3);
+    expect(shown.getByText(/"toAddress"/)).toBeTruthy();
+  });
+
   it("explains a removed node and a node that never ran", async () => {
     served.items = [execution("exec_x", "completed")];
     served.graphs = {
@@ -518,6 +671,7 @@ describe("Runs Focus node evidence", () => {
     expect(
       shown.getByText("This step is not in the graph this run uses.")
     ).toBeTruthy();
+    fireEvent.click(shown.getByRole("button", { name: "Show raw data" }));
     expect(
       shown.getByText("The configuration this run used is unavailable.")
     ).toBeTruthy();
@@ -537,6 +691,9 @@ describe("Runs Focus node evidence", () => {
     expect(
       within(evidence()).getByText("This step did not run in this run.")
     ).toBeTruthy();
+    fireEvent.click(
+      within(evidence()).getByRole("button", { name: "Show raw data" })
+    );
     expect(
       within(evidence()).getByRole("heading", { name: "Configuration" })
     ).toBeTruthy();

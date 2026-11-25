@@ -287,6 +287,60 @@ export function toWorkflowExecutionFromSummary(
   };
 }
 
+/**
+ * What a run's path on the canvas is drawn from: its recorded executions and
+ * the run status the same read returned.
+ */
+export function toRunPathSource(payload: ExecutionLogsResult): {
+  executionStatus: string;
+  logs: ExecutionLog[];
+} {
+  return {
+    executionStatus: payload.execution.status,
+    logs: toExecutionLogs(payload),
+  };
+}
+
+/**
+ * Whether a logs read is behind a later status read of the same run: the run's
+ * status differs, or the two name different statuses for its log rows. The
+ * status read names one status per log row, so both sides are compared in the
+ * words `nodeStatusInRun` gives them under the status read's run status.
+ */
+export function logsBehindStatusRead(
+  logsRead: {
+    executionStatus: string;
+    logs: readonly Pick<ExecutionLog, "nodeId" | "status">[];
+  },
+  statusRead: {
+    status: string;
+    nodeStatuses: readonly { nodeId: string; status: string }[];
+  }
+): boolean {
+  if (logsRead.executionStatus !== statusRead.status) {
+    return true;
+  }
+  // How many rows each side names per node and status: plus for the logs
+  // read, minus for the status read. A Map, because node ids are text the
+  // builder chose.
+  const counts = new Map<string, number>();
+  const tally = (
+    rows: readonly { nodeId: string; status: string }[],
+    step: number
+  ) => {
+    for (const row of rows) {
+      const key = JSON.stringify([
+        row.nodeId,
+        nodeStatusInRun(row.status, statusRead.status),
+      ]);
+      counts.set(key, (counts.get(key) ?? 0) + step);
+    }
+  };
+  tally(logsRead.logs, 1);
+  tally(statusRead.nodeStatuses, -1);
+  return [...counts.values()].some((count) => count !== 0);
+}
+
 export function toExecutionLogsByNodeId(
   payload: ExecutionLogsResult
 ): Record<string, ExecutionLogEntry> {

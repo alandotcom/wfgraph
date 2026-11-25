@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  logsBehindStatusRead,
   applyExecutionStatusToLogs,
   isRunInProgress,
   shouldPollExecutionDetail,
@@ -568,5 +569,61 @@ describe("applyExecutionStatusToLogs", () => {
 
     expect(cancelled?.status).toBe("cancelled");
     expect(cancelled?.error).toBe("Run ended before step completion");
+  });
+});
+
+describe("logsBehindStatusRead", () => {
+  const logsRead = {
+    executionStatus: "running",
+    logs: [
+      { nodeId: "send", status: "success" as const },
+      { nodeId: "wait", status: "running" as const },
+    ],
+  };
+
+  it("is caught up when both reads name the same rows and run status", () => {
+    expect(
+      logsBehindStatusRead(logsRead, {
+        status: "running",
+        nodeStatuses: [
+          { nodeId: "wait", status: "running" },
+          { nodeId: "send", status: "success" },
+        ],
+      })
+    ).toBe(false);
+  });
+
+  it("is behind once a step's status moves or a new step starts", () => {
+    expect(
+      logsBehindStatusRead(logsRead, {
+        status: "running",
+        nodeStatuses: [
+          { nodeId: "send", status: "success" },
+          { nodeId: "wait", status: "success" },
+        ],
+      })
+    ).toBe(true);
+    expect(
+      logsBehindStatusRead(logsRead, {
+        status: "running",
+        nodeStatuses: [
+          { nodeId: "send", status: "success" },
+          { nodeId: "wait", status: "running" },
+          { nodeId: "next", status: "running" },
+        ],
+      })
+    ).toBe(true);
+  });
+
+  it("is behind once the run's own status moves", () => {
+    expect(
+      logsBehindStatusRead(logsRead, {
+        status: "canceled",
+        nodeStatuses: [
+          { nodeId: "send", status: "success" },
+          { nodeId: "wait", status: "cancelled" },
+        ],
+      })
+    ).toBe(true);
   });
 });

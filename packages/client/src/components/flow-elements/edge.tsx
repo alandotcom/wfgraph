@@ -5,11 +5,16 @@ import {
   useInternalNode,
 } from "@xyflow/react";
 import { createContext, memo, useContext } from "react";
+import { cn } from "@wfgraph/shared/utils";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
 import {
   getEdgeParams,
   getWorkflowEdgePath,
 } from "#src/components/flow-elements/edge-path";
+import {
+  RunPathCaptionText,
+  runPathCaptionClass,
+} from "#src/components/workflow/nodes/outlet-label";
 import {
   COMPARISON_EDGE_ANNOTATION,
   type ComparisonEdgeAnnotation,
@@ -88,8 +93,13 @@ const Animated = memo(function Animated({
   };
   const [edgePath, labelX, labelY] = getWorkflowEdgePath(pathInput);
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
-  // `canvasEdgesAtom` sets this on every edge landing where the run cannot go.
-  const inactive = data?.inactive === true;
+  // `canvasEdgesAtom` sets `inactive` on every edge landing where the run
+  // cannot go, and on a run's canvas `runPath` on every edge the run decided.
+  // An edge the run did not take reads the same as one it cannot reach.
+  const runPath = data?.runPath;
+  const inactive = data?.inactive === true || runPath === "not-taken";
+  const taken = runPath === "taken" && !inactive;
+  const captionMark = taken ? "taken" : runPath === "not-taken" ? runPath : null;
   const comparison = data?.[COMPARISON_EDGE_ANNOTATION];
   const comparisonStyle = comparisonEdgeStyle(comparison);
 
@@ -104,18 +114,22 @@ const Animated = memo(function Animated({
           // Selection outranks inactivity, because an inactive edge is still
           // selectable and deletable and has to show what Delete would take.
           // Inactive is then said by the wider gap and the stopped march below,
-          // rather than by fading the wire toward the background.
+          // rather than by fading the wire toward the background. A taken edge
+          // is a solid Graphite Ink line that does not march, so the path a
+          // run took reads by its unbroken stroke as well as its tone.
           ...comparisonStyle,
-          stroke: selected
-            ? "var(--primary)"
-            : inactive
-              ? "var(--canvas-line-muted)"
-              : (comparisonStyle.stroke ?? "var(--canvas-line)"),
+          stroke:
+            selected || taken
+              ? "var(--primary)"
+              : inactive
+                ? "var(--canvas-line-muted)"
+                : (comparisonStyle.stroke ?? "var(--canvas-line)"),
           strokeWidth: comparisonStyle.strokeWidth ?? 2,
           strokeDasharray:
-            comparisonStyle.strokeDasharray ?? (inactive ? "4, 8" : "5"),
+            comparisonStyle.strokeDasharray ??
+            (taken ? "none" : inactive ? "4, 8" : "5"),
           animation:
-            inactive || comparison
+            inactive || taken || comparison
               ? undefined
               : "dashdraw 0.5s linear infinite",
         }}
@@ -154,13 +168,19 @@ const Animated = memo(function Animated({
       {edgeLabel && (
         <EdgeLabelRenderer>
           <div
-            className="pointer-events-none absolute rounded-sm border bg-background px-1.5 py-0.5 font-medium text-xs text-muted-foreground leading-none"
+            className={cn(
+              "pointer-events-none absolute rounded-sm border bg-background px-1.5 py-0.5 font-medium text-xs text-muted-foreground leading-none",
+              runPathCaptionClass(captionMark)
+            )}
+            data-run-path={runPath}
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              opacity: inactive ? 0.7 : undefined,
+              opacity: data?.inactive === true ? 0.7 : undefined,
             }}
           >
-            {edgeLabel}
+            <RunPathCaptionText mark={captionMark}>
+              {edgeLabel}
+            </RunPathCaptionText>
           </div>
         </EdgeLabelRenderer>
       )}

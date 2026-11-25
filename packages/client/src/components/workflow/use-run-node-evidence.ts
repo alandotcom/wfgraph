@@ -77,7 +77,7 @@ export function useRunNodeEvidence(
   nodeId: string | null
 ): RunNodeEvidence | null {
   const chosenExecution = useAtomValue(activeChosenExecutionAtom);
-  const nodes = useAtomValue(executionOverlayGraphAtom)?.nodes ?? [];
+  const graph = useAtomValue(executionOverlayGraphAtom);
   if (nodeId === null || reads === null) {
     return null;
   }
@@ -87,7 +87,8 @@ export function useRunNodeEvidence(
     logs: reads.logs,
     waits: reads.waits,
     events: reads.events,
-    nodes,
+    nodes: graph?.nodes ?? [],
+    edges: graph?.edges ?? [],
     pinnedGraph: reads.pinnedGraph,
     chosenExecution,
     schedule: reads.schedule,

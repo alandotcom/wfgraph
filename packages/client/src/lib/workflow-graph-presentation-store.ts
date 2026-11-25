@@ -6,6 +6,7 @@
 
 import { atom } from "jotai";
 import { selectAtom } from "jotai/utils";
+import { sortBy } from "es-toolkit/array";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { mapOrSame } from "@wfgraph/shared/utils/map-or-same";
 import { inactiveBranch } from "#src/lib/inactive-branch";
@@ -22,9 +23,16 @@ import {
   orderGroupParentsFirst,
 } from "@wfgraph/shared/graph/node-group";
 import {
+  isPathEndEdge,
   scopeCanvasGraph,
   type ScopeCanvasGraph,
 } from "#src/lib/group-scope-canvas";
+import {
+  type RunPath,
+  type RunPathMark,
+  runPath,
+  runPathOutletMark,
+} from "#src/lib/run-path";
 import {
   edgesStateAtom,
   executionOverlayGraphAtom,
@@ -46,7 +54,7 @@ import {
   runStartInFlightAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
-import { isRunInProgress } from "#src/lib/execution-logs";
+import { type ExecutionLog, isRunInProgress } from "#src/lib/execution-logs";
 import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
 import type { WorkflowExecutionStatus } from "@wfgraph/shared/lifecycle/execution-contracts";
 import {
@@ -67,6 +75,36 @@ const statusByNodeIdAtom = atom<ReadonlyMap<string, RunNodeEvidenceStatus>>(
 
 /** The open run's own status, written with its node statuses. */
 const runExecutionStatusAtom = atom<WorkflowExecutionStatus | null>(null);
+
+/**
+ * The open run's recorded executions with the run status the same read
+ * returned, or null before the run's logs are read. One read holds both, so
+ * the path never pairs one moment's logs with a later moment's verdict.
+ */
+const runLogsAtom = atom<{
+  executionStatus: string;
+  logs: readonly ExecutionLog[];
+} | null>(null);
+
+/**
+ * The path the open run took through the graph it pinned, or null outside
+ * Runs and until both that graph and the run's logs are read.
+ */
+export const runPathAtom = atom((get): RunPath | null => {
+  if (get(workflowWorkspaceViewAtom) !== "runs") {
+    return null;
+  }
+  const graph = get(executionOverlayGraphAtom);
+  const snapshot = get(runLogsAtom);
+  return graph && snapshot
+    ? runPath({
+        nodes: graph.nodes,
+        edges: graph.edges,
+        logs: snapshot.logs,
+        executionStatus: snapshot.executionStatus,
+      })
+    : null;
+});
 
 /** The run evidence status of each node the open run's progress names. */
 export const runNodeEvidenceStatusesAtom = atom((get) =>
@@ -329,9 +367,45 @@ export const displayNodesAtom = atom((get) => {
   return paintSelection(painted);
 });
 
+/** The copy of each edge carrying a run path mark. */
+const pathPaintedEdges = new WeakMap<WorkflowEdge, WorkflowEdge>();
+
 /**
- * The stored edges of the active workspace, painted with inactive branches and
- * selection, before `scopeCanvasGraph` places them on Group frames or stubs.
+ * `edge` carrying `mark`, the run path mark it is drawn with. A copy is cached
+ * per edge, so an unchanged path keeps element identity across repaints.
+ */
+function withRunPathMark(
+  edge: WorkflowEdge,
+  mark: RunPathMark | null
+): WorkflowEdge {
+  if ((edge.data?.runPath ?? null) === mark) {
+    return edge;
+  }
+  const cached = pathPaintedEdges.get(edge);
+  if (cached && (cached.data?.runPath ?? null) === mark) {
+    return cached;
+  }
+  const painted = {
+    ...edge,
+    data: omitUndefined({ ...edge.data, runPath: mark ?? undefined }),
+  };
+  pathPaintedEdges.set(edge, painted);
+  return painted;
+}
+
+/** Where an edge with each run path mark sorts, taken first. */
+const RUN_PATH_RANK = { taken: 0, undecided: 1, "not-taken": 2 } as const;
+
+function runPathRank(edge: WorkflowEdge): number {
+  return RUN_PATH_RANK[edge.data?.runPath ?? "undecided"];
+}
+
+/**
+ * The stored edges of the active workspace, painted with inactive branches,
+ * the open run's path, and selection, before `scopeCanvasGraph` places them on
+ * Group frames or stubs. On a run's canvas the taken edges come first: the
+ * overview draws the edges a Group card stands for as one, keeping the first,
+ * so that edge reads as taken when any edge it stands for was.
  */
 const paintedEdgesAtom = atom((get) => {
   const view = get(workflowWorkspaceViewAtom);
@@ -366,17 +440,44 @@ const paintedEdgesAtom = atom((get) => {
             }),
           };
         });
-  return paintSelection(withInactiveBranch);
+  const path = get(runPathAtom);
+  if (path === null) {
+    return paintSelection(withInactiveBranch);
+  }
+  const withRunPath = mapOrSame(withInactiveBranch, (edge) =>
+    withRunPathMark(edge, path.edges.get(edge.id) ?? null)
+  );
+  return paintSelection(sortBy(withRunPath, [runPathRank]));
 });
 
-/** Every form factor paints the same stored positions for the active scope. */
-export const canvasGraphAtom = atom((get): ScopeCanvasGraph =>
-  scopeCanvasGraph({
+/**
+ * Every form factor paints the same stored positions for the active scope. On
+ * a run's canvas the edge to a "Path ends" stub takes its outlet's mark, and
+ * the taken edges are drawn last, so the path stays on top where edges cross.
+ */
+export const canvasGraphAtom = atom((get): ScopeCanvasGraph => {
+  const graph = scopeCanvasGraph({
     nodes: get(displayNodesAtom),
     edges: get(paintedEdgesAtom),
     scope: get(activeWorkspaceAddressAtom).scope,
-  })
-);
+  });
+  const path = get(runPathAtom);
+  if (path === null) {
+    return graph;
+  }
+  const edges = mapOrSame(graph.edges, (edge) =>
+    isPathEndEdge(edge)
+      ? withRunPathMark(
+          edge,
+          runPathOutletMark(path, edge.source, edge.sourceHandle)
+        )
+      : edge
+  );
+  return {
+    ...graph,
+    edges: sortBy(edges, [(edge) => -runPathRank(edge)]),
+  };
+});
 
 /** The nodes `canvasGraphAtom` paints for the active scope. */
 export const canvasNodesAtom = atom((get) => get(canvasGraphAtom).nodes);
@@ -414,13 +515,33 @@ export const clearNodeStatusesAtom = atom(null, (_get, set) => {
   set(executionOverlayGraphAtom, null);
   set(statusByNodeIdAtom, new Map());
   set(runExecutionStatusAtom, null);
+  set(runLogsAtom, null);
 });
 
 /** Reset run badges while retaining the pinned graph for the next run. */
 export const resetNodeStatusesAtom = atom(null, (_get, set) => {
   set(statusByNodeIdAtom, new Map());
   set(runExecutionStatusAtom, null);
+  set(runLogsAtom, null);
 });
+
+/**
+ * Replace the open run's logs the run path is read from with one read of
+ * them, or with null when no run's logs are read.
+ */
+export const projectRunLogsAtom = atom(
+  null,
+  (
+    _get,
+    set,
+    snapshot: {
+      executionStatus: string;
+      logs: readonly ExecutionLog[];
+    } | null
+  ) => {
+    set(runLogsAtom, snapshot);
+  }
+);
 
 /** Merge a run's progress onto whichever graph the workspace presents. */
 export const setNodeStatusesAtom = atom(

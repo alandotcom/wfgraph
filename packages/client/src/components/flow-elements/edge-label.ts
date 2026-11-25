@@ -39,7 +39,14 @@ export function workflowEdgeAriaLabel({
     ? `${sourceLabel} to ${targetLabel}, ${outletLabel} branch`
     : `${sourceLabel} to ${targetLabel}`;
   const comparison = data?.[COMPARISON_EDGE_ANNOTATION];
-  return comparison
-    ? `${label}, ${comparisonChangeLabel(comparison.kind)}`
-    : label;
+  if (comparison) {
+    return `${label}, ${comparisonChangeLabel(comparison.kind)}`;
+  }
+  return data?.runPath ? `${label}, ${RUN_PATH_WORDS[data.runPath]}` : label;
 }
+
+/** How an edge's accessible name says whether the run went along it. */
+const RUN_PATH_WORDS = {
+  taken: "taken by this run",
+  "not-taken": "not taken by this run",
+} as const;

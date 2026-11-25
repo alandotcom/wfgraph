@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { WarningCallout } from "#src/components/ui/callout";
 import {
@@ -54,11 +55,17 @@ export function ConditionSummary({
   nodes,
   compact = false,
   setOperatorsRequireEnumValues = false,
+  ruleDetails,
 }: {
   model: ConditionModel;
   fields: readonly ConditionSelectableField[];
   nodes: readonly WorkflowNode[];
   compact?: boolean;
+  /**
+   * A line shown under a rule, by rule id, such as what a run recorded about
+   * it. Absent where the rules are read on their own.
+   */
+  ruleDetails?: ReadonlyMap<string, ReactNode> | undefined;
   /**
    * Refuses a set comparison on a string field with no enum values, as Entity
    * Eligibility does. See `ConditionBuilderRow`.
@@ -77,6 +84,7 @@ export function ConditionSummary({
           field={conditionFieldForPath(fields, onlyCondition.field)}
           joiner={null}
           nodes={nodes}
+          detail={ruleDetails?.get(onlyCondition.id)}
           setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
         />
       </ul>
@@ -109,6 +117,7 @@ export function ConditionSummary({
                 joiner={conditionIndex > 0 ? logicLabel(group.logic) : null}
                 key={condition.id}
                 nodes={nodes}
+                detail={ruleDetails?.get(condition.id)}
                 setOperatorsRequireEnumValues={setOperatorsRequireEnumValues}
               />
             ))}
@@ -141,12 +150,15 @@ function RuleLine({
   field,
   joiner,
   nodes,
+  detail,
   setOperatorsRequireEnumValues,
 }: {
   condition: ConditionRule;
   field: ConditionSelectableField | undefined;
   joiner: string | null;
   nodes: readonly WorkflowNode[];
+  /** A line shown under the rule. */
+  detail: ReactNode;
   setOperatorsRequireEnumValues: boolean;
 }) {
   const catalog = useExtensionCatalog();
@@ -170,6 +182,7 @@ function RuleLine({
       {refusal ? (
         <WarningCallout variant="text">{refusal}</WarningCallout>
       ) : null}
+      {detail}
     </li>
   );
 }

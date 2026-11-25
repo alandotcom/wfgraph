@@ -23,6 +23,7 @@ import {
 } from "@wfgraph/shared/graph/group-boundary";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { isBlank } from "@wfgraph/shared/types/string";
+import type { RunPathMark } from "#src/lib/run-path";
 import type { WorkspaceScope } from "#src/lib/workflow-navigation-state";
 
 export type { NodeRunStatus, PersistedNodeData };
@@ -104,6 +105,11 @@ export type EditorEdgeData = Record<string, unknown> & {
   displayLabel?: string | undefined;
   /** Set on an edge landing on a node the run can never reach. */
   inactive?: boolean | undefined;
+  /**
+   * On a run's canvas, whether the run went along this connection. Absent on
+   * any other canvas and while the run may still take it.
+   */
+  runPath?: RunPathMark | undefined;
   /**
    * False on a painted connection that stands for no stored edge, such as the
    * one to a "Path ends" stub, which offers no Insert step control.
@@ -283,6 +289,7 @@ export function toPersistedEdge(edge: WorkflowEdge): PersistedWorkflowEdge {
   const {
     displayLabel: _displayLabel,
     inactive: _inactive,
+    runPath: _runPath,
     [COMPARISON_EDGE_ANNOTATION]: comparison,
     ...rest
   } = edge.data ?? {};

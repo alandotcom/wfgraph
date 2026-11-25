@@ -133,7 +133,7 @@ An achromatic graphite ramp carries the entire interface; saturated hues exist o
 - **Graphite Line** (oklch(0.922 0 0)): Hairline borders and input strokes (oklch(0.27 0 0) in dark mode).
 - **Graphite Mid** (oklch(0.54 0 0), oklch(0.65 0 0) in dark): Muted foreground for descriptions and placeholders. It is solved against Graphite Wash, the darkest ground muted text sits on: 4.61:1 there and 5.02:1 on Paper. Anything lighter is decorative only.
 - **Canvas Line** (oklch(0.6 0 0), oklch(0.48 0 0) in dark): The structural stroke on the React Flow canvas, carrying a node's resting border and the wire between two nodes. `--canvas-line`. It is a separate step from Graphite Line because a node card is Paper on a Paper canvas, so this stroke is the whole card edge rather than a hairline over a fill; it is solved for the 3:1 WCAG 1.4.11 asks of a graphic carrying meaning, which Graphite Line misses at 1.20:1. Canvas only. A border inside a panel or a card is still Graphite Line.
-- **Canvas Line Muted** (oklch(0.78 0 0), oklch(0.37 0 0) in dark): One step down at 2.0:1, for an edge into a subtree the run cannot reach. `--canvas-line-muted`. It is a value per theme rather than Canvas Line mixed toward the background, because mixing toward Paper lightens while mixing toward Void darkens, so a single expression reads correctly in one theme and disappears in the other. This is the one canvas stroke below the 3:1 floor, and it is deliberate: an unreachable edge has to read as quieter than a live one, and the meaning is carried by the wider dash gap and the stopped march rather than by contrast alone. Treat 2.0:1 as the floor for a deliberately quiet stroke, not as a target to design toward.
+- **Canvas Line Muted** (oklch(0.78 0 0), oklch(0.37 0 0) in dark): One step down at 2.0:1, for an edge into a subtree the run cannot reach, and on a run's canvas for an edge the run did not take. `--canvas-line-muted`. It is a value per theme rather than Canvas Line mixed toward the background, because mixing toward Paper lightens while mixing toward Void darkens, so a single expression reads correctly in one theme and disappears in the other. This is the one canvas stroke below the 3:1 floor, and it is deliberate: an unreachable edge has to read as quieter than a live one, and the meaning is carried by the wider dash gap and the stopped march rather than by contrast alone. Treat 2.0:1 as the floor for a deliberately quiet stroke, not as a target to design toward.
 - **Void** (oklch(0 0 0)): Dark mode's background. True black, tuned for the OLED-dark canvas where the graph floats.
 
 ### Tertiary (signals)
@@ -274,6 +274,8 @@ The focused Group canvas shows its members at their stored positions relative to
 Handles are 12px dots in Graphite Ink with a hairline ring, and their hit areas are 24px on desktop and 44px on touch. Those sizes are divided by `--rf-zoom`, the live canvas scale the viewport transform applies, because a flat pixel size inside that transform shrinks with the zoom and delivered 24.6px on a phone.
 
 Edges leave the bottom handle, travel in a rounded orthogonal step, and enter the top handle of the next node. The dash is the wire, 2px of Canvas Line marching while live and Graphite Ink when selected; a label sits on the horizontal span when the outlet has a name. An edge landing where the run cannot go widens its dash gap and stops marching, keeping a legible stroke rather than fading toward the background.
+
+A run's canvas shows the path the run took, read from its recorded executions. A Condition leaves by the branch its answer names, an Event Split by the outlet of the Event it recorded, and any other step by each edge whose target the run reached. An edge the run took is a solid 2px Graphite Ink line that does not march, and is drawn above the others. An edge it did not take wears the unreachable face: Canvas Line Muted, the wider dash gap, and no march. While the run is in progress, an edge it may still take keeps the live marching dash. The outlet label of a branch the run took, on the edge or under the card, inverts to Graphite Ink with Paper text and leads with a check, so it reads without color; the label of one it did not take drops to 70% opacity. A Group card's edge is taken when any edge it stands for was, and on a focused Group canvas the edges to and from stubs follow the same rule. A Draft canvas shows no path.
 
 A step the run can never reach is muted: the card drops to 50% opacity, its incoming edge takes Canvas Line Muted and a wider dash gap, and that edge stops animating, so a dead region reads as still while a live one moves. Two things put a step out of reach, and both wear this: a Canceled subtree while no Cancel Event is declared, which also labels the outlet, and everything below a disabled step, since disabling one ends its branch. A disabled step wears its own face instead, 50% opacity with an eye badge, which is what separates the step a person switched off from the steps that lost their path because of it. A Group frame has no enabled state and never wears the disabled face; each member wears its own.
 
@@ -470,8 +472,16 @@ Focus lists every execution of a node the run reached more than once, as
 "Execution N of M", and choosing one changes neither the canvas selection, the
 journey, nor the control that has focus. Each execution shows its status, start,
 finish and duration, its error or cancellation, the wait it holds with **Resume
-now**, the node's activity such as parking and resuming, its result, input and
-output, and the node's configuration in the graph the run pinned. Notices say
+now**, what the step did in words, and the node's activity such as parking and
+resuming. A Condition leads with its answer, such as "Took False", and the step
+the branch continues to, or that the path ends there. Each rule then reads as
+the sentence Canvas Reveal builds for it, with whether it matched where the
+answer and the rules' logic decide that, and the value it compared where the
+run recorded the step it reads. Any other step shows its integration's own
+result display when it has one, then its input and output as labeled values
+under the action's field labels. The recorded input, output, and the node's
+configuration in the graph the run pinned stay as raw JSON with **Copy** behind
+one **Show raw data** disclosure, closed each time a step's evidence opens. Notices say
 when the node is no longer in that graph, when the graph is loading or could not
 be loaded, when an execution never finished, and when the run is still in
 progress and refreshing. A Group records nothing in a run, so a Group card has

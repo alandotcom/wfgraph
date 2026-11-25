@@ -6,8 +6,44 @@
  */
 
 import { Position, useNodeConnections } from "@xyflow/react";
+import { Check } from "lucide-react";
 import type { CSSProperties } from "react";
 import { cn } from "@wfgraph/shared/utils";
+import type { RunPathMark } from "#src/lib/run-path";
+
+/**
+ * The classes an outlet caption, on a card or on an edge, adds for the run
+ * path. The outlet a run took inverts to Graphite Ink and leads with a check,
+ * so it reads as taken without relying on color; one it did not take recedes.
+ */
+export function runPathCaptionClass(
+  mark: RunPathMark | null | undefined
+): string | undefined {
+  if (mark === "taken") {
+    return "inline-flex items-center gap-1 border-foreground bg-foreground text-background";
+  }
+  return mark === "not-taken" ? "opacity-70" : undefined;
+}
+
+/**
+ * An outlet caption's words, after a check when the run took the outlet. The
+ * words keep their own box beside the check, so a caption that truncates
+ * still ends in an ellipsis.
+ */
+export function RunPathCaptionText(input: {
+  mark: RunPathMark | null | undefined;
+  children: string;
+}) {
+  if (input.mark !== "taken") {
+    return input.children;
+  }
+  return (
+    <>
+      <Check aria-hidden="true" className="size-3 shrink-0" strokeWidth={2.5} />
+      <span className="min-w-0 truncate">{input.children}</span>
+    </>
+  );
+}
 
 /**
  * The style placing an outlet handle or its label `offset` along the card side
@@ -32,6 +68,8 @@ export function BranchOutletLabel(input: {
   outlet: Position;
   offset: string;
   className?: string | undefined;
+  /** On a run's canvas, whether the run left by this outlet. */
+  runPath?: RunPathMark | null | undefined;
   children: string;
 }) {
   const connections = useNodeConnections({
@@ -47,6 +85,7 @@ export function BranchOutletLabel(input: {
       className={input.className}
       offset={input.offset}
       outlet={input.outlet}
+      runPath={input.runPath}
     >
       {input.children}
     </OutletLabel>
@@ -64,6 +103,8 @@ export function OutletLabel(input: {
   title?: string | undefined;
   /** The widest the caption may draw, as a CSS length. */
   maxWidth?: string | undefined;
+  /** On a run's canvas, whether the run left by this outlet. */
+  runPath?: RunPathMark | null | undefined;
   children: string;
 }) {
   return (
@@ -73,7 +114,8 @@ export function OutletLabel(input: {
         input.outlet === Position.Right
           ? "left-full ml-3 -translate-y-1/2"
           : "-bottom-8 -translate-x-1/2",
-        input.className
+        input.className,
+        runPathCaptionClass(input.runPath)
       )}
       data-slot="outlet-label"
       style={{
@@ -82,7 +124,9 @@ export function OutletLabel(input: {
       }}
       title={input.title}
     >
-      {input.children}
+      <RunPathCaptionText mark={input.runPath}>
+        {input.children}
+      </RunPathCaptionText>
     </div>
   );
 }

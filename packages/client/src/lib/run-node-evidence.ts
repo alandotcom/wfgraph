@@ -18,7 +18,12 @@ import {
   isRunInProgress,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
+import {
+  type ConditionDecision,
+  conditionDecision,
+} from "#src/lib/condition-decision";
+import { isConditionNode } from "@wfgraph/shared/graph/node-config";
 import type { ExecutorSchedule } from "#src/lib/run-executor-activity";
 import {
   type CanvasSelection,
@@ -189,6 +194,11 @@ export type RunNodeEvidence = {
   removed: boolean;
   /** The node's configuration in the pinned graph, when the graph holds it. */
   config: Readonly<Record<string, unknown>> | null;
+  /**
+   * What the shown execution of a Condition decided, or null for any other
+   * node and for an execution that recorded no answer.
+   */
+  condition: ConditionDecision | null;
   /** The waits the run is parked on at this node, while the run is in progress. */
   waits: readonly ExecutionWait[];
   /** The run's audit events that name this node, oldest first. */
@@ -213,6 +223,8 @@ export function buildRunNodeEvidence(input: {
   waits: readonly ExecutionWait[];
   events: readonly ExecutionEvent[];
   nodes: readonly WorkflowNode[];
+  /** The connections of the graph the run pinned. */
+  edges: readonly WorkflowEdge[];
   pinnedGraph: PinnedGraphState;
   chosenExecution: ChosenRunExecution | null;
   /** Where the database executor holds the run, or null once it has ended. */
@@ -261,6 +273,16 @@ export function buildRunNodeEvidence(input: {
     pinnedGraph: input.pinnedGraph,
     removed: input.pinnedGraph === "ready" && node === undefined,
     config: node?.data.config ?? null,
+    condition:
+      shown !== null && isConditionNode(node)
+        ? conditionDecision({
+            nodeId,
+            execution: shown,
+            config: node?.data.config ?? null,
+            edges: input.edges,
+            logs,
+          })
+        : null,
     waits,
     activity: sortBy(
       input.events.filter((event) => eventNodeId(event) === nodeId),
