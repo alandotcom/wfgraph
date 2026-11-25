@@ -22,7 +22,7 @@ import {
   PREFLIGHT_BUSY_MESSAGE,
   useWorkflowIssuePreflight,
 } from "#src/hooks/use-workflow-issue-preflight";
-import { editorChordAllowed } from "#src/lib/editor-shortcuts";
+import { editorChordAllowed, isSubmitChord } from "#src/lib/editor-shortcuts";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { orpcQuery, refreshWorkflowList } from "#src/lib/rpc-query";
 import type { WorkflowRunGraph } from "#src/lib/workflow-run-labels";
@@ -39,6 +39,7 @@ import {
   isPublicationReviewActiveAtom,
   publicationReviewSessionAtom,
 } from "#src/lib/workflow-publication-review-store";
+import { isReviewOpenAtom } from "#src/lib/workflow-review-store";
 import {
   groupWorkflowIssuesForOverlay,
   hasBlockingWorkflowIssues,
@@ -150,14 +151,18 @@ export function useWorkflowActions(
   // listener is on the document rather than on a control, so it repeats the
   // owner check. Without it the shortcut would run a graph the viewer cannot
   // edit and flush the autosave queue on the way.
+  //
+  // While the review sheet is open or Publish is preparing it, the shortcut
+  // leaves the key alone, so the sheet's own Cmd+Enter publishes.
   const handleRunShortcut = useCallback(
     (event: KeyboardEvent) => {
-      if (!((event.metaKey || event.ctrlKey) && event.key === "Enter")) {
+      if (!isSubmitChord(event)) {
         return;
       }
       if (
         !canExecute ||
         !canUpdate ||
+        store.get(isReviewOpenAtom) ||
         !editorChordAllowed(event, { inTextFields: false })
       ) {
         return;
@@ -166,7 +171,7 @@ export function useWorkflowActions(
       event.stopPropagation();
       void handleExecute("draft");
     },
-    [canExecute, canUpdate, handleExecute]
+    [canExecute, canUpdate, handleExecute, store]
   );
 
   useDomEvent(document, "keydown", handleRunShortcut, { capture: true });

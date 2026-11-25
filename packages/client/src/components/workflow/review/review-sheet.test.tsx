@@ -18,7 +18,12 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
-import { OverlayProvider } from "#src/components/overlays/overlay-provider";
+import {
+  OverlayProvider,
+  useOverlay,
+} from "#src/components/overlays/overlay-provider";
+import { useWorkflowActions } from "#src/components/workflow/workflow-toolbar-handlers";
+import { state } from "#src/components/workflow/workflow-toolbar-test-support";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
@@ -247,6 +252,8 @@ async function renderSheet(
     payload?: WorkflowComparisonPayload | null;
     mode?: WorkflowMode;
     usage?: WorkflowVersionUsageItem[];
+    /** Also mount the toolbar's document-level shortcuts, as the editor does. */
+    withToolbar?: boolean;
   } = {}
 ) {
   const store = createStore();
@@ -282,7 +289,12 @@ async function renderSheet(
     getParentRoute: () => rootRoute,
     path: "/workflows/$workflowId",
     validateSearch: (value: Record<string, unknown>) => value,
-    component: () => <ReviewSheet />,
+    component: () => (
+      <>
+        <ReviewSheet />
+        {options.withToolbar ? <ToolbarShortcuts /> : null}
+      </>
+    ),
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([workflowRoute]),
@@ -305,6 +317,13 @@ async function renderSheet(
   );
   await router.load();
   return Object.assign(view, { store, router });
+}
+
+/** The toolbar's shortcuts, and how many dialogs they have opened. */
+function ToolbarShortcuts() {
+  useWorkflowActions(state());
+  const { stack } = useOverlay();
+  return <output aria-label="overlay count">{stack.length}</output>;
 }
 
 const sheet = (view: ReturnType<typeof render>) =>
@@ -518,6 +537,23 @@ describe("ReviewSheet", () => {
       expectedDraftRevision: 1,
       expectedPublishedVersionId: "version_7",
     });
+  });
+
+  // The toolbar's run shortcut listens on the document in the capture phase,
+  // so it would take the key before the sheet saw it.
+  it("publishes on Cmd+Enter from the sheet's title and opens no Run draft dialog", async () => {
+    const view = await renderSheet({ withToolbar: true });
+    const title = await view.findByRole("heading", { name: "Publish v8" });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+
+    fireEvent.keyDown(title, { key: "Enter", metaKey: true });
+
+    await waitFor(() =>
+      expect(requests.map((request) => request.path)).toContain(
+        "workflow/publish"
+      )
+    );
+    expect(view.getByLabelText("overlay count").textContent).toBe("0");
   });
 
   it("keeps editing by closing the review", async () => {
