@@ -358,7 +358,19 @@ describe("WorkflowOutline", () => {
     expect(row("Enough time for reminders?").textContent).toContain(
       "Took True"
     );
-    expect(row("Send booking confirmation").textContent).toMatch(/Ran.*:03/u);
+    // The first step finished names its time; the next, finished in the same
+    // second, does not repeat it.
+    expect(row("Enough time for reminders?").textContent).toMatch(/:03$/u);
+    expect(row("Send booking confirmation").textContent).toMatch(/Ran$/u);
+    // Each outcome sits on its own line, outside the label's truncation, so
+    // it reads whole at any depth.
+    for (const outcome of list.querySelectorAll('[data-slot="run-outcome"]')) {
+      expect(outcome.closest(".truncate")).toBeNull();
+    }
+    expect(
+      within(row("Deposit or reschedule?")).getByText(/^Took Payment settled/u)
+        .dataset.slot
+    ).toBe("run-outcome");
     expect(row("Pre-visit reminders").textContent).toContain("Waiting");
     expect(within(list).getByText("3 steps not reached yet")).toBeTruthy();
     expect(row("Deposit or reschedule?").textContent).toContain(

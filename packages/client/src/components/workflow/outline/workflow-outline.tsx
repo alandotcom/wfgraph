@@ -516,6 +516,15 @@ export function WorkflowOutline({
     }
   };
 
+  // A run's rows name a time only where it differs from the row before.
+  const timedRowKeys = new Set<string>();
+  let lastTime: string | null = null;
+  for (const row of shown) {
+    const time = run?.outcomes.get(row.key)?.time ?? null;
+    if (time !== null && time !== lastTime) timedRowKeys.add(row.key);
+    if (time !== null) lastTime = time;
+  }
+
   const shownSections = outline
     ? outlineSections({ outline, shown, isRun: run !== null })
     : [];
@@ -590,6 +599,7 @@ export function WorkflowOutline({
                           ?.text.startsWith("Not reached") === true)
                     }
                     outcome={run?.outcomes.get(row.key)}
+                    showsTime={timedRowKeys.has(row.key)}
                     onChoose={() => {
                       focusRow(row.key);
                       choose(row);
@@ -667,6 +677,7 @@ function OutlineRowView({
   issues,
   edit,
   outcome,
+  showsTime,
   onChoose,
   onFocus,
   onLeave,
@@ -685,6 +696,11 @@ function OutlineRowView({
   edit: { kind: "added" | "modified" | "removed" } | null;
   /** What the open run did at the step, which takes the summary's place. */
   outcome: RunOutcome | undefined;
+  /**
+   * Whether the outcome names its time. A time shows only where it differs
+   * from the row before, since a run's steps often finish within one second.
+   */
+  showsTime: boolean;
   onChoose: () => void;
   onFocus: () => void;
   onLeave: () => void;
@@ -761,7 +777,7 @@ function OutlineRowView({
       aria-expanded={expanded}
       aria-level={row.depth + 1}
       aria-selected={selected}
-      className={rowClass}
+      className={cn(rowClass, outcome && "items-start")}
       data-node-id={nodeRow.nodeId}
       id={outlineRowElementId(row.key)}
       onClick={onChoose}
@@ -772,38 +788,55 @@ function OutlineRowView({
       tabIndex={active ? 0 : -1}
       {...focusHandlers}
     >
-      <span className="flex w-5 shrink-0 items-center justify-end text-muted-foreground tabular-nums">
+      <span className="flex h-4 w-5 shrink-0 items-center justify-end text-muted-foreground tabular-nums">
         {nodeRow.kind === "step" ? (
           (nodeRow.number ?? "")
         ) : nodeRow.kind === "group" && expanded !== undefined ? (
           <FoldToggle expanded={expanded} onToggle={onToggle} />
         ) : null}
       </span>
-      <span aria-hidden className="flex size-3.5 shrink-0 items-center">
+      <span aria-hidden className="flex h-4 w-3.5 shrink-0 items-center">
         <RowGlyph outcome={outcome} row={nodeRow} />
       </span>
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate",
-          muted && "text-muted-foreground"
-        )}
-      >
-        <span className={cn(!muted && "font-medium")}>{nodeRow.label}</span>
-        {outcome ? (
-          <span className={OUTCOME_TONE_CLASS[outcome.tone]}>
-            {" "}
-            · {outcome.text}
+      {outcome ? (
+        // On a run the label takes the first line and what the run did there
+        // takes the second, whole, so a deep row never cuts the outcome.
+        <span
+          className={cn(
+            "flex min-w-0 flex-1 flex-col",
+            muted && "text-muted-foreground"
+          )}
+        >
+          <span className={cn("truncate", !muted && "font-medium")}>
+            {nodeRow.label}
           </span>
-        ) : nodeRow.summary ? (
-          <span className="text-muted-foreground"> · {nodeRow.summary}</span>
-        ) : null}
-      </span>
+          <span
+            className={cn("break-words", OUTCOME_TONE_CLASS[outcome.tone])}
+            data-slot="run-outcome"
+          >
+            {outcome.text}
+            {showsTime && outcome.time ? (
+              <span className="text-muted-foreground tabular-nums">
+                {" "}
+                · {outcome.time}
+              </span>
+            ) : null}
+          </span>
+        </span>
+      ) : (
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate",
+            muted && "text-muted-foreground"
+          )}
+        >
+          <span className={cn(!muted && "font-medium")}>{nodeRow.label}</span>
+          {nodeRow.summary ? (
+            <span className="text-muted-foreground"> · {nodeRow.summary}</span>
+          ) : null}
+        </span>
+      )}
       <RowEnd>
-        {outcome?.time ? (
-          <span className="text-muted-foreground tabular-nums">
-            {outcome.time}
-          </span>
-        ) : null}
         {nodeRow.kind === "step" && nodeRow.disabled ? (
           <span className="flex items-center text-muted-foreground">
             <EyeOff aria-hidden className="size-3.5" />
