@@ -162,10 +162,17 @@ describe("Runs Focus node evidence", () => {
     expect(title()).toBe(runHeading("exec_s"));
   });
 
-  it("shows a failed node's error", async () => {
+  it("shows a failed node's error, what the failure left undone and that it is not retried", async () => {
     served.items = [execution("exec_f", "failed")];
     served.graphs = {
-      ver_exec_f: labelledGraph([{ id: "send", label: "Send reminder" }]),
+      ver_exec_f: labelledGraph(
+        [
+          { id: "send", label: "Send reminder" },
+          { id: "notify", label: "Notify the desk" },
+        ],
+        undefined,
+        [["send", "notify"]]
+      ),
     };
     served.logsByExecutionId = {
       exec_f: [
@@ -193,6 +200,14 @@ describe("Runs Focus node evidence", () => {
     expect(
       within(evidence()).getByText("SMTP refused the message")
     ).toBeTruthy();
+    // The run opens on this step, so the step says what the summary says.
+    const aftermath = evidence().querySelector('[data-slot="run-aftermath"]');
+    expect(aftermath?.textContent).toContain(
+      'Step 2 "Notify the desk" did not run.'
+    );
+    expect(aftermath?.textContent).toContain(
+      "This run has ended and is not retried."
+    );
   });
 
   // A test run calls the handler, which answers that it sent nothing. The

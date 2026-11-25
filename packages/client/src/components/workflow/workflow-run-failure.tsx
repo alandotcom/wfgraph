@@ -1,3 +1,5 @@
+import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
+import { workflowStepNumbers } from "@wfgraph/shared/graph/workflow-outline";
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { EditConnectionOverlay } from "#src/components/overlays/edit-connection-overlay";
@@ -9,6 +11,7 @@ import { can } from "#src/lib/authorization";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import {
   describeFailure,
+  failedRunAftermath,
   type FailedStepConnection,
   type RunEntitySource,
 } from "#src/lib/run-failure";
@@ -156,4 +159,45 @@ function runEntitySource(input: {
           findEvent(input.catalog, startEventName)?.label ?? startEventName,
         binding,
       };
+}
+
+/**
+ * What a failed run left undone and that it is not retried, as two sentences
+ * from `failedRunAftermath` over the graph the run pinned. `failedNodeId` is
+ * the step the run failed at and `ranNodeIds` the steps it recorded an
+ * execution of. The run summary and the failed step's evidence both show it.
+ * Renders nothing before the pinned graph has loaded.
+ */
+export function FailedRunAftermath({
+  failedNodeId,
+  ranNodeIds,
+  className,
+}: {
+  failedNodeId: string;
+  ranNodeIds: ReadonlySet<string>;
+  className?: string | undefined;
+}) {
+  const catalog = useExtensionCatalog();
+  const graph = useAtomValue(executionOverlayGraphAtom);
+  if (!graph) {
+    return null;
+  }
+  const aftermath = failedRunAftermath({
+    failedNodeId,
+    nodes: graph.nodes,
+    edges: graph.edges,
+    ranNodeIds,
+    numberOf: workflowStepNumbers({
+      nodes: graph.nodes,
+      edges: graph.edges,
+      catalog,
+    }),
+    nameOf: (node) => getNodeDisplayName(catalog, node),
+  });
+  return (
+    <div className={cn("space-y-1", className)} data-slot="run-aftermath">
+      <p>{aftermath.notRun}</p>
+      <p>{aftermath.next}</p>
+    </div>
+  );
 }

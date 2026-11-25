@@ -215,6 +215,10 @@ export type RunNodeEvidence = {
   retry: NodeRetry | null;
   /** Whether the run is still in progress, so its reads keep polling. */
   inProgress: boolean;
+  /** Whether the run failed, and this node holds its last failed execution. */
+  failedHere: boolean;
+  /** Every node the run recorded an execution of. */
+  ranNodeIds: ReadonlySet<string>;
 };
 
 /** The evidence of `nodeId` in the run the reads describe. */
@@ -303,6 +307,10 @@ export function buildRunNodeEvidence(input: {
         : null,
     retry,
     inProgress,
+    failedHere:
+      execution.status === "failed" &&
+      logs.findLast((log) => log.status === "error")?.nodeId === nodeId,
+    ranNodeIds: new Set(logs.map((log) => log.nodeId)),
   };
 }
 

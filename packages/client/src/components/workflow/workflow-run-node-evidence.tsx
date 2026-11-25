@@ -48,7 +48,7 @@ import {
 } from "./config/wait-options";
 import { WAIT_FIELD_LABELS } from "@wfgraph/shared/actions/wait-field-labels";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
-import { RunFailureText } from "./workflow-run-failure";
+import { FailedRunAftermath, RunFailureText } from "./workflow-run-failure";
 import { testRunSkip } from "#src/lib/test-run-skip";
 import {
   CopyButton,
@@ -667,6 +667,15 @@ export function WorkflowRunNodeEvidence({
                 error={shown.error}
                 nodeId={evidence.nodeId}
               />
+              {/* The run opens on its failed step, so what the failure
+                  left undone is said here as well as on the summary. */}
+              {evidence.failedHere ? (
+                <FailedRunAftermath
+                  className="text-sm"
+                  failedNodeId={evidence.nodeId}
+                  ranNodeIds={evidence.ranNodeIds}
+                />
+              ) : null}
             </Section>
           ) : null}
 

@@ -1,6 +1,3 @@
-import { failedRunAftermath } from "#src/lib/run-failure";
-import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
-import { workflowStepNumbers } from "@wfgraph/shared/graph/workflow-outline";
 import { Hourglass, XCircle } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { Fragment, type RefObject, useState } from "react";
@@ -48,7 +45,7 @@ import {
   WorkflowRunSummaryRow,
 } from "./workflow-run-summary-row";
 import { compact } from "es-toolkit/array";
-import { RunFailureText } from "./workflow-run-failure";
+import { FailedRunAftermath, RunFailureText } from "./workflow-run-failure";
 
 export type WorkflowRunDetailProps = {
   execution: WorkflowExecution;
@@ -233,22 +230,6 @@ export function WorkflowRunDetail({
   const activeWaits = isRunInProgress(execution.status) ? waits : [];
 
   const failedLog = sortedLogs.findLast((log) => log.status === "error");
-  // What the failure left undone, read from the graph the run pinned.
-  const aftermath =
-    execution.status === "failed" && failedLog && executionGraph
-      ? failedRunAftermath({
-          failedNodeId: failedLog.nodeId,
-          nodes: executionGraph.nodes,
-          edges: executionGraph.edges,
-          ranNodeIds: new Set(sortedLogs.map((log) => log.nodeId)),
-          numberOf: workflowStepNumbers({
-            nodes: executionGraph.nodes,
-            edges: executionGraph.edges,
-            catalog,
-          }),
-          nameOf: (node) => getNodeDisplayName(catalog, node),
-        })
-      : null;
   const exitNodeLabel = exit
     ? (executionGraph?.nodes.find((node) => node.id === exit.nodeId)?.data
         .label ??
@@ -447,14 +428,12 @@ export function WorkflowRunDetail({
                   startEventName={execution.startEventName}
                 />
               </div>
-              {aftermath ? (
-                <div
-                  className="mt-2 space-y-1 text-xs"
-                  data-slot="run-aftermath"
-                >
-                  <p>{aftermath.notRun}</p>
-                  <p>{aftermath.next}</p>
-                </div>
+              {execution.status === "failed" && failedLog ? (
+                <FailedRunAftermath
+                  className="mt-2 text-xs"
+                  failedNodeId={failedLog.nodeId}
+                  ranNodeIds={new Set(sortedLogs.map((log) => log.nodeId))}
+                />
               ) : null}
             </section>
           ) : null}
