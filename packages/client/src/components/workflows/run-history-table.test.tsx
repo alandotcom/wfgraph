@@ -98,6 +98,8 @@ describe("RunHistoryTable", () => {
       <RunHistoryTable
         hasNextPage={false}
         isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
@@ -122,6 +124,8 @@ describe("RunHistoryTable", () => {
       <RunHistoryTable
         hasNextPage={false}
         isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
@@ -148,6 +152,8 @@ describe("RunHistoryTable", () => {
       <RunHistoryTable
         hasNextPage={false}
         isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
@@ -174,6 +180,8 @@ describe("RunHistoryTable", () => {
       <RunHistoryTable
         hasNextPage={false}
         isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
@@ -219,6 +227,8 @@ describe("RunHistoryTable", () => {
       <RunHistoryTable
         hasNextPage={false}
         isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
@@ -250,6 +260,8 @@ describe("RunHistoryTable", () => {
       <RunHistoryTable
         hasNextPage={false}
         isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
@@ -275,6 +287,8 @@ describe("RunHistoryTable", () => {
       <RunHistoryTable
         hasNextPage={false}
         isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={onOpenRun}
@@ -283,7 +297,49 @@ describe("RunHistoryTable", () => {
     );
 
     fireEvent.click(view.getByRole("button", { name: "Onboarding" }));
+    // Once: the row's own click handler leaves a click on the name alone.
+    expect(onOpenRun).toHaveBeenCalledTimes(1);
     expect(onOpenRun).toHaveBeenCalledWith(ROWS[0]);
+  });
+
+  it("opens a run from anywhere on its row", () => {
+    const onOpenRun = vi.fn(() => undefined);
+    const view = render(
+      <RunHistoryTable
+        hasNextPage={false}
+        isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
+        isLoadingMore={false}
+        onLoadMore={() => undefined}
+        onOpenRun={onOpenRun}
+        runs={ROWS}
+      />
+    );
+
+    fireEvent.click(view.getByText("Failed"));
+    expect(onOpenRun).toHaveBeenCalledWith(ROWS[0]);
+  });
+
+  it("says a failed load failed and offers Retry, never an empty history", () => {
+    const onRetry = vi.fn(() => undefined);
+    const view = render(
+      <RunHistoryTable
+        hasNextPage={false}
+        isLoading={false}
+        loadFailed
+        onRetry={onRetry}
+        isLoadingMore={false}
+        onLoadMore={() => undefined}
+        onOpenRun={() => undefined}
+        runs={[]}
+      />
+    );
+
+    expect(view.getByText("Runs could not be loaded.")).toBeTruthy();
+    expect(view.queryByText("No runs found.")).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
   it("sorts by started time when the column header is clicked", () => {
@@ -291,6 +347,8 @@ describe("RunHistoryTable", () => {
       <RunHistoryTable
         hasNextPage={false}
         isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
@@ -313,6 +371,8 @@ describe("RunHistoryTable", () => {
       <RunHistoryTable
         hasNextPage={false}
         isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
         isLoadingMore={false}
         onLoadMore={() => undefined}
         onOpenRun={() => undefined}
@@ -329,6 +389,8 @@ describe("RunHistoryTable", () => {
       <RunHistoryTable
         hasNextPage
         isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
         isLoadingMore={false}
         onLoadMore={onLoadMore}
         onOpenRun={() => undefined}
@@ -346,6 +408,8 @@ describe("RunHistoryTable", () => {
       <RunHistoryTable
         hasNextPage
         isLoading={false}
+        loadFailed={false}
+        onRetry={() => undefined}
         isLoadingMore={false}
         onLoadMore={onLoadMore}
         onOpenRun={() => undefined}

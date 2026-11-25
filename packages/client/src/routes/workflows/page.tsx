@@ -4,8 +4,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { Circle, MoreHorizontalIcon } from "lucide-react";
+import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { Circle, Copy, MoreHorizontalIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { getClientLogger } from "#src/lib/logger";
@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from "#src/components/ui/alert-dialog";
 import { Button } from "#src/components/ui/button";
+import { Spinner } from "#src/components/ui/spinner";
 import { Checkbox } from "#src/components/ui/checkbox";
 import { Input } from "#src/components/ui/input";
 import { Label } from "#src/components/ui/label";
@@ -34,6 +35,9 @@ import {
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
+import { copyWorkflowId } from "#src/components/workflow/workflow-toolbar-chrome";
+import { useDocumentTitle } from "#src/hooks/effects";
+import { opensRow } from "#src/lib/row-click";
 import { RunRetentionNote } from "#src/components/run-retention-note";
 import { RunHistorySearch } from "#src/components/workflows/run-history-search";
 import {
@@ -58,7 +62,11 @@ import {
 } from "#src/lib/rpc-query";
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
 import { publishedModeWord } from "#src/lib/workflow-run-labels";
-import { getRelativeTime } from "@wfgraph/shared/utils/time";
+import {
+  formatDayAndTime,
+  getCompactRelativeTime,
+} from "@wfgraph/shared/utils/time";
+import { cn } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
 type GlobalExecutionItem = RunHistoryTableRow;
@@ -116,6 +124,91 @@ function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural;
 }
 
+const NO_WORKFLOWS: WorkflowSummaryPayload[] = [];
+
+/** A row that opens its workflow: a hover fill, and a darker one while pressed. */
+const OPENABLE_ROW_CLASS = "cursor-pointer hover:bg-muted/60 active:bg-muted";
+
+/**
+ * Active, Paused or Never published, as a neutral fact marked by a green dot
+ * only when the workflow is active. A workflow with no published version runs
+ * nothing, so it reads as the editor's badge does rather than as active. Amber
+ * belongs to the Published mode label, so a row's two dots never share a color.
+ */
+function WorkflowStateLabel({
+  workflow,
+}: {
+  workflow: WorkflowSummaryPayload;
+}) {
+  const isActive =
+    !workflow.isPaused && workflow.publishedVersionId !== undefined;
+  const label = workflow.isPaused
+    ? "Paused"
+    : isActive
+      ? "Active"
+      : "Never published";
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-foreground text-xs">
+      <Circle
+        aria-hidden
+        className={cn(
+          "size-2.5 transition-colors duration-200",
+          isActive ? "fill-current text-success" : "text-muted-foreground"
+        )}
+      />
+      {label}
+    </span>
+  );
+}
+
+/**
+ * Published mode as the status strip shows it: a filled dot and the word in
+ * Amber for Test, an outline dot and the muted foreground for Live. Amber sits
+ * on the dot and the word rather than behind them, because each light token
+ * clears 4.5:1 as text on Paper and falls below it on its own 10% tint.
+ */
+function PublishedModeLabel({ mode }: { mode: WorkflowMode }) {
+  const isTestMode = mode === "test";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-xs transition-colors duration-200",
+        isTestMode ? "text-warning" : "text-muted-foreground"
+      )}
+    >
+      <Circle
+        aria-hidden
+        className={cn("size-2.5", isTestMode && "fill-current")}
+      />
+      {publishedModeWord(mode)}
+    </span>
+  );
+}
+
+/** A list that failed to load, said in the panel with a Retry beside it. */
+function ListLoadFailure({
+  message,
+  retry,
+}: {
+  message: string;
+  retry: () => void;
+}) {
+  return (
+    <div className="p-3">
+      <p className="text-muted-foreground text-sm">{message}</p>
+      <Button
+        className="mt-2"
+        onClick={retry}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        Retry
+      </Button>
+    </div>
+  );
+}
+
 export default function WorkflowsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -140,12 +233,29 @@ export default function WorkflowsPage() {
   const canBulkLifecycle = can(WfGraphOperations.workflowBulkLifecycle.id);
   const { canOpenWorkflow, canOpenGlobalRuns } = readDashboardCapabilities();
 
-  const { data: workflows = [], isPending: isLoadingWorkflows } = useQuery({
+  useDocumentTitle("Workflows");
+
+  const workflowsQuery = useQuery({
     ...workflowListQueryOptions(),
     select: toSortedWorkflows,
     meta: { errorMessage: "Failed to load workflows" },
     enabled: canReadWorkflows,
   });
+  const workflows = workflowsQuery.data ?? NO_WORKFLOWS;
+  // A failure with nothing cached is an error, never an empty list. A failed
+  // refetch keeps the rows it already has.
+  const workflowsLoadFailed =
+    workflowsQuery.isError && workflowsQuery.data === undefined;
+
+  // The workflow the router is opening, while the editor route's loader runs.
+  // Its row shows a spinner from the press until the editor replaces the page.
+  const matchRoute = useMatchRoute();
+  const openingMatch = matchRoute({
+    to: "/workflows/$workflowId",
+    pending: true,
+  });
+  const openingWorkflowId =
+    openingMatch === false ? null : openingMatch.workflowId;
 
   const workflowRows = useMemo(
     () => workflows.filter((workflow) => workflow.name !== "__current__"),
@@ -422,7 +532,18 @@ export default function WorkflowsPage() {
   );
 
   const renderWorkflowContent = () => {
-    if (isLoadingWorkflows && workflowRows.length === 0) {
+    if (workflowsLoadFailed) {
+      return (
+        <ListLoadFailure
+          message="Workflows could not be loaded."
+          retry={() => {
+            void workflowsQuery.refetch();
+          }}
+        />
+      );
+    }
+
+    if (workflowsQuery.isPending && workflowRows.length === 0) {
       return (
         <div className="p-6 text-muted-foreground text-sm">
           Loading workflows...
@@ -438,12 +559,16 @@ export default function WorkflowsPage() {
       );
     }
 
+    // `table-fixed` gives every column but Name a fixed slot, so a long name
+    // truncates instead of wrapping and every row keeps one height. Below
+    // `md` the State, Published mode and Updated columns drop out and the
+    // name cell carries State and Published mode on a second line.
     return (
-      <table className="w-full text-left text-sm">
-        <thead className="sticky top-0 bg-card font-medium text-muted-foreground text-xs">
-          <tr className="border-b">
+      <table className="w-full table-fixed text-left text-sm">
+        <thead className="sticky top-0 z-10 bg-card text-muted-foreground text-xs">
+          <tr className="h-9 border-b">
             {canBulkLifecycle ? (
-              <th className="w-10 px-4 py-2 font-medium">
+              <th className="w-10 pr-0 pl-4 font-medium">
                 <Checkbox
                   aria-label="Select all workflows"
                   checked={allSelected}
@@ -453,49 +578,45 @@ export default function WorkflowsPage() {
                 />
               </th>
             ) : null}
-            <th className="px-2 py-2 font-medium">Name</th>
-            <th className="px-2 py-2 font-medium">State</th>
-            <th className="px-2 py-2 font-medium">Published mode</th>
-            <th className="px-2 py-2 font-medium">Updated</th>
-            <th className="w-10" />
+            <th className="px-2 font-medium">Name</th>
+            <th className="hidden w-32 px-2 font-medium md:table-cell">
+              State
+            </th>
+            <th className="hidden w-28 whitespace-nowrap px-2 font-medium md:table-cell">
+              Published mode
+            </th>
+            <th className="hidden w-16 px-2 font-medium md:table-cell">
+              Updated
+            </th>
+            <th className="w-11 pr-3 font-medium">
+              <span className="sr-only">Actions</span>
+            </th>
           </tr>
         </thead>
         <tbody>
           {workflowRows.map((workflow) => {
             const isSelected = selectedWorkflowIds.has(workflow.id);
-            const canMutate = canUpdate || canBulkLifecycle;
-            // Paused, Active or Never published is a neutral fact, marked by a
-            // green dot only when the workflow is active. A workflow with no
-            // published version runs nothing, so it reads as the editor's
-            // badge does rather than as active. Amber belongs to the Published
-            // mode cell beside it, so the row's two dots never share a color.
-            const isActive =
-              !workflow.isPaused && workflow.publishedVersionId !== undefined;
-            const stateDotClass = isActive
-              ? "text-success fill-current"
-              : "text-muted-foreground";
-            const stateLabel = workflow.isPaused
-              ? "Paused"
-              : isActive
-                ? "Active"
-                : "Never published";
+            const isOpening = openingWorkflowId === workflow.id;
             const isTestMode = workflow.mode === "test";
-            // The cell reads the way the status strip does: a filled dot and
-            // the word in Amber for Test, an outline dot and the muted
-            // foreground for Live. Amber sits on the dot and the word rather
-            // than behind them, because each light token clears 4.5:1 as text
-            // on Paper and falls below it on its own 10% tint.
-            const publishedModeClass = isTestMode
-              ? "text-warning"
-              : "text-muted-foreground";
-            const publishedModeLabel = publishedModeWord(workflow.mode);
             const toggleAction = workflow.isPaused ? "resume" : "pause";
             const toggleActionLabel = workflow.isPaused ? "Resume" : "Pause";
 
             return (
-              <tr className="border-b last:border-b-0" key={workflow.id}>
+              <tr
+                aria-busy={isOpening || undefined}
+                className={`h-11 border-b last:border-b-0 ${canOpenWorkflow ? OPENABLE_ROW_CLASS : ""} ${isOpening ? "bg-muted" : ""}`}
+                key={workflow.id}
+                onClick={(event) => {
+                  if (canOpenWorkflow && opensRow(event)) {
+                    void navigate({
+                      to: "/workflows/$workflowId",
+                      params: { workflowId: workflow.id },
+                    });
+                  }
+                }}
+              >
                 {canBulkLifecycle ? (
-                  <td className="px-4 py-3">
+                  <td className="pr-0 pl-4">
                     <Checkbox
                       aria-label={`Select ${workflow.name}`}
                       checked={isSelected}
@@ -505,59 +626,69 @@ export default function WorkflowsPage() {
                     />
                   </td>
                 ) : null}
-                <td className="px-2 py-3">
-                  {canOpenWorkflow ? (
-                    <button
-                      className="text-left font-medium text-foreground hover:underline"
-                      onClick={() => {
-                        void navigate({
-                          to: "/workflows/$workflowId",
-                          params: { workflowId: workflow.id },
-                        });
-                      }}
-                      type="button"
-                    >
-                      {workflow.name}
-                    </button>
-                  ) : (
-                    <span className="font-medium text-foreground">
-                      {workflow.name}
-                    </span>
-                  )}
-                  <div className="font-mono text-muted-foreground text-xs">
-                    {workflow.id}
+                <td className="px-2 py-1.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {canOpenWorkflow ? (
+                      // A real link, so a keyboard user can reach it and a
+                      // middle click or Cmd+click opens a new tab. Preloading
+                      // stays off because the editor route's loader writes the
+                      // open workflow into the editor's store.
+                      <Link
+                        className="truncate rounded-sm font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                        params={{ workflowId: workflow.id }}
+                        preload={false}
+                        title={workflow.name}
+                        to="/workflows/$workflowId"
+                      >
+                        {workflow.name}
+                      </Link>
+                    ) : (
+                      <span
+                        className="truncate font-medium text-foreground"
+                        title={workflow.name}
+                      >
+                        {workflow.name}
+                      </span>
+                    )}
+                    {isOpening ? (
+                      <Spinner
+                        aria-label="Opening workflow"
+                        className="size-3.5 text-muted-foreground"
+                      />
+                    ) : null}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-3 md:hidden">
+                    <WorkflowStateLabel workflow={workflow} />
+                    <PublishedModeLabel mode={workflow.mode} />
                   </div>
                 </td>
-                <td className="px-2 py-3">
-                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-foreground text-xs">
-                    <Circle
-                      aria-hidden
-                      className={`size-2.5 transition-colors duration-200 ${stateDotClass}`}
-                    />
-                    {stateLabel}
-                  </span>
+                <td className="hidden px-2 md:table-cell">
+                  <WorkflowStateLabel workflow={workflow} />
                 </td>
-                <td className="px-2 py-3">
-                  <span
-                    className={`inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-xs transition-colors duration-200 ${publishedModeClass}`}
+                <td className="hidden px-2 md:table-cell">
+                  <PublishedModeLabel mode={workflow.mode} />
+                </td>
+                <td className="hidden px-2 text-muted-foreground text-xs tabular-nums md:table-cell">
+                  <time
+                    dateTime={workflow.updatedAt}
+                    title={formatDayAndTime(new Date(workflow.updatedAt))}
                   >
-                    <Circle
-                      aria-hidden
-                      className={`size-2.5 ${isTestMode ? "fill-current" : ""}`}
-                    />
-                    {publishedModeLabel}
-                  </span>
+                    {getCompactRelativeTime(workflow.updatedAt)}
+                  </time>
                 </td>
-                <td className="px-2 py-3 text-muted-foreground text-xs">
-                  {getRelativeTime(workflow.updatedAt)}
-                </td>
-                <td className="px-2 py-3">
+                <td className="pr-3 text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger
-                      className="inline-flex size-8 items-center justify-center rounded-md border border-input bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-                      disabled={!canMutate || lifecycleAction !== null}
+                      aria-label={`Actions for ${workflow.name}`}
+                      render={
+                        <Button
+                          className="text-muted-foreground"
+                          size="icon-sm"
+                          variant="ghost"
+                        />
+                      }
                     >
-                      <MoreHorizontalIcon className="size-4" />
+                      <MoreHorizontalIcon />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       {canUpdate ? (
@@ -577,6 +708,7 @@ export default function WorkflowsPage() {
                       ) : null}
                       {canBulkLifecycle ? (
                         <DropdownMenuItem
+                          disabled={lifecycleAction !== null}
                           onClick={() => {
                             runLifecycleAction(toggleAction, [workflow.id]);
                           }}
@@ -584,18 +716,25 @@ export default function WorkflowsPage() {
                           {toggleActionLabel}
                         </DropdownMenuItem>
                       ) : null}
-                      {canUpdate && canBulkLifecycle ? (
-                        <DropdownMenuSeparator />
-                      ) : null}
+                      <DropdownMenuItem
+                        onClick={() => void copyWorkflowId(workflow.id)}
+                      >
+                        <Copy />
+                        Copy workflow ID
+                      </DropdownMenuItem>
                       {canBulkLifecycle ? (
-                        <DropdownMenuItem
-                          onClick={() => {
-                            openDeleteConfirmation([workflow.id]);
-                          }}
-                          variant="destructive"
-                        >
-                          Delete
-                        </DropdownMenuItem>
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            disabled={lifecycleAction !== null}
+                            onClick={() => {
+                              openDeleteConfirmation([workflow.id]);
+                            }}
+                            variant="destructive"
+                          >
+                            Delete
+                          </DropdownMenuItem>
+                        </>
                       ) : null}
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -609,11 +748,16 @@ export default function WorkflowsPage() {
   };
 
   const runHistoryTableKey = `${runQuery}:${runFilters.map((filter) => filter.id).join(",")}`;
+  const selectedCount = selectedActionableIds.length;
 
   return (
-    <div className="h-dvh overflow-auto bg-background">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 p-6">
-        <div className="flex flex-wrap items-center justify-end gap-3">
+    // The page is one scroll surface below `xl`, where the two panels stack.
+    // At `xl` they sit side by side and fill the viewport's height, and each
+    // list scrolls inside its own panel.
+    <div className="h-dvh overflow-auto bg-background xl:overflow-hidden">
+      <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 p-3 md:p-6 xl:h-full">
+        <header className="flex min-h-8 flex-wrap items-center justify-between gap-3">
+          <h1 className="font-semibold text-base text-foreground">Workflows</h1>
           {canCreate ? (
             <Button
               onClick={() => {
@@ -625,39 +769,33 @@ export default function WorkflowsPage() {
               New Workflow
             </Button>
           ) : null}
-        </div>
+        </header>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1.5fr]">
+        <div className="grid grid-cols-1 gap-4 md:gap-6 xl:min-h-0 xl:flex-1 xl:grid-cols-2 xl:grid-rows-[minmax(0,1fr)]">
           {canReadWorkflows ? (
-            <section className="rounded-xl border bg-card">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
-                <div>
-                  <h2 className="font-medium text-foreground text-sm">
-                    Workflows
-                  </h2>
-                  <p className="text-muted-foreground text-xs">
-                    Select one or more workflows to run bulk actions.
-                  </p>
-                </div>
-                <Button
-                  disabled={isLoadingWorkflows || lifecycleAction !== null}
-                  onClick={refreshWorkflows}
-                  size="sm"
-                  type="button"
-                  variant="outline"
+            <section
+              aria-labelledby="all-workflows-heading"
+              className="flex flex-col overflow-clip rounded-xl border bg-card xl:min-h-0"
+            >
+              {/* One header row in both states. While workflows are selected
+                  the bulk actions take Refresh's place, so nothing below moves
+                  and no red shows while nothing can be deleted. */}
+              <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
+                <h2
+                  className="font-medium text-foreground text-sm"
+                  id="all-workflows-heading"
                 >
-                  Refresh
-                </Button>
-              </div>
-
-              {canBulkLifecycle ? (
-                <div className="border-b px-4 py-2">
+                  All Workflows
+                  <span className="ml-1.5 font-normal text-muted-foreground tabular-nums">
+                    {selectedCount > 0
+                      ? `${selectedCount} selected`
+                      : workflowRows.length}
+                  </span>
+                </h2>
+                {canBulkLifecycle && selectedCount > 0 ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
-                      disabled={
-                        selectedActionableIds.length === 0 ||
-                        lifecycleAction !== null
-                      }
+                      disabled={lifecycleAction !== null}
                       onClick={() => {
                         runLifecycleAction("pause", selectedActionableIds);
                       }}
@@ -665,13 +803,10 @@ export default function WorkflowsPage() {
                       type="button"
                       variant="outline"
                     >
-                      Pause Selected
+                      Pause
                     </Button>
                     <Button
-                      disabled={
-                        selectedActionableIds.length === 0 ||
-                        lifecycleAction !== null
-                      }
+                      disabled={lifecycleAction !== null}
                       onClick={() => {
                         runLifecycleAction("resume", selectedActionableIds);
                       }}
@@ -679,13 +814,10 @@ export default function WorkflowsPage() {
                       type="button"
                       variant="outline"
                     >
-                      Resume Selected
+                      Resume
                     </Button>
                     <Button
-                      disabled={
-                        selectedActionableIds.length === 0 ||
-                        lifecycleAction !== null
-                      }
+                      disabled={lifecycleAction !== null}
                       onClick={() => {
                         openDeleteConfirmation(selectedActionableIds);
                       }}
@@ -693,23 +825,43 @@ export default function WorkflowsPage() {
                       type="button"
                       variant="destructive"
                     >
-                      Delete Selected
+                      Delete
                     </Button>
                   </div>
-                </div>
-              ) : null}
+                ) : (
+                  <Button
+                    disabled={
+                      workflowsQuery.isFetching || lifecycleAction !== null
+                    }
+                    onClick={refreshWorkflows}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    Refresh
+                  </Button>
+                )}
+              </div>
 
-              <div className="max-h-[65vh] overflow-auto">
+              <div className="xl:min-h-0 xl:flex-1 xl:overflow-auto">
                 {renderWorkflowContent()}
               </div>
             </section>
           ) : null}
 
           {canOpenGlobalRuns ? (
-            <section className="rounded-xl border bg-card">
+            // Below `xl` the panel takes a fixed share of the viewport, because
+            // the run list is virtualized and needs a bounded scroller.
+            <section
+              aria-labelledby="all-runs-heading"
+              className="flex h-[min(85dvh,48rem)] min-h-0 flex-col rounded-xl border bg-card xl:h-auto"
+            >
               <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
                 <div>
-                  <h2 className="font-medium text-foreground text-sm">
+                  <h2
+                    className="font-medium text-foreground text-sm"
+                    id="all-runs-heading"
+                  >
                     All Runs
                   </h2>
                   <p className="text-muted-foreground text-xs">
@@ -773,16 +925,20 @@ export default function WorkflowsPage() {
                 isLoading={isLoadingRuns}
                 isLoadingMore={isLoadingMoreRuns}
                 key={runHistoryTableKey}
+                loadFailed={runsQuery.isError && runsQuery.data === undefined}
                 onLoadMore={() => {
                   void runsQuery.fetchNextPage();
                 }}
                 onOpenRun={openRun}
+                onRetry={() => {
+                  void runsQuery.refetch();
+                }}
                 runs={visibleRuns}
               />
             </section>
           ) : null}
         </div>
-      </div>
+      </main>
 
       <AlertDialog
         onOpenChange={(open) => {

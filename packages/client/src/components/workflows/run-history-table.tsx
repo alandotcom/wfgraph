@@ -14,6 +14,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { Button } from "#src/components/ui/button";
+import { RunsLoadFailure } from "#src/components/workflow/workflow-runs";
 import {
   formatDuration,
   runStatusLabel,
@@ -28,7 +29,11 @@ import {
   runGraphLabel,
   runRecipientsLabel,
 } from "#src/lib/workflow-run-labels";
-import { getRelativeTime } from "@wfgraph/shared/utils/time";
+import {
+  formatDayAndTime,
+  getCompactRelativeTime,
+} from "@wfgraph/shared/utils/time";
+import { opensRow } from "#src/lib/row-click";
 import { cn } from "@wfgraph/shared/utils";
 
 /**
@@ -86,6 +91,13 @@ const runHistoryTableFeatures = tableFeatures({
   },
 });
 
+/**
+ * A run row. The whole row opens the run, and the workflow name inside it
+ * stays a button for the keyboard.
+ */
+const ROW_CLASS =
+  "grid w-full cursor-pointer items-center border-b px-4 last:border-b-0 hover:bg-muted/60 active:bg-muted";
+
 const columnHelper = createColumnHelper<
   typeof runHistoryTableFeatures,
   RunHistoryTableRow
@@ -94,10 +106,22 @@ const columnHelper = createColumnHelper<
 const EMPTY_RUNS: RunHistoryTableRow[] = [];
 const ROW_HEIGHT_PX = 52;
 const PAGE_SIZE = 50;
-/** Matches `max-h-[min(65vh,32rem)]` so the first paint has a range before measure. */
+/** A guess at the scroller's height for the first paint, before it is measured. */
 const VIEWPORT_HEIGHT_PX = 512;
 
-const GRID_TEMPLATE = "minmax(0,1.6fr) 7.5rem 4.5rem 4.5rem 7rem 5.5rem";
+/**
+ * Six columns from `md` up. Below it a row keeps the workflow, the status and
+ * the start time, and the columns in `WIDE_ONLY_COLUMNS` drop out, so the
+ * workflow's name keeps its room on a phone.
+ */
+const GRID_COLUMNS =
+  "grid-cols-[minmax(0,1fr)_7.5rem_3.5rem] md:grid-cols-[minmax(0,1.6fr)_7.5rem_4.5rem_4.5rem_4.5rem_4.5rem]";
+const WIDE_ONLY_COLUMNS = new Set(["runMode", "graph", "duration"]);
+
+/** The class that hides a cell or header below `md` when its column is wide-only. */
+function columnVisibilityClass(columnId: string): string | undefined {
+  return WIDE_ONLY_COLUMNS.has(columnId) ? "hidden md:block" : undefined;
+}
 
 /**
  * Reports the scroller's size immediately. The library observer waits on
@@ -222,9 +246,13 @@ function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
       header: "Started",
       sortFn: "datetime",
       cell: (info) => (
-        <span className="text-muted-foreground text-xs">
-          {getRelativeTime(info.getValue())}
-        </span>
+        <time
+          className="text-muted-foreground text-xs tabular-nums"
+          dateTime={info.getValue()}
+          title={formatDayAndTime(new Date(info.getValue()))}
+        >
+          {getCompactRelativeTime(info.getValue())}
+        </time>
       ),
     }),
     columnHelper.accessor((row) => durationMs(row.duration), {
@@ -232,7 +260,7 @@ function createRunHistoryColumns(onOpenRun: (run: RunHistoryTableRow) => void) {
       header: "Duration",
       sortFn: "basic",
       cell: (info) => (
-        <span className="text-muted-foreground text-xs tabular-nums">
+        <span className="font-mono text-muted-foreground text-xs tabular-nums">
           {formatRunDuration(info.row.original.duration)}
         </span>
       ),
@@ -255,6 +283,9 @@ function RunHistoryTableEmpty() {
 type RunHistoryTableProps = {
   runs: readonly RunHistoryTableRow[];
   isLoading: boolean;
+  /** The first page failed and nothing is cached, which is not an empty history. */
+  loadFailed: boolean;
+  onRetry: () => void;
   isLoadingMore: boolean;
   hasNextPage: boolean;
   onLoadMore: () => void;
@@ -264,6 +295,8 @@ type RunHistoryTableProps = {
 export function RunHistoryTable({
   runs,
   isLoading,
+  loadFailed,
+  onRetry,
   isLoadingMore,
   hasNextPage,
   onLoadMore,
@@ -313,6 +346,10 @@ export function RunHistoryTable({
     }
   };
 
+  if (loadFailed) {
+    return <RunsLoadFailure retry={onRetry} />;
+  }
+
   if (isLoading && runs.length === 0) {
     return <RunHistoryTableLoading />;
   }
@@ -327,28 +364,35 @@ export function RunHistoryTable({
   const virtualItems = rowVirtualizer.getVirtualItems();
 
   return (
-    <div className="flex min-h-0 flex-col">
+    // The table fills the panel it sits in, and the panel decides the height.
+    <div className="flex min-h-0 flex-1 flex-col">
       <div
-        className="grid items-center border-b bg-card px-4 py-2 font-medium text-muted-foreground text-xs"
-        style={{ gridTemplateColumns: GRID_TEMPLATE }}
+        className={cn(
+          "grid items-center border-b bg-card px-4 py-2 font-medium text-muted-foreground text-xs",
+          GRID_COLUMNS
+        )}
       >
         {table.getHeaderGroups().map((group) =>
           group.headers.map((header) => {
             const sorted = header.column.getIsSorted();
             const canSort = header.column.getCanSort();
+            const visibility = columnVisibilityClass(header.column.id);
             if (header.isPlaceholder) {
-              return <div key={header.id} />;
+              return <div className={visibility} key={header.id} />;
             }
             if (!canSort) {
               return (
-                <div className="text-right" key={header.id}>
+                <div className={cn("text-right", visibility)} key={header.id}>
                   <table.FlexRender header={header} />
                 </div>
               );
             }
             return (
               <button
-                className="inline-flex items-center gap-1 text-left hover:text-foreground"
+                className={cn(
+                  "inline-flex min-w-0 items-center gap-1 text-left hover:text-foreground",
+                  visibility === undefined ? undefined : "hidden md:inline-flex"
+                )}
                 key={header.id}
                 onClick={header.column.getToggleSortingHandler()}
                 type="button"
@@ -366,19 +410,29 @@ export function RunHistoryTable({
       </div>
 
       <div
-        className="max-h-[min(65vh,32rem)] overflow-auto"
+        className="min-h-0 flex-1 overflow-auto"
         onScroll={onScroll}
         ref={scrollRef}
       >
         {virtualItems.length === 0 ? (
           rows.map((row) => (
             <div
-              className="grid w-full items-center border-b px-4 last:border-b-0"
+              className={cn(ROW_CLASS, GRID_COLUMNS)}
               key={row.id}
-              style={{ gridTemplateColumns: GRID_TEMPLATE }}
+              onClick={(event) => {
+                if (opensRow(event)) {
+                  onOpenRun(row.original);
+                }
+              }}
             >
               {row.getAllCells().map((cell) => (
-                <div className="min-w-0 py-2" key={cell.id}>
+                <div
+                  className={cn(
+                    "min-w-0 py-2",
+                    columnVisibilityClass(cell.column.id)
+                  )}
+                  key={cell.id}
+                >
                   <table.FlexRender cell={cell} />
                 </div>
               ))}
@@ -396,18 +450,28 @@ export function RunHistoryTable({
               }
               return (
                 <div
-                  className="absolute grid w-full items-center border-b px-4 last:border-b-0"
+                  className={cn("absolute", ROW_CLASS, GRID_COLUMNS)}
                   data-index={virtualRow.index}
                   key={row.id}
+                  onClick={(event) => {
+                    if (opensRow(event)) {
+                      onOpenRun(row.original);
+                    }
+                  }}
                   ref={rowVirtualizer.measureElement}
                   style={{
                     height: virtualRow.size,
                     transform: `translateY(${virtualRow.start}px)`,
-                    gridTemplateColumns: GRID_TEMPLATE,
                   }}
                 >
                   {row.getAllCells().map((cell) => (
-                    <div className="min-w-0 py-2" key={cell.id}>
+                    <div
+                      className={cn(
+                        "min-w-0 py-2",
+                        columnVisibilityClass(cell.column.id)
+                      )}
+                      key={cell.id}
+                    >
                       <table.FlexRender cell={cell} />
                     </div>
                   ))}

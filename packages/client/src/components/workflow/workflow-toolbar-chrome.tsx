@@ -89,7 +89,7 @@ import { canvasEditingLockedAtom } from "#src/lib/workflow-graph-store";
  * a menu item that looks like it worked and did not is worse than one that says
  * so.
  */
-async function copyWorkflowId(workflowId: string) {
+export async function copyWorkflowId(workflowId: string) {
   try {
     await navigator.clipboard.writeText(workflowId);
     toast.success("Workflow ID copied");
