@@ -9,7 +9,14 @@ import {
 export const WORKFLOW_CANVAS_MIN_ZOOM = 0.025;
 export const WORKFLOW_FIT_VIEW_PADDING = 0.2;
 export const WORKFLOW_FIT_VIEW_MAX_ZOOM = 1;
-export const WORKFLOW_OVERVIEW_ZOOM = 0.5;
+
+/**
+ * Below this zoom every card draws its compact form, its step number beside
+ * its title in large type. It is the zoom at which a full card's 14px title
+ * draws at 11px on screen, so a card's title stays at 11px or more on either
+ * side of the switch.
+ */
+export const WORKFLOW_COMPACT_CARD_ZOOM = 11 / 14;
 
 type Viewport = { x: number; y: number; zoom: number };
 type Bounds = { x: number; y: number; width: number; height: number };
@@ -163,9 +170,9 @@ export function viewportFromWorldCamera(
   };
 }
 
-/** Maps a continuous zoom value to the canvas's two presentation densities. */
-export function workflowZoomPresentation(zoom: number): "detail" | "overview" {
-  return zoom <= WORKFLOW_OVERVIEW_ZOOM ? "overview" : "detail";
+/** Whether cards draw their compact form at `zoom`. */
+export function isCompactCardZoom(zoom: number): boolean {
+  return zoom < WORKFLOW_COMPACT_CARD_ZOOM;
 }
 
 /**

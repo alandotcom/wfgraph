@@ -432,11 +432,13 @@
   scale: clamp(1, calc(1 / var(--rf-zoom, 1)), 3);
 }
 
-/* The canvas publishes a two-state zoom presentation once per viewport move.
-   Keeping the description line's space preserves every card's geometry while
-   its low-density overview keeps titles, icons, status, issues, and wires legible. */
-:root[data-workflow-zoom="overview"] .workflow-node-description {
-  visibility: hidden;
+/* A compact card's title runs toward its top-right corner, so its change
+   marker straddles that corner and grows from its centre, clear of the title. */
+.react-flow__node [data-card-form="compact"] > .comparison-marker {
+  top: 0;
+  right: 0;
+  translate: 50% -50%;
+  transform-origin: center;
 }
 
 /* The editor's frame node is typed `group`, which is also one of React Flow's

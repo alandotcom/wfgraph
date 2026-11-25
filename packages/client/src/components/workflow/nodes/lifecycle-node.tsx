@@ -4,8 +4,10 @@ import { memo } from "react";
 import {
   Node,
   NodeBody,
+  NodeCompactBody,
   NodeDescription,
   NodeTitle,
+  useCompactCard,
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
@@ -46,6 +48,9 @@ export const LifecycleNode = memo(
     // While the review sheet is open a changed card says what changed in the
     // words the sheet uses.
     const reviewEdit = useReviewEdit(id);
+    // Zoomed out, the card draws its title beside the Play glyph, which
+    // stands where a step's number stands on the other cards.
+    const isCompact = useCompactCard();
 
     if (!data) {
       return null;
@@ -62,6 +67,7 @@ export const LifecycleNode = memo(
 
     return (
       <Node
+        data-card-form={isCompact ? "compact" : "full"}
         isConnectable={isConnectable}
         handles={{
           target: false,
@@ -116,16 +122,29 @@ export const LifecycleNode = memo(
           without this it was one no card on the canvas admitted to. */}
         <NodeIssueBadge issues={data.issues} />
 
-        <NodeBody>
-          <Play
-            className={cn(NODE_ICON_CLASS, "text-node-lifecycle")}
-            strokeWidth={1.5}
+        {isCompact ? (
+          <NodeCompactBody
+            lead={
+              <Play
+                aria-hidden="true"
+                className="size-[0.875em] shrink-0 text-node-lifecycle"
+                strokeWidth={2}
+              />
+            }
+            title={displayTitle}
           />
-          <NodeTitle>{displayTitle}</NodeTitle>
-          {displayDescription && (
-            <NodeDescription>{displayDescription}</NodeDescription>
-          )}
-        </NodeBody>
+        ) : (
+          <NodeBody>
+            <Play
+              className={cn(NODE_ICON_CLASS, "text-node-lifecycle")}
+              strokeWidth={1.5}
+            />
+            <NodeTitle>{displayTitle}</NodeTitle>
+            {displayDescription && (
+              <NodeDescription>{displayDescription}</NodeDescription>
+            )}
+          </NodeBody>
+        )}
       </Node>
     );
   }

@@ -11,8 +11,11 @@ import { memo, useMemo, useState } from "react";
 import {
   Node,
   NodeBody,
+  NodeCompactBody,
   NodeDescription,
+  NodeStepNumber,
   NodeTitle,
+  useCompactCard,
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
@@ -21,6 +24,7 @@ import { Dialog, DialogContent, DialogTitle } from "#src/components/ui/dialog";
 import { readBase64ImageOutput } from "#src/components/workflow/workflow-run-shared";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
 import { runPathAtom } from "#src/lib/workflow-graph-store";
+import { useStepNumber } from "#src/lib/step-numbers";
 import { runPathOutletMark } from "#src/lib/run-path";
 import {
   COMPARISON_NODE_ANNOTATION,
@@ -512,6 +516,10 @@ export const ActionNode = memo((props: ActionNodeProps) => {
   // what changed in the words the sheet uses.
   const reviewEdit = useReviewEdit(id);
   const reviewMarker = reviewEdit ? { kind: reviewEdit.kind } : undefined;
+  // Zoomed out, the card draws only its number and title, large enough to
+  // read at the zoom that fits a whole workflow.
+  const isCompact = useCompactCard();
+  const stepNumber = useStepNumber(id);
 
   // A condition node renders two source handles where every other node renders
   // one, and an Event Split renders one per Event that can reach it, which
@@ -550,9 +558,11 @@ export const ActionNode = memo((props: ActionNodeProps) => {
 
   if (!actionType) {
     const isDisabled = data.enabled === false;
+    const unconfiguredTitle = actionNodeDisplayTitle(data, catalog);
     return (
       <Node
         className={cn(isDisabled && "opacity-50")}
+        data-card-form={isCompact ? "compact" : "full"}
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
         isConnectable={isConnectable}
@@ -572,14 +582,24 @@ export const ActionNode = memo((props: ActionNodeProps) => {
           </div>
         )}
         {!isDisabled && <NodeIssueBadge issues={data.issues} />}
-        <NodeBody>
-          <Zap
-            className={cn(NODE_ICON_CLASS, "text-muted-foreground")}
-            strokeWidth={1.5}
+        {isCompact ? (
+          <NodeCompactBody
+            lead={<NodeStepNumber className="shrink-0" value={stepNumber} />}
+            title={unconfiguredTitle}
           />
-          <NodeTitle>{actionNodeDisplayTitle(data, catalog)}</NodeTitle>
-          <NodeDescription>Select an action</NodeDescription>
-        </NodeBody>
+        ) : (
+          <NodeBody>
+            <Zap
+              className={cn(NODE_ICON_CLASS, "text-muted-foreground")}
+              strokeWidth={1.5}
+            />
+            <NodeTitle title={unconfiguredTitle}>
+              <NodeStepNumber className="mr-1.5" value={stepNumber} />
+              {unconfiguredTitle}
+            </NodeTitle>
+            <NodeDescription>Select an action</NodeDescription>
+          </NodeBody>
+        )}
       </Node>
     );
   }
@@ -622,6 +642,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
   return (
     <Node
       className={cn(isDisabled && "opacity-50")}
+      data-card-form={isCompact ? "compact" : "full"}
       data-testid={`action-node-${id}`}
       isConnectable={isConnectable}
       handles={{
@@ -729,25 +750,35 @@ export const ActionNode = memo((props: ActionNodeProps) => {
           </OutletLabel>
         ))}
 
-      <NodeBody>
-        {generatedImageBase64 ? (
-          <GeneratedImageThumbnail base64={generatedImageBase64} />
-        ) : (
-          <ProviderLogo actionType={actionType} catalog={catalog} />
-        )}
-        <NodeTitle>{displayTitle}</NodeTitle>
-        {displayDescription && (
-          <NodeDescription
-            className={
-              waitPreview && !reviewEdit
-                ? "font-medium tabular-nums"
-                : undefined
-            }
-          >
-            {displayDescription}
-          </NodeDescription>
-        )}
-      </NodeBody>
+      {isCompact ? (
+        <NodeCompactBody
+          lead={<NodeStepNumber className="shrink-0" value={stepNumber} />}
+          title={displayTitle}
+        />
+      ) : (
+        <NodeBody>
+          {generatedImageBase64 ? (
+            <GeneratedImageThumbnail base64={generatedImageBase64} />
+          ) : (
+            <ProviderLogo actionType={actionType} catalog={catalog} />
+          )}
+          <NodeTitle title={displayTitle}>
+            <NodeStepNumber className="mr-1.5" value={stepNumber} />
+            {displayTitle}
+          </NodeTitle>
+          {displayDescription && (
+            <NodeDescription
+              className={
+                waitPreview && !reviewEdit
+                  ? "font-medium tabular-nums"
+                  : undefined
+              }
+            >
+              {displayDescription}
+            </NodeDescription>
+          )}
+        </NodeBody>
+      )}
     </Node>
   );
 });

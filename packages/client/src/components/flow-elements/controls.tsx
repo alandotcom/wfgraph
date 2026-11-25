@@ -22,7 +22,7 @@ import { workflowFitViewOptions } from "#src/components/workflow/workflow-viewpo
 import { viewportAnimationDuration } from "#src/lib/motion";
 import { showMinimapAtom } from "#src/lib/workflow-ui-store";
 import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
-import { workflowZoomPresentation } from "#src/components/workflow/workflow-viewport";
+import { isCompactCardZoom } from "#src/components/workflow/workflow-viewport";
 
 type ControlsProps = {
   onReflow?: (() => void) | undefined;
@@ -32,15 +32,13 @@ type ControlsProps = {
 };
 
 /**
- * While the canvas is zoomed out to its overview presentation, a card saying
- * that node details appear when zoomed in, with a way to find a node by name.
- * Renders nothing at detail zoom.
+ * While the canvas is zoomed out far enough for cards to draw their compact
+ * form, a card saying that node details appear when zoomed in, with a way to
+ * find a node by name. Renders nothing while cards draw in full.
  */
 export function OverviewCue() {
   const openPalette = useSetAtom(openCommandPaletteAtom);
-  const overview = useStore(
-    (state) => workflowZoomPresentation(state.transform[2]) === "overview"
-  );
+  const overview = useStore((state) => isCompactCardZoom(state.transform[2]));
   if (!overview) {
     return null;
   }

@@ -1,4 +1,4 @@
-import { Handle, Position } from "@xyflow/react";
+import { Handle, Position, useStore } from "@xyflow/react";
 import {
   Ban,
   Check,
@@ -18,6 +18,8 @@ import {
   TooltipTrigger,
 } from "#src/components/ui/tooltip";
 import { stepRunStatusLabel } from "#src/components/workflow/workflow-run-shared";
+import { isCompactCardZoom } from "#src/components/workflow/workflow-viewport";
+import { NODE_COMPACT_TYPE_PX } from "#src/lib/workflow-node-dimensions";
 import { useElementOverflow } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
 
@@ -307,6 +309,72 @@ export const NodeDescription = ({
     </TooltipProvider>
   );
 };
+
+/**
+ * Whether cards draw their compact form at the canvas's current zoom. The
+ * selector maps the zoom to a boolean, so a card re-renders when the zoom
+ * crosses `WORKFLOW_COMPACT_CARD_ZOOM` and never on the frames between.
+ */
+export function useCompactCard(): boolean {
+  return useStore((state) => isCompactCardZoom(state.transform[2]));
+}
+
+/**
+ * A step's number in run order, set before its title on a full card and
+ * beside it on a compact one. Nothing draws when the step has no number.
+ */
+export const NodeStepNumber = ({
+  value,
+  className,
+}: {
+  value: number | undefined;
+  className?: string | undefined;
+}) =>
+  value === undefined ? null : (
+    <span
+      className={cn(
+        "font-medium text-muted-foreground tabular-nums",
+        className
+      )}
+      data-slot="node-step-number"
+    >
+      {value}
+    </span>
+  );
+
+/**
+ * The whole content of a card in its compact form: `lead`, which is the
+ * step's number or a glyph standing in for one, beside the title in type
+ * that reads at the zoom fitting a whole workflow. The card keeps its size,
+ * so its handles, connections and hit area stay where they are. The top
+ * padding keeps the title clear of the run status chip on the top edge.
+ */
+export const NodeCompactBody = ({
+  lead,
+  title,
+  className,
+}: {
+  lead: ReactNode;
+  title: string;
+  className?: string | undefined;
+}) => (
+  <div
+    className={cn(
+      "flex w-full min-w-0 items-center gap-2 px-3 pt-3.5 pb-2 text-left leading-[1.15]",
+      className
+    )}
+    data-slot="node-compact-body"
+    style={{ fontSize: NODE_COMPACT_TYPE_PX }}
+  >
+    {lead}
+    <span
+      className="line-clamp-3 min-w-0 flex-1 font-semibold [overflow-wrap:anywhere]"
+      title={title}
+    >
+      {title}
+    </span>
+  </div>
+);
 
 // `text-center` is what centres the words. The title and description are
 // full-width blocks, so `items-center` reaches only the icon, the one child

@@ -1103,10 +1103,13 @@ describe("the collapsed Group overview", () => {
       { timeout: 3000 }
     );
     expect(chipText(view, "welcome")).toBe("Successful");
+    // The overview comes back zoomed out far enough for compact cards, which
+    // carry the Group's run status on their top edge.
     await leaveOutreach(router);
-    const completedCard = await view.findByTestId("group-run-summary-outreach");
-    expect(completedCard.textContent).toContain("Successful");
-    expect(completedCard.textContent).toContain("2 of 2 steps reached");
+    const completedStatus = await view.findByTestId(
+      "group-run-status-outreach"
+    );
+    expect(completedStatus.textContent).toBe("Successful");
   });
 
   it.each([
