@@ -40,10 +40,15 @@ describe("RunsColumn", () => {
       execution("exec_b", "completed"),
       execution("exec_a", "completed"),
     ];
-    const { view, aside, rows, title } = await renderRunsReveal({
+    const { view, aside, rows, router, title, show } = await renderRunsReveal({
       view: "runs",
     });
-    // The first visit opens the newest run, and Back reaches the list.
+    // Runs opens on the list; the route names no run.
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(router.state.location.search).toEqual({ view: "runs" });
+
+    // A run opened and left with Back returns to the same list.
+    await show({ view: "runs", executionId: "exec_b" });
     await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
     fireEvent.click(view.getByRole("button", { name: "Back to runs" }));
     await waitFor(() => expect(rows()).toHaveLength(2));

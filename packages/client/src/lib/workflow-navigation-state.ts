@@ -142,11 +142,6 @@ export type WorkflowNavigation = {
    * no entry has not been visited.
    */
   searches: Readonly<Partial<Record<WorkspaceView, WorkflowRouteSearch>>>;
-  /**
-   * Whether a route has named a run of this workflow in this session. Runs
-   * opens the newest run by itself only while this is false.
-   */
-  hasNamedRun: boolean;
 };
 
 /** The graph facts recovery needs: which nodes and edges exist. */
@@ -182,7 +177,6 @@ export const EMPTY_WORKSPACE_NAVIGATION: WorkspaceNavigation = {
 export const EMPTY_WORKFLOW_NAVIGATION: WorkflowNavigation = {
   workspaces: new Map(),
   searches: {},
-  hasNamedRun: false,
 };
 
 const DRAFT_KEY_ID = "draft";
@@ -297,10 +291,7 @@ function evictOldKeys(
   return workspaces;
 }
 
-/**
- * Record the route search an address's view is showing, and whether that
- * address names a run.
- */
+/** Record the route search an address's view is showing. */
 export function rememberRouteSearch(
   navigation: WorkflowNavigation,
   address: WorkspaceAddress
@@ -308,20 +299,12 @@ export function rememberRouteSearch(
   const view = address.key.workspace;
   const search = workspaceRouteSearch(address);
   const remembered = navigation.searches[view];
-  const hasNamedRun =
-    navigation.hasNamedRun ||
-    (address.key.workspace === "runs" && address.key.executionId !== null);
-  if (
-    remembered &&
-    sameRouteSearch(remembered, search) &&
-    hasNamedRun === navigation.hasNamedRun
-  ) {
+  if (remembered && sameRouteSearch(remembered, search)) {
     return navigation;
   }
   return {
     ...navigation,
     searches: { ...navigation.searches, [view]: search },
-    hasNamedRun,
   };
 }
 

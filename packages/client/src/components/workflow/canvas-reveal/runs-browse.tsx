@@ -379,9 +379,7 @@ export function RunsBody({ subject, level, mobile }: RevealBodyProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="runs-browse">
-      {screen.kind === "opening-newest" || screen.kind === "run-loading" ? (
-        <RunsSkeleton detail />
-      ) : null}
+      {screen.kind === "run-loading" ? <RunsSkeleton detail /> : null}
       {openRun !== null ? (
         <div
           className={cn("min-h-0 flex-1 flex-col", showsScroller && "flex")}

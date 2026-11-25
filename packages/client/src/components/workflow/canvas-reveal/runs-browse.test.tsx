@@ -49,22 +49,22 @@ beforeEach(() => {
 afterEach(removeRunsRevealRpc);
 
 describe("Runs Browse run list and selected run", () => {
-  it("opens the newest run by replacing the entry, and names it in the header", async () => {
+  it("opens on the run list, and opens a run the route names with its header", async () => {
     served.items = [
       execution("exec_b", "completed", "appt_2"),
       execution("exec_a", "running"),
     ];
-    const { view, router, aside, title, path } = await renderRunsReveal({
-      view: "runs",
-    });
+    const { view, router, aside, title, path, rows, show } =
+      await renderRunsReveal({ view: "runs" });
 
+    // Runs opens no run by itself: the list shows, and the route stays put.
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(router.state.location.search).toEqual({ view: "runs" });
+    expect(title()).toBe("Runs");
+
+    await show({ view: "runs", executionId: "exec_b" });
     // The run is named by its Entity Value, and its Event is a detail row.
     await waitFor(() => expect(title()).toBe(runHeading("exec_b", "appt_2")));
-    expect(router.state.location.search).toEqual({
-      view: "runs",
-      executionId: "exec_b",
-    });
-    expect(router.history.canGoBack()).toBe(false);
     expect(aside()?.getAttribute("aria-label")).toBe("Runs inspector");
     expect(path()).toBe(
       `Appointment reminders › Runs › ${runHeading("exec_b", "appt_2")}`
@@ -87,8 +87,6 @@ describe("Runs Browse run list and selected run", () => {
     const { view, router, title, path, rows, back } = await renderRunsReveal({
       view: "runs",
     });
-    await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
-    back();
     await waitFor(() => expect(rows()).toHaveLength(2));
     expect(title()).toBe("Runs");
     expect(path()).toBe("Appointment reminders › Runs");
@@ -109,18 +107,15 @@ describe("Runs Browse run list and selected run", () => {
     await waitFor(() => expect(document.activeElement).toBe(rows()[1]));
   });
 
-  // The Runs tab opens the newest run from Draft. Back on that run goes to the
-  // run list and stays in Runs, rather than returning to Draft.
-  it("goes back to the run list from a run the Runs tab opened", async () => {
+  // The Runs tab from Draft shows the run list, with no run opened by itself.
+  it("shows the run list when the Runs tab opens from Draft", async () => {
     served.items = [
       execution("exec_b", "completed"),
       execution("exec_a", "running"),
     ];
-    const { router, title, rows, show, back } = await renderRunsReveal({});
+    const { router, title, rows, show } = await renderRunsReveal({});
     await show({ view: "runs" });
-    await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
 
-    back();
     await waitFor(() => expect(rows()).toHaveLength(2));
     expect(router.state.location.search).toEqual({ view: "runs" });
     expect(title()).toBe("Runs");
@@ -136,7 +131,7 @@ describe("Runs Browse run list and selected run", () => {
     const { view, router, title, rows, show } = await renderRunsReveal({
       view: "runs",
     });
-    await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
+    await waitFor(() => expect(rows()).toHaveLength(2));
     await show({ view: "runs", executionId: "exec_a" });
     await waitFor(() => expect(title()).toBe(runHeading("exec_a")));
 
@@ -239,8 +234,6 @@ describe("Runs Browse run list and selected run", () => {
     const { view, title, rows, back, listScroller } = await renderRunsReveal({
       view: "runs",
     });
-    await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
-    back();
     await waitFor(() => expect(rows()).toHaveLength(2));
     const list = listScroller();
     if (!list) {
@@ -813,17 +806,14 @@ describe("Runs Browse restoration", () => {
     expect(store.get(activeWorkspaceCamerasAtom).desktop).toEqual(camera);
   });
 
-  it("restores the run list and its scroll without opening the newest run", async () => {
+  it("restores the run list and its scroll after a visit to Draft", async () => {
     served.items = [
       execution("exec_b", "completed"),
       execution("exec_a", "completed"),
     ];
-    const { router, title, rows, back, show, listScroller } =
-      await renderRunsReveal({
-        view: "runs",
-      });
-    await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
-    back();
+    const { router, rows, show, listScroller } = await renderRunsReveal({
+      view: "runs",
+    });
     await waitFor(() => expect(rows()).toHaveLength(2));
     const scroller = listScroller;
     const list = scroller();

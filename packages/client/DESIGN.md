@@ -309,9 +309,9 @@ it stopped in the usable canvas. Loading changes inspector status without fading
 re-fitting, or replacing the last valid canvas; resolved content replaces it
 only when the next presentation is ready.
 
-**Draft** owns the editable workflow and its properties. **Runs** resolves its
-initial load directly to the newest run, and owns the run list, run details, and
-run-node inspection. Reviewing a change before publishing it, and reading what a
+**Draft** owns the editable workflow and its properties. **Runs** opens on
+the run list, opens a run only when the person picks one or the route names one,
+and owns the run list, run details, and run-node inspection. Reviewing a change before publishing it, and reading what a
 past version changed, happen in the review sheet, described under Publication
 review.
 
@@ -641,8 +641,7 @@ Below `md`, **Runs** uses the same sequence of sheets. A sheet has one of two
 shapes: a summary sheet over the bottom of the canvas, or an inspector that
 covers it. A Draft sheet is about one object, a Runs sheet is about the
 address itself or about one object. Entering Runs, or **Configuration** in Runs,
-opens the run list or the open run as a summary sheet, and the first visit opens
-the newest run. A run row opens that run's summary sheet, which holds its
+opens the run list or the open run as a summary sheet. A run row opens that run's summary sheet, which holds its
 status, **Cancel**, active waits with **Resume now**, exit details, the failure
 summary, and activity, and adds a history entry. A row of the run's outline,
 a step pressed on the run's canvas, or **Show evidence** opens that
@@ -652,7 +651,7 @@ Back is named for the level it returns to: the run from the evidence or a Group
 summary, and **Runs** from a run, which replaces the history entry with the run
 list and returns focus to that run's row. The run list offers **Close**. Moving
 from one Runs address to another with a sheet open keeps the sequence open, so
-selecting a run, the newest run opening by itself, Back to the run list, and a
+selecting a run, Back to the run list, and a
 run started from the toolbar all show a sheet. Each run list and each run keeps
 its sheets and scroll positions, so leaving Runs and returning shows the same
 run at the same depth, and a poll or a late response never changes which sheet

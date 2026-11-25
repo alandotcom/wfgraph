@@ -127,25 +127,16 @@ describe("mobile Runs sequence", () => {
     } = await renderMobileRuns({});
 
     press("Show Runs");
-    // The first visit opens the newest run in the run's own sheet.
-    await waitFor(() =>
-      expect(sheetTitle()?.textContent).toBe(runHeading("exec_b"))
-    );
-    expect(router.state.location.search).toEqual({
-      view: "runs",
-      executionId: "exec_b",
-    });
+    // Runs opens on the run list, with no run opened by itself.
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(router.state.location.search).toEqual({ view: "runs" });
     expect(aside()).toBeNull();
+    await waitFor(() => expect(sheetTitle()?.textContent).toBe("Runs"));
     expect(
       view.getByRole("region", { name: "Runs inspector" }).dataset.level
     ).toBe("summary");
-
-    press("Back to Runs");
-    await waitFor(() => expect(rows()).toHaveLength(2));
-    expect(sheetTitle()?.textContent).toBe("Runs");
     expect(view.getByRole("button", { name: "Close" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Refresh" })).toBeTruthy();
-    await waitFor(() => expect(document.activeElement).toBe(rows()[0]));
 
     fireEvent.click(rows()[1]);
     await waitFor(() =>
@@ -287,11 +278,6 @@ describe("mobile Runs sequence", () => {
       view: "runs",
     });
     press("Configuration");
-    // The first visit opens the newest run; Back reaches the list.
-    await waitFor(() =>
-      expect(sheetTitle()?.textContent).toBe(runHeading("exec_b"))
-    );
-    press("Back to Runs");
     await waitFor(() => expect(rows()).toHaveLength(2));
     // The run list is the phone's main view, under the sheets.
     const list = listScroller();

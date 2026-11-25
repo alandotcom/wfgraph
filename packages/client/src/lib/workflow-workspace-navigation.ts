@@ -168,16 +168,6 @@ export const rememberedRouteSearchesAtom = atom(
   }
 );
 
-/**
- * Whether a route has named a run of the open workflow in this session. The
- * value outlives the Runs view, so a Runs body mounted on a return to the run
- * list sees the run that was closed there.
- */
-export const hasNamedRunAtom = atom((get): boolean => {
-  const workflowId = get(currentWorkflowIdAtom);
-  return workflowId ? navigationFor(get, workflowId).hasNamedRun : false;
-});
-
 const activeWorkspaceNavigationAtom = atom((get): WorkspaceNavigation => {
   const address = get(activeWorkspaceAddressAtom);
   return workspaceNavigationAt(navigationFor(get, address.workflowId), address);

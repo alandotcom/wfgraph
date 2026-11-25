@@ -20,7 +20,6 @@ import {
   toWorkflowExecutions,
   type WorkflowExecution,
 } from "#src/lib/execution-logs";
-import { useAfterCommit } from "#src/hooks/effects";
 import { orpcQuery, refreshRunHistory } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
@@ -29,10 +28,7 @@ import type { ExecutorSchedule } from "#src/lib/run-executor-activity";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { selectedExecutionIdAtom } from "#src/lib/workflow-ui-store";
-import {
-  activeShowSupersededAtom,
-  hasNamedRunAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeShowSupersededAtom } from "#src/lib/workflow-workspace-navigation";
 import type { WorkflowRunDetailProps } from "./workflow-run-detail";
 
 /** How often a run that is still going gets re-read. */
@@ -80,13 +76,12 @@ export type OpenRunIdentity =
 /**
  * What the Runs surface shows. The run list and one run are the two resolved
  * screens; each other screen is a loading or failure state on the way to one.
- * `opening-newest` holds while the newest run is being opened by itself. A
+ * Runs opens on the list, and a run opens only when the route names one. A
  * `list` whose `settled` is false shows the rows of the previous query while
  * the current one loads.
  */
 export type WorkflowRunsScreen =
   | { kind: "loading-list" }
-  | { kind: "opening-newest" }
   | { kind: "list-error"; retry: () => void }
   | {
       kind: "list";
@@ -293,40 +288,14 @@ export function useOpenRunIdentity(): OpenRunIdentity | null {
  */
 export function useWorkflowRuns(): WorkflowRunsState {
   const reads = useRunReads();
-  const { currentWorkflowId, executionId, executionsQuery, executions } = reads;
+  const { executionId, executionsQuery, executions } = reads;
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const canCancel = can(WfGraphOperations.workflowCancelExecution.id);
   const canResume = can(WfGraphOperations.workflowResumeWait.id);
   const canContinue = can(WfGraphOperations.workflowContinueWait.id);
-  // Workspace navigation records whether a route has named a run of this
-  // workflow. The surface unmounts outside Runs, so a value held here would
-  // forget the run closed before leaving and reopen the newest on return.
-  const hasNamedRun = useAtomValue(hasNamedRunAtom);
   const [showSuperseded, setShowSuperseded] = useAtom(activeShowSupersededAtom);
   const [focusRequest, setFocusRequest] = useAtom(runRowFocusRequestAtom);
-
-  const shouldSelectInitialRun =
-    executionId === undefined &&
-    currentWorkflowId !== null &&
-    !hasNamedRun &&
-    executionsQuery.isSuccess;
-  const initialRunId = shouldSelectInitialRun ? executions[0]?.id : undefined;
-
-  useAfterCommit(initialRunId, () => {
-    if (!shouldSelectInitialRun) {
-      return;
-    }
-
-    // Opening the newest run is automatic, so it replaces the run list's
-    // history entry, and Back from the run returns to the page before Runs.
-    if (initialRunId) {
-      void navigate({
-        search: { view: "runs", executionId: initialRunId },
-        replace: true,
-      });
-    }
-  });
 
   // No `errorMessage`, so the cache toasts what the server said. Cancel refuses
   // for reasons the operator has to tell apart: a run an earlier Cancel Event
@@ -356,11 +325,6 @@ export function useWorkflowRuns(): WorkflowRunsState {
   const listScreen = (): WorkflowRunsScreen => {
     if (executionsQuery.isPending) {
       return { kind: "loading-list" };
-    }
-    // The initial destination is the newest run. Keep its placeholder in place
-    // until the URL catches up, rather than flashing the list beforehand.
-    if (initialRunId) {
-      return { kind: "opening-newest" };
     }
     if (executionsQuery.isError) {
       return {
