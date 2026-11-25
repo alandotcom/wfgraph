@@ -602,8 +602,16 @@ sources, apart from the source checks each later batch records.
   "One entry per integration" section teach the entries and the call form. The
   CRITICAL import mistake now imports an entry, the Slack `publicUrl` mistake
   calls `slack({ oauthClient })`, and a new HIGH mistake covers importing the
-  package root or passing an uncalled function.
-- integrations: the `runAction` mistake calls `twilio()`.
+  package root or passing an uncalled function. That mistake's correct pattern
+  imports both `resend` and `twilio` from their entries before listing
+  `[resend(), twilio()]`, in the skill and in `domain_map.yaml`, so it
+  resolves as written.
+- integrations: the `runAction` mistake calls `twilio()`. Commit `61231f7f`
+  changed the rule for `test`: it takes the connection test function itself,
+  imported statically, where the skill had said `test` was a loader that kept
+  the vendor call behind a dynamic import. Each `configOptions` entry's `load`
+  takes the function itself too. The skill's `configOptions` line names no
+  form for `load`, so that line did not change.
 - `library_version` stays at 4.1.1, as in batch 6.
 - Checks: `intent validate` passed. The behavior is covered by
   `packages/plugins/src/integrations.test.ts`, which checks all six

@@ -211,15 +211,18 @@ pattern, and a field-derivation test alone catches none of what a vendor type ge
 ## Adding one
 
 1. Write the files above under `packages/plugins/src/[name]/`.
-2. Add `./[name]` to the `exports` map in `packages/plugins/package.json` and `[name]` to
-   the `entry` record in `packages/plugins/tsdown.config.ts`. Map `@wfgraph/plugins/[name]`
-   to `[name]/index.ts` in the root `tsconfig.json`, in `tsconfig.build.json`, and in
-   `scripts/plugins/workspace-source-aliases.ts`.
+2. Add `./[name]` to the `exports` map in `packages/plugins/package.json`. That map is
+   the one list of entries: `tsdown.config.ts` builds an entry for each subpath, and the
+   `@wfgraph/plugins/*` mappings in the root `tsconfig.json`, in `tsconfig.build.json` and
+   in `scripts/plugins/workspace-source-aliases.ts` resolve `@wfgraph/plugins/[name]` to
+   `[name]/index.ts` without a change.
 3. Add an entry to the `integrationUi` record in `src/ui.ts`.
-4. Add the integration to the list in `src/integrations.test.ts`.
+4. Add the integration function to `withoutOptions` in `src/integrations.test.ts`, or call
+   it in that file's `integrations` list when it takes options. That test fails while an
+   exported integration is missing from the list.
 5. Add a row for the integration to `ADDED_KIB_CEILING` in
-   `scripts/plugins/worker-bundle.test.ts`. Set the ceiling about 25 percent over the
-   size, in KiB, that the test reports for the integration.
+   `scripts/plugins/worker-bundle.test.ts`, which fails while an exported integration has
+   no row. The comment on `ADDED_KIB_CEILING` says how to set the ceiling.
 6. `pnpm run type-check && pnpm run test && pnpm run fix`.
 7. Import it in `examples/app.ts`, then `pnpm run dev`, add a connection, build a workflow
    on the action, and run it.

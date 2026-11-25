@@ -17,9 +17,11 @@ const coreSrc = fileURLToPath(
  * plugin reaching `@wfgraph/core/plugin` is the same story from the other side: a
  * step written against a constructor that changed this morning would be tested
  * against the one that was published last week. The root tsconfig's paths say
- * the same thing for tsc and for oxlint. Each `@wfgraph/plugins` alias matches
- * one name in that package's "exports" map: an integration resolves to its
- * `src/<name>/index.ts` and `ui` to `src/ui.ts`.
+ * the same thing for tsc and for oxlint. The `@wfgraph/plugins` aliases follow
+ * that package's "exports" map: `ui` resolves to `src/ui.ts`, and any other
+ * single name to `src/<name>/index.ts`. A deeper path such as
+ * `@wfgraph/plugins/slack/client` matches neither alias, so it fails to resolve
+ * here as it does for an adopter.
  *
  * The Vite and Vitest configs spread this in by relative path, and it stays here
  * rather than in any one of them because none contains the others. Vitest looks
@@ -28,11 +30,11 @@ const coreSrc = fileURLToPath(
  * needs.
  */
 export const workspaceSourceAliases: Alias[] = [
+  { find: /^@wfgraph\/plugins\/ui$/, replacement: `${pluginsSrc}/ui.ts` },
   {
-    find: /^@wfgraph\/plugins\/(clerk|linear|posthog|resend|slack|twilio)$/,
+    find: /^@wfgraph\/plugins\/([^/]+)$/,
     replacement: `${pluginsSrc}/$1/index.ts`,
   },
-  { find: /^@wfgraph\/plugins\/ui$/, replacement: `${pluginsSrc}/ui.ts` },
   { find: /^@wfgraph\/core$/, replacement: `${coreSrc}/index.ts` },
   { find: /^@wfgraph\/core\/(.*)$/, replacement: `${coreSrc}/$1` },
 ];

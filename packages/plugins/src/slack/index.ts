@@ -136,8 +136,6 @@ export const slack = (options?: SlackOptions) => {
         ? createSlackOAuth(clientId, clientSecret)
         : undefined,
 
-    // The connection test reaches Slack, so it stays behind a dynamic import until
-    // someone presses "Test connection".
     test: testSlack,
 
     actions: {

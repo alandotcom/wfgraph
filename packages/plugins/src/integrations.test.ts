@@ -6,15 +6,16 @@ import { posthog } from "#src/posthog/index";
 import { resend } from "#src/resend/index";
 import { slack } from "#src/slack/index";
 import { twilio } from "#src/twilio/index";
+import pluginsManifest from "../package.json" with { type: "json" };
 
-// Each integration's own module, which is the file its package entry builds from.
+// The integration functions that take no options, imported from each
+// integration's own module, which is the file its package entry builds from.
+// `slack` takes its OAuth client as an option and is called on its own.
+const withoutOptions = { clerk, linear, posthog, resend, twilio };
+
 const integrations = [
-  clerk(),
-  linear(),
-  posthog(),
-  resend(),
+  ...Object.values(withoutOptions).map((create) => create()),
   slack(),
-  twilio(),
 ];
 
 /**
@@ -34,29 +35,26 @@ const actions = integrations.flatMap((integration) =>
 );
 
 describe("every built-in integration", () => {
-  it("covers all six", () => {
-    expect(integrations.map((integration) => integration.type)).toEqual([
-      "clerk",
-      "linear",
-      "posthog",
-      "resend",
-      "slack",
-      "twilio",
-    ]);
+  it("checks every integration the package exports", () => {
+    // `./ui` is the browser half of the package and holds no integration.
+    const exportedIntegrations = Object.keys(pluginsManifest.exports)
+      .filter((subpath) => subpath !== "./ui")
+      .map((subpath) => subpath.replace(/^\.\//, ""));
+    expect(
+      integrations.map((integration) => integration.type).toSorted(),
+      "Each integration export in packages/plugins/package.json needs its function in this file's integrations list"
+    ).toEqual(exportedIntegrations.toSorted());
     expect(actions).not.toHaveLength(0);
   });
 
   // A host may call an integration function on every request, so the five that
   // take no options hand back the definition their module built when it loaded.
-  it.each([
-    ["clerk", clerk],
-    ["linear", linear],
-    ["posthog", posthog],
-    ["resend", resend],
-    ["twilio", twilio],
-  ] as const)("%s returns the same definition on every call", (_, create) => {
-    expect(create()).toBe(create());
-  });
+  it.each(Object.entries(withoutOptions))(
+    "%s returns the same definition on every call",
+    (_, create) => {
+      expect(create()).toBe(create());
+    }
+  );
 
   it("keeps Slack's OAuth client credentials out of the catalog", () => {
     const configured = slack({

@@ -5,10 +5,11 @@ import { beforeAll, describe, expect, it } from "vitest";
 import pluginsManifest from "../../packages/plugins/package.json" with { type: "json" };
 
 /**
- * Holds every integration entry of `@wfgraph/plugins`, and the Worker host
- * entry of `@wfgraph/core`, to what a Cloudflare Worker pays for it at startup.
- * Each entry is bundled from source the way wrangler bundles a Worker, and the
- * assertions read esbuild's metafile, so they measure bytes and import kinds.
+ * Bundles entries from source the way wrangler bundles a Worker and reads
+ * esbuild's metafile. Every integration export of `@wfgraph/plugins` must have
+ * a row in `ADDED_KIB_CEILING`. Each integration entry must stay under that
+ * ceiling and must not reach an `import()` of bundled code. The Worker host
+ * entry of `@wfgraph/core` is checked for that `import()` rule alone.
  */
 
 /**

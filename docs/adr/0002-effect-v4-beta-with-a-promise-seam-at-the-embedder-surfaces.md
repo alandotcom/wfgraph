@@ -372,6 +372,22 @@ Inngest started. The runtime's scope closes its Layers concurrently with that wa
 what the wait protects is `persistence.close`, which `app.ts` and `worker.ts` run after
 the runtime is disposed.
 
+**Amendment, 2026-11-25.** Linear and Clerk moved onto `callExternal`, and `@linear/sdk`
+and `@clerk/backend` were removed from `@wfgraph/plugins`. This reversed the scope call in
+the 2026-07-28 amendment to the Sequencing section, which had kept both integrations on
+their SDKs. The reason was startup cost in a Cloudflare Worker, which allows 1 second of
+CPU at startup. `@linear/sdk` was 1,963 KiB of a Worker bundle, and the two SDKs together
+were 2.3 MiB of the 3.0 MiB that the built-in integrations added to one. `svix` stayed,
+because it verifies the signature on a Resend webhook and adds 29 KiB.
+`scripts/plugins/worker-bundle.test.ts` was added to hold each integration to a byte
+ceiling on what it adds to a Worker bundle.
+
+The same change gave each built-in integration its own package entry,
+`@wfgraph/plugins/<type>`, which exports the integration as a function. The package's
+root entry and `builtInIntegrations` were removed. The reason was that a host should load
+only the integrations it imports: measured in a Worker bundle, Slack alone came to 161 KiB,
+against 3,039 KiB through the root entry.
+
 ## Consequences
 
 - Pinning a beta means upgrades are deliberate work: a bump can break compilation, so read

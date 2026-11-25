@@ -132,8 +132,6 @@ const posthogIntegration = defineIntegration({
   credentials: posthogCredentialFields,
   oauth: posthogOAuth,
 
-  // The connection test reaches PostHog, so it stays behind a dynamic import
-  // until someone presses "Test connection".
   test: testPostHog,
 
   actions: {

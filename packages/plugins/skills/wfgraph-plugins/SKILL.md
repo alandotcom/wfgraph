@@ -111,8 +111,10 @@ Source: alandotcom/wfgraph:packages/plugins/README.md
 
 Wrong: `extensions.integrations: [resend, twilio]`, or `import { slack } from "@wfgraph/plugins"`.
 
-Correct: `[resend(), twilio()]`, each imported from its own entry such as
-`@wfgraph/plugins/resend`. The package has no root entry.
+Correct: `import { resend } from "@wfgraph/plugins/resend"` and
+`import { twilio } from "@wfgraph/plugins/twilio"`, then
+`extensions.integrations: [resend(), twilio()]`. Each integration has its own
+entry, and the package has no root entry.
 
 Source: alandotcom/wfgraph:packages/plugins/README.md
 

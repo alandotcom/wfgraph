@@ -136,8 +136,6 @@ const twilioIntegration = defineIntegration({
   description: "Send SMS messages with Twilio Programmable Messaging",
   credentials: twilioCredentialFields,
 
-  // The connection test reaches Twilio, so it stays behind a dynamic import
-  // until someone presses "Test connection".
   test: testTwilio,
 
   // The record key is the action slug. It is the only place the slug exists, so
