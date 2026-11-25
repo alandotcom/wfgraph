@@ -333,7 +333,9 @@ width once, the way opening Reveal places it. Resizing never moves a step,
 changes the draft, or adds an undo step.
 
 The Draft canvas rests with Reveal closed. Selecting an ordinary step, which is
-any Action or Wait, opens Browse. A context header names the workspace, the step,
+any Action or Wait, opens Browse. A press on a step selects it only when it ends
+as a click. Dragging a step never opens Reveal or moves the camera, and dragging
+a step that is not selected clears the selection. A context header names the workspace, the step,
 the path from the workflow through any Group to the step, and the step's
 validation status, beside **Back**, **Focus editor**, and **Close**. Browse is a
 summary: an editable label, the action and its Connection, each setting as a

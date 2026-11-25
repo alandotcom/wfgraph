@@ -292,6 +292,57 @@ describe("canvas selection", () => {
     });
   });
 
+  it("drags a step without selecting it, opening Reveal, or moving the camera", async () => {
+    const { store, view, reveal } = await renderEditor();
+    const card = view.container.querySelector<HTMLElement>(
+      '.react-flow__node[data-id="qualify"]'
+    );
+    const viewport = view.container.querySelector<HTMLElement>(
+      ".react-flow__viewport"
+    );
+    const flowRoot = view.container.querySelector<HTMLElement>(".react-flow");
+    if (!card || !viewport || !flowRoot) {
+      throw new Error("the canvas did not render the Qualification card");
+    }
+    // happy-dom lays nothing out, and React Flow pans a drag that nears the
+    // edge of its box, so the box is given its real size.
+    flowRoot.getBoundingClientRect = () =>
+      DOMRect.fromRect({ width: 1400, height: 900 });
+    // Every camera change rewrites the viewport element's transform.
+    const cameraChanges: string[] = [];
+    const observer = new MutationObserver(() => {
+      cameraChanges.push(viewport.style.transform);
+    });
+    observer.observe(viewport, {
+      attributes: true,
+      attributeFilter: ["style"],
+    });
+
+    // A press that moves past React Flow's one-pixel drag threshold.
+    await act(async () => {
+      fireEvent.mouseDown(card, {
+        button: 0,
+        clientX: 500,
+        clientY: 300,
+        view: window,
+      });
+      fireEvent.mouseMove(window, { clientX: 530, clientY: 330, view: window });
+      fireEvent.mouseMove(window, { clientX: 560, clientY: 360, view: window });
+      fireEvent.mouseUp(window, { clientX: 560, clientY: 360, view: window });
+    });
+    observer.disconnect();
+
+    expect(store.get(activeSelectionAtom)).toEqual({
+      nodeIds: [],
+      edgeIds: [],
+    });
+    expect(reveal()?.dataset.level).toBe("closed");
+    expect(cameraChanges).toEqual([]);
+    expect(
+      store.get(nodesAtom).find((node) => node.id === "qualify")?.position
+    ).not.toEqual({ x: 400, y: 180 });
+  });
+
   it("keeps modifier-click additive", async () => {
     const { store, view } = await renderEditor();
 
