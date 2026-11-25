@@ -1,37 +1,53 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
+import type { JsonObject } from "@wfgraph/shared/types/json";
 import { Effect } from "effect";
-import { afterEach, beforeEach } from "vitest";
+import { type FetchResponder, recordFetch } from "#src/fetch-test-support";
 import { linear } from "#src/linear/index";
+import { linearResponses } from "#src/linear/responses.fixtures";
 
 /**
  * The seam is `fetch`: `runAction` runs the step with the transport that reads
  * the global per call, so a case says what Linear answered to each GraphQL
  * operation and reads back what the step sent. What the client puts on the
- * wire in detail is `client.test.ts`'s subject.
+ * wire in detail is `client.test.ts`'s subject, and how a refusal is worded is
+ * `errors.test.ts`'s.
  */
 
-const realFetch = globalThis.fetch;
 const LINEAR_CREDENTIALS = { LINEAR_API_KEY: "lin_api_key" };
 
-type SentOperation = { query: string; variables: Record<string, unknown> };
+/** What Linear answers to each of the two operations the step sends. */
+type OperationAnswers = {
+  firstTeam?: () => Response;
+  createIssue?: () => Response;
+};
 
-let sent: SentOperation[] = [];
-let answers: { firstTeam: Response; createIssue: Response };
-
-/** Answer each GraphQL operation by the name its document declares. */
-function stubLinear(): void {
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const operation: SentOperation = await new Request(input, init).json();
-    sent.push(operation);
-    return operation.query.startsWith("query FirstTeam")
-      ? answers.firstTeam
-      : answers.createIssue;
-  }) as typeof fetch;
+/**
+ * Answer each GraphQL operation by the name its document declares. An
+ * operation `answers` leaves out succeeds.
+ */
+function byOperation(answers: OperationAnswers = {}): FetchResponder {
+  return (_request, body) => {
+    const query = body?.query;
+    const isFirstTeam =
+      typeof query === "string" && query.startsWith("query FirstTeam");
+    const answer = isFirstTeam
+      ? (answers.firstTeam ?? (() => Response.json(linearResponses.firstTeam)))
+      : (answers.createIssue ??
+        (() => Response.json(linearResponses.issueCreated)));
+    return answer();
+  };
 }
 
-function sentOperation(name: string): SentOperation[] {
-  return sent.filter(({ query }) => query.includes(` ${name}`));
+const wire = recordFetch(byOperation());
+
+/** The bodies of the requests that sent the operation `name`. */
+function sentOperation(name: string): JsonObject[] {
+  return wire
+    .bodies()
+    .filter(
+      ({ query }) => typeof query === "string" && query.includes(` ${name}`)
+    );
 }
 
 /** The credentials a run would have fetched. */
@@ -40,32 +56,6 @@ function credentialsRead(
 ) {
   return Effect.sync(() => values);
 }
-
-beforeEach(() => {
-  sent = [];
-  answers = {
-    firstTeam: Response.json({
-      data: { teams: { nodes: [{ id: "team_first" }] } },
-    }),
-    createIssue: Response.json({
-      data: {
-        issueCreate: {
-          success: true,
-          issue: {
-            id: "issue_1",
-            url: "https://linear.app/team/issue/ABC-1",
-            title: "Bug report",
-          },
-        },
-      },
-    }),
-  };
-  stubLinear();
-});
-
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
 
 describe("linear/create-ticket", () => {
   it.effect("files under the team the integration names", () =>
@@ -90,7 +80,7 @@ describe("linear/create-ticket", () => {
       });
       expect(result).toEqual({
         id: "issue_1",
-        url: "https://linear.app/team/issue/ABC-1",
+        url: "https://linear.app/team/issue/ABC-1/bug-report",
         title: "Bug report",
       });
     })
@@ -105,14 +95,18 @@ describe("linear/create-ticket", () => {
 
       expect(sentOperation("FirstTeam")).toHaveLength(1);
       expect(sentOperation("CreateIssue")[0]?.variables).toEqual({
-        input: { title: "Bug report", teamId: "team_first" },
+        input: { title: "Bug report", teamId: "team_1" },
       });
     })
   );
 
   it.effect("says so when the workspace has no team to file under", () =>
     Effect.gen(function* () {
-      answers.firstTeam = Response.json({ data: { teams: { nodes: [] } } });
+      wire.answer(
+        byOperation({
+          firstTeam: () => Response.json(linearResponses.noTeams),
+        })
+      );
 
       const error = actionError(
         yield* runAction(linear(), "create-ticket", {
@@ -128,9 +122,11 @@ describe("linear/create-ticket", () => {
 
   it.effect("says so when the mutation answered with no issue", () =>
     Effect.gen(function* () {
-      answers.createIssue = Response.json({
-        data: { issueCreate: { success: false, issue: null } },
-      });
+      wire.answer(
+        byOperation({
+          createIssue: () => Response.json(linearResponses.issueNotCreated),
+        })
+      );
 
       const error = actionError(
         yield* runAction(linear(), "create-ticket", {
@@ -143,19 +139,13 @@ describe("linear/create-ticket", () => {
     })
   );
 
-  // The GraphQL error is the specific one, and it is what a user can act on.
-  it.effect("reports the GraphQL error Linear answered with", () =>
+  it.effect("puts its own prefix in front of Linear's refusal", () =>
     Effect.gen(function* () {
-      answers.createIssue = Response.json(
-        {
-          errors: [
-            {
-              message: "Entity not found: Team",
-              extensions: { type: "invalid input", code: "INPUT_ERROR" },
-            },
-          ],
-        },
-        { status: 400 }
+      wire.answer(
+        byOperation({
+          createIssue: () =>
+            Response.json(linearResponses.teamNotFound, { status: 400 }),
+        })
       );
 
       const error = actionError(
@@ -173,19 +163,13 @@ describe("linear/create-ticket", () => {
 
   it.effect("words a failed team lookup as a failed ticket", () =>
     Effect.gen(function* () {
-      answers.firstTeam = Response.json(
-        {
-          errors: [
-            {
-              message: "Authentication required, not authenticated",
-              extensions: {
-                type: "authentication error",
-                code: "AUTHENTICATION_ERROR",
-              },
-            },
-          ],
-        },
-        { status: 401 }
+      wire.answer(
+        byOperation({
+          firstTeam: () =>
+            Response.json(linearResponses.authenticationError, {
+              status: 401,
+            }),
+        })
       );
 
       const error = actionError(
@@ -196,7 +180,7 @@ describe("linear/create-ticket", () => {
       );
 
       expect(error.message).toBe(
-        "Failed to create ticket: Authentication required, not authenticated"
+        "Failed to create ticket: You need to authenticate to access this operation."
       );
       expect(sentOperation("CreateIssue")).toHaveLength(0);
     })
@@ -214,7 +198,7 @@ describe("linear/create-ticket", () => {
       expect(error.message).toBe(
         "LINEAR_API_KEY is not configured. Please add it in Project Integrations."
       );
-      expect(sent).toHaveLength(0);
+      expect(wire.requests).toHaveLength(0);
     })
   );
 });

@@ -1,46 +1,27 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { afterEach, beforeEach } from "vitest";
+import { recordFetch } from "#src/fetch-test-support";
 import { linear } from "#src/linear/index";
+import {
+  linearIssuePage,
+  linearIssues,
+  linearResponses,
+} from "#src/linear/responses.fixtures";
 
 /**
  * The seam is `fetch`: `runAction` runs the step with the transport that reads
- * the global per call, so a case says what each page of Linear's `issues`
- * connection held and reads back the variables the step sent for it.
+ * the global per call, so a case says what Linear's `issues` connection held
+ * and reads back the variables the step sent. Reading the connection page by
+ * page is `client.test.ts`'s subject, and how a refusal is worded is
+ * `errors.test.ts`'s.
  */
 
-const realFetch = globalThis.fetch;
 const LINEAR_CREDENTIALS = { LINEAR_API_KEY: "lin_api_key" };
 
-type SentVariables = Record<string, unknown>;
-
-let sentVariables: SentVariables[] = [];
-let answers: Response[] = [];
-
-/** Answer each request with the next response in `answers`. */
-function stubLinear(): void {
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const body: { variables: SentVariables } = await new Request(
-      input,
-      init
-    ).json();
-    sentVariables.push(body.variables);
-    const answer = answers.shift();
-    if (!answer) {
-      throw new Error("Linear was asked for more pages than the case holds");
-    }
-    return answer;
-  }) as typeof fetch;
-}
-
-/** One page of Linear's `issues` connection. */
-function issuePage(
-  nodes: readonly Record<string, unknown>[],
-  pageInfo = { hasNextPage: false, endCursor: "cursor_last" }
-): Response {
-  return Response.json({ data: { issues: { nodes, pageInfo } } });
-}
+const wire = recordFetch(() =>
+  Response.json(linearIssuePage([linearIssues.assigned]))
+);
 
 /** The credentials a run would have fetched. */
 function credentialsRead(
@@ -48,27 +29,6 @@ function credentialsRead(
 ) {
   return Effect.sync(() => values);
 }
-
-beforeEach(() => {
-  sentVariables = [];
-  answers = [
-    issuePage([
-      {
-        id: "issue_1",
-        title: "Login broken",
-        url: "https://linear.app/team/issue/ABC-1",
-        priority: 2,
-        state: { name: "In Progress" },
-        assignee: { id: "user_1" },
-      },
-    ]),
-  ];
-  stubLinear();
-});
-
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
 
 describe("linear/find-issues", () => {
   it.effect("flattens the issue with its state and assignee", () =>
@@ -85,7 +45,7 @@ describe("linear/find-issues", () => {
           {
             id: "issue_1",
             title: "Login broken",
-            url: "https://linear.app/team/issue/ABC-1",
+            url: "https://linear.app/team/issue/ABC-1/login-broken",
             state: "In Progress",
             priority: 2,
             assigneeId: "user_1",
@@ -94,7 +54,7 @@ describe("linear/find-issues", () => {
         count: 1,
       });
       // The state and the assignee arrive in the same request as the issue.
-      expect(sentVariables).toHaveLength(1);
+      expect(wire.requests).toHaveLength(1);
     })
   );
 
@@ -107,7 +67,7 @@ describe("linear/find-issues", () => {
         credentials: credentialsRead(),
       });
 
-      expect(sentVariables[0]).toEqual({ first: 50 });
+      expect(wire.body(0).variables).toEqual({ first: 50 });
     })
   );
 
@@ -123,80 +83,25 @@ describe("linear/find-issues", () => {
         credentials: credentialsRead(),
       });
 
-      expect(sentVariables[0]?.["filter"]).toEqual({
-        assignee: { id: { eq: "user_1" } },
-        team: { id: { eq: "team_1" } },
-        state: { type: { eq: "started" } },
-        labels: { name: { eqIgnoreCase: "bug" } },
-      });
-    })
-  );
-
-  it.effect("reads every page in Linear's issue connection", () =>
-    Effect.gen(function* () {
-      answers = [
-        issuePage(
-          [
-            {
-              id: "issue_1",
-              title: "First page",
-              url: "https://linear.app/team/issue/ABC-1",
-              priority: 1,
-              state: { name: "Todo" },
-              assignee: null,
-            },
-          ],
-          { hasNextPage: true, endCursor: "cursor_1" }
-        ),
-        issuePage([
-          {
-            id: "issue_2",
-            title: "Second page",
-            url: "https://linear.app/team/issue/ABC-2",
-            priority: 2,
-            state: { name: "In Progress" },
-            assignee: null,
-          },
-        ]),
-      ];
-
-      const result = actionData(
-        yield* runAction(linear(), "find-issues", {
-          input: { linearTeamId: "team_1" },
-          credentials: credentialsRead(),
-        })
-      );
-
-      expect(sentVariables).toEqual([
-        { filter: { team: { id: { eq: "team_1" } } }, first: 50 },
-        {
-          filter: { team: { id: { eq: "team_1" } } },
-          first: 50,
-          after: "cursor_1",
+      expect(wire.body(0).variables).toEqual({
+        filter: {
+          assignee: { id: { eq: "user_1" } },
+          team: { id: { eq: "team_1" } },
+          state: { type: { eq: "started" } },
+          labels: { name: { eqIgnoreCase: "bug" } },
         },
-      ]);
-      expect(result.issues.map((issue) => issue.id)).toEqual([
-        "issue_1",
-        "issue_2",
-      ]);
-      expect(result.count).toBe(2);
+        first: 50,
+      });
     })
   );
 
   it.effect("names an issue with no state rather than dropping it", () =>
     Effect.gen(function* () {
-      answers = [
-        issuePage([
-          {
-            id: "issue_2",
-            title: "No state",
-            url: "https://linear.app/team/issue/ABC-2",
-            priority: 0,
-            state: null,
-            assignee: null,
-          },
-        ]),
-      ];
+      wire.answer(() =>
+        Response.json(
+          linearIssuePage([{ ...linearIssues.unassigned, state: null }])
+        )
+      );
 
       const result = actionData(
         yield* runAction(linear(), "find-issues", {
@@ -207,8 +112,8 @@ describe("linear/find-issues", () => {
 
       expect(result.issues[0]).toEqual({
         id: "issue_2",
-        title: "No state",
-        url: "https://linear.app/team/issue/ABC-2",
+        title: "Unassigned",
+        url: "https://linear.app/team/issue/ABC-2/unassigned",
         state: "Unknown",
         priority: 0,
         assigneeId: null,
@@ -216,26 +121,11 @@ describe("linear/find-issues", () => {
     })
   );
 
-  it.effect("reports the GraphQL error Linear answered with", () =>
+  it.effect("puts its own prefix in front of Linear's refusal", () =>
     Effect.gen(function* () {
-      answers = [
-        Response.json(
-          {
-            errors: [
-              {
-                message: "Authentication required, not authenticated",
-                extensions: {
-                  type: "authentication error",
-                  code: "AUTHENTICATION_ERROR",
-                  userPresentableMessage:
-                    "You need to authenticate to access this operation.",
-                },
-              },
-            ],
-          },
-          { status: 400 }
-        ),
-      ];
+      wire.answer(() =>
+        Response.json(linearResponses.authenticationError, { status: 400 })
+      );
 
       const error = actionError(
         yield* runAction(linear(), "find-issues", {
@@ -262,7 +152,7 @@ describe("linear/find-issues", () => {
       expect(error.message).toBe(
         "LINEAR_API_KEY is not configured. Please add it in Project Integrations."
       );
-      expect(sentVariables).toHaveLength(0);
+      expect(wire.requests).toHaveLength(0);
     })
   );
 });

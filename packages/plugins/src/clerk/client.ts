@@ -78,8 +78,8 @@ function requestClerk<S extends Schema.ConstraintDecoder<unknown>>(
     method: HttpMethod.HttpMethod;
     path: string;
     schema: S;
-    body?: JsonObject;
-    safeToRepeat?: true;
+    body?: JsonObject | undefined;
+    safeToRepeat?: true | undefined;
   }
 ): Effect.Effect<S["Type"], ExternalError, HttpClient.HttpClient> {
   return callExternal({
@@ -114,18 +114,18 @@ export function getClerkUser(
 }
 
 /**
- * `GET /users?limit=...`, the cheapest call a secret key can make. The
- * connection test only needs the list to arrive, so its entries are not read.
+ * Check that Clerk accepts a secret key, with `GET /users?limit=1`, the
+ * cheapest call a secret key can make. The call succeeds when a list arrives;
+ * its entries are not read.
  */
-export function listClerkUsers(
-  secretKey: string,
-  limit: number
-): Effect.Effect<readonly unknown[], ExternalError, HttpClient.HttpClient> {
+export function verifyClerkSecretKey(
+  secretKey: string
+): Effect.Effect<void, ExternalError, HttpClient.HttpClient> {
   return requestClerk(secretKey, {
     method: "GET",
-    path: `/users?${new URLSearchParams({ limit: String(limit) })}`,
+    path: `/users?${new URLSearchParams({ limit: "1" })}`,
     schema: Schema.Array(Schema.Unknown),
-  });
+  }).pipe(Effect.asVoid);
 }
 
 /** The `POST /users` body fields the Create User action sends. */
@@ -179,6 +179,13 @@ export type ClerkUserUpdate = {
  * change or no metadata to replace. Each metadata field that is set replaces the
  * stored field whole through `PUT /users/{user_id}/metadata`, sent after the
  * PATCH, and the user that call answers with is the result.
+ *
+ * An update with no fields set still sends the `PATCH`, with an empty body, so
+ * the action can answer with the user as Clerk holds it.
+ *
+ * The two requests are separate writes. When the `PATCH` succeeds and the
+ * metadata `PUT` fails, Clerk keeps the changed names and the effect fails with
+ * the `PUT`'s error, which fails the step.
  *
  * Both requests are retried by `callExternal`: each one sets fields to the
  * values given, so sending it a second time leaves Clerk holding the same user.
@@ -234,9 +241,15 @@ const clerkDeletedObjectSchema = Schema.Struct({
 /**
  * `DELETE /users/{user_id}`.
  *
- * Retried by `callExternal`, because deleting a user that is already deleted
- * deletes nothing more. A repeat after a lost response answers 404, which the
- * executor's own retry of the step would meet as well.
+ * The request is sent once. `callExternal` repeats only a GET, a HEAD, a write
+ * carrying an idempotency key, or a request marked `safeToRepeat`, and this
+ * DELETE is none of those, so no failure of it is retried: a rate limit, an
+ * unavailable answer, a connection that never opened and an answer that missed
+ * the attempt timeout each fail the call on the first attempt. A repeat after
+ * Clerk deleted the user but the answer was lost would be answered 404, which
+ * would report a completed delete as a user that was not found. The step that
+ * calls this fails with a `StepFailure`, which the executor stores and does not
+ * run again.
  */
 export function deleteClerkUser(
   secretKey: string,
@@ -250,6 +263,5 @@ export function deleteClerkUser(
     method: "DELETE",
     path: userPath(userId),
     schema: clerkDeletedObjectSchema,
-    safeToRepeat: true,
   });
 }

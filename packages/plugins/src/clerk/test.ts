@@ -1,7 +1,7 @@
 import {
   describeClerkFailure,
-  listClerkUsers,
   readClerkError,
+  verifyClerkSecretKey,
 } from "#src/clerk/client";
 import type { ClerkCredentials } from "#src/clerk/index";
 import { callExternalAsync } from "@wfgraph/core/plugin";
@@ -35,7 +35,7 @@ export async function testClerk(
   // where the effect is run and the transport provided. A step reaches Clerk
   // through the same client without any of that, because `defineStep` does it.
   const result = await callExternalAsync(
-    listClerkUsers(secretKey, 1),
+    verifyClerkSecretKey(secretKey),
     (error) => error
   );
 

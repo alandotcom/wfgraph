@@ -33,7 +33,7 @@ function callLinear<S extends Schema.ConstraintDecoder<unknown>>(
   document: string,
   variables: JsonObject,
   schema: S,
-  options: { safeToRepeat?: true } = {}
+  options: { safeToRepeat?: true | undefined } = {}
 ): Effect.Effect<S["Type"], ExternalError, HttpClient.HttpClient> {
   return callExternal({
     system: "Linear",
@@ -139,10 +139,8 @@ export type LinearIssueInput = {
  * payload carried none.
  *
  * Creating an issue is a write that Linear cannot deduplicate: `issueCreate`
- * takes no idempotency key. A client-chosen `id` in the input would make a
- * repeat fail as a conflict, which still reports a created issue as a failure.
- * So the request goes out once, with no retry, and a create that timed out on
- * the way back leaves at most one issue in Linear.
+ * takes no idempotency key. So the request goes out once, with no retry, and a
+ * create that timed out on the way back leaves at most one issue in Linear.
  */
 export function createLinearIssue(
   apiKey: string,
@@ -165,10 +163,10 @@ export function createLinearIssue(
  * comparator object, the shape Linear's filtering reference documents.
  */
 export type LinearIssueFilter = {
-  assignee?: { id: { eq: string } };
-  team?: { id: { eq: string } };
-  state?: { type: { eq: string } };
-  labels?: { name: { eqIgnoreCase: string } };
+  assignee?: { id: { eq: string } } | undefined;
+  team?: { id: { eq: string } } | undefined;
+  state?: { type: { eq: string } } | undefined;
+  labels?: { name: { eqIgnoreCase: string } } | undefined;
 };
 
 const LIST_ISSUES_DOCUMENT = `query ListIssues($filter: IssueFilter, $first: Int, $after: String) {
@@ -218,27 +216,57 @@ const listIssuesResponseSchema = graphqlData({
   }),
 });
 
-export type LinearIssuePage =
-  (typeof listIssuesResponseSchema.Type)["data"]["issues"];
+type LinearIssuePage = (typeof listIssuesResponseSchema.Type)["data"]["issues"];
 
 /**
  * One page of the issues matching `filter`, starting after the cursor `after`
- * names, or at the first page when `after` is undefined. Each issue carries its
- * workflow state's name and its assignee's id from the same request.
+ * names, or at the first page when `after` is undefined.
  */
-export function listLinearIssues(
+function listIssuePage(
   apiKey: string,
-  query: { filter?: LinearIssueFilter | undefined; after?: string | undefined }
+  filter: LinearIssueFilter | undefined,
+  after: string | undefined
 ): Effect.Effect<LinearIssuePage, ExternalError, HttpClient.HttpClient> {
   return callLinear(
     apiKey,
     LIST_ISSUES_DOCUMENT,
     omitUndefined({
-      filter: query.filter,
+      filter: filter && omitUndefined(filter),
       first: ISSUE_PAGE_SIZE,
-      after: query.after,
+      after,
     }),
     listIssuesResponseSchema,
     { safeToRepeat: true }
   ).pipe(Effect.map(({ data }) => data.issues));
+}
+
+/**
+ * Every issue matching `filter`, or every issue the API key can see when
+ * `filter` is undefined. Each issue carries its workflow state's name and its
+ * assignee's id from the same request.
+ *
+ * Linear's `issues` field is a Relay connection, so the issues are read one
+ * page at a time: each page names the cursor the next page starts after, and
+ * the loop ends on the page that reports no next page. A failure on any page
+ * fails the whole call.
+ */
+export function listLinearIssues(
+  apiKey: string,
+  filter: LinearIssueFilter | undefined
+): Effect.Effect<LinearListedIssue[], ExternalError, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const issues: LinearListedIssue[] = [];
+    let after: string | undefined;
+
+    for (;;) {
+      const page = yield* listIssuePage(apiKey, filter, after);
+      issues.push(...page.nodes);
+
+      const { hasNextPage, endCursor } = page.pageInfo;
+      if (!hasNextPage || endCursor === null) {
+        return issues;
+      }
+      after = endCursor;
+    }
+  });
 }

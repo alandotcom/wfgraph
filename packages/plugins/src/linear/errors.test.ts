@@ -11,6 +11,7 @@ import {
   isLinearAuthenticationFailure,
   readLinearErrors,
 } from "#src/linear/errors";
+import { linearResponses } from "#src/linear/responses.fixtures";
 
 /**
  * How a failed call to Linear reads: which body counts as Linear refusing the
@@ -27,38 +28,16 @@ function rejected(status: number, payload: JsonValue | undefined) {
   });
 }
 
-const authenticationErrorBody = {
-  errors: [
-    {
-      message: "Authentication required, not authenticated",
-      extensions: {
-        type: "authentication error",
-        code: "AUTHENTICATION_ERROR",
-        statusCode: 401,
-        userError: true,
-        userPresentableMessage:
-          "You need to authenticate to access this operation.",
-      },
-    },
-  ],
-};
-
-const rateLimitedBody = {
-  errors: [
-    { message: "Rate limit exceeded", extensions: { code: "RATELIMITED" } },
-  ],
-};
+const { authenticationError, rateLimited } = linearResponses;
 
 describe("carriesLinearErrors", () => {
   it("reads a body with GraphQL errors as a refusal", () => {
-    expect(carriesLinearErrors(authenticationErrorBody)).toBe(true);
-    expect(carriesLinearErrors({ data: null, ...rateLimitedBody })).toBe(true);
+    expect(carriesLinearErrors(authenticationError)).toBe(true);
+    expect(carriesLinearErrors({ data: null, ...rateLimited })).toBe(true);
   });
 
   it("reads a body with data and no errors as an answer", () => {
-    expect(carriesLinearErrors({ data: { viewer: { id: "user_1" } } })).toBe(
-      false
-    );
+    expect(carriesLinearErrors(linearResponses.viewer)).toBe(false);
     expect(carriesLinearErrors({ errors: [] })).toBe(false);
     expect(carriesLinearErrors(undefined)).toBe(false);
   });
@@ -66,7 +45,7 @@ describe("carriesLinearErrors", () => {
 
 describe("readLinearErrors", () => {
   it("keeps the fields this integration reads", () => {
-    expect(readLinearErrors(authenticationErrorBody)).toEqual([
+    expect(readLinearErrors(authenticationError)).toEqual([
       {
         message: "Authentication required, not authenticated",
         extensions: {
@@ -82,13 +61,13 @@ describe("readLinearErrors", () => {
 
 describe("describeLinearFailure", () => {
   it("prefers the message Linear writes for a person", () => {
-    expect(describeLinearFailure(rejected(400, authenticationErrorBody))).toBe(
+    expect(describeLinearFailure(rejected(400, authenticationError))).toBe(
       "You need to authenticate to access this operation."
     );
   });
 
   it("falls back to the GraphQL error's message", () => {
-    expect(describeLinearFailure(rejected(429, rateLimitedBody))).toBe(
+    expect(describeLinearFailure(rejected(429, rateLimited))).toBe(
       "Rate limit exceeded"
     );
   });
@@ -115,10 +94,10 @@ describe("describeLinearFailure", () => {
 describe("isLinearAuthenticationFailure", () => {
   it("recognizes Linear's authentication error at either status", () => {
     expect(
-      isLinearAuthenticationFailure(rejected(400, authenticationErrorBody))
+      isLinearAuthenticationFailure(rejected(400, authenticationError))
     ).toBe(true);
     expect(
-      isLinearAuthenticationFailure(rejected(401, authenticationErrorBody))
+      isLinearAuthenticationFailure(rejected(401, authenticationError))
     ).toBe(true);
   });
 
@@ -142,7 +121,7 @@ describe("isLinearAuthenticationFailure", () => {
   });
 
   it("leaves every other refusal alone", () => {
-    expect(isLinearAuthenticationFailure(rejected(429, rateLimitedBody))).toBe(
+    expect(isLinearAuthenticationFailure(rejected(429, rateLimited))).toBe(
       false
     );
     expect(isLinearAuthenticationFailure(rejected(400, undefined))).toBe(false);

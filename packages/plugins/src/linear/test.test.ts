@@ -5,48 +5,33 @@
  * case says what Linear answered to the viewer query and reads the verdict back.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { recordFetch } from "#src/fetch-test-support";
+import { linearResponses } from "#src/linear/responses.fixtures";
 import { testLinear } from "#src/linear/test";
 
-const realFetch = globalThis.fetch;
-let requests: Request[] = [];
-
-function stubFetch(respond: () => Response): void {
-  requests = [];
-  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    requests.push(new Request(input, init));
-    return Promise.resolve(respond());
-  }) as typeof fetch;
-}
-
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
+const wire = recordFetch(() => Response.json(linearResponses.viewer));
 
 describe("testLinear", () => {
   it("names the credential when there is none", async () => {
-    stubFetch(() => Response.json({}));
-
     expect(await testLinear({})).toEqual({
       success: false,
       error: "LINEAR_API_KEY is required",
     });
-    expect(requests).toHaveLength(0);
+    expect(wire.requests).toHaveLength(0);
   });
 
   it("accepts a key whose viewer comes back", async () => {
-    stubFetch(() => Response.json({ data: { viewer: { id: "user_1" } } }));
-
     expect(await testLinear({ LINEAR_API_KEY: "lin_api_good" })).toEqual({
       success: true,
     });
-    expect(requests[0]?.headers.get("authorization")).toBe("lin_api_good");
+    expect(wire.requests[0]?.headers.get("authorization")).toBe("lin_api_good");
   });
 
   // A viewer with no id is Linear answering without saying who the key belongs
   // to, which is not a connection worth reporting as working.
   it("refuses a viewer that names nobody", async () => {
-    stubFetch(() => Response.json({ data: { viewer: {} } }));
+    wire.answer(() => Response.json({ data: { viewer: {} } }));
 
     expect(await testLinear({ LINEAR_API_KEY: "lin_api_x" })).toMatchObject({
       success: false,
@@ -57,25 +42,8 @@ describe("testLinear", () => {
   // The authentication type is the one refusal that names something a person can
   // act on, so it gets the credentials sentence rather than Linear's wording.
   it("names the API key when Linear refuses the authentication", async () => {
-    stubFetch(() =>
-      Response.json(
-        {
-          errors: [
-            {
-              message: "Authentication required, not authenticated",
-              extensions: {
-                type: "authentication error",
-                code: "AUTHENTICATION_ERROR",
-                statusCode: 401,
-                userError: true,
-                userPresentableMessage:
-                  "You need to authenticate to access this operation.",
-              },
-            },
-          ],
-        },
-        { status: 400 }
-      )
+    wire.answer(() =>
+      Response.json(linearResponses.authenticationError, { status: 400 })
     );
 
     expect(await testLinear({ LINEAR_API_KEY: "lin_api_bad" })).toEqual({
@@ -92,17 +60,7 @@ describe("testLinear", () => {
   // Anything else keeps Linear's own sentence, because a generic one would say
   // less than the message the API sent.
   it("passes any other refusal through in Linear's own words", async () => {
-    stubFetch(() =>
-      Response.json({
-        data: null,
-        errors: [
-          {
-            message: "Forbidden",
-            extensions: { type: "forbidden", code: "FORBIDDEN" },
-          },
-        ],
-      })
-    );
+    wire.answer(() => Response.json(linearResponses.forbidden));
 
     expect(await testLinear({ LINEAR_API_KEY: "lin_api_x" })).toMatchObject({
       success: false,
@@ -114,7 +72,7 @@ describe("testLinear", () => {
   // carries the transport's message alone. The viewer query is a read, so it
   // is retried, and the case waits out that schedule on the real clock.
   it("reports a request that never arrived", async () => {
-    stubFetch(() => {
+    wire.answer(() => {
       throw new Error("ECONNREFUSED");
     });
 

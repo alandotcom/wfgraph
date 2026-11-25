@@ -13,7 +13,6 @@ import {
   createLinearIssue,
   fetchFirstLinearTeamId,
   type LinearIssueFilter,
-  type LinearListedIssue,
   listLinearIssues,
 } from "#src/linear/client";
 import {
@@ -158,32 +157,6 @@ function firstTeamId(
           message: "No teams found in Linear workspace",
         })
       : teamId;
-  });
-}
-
-/**
- * Every issue matching `filter`, read page by page. Linear's `issues` field is
- * a Relay connection, so each page names the cursor the next page starts
- * after, and the loop ends on the page that reports no next page.
- */
-function listEveryIssue(
-  apiKey: string,
-  filter: LinearIssueFilter | undefined
-): Effect.Effect<LinearListedIssue[], ExternalError, HttpClient.HttpClient> {
-  return Effect.gen(function* () {
-    const issues: LinearListedIssue[] = [];
-    let after: string | undefined;
-
-    for (;;) {
-      const page = yield* listLinearIssues(apiKey, { filter, after });
-      issues.push(...page.nodes);
-
-      const { hasNextPage, endCursor } = page.pageInfo;
-      if (!hasNextPage || endCursor === null) {
-        return issues;
-      }
-      after = endCursor;
-    }
   });
 }
 
@@ -341,7 +314,7 @@ const linearIntegration = defineIntegration({
         // the whole result and a later pass does not read Linear again.
         const issues = yield* bag.step.run(
           "find-issues",
-          listEveryIssue(apiKey, buildIssueFilter(input)).pipe(
+          listLinearIssues(apiKey, buildIssueFilter(input)).pipe(
             Effect.mapBoth({
               onSuccess: (found) =>
                 found.map((issue) => ({
