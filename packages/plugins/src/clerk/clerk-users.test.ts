@@ -1,8 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { actionData, actionError, runAction } from "@wfgraph/core/testing";
 import { Effect } from "effect";
-import { afterEach, beforeEach, vi } from "vitest";
-import * as clerkClient from "#src/clerk/client";
+import { afterEach, beforeEach } from "vitest";
 import { clerk } from "#src/clerk/index";
 
 const underTest = clerk;
@@ -10,36 +9,34 @@ const underTest = clerk;
 /**
  * The four Clerk steps in one file, because what they have to say is the same
  * four things each: which credential is missing, which field the action cannot
- * do without, what Clerk's user looks like flattened, and how a thrown Clerk
- * error reads. The seam under all of them is `createClerkBackendClient`, whose
- * users resource is stubbed here via spy so isolate:false does not leave a
- * `vi.mock` of this module on the shared registry.
+ * do without, what Clerk's user looks like flattened, and how Clerk's refusal
+ * reads. The seam under all of them is `fetch`, so a case says what Clerk
+ * answered and reads back both the step's answer and the request it sent.
+ * What each request looks like in full is `client.test.ts`'s subject.
  */
-const mocks = vi.hoisted(() => ({
-  getUser: vi.fn(),
-  createUser: vi.fn(),
-  updateUser: vi.fn(),
-  deleteUser: vi.fn(),
-  createClient: vi.fn(),
-}));
 
 const CLERK_CREDENTIALS = { CLERK_SECRET_KEY: "sk_test_key" };
 
-// What Clerk's SDK hands back, in its own camelCase, so the step's flattening
-// is exercised rather than assumed.
+// What Clerk's Backend API answers, in its own snake_case, so the step's
+// flattening is exercised rather than assumed.
 const CLERK_USER = {
   id: "user_1",
-  firstName: "Ada",
-  lastName: "Lovelace",
-  emailAddresses: [
-    { id: "idn_1", emailAddress: "ada@example.com" },
-    { id: "idn_2", emailAddress: "other@example.com" },
+  object: "user",
+  first_name: "Ada",
+  last_name: "Lovelace",
+  email_addresses: [
+    { id: "idn_1", object: "email_address", email_address: "ada@example.com" },
+    {
+      id: "idn_2",
+      object: "email_address",
+      email_address: "other@example.com",
+    },
   ],
-  primaryEmailAddressId: "idn_1",
-  publicMetadata: {},
-  privateMetadata: {},
-  createdAt: 1_700_000_000_000,
-  updatedAt: 1_700_000_001_000,
+  primary_email_address_id: "idn_1",
+  public_metadata: {},
+  private_metadata: {},
+  created_at: 1_700_000_000_000,
+  updated_at: 1_700_000_001_000,
 };
 
 /** The user the three user-returning steps answer with, flattened. */
@@ -52,6 +49,44 @@ const FLATTENED_USER = {
   updatedAt: 1_700_000_001_000,
 };
 
+/** Clerk's documented `ResourceNotFound` error, status 404. */
+const RESOURCE_NOT_FOUND = {
+  errors: [
+    {
+      message: "not found",
+      long_message: "Resource not found",
+      code: "resource_not_found",
+    },
+  ],
+};
+
+const realFetch = globalThis.fetch;
+let requests: Request[] = [];
+
+/** Answer every request Clerk would get with `respond`. */
+function stubFetch(respond: () => Response): void {
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    requests.push(new Request(input, init));
+    return Promise.resolve(respond());
+  }) as typeof fetch;
+}
+
+/** The method and URL of each request sent, in order. */
+function sentRequests(): string[] {
+  return requests.map((request) => `${request.method} ${request.url}`);
+}
+
+/** The JSON body of the request at `index`. */
+function sentBody(index: number): Effect.Effect<unknown> {
+  return Effect.promise(() => {
+    const request = requests[index];
+    if (!request) {
+      throw new Error(`no request ${index} was sent`);
+    }
+    return request.json();
+  });
+}
+
 /** The credentials a run would have fetched. */
 function credentialsRead(
   values: Record<string, string | undefined> = CLERK_CREDENTIALS
@@ -60,30 +95,12 @@ function credentialsRead(
 }
 
 beforeEach(() => {
-  mocks.getUser.mockReset();
-  mocks.createUser.mockReset();
-  mocks.updateUser.mockReset();
-  mocks.deleteUser.mockReset();
-  mocks.createClient.mockReset();
-  mocks.createClient.mockReturnValue({
-    users: {
-      getUser: mocks.getUser,
-      createUser: mocks.createUser,
-      updateUser: mocks.updateUser,
-      deleteUser: mocks.deleteUser,
-    },
-  });
-  mocks.getUser.mockResolvedValue(CLERK_USER);
-  mocks.createUser.mockResolvedValue(CLERK_USER);
-  mocks.updateUser.mockResolvedValue(CLERK_USER);
-  mocks.deleteUser.mockResolvedValue(undefined);
-  vi.spyOn(clerkClient, "createClerkBackendClient").mockImplementation(
-    mocks.createClient
-  );
+  requests = [];
+  stubFetch(() => Response.json(CLERK_USER));
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
+  globalThis.fetch = realFetch;
 });
 
 describe("clerk/get-user", () => {
@@ -96,7 +113,12 @@ describe("clerk/get-user", () => {
         })
       );
 
-      expect(mocks.getUser).toHaveBeenCalledWith("user_1");
+      expect(sentRequests()).toEqual([
+        "GET https://api.clerk.com/v1/users/user_1",
+      ]);
+      expect(requests[0]?.headers.get("authorization")).toBe(
+        "Bearer sk_test_key"
+      );
       expect(result).toEqual(FLATTENED_USER);
     })
   );
@@ -113,7 +135,7 @@ describe("clerk/get-user", () => {
       expect(error.message).toBe(
         "CLERK_SECRET_KEY is not configured. Please add it in Project Integrations."
       );
-      expect(mocks.getUser).toHaveBeenCalledTimes(0);
+      expect(requests).toHaveLength(0);
     })
   );
 
@@ -127,18 +149,15 @@ describe("clerk/get-user", () => {
       );
 
       expect(error.message).toBe("User ID is required.");
-      expect(mocks.getUser).toHaveBeenCalledTimes(0);
+      expect(requests).toHaveLength(0);
     })
   );
 
-  // Clerk's SDK throws an object carrying a list of errors, and the first of
-  // those is the sentence a user can act on.
+  // Clerk's refusal carries a list of errors, and the first of those is the
+  // sentence a user can act on.
   it.effect("reports the message Clerk's error carries", () =>
     Effect.gen(function* () {
-      mocks.getUser.mockRejectedValue({
-        status: 404,
-        errors: [{ message: "Not Found" }],
-      });
+      stubFetch(() => Response.json(RESOURCE_NOT_FOUND, { status: 404 }));
 
       const error = actionError(
         yield* runAction(underTest, "get-user", {
@@ -147,7 +166,7 @@ describe("clerk/get-user", () => {
         })
       );
 
-      expect(error.message).toBe("Failed to get user: Not Found");
+      expect(error.message).toBe("Failed to get user: not found");
     })
   );
 });
@@ -166,10 +185,11 @@ describe("clerk/create-user", () => {
         })
       );
 
-      expect(mocks.createUser).toHaveBeenCalledWith({
-        emailAddress: ["ada@example.com"],
-        firstName: "Ada",
-        publicMetadata: { role: "admin" },
+      expect(sentRequests()).toEqual(["POST https://api.clerk.com/v1/users"]);
+      expect(yield* sentBody(0)).toEqual({
+        email_address: ["ada@example.com"],
+        first_name: "Ada",
+        public_metadata: { role: "admin" },
       });
       expect(result).toEqual(FLATTENED_USER);
     })
@@ -185,7 +205,7 @@ describe("clerk/create-user", () => {
       );
 
       expect(error.message).toBe("Email address is required.");
-      expect(mocks.createUser).toHaveBeenCalledTimes(0);
+      expect(requests).toHaveLength(0);
     })
   );
 
@@ -201,15 +221,28 @@ describe("clerk/create-user", () => {
       );
 
       expect(error.message).toBe("Invalid JSON format for privateMetadata");
-      expect(mocks.createUser).toHaveBeenCalledTimes(0);
+      expect(requests).toHaveLength(0);
     })
   );
 
   it.effect("reports the message Clerk's error carries", () =>
     Effect.gen(function* () {
-      mocks.createUser.mockRejectedValue({
-        errors: [{ message: "That email address is taken." }],
-      });
+      stubFetch(() =>
+        Response.json(
+          {
+            errors: [
+              {
+                message: "That email address is taken. Please try another.",
+                long_message:
+                  "That email address is taken. Please try another.",
+                code: "form_identifier_exists",
+                meta: { param_name: "email_address" },
+              },
+            ],
+          },
+          { status: 422 }
+        )
+      );
 
       const error = actionError(
         yield* runAction(underTest, "create-user", {
@@ -219,7 +252,7 @@ describe("clerk/create-user", () => {
       );
 
       expect(error.message).toBe(
-        "Failed to create user: That email address is taken."
+        "Failed to create user: That email address is taken. Please try another."
       );
     })
   );
@@ -237,8 +270,36 @@ describe("clerk/update-user", () => {
         })
       );
 
-      expect(mocks.updateUser).toHaveBeenCalledWith("user_1", {
-        lastName: "Byron",
+      expect(sentRequests()).toEqual([
+        "PATCH https://api.clerk.com/v1/users/user_1",
+      ]);
+      expect(yield* sentBody(0)).toEqual({ last_name: "Byron" });
+      expect(result).toEqual(FLATTENED_USER);
+    })
+  );
+
+  // Clerk takes metadata on its own endpoint, which replaces each metadata
+  // field the request carries.
+  it.effect("replaces the metadata that was filled in", () =>
+    Effect.gen(function* () {
+      const result = actionData(
+        yield* runAction(underTest, "update-user", {
+          input: {
+            userId: "user_1",
+            firstName: "Ada",
+            publicMetadata: '{"role":"admin"}',
+          },
+          credentials: credentialsRead(),
+        })
+      );
+
+      expect(sentRequests()).toEqual([
+        "PATCH https://api.clerk.com/v1/users/user_1",
+        "PUT https://api.clerk.com/v1/users/user_1/metadata",
+      ]);
+      expect(yield* sentBody(0)).toEqual({ first_name: "Ada" });
+      expect(yield* sentBody(1)).toEqual({
+        public_metadata: { role: "admin" },
       });
       expect(result).toEqual(FLATTENED_USER);
     })
@@ -254,7 +315,7 @@ describe("clerk/update-user", () => {
       );
 
       expect(error.message).toBe("User ID is required.");
-      expect(mocks.updateUser).toHaveBeenCalledTimes(0);
+      expect(requests).toHaveLength(0);
     })
   );
 
@@ -268,13 +329,15 @@ describe("clerk/update-user", () => {
       );
 
       expect(error.message).toBe("Invalid JSON format for publicMetadata");
-      expect(mocks.updateUser).toHaveBeenCalledTimes(0);
+      expect(requests).toHaveLength(0);
     })
   );
 
-  it.effect("reports the message Clerk's error carries", () =>
+  // A refusal whose body is not Clerk's error shape has only its status to
+  // report.
+  it.effect("reports the status when Clerk's error carries no message", () =>
     Effect.gen(function* () {
-      mocks.updateUser.mockRejectedValue({ status: 422 });
+      stubFetch(() => new Response(null, { status: 422 }));
 
       const error = actionError(
         yield* runAction(underTest, "update-user", {
@@ -291,6 +354,10 @@ describe("clerk/update-user", () => {
 describe("clerk/delete-user", () => {
   it.effect("answers with the flag the action offers downstream", () =>
     Effect.gen(function* () {
+      stubFetch(() =>
+        Response.json({ object: "user", id: "user_1", deleted: true })
+      );
+
       const result = actionData(
         yield* runAction(underTest, "delete-user", {
           input: { userId: "user_1" },
@@ -298,7 +365,9 @@ describe("clerk/delete-user", () => {
         })
       );
 
-      expect(mocks.deleteUser).toHaveBeenCalledWith("user_1");
+      expect(sentRequests()).toEqual([
+        "DELETE https://api.clerk.com/v1/users/user_1",
+      ]);
       expect(result).toEqual({ deleted: true });
     })
   );
@@ -313,15 +382,13 @@ describe("clerk/delete-user", () => {
       );
 
       expect(error.message).toBe("User ID is required.");
-      expect(mocks.deleteUser).toHaveBeenCalledTimes(0);
+      expect(requests).toHaveLength(0);
     })
   );
 
   it.effect("reports the message Clerk's error carries", () =>
     Effect.gen(function* () {
-      mocks.deleteUser.mockRejectedValue({
-        errors: [{ message: "Not Found" }],
-      });
+      stubFetch(() => Response.json(RESOURCE_NOT_FOUND, { status: 404 }));
 
       const error = actionError(
         yield* runAction(underTest, "delete-user", {
@@ -330,7 +397,7 @@ describe("clerk/delete-user", () => {
         })
       );
 
-      expect(error.message).toBe("Failed to delete user: Not Found");
+      expect(error.message).toBe("Failed to delete user: not found");
     })
   );
 });

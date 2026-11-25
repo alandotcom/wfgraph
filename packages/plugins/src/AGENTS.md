@@ -60,11 +60,9 @@ calls answer an `Effect` a step yields directly. Twilio's client is the one to c
 retry policy is stated once, above `RETRY_ATTEMPTS`, and the executor's run-level retry is
 the outer policy beyond it.
 
-An SDK earns its place only where it carries protocol logic worth borrowing, which is why
-`@clerk/backend` (JWT verification), `@linear/sdk` (a typed GraphQL client) and `svix`
-(Resend webhook signatures) stayed while `twilio`, `resend`, `@slack/web-api` and
-`posthog-node` did not. Those keep their own transport and error handling and do not go
-through `callExternal`.
+An SDK earns its place only where it carries protocol logic worth borrowing. `svix` is the
+one vendor dependency this package has: `resend/webhook.ts` uses it to verify the signature
+on a Resend webhook. Every call to a vendor's API goes through `callExternal`.
 
 ## OAuth adapters
 

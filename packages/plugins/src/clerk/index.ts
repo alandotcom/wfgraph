@@ -4,9 +4,9 @@
  *
  * One file, because only the server imports it. The editor gets this plugin's
  * metadata as JSON over `/api/extensions`, so nothing here reaches a browser
- * bundle and `@clerk/backend`, which `client.ts` pulls in, costs the browser
- * nothing. The icon is the exception, because a React component cannot be
- * serialized: it stays in `ui.ts`, which only the browser imports.
+ * bundle. The icon is the exception, because a React component cannot be
+ * serialized: it stays in `ui.ts`, which only the browser imports. Clerk's
+ * Backend API itself is `client.ts`.
  */
 
 import {
@@ -16,11 +16,12 @@ import {
   StepFailure,
 } from "@wfgraph/core/plugin";
 import { Effect, Schema } from "effect";
-import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
-  createClerkBackendClient,
-  getClerkApiErrorMessage,
-  toClerkApiUser,
+  createClerkUser,
+  deleteClerkUser,
+  describeClerkFailure,
+  getClerkUser,
+  updateClerkUser,
 } from "#src/clerk/client";
 import { parseClerkMetadata } from "#src/clerk/metadata";
 import { testClerk } from "#src/clerk/test";
@@ -145,18 +146,19 @@ export const clerk = defineIntegration({
           return yield* new StepFailure({ message: "User ID is required." });
         }
 
-        const client = createClerkBackendClient(secretKey);
-        // The flattening runs inside the step because what a step remembers
-        // round-trips through JSON, and Clerk's SDK answers a class instance.
+        // The step remembers the flat user, which is all the action answers
+        // with, rather than the whole resource Clerk sent.
         return yield* bag.step.run(
           "get-user",
-          Effect.tryPromise({
-            try: () => client.users.getUser(input.userId),
-            catch: (error) =>
-              new StepFailure({
-                message: `Failed to get user: ${getClerkApiErrorMessage(error)}`,
-              }),
-          }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
+          getClerkUser(secretKey, input.userId).pipe(
+            Effect.mapBoth({
+              onSuccess: toClerkUserData,
+              onFailure: (error) =>
+                new StepFailure({
+                  message: `Failed to get user: ${describeClerkFailure(error)}`,
+                }),
+            })
+          )
         );
       }),
     },
@@ -246,27 +248,26 @@ export const clerk = defineIntegration({
           "privateMetadata"
         );
 
-        const client = createClerkBackendClient(secretKey);
-        // Clerk reads an absent field differently from an empty one, so the
-        // fields the user left blank are dropped rather than sent as undefined.
-        const createPayload = omitUndefined({
-          emailAddress: [input.emailAddress],
-          firstName: input.firstName,
-          lastName: input.lastName,
-          password: input.password,
-          publicMetadata,
-          privateMetadata,
-        });
-
+        // Clerk's own field names. Clerk reads an absent field differently from
+        // an empty one, so the client drops the fields left undefined here.
         return yield* bag.step.run(
           "create-user",
-          Effect.tryPromise({
-            try: () => client.users.createUser(createPayload),
-            catch: (error) =>
-              new StepFailure({
-                message: `Failed to create user: ${getClerkApiErrorMessage(error)}`,
-              }),
-          }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
+          createClerkUser(secretKey, {
+            email_address: [input.emailAddress],
+            first_name: input.firstName,
+            last_name: input.lastName,
+            password: input.password,
+            public_metadata: publicMetadata,
+            private_metadata: privateMetadata,
+          }).pipe(
+            Effect.mapBoth({
+              onSuccess: toClerkUserData,
+              onFailure: (error) =>
+                new StepFailure({
+                  message: `Failed to create user: ${describeClerkFailure(error)}`,
+                }),
+            })
+          )
         );
       }),
     },
@@ -345,25 +346,24 @@ export const clerk = defineIntegration({
           "privateMetadata"
         );
 
-        const client = createClerkBackendClient(secretKey);
         // An update sends only the fields the user filled in, so a blank box
         // leaves what Clerk already holds alone rather than clearing it.
-        const updatePayload = omitUndefined({
-          firstName: input.firstName,
-          lastName: input.lastName,
-          publicMetadata,
-          privateMetadata,
-        });
-
         return yield* bag.step.run(
           "update-user",
-          Effect.tryPromise({
-            try: () => client.users.updateUser(input.userId, updatePayload),
-            catch: (error) =>
-              new StepFailure({
-                message: `Failed to update user: ${getClerkApiErrorMessage(error)}`,
-              }),
-          }).pipe(Effect.map((user) => toClerkUserData(toClerkApiUser(user))))
+          updateClerkUser(secretKey, input.userId, {
+            first_name: input.firstName,
+            last_name: input.lastName,
+            public_metadata: publicMetadata,
+            private_metadata: privateMetadata,
+          }).pipe(
+            Effect.mapBoth({
+              onSuccess: toClerkUserData,
+              onFailure: (error) =>
+                new StepFailure({
+                  message: `Failed to update user: ${describeClerkFailure(error)}`,
+                }),
+            })
+          )
         );
       }),
     },
@@ -400,19 +400,19 @@ export const clerk = defineIntegration({
           return yield* new StepFailure({ message: "User ID is required." });
         }
 
-        const client = createClerkBackendClient(secretKey);
-
-        // Clerk's deleted-object answer is a class instance and this step
-        // reports on none of it, so nothing of it is remembered.
+        // This step reports on none of Clerk's deleted-object answer, so
+        // nothing of it is remembered.
         yield* bag.step.run(
           "delete-user",
-          Effect.tryPromise({
-            try: () => client.users.deleteUser(input.userId),
-            catch: (error) =>
-              new StepFailure({
-                message: `Failed to delete user: ${getClerkApiErrorMessage(error)}`,
-              }),
-          }).pipe(Effect.asVoid)
+          deleteClerkUser(secretKey, input.userId).pipe(
+            Effect.asVoid,
+            Effect.mapError(
+              (error) =>
+                new StepFailure({
+                  message: `Failed to delete user: ${describeClerkFailure(error)}`,
+                })
+            )
+          )
         );
 
         return { deleted: true };
