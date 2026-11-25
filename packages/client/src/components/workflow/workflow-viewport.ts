@@ -13,12 +13,13 @@ export const WORKFLOW_FIT_VIEW_PADDING = 0.2;
 export const WORKFLOW_FIT_VIEW_MAX_ZOOM = 1;
 
 /**
- * Below this zoom every card draws its compact form, its step number beside
- * its title in large type. It is the zoom at which a full card's 14px title
- * draws at 11px on screen, so a card's title stays at 11px or more on either
- * side of the switch.
+ * Below this zoom every card draws its compact form, its glyph and step
+ * number above its title in large type. A full card's smallest text, its
+ * description, its status chip and the connection labels drawn beside it, is
+ * 12px, the Caption step nothing renders under, so the full card draws only
+ * at 100% and above.
  */
-export const WORKFLOW_COMPACT_CARD_ZOOM = 11 / 14;
+export const WORKFLOW_COMPACT_CARD_ZOOM = 12 / 12;
 
 /**
  * Below this zoom every card draws only its step number, large, beside its

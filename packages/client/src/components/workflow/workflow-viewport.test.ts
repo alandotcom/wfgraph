@@ -234,8 +234,9 @@ describe("workflow viewport policy", () => {
     });
   });
 
-  it("draws cards in three tiers, each switching where the larger form's type falls under 11px", () => {
-    expect(14 * WORKFLOW_COMPACT_CARD_ZOOM).toBeCloseTo(11);
+  it("draws cards in three tiers: full where its 12px text reads at 12px, compact while a 21px title reads at 11px", () => {
+    // The full card's 12px description draws at 12px or more.
+    expect(12 * WORKFLOW_COMPACT_CARD_ZOOM).toBeGreaterThanOrEqual(12);
     expect(COMPACT_TITLE_MIN_PX * WORKFLOW_NUMBER_CARD_ZOOM).toBeCloseTo(11);
     expect(cardTierAtZoom(1)).toBe("full");
     expect(cardTierAtZoom(WORKFLOW_COMPACT_CARD_ZOOM)).toBe("full");

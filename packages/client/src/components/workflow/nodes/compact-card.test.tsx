@@ -407,7 +407,7 @@ describe("a step card's compact form", () => {
     });
     expect(compactBody(view.container)).not.toBeNull();
 
-    setZoom(0.9);
+    setZoom(1);
 
     expect(compactBody(view.container)).toBeNull();
     expect(view.getByText("Texts the patient a day before")).toBeTruthy();
