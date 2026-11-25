@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
 import { memo, useState } from "react";
+import { recordFocusOpener } from "#src/lib/focus-return";
 import {
   useAbortableSubscription,
   useAbortableTask,
@@ -315,6 +316,20 @@ describe("useFocusTrap", () => {
 
     rerender(<LateDialog mounted open={false} />);
     expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+  test("returns a trap opened from the page body to the recorded opener", () => {
+    const trigger = opener();
+    recordFocusOpener(trigger);
+    // A press that disabled its control dropped focus to the body before the
+    // trap opened, as Publish does while it saves and checks the draft.
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    const { rerender } = render(<LateDialog mounted open={false} />);
+    rerender(<LateDialog mounted open />);
+    rerender(<LateDialog mounted open={false} />);
+    expect(document.activeElement).toBe(trigger);
+    recordFocusOpener(document.body);
     trigger.remove();
   });
 });

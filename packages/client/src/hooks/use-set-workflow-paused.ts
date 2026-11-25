@@ -1,6 +1,7 @@
 /**
- * Pauses or resumes the open workflow, for the editor's two surfaces that
- * offer it: the status strip's Resume button and the workflow menu. A pause
+ * Pauses or resumes the open workflow, for the editor's surfaces that offer
+ * it: the status strip's Resume button, the workflow menu and the command
+ * palette. A pause
  * refuses every new run, Event, schedule and manual alike, and leaves the runs
  * already in flight alone (CONTEXT.md, "Paused workflow").
  *

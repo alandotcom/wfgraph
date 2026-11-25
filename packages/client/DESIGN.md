@@ -171,7 +171,7 @@ Signal Red and the confirmation dialog are the two loudest things the editor own
 
 **Do not explain one control in the copy of another.** If a control needs a sentence about what its neighbor does, move or regroup the controls.
 
-**A setting is a control, not a command.** It lives where its state is shown, which for Published mode is the status strip. It never appears in the Actions menu or the command palette.
+**A setting is a control, not a command.** It lives where its state is shown, which for Published mode is the status strip. Published mode never appears in the Actions menu or the command palette.
 
 **Rows offering the same kind of repair use the same button weight.** Filling one button ranks it above the others, and the reader picks the row that matches the problem.
 
@@ -670,6 +670,28 @@ to run." The workflow menu holds **Pause workflow** or **Resume workflow** once
 a version is published. **Configuration** stays beside that menu as an icon
 button, because Canvas Reveal is absent at that width. In Draft it opens the
 selected object's summary sheet, and in Runs the sheet of the run list or the run.
+
+Every icon-only control in the toolbar and on the canvas names itself in the
+app's tooltip after the pointer rests on it for half a second, or on keyboard
+focus, with its shortcut as a `Kbd` keycap. Run draft's tooltip carries its
+shortcut too, and while disabled it gives the reason instead. Run draft and
+**Publish** stay focusable while disabled, so a dialog they open returns focus
+to them. Every dialog returns focus to the control that opened it, including
+one opened from a menu row or the command palette.
+
+The command palette reaches every menu command by the words its row uses: the
+workflow menu's **Rename**, **Duplicate workflow**, **Pause workflow** or
+**Resume workflow**, **Copy workflow ID**, and **Go to workflow…**; and the
+Settings menu's **Connections** and **Theme**. Its rows draw shortcuts as `Kbd`
+keycaps. The Actions menu's **Canvas** submenu holds the canvas commands, and its
+**Keyboard shortcuts** row, the palette row of that name, and "?" outside a text
+field open one searchable reference of every shortcut. Cmd+Enter submits Run
+draft and the Publish review from any field in them.
+
+The Workflows page opens its own palette on Cmd+K: a workflow by name, **New
+workflow**, and the Settings rows. The Workflows table and the All Runs list are
+each one Tab stop. Arrow keys or J and K move between rows, Enter opens the row,
+Space ticks a workflow's checkbox, and Shift+F10 opens its actions menu.
 
 ### Publication review
 

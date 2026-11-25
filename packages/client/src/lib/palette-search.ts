@@ -22,7 +22,7 @@ export type SearchableGroup<Row extends SearchableRow> = {
 };
 
 /** Lower case with accents removed, so "Résumé" matches "resume". */
-function normalize(text: string): string {
+export function normalizeSearchText(text: string): string {
   return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 }
 
@@ -36,8 +36,8 @@ export function paletteMatchRank(
   row: SearchableRow,
   query: string
 ): number | null {
-  const needle = normalize(query);
-  const label = normalize(row.label);
+  const needle = normalizeSearchText(query);
+  const label = normalizeSearchText(row.label);
   if (needle === "") {
     return 0;
   }
@@ -53,7 +53,7 @@ export function paletteMatchRank(
   if (label.includes(needle)) {
     return 3;
   }
-  return normalize(row.keywords).includes(needle) ? 4 : null;
+  return normalizeSearchText(row.keywords).includes(needle) ? 4 : null;
 }
 
 /**

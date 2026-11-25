@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { ReactFlowProvider, useStoreApi } from "@xyflow/react";
 import { Controls, OverviewCue } from "./controls";
 
@@ -33,6 +33,29 @@ describe("Controls", () => {
     expect(onReflow).toHaveBeenCalledTimes(1);
   });
 
+  test("names each control in the app's tooltip, with its shortcut as a keycap", async () => {
+    const { getByRole } = render(
+      <ReactFlowProvider>
+        <Controls onReflow={() => {}} />
+      </ReactFlowProvider>
+    );
+
+    const fitView = getByRole("button", { name: "Fit view" });
+    expect(fitView.hasAttribute("title")).toBe(false);
+    fireEvent.pointerEnter(fitView, { pointerType: "mouse" });
+    fireEvent.mouseEnter(fitView);
+    fireEvent.mouseMove(fitView);
+    const tooltip = await waitFor(() => {
+      const element = document.querySelector('[data-slot="tooltip-content"]');
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+    expect(tooltip.textContent).toContain("Fit view");
+    expect(tooltip.querySelector('[data-slot="kbd"]')?.textContent).toMatch(
+      /\/$/
+    );
+  });
+
   test("disables reflow button when canReflow is false", () => {
     const { getByRole } = render(
       <ReactFlowProvider>
@@ -40,8 +63,9 @@ describe("Controls", () => {
       </ReactFlowProvider>
     );
 
+    // Focusable while disabled, so its tooltip can still say what it is.
     const button = getByRole("button", { name: "Tidy layout" });
-    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
   });
 
   test("shows a find-node cue in overview and keeps mobile controls at 44px", () => {

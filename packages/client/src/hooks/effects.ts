@@ -9,6 +9,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { insideKeyboardLayer } from "#src/lib/editor-shortcuts";
+import { FOCUSABLE, focusOpener } from "#src/lib/focus-return";
 
 /**
  * The one file in packages/client/src allowed to import useEffect and
@@ -497,10 +499,6 @@ export function useElementOverflow(input: { enabled: boolean; key: unknown }): {
   return { ref, overflowing };
 }
 
-/** Focusable descendants, in tab order, skipping anything hidden or disabled. */
-const FOCUSABLE =
-  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
-
 /**
  * The focusable elements inside `root` a person can see. A subtree marked
  * `aria-hidden`, such as an overlay waiting behind the one on top of it, is
@@ -518,18 +516,24 @@ export function focusableWithin(root: HTMLElement): HTMLElement[] {
 
 /**
  * The control focus goes back to when a trap opened from `active` closes. A
- * Base UI menu item is gone by then, so a trap opened from one returns to the
- * menu's trigger, which the menu names in `aria-labelledby`.
+ * menu item is gone by then, so a trap opened from one returns to the trigger
+ * the menu names in `aria-labelledby`. Focus on the page body, or inside a menu
+ * or the palette that names no trigger, gives no control that will still be
+ * there, so the trap returns to the control the person last focused or pressed
+ * outside them.
  */
 function returnTarget(active: Element | null): HTMLElement | null {
   if (!(active instanceof HTMLElement) || active === document.body) {
-    return null;
+    return focusOpener();
   }
   const triggerId = active
     .closest('[role="menu"][aria-labelledby]')
     ?.getAttribute("aria-labelledby");
   const trigger = triggerId ? document.getElementById(triggerId) : null;
-  return trigger ?? active;
+  if (trigger) {
+    return trigger;
+  }
+  return insideKeyboardLayer(active) ? focusOpener() : active;
 }
 
 /**
@@ -580,11 +584,11 @@ export function useFocusTrap(
       return undefined;
     }
     return () => {
-      const target = restoreTo.current;
+      const target = restoreTo.current?.isConnected
+        ? restoreTo.current
+        : focusOpener();
       restoreTo.current = null;
-      if (target?.isConnected) {
-        target.focus({ preventScroll: true });
-      }
+      target?.focus({ preventScroll: true });
     };
   }, [enabled]);
 

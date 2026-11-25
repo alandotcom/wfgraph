@@ -45,6 +45,7 @@ function commandInput(
       fitView: "Cmd+/",
       group: "Cmd+G",
       palette: "Cmd+K",
+      reveal: "Cmd+B",
       paste: "Cmd+V",
       redo: "Cmd+Shift+Z",
       run: "Cmd+Enter",

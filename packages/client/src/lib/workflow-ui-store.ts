@@ -32,6 +32,21 @@ export const workflowWorkspaceViewAtom = atom(
 export const showMinimapAtom = atom(false);
 
 /**
+ * The Rename dialog the workflow menu owns, which the command palette opens
+ * too. `session` goes up on every open so the dialog remounts and re-reads the
+ * current name; the dialog stays mounted while closing for its exit animation.
+ */
+export const renameWorkflowDialogAtom = atom({ open: false, session: 0 });
+
+/** Open the Rename dialog on a fresh session. */
+export const openRenameWorkflowDialogAtom = atom(null, (get, set) => {
+  set(renameWorkflowDialogAtom, {
+    open: true,
+    session: get(renameWorkflowDialogAtom).session + 1,
+  });
+});
+
+/**
  * Whether the Draft canvas's "What this workflow does" card shows the whole
  * account or only its first sentence. Kept for the session, across workflows.
  */

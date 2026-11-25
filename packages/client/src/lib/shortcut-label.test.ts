@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { editorShortcutLabels, isApplePlatform } from "#src/lib/shortcut-label";
+import {
+  editorShortcutLabels,
+  isApplePlatform,
+  SHORTCUT_REFERENCE_KEY,
+  shortcutReference,
+} from "#src/lib/shortcut-label";
 
 describe("isApplePlatform", () => {
   it("reads the platforms whose modifier is Command", () => {
@@ -30,6 +35,7 @@ describe("editorShortcutLabels", () => {
       undo: "⌘Z",
       redo: "⇧⌘Z",
       palette: "⌘K",
+      reveal: "⌘B",
     });
     expect(editorShortcutLabels(false)).toEqual({
       copy: "Ctrl+C",
@@ -42,6 +48,21 @@ describe("editorShortcutLabels", () => {
       undo: "Ctrl+Z",
       redo: "Ctrl+Shift+Z",
       palette: "Ctrl+K",
+      reveal: "Ctrl+B",
     });
+  });
+});
+
+describe("shortcutReference", () => {
+  it("lists every bound chord in the keyboard's spelling", () => {
+    const labels = editorShortcutLabels(false);
+    const keys = shortcutReference(false).flatMap((section) =>
+      section.entries.flatMap((entry) => entry.keys)
+    );
+    for (const chord of Object.values(labels)) {
+      expect(keys).toContain(chord);
+    }
+    expect(keys).toContain(SHORTCUT_REFERENCE_KEY);
+    expect(keys.some((key) => key.includes("⌘"))).toBe(false);
   });
 });

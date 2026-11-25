@@ -20,6 +20,7 @@ import {
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { can } from "#src/lib/authorization";
+import { isSubmitChord } from "#src/lib/editor-shortcuts";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { COMPARISON_CHANGE_KIND_LABEL } from "#src/lib/workflow-graph-types";
@@ -299,7 +300,18 @@ export function PublishReviewDialog({
       }}
       open={open}
     >
-      <DialogContent className="sm:max-w-lg" showCloseButton={!isPublishing}>
+      <DialogContent
+        className="sm:max-w-lg"
+        // Cmd+Enter publishes from anywhere in the dialog, as its button does.
+        onKeyDown={(event) => {
+          if (isSubmitChord(event) && !isPublishing) {
+            event.preventDefault();
+            event.stopPropagation();
+            onConfirm();
+          }
+        }}
+        showCloseButton={!isPublishing}
+      >
         <DialogHeader>
           <DialogTitle>Publish v{proposedVersion}?</DialogTitle>
           <DialogDescription>

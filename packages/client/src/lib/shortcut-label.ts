@@ -38,6 +38,7 @@ export type EditorShortcutLabels = {
   undo: string;
   redo: string;
   palette: string;
+  reveal: string;
 };
 
 /** The chords the menu bar prints, spelled for this keyboard. */
@@ -54,6 +55,7 @@ export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
         undo: "⌘Z",
         redo: "⇧⌘Z",
         palette: "⌘K",
+        reveal: "⌘B",
       }
     : {
         copy: "Ctrl+C",
@@ -66,5 +68,84 @@ export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
         undo: "Ctrl+Z",
         redo: "Ctrl+Shift+Z",
         palette: "Ctrl+K",
+        reveal: "Ctrl+B",
       };
+}
+
+/** The key that opens the shortcut reference from outside a text field. */
+export const SHORTCUT_REFERENCE_KEY = "?";
+
+/** One row of the shortcut reference: what it does, and each key that does it. */
+export type ShortcutEntry = {
+  readonly label: string;
+  /** Alternatives, each drawn as one keycap. */
+  readonly keys: readonly string[];
+};
+
+export type ShortcutSection = {
+  readonly title: string;
+  readonly entries: readonly ShortcutEntry[];
+};
+
+/**
+ * Every shortcut the app binds, grouped by where it works, spelled for this
+ * keyboard. A shortcut added anywhere in the client gets a row here, because
+ * this list is the only place a person can find it.
+ */
+export function shortcutReference(
+  onApple: boolean
+): readonly ShortcutSection[] {
+  const keys = editorShortcutLabels(onApple);
+  const enter = onApple ? "↵" : "Enter";
+  const backspace = onApple ? "⌫" : "Backspace";
+  const rowActions = onApple ? "⇧F10" : "Shift+F10";
+  return [
+    {
+      title: "Anywhere",
+      entries: [
+        { label: "Open the command palette", keys: [keys.palette] },
+        { label: "Show keyboard shortcuts", keys: [SHORTCUT_REFERENCE_KEY] },
+      ],
+    },
+    {
+      title: "Workflows page",
+      entries: [
+        { label: "Move to the next row", keys: ["↓", "J"] },
+        { label: "Move to the previous row", keys: ["↑", "K"] },
+        { label: "Open the row", keys: [enter] },
+        { label: "Select the row", keys: ["Space"] },
+        { label: "Open the row's actions", keys: [rowActions] },
+      ],
+    },
+    {
+      title: "Editor",
+      entries: [
+        { label: "Save workflow", keys: [keys.save] },
+        { label: "Run draft", keys: [keys.run] },
+        { label: "Undo", keys: [keys.undo] },
+        { label: "Redo", keys: [keys.redo] },
+        { label: "Open or close Canvas Reveal", keys: [keys.reveal] },
+        { label: "Go back one level in Canvas Reveal", keys: ["Esc"] },
+      ],
+    },
+    {
+      title: "Canvas",
+      entries: [
+        { label: "Fit view", keys: [keys.fitView] },
+        { label: "Copy selection", keys: [keys.copy] },
+        { label: "Paste", keys: [keys.paste] },
+        { label: "Duplicate selection", keys: [keys.duplicate] },
+        { label: "Group selection", keys: [keys.group] },
+        { label: "Delete selection", keys: [backspace, "Delete"] },
+        { label: "Move the selected steps", keys: ["Arrow keys"] },
+      ],
+    },
+    {
+      title: "Dialogs",
+      entries: [
+        { label: "Run or publish from the dialog", keys: [keys.run] },
+        { label: "Close the dialog", keys: ["Esc"] },
+      ],
+    },
+  ];
 }

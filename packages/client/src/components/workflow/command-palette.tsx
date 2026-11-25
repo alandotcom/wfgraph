@@ -1,11 +1,12 @@
 /**
  * ⌘K: the palette that exposes editor commands and picks a step type.
  *
- * Two stages, held as a page stack in `#src/lib/command-palette`: the root
- * offers workflow and canvas commands plus "Add step", which leads to the
- * node types from the extension catalog. The canvas skips the root and opens
- * on the second page, because someone who right-clicked the graph has already
- * said what they want.
+ * Stages, held as a page stack in `#src/lib/command-palette`: the root offers
+ * workflow, canvas and settings commands, the workflow menu's rows, plus "Add
+ * step", which leads to the node types from the extension catalog, and "Go to
+ * workflow…", which leads to the other workflows. The canvas skips the root
+ * and opens on the node types, because someone who right-clicked the graph has
+ * already said what they want.
  *
  * Built on Base UI's Autocomplete inside a Dialog, which is the shape their own
  * command-palette example takes. cmdk, which shadcn's `command` is built on,
@@ -18,7 +19,8 @@ import type { BaseUIEvent } from "@base-ui/react/types";
 import { compact, partition, uniq } from "es-toolkit/array";
 import { upperFirst } from "es-toolkit/string";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
-import { ChevronLeft, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, Workflow } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -37,7 +39,12 @@ import {
   DialogContent,
   DialogTitle,
 } from "#src/components/ui/dialog";
+import { Kbd } from "#src/components/ui/kbd";
 import { ActionIcon } from "#src/components/workflow/config/action-grid";
+import {
+  type PaletteMenuCommand,
+  useSettingsCommands,
+} from "#src/hooks/use-app-commands";
 import { revealTitleFocusRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { useAddStep } from "#src/components/workflow/use-add-step";
 import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
@@ -84,8 +91,10 @@ type PaletteItem = {
   readonly label: string;
   /** The rest of the row, when the item has something worth adding. */
   readonly detail?: string | undefined;
-  /** A shortcut or a keyboard hint, printed at the end of the row. */
+  /** The row's shortcut, drawn as a keycap at the end of the row. */
   readonly hint?: string | undefined;
+  /** Whether choosing the row opens another page of the palette. */
+  readonly opensPage?: boolean | undefined;
   /** Everything the item can be found by, which is what the filter matches. */
   readonly keywords: string;
   readonly disabled: boolean;
@@ -221,9 +230,37 @@ const REFUSAL_TOAST_ID = "command-palette-refused";
 /** The toast id for a Return the palette refused, held down or repeated. */
 const UNARMED_TOAST_ID = "command-palette-unarmed";
 
+/** A workflow the palette can open, by name. */
+type PaletteWorkflow = { readonly id: string; readonly name: string };
+
 type CommandPaletteProps = {
   commands: readonly WorkflowCommand[];
+  /** The workflow menu's rows, which the palette lists under Workflow. */
+  menuCommands: readonly PaletteMenuCommand[];
+  /** Every workflow, the open one included; the palette offers the others. */
+  workflows: readonly PaletteWorkflow[];
 };
+
+/** A menu command as a palette row. */
+function menuCommandItem(
+  command: PaletteMenuCommand,
+  close: () => void
+): PaletteItem {
+  return {
+    id: command.id,
+    label: command.label,
+    detail: command.detail,
+    hint: command.hint,
+    keywords: command.keywords,
+    disabled: command.disabled,
+    consequential: false,
+    icon: <command.Icon className="size-3.5 text-muted-foreground" />,
+    select: () => {
+      close();
+      command.execute();
+    },
+  };
+}
 
 /**
  * The palette and the key that opens it.
@@ -233,7 +270,11 @@ type CommandPaletteProps = {
  * that only works once the thing is open is not a shortcut. Rendered by
  * `ToolbarActions`, which renders nothing at all for a non-owner.
  */
-export function CommandPalette({ commands }: CommandPaletteProps) {
+export function CommandPalette({
+  commands,
+  menuCommands,
+  workflows,
+}: CommandPaletteProps) {
   const palette = useAtomValue(commandPaletteAtom);
   const setPalette = useSetAtom(commandPaletteAtom);
   const openPalette = useSetAtom(openCommandPaletteAtom);
@@ -292,13 +333,24 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
     return null;
   }
 
-  return <CommandPaletteDialog commands={commands} palette={palette} />;
+  return (
+    <CommandPaletteDialog
+      commands={commands}
+      menuCommands={menuCommands}
+      palette={palette}
+      workflows={workflows}
+    />
+  );
 }
 
 function CommandPaletteDialog({
   palette,
   commands,
+  menuCommands,
+  workflows,
 }: CommandPaletteProps & { palette: CommandPaletteState }) {
+  const navigate = useNavigate();
+  const settingsCommands = useSettingsCommands();
   const setPalette = useSetAtom(commandPaletteAtom);
   const inputRef = useRef<HTMLInputElement>(null);
   const catalog = useExtensionCatalog();
@@ -343,6 +395,7 @@ function CommandPaletteDialog({
 
   const onStepPage = page.id === "add-step";
   const onFindNodePage = page.id === "find-node";
+  const onWorkflowPage = page.id === "go-to-workflow";
   // The root searches step types too, as its placeholder says, once something
   // is typed. At rest it lists commands only, and "Add step" leads to the types.
   const searchesStepTypes =
@@ -466,10 +519,41 @@ function CommandPaletteDialog({
     setPalette,
   ]);
 
+  // The other workflows, by name, in the order the workflow menu lists them.
+  const workflowItems: readonly PaletteItem[] = workflows
+    .filter((workflow) => workflow.id !== palette.workflowId)
+    .map((workflow) => ({
+      id: `workflow:${workflow.id}`,
+      label: workflow.name,
+      keywords: `${workflow.name} workflow open go to`,
+      disabled: false,
+      consequential: false,
+      icon: <Workflow className="size-3.5 text-muted-foreground" />,
+      select: () => {
+        close();
+        void navigate({
+          to: "/workflows/$workflowId",
+          params: { workflowId: workflow.id },
+        });
+      },
+    }));
+  const goToWorkflowItem: PaletteItem = {
+    id: "go-to-workflow",
+    label: "Go to workflow…",
+    keywords: "Go to workflow open switch other workflows",
+    disabled: workflowItems.length === 0,
+    consequential: false,
+    opensPage: true,
+    icon: <Workflow className="size-3.5 text-muted-foreground" />,
+    select: () =>
+      setPalette(pushPalettePage(palette, { id: "go-to-workflow" })),
+  };
+
   const rootPageGroups: readonly PaletteGroup[] = [
     { id: "steps", label: "Steps" },
     { id: "workflow", label: "Workflow" },
     { id: "canvas", label: "Canvas" },
+    { id: "settings", label: "Settings" },
   ].map((group) => {
     const commandItems = commands
       .filter((command) => command.group === group.id)
@@ -477,7 +561,8 @@ function CommandPaletteDialog({
         id: command.id,
         label: command.label,
         detail: command.detail,
-        hint: command.id === "add-step" ? "→" : command.hint,
+        hint: command.hint,
+        opensPage: command.id === "add-step",
         keywords: command.keywords,
         disabled: command.disabled,
         consequential: command.consequential === true,
@@ -506,10 +591,19 @@ function CommandPaletteDialog({
       icon: <Search className="size-3.5 text-muted-foreground" />,
       select: () => setPalette(pushPalettePage(palette, { id: "find-node" })),
     };
+    const extraItems: Record<string, readonly PaletteItem[]> = {
+      workflow: [
+        ...menuCommands.map((command) => menuCommandItem(command, close)),
+        goToWorkflowItem,
+      ],
+      canvas: [findNodeItem],
+      settings: settingsCommands.map((command) =>
+        menuCommandItem(command, close)
+      ),
+    };
     return {
       ...group,
-      items:
-        group.id === "canvas" ? [...commandItems, findNodeItem] : commandItems,
+      items: [...commandItems, ...(extraItems[group.id] ?? [])],
     };
   });
 
@@ -521,6 +615,10 @@ function CommandPaletteDialog({
       palette.query === ""
         ? NO_GROUPS
         : [{ id: "nodes", label: "Nodes", items: nodeItems }];
+  } else if (onWorkflowPage) {
+    authoredGroups = [
+      { id: "workflows", label: "Workflows", items: workflowItems },
+    ];
   } else {
     authoredGroups =
       palette.query === ""
@@ -533,6 +631,7 @@ function CommandPaletteDialog({
               items: stepPageGroups.flatMap((group) => group.items),
             },
             { id: "nodes", label: "Nodes", items: nodeItems },
+            { id: "workflows", label: "Workflows", items: workflowItems },
           ];
   }
 
@@ -557,7 +656,9 @@ function CommandPaletteDialog({
       ? "Add step. Choose what the new step does."
       : page.id === "find-node"
         ? "Find node. Type a node name, action, ID, or Group."
-        : "Commands.";
+        : page.id === "go-to-workflow"
+          ? "Go to workflow. Choose the workflow to open."
+          : "Commands.";
 
   /**
    * Escape is contested: the dialog closes on it, and the palette wants it to
@@ -689,23 +790,23 @@ function CommandPaletteDialog({
                 className="size-3.5 shrink-0 text-muted-foreground"
               />
             )}
-            {page.id === "add-step" && (
+            {page.id === "add-step" || page.id === "go-to-workflow" ? (
               // The page's name is already in the live region and the input's
               // description, so this is the visible half of it and nothing more.
               <span
                 aria-hidden="true"
                 className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-xs"
               >
-                Add step
+                {page.id === "add-step" ? "Add step" : "Go to workflow"}
               </span>
-            )}
+            ) : null}
             <Autocomplete.Input
               // A name that does not move with the page, so the box is called
               // the same thing wherever the reader is: the placeholder is the
               // weakest source an accessible name can come from, and this one's
               // changes underneath it.
               aria-describedby={`${pageId} ${hintsId}`}
-              aria-label="Search commands, step types, and nodes"
+              aria-label="Search commands, step types, nodes, and workflows"
               className="h-full w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
               onKeyDown={handleInputKeyDown}
               placeholder={
@@ -713,7 +814,9 @@ function CommandPaletteDialog({
                   ? "Search step types"
                   : page.id === "find-node"
                     ? "Search nodes"
-                    : "Search commands, steps, or nodes"
+                    : page.id === "go-to-workflow"
+                      ? "Search workflows"
+                      : "Search commands, steps, or nodes"
               }
               ref={inputRef}
             />
@@ -725,7 +828,9 @@ function CommandPaletteDialog({
                 ? "Nothing matches that."
                 : page.id === "find-node"
                   ? "Type a node name, action, ID, or Group."
-                  : "No step types are available yet."}
+                  : page.id === "go-to-workflow"
+                    ? "No other workflows exist yet."
+                    : "No step types are available yet."}
             </p>
           </Autocomplete.Empty>
 
@@ -735,7 +840,9 @@ function CommandPaletteDialog({
                 ? "Step types"
                 : page.id === "find-node"
                   ? "Nodes"
-                  : "Commands, step types, and nodes"
+                  : page.id === "go-to-workflow"
+                    ? "Workflows"
+                    : "Commands, step types, nodes, and workflows"
             }
             className="max-h-[min(24rem,50vh)] overflow-y-auto overscroll-contain p-1"
           >
@@ -772,11 +879,15 @@ function CommandPaletteDialog({
                           </span>
                         )}
                       </span>
-                      {item.hint && (
-                        <span className="shrink-0 text-muted-foreground text-xs">
-                          {item.hint}
-                        </span>
-                      )}
+                      {item.hint ? (
+                        <Kbd className="ml-auto">{item.hint}</Kbd>
+                      ) : null}
+                      {item.opensPage ? (
+                        <ChevronRight
+                          aria-hidden="true"
+                          className="size-3.5 shrink-0 text-muted-foreground"
+                        />
+                      ) : null}
                     </Autocomplete.Item>
                   )}
                 </Autocomplete.Collection>
@@ -790,8 +901,12 @@ function CommandPaletteDialog({
             aria-hidden="true"
             className="flex items-center justify-end gap-3 border-t px-3 py-1.5 text-muted-foreground text-xs"
           >
-            <span>↵ to choose</span>
-            <span>esc to {canGoBack ? "go back" : "close"}</span>
+            <span className="inline-flex items-center gap-1">
+              <Kbd>↵</Kbd> to choose
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Kbd>esc</Kbd> to {canGoBack ? "go back" : "close"}
+            </span>
           </div>
         </Autocomplete.Root>
       </DialogContent>

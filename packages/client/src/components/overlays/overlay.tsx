@@ -1,4 +1,5 @@
 import { cn } from "@wfgraph/shared/utils";
+import { isSubmitChord } from "#src/lib/editor-shortcuts";
 import { OverlayFooter } from "./overlay-footer";
 import { SmartOverlayHeader } from "./overlay-header";
 import type { OverlayProps } from "./types";
@@ -40,9 +41,20 @@ export function Overlay({
   actions,
   children,
   className,
+  onSubmitShortcut,
 }: OverlayComponentProps) {
   return (
-    <div className={cn("flex min-h-0 flex-col", className)}>
+    // Hears the submit chord from whichever field inside has focus.
+    <div
+      className={cn("flex min-h-0 flex-col", className)}
+      onKeyDown={(event) => {
+        if (onSubmitShortcut && isSubmitChord(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+          onSubmitShortcut();
+        }
+      }}
+    >
       {/* Header with smart back button detection */}
       {(title || description) && (
         <SmartOverlayHeader

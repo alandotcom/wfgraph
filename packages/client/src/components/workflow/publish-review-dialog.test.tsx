@@ -313,6 +313,17 @@ describe("PublishReviewDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("publishes on Cmd+Enter from inside the dialog", async () => {
+    const onConfirm = vi.fn();
+    const view = await renderDialog(comparison, { mode: "live", onConfirm });
+
+    fireEvent.keyDown(view.getByRole("button", { name: "Cancel" }), {
+      key: "Enter",
+      ctrlKey: true,
+    });
+    expect(onConfirm).toHaveBeenCalledOnce();
+  });
+
   it("lists each changed step by name with what changed", async () => {
     const mail = (id: string, label: string, body: string): WorkflowNode => ({
       id,

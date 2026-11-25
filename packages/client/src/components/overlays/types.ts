@@ -110,6 +110,12 @@ export type OverlayProps = {
   children?: ReactNode;
   /** Additional class name for the content container */
   className?: string | undefined;
+  /**
+   * What Cmd+Enter or Ctrl+Enter does from anywhere inside the overlay, the
+   * way the editor's own Cmd+Enter opens Run draft. Absent, the chord does
+   * nothing here.
+   */
+  onSubmitShortcut?: (() => void) | undefined;
 };
 
 /**

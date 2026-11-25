@@ -432,6 +432,10 @@ export function RunOverlay({
         },
       ]}
       description={copy.description}
+      // The same press as the Run button, refused while that button is off.
+      onSubmitShortcut={
+        canRun && !isStarting ? () => void handleRun() : undefined
+      }
       overlayId={overlayId}
       title={copy.title}
     >

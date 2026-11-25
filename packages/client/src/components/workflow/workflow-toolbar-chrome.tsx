@@ -9,13 +9,14 @@
  */
 
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   Check,
   ChevronDown,
   CirclePlay,
   Copy,
   Eraser,
+  Keyboard,
   Loader2,
   Pause,
   Pencil,
@@ -27,7 +28,7 @@ import {
   Upload,
   type LucideIcon,
 } from "lucide-react";
-import { Fragment, type ReactElement, useState } from "react";
+import { Fragment, useState } from "react";
 import { toast } from "sonner";
 import { useShownMobileReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import { useRevealNavigation } from "#src/components/workflow/canvas-reveal/use-reveal-navigation";
@@ -51,17 +52,15 @@ import {
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
 import { Kbd } from "#src/components/ui/kbd";
+import { ControlTooltip } from "#src/components/ui/control-tooltip";
 import { Separator } from "#src/components/ui/separator";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "#src/components/ui/tooltip";
-import {
+  openRenameWorkflowDialogAtom,
+  renameWorkflowDialogAtom,
   type WorkflowWorkspaceView,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
+import type { PaletteMenuCommand } from "#src/hooks/use-app-commands";
 import { WorkflowIcon } from "#src/components/ui/workflow-icon";
 import { CommandPalette } from "#src/components/workflow/command-palette";
 import { useSetWorkflowPaused } from "#src/hooks/use-set-workflow-paused";
@@ -75,7 +74,9 @@ import {
   currentPlatform,
   editorShortcutLabels,
   isApplePlatform,
+  SHORTCUT_REFERENCE_KEY,
 } from "#src/lib/shortcut-label";
+import { shortcutReferenceOpenAtom } from "#src/lib/shortcut-reference-store";
 import {
   WorkflowCommandIcon,
   draftViewReason,
@@ -128,44 +129,15 @@ export function WorkflowsPageLink() {
     // <button>, or takes `nativeButton={false}` and announces this link as a
     // button. It stays a link, which is what makes middle-click and the context
     // menu open the Workflows page in a tab.
-    <Link
-      aria-label="Workflows"
-      className={buttonVariants({ size: "icon", variant: "secondary" })}
-      title="Workflows"
-      to="/"
-    >
-      <WorkflowIcon className="size-3.5" />
-    </Link>
-  );
-}
-
-/**
- * `control` with `reason` in a tooltip, while `reason` is not null. A disabled
- * button carries `disabled:pointer-events-none`, so it is never a hover
- * target and never takes focus. The wrapper receives both and holds the
- * tooltip, as the status strip's Published mode control does for a viewer.
- */
-function WithDisabledReason({
-  reason,
-  children,
-}: {
-  reason: string | null;
-  children: ReactElement;
-}) {
-  if (reason === null) {
-    return children;
-  }
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger
-          render={<span className="inline-flex shrink-0" tabIndex={0} />}
-        >
-          {children}
-        </TooltipTrigger>
-        <TooltipContent>{reason}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <ControlTooltip label="Workflows">
+      <Link
+        aria-label="Workflows"
+        className={buttonVariants({ size: "icon", variant: "secondary" })}
+        to="/"
+      >
+        <WorkflowIcon className="size-3.5" />
+      </Link>
+    </ControlTooltip>
   );
 }
 
@@ -185,25 +157,32 @@ function PublishButton({
 }) {
   // Publish is the one control here that changes what real customers receive.
   // It gets the primary fill and a written label at every width.
-  return (
-    <WithDisabledReason reason={disabled ? reason : null}>
-      <Button
-        disabled={disabled}
-        onClick={handlePublish}
-        size={BAR_CONTROL_SIZE}
-        variant="default"
-      >
-        {isPublishing ? (
-          <Loader2
-            className="size-3.5 animate-spin motion-reduce:animate-none"
-            data-icon="inline-start"
-          />
-        ) : (
-          <Upload className="size-3.5" data-icon="inline-start" />
-        )}
-        {label}
-      </Button>
-    </WithDisabledReason>
+  //
+  // It stays focusable while disabled, which it is from the press until the
+  // review dialog closes, so focus has a control to come back to.
+  const button = (
+    <Button
+      disabled={disabled}
+      focusableWhenDisabled
+      onClick={handlePublish}
+      size={BAR_CONTROL_SIZE}
+      variant="default"
+    >
+      {isPublishing ? (
+        <Loader2
+          className="size-3.5 animate-spin motion-reduce:animate-none"
+          data-icon="inline-start"
+        />
+      ) : (
+        <Upload className="size-3.5" data-icon="inline-start" />
+      )}
+      {label}
+    </Button>
+  );
+  return disabled && reason !== null ? (
+    <ControlTooltip label={reason}>{button}</ControlTooltip>
+  ) : (
+    button
   );
 }
 
@@ -255,17 +234,19 @@ export function FindNodeTrigger() {
   const refusal = useAtomValue(commandPaletteRefusalAtom);
 
   return (
-    <Button
-      aria-label="Find a node"
-      className="min-[70rem]:hidden"
-      disabled={refusal !== null}
-      onClick={() => openPalette({ id: "find-node" })}
-      size="icon"
-      title={refusal ?? "Find a node"}
-      variant="outline"
-    >
-      <Search className="size-4" />
-    </Button>
+    <ControlTooltip label={refusal ?? "Find a node"}>
+      <Button
+        aria-label="Find a node"
+        className="min-[70rem]:hidden"
+        disabled={refusal !== null}
+        focusableWhenDisabled
+        onClick={() => openPalette({ id: "find-node" })}
+        size="icon"
+        variant="outline"
+      >
+        <Search className="size-4" />
+      </Button>
+    </ControlTooltip>
   );
 }
 
@@ -439,20 +420,31 @@ export function RunSplitButton({
     editingLocked,
     view
   );
+  const shortcuts = editorShortcutLabels(isApplePlatform(currentPlatform()));
+  // A disabled face says why, where a reason exists; an enabled one names its
+  // shortcut.
+  const faceTooltip =
+    face.disabled && face.reason !== null
+      ? { label: face.reason, shortcut: undefined }
+      : { label: face.label, shortcut: shortcuts.run };
 
   return (
     // The two halves are one control, so the group carries the name. Without
     // it a screen reader announces the chevron with no context.
     <ButtonGroup aria-label="Run">
-      <WithDisabledReason reason={face.disabled ? face.reason : null}>
+      <ControlTooltip label={faceTooltip.label} shortcut={faceTooltip.shortcut}>
         <Button
           // The separator supplies the divider inside this control, so the
           // face drops its right border. Two outline halves would draw that
           // edge at twice the weight of the other hairlines in the bar. The
           // square right corners are the group's, set here because the
-          // tooltip wrapper can stand between the face and the group.
+          // tooltip can stand between the face and the group.
+          //
+          // Focusable while disabled, which it is while a run starts, so
+          // the Run draft dialog has a control to give focus back to.
           className="rounded-r-none border-r-0"
           disabled={face.disabled}
+          focusableWhenDisabled
           onClick={face.run}
           size={BAR_CONTROL_SIZE}
           variant="outline"
@@ -460,24 +452,26 @@ export function RunSplitButton({
           <face.Icon className="size-3.5" data-icon="inline-start" />
           {face.label}
         </Button>
-      </WithDisabledReason>
+      </ControlTooltip>
       {/* The separator joins the two halves into one split control. The label
           runs the draft; the chevron opens the other run commands. */}
       <ButtonGroupSeparator />
       {/* Stays enabled with nothing published, because the menu item inside
           names that reason. */}
       <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              aria-label="More ways to run"
-              size="icon"
-              variant="outline"
-            />
-          }
-        >
-          <ChevronDown className="size-3 opacity-50" />
-        </DropdownMenuTrigger>
+        <ControlTooltip label="More ways to run">
+          <DropdownMenuTrigger
+            render={
+              <Button
+                aria-label="More ways to run"
+                size="icon"
+                variant="outline"
+              />
+            }
+          >
+            <ChevronDown className="size-3 opacity-50" />
+          </DropdownMenuTrigger>
+        </ControlTooltip>
         <DropdownMenuContent align="end" className="w-64">
           {behindTheChevron.map((command) => (
             <RunCommandMenuItem command={command} key={command.id} />
@@ -532,6 +526,7 @@ export function RunPublishMenuItems({
  * menu, and the command palette lists them for anyone searching by name.
  */
 function ActionsMenu({ commands }: { commands: readonly WorkflowCommand[] }) {
+  const openShortcutReference = useSetAtom(shortcutReferenceOpenAtom);
   // Canvas commands move to the shortcuts submenu below, and a `paletteOnly`
   // command has its own control in the toolbar, so listing it here would offer
   // the same press twice in one bar.
@@ -584,7 +579,7 @@ function ActionsMenu({ commands }: { commands: readonly WorkflowCommand[] }) {
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>
             <WorkflowCommandIcon id="fit-view" />
-            Keyboard shortcuts
+            Canvas
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-56">
             {canvasCommands.map((command) => (
@@ -602,6 +597,11 @@ function ActionsMenu({ commands }: { commands: readonly WorkflowCommand[] }) {
             ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
+        <DropdownMenuItem onClick={() => openShortcutReference(true)}>
+          <Keyboard />
+          Keyboard shortcuts
+          <DropdownMenuShortcut>{SHORTCUT_REFERENCE_KEY}</DropdownMenuShortcut>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -638,13 +638,99 @@ function OwnerToolbarActions({
     actions,
     onAddStep: handleAddStep,
   });
+  const menuCommands = useWorkflowMenuCommands(state, actions);
 
   return (
     <>
       <ActionsMenu commands={commands} />
-      <CommandPalette commands={commands} />
+      <CommandPalette
+        commands={commands}
+        menuCommands={menuCommands}
+        workflows={state.allWorkflows}
+      />
     </>
   );
+}
+
+/**
+ * Which of the workflow menu's own rows the open workflow offers. The menu and
+ * the command palette both read this, so the two offer the same rows.
+ */
+function workflowMenuOffers(
+  state: WorkflowToolbarState,
+  workflowId: string | undefined
+) {
+  const isPaused = state.publication?.isPaused === true;
+  return {
+    // Rename updates the current draft, while Duplicate and Delete only need
+    // the saved workflow id.
+    rename: Boolean(workflowId) && state.canUpdate,
+    duplicate: Boolean(workflowId) && state.canDuplicate,
+    delete: Boolean(workflowId) && state.canDelete,
+    // A workflow with no published version starts no run, so there is nothing
+    // for a pause to stop. A paused one can always resume.
+    togglePause:
+      Boolean(workflowId) &&
+      can(WfGraphOperations.workflowBulkLifecycle.id) &&
+      (isPaused || state.publication?.isPublished === true),
+    isPaused,
+  };
+}
+
+/**
+ * The workflow menu's commands for the command palette, in the menu's words:
+ * Rename, Duplicate workflow, Pause or Resume workflow, and Copy workflow ID.
+ */
+function useWorkflowMenuCommands(
+  state: WorkflowToolbarState,
+  actions: WorkflowToolbarActions
+): readonly PaletteMenuCommand[] {
+  const workflowId = state.currentWorkflowId ?? undefined;
+  const offers = workflowMenuOffers(state, workflowId);
+  const pause = useSetWorkflowPaused(workflowId);
+  const openRename = useSetAtom(openRenameWorkflowDialogAtom);
+  const commands: PaletteMenuCommand[] = [];
+  if (offers.rename) {
+    commands.push({
+      id: "rename",
+      label: "Rename",
+      keywords: "Rename workflow name title",
+      disabled: false,
+      Icon: Pencil,
+      execute: openRename,
+    });
+  }
+  if (offers.duplicate) {
+    commands.push({
+      id: "duplicate-workflow",
+      label: "Duplicate workflow",
+      keywords: "Duplicate workflow copy clone",
+      disabled: actions.isDuplicating,
+      Icon: Copy,
+      execute: actions.handleDuplicate,
+    });
+  }
+  if (offers.togglePause) {
+    commands.push({
+      id: "toggle-pause",
+      label: offers.isPaused ? "Resume workflow" : "Pause workflow",
+      keywords: "Pause Resume workflow stop start runs",
+      disabled: pause.isPending,
+      Icon: offers.isPaused ? Play : Pause,
+      execute: () => pause.setPaused(!offers.isPaused),
+    });
+  }
+  if (workflowId !== undefined) {
+    commands.push({
+      id: "copy-workflow-id",
+      label: "Copy workflow ID",
+      keywords: "Copy workflow ID identifier clipboard",
+      disabled: false,
+      Icon: Copy,
+      execute: () => void copyWorkflowId(workflowId),
+    });
+  }
+  return commands;
 }
 
 /** The toolbar's right-hand controls stay together when a narrow bar scrolls. */
@@ -687,16 +773,17 @@ export function ToolbarPublishControls({
         // place of the mobile sheets, so this button and Canvas Reveal are
         // never on screen together. An open mobile Reveal sheet already shows
         // the selection, so the button is absent while one shows.
-        <Button
-          aria-label="Configuration"
-          className="md:hidden"
-          onClick={() => navigation.openInspector(address)}
-          size="icon"
-          title="Configuration"
-          variant="outline"
-        >
-          <Settings2 className="size-4" />
-        </Button>
+        <ControlTooltip label="Configuration">
+          <Button
+            aria-label="Configuration"
+            className="md:hidden"
+            onClick={() => navigation.openInspector(address)}
+            size="icon"
+            variant="outline"
+          >
+            <Settings2 className="size-4" />
+          </Button>
+        </ControlTooltip>
       ) : null}
       {actions.publishReview ? (
         <PublishReviewDialog
@@ -733,26 +820,22 @@ export function WorkflowMenuComponent({
   const navigate = useNavigate();
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts and re-reads what it starts
-  // from. Both stay mounted while closing, because that is what their exit
-  // animation needs.
+  // from. It stays mounted while closing, because that is what its exit
+  // animation needs. Rename keeps the same pair in an atom, because the
+  // command palette opens it too.
   const [createDialogSession, setCreateDialogSession] = useState(0);
-  const [renameDialogSession, setRenameDialogSession] = useState(0);
+  const [renameDialog, setRenameDialog] = useAtom(renameWorkflowDialogAtom);
+  const openRename = useSetAtom(openRenameWorkflowDialogAtom);
 
-  // Each operation keeps its own authorization check. Rename updates the current
-  // draft, while Duplicate and Delete only need the saved workflow id.
-  const canRename = Boolean(workflowId) && state.canUpdate;
-  const canDuplicate = Boolean(workflowId) && state.canDuplicate;
-  const canDelete = Boolean(workflowId) && state.canDelete;
+  // Each operation keeps its own authorization check.
+  const offers = workflowMenuOffers(state, workflowId);
+  const canRename = offers.rename;
+  const canDuplicate = offers.duplicate;
+  const canDelete = offers.delete;
   const currentWorkflowId = state.currentWorkflowId;
-  const isPaused = state.publication?.isPaused === true;
-  // A workflow with no published version starts no run, so there is nothing
-  // for a pause to stop. A paused one can always resume.
-  const canTogglePause =
-    Boolean(workflowId) &&
-    can(WfGraphOperations.workflowBulkLifecycle.id) &&
-    (isPaused || state.publication?.isPublished === true);
+  const isPaused = offers.isPaused;
+  const canTogglePause = offers.togglePause;
   const pause = useSetWorkflowPaused(workflowId);
   // The names the server would refuse, which is every workflow's but this one's.
   const otherWorkflowNames = state.allWorkflows
@@ -785,12 +868,7 @@ export function WorkflowMenuComponent({
           {canRename || canDuplicate || canTogglePause ? (
             <>
               {canRename ? (
-                <DropdownMenuItem
-                  onClick={() => {
-                    setRenameDialogSession((session) => session + 1);
-                    setIsRenameDialogOpen(true);
-                  }}
-                >
+                <DropdownMenuItem onClick={openRename}>
                   <Pencil />
                   Rename
                 </DropdownMenuItem>
@@ -928,11 +1006,13 @@ export function WorkflowMenuComponent({
         open={isCreateDialogOpen}
       />
       <RenameWorkflowDialog
-        key={`rename-${renameDialogSession}`}
+        key={`rename-${renameDialog.session}`}
         currentName={state.workflowName}
         otherWorkflowNames={otherWorkflowNames}
-        onOpenChange={setIsRenameDialogOpen}
-        open={isRenameDialogOpen}
+        onOpenChange={(open) =>
+          setRenameDialog((current) => ({ ...current, open }))
+        }
+        open={renameDialog.open}
       />
     </>
   );

@@ -30,6 +30,30 @@ export function keyboardLayerOpen(): boolean {
   return document.querySelector(KEYBOARD_LAYERS) !== null;
 }
 
+/** Whether `element` sits inside a dialog, menu, or the command palette. */
+export function insideKeyboardLayer(element: Element): boolean {
+  return element.closest(KEYBOARD_LAYERS) !== null;
+}
+
+/**
+ * Whether `event` is Cmd+Enter or Ctrl+Enter with no other modifier, the chord
+ * that submits the Run draft and Publish dialogs.
+ */
+export function isSubmitChord(event: {
+  key: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}): boolean {
+  return (
+    event.key === "Enter" &&
+    (event.metaKey || event.ctrlKey) &&
+    !event.shiftKey &&
+    !event.altKey
+  );
+}
+
 /**
  * Whether an editor chord may act on this key event. `inTextFields` is true for
  * a chord with no meaning inside a text field, such as opening the palette or

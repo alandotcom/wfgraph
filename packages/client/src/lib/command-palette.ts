@@ -1,9 +1,9 @@
 /**
  * The command palette's page stack.
  *
- * Base UI's Autocomplete has no notion of pages, so the two stages the palette
- * needs -- the root, and the node types "Add step" leads to -- are a stack this
- * module owns. Every move through the stack clears the query, because a word
+ * Base UI's Autocomplete has no notion of pages, so the palette's stages -- the
+ * root, and the lists "Add step", "Find a node" and "Go to workflow…" lead to --
+ * are a stack this module owns. Every move through the stack clears the query, because a word
  * typed on one page filters the next one to nothing and leaves the reader
  * looking at an empty palette with no way to see why.
  */
@@ -21,6 +21,7 @@ export type CanvasPosition = { readonly x: number; readonly y: number };
 export type CommandPalettePage =
   | { readonly id: "root" }
   | { readonly id: "find-node" }
+  | { readonly id: "go-to-workflow" }
   | { readonly id: "add-step"; readonly at?: CanvasPosition };
 
 export type CommandPaletteState = {

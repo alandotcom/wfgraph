@@ -173,6 +173,19 @@ describe("RunOverlay", () => {
     expect(onRun).toHaveBeenCalledWith({ input: {} });
   });
 
+  it("runs on Cmd+Enter from a field, as its Run button does", () => {
+    const { onRun } = renderOverlay({
+      allowManualStart: true,
+      startEvents: [],
+    });
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "JSON" }), {
+      key: "Enter",
+      metaKey: true,
+    });
+    expect(onRun).toHaveBeenCalledWith({ input: {} });
+  });
+
   it("opens on the first Start Event and draws its declared fields", () => {
     renderOverlay();
 

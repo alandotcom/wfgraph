@@ -25,6 +25,14 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import { renameWorkflowDialogAtom } from "#src/lib/workflow-ui-store";
+import { shortcutReferenceOpenAtom } from "#src/lib/shortcut-reference-store";
+import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
 
 /**
  * The command palette is mounted by `ToolbarActions`, so what is exercised here
@@ -277,10 +285,14 @@ describe("the command palette", () => {
     await openedPalette(rendered);
 
     expect(
-      getByRole("combobox", { name: "Search commands, step types, and nodes" })
+      getByRole("combobox", {
+        name: "Search commands, step types, nodes, and workflows",
+      })
     ).toBeTruthy();
     expect(
-      getByRole("listbox", { name: "Commands, step types, and nodes" })
+      getByRole("listbox", {
+        name: "Commands, step types, nodes, and workflows",
+      })
     ).toBeTruthy();
     // Base UI asks for a close inside every modal popup, for the touch screen
     // reader that has no Escape key and cannot reach the backdrop.
@@ -290,7 +302,9 @@ describe("the command palette", () => {
     chooseAddStep(rendered);
 
     expect(
-      getByRole("combobox", { name: "Search commands, step types, and nodes" })
+      getByRole("combobox", {
+        name: "Search commands, step types, nodes, and workflows",
+      })
     ).toBeTruthy();
     expect(getByRole("listbox", { name: "Step types" })).toBeTruthy();
     expect(getByText(/^Add step\. Choose/).getAttribute("aria-live")).toBe(
@@ -632,6 +646,92 @@ describe("the command palette", () => {
     }
     return input;
   }
+
+  /** Two workflows: the open one, and one the palette can go to. */
+  const TWO_WORKFLOWS = [
+    { id: "workflow_1", name: "Appointment reminders" },
+    { id: "workflow_2", name: "Renewal reminder" },
+  ] as unknown as WorkflowToolbarState["allWorkflows"];
+
+  const PUBLISHED = {
+    isPublished: true,
+    isPaused: false,
+    hasUnpublishedChanges: true,
+    publishedVersionId: "version_1",
+    publishedVersion: 1,
+    publishedAt: "2026-08-23T15:00:00.000Z",
+  };
+
+  it("reaches the workflow menu's and the Settings menu's rows by their names", async () => {
+    installAuthorizationGrantsForTests(WfGraphOperationIds);
+    try {
+      await reachesMenuRows();
+    } finally {
+      resetAuthorizationGrantsForTests();
+    }
+  });
+
+  async function reachesMenuRows() {
+    const rendered = renderChrome(ToolbarActions, {
+      state: { allWorkflows: TWO_WORKFLOWS, publication: PUBLISHED },
+    });
+    await openedPalette(rendered);
+
+    for (const name of [
+      "Connections",
+      "Rename",
+      "Duplicate workflow",
+      "Pause workflow",
+      "Copy workflow ID",
+      "Go to workflow…",
+    ]) {
+      expect(rendered.getByRole("option", { name })).toBeTruthy();
+    }
+    for (const name of [/^Theme: Light/, /^Theme: Dark/, /^Theme: System/]) {
+      expect(rendered.getByRole("option", { name })).toBeTruthy();
+    }
+
+    fireEvent.click(rendered.getByRole("option", { name: "Rename" }));
+    expect(rendered.store.get(renameWorkflowDialogAtom).open).toBe(true);
+
+    pressCommandK();
+    fireEvent.click(
+      rendered.getByRole("option", { name: "Duplicate workflow" })
+    );
+    expect(rendered.actions.handleDuplicate).toHaveBeenCalledOnce();
+
+    pressCommandK();
+    fireEvent.click(
+      rendered.getByRole("option", { name: /^Keyboard shortcuts/ })
+    );
+    expect(rendered.store.get(shortcutReferenceOpenAtom)).toBe(true);
+  }
+
+  it("lists the other workflows on Go to workflow… and in a query", async () => {
+    const rendered = renderChrome(ToolbarActions, {
+      state: { allWorkflows: TWO_WORKFLOWS },
+    });
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "renewal" } });
+    expect(
+      rendered.getByRole("option", { name: "Renewal reminder" })
+    ).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.click(rendered.getByRole("option", { name: "Go to workflow…" }));
+    expect(
+      rendered.getAllByRole("option").map((option) => option.textContent)
+    ).toEqual(["Renewal reminder"]);
+  });
+
+  it("draws each row's shortcut as the shared keycap", async () => {
+    const rendered = renderChrome(ToolbarActions);
+    await openedPalette(rendered);
+
+    const save = rendered.getByRole("option", { name: /^Save workflow/ });
+    expect(save.querySelector('[data-slot="kbd"]')?.textContent).toMatch(/S$/);
+  });
 
   /** Take the "Add step" item, which is the way to the second page. */
   function chooseAddStep(rendered: ReturnType<typeof renderChrome>) {

@@ -4,6 +4,7 @@ import type * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@wfgraph/shared/utils"
+import { dialogFinalFocus } from "#src/lib/focus-return"
 import { Button } from "#src/components/ui/button"
 import { XIcon } from "lucide-react"
 
@@ -66,6 +67,10 @@ function DialogContent({
             "duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:animate-none motion-reduce:transition-opacity motion-reduce:duration-100 motion-reduce:data-starting-style:opacity-0 motion-reduce:data-ending-style:opacity-0",
           className
         )}
+        // Back to the control that opened the dialog, which a dialog opened
+        // after a save or from the palette cannot read from the focused
+        // element. A caller's own `finalFocus` replaces this.
+        finalFocus={dialogFinalFocus}
         {...props}
       >
         {children}

@@ -16,6 +16,7 @@ import {
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { can } from "#src/lib/authorization";
+import { shortcutReferenceOpenAtom } from "#src/lib/shortcut-reference-store";
 import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
@@ -25,6 +26,12 @@ import {
   WfGraphOperations,
 } from "@wfgraph/shared/authorization/operations";
 import type { WorkflowToolbarActions } from "#src/components/workflow/workflow-toolbar-handlers";
+
+/**
+ * A disabled control, whether the browser's `disabled` or Base UI's
+ * `focusableWhenDisabled`, which keeps Run draft and Publish focusable.
+ */
+const DISABLED_CONTROL = '[disabled],[aria-disabled="true"]';
 
 /**
  * Publish and ownership behavior is exercised directly against
@@ -43,7 +50,7 @@ describe("ToolbarActions publish gating", () => {
   it("keeps Publish enabled with no run overlay open", async () => {
     const { findByRole } = renderChrome(ToolbarActions);
     const publish = await findByRole("button", { name: "Publish" });
-    expect(publish.hasAttribute("disabled")).toBe(false);
+    expect(publish.matches(DISABLED_CONTROL)).toBe(false);
   });
 
   it("disables Publish while a run overlay pins the canvas to a past run", async () => {
@@ -51,11 +58,11 @@ describe("ToolbarActions publish gating", () => {
       overlayActive: true,
     });
     const publish = await findByRole("button", { name: "Publish" });
-    expect(publish.hasAttribute("disabled")).toBe(true);
+    expect(publish.matches(DISABLED_CONTROL)).toBe(true);
   });
 
-  // A disabled button takes no pointer, so the reason hangs from a wrapper
-  // that does, as the status strip's Published mode control does.
+  // Run draft and Publish stay focusable and hoverable while disabled, so the
+  // reason is a tooltip on the control itself.
   it("says why Publish and Run are disabled in Runs", async () => {
     const view = renderChrome(ToolbarActions, { overlayActive: true });
 
@@ -64,11 +71,12 @@ describe("ToolbarActions publish gating", () => {
       ["Run draft", "Switch to Draft to run."],
     ] as const) {
       const control = await view.findByRole("button", { name });
-      expect(control.hasAttribute("disabled")).toBe(true);
+      expect(control.matches(DISABLED_CONTROL)).toBe(true);
       const trigger = control.closest("[data-slot='tooltip-trigger']");
       expect(trigger).toBeTruthy();
       fireEvent.pointerEnter(trigger as Element, { pointerType: "mouse" });
       fireEvent.mouseEnter(trigger as Element);
+      fireEvent.mouseMove(trigger as Element);
       expect(await view.findByText(reason)).toBeTruthy();
     }
   });
@@ -86,7 +94,7 @@ describe("ToolbarActions publish gating", () => {
   it("disables Publish while generation is rewriting the graph", async () => {
     const { findByRole } = renderChrome(ToolbarActions, { generating: true });
     const publish = await findByRole("button", { name: "Publish" });
-    expect(publish.hasAttribute("disabled")).toBe(true);
+    expect(publish.matches(DISABLED_CONTROL)).toBe(true);
   });
 
   it("disables Publish when the server and local draft both report no unpublished changes", async () => {
@@ -105,8 +113,8 @@ describe("ToolbarActions publish gating", () => {
     });
 
     expect(
-      (await findByRole("button", { name: "Publish v2" })).hasAttribute(
-        "disabled"
+      (await findByRole("button", { name: "Publish v2" })).matches(
+        DISABLED_CONTROL
       )
     ).toBe(true);
   });
@@ -124,7 +132,9 @@ describe("ToolbarActions publish gating", () => {
     });
 
     expect(
-      (await findByRole("button", { name: "Publish" })).hasAttribute("disabled")
+      (await findByRole("button", { name: "Publish" })).matches(
+        DISABLED_CONTROL
+      )
     ).toBe(false);
   });
 
@@ -144,8 +154,8 @@ describe("ToolbarActions publish gating", () => {
     });
 
     expect(
-      (await findByRole("button", { name: "Publish v2" })).hasAttribute(
-        "disabled"
+      (await findByRole("button", { name: "Publish v2" })).matches(
+        DISABLED_CONTROL
       )
     ).toBe(false);
   });
@@ -162,7 +172,7 @@ describe("mobile editing actions", () => {
     act(() => view.store.set(selectOnlyNodeAtom, selectedNode.id));
 
     expect(
-      (await view.findByTitle("Configuration")).hasAttribute("disabled")
+      (await view.findByLabelText("Configuration")).matches(DISABLED_CONTROL)
     ).toBe(false);
     expect(view.queryByTitle("Delete")).toBeNull();
   });
@@ -179,15 +189,15 @@ describe("mobile editing actions", () => {
         graph: [selectedNode],
         state: { nodes: [selectedNode] },
       });
-      expect(await view.findByTitle("Configuration")).toBeTruthy();
+      expect(await view.findByLabelText("Configuration")).toBeTruthy();
 
       act(() => view.store.set(selectOnlyNodeAtom, selectedNode.id));
       await waitFor(() =>
-        expect(view.queryByTitle("Configuration")).toBeNull()
+        expect(view.queryByLabelText("Configuration")).toBeNull()
       );
 
       act(() => view.store.set(clearSelectionAtom));
-      expect(await view.findByTitle("Configuration")).toBeTruthy();
+      expect(await view.findByLabelText("Configuration")).toBeTruthy();
     } finally {
       (
         window as unknown as {
@@ -540,8 +550,8 @@ describe("WorkflowToolbarChrome", () => {
       const { findByRole, getByRole } = renderChrome(WorkflowToolbarChrome);
 
       expect(
-        (await findByRole("button", { name: "Run draft" })).hasAttribute(
-          "disabled"
+        (await findByRole("button", { name: "Run draft" })).matches(
+          DISABLED_CONTROL
         )
       ).toBe(false);
 
@@ -573,8 +583,8 @@ describe("WorkflowToolbarChrome", () => {
       });
 
       expect(
-        (await findByRole("button", { name: "Run draft" })).hasAttribute(
-          "disabled"
+        (await findByRole("button", { name: "Run draft" })).matches(
+          DISABLED_CONTROL
         )
       ).toBe(true);
 
@@ -658,16 +668,27 @@ describe("ToolbarActions menu", () => {
     expect(queryByRole("menuitem", { name: /Published mode/ })).toBeNull();
   });
 
-  it("renders every canvas command through the keyboard submenu", async () => {
+  it("opens the shortcut reference from its own row", async () => {
+    const { findByRole, getByRole, store } = renderChrome(ToolbarActions);
+
+    const trigger = await findByRole("button", { name: "Actions" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyUp(trigger, { key: "ArrowDown" });
+
+    fireEvent.click(getByRole("menuitem", { name: /^Keyboard shortcuts/ }));
+    expect(store.get(shortcutReferenceOpenAtom)).toBe(true);
+  });
+
+  it("renders every canvas command through the Canvas submenu", async () => {
     const { findByRole, getByRole } = renderChrome(ToolbarActions);
 
     const trigger = await findByRole("button", { name: "Actions" });
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     fireEvent.keyUp(trigger, { key: "ArrowDown" });
 
-    const keyboard = getByRole("menuitem", { name: /^Keyboard shortcuts/ });
-    fireEvent.keyDown(keyboard, { key: "ArrowRight" });
-    fireEvent.keyUp(keyboard, { key: "ArrowRight" });
+    const canvas = getByRole("menuitem", { name: /^Canvas/ });
+    fireEvent.keyDown(canvas, { key: "ArrowRight" });
+    fireEvent.keyUp(canvas, { key: "ArrowRight" });
 
     for (const label of [
       /^Fit view/,
@@ -726,9 +747,9 @@ describe("WorkflowToolbarChrome operation grants", () => {
       await executeOnly.findByRole("button", { name: "Run draft" })
     ).toBeTruthy();
     expect(
-      (
-        await executeOnly.findByRole("button", { name: "Run draft" })
-      ).hasAttribute("disabled")
+      (await executeOnly.findByRole("button", { name: "Run draft" })).matches(
+        DISABLED_CONTROL
+      )
     ).toBe(true);
     const runMenu = await executeOnly.findByRole("button", {
       name: "More ways to run",
