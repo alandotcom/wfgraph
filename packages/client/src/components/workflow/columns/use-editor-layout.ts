@@ -1,39 +1,29 @@
 import { useSyncExternalStore } from "react";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import type { EditorLayout } from "./editor-columns-store";
 
-/** The narrowest window that docks both side columns. */
-export const WIDE_LAYOUT_MIN_PX = 1360;
+/**
+ * The narrowest window that docks both side columns: 85rem, 1360px at the
+ * default font size. Below `md` (900px) the editor shows its phone layout.
+ */
+const WIDE_LAYOUT_QUERY = "(min-width: 85rem)";
 
-/** The narrowest window that shows the canvas beside a side column. */
-export const MEDIUM_LAYOUT_MIN_PX = 900;
+let wideQuery: MediaQueryList | undefined;
 
-let queries: { wide: MediaQueryList; medium: MediaQueryList } | undefined;
-
-/** One pair of `MediaQueryList`s for the whole app, as `useIsMobile` keeps. */
-function layoutQueries() {
-  queries ??= {
-    wide: window.matchMedia(`(min-width: ${WIDE_LAYOUT_MIN_PX}px)`),
-    medium: window.matchMedia(`(min-width: ${MEDIUM_LAYOUT_MIN_PX}px)`),
-  };
-  return queries;
+/** One `MediaQueryList` for the whole app, as `useIsMobile` keeps. */
+function getWideQuery(): MediaQueryList {
+  wideQuery ??= window.matchMedia(WIDE_LAYOUT_QUERY);
+  return wideQuery;
 }
 
 function subscribe(onViewportChange: () => void) {
-  const { wide, medium } = layoutQueries();
-  wide.addEventListener("change", onViewportChange);
-  medium.addEventListener("change", onViewportChange);
-  return () => {
-    wide.removeEventListener("change", onViewportChange);
-    medium.removeEventListener("change", onViewportChange);
-  };
+  const query = getWideQuery();
+  query.addEventListener("change", onViewportChange);
+  return () => query.removeEventListener("change", onViewportChange);
 }
 
-function currentLayout(): EditorLayout {
-  const { wide, medium } = layoutQueries();
-  if (wide.matches) {
-    return "wide";
-  }
-  return medium.matches ? "medium" : "compact";
+function isWideViewport(): boolean {
+  return getWideQuery().matches;
 }
 
 /**
@@ -42,5 +32,10 @@ function currentLayout(): EditorLayout {
  * a boundary.
  */
 export function useEditorLayout(): EditorLayout {
-  return useSyncExternalStore(subscribe, currentLayout);
+  const isWide = useSyncExternalStore(subscribe, isWideViewport);
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return "compact";
+  }
+  return isWide ? "wide" : "medium";
 }

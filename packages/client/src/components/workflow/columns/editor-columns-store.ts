@@ -188,6 +188,12 @@ export const setColumnCollapsedAtom = atom(
 );
 
 /**
+ * Whether a phone shows the canvas, which the toolbar's Map control chooses,
+ * in place of the outline. It is not kept across reloads.
+ */
+export const phoneShowsMapAtom = atom(false);
+
+/**
  * Whether the outline shows over the canvas, which it does only between 900px
  * and 1359px while details is docked. It is not kept across reloads.
  */

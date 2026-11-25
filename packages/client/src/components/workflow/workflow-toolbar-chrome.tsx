@@ -19,6 +19,7 @@ import {
   Keyboard,
   Loader2,
   PanelLeft,
+  Sparkles,
   PanelRight,
   Pause,
   Pencil,
@@ -66,12 +67,14 @@ import type { PaletteMenuCommand } from "#src/hooks/use-app-commands";
 import { WorkflowIcon } from "#src/components/ui/workflow-icon";
 import { CommandPalette } from "#src/components/workflow/command-palette";
 import { useSetWorkflowPaused } from "#src/hooks/use-set-workflow-paused";
-import { can } from "#src/lib/authorization";
+import { can, canUseBuildAgent } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
 import { useWorkflowCommands } from "#src/components/workflow/use-workflow-commands";
 import { useColumnControls } from "#src/components/workflow/columns/use-column-controls";
+import { showAgentTabAtom } from "#src/components/workflow/columns/editor-columns-store";
+import { isAgentEnabled } from "#src/lib/extensions";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import {
   COLUMN_SHORTCUT_KEYS,
@@ -696,6 +699,7 @@ function useWorkflowMenuCommands(
   const openRename = useSetAtom(openRenameWorkflowDialogAtom);
   const columns = useColumnControls();
   const isMobile = useIsMobile();
+  const showAgentTab = useSetAtom(showAgentTabAtom);
   const commands: PaletteMenuCommand[] = [];
   if (offers.rename) {
     commands.push({
@@ -748,6 +752,16 @@ function useWorkflowMenuCommands(
         execute: () => columns.toggle("details"),
       }
     );
+  }
+  if (workflowId !== undefined && isAgentEnabled() && canUseBuildAgent()) {
+    commands.push({
+      id: "show-agent",
+      label: "Agent",
+      keywords: "Agent build assistant chat describe AI",
+      disabled: false,
+      Icon: Sparkles,
+      execute: showAgentTab,
+    });
   }
   if (workflowId !== undefined) {
     commands.push({

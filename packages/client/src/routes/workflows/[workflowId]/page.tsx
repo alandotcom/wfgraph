@@ -9,6 +9,7 @@ import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
 import { EditorColumns } from "#src/components/workflow/columns/editor-columns";
 import { DetailsColumn } from "#src/components/workflow/details/details-column";
+import { PhoneAgent } from "#src/components/workflow/details/phone-agent";
 import { OutlineColumn } from "#src/components/workflow/outline/outline-column";
 import { ReviewSheet } from "#src/components/workflow/review/review-sheet";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
@@ -163,17 +164,20 @@ const WorkflowEditor = () => {
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <EditorColumns
               canvas={
-                <>
-                  <MobileRevealCovered>
-                    <WorkflowCanvas canEdit={canUpdate} />
-                  </MobileRevealCovered>
-                  {/* Below `md` the inspector is a sequence of sheets over the
-                    same canvas box. */}
-                  <MobileReveal />
-                </>
+                <MobileRevealCovered>
+                  <WorkflowCanvas canEdit={canUpdate} />
+                </MobileRevealCovered>
               }
               details={<DetailsColumn />}
               outline={<OutlineColumn />}
+              phone={
+                <>
+                  <PhoneAgent />
+                  {/* Below `md` details are a sequence of sheets over the
+                    outline or the canvas. */}
+                  <MobileReveal />
+                </>
+              }
               overlay={
                 // The review sheet covers the details column and reaches over
                 // the canvas while it is open, and covers the screen below

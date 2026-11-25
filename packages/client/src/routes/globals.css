@@ -20,12 +20,13 @@
 /* The one width the editor changes shape at, declared rather than inherited so
    it is a variable at runtime too. Tailwind's `md:` variant reads it, the media
    queries below ask for it by name through `theme()`, and `hooks/use-mobile.ts`
-   reads it off `:root` to decide whether the properties rail is on screen. The
-   value is Tailwind's own default: a rem, so a reader who has scaled their font
+   reads it off `:root` to decide whether the editor shows its columns or its
+   phone layout. 900px is the narrowest window that leaves the canvas room
+   beside one side column. It is a rem, so a reader who has scaled their font
    up reaches the phone layout at a proportionally wider window, and everything
    here moves together when they do. */
 @theme static {
-  --breakpoint-md: 48rem;
+  --breakpoint-md: 56.25rem;
 }
 
 @theme inline {

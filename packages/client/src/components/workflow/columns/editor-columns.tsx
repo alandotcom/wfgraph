@@ -12,10 +12,12 @@ import { useDomEvent } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { cn } from "@wfgraph/shared/utils";
 import { ColumnResizeHandle } from "./column-resize-handle";
+import { MobileRevealCovered } from "#src/components/workflow/canvas-reveal/mobile-reveal";
 import {
   type ColumnSide,
   columnPreferencesAtom,
   columnWidth,
+  phoneShowsMapAtom,
 } from "./editor-columns-store";
 import { COLUMN_SHORTCUT_KEYS } from "#src/lib/shortcut-label";
 import { useColumnControls, useColumnShortcuts } from "./use-column-controls";
@@ -70,6 +72,8 @@ export function ColumnHeader({
   side: ColumnSide;
   children: ReactNode;
 }) {
+  // A phone shows one view at a time and has no column to collapse.
+  const isMobile = useIsMobile();
   return (
     <div
       className={cn(
@@ -78,7 +82,7 @@ export function ColumnHeader({
       )}
       data-slot="column-header"
     >
-      <ColumnToggleButton side={side} />
+      {isMobile ? null : <ColumnToggleButton side={side} />}
       <div className="flex min-w-0 flex-1 items-center gap-2">{children}</div>
     </div>
   );
@@ -173,6 +177,49 @@ function OutlineOverlay({
 }
 
 /**
+ * The editor below the toolbar on a phone: the outline fills the width, and
+ * the toolbar's Map shows the canvas in its place. The canvas stays mounted
+ * under the outline, so its camera and selection survive the switch; it leaves
+ * keyboard and screen reader navigation while the outline covers it. Details
+ * open as sheets over either one.
+ */
+function PhoneMain({
+  outline,
+  phone,
+  showsMap,
+  children,
+}: {
+  outline: ReactNode;
+  phone: ReactNode;
+  showsMap: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="relative min-h-[min(20rem,40dvh)] min-w-0 flex-1"
+      data-slot="canvas-box"
+    >
+      <div className="contents" inert={!showsMap}>
+        {children}
+      </div>
+      {showsMap ? null : (
+        <MobileRevealCovered>
+          <section
+            aria-label={COLUMN_LABELS.outline}
+            className="absolute inset-0 z-10 flex flex-col bg-sidebar"
+            data-column="outline"
+            data-slot="editor-column"
+          >
+            {outline}
+          </section>
+        </MobileRevealCovered>
+      )}
+      {phone}
+    </div>
+  );
+}
+
+/**
  * The editor below the toolbar: the outline column, the canvas box, and the
  * details column, left to right, which is also their Tab order. Each side
  * column is docked at its chosen width, a rail when collapsed, or, for the
@@ -184,42 +231,51 @@ export function EditorColumns({
   outline,
   canvas,
   details,
+  phone,
   overlay,
 }: {
   outline: ReactNode;
   canvas: ReactNode;
   details: ReactNode;
+  /**
+   * What a phone layers over the outline or the canvas: the agent and the
+   * sheets that show details.
+   */
+  phone?: ReactNode;
   /** What shows over the canvas and details together, the review sheet. */
   overlay?: ReactNode;
 }) {
   const controls = useColumnControls();
   const isMobile = useIsMobile();
+  const showsMap = useAtomValue(phoneShowsMapAtom);
   useColumnShortcuts(controls, { enabled: !isMobile });
   const { shapes } = controls;
-  const canvasBox = (
-    <div
-      className="relative min-h-[min(20rem,40dvh)] min-w-0 flex-1"
-      data-slot="canvas-box"
-    >
-      {canvas}
-      {!isMobile && shapes.outline === "overlay" ? (
-        <OutlineOverlay onClose={controls.closeOutlineOverlay}>
-          {outline}
-        </OutlineOverlay>
-      ) : null}
-    </div>
-  );
   if (isMobile) {
     return (
       <div
         className="relative flex min-h-0 min-w-0 flex-1"
         data-slot="editor-columns"
       >
-        {canvasBox}
+        <PhoneMain outline={outline} phone={phone} showsMap={showsMap}>
+          {canvas}
+        </PhoneMain>
         {overlay}
       </div>
     );
   }
+  const canvasBox = (
+    <div
+      className="relative min-h-[min(20rem,40dvh)] min-w-0 flex-1"
+      data-slot="canvas-box"
+    >
+      {canvas}
+      {shapes.outline === "overlay" ? (
+        <OutlineOverlay onClose={controls.closeOutlineOverlay}>
+          {outline}
+        </OutlineOverlay>
+      ) : null}
+    </div>
+  );
   return (
     <div
       className="relative flex min-h-0 min-w-0 flex-1"

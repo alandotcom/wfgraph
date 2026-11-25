@@ -9,8 +9,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
-import { MoreHorizontal } from "lucide-react";
-import { useAtomValue } from "jotai";
+import { Map as MapIcon, MoreHorizontal } from "lucide-react";
+import { useAtom, useAtomValue } from "jotai";
+import { phoneShowsMapAtom } from "#src/components/workflow/columns/editor-columns-store";
 import { Menubar } from "@base-ui/react/menubar";
 import { UserMenu } from "#src/components/workflows/user-menu";
 import {
@@ -178,6 +179,27 @@ function WorkflowActionsMenu({
 }
 
 /**
+ * The phone's Map control: pressed, the canvas shows in place of the outline.
+ * Hidden from `md` up, where the canvas sits beside the outline.
+ */
+function PhoneMapToggle() {
+  const [showsMap, setShowsMap] = useAtom(phoneShowsMapAtom);
+  return (
+    <Button
+      aria-pressed={showsMap}
+      className="shrink-0 md:hidden"
+      onClick={() => setShowsMap(!showsMap)}
+      size="sm"
+      type="button"
+      variant={showsMap ? "secondary" : "ghost"}
+    >
+      <MapIcon />
+      Map
+    </Button>
+  );
+}
+
+/**
  * The trailing group: the view switcher, then the controls that write.
  *
  * The views come from the saved workflow, so an unsaved canvas drops the
@@ -208,6 +230,7 @@ function WorkflowTrailingControls({
         <WorkspaceViewSwitcher {...workspace} />
       ) : null}
       <FindNodeTrigger />
+      <PhoneMapToggle />
       <ToolbarPublishControls actions={actions} state={state} />
       {hasOverflowRows ? (
         <WorkflowActionsMenu {...workspace} actions={actions} state={state} />

@@ -8,7 +8,10 @@ import {
   selectOnlyNodeAtom,
 } from "#src/lib/workflow-graph-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
-import { columnPreferencesAtom } from "./editor-columns-store";
+import {
+  columnPreferencesAtom,
+  phoneShowsMapAtom,
+} from "./editor-columns-store";
 
 /**
  * The viewport itself, because the layout is read through media queries that
@@ -50,6 +53,7 @@ function renderColumns() {
             <span>Outline body</span>
           </ColumnHeader>
         }
+        phone={<div data-testid="phone-sheets" />}
       />
     </JotaiProvider>
   );
@@ -179,5 +183,25 @@ describe("EditorColumns", () => {
       store.set(clearSelectionAtom);
     });
     expect(layout()).toEqual(before);
+  });
+
+  it("shows the outline as a phone's main view, and the canvas once Map is pressed", () => {
+    setViewportWidth(500);
+    const store = renderColumns();
+
+    expect(screen.getByText("Outline body")).toBeTruthy();
+    expect(screen.queryByText("Details body")).toBeNull();
+    expect(screen.getByTestId("phone-sheets")).toBeTruthy();
+    // No column collapses on a phone, and the canvas under the outline takes
+    // no focus.
+    expect(screen.queryByRole("button", { name: /outline/i })).toBeNull();
+    expect(screen.getByTestId("canvas").closest("[inert]")).not.toBeNull();
+
+    act(() => {
+      store.set(phoneShowsMapAtom, true);
+    });
+    expect(screen.queryByText("Outline body")).toBeNull();
+    expect(screen.getByTestId("canvas").closest("[inert]")).toBeNull();
+    expect(screen.getByTestId("phone-sheets")).toBeTruthy();
   });
 });

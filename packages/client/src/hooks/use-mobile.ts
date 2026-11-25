@@ -1,16 +1,17 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * Tailwind's `md` breakpoint, which `routes/globals.css` declares with
+ * Tailwind's `md` breakpoint, 900px, which `routes/globals.css` declares with
  * `@theme static` so it is a variable at runtime as well as a compile-time
  * variant. Everything that changes shape at that width reads this one value:
- * the shell's inset, border, radius and clip, the status strip's safe-area
- * offset, the canvas handles' touch targets, and this hook.
+ * the editor's columns and its phone layout, the shell's inset, border, radius
+ * and clip, the status strip's safe-area offset, the canvas handles' touch
+ * targets, and this hook.
  *
- * The fallback is Tailwind's own default, for a document that has not loaded
- * the stylesheet.
+ * The fallback is the same value, for a document that has not loaded the
+ * stylesheet.
  */
-const DEFAULT_BREAKPOINT = "48rem";
+const DEFAULT_BREAKPOINT = "56.25rem";
 
 let desktopQuery: MediaQueryList | undefined;
 
