@@ -33,7 +33,6 @@ export const AGENT_CONTEXT_ROW_PX = 24;
  */
 export const CANVAS_OBSTACLE_SLOTS = {
   controls: "workflow-canvas-controls",
-  groupScopeBar: "group-scope-bar",
 } as const;
 
 /** The smallest rectangle worth placing a selected step in. */
@@ -150,7 +149,6 @@ const AGENT_COMPOSER_SELECTOR = '[data-slot="agent-composer"]';
 const OBSTACLE_SELECTORS = [
   AGENT_COMPOSER_SELECTOR,
   `[data-slot="${CANVAS_OBSTACLE_SLOTS.controls}"]`,
-  `[data-slot="${CANVAS_OBSTACLE_SLOTS.groupScopeBar}"]`,
   ".react-flow__minimap",
 ];
 
