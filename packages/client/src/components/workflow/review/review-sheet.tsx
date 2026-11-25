@@ -42,6 +42,7 @@ import { useIsMobile } from "#src/hooks/use-mobile";
 import { can } from "#src/lib/authorization";
 import { insideKeyboardLayer, isSubmitChord } from "#src/lib/editor-shortcuts";
 import { focusOpener } from "#src/lib/focus-return";
+import { focusOutlineCurrentRow } from "#src/components/workflow/step-focus-landing";
 import { orpcQuery } from "#src/lib/rpc-query";
 import { editsCountLine, workflowEdits } from "#src/lib/workflow-edits";
 import { publicationReviewAtom } from "#src/lib/workflow-publication-review-store";
@@ -87,6 +88,7 @@ export function ReviewSheet() {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
+  const wasShownRef = useRef(false);
   const shown = content !== null && workspace === "draft" ? content : null;
   const key = contentKey(shown);
 
@@ -95,10 +97,18 @@ export function ReviewSheet() {
   useAfterCommit(key, () => {
     if (shown === null) {
       const opener = openerRef.current;
+      const wasShown = wasShownRef.current;
       openerRef.current = null;
+      wasShownRef.current = false;
       if (opener?.isConnected) opener.focus({ preventScroll: true });
+      // A publish disables the Publish button that opened the sheet, and a
+      // disabled control refuses focus, so focus goes to the outline.
+      if (wasShown && document.activeElement === document.body) {
+        focusOutlineCurrentRow();
+      }
       return;
     }
+    wasShownRef.current = true;
     openerRef.current ??= focusOpener();
     scrollRef.current?.scrollTo({ top: 0 });
     titleRef.current?.focus({ preventScroll: true });

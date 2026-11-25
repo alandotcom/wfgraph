@@ -367,6 +367,42 @@ describe("canvas selection", () => {
     ).not.toBeNull();
   });
 
+  it("puts focus on the step a removed step followed when an undo removes it", async () => {
+    const { store, view } = await renderEditor();
+    await act(async () => {
+      fireEvent.click(view.getByTestId("action-node-route"));
+    });
+    fireEvent.click(view.getByRole("button", { name: "Probe add step" }));
+    const [addedId] = store.get(activeSelectionAtom).nodeIds;
+    if (addedId === undefined || addedId === "route") {
+      throw new Error("Add step did not select the step it added");
+    }
+    const card = await waitFor(() => {
+      const element = view.container.querySelector<HTMLElement>(
+        `.react-flow__node[data-id="${addedId}"]`
+      );
+      if (!element) {
+        throw new Error("the canvas did not render the added card");
+      }
+      return element;
+    });
+    card.focus();
+
+    await act(async () => {
+      fireEvent.keyDown(card, { key: "z", metaKey: true, bubbles: true });
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(store.get(nodesAtom).some((node) => node.id === addedId)).toBe(
+      false
+    );
+    expect(
+      document.activeElement?.closest('.react-flow__node[data-id="route"]')
+    ).not.toBeNull();
+  });
+
   it("keeps modifier-click additive", async () => {
     const { store, view } = await renderEditor();
 

@@ -7,7 +7,13 @@ import {
   useStoreApi,
   useUpdateNodeInternals,
 } from "@xyflow/react";
-import { useAtom, useAtomValue, useAtomValueRawSync, useSetAtom } from "jotai";
+import {
+  useAtom,
+  useAtomValue,
+  useAtomValueRawSync,
+  useSetAtom,
+  useStore,
+} from "jotai";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -34,6 +40,7 @@ import {
   canvasGraphAtom,
   displayNodesAtom,
   edgesAtom,
+  nodesAtom,
   canvasEditingLockedAtom,
   executionOverlayGraphAtom,
   isExecutionOverlayActiveAtom,
@@ -65,7 +72,10 @@ import { AddNode } from "./nodes/add-node";
 import { GroupNode } from "./nodes/group-node";
 import { withoutProjectedDimensions } from "#src/lib/group-canvas";
 import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
-import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { editFocusTarget } from "./canvas-reveal/reveal-edit-target";
 import { requestRevealEditFocusAtom } from "./canvas-reveal/reveal-requests";
 import { EmptyWorkflowStart } from "./empty-workflow-start";
@@ -78,7 +88,10 @@ import {
   useTopologyAuthoring,
 } from "./canvas-interaction";
 import { useWorkspaceCamera } from "./use-workspace-camera";
-import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
+import {
+  focusStepWhenFocusIsLost,
+  stepBeforeRemoved,
+} from "#src/components/workflow/step-focus-landing";
 import { useRevealCamera } from "./canvas-reveal/use-reveal-camera";
 import { CANVAS_OBSTACLE_SLOTS } from "./canvas-reveal/reveal-geometry";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
@@ -127,28 +140,6 @@ const nodeTypes = {
   group: GroupNode,
 };
 
-/**
- * React Flow deselects a focused, selected card on Escape and blurs it a frame
- * later, which leaves keyboard focus on the page body. Two frames on, when
- * focus is still on the body, it goes to the step's outline row when the
- * outline shows it, and otherwise back to the card, so the next key continues
- * from the step the person was on.
- */
-function keepFocusAfterEscape(nodeId: string, card: Element | null): void {
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      const active = document.activeElement;
-      if (active !== null && active !== document.body) {
-        return;
-      }
-      const row = document.getElementById(outlineRowElementId(nodeId));
-      const target =
-        row ?? (card instanceof HTMLElement && card.isConnected ? card : null);
-      target?.focus({ preventScroll: true });
-    });
-  });
-}
-
 export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const catalog = useExtensionCatalog();
   // What the canvas paints, and every node of the graph, which the
@@ -183,6 +174,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const selection = useAtomValue(canvasSelectionAtom);
   const clearSelection = useClearWorkflowNodeInspection();
   const deleteCanvasSelection = useSetAtom(deleteCanvasSelectionAtom);
+  const store = useStore();
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
   const inspectNode = useWorkflowNodeInspection();
@@ -450,13 +442,28 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       }
 
       event.preventDefault();
+      const before = { edges: store.get(edgesAtom) };
+      const selectedIds = store.get(activeSelectionAtom).nodeIds;
       if (event.shiftKey) {
         redo();
       } else {
         undo();
       }
+      // A step the change removed took keyboard focus with it when it was
+      // selected; focus lands on the step it followed.
+      const after = { nodes: store.get(nodesAtom) };
+      const removedId = selectedIds.find(
+        (id) => !after.nodes.some((node) => node.id === id)
+      );
+      const landing =
+        removedId === undefined
+          ? null
+          : stepBeforeRemoved({ removedId, before, after });
+      if (landing !== null) {
+        focusStepWhenFocusIsLost(landing);
+      }
     },
-    [undo, redo, graphEditingLocked]
+    [undo, redo, graphEditingLocked, store]
   );
 
   useDomEvent(window, "keydown", handleUndoRedoShortcut);
@@ -626,8 +633,13 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         event.stopPropagation();
         return;
       }
+      // React Flow deselects a focused, selected card on Escape and blurs it
+      // a frame later, so focus would fall to the page body.
       if (nodeId) {
-        keepFocusAfterEscape(nodeId, event.target.closest(".react-flow__node"));
+        focusStepWhenFocusIsLost(
+          nodeId,
+          event.target.closest(".react-flow__node")
+        );
       }
     },
     [

@@ -1,3 +1,4 @@
+import { savedWorkflow } from "#src/lib/workflow-save-test-support";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
@@ -271,6 +272,8 @@ async function renderSheet(
     usage?: WorkflowVersionUsageItem[];
     /** Also mount the toolbar's document-level shortcuts, as the editor does. */
     withToolbar?: boolean;
+    /** Also mount an outline whose one row takes Tab, as the editor does. */
+    withOutline?: boolean;
   } = {}
 ) {
   const store = createStore();
@@ -310,6 +313,15 @@ async function renderSheet(
       <>
         <ReviewSheet />
         {options.withToolbar ? <ToolbarShortcuts /> : null}
+        {options.withOutline ? (
+          <div data-slot="outline-body">
+            <div aria-label="Outline" role="tree">
+              <div aria-selected={false} role="treeitem" tabIndex={0}>
+                Lifecycle
+              </div>
+            </div>
+          </div>
+        ) : null}
       </>
     ),
   });
@@ -572,6 +584,39 @@ describe("ReviewSheet", () => {
       expectedDraftRevision: 1,
       expectedPublishedVersionId: "version_7",
     });
+  });
+
+  // A publish disables the Publish button that opened the sheet, so focus
+  // cannot go back to it and would fall to the page.
+  it("puts focus on the outline when a publish closes the sheet", async () => {
+    stubServer(comparison);
+    const unanswered = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      async (input: RequestInfo | URL, init?: RequestInit) =>
+        extractRpcProcedurePath(rpcUrl(input)) === "workflow/publish"
+          ? rpcJsonResponse({
+              ...savedWorkflow(WORKFLOW_ID),
+              draftRevision: 2,
+              publishedVersionId: "version_8",
+              publishedVersion: 8,
+              publishedAt: "2026-08-23T16:00:00.000Z",
+              warnings: [],
+            })
+          : unanswered(input, init)
+    );
+    const view = await renderSheet({ withOutline: true });
+    await view.findByRole("heading", { name: "Publish v8" });
+
+    fireEvent.keyDown(view.getByRole("button", { name: "Keep editing" }), {
+      key: "Enter",
+      ctrlKey: true,
+    });
+
+    await waitFor(() => expect(sheet(view)).toBeNull());
+    expect(document.activeElement).toBe(
+      view.getByRole("treeitem", { name: "Lifecycle" })
+    );
   });
 
   // The toolbar's run shortcut listens on the document in the capture phase,

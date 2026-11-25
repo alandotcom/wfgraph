@@ -20,7 +20,12 @@ import {
   WorkflowToolbar,
 } from "#src/components/workflow/workflow-toolbar";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
-import { useDocumentTitle, useUnmountCleanup } from "#src/hooks/effects";
+import {
+  useAfterPaint,
+  useDocumentTitle,
+  useUnmountCleanup,
+} from "#src/hooks/effects";
+import { focusOutlineCurrentRow } from "#src/components/workflow/step-focus-landing";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { endWorkflowEditorLifetimeAtom } from "#src/lib/workflow-graph-store";
@@ -104,6 +109,13 @@ const WorkflowEditor = () => {
   const workflowNotFound = useAtomValue(workflowNotFoundAtom);
   const workflowLoadError = useAtomValue(workflowLoadErrorAtom);
   const canUpdate = can(WfGraphOperations.workflowUpdate.id);
+  // Opening a workflow unmounts the control that opened it, which leaves
+  // focus on the page body; it lands on the outline's first row instead.
+  useAfterPaint(currentWorkflowId, () => {
+    if (document.activeElement === document.body) {
+      focusOutlineCurrentRow();
+    }
+  });
   useEditorDocumentTitle(
     workflowNotFound ? "not-found" : workflowLoadError ? "load-failed" : null
   );
