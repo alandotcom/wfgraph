@@ -401,7 +401,9 @@ description, the action and its Connection, and every setting as its field.
 Each issue shows beneath the field it names, and the Validation list repeats
 every issue, where choosing one puts focus in its field. A template field's
 help line says that typing @ inserts a value from the Event or an earlier step.
-Edits write to the draft as they are made, and autosave carries on. A step with no
+Edits write to the draft as they are made, and autosave carries on. Typing in
+one field is one undo step until the field loses focus or the typing pauses for
+a second, the way a text editor groups it. A step with no
 action chosen shows the action picker, and choosing an action moves focus to
 the first required field it leaves empty. A Condition's rule keeps field,
 operator, value, and remove on one line where the rule has 28rem; in a

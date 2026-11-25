@@ -97,16 +97,62 @@ export function draftEditable(get: Getter): boolean {
   return get(workflowWorkspaceViewAtom) === "draft" && !get(isReviewOpenAtom);
 }
 
-/** Snapshot the graph so the next change is undoable, and drop any redo branch. */
-export function pushHistory(get: Getter, set: Setter) {
+/**
+ * How long typing in one field may pause and still extend the same undo step,
+ * in milliseconds.
+ */
+export const HISTORY_GROUP_PAUSE_MS = 1000;
+
+/**
+ * The run of edits the newest history entry stands for: a key naming one
+ * node's fields, when the last of them was written, and the entry itself.
+ */
+type HistoryGroup = { key: string; at: number; entry: HistoryState };
+
+const historyGroupAtom = atom<HistoryGroup | null>(null);
+
+/** Ends the open run of field edits, so the next edit is an undo step of its own. */
+export const closeHistoryGroupAtom = atom(null, (_get, set) => {
+  set(historyGroupAtom, null);
+});
+
+/**
+ * Snapshot the graph so the next change is undoable, and drop any redo branch.
+ *
+ * An edit given a `group` key joins the newest entry instead of adding one
+ * when the previous edit had the same key, came less than
+ * `HISTORY_GROUP_PAUSE_MS` before it, and is still the newest entry, so
+ * typing in one field is one undo step per pause. `closeHistoryGroupAtom`
+ * ends the run early, which a field's blur does.
+ */
+export function pushHistory(
+  get: Getter,
+  set: Setter,
+  options?: { group?: string | undefined }
+) {
+  const group = options?.group;
+  const open = get(historyGroupAtom);
+  const now = Date.now();
+  set(futureAtom, []);
+  if (
+    group !== undefined &&
+    open?.key === group &&
+    now - open.at < HISTORY_GROUP_PAUSE_MS &&
+    get(historyAtom).at(-1) === open.entry
+  ) {
+    set(historyGroupAtom, { ...open, at: now });
+    return;
+  }
+
   const snapshot: HistoryState = {
     nodes: get(nodesStateAtom),
     edges: get(edgesStateAtom),
   };
-  const history = [...get(historyAtom), snapshot];
-
-  set(historyAtom, history.slice(-HISTORY_LIMIT));
-  set(futureAtom, []);
+  set(historyAtom, [...get(historyAtom), snapshot].slice(-HISTORY_LIMIT));
+  set(
+    historyGroupAtom,
+    group === undefined ? null : { key: group, at: now, entry: snapshot }
+  );
 }
 
 export function requestGraphSave(

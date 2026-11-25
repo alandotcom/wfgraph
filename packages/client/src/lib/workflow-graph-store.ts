@@ -2,6 +2,8 @@ import type { EdgeChange, NodeChange } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
+import { union } from "es-toolkit/array";
+import { isEqual } from "es-toolkit/predicate";
 import {
   cloneSelection,
   extractCopyableSelection,
@@ -1163,6 +1165,30 @@ export type NodeDataUpdate = {
 };
 
 /**
+ * Names the fields an edit changes on one node, such as `step_4:label` or
+ * `step_4:config.subject`, so consecutive keystrokes in one field share an
+ * undo step and an edit of another field starts a new one.
+ */
+function fieldEditGroup(
+  id: string,
+  node: WorkflowNode | undefined,
+  data: NodeDataUpdate["data"]
+): string {
+  const fields = Object.keys(data).flatMap((key) => {
+    if (key === "config") {
+      const next = data.config ?? {};
+      const previous = node?.data.config ?? {};
+      return union(Object.keys(next), Object.keys(previous))
+        .filter((configKey) => !isEqual(next[configKey], previous[configKey]))
+        .map((configKey) => `config.${configKey}`);
+    }
+    const previous = node ? Reflect.get(node.data, key) : undefined;
+    return isEqual(Reflect.get(data, key), previous) ? [] : [key];
+  });
+  return `${id}:${fields.toSorted().join(",")}`;
+}
+
+/**
  * Write an edit into one node's data: label, description, config. Run status
  * does not travel through here -- it is never part of a node's own data, so
  * it has its own writer, `setNodeStatusesAtom`.
@@ -1175,11 +1201,11 @@ export const updateNodeDataAtom = atom(
     }
 
     const currentNodes = get(nodesStateAtom);
+    const oldNode = currentNodes.find((node) => node.id === id);
     if (recordHistory) {
-      pushHistory(get, set);
+      pushHistory(get, set, { group: fieldEditGroup(id, oldNode, data) });
     }
 
-    const oldNode = currentNodes.find((node) => node.id === id);
     const oldLabel = oldNode?.data.label;
     const newLabel = data.label;
     const isLabelChange = newLabel !== undefined && oldLabel !== newLabel;

@@ -1341,13 +1341,17 @@ describe("useWorkflowActions publication preflight", () => {
     );
     const store = workflowStore();
     store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
-    // Two label edits, the second undone: one step to undo, one to redo.
+    // Two edits of different fields, the second undone: one step to undo,
+    // one to redo.
     const [first] = nodes;
     if (!first) {
       throw new Error("The fixture graph has no node");
     }
     store.set(updateNodeDataAtom, { id: first.id, data: { label: "One" } });
-    store.set(updateNodeDataAtom, { id: first.id, data: { label: "Two" } });
+    store.set(updateNodeDataAtom, {
+      id: first.id,
+      data: { description: "Two" },
+    });
     store.set(undoAtom);
     expect(store.get(canUndoAtom)).toBe(true);
     expect(store.get(canRedoAtom)).toBe(true);

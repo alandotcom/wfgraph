@@ -1,3 +1,4 @@
+import { closeHistoryGroupAtom } from "#src/lib/workflow-graph-cells";
 import { useNavigate } from "@tanstack/react-router";
 import {
   useAtom,
@@ -79,6 +80,8 @@ export function DetailsPanel() {
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const frame = useMemo<NodeConfigFrame>(() => ({ confirm: setRequest }), []);
   const rootRef = useRef<HTMLElement>(null);
+  const setHistoryGroupClosed = useSetAtom(closeHistoryGroupAtom);
+  const closeHistoryGroup = () => setHistoryGroupClosed();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const shownLevelRef = useRef<RevealLevel>(reveal.level);
 
@@ -262,6 +265,9 @@ export function DetailsPanel() {
       // The review sheet covers the column while it shows, so nothing under
       // it takes focus.
       inert={coveredByReview}
+      // Leaving a field ends its run of typing, so the next edit is an undo
+      // step of its own.
+      onBlur={closeHistoryGroup}
       ref={rootRef}
     >
       {subject === null ? (

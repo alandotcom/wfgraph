@@ -52,7 +52,10 @@ import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
-import { historyAtom } from "#src/lib/workflow-graph-cells";
+import {
+  HISTORY_GROUP_PAUSE_MS,
+  historyAtom,
+} from "#src/lib/workflow-graph-cells";
 import {
   addNodeAtom,
   displayNodesAtom,
@@ -61,6 +64,7 @@ import {
   nodesAtom,
   onNodesChangeAtom,
   selectOnlyNodeAtom,
+  undoAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
@@ -563,6 +567,41 @@ describe("details panel editing", () => {
     const payload = JSON.stringify(update.mock.calls[0]);
     expect(payload).toContain("Send confirmation");
     expect(payload).toContain("The day before");
+  });
+
+  it("makes typing in one field one undo step per pause or blur", async () => {
+    const { view, store, select } = await renderReveal();
+    await select("send");
+    const label = view.getByLabelText("Label");
+    const type = (value: string) =>
+      fireEvent.change(label, { target: { value } });
+
+    label.focus();
+    type("Send reminder n");
+    type("Send reminder no");
+    type("Send reminder now");
+    // Leaving the field ends the run of typing.
+    fireEvent.blur(label);
+    label.focus();
+    type("Send reminder now!");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // A pause as long as the group's window starts a new step too.
+      vi.setSystemTime(Date.now() + HISTORY_GROUP_PAUSE_MS);
+      type("Send reminder now!!");
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const labelOf = () =>
+      store.get(nodesAtom).find((item) => item.id === "send")?.data.label;
+    act(() => store.set(undoAtom));
+    expect(labelOf()).toBe("Send reminder now!");
+    act(() => store.set(undoAtom));
+    expect(labelOf()).toBe("Send reminder now");
+    act(() => store.set(undoAtom));
+    expect(labelOf()).toBe("Send reminder");
+    expect(store.get(historyAtom)).toEqual([]);
   });
 
   it("puts focus in the field an issue names", async () => {
