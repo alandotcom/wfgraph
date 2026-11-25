@@ -33,6 +33,7 @@ function run(
     runMode: "live",
     startEventName: null,
     entityValue: null,
+    entity: null,
     versionKind: "published",
     versionNumber: 4,
     error: null,

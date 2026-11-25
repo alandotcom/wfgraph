@@ -16,4 +16,6 @@ The editor is easier to read and to operate.
 
 Fixes: duplicating a workflow that contains a Group no longer fails, a Wait Duration that cannot be read is a blocking issue, and deleting a Connection no longer rebinds its steps to another Connection.
 
+Each run that `getExecutions`, `getExecutionsGlobal` and `getExecutionLogs` return carries `entity`: the tracked Entity's `type` and `id`, or null when the workflow tracks no Entity.
+
 The built-in integrations' setting "Test Mode Behavior" is labeled "In test runs". Its key and values are unchanged.

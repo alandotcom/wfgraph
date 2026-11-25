@@ -22,6 +22,7 @@ const rawExecution = {
   versionNumber: 3,
   startEventName: "app/appointment.created",
   entityValue: "appt_1",
+  entity: null,
   error: null,
   startedAt: "2026-03-01T10:00:00.000Z",
   scheduledFor: null,
@@ -189,6 +190,7 @@ describe("toWorkflowExecutionFromSummary", () => {
       startSource: "event",
       startEventName: "app/appointment.created",
       entityValue: "appt_99",
+      entity: null,
     };
 
     const mapped = toWorkflowExecutionFromSummary(summary);
@@ -222,6 +224,7 @@ describe("toWorkflowExecutionFromSummary", () => {
       startSource: "schedule",
       startEventName: null,
       entityValue: "workflow:wf_1",
+      entity: null,
     };
 
     expect(toWorkflowExecutionFromSummary(summary).scheduledFor).toEqual(
@@ -252,6 +255,7 @@ describe("toWorkflowExecutionFromSummary", () => {
       startSource: "manual",
       startEventName: null,
       entityValue: null,
+      entity: null,
     };
 
     const mapped = toWorkflowExecutionFromSummary(summary);
@@ -281,6 +285,7 @@ describe("toPinnedRunSummary", () => {
       startSource: "event",
       startEventName: "app/appointment.created",
       entityValue: null,
+      entity: null,
     },
     logs: [],
     retryLimit: 4,
@@ -337,6 +342,7 @@ describe("toExecutionDetail", () => {
         startSource: "event",
         startEventName: "appointment.updated",
         entityValue: null,
+        entity: null,
       },
       logs: [],
       retryLimit: 4,
@@ -380,6 +386,7 @@ describe("toExecutionDetail logs of an ended run", () => {
       startSource: "event",
       startEventName: "appointment.updated",
       entityValue: null,
+      entity: null,
     },
     logs: [
       {
@@ -464,6 +471,7 @@ describe("toExecutionOverlaySource", () => {
       startSource: "event",
       startEventName: "appointment.updated",
       entityValue: null,
+      entity: null,
     },
     logs: (options.logs ?? []).map((log, index) => ({
       id: `log_${index}`,

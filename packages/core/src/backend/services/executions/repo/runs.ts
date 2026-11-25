@@ -93,6 +93,8 @@ const EXECUTION_LIST_COLUMNS = {
   runMode: workflowExecutions.runMode,
   startEventName: workflowExecutions.startEventName,
   entityValue: workflowExecutions.entityValue,
+  entityType: workflowExecutions.entityType,
+  entityId: workflowExecutions.entityId,
   versionKind: workflowVersions.kind,
   versionNumber: workflowVersions.version,
   error: workflowExecutions.error,

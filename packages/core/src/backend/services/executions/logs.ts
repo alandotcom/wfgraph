@@ -1,5 +1,8 @@
 import { Effect } from "effect";
-import { scheduledRunFields } from "#src/backend/services/executions/run-rows";
+import {
+  runEntity,
+  scheduledRunFields,
+} from "#src/backend/services/executions/run-rows";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { NotFound } from "#src/backend/lib/effect/failures";
@@ -75,6 +78,7 @@ export const getExecutionLogs = Effect.fn("getExecutionLogs")(
         runMode: execution.runMode,
         startEventName: execution.startEventName,
         entityValue: execution.entityValue,
+        entity: runEntity(execution),
         input: redactSensitiveData(execution.input),
         output: redactSensitiveData(execution.output),
         error: redactSensitiveText(execution.error),

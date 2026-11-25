@@ -191,6 +191,7 @@ describe("workflow executions RPC output contract", () => {
     runMode: "live",
     startEventName: null,
     entityValue: null,
+    entity: null,
     versionKind: "published",
     versionNumber: 1,
     error: null,
@@ -330,6 +331,44 @@ describe("workflow executions RPC output contract", () => {
     ).toHaveProperty("value");
   });
 
+  it("carries a tracked run's Entity on both lists, and refuses a row without the key", async () => {
+    const decodeList = getOutputDecoder(rpcContract.workflow.getExecutions);
+    const decodeGlobal = getOutputDecoder(
+      rpcContract.workflow.getExecutionsGlobal
+    );
+    const tracked = {
+      ...listItem,
+      entity: { type: "patient", id: "pat_20418" },
+      activity: null,
+    };
+    const { entity: _omitted, ...withoutEntity } = tracked;
+    const list = (item: object) =>
+      decodeList({
+        items: [item],
+        ...reading,
+        runRetentionMs: null,
+        supersededCount: 0,
+        refusedStarts: [],
+        cancelNotDelivered: [],
+      });
+
+    expect(await list(tracked)).toHaveProperty("value");
+    expect(await list(withoutEntity)).toHaveProperty("issues");
+    expect(
+      await list({ ...tracked, entity: { type: "patient" } })
+    ).toHaveProperty("issues");
+    expect(
+      await decodeGlobal({
+        items: [
+          { ...tracked, workflowName: "Reminders", workflowIsPaused: false },
+        ],
+        ...reading,
+        runRetentionMs: null,
+        nextCursor: null,
+      })
+    ).toHaveProperty("value");
+  });
+
   // The window is a host option, so a positive number of milliseconds or null
   // for a host that keeps every run.
   it("carries the host's run retention window on both lists, and refuses a window that is not positive", async () => {
@@ -374,6 +413,7 @@ describe("workflow execution logs RPC output contract", () => {
       runMode: "live",
       startEventName: null,
       entityValue: null,
+      entity: null,
       input: {},
       output: null,
       error: null,
@@ -417,6 +457,21 @@ describe("workflow execution logs RPC output contract", () => {
           startSource: "schedule",
           scheduledFor: "2026-03-01T09:00:00.000Z",
           scheduleDescription: "Every weekday at 9:00 AM (America/New_York)",
+        },
+      })
+    ).toHaveProperty("value");
+  });
+
+  it("carries a tracked run's Entity on the run it reads", async () => {
+    const decode = getOutputDecoder(rpcContract.workflow.getExecutionLogs);
+
+    expect(
+      await decode({
+        ...payload,
+        schedule: null,
+        execution: {
+          ...payload.execution,
+          entity: { type: "patient", id: "pat_20418" },
         },
       })
     ).toHaveProperty("value");

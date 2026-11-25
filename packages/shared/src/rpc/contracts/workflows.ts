@@ -300,6 +300,15 @@ const workflowExecutionFields = {
   startEventName: Schema.NullOr(Schema.String),
   entityValue: Schema.NullOr(Schema.String),
   /**
+   * The tracked Entity this run is about: the Entity's `type`, as `defineEntity`
+   * declared it, and the id the Event's binding selected. Null on a run of a
+   * workflow that tracks no Entity, which carries `entityValue` instead. The
+   * Runs view names a run by it.
+   */
+  entity: Schema.NullOr(
+    Schema.Struct({ type: Schema.String, id: Schema.String })
+  ),
+  /**
    * The kind of version this run pinned. `draft_snapshot` means the run used the
    * graph on the canvas instead of the published graph. Run history reads this
    * to label the run as a draft run.
@@ -369,6 +378,7 @@ const executionSummarySchema = Schema.Struct({
   runMode: workflowExecutionFields.runMode,
   startEventName: workflowExecutionFields.startEventName,
   entityValue: workflowExecutionFields.entityValue,
+  entity: workflowExecutionFields.entity,
   input: Schema.Unknown,
   output: Schema.Unknown,
   error: Schema.NullOr(Schema.String),

@@ -151,6 +151,19 @@ const startInForm = (
     return started.execution.id;
   });
 
+/** A run row reduced to its id and the columns of both identity forms. */
+const identityColumns = (row: {
+  id: string;
+  entityValue: string | null;
+  entityType: string | null;
+  entityId: string | null;
+}) => ({
+  id: row.id,
+  entityValue: row.entityValue,
+  entityType: row.entityType,
+  entityId: row.entityId,
+});
+
 /** The first-wins start that the race cases in this file make. */
 const startFirstWins = (
   connection: ConformanceConnection,
@@ -245,6 +258,60 @@ export function describeExecutionConformance({
       expect(
         result.claims.map((claim) => claim.executionId).toSorted()
       ).toEqual([result.legacy, result.typed].toSorted());
+    });
+
+    // The Runs view names a run by its typed Entity, so both run lists and the
+    // summary read the identity form each run was stored with.
+    it("reads each run's identity form back on both run lists and the summary", async () => {
+      const database = await openConnection();
+      await seedPublishedWorkflow(database);
+      const result = await database.run(
+        Effect.gen(function* () {
+          const executions = yield* ExecutionRepo;
+          const legacy = yield* startInForm("delivery_legacy", {
+            entityValue: "appt_1",
+          });
+          const typed = yield* startInForm("delivery_typed", {
+            entityType: "patient",
+            entityId: "pat_20418",
+          });
+          const byWorkflow = yield* executions.listByWorkflow({
+            workflowId: "wf_1",
+            includeSuperseded: true,
+          });
+          const page = yield* executions.listPage({ limit: 10 });
+          const summaries = yield* Effect.forEach([legacy, typed], (id) =>
+            executions.findSummaryById(id)
+          );
+          return {
+            legacy,
+            typed,
+            byWorkflow: sortBy(byWorkflow.map(identityColumns), ["id"]),
+            page: sortBy(page.map(identityColumns), ["id"]),
+            summaries: summaries.map((row) =>
+              row === null ? null : identityColumns(row)
+            ),
+          };
+        })
+      );
+
+      const expected = [
+        {
+          id: result.legacy,
+          entityValue: "appt_1",
+          entityType: null,
+          entityId: null,
+        },
+        {
+          id: result.typed,
+          entityValue: null,
+          entityType: "patient",
+          entityId: "pat_20418",
+        },
+      ];
+      expect(result.summaries).toEqual(expected);
+      expect(result.byWorkflow).toEqual(sortBy(expected, ["id"]));
+      expect(result.page).toEqual(sortBy(expected, ["id"]));
     });
 
     it("lets newest-wins supersede a run an older version started in the other identity form", async () => {

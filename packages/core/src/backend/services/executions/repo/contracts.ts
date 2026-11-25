@@ -730,6 +730,8 @@ export type WorkflowExecutionListRow = Pick<
   | "runMode"
   | "startEventName"
   | "entityValue"
+  | "entityType"
+  | "entityId"
   | "error"
   | "startedAt"
   | "scheduledFor"

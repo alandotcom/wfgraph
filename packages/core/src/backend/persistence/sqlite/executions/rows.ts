@@ -42,6 +42,8 @@ export type SqliteExecutionListRow = Pick<
   | "runMode"
   | "startEventName"
   | "entityValue"
+  | "entityType"
+  | "entityId"
   | "error"
   | "startedAt"
   | "scheduledFor"
@@ -141,6 +143,8 @@ function executionListColumns(
     runMode: sqliteRunMode(row.runMode),
     startEventName: row.startEventName,
     entityValue: row.entityValue,
+    entityType: row.entityType,
+    entityId: row.entityId,
     error: row.error,
     startedAt: new Date(row.startedAt),
     scheduledFor: row.scheduledFor === null ? null : new Date(row.scheduledFor),
@@ -171,8 +175,6 @@ export function sqliteExecution(row: SqliteExecutionRow): WorkflowExecution {
     deliveryId: row.deliveryId,
     input: optionalJsonObject(row.input, "input"),
     output: optionalJsonValue(row.output, "output"),
-    entityType: row.entityType,
-    entityId: row.entityId,
     terminationKind: terminationKind(row.terminationKind),
     terminationRequestedAt:
       row.terminationRequestedAt === null

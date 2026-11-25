@@ -129,6 +129,30 @@ describe("getExecutionLogs", () => {
         assert.strictEqual(result.execution.startSource, "event");
         assert.strictEqual(result.execution.startEventName, "order.updated");
         assert.strictEqual(result.execution.entityValue, "ord_2");
+        assert.isNull(result.execution.entity);
+      })
+    );
+
+    // The Execution's typed identity is what the Runs view names a run by.
+    it.effect("hands a tracked run's Entity through on the summary", () =>
+      Effect.gen(function* () {
+        const result = yield* getExecutionLogs("exec_1").pipe(
+          Effect.provide(
+            makeRepos(
+              summary({
+                entityValue: null,
+                entityType: "patient",
+                entityId: "pat_20418",
+              })
+            )
+          )
+        );
+
+        assert.deepStrictEqual(result.execution.entity, {
+          type: "patient",
+          id: "pat_20418",
+        });
+        assert.isNull(result.execution.entityValue);
       })
     );
 

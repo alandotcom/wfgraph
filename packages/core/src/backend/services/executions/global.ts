@@ -1,5 +1,8 @@
 import { Effect } from "effect";
-import { scheduledRunFields } from "#src/backend/services/executions/run-rows";
+import {
+  runEntity,
+  scheduledRunFields,
+} from "#src/backend/services/executions/run-rows";
 import { uniq } from "es-toolkit/array";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { WfGraphAppContext } from "#src/backend/lib/effect/app-context";
@@ -48,6 +51,7 @@ type GlobalExecutionItem = {
   runMode: "live" | "test";
   startEventName: string | null;
   entityValue: string | null;
+  entity: { type: string; id: string } | null;
   versionKind: WorkflowVersionKind;
   versionNumber: number | null;
   error: string | null;
@@ -96,6 +100,7 @@ function toGlobalExecutionItem(
     runMode: row.runMode,
     startEventName: row.startEventName,
     entityValue: row.entityValue,
+    entity: runEntity(row),
     versionKind: row.versionKind,
     versionNumber: row.versionNumber,
     error: redactSensitiveText(row.error),

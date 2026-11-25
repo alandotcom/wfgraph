@@ -104,6 +104,7 @@ beforeEach(() => {
       runMode: "test",
       startEventName: null,
       entityValue: null,
+      entity: null,
       input: {},
       output: {},
       error: null,

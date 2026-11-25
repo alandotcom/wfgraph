@@ -74,6 +74,8 @@ const executionListSelection = {
   runMode: workflowExecutions.runMode,
   startEventName: workflowExecutions.startEventName,
   entityValue: workflowExecutions.entityValue,
+  entityType: workflowExecutions.entityType,
+  entityId: workflowExecutions.entityId,
   error: workflowExecutions.error,
   startedAt: workflowExecutions.startedAt,
   scheduledFor: workflowExecutions.scheduledFor,

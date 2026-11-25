@@ -26,6 +26,8 @@ function execution(
     runMode: "live",
     startEventName: "app/appointment.created",
     entityValue: "appt_1",
+    entityType: null,
+    entityId: null,
     versionKind: "published",
     versionNumber: 1,
     error: null,
@@ -114,6 +116,38 @@ describe("getWorkflowExecutions", () => {
             { workflowId: "wf_1", atMost: SUPERSEDED_COUNT_LIMIT + 1 },
           ]);
         })
+    );
+
+    // A run of a workflow that tracks an Entity answers it as one object, and a
+    // run of one that tracks none answers null beside its Entity Value.
+    it.effect("answers each run's tracked Entity", () =>
+      Effect.gen(function* () {
+        const repos = makeRepos([
+          {
+            ...execution("exec_1", "completed"),
+            entityValue: null,
+            entityType: "patient",
+            entityId: "pat_20418",
+          },
+          execution("exec_2", "completed"),
+        ]);
+
+        const result = yield* getWorkflowExecutions({
+          workflowId: "wf_1",
+          includeSuperseded: false,
+        }).pipe(Effect.provide(repos.layer));
+
+        assert.deepStrictEqual(
+          result.items.map(({ entity, entityValue }) => ({
+            entity,
+            entityValue,
+          })),
+          [
+            { entity: { type: "patient", id: "pat_20418" }, entityValue: null },
+            { entity: null, entityValue: "appt_1" },
+          ]
+        );
+      })
     );
 
     it.effect("asks for the superseded rows when the toggle is on", () =>

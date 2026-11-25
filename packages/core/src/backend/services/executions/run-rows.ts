@@ -270,6 +270,21 @@ export function scheduledRunFields(row: ScheduledRunColumns): {
       };
 }
 
+/**
+ * The tracked Entity a run is about, as the run lists and the logs answer it:
+ * the Entity's type and the id its Event binding selected. Null for a run of a
+ * workflow that tracks no Entity. The database holds both columns set or both
+ * null, so one null column means the run has no Entity.
+ */
+export function runEntity(row: {
+  entityType: string | null;
+  entityId: string | null;
+}): { type: string; id: string } | null {
+  return row.entityType === null || row.entityId === null
+    ? null
+    : { type: row.entityType, id: row.entityId };
+}
+
 /** The slot a scheduled start was for, and the zone its schedule reads time in. */
 export type ScheduledSlot = { at: Date; timeZone: string };
 

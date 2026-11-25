@@ -28,6 +28,8 @@ function createRow(
     runMode: "live",
     startEventName: null,
     entityValue: null,
+    entityType: null,
+    entityId: null,
     versionKind: "published",
     versionNumber: 1,
     error: null,
@@ -149,6 +151,29 @@ describe("getWorkflowExecutionsGlobal", () => {
           id: "exec_2",
         });
         assert.isNull(result.runRetentionMs);
+      })
+    );
+
+    it.effect("answers each run's tracked Entity", () =>
+      Effect.gen(function* () {
+        const repo = makeExecutionRepo([
+          createRow({
+            id: "exec_4",
+            startedAt: new Date("2026-02-18T19:41:00.000Z"),
+            entityType: "patient",
+            entityId: "pat_20418",
+          }),
+          ...page,
+        ]);
+
+        const result = yield* getWorkflowExecutionsGlobal({ limit: 2 }).pipe(
+          Effect.provide(repo.layer)
+        );
+
+        assert.deepStrictEqual(
+          result.items.map((item) => item.entity),
+          [{ type: "patient", id: "pat_20418" }, null]
+        );
       })
     );
 
