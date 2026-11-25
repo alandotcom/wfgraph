@@ -4,7 +4,7 @@ description: A self-hosted visual workflow editor that reads as an instrument, w
 colors:
   paper: "oklch(1 0 0)"
   graphite-ink: "oklch(0.145 0 0)"
-  graphite-mid: "oklch(0.556 0 0)"
+  graphite-mid: "oklch(0.54 0 0)"
   graphite-line: "oklch(0.922 0 0)"
   graphite-wash: "oklch(0.97 0 0)"
   page: "oklch(0.96 0 0)"
@@ -14,7 +14,7 @@ colors:
   paper-dark: "oklch(0.98 0 0)"
   graphite-line-dark: "oklch(0.27 0 0)"
   graphite-wash-dark: "oklch(0.15 0 0)"
-  signal-red: "oklch(0.577 0.245 27.325)"
+  signal-red: "oklch(0.555 0.245 27.325)"
   signal-green: "oklch(0.526 0.148 149.58)"
   signal-amber: "oklch(0.546 0.12 70.08)"
   signal-blue: "oklch(0.482 0.18 259.8)"
@@ -130,16 +130,16 @@ An achromatic graphite ramp carries the entire interface; saturated hues exist o
 - **Graphite Wash** (oklch(0.97 0 0)): Secondary and muted fills: hover states, secondary buttons, muted badges.
 - **Page** (oklch(0.96 0 0), oklch(0.18 0 0) in dark): The surface the editor shell is inset on, and the only thing that uses it. `--page`. Solved for the step against the two surfaces the shell shows at its edge, Paper and Panel, which measures 1.12:1 and 1.08:1. It is its own step on the ramp rather than a reuse of Graphite Wash, because a page and a fill inside a panel are different things and one value cannot be retuned for both; at three levels of 255 apart nobody would tell them apart where they met, so the separation is in what each token means. In dark mode the step goes up rather than down, as Graphite Wash Dark and the card step do, because nothing renders darker than Void: it sits between those two, above the wash so a fill inside the shell never matches the page and below the card so the page never reads as a surface something could sit on. The shell is what stays Void there, since the canvas is Void by design and lifting the shell would repaint the field the graph floats on.
 - **Graphite Line** (oklch(0.922 0 0)): Hairline borders and input strokes (oklch(0.27 0 0) in dark mode).
-- **Graphite Mid** (oklch(0.556 0 0)): Muted foreground for descriptions and placeholders. This is the darkest gray allowed to carry text on Paper (4.5:1 floor); anything lighter is decorative only.
+- **Graphite Mid** (oklch(0.54 0 0), oklch(0.65 0 0) in dark): Muted foreground for descriptions and placeholders. It is solved against Graphite Wash, the darkest ground muted text sits on: 4.61:1 there and 5.02:1 on Paper. Anything lighter is decorative only.
 - **Canvas Line** (oklch(0.6 0 0), oklch(0.48 0 0) in dark): The structural stroke on the React Flow canvas, carrying a node's resting border and the wire between two nodes. `--canvas-line`. It is a separate step from Graphite Line because a node card is Paper on a Paper canvas, so this stroke is the whole card edge rather than a hairline over a fill; it is solved for the 3:1 WCAG 1.4.11 asks of a graphic carrying meaning, which Graphite Line misses at 1.20:1. Canvas only. A border inside a panel or a card is still Graphite Line.
 - **Canvas Line Muted** (oklch(0.78 0 0), oklch(0.37 0 0) in dark): One step down at 2.0:1, for an edge into a subtree the run cannot reach. `--canvas-line-muted`. It is a value per theme rather than Canvas Line mixed toward the background, because mixing toward Paper lightens while mixing toward Void darkens, so a single expression reads correctly in one theme and disappears in the other. This is the one canvas stroke below the 3:1 floor, and it is deliberate: an unreachable edge has to read as quieter than a live one, and the meaning is carried by the wider dash gap and the stopped march rather than by contrast alone. Treat 2.0:1 as the floor for a deliberately quiet stroke, not as a target to design toward.
 - **Void** (oklch(0 0 0)): Dark mode's background. True black, tuned for the OLED-dark canvas where the graph floats.
 
 ### Tertiary (signals)
 
-Each signal is one token carrying both the fill and the text form. On Paper, every light-mode value clears the 4.5:1 body floor as text: Amber 5.05:1, Green 5.01:1, Red 4.77:1, Blue 6.72:1. A signal's own 10% tint costs it about six tenths of a point, leaving Red at 4.01:1, Green at 4.35:1 and Amber at 4.42:1. The `bg-x/10 text-x` pattern is therefore below the floor for those three at Caption and Body sizes. Blue holds at 5.76:1. Where words must be read at those sizes, drop the fill and let the signal carry a dot, the border, or the word itself on Paper, as the dashboard's Published mode cell does with an Amber dot and an Amber word. Closing the gap for the tint pattern needs a second token per signal, a foreground tuned against the tinted ground. Until those tokens exist, a tinted band carrying its own signal text is a known shortfall.
+Each signal is one token carrying both the fill and the text form. As text, every light-mode value clears the 4.5:1 body floor on Paper, Panel and Graphite Wash: Red 5.08, 4.86 and 4.66:1, Green 5.01, 4.80 and 4.59:1, Amber 5.05, 4.84 and 4.63:1, Slate 5.51, 5.28 and 5.06:1, Blue 6.72, 6.44 and 6.17:1. In dark, the lowest is Red at 4.75:1 on the card step. A signal's text never sits on that signal's own tint, where it measured about 4:1. A status either sets a signal dot or icon beside a word in foreground text, or sets the word itself in the signal color on a neutral ground. The Workflows table's State column, the All Runs status and a node's status chip use the first form. A run row and the Published mode cell use the second. A tinted band, such as a failed run's error or a Waiting notice, keeps its tint, border and icon in the signal and sets its words in foreground text. A solid signal disc carries its glyph in the signal's foreground token: the comparison marker and the blocking issue badge measure at least 4.80:1 in light and 5.49:1 in dark.
 
-- **Signal Red** (oklch(0.577 0.245 27.325)): Destructive actions and failed runs. `--destructive`.
+- **Signal Red** (oklch(0.555 0.245 27.325)): Destructive actions and failed runs. `--destructive`.
 - **Signal Green** (oklch(0.526 0.148 149.58)): Successful runs. `--success`.
 - **Signal Amber** (oklch(0.546 0.12 70.08)): Waiting runs, a step the executor is retrying, an Unclaimed run (one no worker has picked up within its host's threshold, a minute for a worker loop at its default poll), test recipients (a Published mode of Test, and every Draft run), and unmet prerequisites. Nothing else uses it; a paused workflow is graphite. `--warning`.
 - **Signal Blue** (oklch(0.482 0.18 259.8)): Work in progress, including the running-node border sweep, and live template variables. `--info`.
@@ -695,7 +695,8 @@ version usage it acts on.
 
 Comparison marks nodes with `A`, `M`, or `D` in addition to signal color. Added
 nodes use Signal Green, modified nodes use Signal Amber, and deleted nodes use
-Signal Red. Deleted edges use a distinct dotted treatment. Node position,
+Signal Red. The marker is a solid signal disc with a 12px letter, and on the
+canvas it grows as the zoom drops so the letter stays 12px on screen. Deleted edges use a distinct dotted treatment. Node position,
 dimensions, and measured geometry never create a change marker.
 
 Below `md`, **Changes** uses the mobile sequence of sheets. Switching to
@@ -734,7 +735,7 @@ come from the extension catalog; machine paths don't appear as labels.
 
 - **Do** keep every neutral at zero chroma; the graphite ramp is the entire field.
 - **Do** route every status color through its token (`--destructive`, `--success`, `--warning`, `--info`, `--cancelled`). A Tailwind palette class like `green-500` in the editor is a defect.
-- **Do** hold body and muted text at or above 4.5:1: Graphite Mid (oklch(0.556 0 0)) is the lightness floor for text on Paper.
+- **Do** hold body and muted text at or above 4.5:1: Graphite Mid (oklch(0.54 0 0)) is the lightness floor for text on Paper and Graphite Wash.
 - **Do** use the standard component vocabulary everywhere; a save button looks identical on every screen.
 - **Do** keep motion in the 150–250ms band, easing out, conveying state (the running-node border sweep is the model).
 - **Do** honor `prefers-reduced-motion` with a static alternative for every animation, including the node border sweep.

@@ -1,3 +1,4 @@
+import { Hourglass, XCircle } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { Fragment, type RefObject, useState } from "react";
 import { getRelativeTime } from "@wfgraph/shared/utils/time";
@@ -299,7 +300,11 @@ export function WorkflowRunDetail({
             <section className="space-y-3 rounded-md border border-warning/30 bg-warning/10 p-3">
               {activeWaits.map((wait) => (
                 <div className="space-y-1.5" key={wait.id}>
-                  <h3 className="font-medium text-warning text-xs">
+                  <h3 className="flex items-center gap-1.5 font-medium text-xs">
+                    <Hourglass
+                      aria-hidden="true"
+                      className="size-3.5 shrink-0 text-warning"
+                    />
                     Waiting at {wait.nodeName}
                   </h3>
                   <p className="break-words text-xs">{waitingSummary(wait)}</p>
@@ -381,13 +386,19 @@ export function WorkflowRunDetail({
           ) : null}
 
           {execution.status === "failed" && (failedLog || execution.error) ? (
+            // The band's tint, border and icon carry the signal. Its text is
+            // foreground, because red text on a red tint measures under 4.5:1.
             <section className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
-              <h3 className="font-medium text-destructive text-xs">
+              <h3 className="flex items-center gap-1.5 font-medium text-xs">
+                <XCircle
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0 text-destructive"
+                />
                 {failedLog
                   ? `Failed at ${failedLog.nodeName || failedLog.nodeType}`
                   : "Run failed"}
               </h3>
-              <p className="mt-1 break-words text-destructive text-xs">
+              <p className="mt-1 break-words text-xs">
                 {failedLog?.error ?? execution.error}
               </p>
             </section>

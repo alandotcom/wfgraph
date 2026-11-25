@@ -44,36 +44,38 @@ export type NodeProps = ComponentProps<typeof Card> & {
 // non-idle status renders its word next to its icon, in the words
 // `runNodeEvidenceLabel` gives every surface that names a step's run status,
 // and the whole thing is a live region so status transitions are announced.
+// The tint and the icon carry the signal and the word is foreground text,
+// because a signal's text on its own tint measures under 4.5:1.
 const STATUS_CHIP = {
   running: {
     Icon: Loader2,
-    className: "bg-primary/5 text-foreground",
-    iconClassName: "animate-spin motion-reduce:animate-none",
+    className: "bg-primary/5",
+    iconClassName: "animate-spin text-info motion-reduce:animate-none",
   },
   waiting: {
     Icon: Hourglass,
-    className: "bg-warning/10 text-warning",
-    iconClassName: "",
+    className: "bg-warning/10",
+    iconClassName: "text-warning",
   },
   retrying: {
     Icon: RotateCw,
-    className: "bg-warning/10 text-warning",
-    iconClassName: "",
+    className: "bg-warning/10",
+    iconClassName: "text-warning",
   },
   success: {
     Icon: Check,
-    className: "bg-success/10 text-success",
-    iconClassName: "",
+    className: "bg-success/10",
+    iconClassName: "text-success",
   },
   error: {
     Icon: XCircle,
-    className: "bg-destructive/10 text-destructive",
-    iconClassName: "",
+    className: "bg-destructive/10",
+    iconClassName: "text-destructive",
   },
   cancelled: {
     Icon: Ban,
-    className: "bg-cancelled/10 text-cancelled",
-    iconClassName: "",
+    className: "bg-cancelled/10",
+    iconClassName: "text-cancelled",
   },
 } as const;
 
@@ -86,7 +88,7 @@ const NodeStatusChip = ({ status }: { status?: NodeProps["status"] }) => {
   return (
     <div
       className={cn(
-        "absolute top-2 right-2 z-10 flex items-center gap-1 rounded-sm py-0.5 pr-2 pl-1.5 font-medium text-xs leading-none",
+        "absolute top-2 right-2 z-10 flex items-center gap-1 rounded-sm py-0.5 pr-2 pl-1.5 font-medium text-foreground text-xs leading-none",
         chip.className
       )}
       role="status"

@@ -59,8 +59,9 @@
   --color-canvas-line: var(--canvas-line);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  /* Run-status signals. Every value is solved so the text form clears 4.5:1 on
-     its own 10% tint, which is the `bg-x/10 text-x` pattern the editor uses. */
+  /* Run-status signals. A signal's text form clears 4.5:1 on Paper, Panel and
+     Graphite Wash in light, and on every dark surface. Nothing sets a signal's
+     text on that signal's own tint; see DESIGN.md section 2. */
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
@@ -122,10 +123,15 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  /* Solved against `--muted` rather than Paper, because muted text also sits on
+     Wash fills: the Group card, a secondary button, a keycap. 4.61:1 on Wash,
+     5.02:1 on Paper. */
+  --muted-foreground: oklch(0.54 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  /* 4.66:1 on Wash and 5.08:1 on Paper, so a Failed word on the Group card's
+     Wash still clears the 4.5:1 text floor. */
+  --destructive: oklch(0.555 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
   --success: oklch(0.526 0.148 149.58);
   --success-foreground: oklch(0.985 0 0);
@@ -418,6 +424,14 @@
 
 /* The attribution and the MiniMap sit beside open Canvas Reveal, whose covered
    width the canvas box publishes as `--reveal-occupied-width`. The panel's own
+/* A change marker on a canvas card grows as the canvas zooms out, so its 12px
+   letter still reads at 12px on screen. Changes opens near 0.5 zoom, where an
+   unscaled letter measured 5px. The cap of 3 keeps the disc inside the card. */
+.react-flow__node .comparison-marker {
+  transform-origin: top right;
+  scale: clamp(1, calc(1 / var(--rf-zoom, 1)), 3);
+}
+
    margin keeps the gap to Reveal's edge. The extra classes outrank React Flow's
    `.react-flow__panel.right`, which loads after this file. */
 .react-flow .react-flow__panel.react-flow__attribution.right,

@@ -19,7 +19,7 @@ import {
   formatDuration,
   runStatusLabel,
   runStatusTone,
-  statusToneBadgeClass,
+  statusToneDotClass,
 } from "#src/components/workflow/workflow-run-shared";
 import type { WorkflowExecutionsGlobalResult } from "#src/lib/rpc-client";
 import type { ListActivity } from "#src/lib/run-executor-activity";
@@ -48,20 +48,24 @@ export type RunHistoryTableRow = Omit<
 > & { activity: ListActivity | null; receivedAtMs: number | null };
 
 /**
- * A run's status badge, with what the executor is doing about the run beneath
- * it. Its own clock ticks while the run is unclaimed, so the table's columns
- * stay as they were built.
+ * A run's status as a signal dot and its word, with what the executor is
+ * doing about the run beneath it. Its own clock ticks while the run is
+ * unclaimed, so the table's columns stay as they were built.
  */
 function RunHistoryStatus({ run }: { run: RunHistoryTableRow }) {
   const activity = useListActivityLabel(run.activity, run.receivedAtMs);
   return (
     <div className="min-w-0">
-      <span
-        className={cn(
-          "inline-flex rounded border px-2 py-0.5 font-medium text-xs",
-          statusToneBadgeClass(runStatusTone(run.status))
-        )}
-      >
+      {/* The dot carries the signal and the word stays in foreground text, the
+          treatment the Workflows table's State column uses. */}
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-foreground text-xs">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "size-2 shrink-0 rounded-full",
+            statusToneDotClass(runStatusTone(run.status))
+          )}
+        />
         {runStatusLabel(run.status)}
       </span>
       {activity === null ? null : (

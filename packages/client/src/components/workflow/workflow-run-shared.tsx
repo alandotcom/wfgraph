@@ -109,15 +109,6 @@ const NODE_STATUS_LABELS = {
   cancelled: "Canceled",
 } satisfies Record<NodeStatus, string>;
 
-const BADGE_CLASSES: Record<StatusTone, string> = {
-  success: "border-success/30 bg-success/10 text-success",
-  destructive: "border-destructive/30 bg-destructive/10 text-destructive",
-  info: "border-info/30 bg-info/10 text-info",
-  warning: "border-warning/30 bg-warning/10 text-warning",
-  cancelled: "border-cancelled/30 bg-cancelled/10 text-cancelled",
-  muted: "border-muted bg-muted/40 text-muted-foreground",
-};
-
 export function statusToneDotClass(tone: StatusTone): string {
   return DOT_CLASSES[tone];
 }
@@ -130,10 +121,6 @@ export function runStatusLabel(status: WorkflowExecutionStatus): string {
 /** How a node execution's status reads. */
 export function nodeStatusLabel(status: NodeStatus): string {
   return NODE_STATUS_LABELS[status];
-}
-
-export function statusToneBadgeClass(tone: StatusTone): string {
-  return BADGE_CLASSES[tone];
 }
 
 const TEXT_CLASSES: Record<StatusTone, string> = {

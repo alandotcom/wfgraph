@@ -47,15 +47,16 @@ export function NodeIssueBadge({
         "rounded-full p-1",
         placement === "corner" ? "absolute top-2 left-2 z-10" : "shrink-0",
         // Blocking earns the warning colour; a warning-severity issue stays
-        // graphite, because a broken template reference still runs.
+        // graphite, because a broken template reference still runs. Both discs
+        // are full strength, so disc and glyph each clear 4.5:1 in both themes.
         issues.severity === "blocking"
-          ? "bg-warning/50"
-          : "bg-muted-foreground/40"
+          ? "bg-warning text-warning-foreground"
+          : "bg-muted-foreground text-background"
       )}
       role="img"
       title={rest.length > 0 ? `${first} and ${rest.length} more` : first}
     >
-      <AlertTriangle className="size-3.5 text-background" />
+      <AlertTriangle className="size-3.5" />
     </div>
   );
 }

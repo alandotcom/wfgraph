@@ -28,6 +28,8 @@ export function WarningCallout({
     );
   }
 
+  // The box's tint, border and icon carry the amber, and its words are
+  // foreground text: amber text on an amber tint measures under 4.5:1.
   return (
     <div
       className={cn(
@@ -38,11 +40,11 @@ export function WarningCallout({
       <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" />
       <div className="space-y-0.5">
         {title ? (
-          <p className="font-medium text-warning text-xs">
+          <p className="font-medium text-xs">
             {title}
           </p>
         ) : null}
-        <p className="text-warning text-xs">{children}</p>
+        <p className="text-xs">{children}</p>
       </div>
     </div>
   );

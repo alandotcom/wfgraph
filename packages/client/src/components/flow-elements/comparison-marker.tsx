@@ -4,10 +4,12 @@ import {
   type ComparisonNodeAnnotation,
 } from "#src/lib/workflow-graph-types";
 
+// A full-strength signal disc with the letter in the signal's foreground, which
+// clears 4.5:1 in both themes. A signal letter on its own tint measured 4:1.
 const markerStyle: Record<ComparisonNodeAnnotation["kind"], string> = {
-  added: "border-success/40 bg-success/10 text-success",
-  modified: "border-warning/40 bg-warning/10 text-warning",
-  removed: "border-destructive/40 bg-destructive/10 text-destructive",
+  added: "bg-success text-success-foreground",
+  modified: "bg-warning text-warning-foreground",
+  removed: "bg-destructive text-destructive-foreground",
 };
 
 const markerLetter: Record<ComparisonNodeAnnotation["kind"], string> = {
@@ -16,7 +18,11 @@ const markerLetter: Record<ComparisonNodeAnnotation["kind"], string> = {
   removed: "D",
 };
 
-/** A compact, color-supplemented marker for a node in a publication comparison. */
+/**
+ * A compact, color-supplemented marker for a node in a publication comparison.
+ * On the canvas, `.comparison-marker` in `globals.css` grows it against the
+ * zoom so the letter never reads smaller than 12px on screen.
+ */
 export function ComparisonMarker({
   comparison,
   className,
@@ -31,7 +37,7 @@ export function ComparisonMarker({
     <span
       aria-hidden="true"
       className={cn(
-        "absolute top-2 right-2 inline-flex size-5 items-center justify-center rounded-full border font-semibold text-[10px] leading-none",
+        "comparison-marker absolute top-2 right-2 inline-flex size-5 items-center justify-center rounded-full font-semibold text-xs leading-none",
         markerStyle[comparison.kind],
         className
       )}

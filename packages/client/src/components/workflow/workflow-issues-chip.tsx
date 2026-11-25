@@ -41,7 +41,7 @@ export function WorkflowIssuesChip() {
       className={cn(
         "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded px-1.5 py-0.5 font-medium transition-colors",
         hasBlocking
-          ? "text-warning hover:bg-warning/10"
+          ? "text-warning hover:bg-accent"
           : "hover:bg-accent hover:text-foreground"
       )}
       onClick={showIssues}

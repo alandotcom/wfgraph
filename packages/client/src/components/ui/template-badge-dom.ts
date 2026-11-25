@@ -90,7 +90,9 @@ const FILLER_ATTRIBUTE = "data-filler";
 const BADGE_BASE_CLASS =
   "inline-flex h-[calc(--spacing(4.75))] items-center gap-1 rounded px-1.5 font-mono text-xs border mx-0.5";
 const LIVE_BADGE_CLASS = `${BADGE_BASE_CLASS} bg-info/10 text-info border-info/20`;
-const BROKEN_BADGE_CLASS = `${BADGE_BASE_CLASS} bg-destructive/10 text-destructive border-destructive/20`;
+// A broken badge's words are foreground text and its border carries the red at
+// full strength, because red text on a red tint measures under 4.5:1.
+const BROKEN_BADGE_CLASS = `${BADGE_BASE_CLASS} bg-destructive/10 text-foreground border-destructive`;
 
 /** The raw token a badge stands for, or null for anything that is not a badge. */
 function templateOf(node: Node): string | null {

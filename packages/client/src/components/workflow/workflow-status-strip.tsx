@@ -188,7 +188,7 @@ function PublishedModeControl({
   const label = publishedModeWord(workflowMode);
   const faceClass = cn(
     "h-6 shrink-0 px-1.5 font-medium",
-    isTest && "text-warning hover:bg-warning/10 hover:text-warning"
+    isTest && "text-warning hover:text-warning"
   );
   // The accessible name starts with the visible word and adds the setting it
   // belongs to, as WCAG 2.5.3 requires.
@@ -342,7 +342,7 @@ function DraftStatus({ workflowId }: { workflowId?: string | undefined }) {
               Draft changed elsewhere
             </span>
             <Button
-              className="h-6 shrink-0 text-warning hover:bg-warning/10 hover:text-warning"
+              className="h-6 shrink-0 text-warning hover:text-warning"
               onClick={() => window.location.reload()}
               size="sm"
               type="button"
@@ -413,7 +413,7 @@ function PinnedRunStatus() {
           closed or swapped to another view while the run stays on the canvas
           refusing every edit. */}
       <Button
-        className="h-6 shrink-0 text-info hover:bg-info/10 hover:text-info"
+        className="h-6 shrink-0 text-info hover:text-info"
         onClick={showDraft}
         size="sm"
         type="button"
@@ -454,7 +454,7 @@ function ChangesStatus() {
         <WorkflowSaveStatus />
       </StatusItems>
       <Button
-        className="h-6 shrink-0 text-info hover:bg-info/10 hover:text-info"
+        className="h-6 shrink-0 text-info hover:text-info"
         onClick={showDraft}
         size="sm"
         type="button"
