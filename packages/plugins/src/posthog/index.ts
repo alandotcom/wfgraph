@@ -27,6 +27,7 @@ import {
 } from "#src/posthog/capture";
 import { posthogOAuth } from "#src/posthog/oauth";
 import { readProperties } from "#src/posthog/properties";
+import { testPostHog } from "#src/posthog/test";
 
 const posthogCredentialFields = {
   POSTHOG_PROJECT_API_KEY: {
@@ -133,7 +134,7 @@ export const posthog = defineIntegration({
 
   // The connection test reaches PostHog, so it stays behind a dynamic import
   // until someone presses "Test connection".
-  test: async () => (await import("#src/posthog/test")).testPostHog,
+  test: testPostHog,
 
   actions: {
     "capture-event": {

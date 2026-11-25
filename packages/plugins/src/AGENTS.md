@@ -131,6 +131,11 @@ the UI calls it. It is not an effect at its edge, so it is where `callExternalAs
 the runtime and provides the transport. Validate a key's format before spending a request
 where the system's keys have a known shape; it names the problem more precisely than a 401.
 
+`index.ts` imports `test[Name]` statically and passes it as `test`, and `resend/index.ts`
+passes its `config-options.ts` functions as each provider's `load` the same way. Those two
+modules therefore import only types from `index.ts`, since a value import would be an
+import cycle.
+
 ## icon.tsx and the ui record
 
 `src/ui.ts` is the one module the browser imports from this package. It exports

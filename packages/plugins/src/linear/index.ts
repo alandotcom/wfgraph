@@ -24,6 +24,7 @@ import { Effect, Schema } from "effect";
 import { isEmptyObject } from "es-toolkit/predicate";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { describeLinearFailure } from "#src/linear/errors";
+import { testLinear } from "#src/linear/test";
 
 const linearCredentialFields = {
   LINEAR_API_KEY: {
@@ -199,10 +200,7 @@ export function createLinear(createClient: CreateLinearClient) {
     description: "Create and manage issues in Linear",
     credentials: linearCredentialFields,
 
-    test: async () => {
-      const { testLinear } = await import("#src/linear/test");
-      return (creds) => testLinear(creds, createClient);
-    },
+    test: (credentials) => testLinear(credentials, createClient),
 
     actions: {
       "create-ticket": {

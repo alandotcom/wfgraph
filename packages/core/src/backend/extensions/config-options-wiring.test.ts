@@ -20,12 +20,12 @@ import { RESERVED_RECORD_KEYS } from "@wfgraph/shared/types/record-key";
 
 const templates: ConfigOptionsProvider = {
   answers: "options",
-  load: async () => async () => ({ status: "options", options: [] }),
+  load: async () => ({ status: "options", options: [] }),
 };
 
 const templateVariables: ConfigOptionsProvider = {
   answers: "fields",
-  load: async () => async () => ({ status: "fields", fields: [] }),
+  load: async () => ({ status: "fields", fields: [] }),
 };
 
 /** The one action every case below declares, so its config keys are fixed. */

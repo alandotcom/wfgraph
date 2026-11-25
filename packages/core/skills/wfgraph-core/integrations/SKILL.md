@@ -41,8 +41,8 @@ The host passes it in `extensions.integrations`. Build against
 - Action slug exists only as the `actions` record key; id is `${type}/${slug}`.
 - Keep each handler an object literal inside `defineIntegration`. Lifting it
   into a `const` drops the typed `bag`.
-- `test` is a loader so the vendor call stays behind a dynamic import until
-  "Test connection".
+- `test` takes the connection test function itself, imported statically.
+  It runs only when an operator presses "Test connection".
 - `input` draws fields. `configFields` adds what a schema cannot (placeholder,
   `showWhen`, `provider-select`). A closed string set labels its choices from
   `title` on singleton `const` or `enum` branches under `anyOf` or `oneOf`; an

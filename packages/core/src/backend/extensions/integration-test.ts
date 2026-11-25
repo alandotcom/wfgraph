@@ -43,11 +43,3 @@ export type IntegrationTestFunction<
   credentials: TCredentials,
   context: IntegrationTestContext
 ) => Promise<IntegrationTestResult>;
-
-/**
- * Loading is deferred, so declaring a test costs nothing until someone runs it
- * and the vendor code behind it stays out of the process until then.
- */
-export type IntegrationTestLoader<
-  TCredentials = Record<string, string | undefined>,
-> = () => Promise<IntegrationTestFunction<TCredentials>>;

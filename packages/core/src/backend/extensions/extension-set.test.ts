@@ -8,7 +8,7 @@ import {
   defineIntegration,
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
-import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
+import type { IntegrationTestFunction } from "#src/backend/extensions/integration-test";
 import type { ConfigOptionsProvider } from "#src/backend/extensions/config-options";
 import { stubStepEnvironment } from "#src/backend/lib/effect/test-layers";
 import { assembleExtensions } from "#src/backend/extensions/extension-set";
@@ -68,7 +68,7 @@ const sendSmsHandler = Effect.fn(function* () {
  */
 function aDefinition(
   type: string,
-  overrides: { slug?: string; test?: IntegrationTestLoader } = {}
+  overrides: { slug?: string; test?: IntegrationTestFunction } = {}
 ): IntegrationDefinition {
   return defineIntegration({
     type,
@@ -868,19 +868,17 @@ describe("assembleExtensions and an integration definition", () => {
     expect(set.stepFor("twilio/lookup-number")).toBeUndefined();
   });
 
-  it("says an integration has a test when it carries a loader, and answers it", async () => {
+  it("says an integration has a test when it carries one, and answers it", () => {
     const testTwilio = () => Promise.resolve({ success: true as const });
     const set = assembleExtensions({
-      integrations: [
-        aDefinition("twilio", { test: () => Promise.resolve(testTwilio) }),
-      ],
+      integrations: [aDefinition("twilio", { test: testTwilio })],
     });
 
     expect(findIntegration(set.catalog, "twilio")?.hasTest).toBe(true);
-    expect(await set.connectionTestFor("twilio")?.()).toBe(testTwilio);
+    expect(set.connectionTestFor("twilio")).toBe(testTwilio);
   });
 
-  it("says an integration has no test when it carries no loader", () => {
+  it("says an integration has no test when it carries none", () => {
     const set = assembleExtensions({ integrations: [aDefinition("twilio")] });
 
     expect(findIntegration(set.catalog, "twilio")?.hasTest).toBe(false);
@@ -1182,11 +1180,11 @@ describe("assembleExtensions and an integration definition", () => {
   it("keeps providers separate when type and provider names contain the former delimiter", () => {
     const firstProvider: ConfigOptionsProvider = {
       answers: "options",
-      load: async () => async () => ({ status: "options", options: [] }),
+      load: async () => ({ status: "options", options: [] }),
     };
     const secondProvider: ConfigOptionsProvider = {
       answers: "fields",
-      load: async () => async () => ({ status: "fields", fields: [] }),
+      load: async () => ({ status: "fields", fields: [] }),
     };
     const set = assembleExtensions({
       integrations: [

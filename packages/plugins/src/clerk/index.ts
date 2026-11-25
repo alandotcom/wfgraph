@@ -23,6 +23,7 @@ import {
   toClerkApiUser,
 } from "#src/clerk/client";
 import { parseClerkMetadata } from "#src/clerk/metadata";
+import { testClerk } from "#src/clerk/test";
 import { toClerkUserData } from "#src/clerk/types";
 
 const clerkCredentialFields = {
@@ -110,7 +111,7 @@ export const clerk = defineIntegration({
   description: "User authentication and management",
   credentials: clerkCredentialFields,
 
-  test: async () => (await import("#src/clerk/test")).testClerk,
+  test: testClerk,
 
   actions: {
     "get-user": {

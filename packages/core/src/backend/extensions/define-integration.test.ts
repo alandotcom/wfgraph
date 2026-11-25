@@ -164,7 +164,7 @@ describe("defineIntegration", () => {
         configOptions: {
           __proto__: {
             answers: "options",
-            load: async () => async () => ({
+            load: async () => ({
               status: "options",
               options: [],
             }),

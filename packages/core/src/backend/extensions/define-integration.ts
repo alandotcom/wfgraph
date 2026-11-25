@@ -13,7 +13,7 @@
  */
 
 import type { AnyEventDefinition } from "#src/backend/extensions/define-event";
-import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
+import type { IntegrationTestFunction } from "#src/backend/extensions/integration-test";
 import type { IntegrationWebhook } from "#src/backend/extensions/integration-webhook";
 import { assertSourcesAreDistinguishable } from "#src/backend/extensions/event-uniqueness";
 import {
@@ -70,16 +70,15 @@ export type IntegrationDefinition = {
   /** Provider behavior retained on the server when this integration supports OAuth. */
   readonly oauth?: IntegrationOAuth | undefined;
   /**
-   * What "Test connection" calls, absent when the integration offers none.
-   *
-   * A loader rather than a function: a connection test reaches the vendor over
-   * the network, so it stays behind a dynamic import until someone presses the
-   * button.
+   * The function "Test connection" calls, absent when the integration offers
+   * none. It runs only when an operator presses the button in the credentials
+   * dialog, so declaring it makes no network call.
    */
-  readonly test?: IntegrationTestLoader | undefined;
+  readonly test?: IntegrationTestFunction | undefined;
   /**
    * What a `provider-select` or `provider-fields` field asks, keyed by the name
-   * its `optionsSource.provider` uses. Deferred for the reason `test` is.
+   * its `optionsSource.provider` uses. Each provider's `load` runs when the
+   * editor opens a field that draws from it.
    */
   readonly configOptions?:
     | Readonly<Record<string, ConfigOptionsProvider>>
@@ -205,7 +204,7 @@ export function defineIntegration<
   readonly credentials: TCredentials;
   readonly oauth?: IntegrationOAuth | undefined;
   readonly test?:
-    | IntegrationTestLoader<CredentialsOf<TCredentials>>
+    | IntegrationTestFunction<CredentialsOf<TCredentials>>
     | undefined;
   readonly configOptions?:
     | Readonly<
@@ -233,7 +232,7 @@ export function defineIntegration(input: {
   readonly description: string;
   readonly credentials: CredentialFields;
   readonly oauth?: IntegrationOAuth | undefined;
-  readonly test?: IntegrationTestLoader | undefined;
+  readonly test?: IntegrationTestFunction | undefined;
   readonly configOptions?:
     | Readonly<Record<string, ConfigOptionsProvider>>
     | undefined;

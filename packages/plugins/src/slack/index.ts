@@ -16,6 +16,7 @@ import {
 import { Effect, Schema } from "effect";
 import { callSlack, describeSlackFailure } from "#src/slack/client";
 import { createSlackOAuth } from "#src/slack/oauth";
+import { testSlack } from "#src/slack/test";
 
 const slackCredentialFields = {
   SLACK_API_KEY: {
@@ -131,7 +132,7 @@ export const slack = (options?: SlackOptions) => {
 
     // The connection test reaches Slack, so it stays behind a dynamic import until
     // someone presses "Test connection".
-    test: async () => (await import("#src/slack/test")).testSlack,
+    test: testSlack,
 
     actions: {
       "send-message": {

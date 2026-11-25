@@ -18,8 +18,8 @@ and provides it through React context, so today that record is reachable from in
 repository alone.
 
 An integration is one `defineIntegration` value. It holds the credential form, an action
-per record key, the Events it owns, an optional webhook that produces them, and a loader
-for the connection test.
+per record key, the Events it owns, an optional webhook that produces them, and the
+connection test.
 
 ```ts
 import {
@@ -31,6 +31,8 @@ import {
 import { Effect, Schema } from "effect";
 // Your own client over `callExternal`. It answers an Effect the handler yields.
 import { createThing } from "#src/my-service/client";
+// The function "Test connection" calls with the credentials the operator entered.
+import { testMyService } from "#src/my-service/test";
 
 // The key names the credential: it is where the stored config holds the value
 // and what a handler reads it under. The dialog asks in the order written here.
@@ -47,9 +49,8 @@ export const myService = defineIntegration({
   label: "My Service",
   description: "What this integration does",
   credentials: myServiceCredentials,
-  // The test reaches the system, so it stays behind a dynamic import until
-  // someone presses "Test connection".
-  test: async () => (await import("#src/my-service/test")).testMyService,
+  // Runs only when an operator presses "Test connection".
+  test: testMyService,
   // The record key is the action slug, and its only home. Assembly computes the
   // action id "my-service/do-something".
   actions: {
@@ -299,11 +300,11 @@ static `options` list. `provider-select` draws a dropdown over what that provide
 one config key, so the handler still reads one string and parses it.
 
 ```ts
+import { templateOptions } from "#src/my-service/config-options";
+
+// ...on the integration:
 configOptions: {
-  templates: {
-    answers: "options",
-    load: async () => (await import("./config-options")).templateOptions,
-  },
+  templates: { answers: "options", load: templateOptions },
 },
 // ...on the action:
 configFields: [

@@ -44,7 +44,7 @@ import {
   checkIntegration,
   type IntegrationDefinition,
 } from "#src/backend/extensions/define-integration";
-import type { IntegrationTestLoader } from "#src/backend/extensions/integration-test";
+import type { IntegrationTestFunction } from "#src/backend/extensions/integration-test";
 import type { IntegrationOAuth } from "#src/backend/extensions/oauth";
 import {
   assertConfigOptionsProviders,
@@ -96,7 +96,7 @@ export type ExtensionSet = {
   readonly stepFor: (actionId: string) => StepFactory | undefined;
   readonly connectionTestFor: (
     type: string
-  ) => IntegrationTestLoader | undefined;
+  ) => IntegrationTestFunction | undefined;
   /**
    * What a provider-backed config field asks, keyed by integration type and the
    * name its `optionsSource` used. Server-only, like `connectionTestFor`: the
@@ -359,7 +359,7 @@ export function toEntityMetadata(entity: AnyEntityDefinition): EntityMetadata {
 type Assembly = {
   actions: ActionMetadata[];
   steps: Map<string, StepFactory>;
-  tests: Map<string, IntegrationTestLoader>;
+  tests: Map<string, IntegrationTestFunction>;
   /** Keyed first by integration type, then by the provider it declares. */
   configOptions: Map<string, Map<string, ConfigOptionsProvider>>;
   /** Keyed first by host action id, then by its inferred picker field. */

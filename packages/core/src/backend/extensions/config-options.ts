@@ -88,11 +88,6 @@ export type ConfigOptionsFunction<
   request: ConfigOptionsRequest
 ) => Promise<ConfigOptionsAnswer>;
 
-/** Deferred for the reason `IntegrationTestLoader` is deferred. */
-export type ConfigOptionsLoader<
-  TCredentials = Record<string, string | undefined>,
-> = () => Promise<ConfigOptionsFunction<TCredentials>>;
-
 /**
  * `answers` is what makes a field's wiring checkable before anyone opens the
  * panel: a `provider-select` needs options and a `provider-fields` needs fields,
@@ -102,7 +97,7 @@ export type ConfigOptionsProvider<
   TCredentials = Record<string, string | undefined>,
 > = {
   readonly answers: "options" | "fields";
-  readonly load: ConfigOptionsLoader<TCredentials>;
+  readonly load: ConfigOptionsFunction<TCredentials>;
 };
 
 /** A host picker can explain why its choices are temporarily unavailable. */
