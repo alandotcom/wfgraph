@@ -146,7 +146,7 @@ const OPENABLE_ROW_CLASS = "cursor-pointer hover:bg-muted/60 active:bg-muted";
  * own gets.
  */
 const FOCUSABLE_ROW_CLASS =
-  "outline-none focus-visible:bg-muted/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
+  "outline-none focus-visible:bg-muted/60 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring";
 
 /**
  * The one status a workflow row states, answering whether it reaches anyone

@@ -100,7 +100,7 @@ const runHistoryTableFeatures = tableFeatures({
  * stop, and its keyboard focus wears the hover's wash and a 2px ring outline.
  */
 const ROW_CLASS =
-  "grid w-full cursor-pointer items-center border-b px-4 outline-none last:border-b-0 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring active:bg-muted";
+  "grid w-full cursor-pointer items-center border-b px-4 outline-none last:border-b-0 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring active:bg-muted";
 
 const columnHelper = createColumnHelper<
   typeof runHistoryTableFeatures,
