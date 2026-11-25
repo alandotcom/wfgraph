@@ -103,10 +103,33 @@ function renderOutline(
     comparison?: WorkflowComparisonPayload;
     /** Open the run the design shows: waiting in the Group, failed at step 10. */
     run?: boolean;
+    /** The Overlapping runs rule the seeded workflow's start holds. */
+    concurrency?: "newest-wins" | "first-wins" | "unlimited";
   } = {}
 ) {
   const store = createStore();
-  const hero = toWorkflowGraphData(createSerializedWorkflowGraph(heroGraph()));
+  const seeded = heroGraph();
+  const hero = toWorkflowGraphData(
+    createSerializedWorkflowGraph({
+      ...seeded,
+      nodes: seeded.nodes.map((node) =>
+        node.data.type === "lifecycle" && options.concurrency
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                config: {
+                  lifecycleRules: {
+                    ...(node.data.config?.lifecycleRules as object),
+                    concurrency: options.concurrency,
+                  },
+                },
+              },
+            }
+          : node
+      ),
+    })
+  );
   store.set(currentWorkflowIdAtom, "workflow_1");
   // A graph edit saves the draft; the save resolves with the draft as saved.
   store.set(workflowApiAtom, {
@@ -190,6 +213,17 @@ function row(name: string): HTMLElement {
 }
 
 describe("WorkflowOutline", () => {
+  it("says under Starts when what a newer start does to the run in progress", async () => {
+    renderOutline({ concurrency: "newest-wins" });
+    const view = within(await tree());
+
+    expect(
+      view.getByText(
+        "A newer Appointment created ends the run in progress. Its steps not yet reached never run."
+      )
+    ).toBeTruthy();
+  });
+
   it("lists the seeded workflow in run order with numbers, outlet labels and sections", async () => {
     renderOutline();
     const view = within(await tree());
