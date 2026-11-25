@@ -527,6 +527,96 @@ describe("workflow versions", () => {
       })
     );
 
+    it.effect(
+      "reads what a published version changed against the one before it",
+      () =>
+        Effect.gen(function* () {
+          const previous = version({
+            id: "ver_1",
+            version: 1,
+            graph: graph({ message: "first" }),
+          });
+          const read = version({
+            id: "ver_2",
+            version: 2,
+            graph: graph({ message: "second" }),
+          });
+          const pages: unknown[] = [];
+          const result = yield* compareWorkflowVersion({
+            workflowId: "wf_1",
+            versionId: read.id,
+          }).pipe(
+            Effect.provide(
+              stubWorkflowRepo({
+                findById: () =>
+                  Effect.succeed(workflow({ publishedVersionId: read.id })),
+                findVersionById: (id) =>
+                  Effect.succeed(id === read.id ? read : previous),
+                listVersionHistoryPage: (page) => {
+                  pages.push(page);
+                  return Effect.succeed([
+                    { ...previous, version: 1, isCurrent: false },
+                  ]);
+                },
+              })
+            )
+          );
+
+          assert.deepStrictEqual(pages, [
+            { workflowId: "wf_1", limit: 1, cursor: { version: 2 } },
+          ]);
+          assert.strictEqual(result.proposedVersion, 2);
+          assert.strictEqual(result.baseVersion?.version, 1);
+          assert.deepStrictEqual(
+            result.nodeChanges.map(({ nodeId, kind }) => ({ nodeId, kind })),
+            [{ nodeId: "action_1", kind: "modified" }]
+          );
+        })
+    );
+
+    it.effect("reads version 1 against the empty graph", () =>
+      Effect.gen(function* () {
+        const first = version({ id: "ver_1", version: 1 });
+        const result = yield* compareWorkflowVersion({
+          workflowId: "wf_1",
+          versionId: first.id,
+        }).pipe(
+          Effect.provide(
+            stubWorkflowRepo({
+              findById: () => Effect.succeed(workflow()),
+              findVersionById: () => Effect.succeed(first),
+              listVersionHistoryPage: () => Effect.succeed([]),
+            })
+          )
+        );
+
+        assert.strictEqual(result.baseVersion, null);
+        assert.strictEqual(result.proposedVersion, 1);
+        assert.strictEqual(result.baseGraph.nodes.length, 0);
+      })
+    );
+
+    it.effect("conceals a version read from another workflow", () =>
+      Effect.gen(function* () {
+        const foreign = version({ workflowId: "wf_other" });
+        const failure = yield* compareWorkflowVersion({
+          workflowId: "wf_1",
+          versionId: foreign.id,
+        }).pipe(
+          Effect.provide(
+            stubWorkflowRepo({
+              findById: () => Effect.succeed(workflow()),
+              findVersionById: () => Effect.succeed(foreign),
+            })
+          ),
+          Effect.flip
+        );
+
+        assert.instanceOf(failure, NotFound);
+        assert.strictEqual(failure.error, "Workflow version not found");
+      })
+    );
+
     // A test-mode draft run mints a snapshot and a Publish does not, so the
     // history never offers a snapshot to compare against.
     it.effect("conceals a draft snapshot", () =>

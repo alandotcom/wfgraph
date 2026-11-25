@@ -45,6 +45,7 @@ import {
   createSerializedWorkflowGraph,
   toWorkflowGraphData,
 } from "@wfgraph/shared/graph/graph";
+import type { SerializedWorkflowGraph } from "@wfgraph/shared/graph/types";
 import { enabledActionTypeOf } from "@wfgraph/shared/graph/node-config";
 import { isBuiltInActionId } from "@wfgraph/shared/actions/built-in-actions";
 import { isJsonObject } from "@wfgraph/shared/types/json";
@@ -237,7 +238,52 @@ export const getWorkflowVersionUsage = Effect.fn(
     )
 );
 
-/** Compares a historical graph with the exact draft supplied by the editor. */
+/**
+ * What a comparison reads against its base. A null `proposedVersion` is the
+ * number the next publication would take.
+ */
+type ComparedSide = {
+  draftGraph: SerializedWorkflowGraph;
+  baseVersionId: string | null;
+  proposedVersion: number | null;
+};
+
+/** The published version `versionId` when it belongs to `workflowId`. */
+const ownPublishedVersion = (workflowId: string, versionId: string) =>
+  Effect.gen(function* () {
+    const repo = yield* WorkflowRepo;
+    const version = asPublishedVersion(yield* repo.findVersionById(versionId));
+    return version?.workflowId === workflowId ? version : null;
+  });
+
+/**
+ * The published version `versionId` against the version published before it,
+ * or null when the workflow has no such published version.
+ */
+const versionSide = (workflowId: string, versionId: string) =>
+  Effect.gen(function* () {
+    const repo = yield* WorkflowRepo;
+    const version = yield* ownPublishedVersion(workflowId, versionId);
+    if (!version) {
+      return null;
+    }
+    const [previous] = yield* repo.listVersionHistoryPage({
+      workflowId,
+      limit: 1,
+      cursor: { version: version.version },
+    });
+    const side: ComparedSide = {
+      draftGraph: version.graph,
+      baseVersionId: previous?.id ?? null,
+      proposedVersion: version.version,
+    };
+    return side;
+  });
+
+/**
+ * Compares a published version with the exact draft the editor supplied, or,
+ * given `versionId`, that published version with the one published before it.
+ */
 export const compareWorkflowVersion = Effect.fn(
   "wfgraph.workflow.version.compare"
 )(
@@ -250,16 +296,28 @@ export const compareWorkflowVersion = Effect.fn(
       return yield* new NotFound({ error: "Workflow not found" });
     }
 
-    const baseVersionId = input.baseVersionId ?? workflow.publishedVersionId;
+    // What the base is compared with: the editor's draft and the number
+    // publishing it would take, or a published version and its own number.
+    const compared =
+      "versionId" in input
+        ? yield* versionSide(input.workflowId, input.versionId)
+        : {
+            draftGraph: input.draftGraph,
+            baseVersionId: input.baseVersionId ?? workflow.publishedVersionId,
+            proposedVersion: null,
+          };
+    if (!compared) {
+      yield* logger.warn("Workflow version not found for comparison");
+      return yield* versionNotFound();
+    }
+    const { draftGraph, baseVersionId } = compared;
+
     // A draft snapshot sits outside the published history, so a comparison
     // against one fails the same way a version from another workflow does.
     const baseVersion = baseVersionId
-      ? asPublishedVersion(yield* repo.findVersionById(baseVersionId))
+      ? yield* ownPublishedVersion(input.workflowId, baseVersionId)
       : null;
-    if (
-      (baseVersionId && !baseVersion) ||
-      (baseVersion && baseVersion.workflowId !== input.workflowId)
-    ) {
+    if (baseVersionId && !baseVersion) {
       yield* logger.warn("Workflow version not found for comparison");
       return yield* versionNotFound();
     }
@@ -271,14 +329,16 @@ export const compareWorkflowVersion = Effect.fn(
     const baseGraph = baseVersion
       ? (yield* prepareGraphSave({ graph: baseVersion.graph })).graph
       : createSerializedWorkflowGraph({ nodes: [], edges: [] });
-    const draft = yield* prepareGraphSave({ graph: input.draftGraph });
-    const latest = yield* repo.findLatestVersion(input.workflowId);
+    const draft = yield* prepareGraphSave({ graph: draftGraph });
+    const proposedVersion =
+      compared.proposedVersion ??
+      ((yield* repo.findLatestVersion(input.workflowId))?.version ?? 0) + 1;
     const diff = diffWorkflowGraphs(baseGraph, draft.graph);
     const payload: WorkflowComparisonPayload = {
       baseVersion: baseVersion
         ? currentVersionSummary(baseVersion, workflow.publishedVersionId)
         : null,
-      proposedVersion: (latest?.version ?? 0) + 1,
+      proposedVersion,
       baseGraph: redactWorkflowGraph(baseGraph),
       draftGraph: redactWorkflowGraph(draft.graph),
       hasChanges: diff.hasChanges,

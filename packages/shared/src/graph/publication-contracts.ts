@@ -80,13 +80,25 @@ export type WorkflowVersionUsageItem =
 export type WorkflowVersionUsagePayload =
   typeof workflowVersionUsagePayloadSchema.Type;
 
-export const workflowComparisonInputSchema = Schema.Struct({
-  workflowId: NonEmptyTrimmedString,
-  /** Defaults to the current publication; absent before version 1. */
-  baseVersionId: Schema.optionalKey(NonEmptyTrimmedString),
-  /** The exact graph visible in the editor, including edits still awaiting autosave. */
-  draftGraph: serializedWorkflowGraphSchema,
-});
+/**
+ * Either the exact draft the editor shows compared with a published version,
+ * or one published version compared with the version published before it,
+ * which is what that version changed.
+ */
+export const workflowComparisonInputSchema = Schema.Union([
+  Schema.Struct({
+    workflowId: NonEmptyTrimmedString,
+    /** Defaults to the current publication; absent before version 1. */
+    baseVersionId: Schema.optionalKey(NonEmptyTrimmedString),
+    /** The exact graph visible in the editor, including edits still awaiting autosave. */
+    draftGraph: serializedWorkflowGraphSchema,
+  }),
+  Schema.Struct({
+    workflowId: NonEmptyTrimmedString,
+    /** The published version whose changes are read. */
+    versionId: NonEmptyTrimmedString,
+  }),
+]);
 
 /** The graph and publication pointer the editor reviewed before confirmation. */
 export const workflowPublishInputSchema = Schema.Struct({
@@ -137,8 +149,15 @@ export const workflowEdgeChangeSchema = Schema.Struct({
  * editor. Both graphs and every field value have passed the workflow redactor.
  */
 export const workflowComparisonPayloadSchema = Schema.Struct({
-  /** Null when the draft is being reviewed for its first publication. */
+  /**
+   * Null when the draft is being reviewed for its first publication, or when
+   * the version read is version 1.
+   */
   baseVersion: Schema.NullOr(workflowVersionSummarySchema),
+  /**
+   * The number publishing the draft would take, or the number of the
+   * published version whose changes are read.
+   */
   proposedVersion: positiveInteger,
   baseGraph: serializedWorkflowGraphSchema,
   draftGraph: serializedWorkflowGraphSchema,
