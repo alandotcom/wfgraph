@@ -3,6 +3,7 @@
 import { getViewportForBounds } from "@xyflow/react";
 import { COMPACT_TITLE_MIN_PX } from "#src/components/flow-elements/compact-card";
 import {
+  AGENT_CONTEXT_ROW_PX,
   REVEAL_CONTEXT_PX,
   REVEAL_PADDING_PX,
 } from "./canvas-reveal/reveal-geometry";
@@ -59,7 +60,8 @@ function agentComposerCoveredHeight(): number {
 
 /**
  * Every fit uses the same limits so a control cannot strand a large workflow.
- * While the agent's prompt line shows, the fit keeps the graph above it.
+ * While the agent's prompt line shows, the fit keeps the graph above it and
+ * above the row a selection adds to it.
  */
 export function workflowFitViewOptions(duration: number): {
   padding:
@@ -77,7 +79,9 @@ export function workflowFitViewOptions(duration: number): {
             top: WORKFLOW_FIT_VIEW_PADDING,
             left: WORKFLOW_FIT_VIEW_PADDING,
             right: WORKFLOW_FIT_VIEW_PADDING,
-            bottom: `${Math.round(covered + AGENT_COMPOSER_FIT_GAP_PX)}px`,
+            bottom: `${Math.round(
+              covered + AGENT_CONTEXT_ROW_PX + AGENT_COMPOSER_FIT_GAP_PX
+            )}px`,
           }
         : WORKFLOW_FIT_VIEW_PADDING,
     minZoom: WORKFLOW_CANVAS_MIN_ZOOM,

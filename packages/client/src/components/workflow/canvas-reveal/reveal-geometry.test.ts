@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MIN_USABLE_SIZE,
+  measureObstacles,
   usableAboveSheet,
   usableCanvasRect,
 } from "./reveal-geometry";
@@ -78,5 +79,40 @@ describe("usableAboveSheet", () => {
     expect(
       usableAboveSheet({ canvas, sheetTop: 60, obstacles: [] })
     ).toBeNull();
+  });
+});
+
+describe("measureObstacles", () => {
+  function box(input: { top: number; height: number }): DOMRect {
+    return {
+      top: input.top,
+      bottom: input.top + input.height,
+      left: 300,
+      right: 860,
+      width: 560,
+      height: input.height,
+      x: 300,
+      y: input.top,
+      toJSON: () => ({}),
+    };
+  }
+
+  it("counts the row a selection adds above the agent's prompt line as covered", () => {
+    const area = document.createElement("div");
+    area.dataset.slot = "canvas-box";
+    const canvas = document.createElement("div");
+    const composer = document.createElement("div");
+    composer.dataset.slot = "agent-composer";
+    area.append(canvas, composer);
+    document.body.append(area);
+    canvas.getBoundingClientRect = () => box({ top: 0, height: 800 });
+    composer.getBoundingClientRect = () => box({ top: 736, height: 52 });
+    try {
+      expect(measureObstacles(canvas)).toEqual([
+        { x: 0, y: 736 - 24, width: 560, height: 52 + 24 },
+      ]);
+    } finally {
+      area.remove();
+    }
   });
 });

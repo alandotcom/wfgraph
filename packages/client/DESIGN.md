@@ -373,7 +373,9 @@ and when the turn ends the camera shows the steps it added or changed if they
 are out of view. With a
 step selected, the line offers it as a chip, such as "+ Step 4 · Send 24-hour
 reminder"; pressing it attaches the step to the message being written, its ×
-removes it, and nothing is attached unless the person attaches it. A sent
+removes it, and nothing is attached unless the person attaches it. Every fit
+and every camera placement keeps the graph above the line and above the 24px
+row that chip adds, so selecting a step never covers a card the fit placed. A sent
 message shows its attached step above it in the thread. The command palette's
 **Agent** and **Describe it to the agent** put the cursor in the line. Opening
 or closing the conversation moves no camera and no column, and neither ever

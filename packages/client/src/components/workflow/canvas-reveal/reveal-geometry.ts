@@ -19,6 +19,15 @@ export const REVEAL_PADDING_PX = 24;
 export const REVEAL_CONTEXT_PX = 64;
 
 /**
+ * The screen pixels the agent's prompt line grows by when a step is selected,
+ * for the row naming that step above the text box. Every fit and every
+ * placement reserves it, so selecting a step after a fit never covers the
+ * cards the fit placed at the bottom of the canvas. While the row already
+ * shows, the reserve leaves that much more room.
+ */
+export const AGENT_CONTEXT_ROW_PX = 24;
+
+/**
  * The `data-slot` values of the elements floating over the canvas that a placed
  * step must stay clear of. The elements carry them and the camera measures them.
  */
@@ -137,14 +146,19 @@ export function usableAboveSheet(input: {
  * Elements floating over the canvas that a placed step must not sit under,
  * including the agent's prompt line at the bottom of the canvas.
  */
+const AGENT_COMPOSER_SELECTOR = '[data-slot="agent-composer"]';
 const OBSTACLE_SELECTORS = [
-  '[data-slot="agent-composer"]',
+  AGENT_COMPOSER_SELECTOR,
   `[data-slot="${CANVAS_OBSTACLE_SLOTS.controls}"]`,
   `[data-slot="${CANVAS_OBSTACLE_SLOTS.groupScopeBar}"]`,
   ".react-flow__minimap",
 ];
 
-/** Where each obstacle sits, relative to the canvas element's top left. */
+/**
+ * Where each obstacle sits, relative to the canvas element's top left. The
+ * agent's prompt line also covers `AGENT_CONTEXT_ROW_PX` above itself, the row
+ * a selection adds to it.
+ */
 export function measureObstacles(canvas: HTMLElement): Rect[] {
   const origin = canvas.getBoundingClientRect();
   const canvasArea =
@@ -154,11 +168,13 @@ export function measureObstacles(canvas: HTMLElement): Rect[] {
   return OBSTACLE_SELECTORS.flatMap((selector) =>
     [...canvasArea.querySelectorAll(selector)].map((element) => {
       const rect = element.getBoundingClientRect();
+      const above =
+        selector === AGENT_COMPOSER_SELECTOR ? AGENT_CONTEXT_ROW_PX : 0;
       return {
         x: rect.left - origin.left,
-        y: rect.top - origin.top,
+        y: rect.top - origin.top - above,
         width: rect.width,
-        height: rect.height,
+        height: rect.height + above,
       };
     })
   );

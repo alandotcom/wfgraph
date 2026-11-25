@@ -361,7 +361,7 @@ describe("workflowFitViewOptions and the agent's prompt line", () => {
     };
   }
 
-  it("keeps a fit above the prompt line while it shows", () => {
+  it("keeps a fit above the prompt line, and above the row a selection adds to it, while it shows", () => {
     const box = document.createElement("div");
     box.dataset.slot = "canvas-box";
     const line = document.createElement("div");
@@ -376,7 +376,9 @@ describe("workflowFitViewOptions and the agent's prompt line", () => {
         top: WORKFLOW_FIT_VIEW_PADDING,
         left: WORKFLOW_FIT_VIEW_PADDING,
         right: WORKFLOW_FIT_VIEW_PADDING,
-        bottom: "88px",
+        // 64px of prompt line, the 24px row a selected step adds above it,
+        // and 24px of room.
+        bottom: "112px",
       });
     } finally {
       box.remove();
