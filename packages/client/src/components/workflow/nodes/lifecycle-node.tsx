@@ -67,6 +67,7 @@ export const LifecycleNode = memo(
 
     return (
       <Node
+        compact={isCompact}
         data-card-form={isCompact ? "compact" : "full"}
         isConnectable={isConnectable}
         handles={{
@@ -101,27 +102,9 @@ export const LifecycleNode = memo(
             (reviewEdit ? { kind: reviewEdit.kind } : undefined)
           }
         />
-        <div
-          className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
-          style={{ left: STARTED_HANDLE_LEFT }}
-        >
-          Started
-        </div>
-        <div
-          className={cn(
-            "pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none",
-            canceledInactive && "opacity-50"
-          )}
-          style={{ left: CANCELED_HANDLE_LEFT }}
-        >
-          Canceled
-        </div>
-
         {/* The collector walks every node, not only actions: a broken template
           token in the Lifecycle config is an issue the toolbar counts, and
           without this it was one no card on the canvas admitted to. */}
-        <NodeIssueBadge issues={data.issues} />
-
         {isCompact ? (
           <NodeCompactBody
             lead={
@@ -131,19 +114,41 @@ export const LifecycleNode = memo(
                 strokeWidth={2}
               />
             }
+            marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
             title={displayTitle}
           />
         ) : (
-          <NodeBody>
-            <Play
-              className={cn(NODE_ICON_CLASS, "text-node-lifecycle")}
-              strokeWidth={1.5}
-            />
-            <NodeTitle>{displayTitle}</NodeTitle>
-            {displayDescription && (
-              <NodeDescription>{displayDescription}</NodeDescription>
-            )}
-          </NodeBody>
+          <>
+            {/* The outlet captions draw only on the full card: at the card's
+              12px they would draw at 6px when the whole workflow is fitted,
+              and the outline names both outlets in words. */}
+            <div
+              className="pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none"
+              style={{ left: STARTED_HANDLE_LEFT }}
+            >
+              Started
+            </div>
+            <div
+              className={cn(
+                "pointer-events-none absolute -bottom-8 -translate-x-1/2 rounded-sm border bg-card px-1.5 py-0.5 text-xs text-muted-foreground leading-none",
+                canceledInactive && "opacity-50"
+              )}
+              style={{ left: CANCELED_HANDLE_LEFT }}
+            >
+              Canceled
+            </div>
+            <NodeIssueBadge issues={data.issues} />
+            <NodeBody>
+              <Play
+                className={cn(NODE_ICON_CLASS, "text-node-lifecycle")}
+                strokeWidth={1.5}
+              />
+              <NodeTitle>{displayTitle}</NodeTitle>
+              {displayDescription && (
+                <NodeDescription>{displayDescription}</NodeDescription>
+              )}
+            </NodeBody>
+          </>
         )}
       </Node>
     );

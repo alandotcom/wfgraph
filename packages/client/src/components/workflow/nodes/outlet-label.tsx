@@ -9,6 +9,7 @@ import { Position, useNodeConnections } from "@xyflow/react";
 import { Check } from "lucide-react";
 import type { CSSProperties } from "react";
 import { cn } from "@wfgraph/shared/utils";
+import { useCompactCard } from "#src/components/flow-elements/node";
 import type { RunPathMark } from "#src/lib/run-path";
 
 /**
@@ -107,6 +108,13 @@ export function OutletLabel(input: {
   runPath?: RunPathMark | null | undefined;
   children: string;
 }) {
+  // A compact card names no outlet: a caption at the card's 12px would draw
+  // at 6px when the whole workflow is fitted, and the outline names each
+  // outlet in words.
+  const isCompact = useCompactCard();
+  if (isCompact) {
+    return null;
+  }
   return (
     <div
       className={cn(

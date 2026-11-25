@@ -8,6 +8,7 @@ import { useAtomValue } from "jotai";
 import { createContext, memo, useContext } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
+import { useCompactCard } from "#src/components/flow-elements/node";
 import {
   getEdgeParams,
   getWorkflowEdgePath,
@@ -70,6 +71,10 @@ const Animated = memo(function Animated({
   const targetNode = useInternalNode(target);
   const insertStepOnEdge = useContext(InsertStepSlot);
   const liveRun = useAtomValue(isLiveRunCanvasAtom);
+  // While cards are compact a connection draws no caption: at its 12px it
+  // would draw at 6px when the whole workflow is fitted, and the outline
+  // names every outlet in words.
+  const isCompact = useCompactCard();
   // A painted connection that stands for nothing stored, such as the edge to a
   // "Path ends" stub, takes no control: there is nothing to insert into.
   const insertStep = data?.insertable === false ? null : insertStepOnEdge;
@@ -168,7 +173,7 @@ const Animated = memo(function Animated({
           />
         </g>
       )}
-      {edgeLabel && (
+      {edgeLabel && !isCompact && (
         <EdgeLabelRenderer>
           <div
             className={cn(

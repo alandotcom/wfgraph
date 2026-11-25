@@ -22,8 +22,8 @@ import {
   COMPARISON_NODE_ANNOTATION,
   type WorkflowNodeData,
 } from "#src/lib/workflow-graph-types";
-import { NODE_COMPACT_TYPE_PX } from "#src/lib/workflow-node-dimensions";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 
 // Required NodeProps fields the cards never read.
 const requiredNodeProps = {
@@ -126,7 +126,14 @@ describe("a step card's compact form", () => {
 
     const body = compactBody(view.container);
     expect(body?.textContent).toBe("4Send 24-hour reminder");
-    expect(body?.style.fontSize).toBe(`${NODE_COMPACT_TYPE_PX}px`);
+    // The number sits in the top row, and the title below it has the card's
+    // full width and breaks only between words.
+    const title = body?.querySelector<HTMLElement>(
+      "[data-slot='node-compact-title']"
+    );
+    expect(title?.textContent).toBe("Send 24-hour reminder");
+    expect(title?.style.hyphens).toBe("manual");
+    expect(title?.className).toContain("[overflow-wrap:normal]");
     expect(view.queryByText("Texts the patient a day before")).toBeNull();
     expect(
       view.getByTestId("action-node-remind").getAttribute("data-card-form")
@@ -195,10 +202,16 @@ describe("a step card's compact form", () => {
     });
 
     const card = view.getByTestId("action-node-remind");
-    expect(compactBody(view.container)).not.toBeNull();
+    const body = compactBody(view.container);
     expect(card.className).toContain("border-destructive");
-    expect(view.getByRole("status").textContent).toBe("Failed");
-    expect(view.getByRole("img", { name: "1 blocking issue" })).toBeTruthy();
+    // The status is a mark at the compact type size, named by its word.
+    const status = view.getByRole("status", { name: "Failed" });
+    expect(status.getAttribute("data-slot")).toBe("node-status-mark");
+    expect(status.querySelector("svg")?.style.width).toBe("22px");
+    // The issue badge sits in the top row beside the number.
+    expect(
+      body?.querySelector("[role='img'][aria-label='1 blocking issue']")
+    ).not.toBeNull();
     expect(card.querySelector(".comparison-marker")?.textContent).toBe("M");
   });
 
@@ -226,7 +239,7 @@ describe("a step card's compact form", () => {
 });
 
 describe("the Lifecycle card's compact form", () => {
-  it("draws its title beside the Play glyph and keeps its outlet captions", () => {
+  it("draws its title below the Play glyph and drops its outlet captions", () => {
     const { view } = renderAtZoom({
       card: (
         <LifecycleNode
@@ -248,8 +261,10 @@ describe("the Lifecycle card's compact form", () => {
     expect(body?.textContent).toBe("Appointment booked");
     expect(body?.querySelector("svg")).not.toBeNull();
     expect(view.queryByText("Starts when an appointment is booked")).toBeNull();
-    expect(view.getByText("Started")).toBeTruthy();
-    expect(view.getByText("Canceled")).toBeTruthy();
+    // The outline names both outlets; the handles stay.
+    expect(view.queryByText("Started")).toBeNull();
+    expect(view.queryByText("Canceled")).toBeNull();
+    expect(view.getByLabelText("Started outlet")).toBeTruthy();
   });
 });
 
@@ -322,5 +337,34 @@ describe("a Group card's compact form", () => {
     expect(compactBody(view.container)).toBeNull();
     expect(stepNumber(view.container)).toBe("5");
     expect(view.getByText("Two reminders before the visit")).toBeTruthy();
+  });
+});
+
+describe("captions while cards are compact", () => {
+  it("drops a Condition's outlet captions and keeps its handles", () => {
+    const condition: WorkflowNodeData = {
+      label: "Deposit covers the visit?",
+      type: "action",
+      config: { actionType: BUILT_IN_ACTION_IDS.condition },
+      status: "idle",
+    };
+    const { view, setZoom } = renderAtZoom({
+      card: (
+        <ActionNode
+          data={condition}
+          id="deposit"
+          type="action"
+          {...requiredNodeProps}
+        />
+      ),
+      zoom: 1,
+    });
+    expect(view.getByText("True")).toBeTruthy();
+
+    setZoom(0.5);
+
+    expect(view.queryByText("True")).toBeNull();
+    expect(view.queryByText("False")).toBeNull();
+    expect(view.getByLabelText("True outlet")).toBeTruthy();
   });
 });

@@ -1,7 +1,7 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { useAtomValue } from "jotai";
 import { ArrowRight, Group } from "lucide-react";
-import { memo, useMemo } from "react";
+import { type ComponentProps, memo, useMemo } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { groupMemberCountAtom } from "#src/lib/workflow-graph-presentation-store";
@@ -17,6 +17,7 @@ import { ComparisonMarker } from "#src/components/flow-elements/comparison-marke
 import {
   NodeCompactBody,
   NodeDescription,
+  NodeStatusMark,
   NodeStepNumber,
   useCompactCard,
 } from "#src/components/flow-elements/node";
@@ -31,7 +32,26 @@ import {
 import {
   groupRunCountsText,
   groupRunStatusLabel,
+  type GroupRunStatus,
 } from "@wfgraph/shared/graph/group-run-status";
+
+/**
+ * The step status whose mark a compact Group card wears for each Group run
+ * status. A Group that is idle, or reached with no outcome yet, wears none.
+ */
+const GROUP_STATUS_AS_STEP_STATUS = {
+  idle: undefined,
+  reached: undefined,
+  running: "running",
+  waiting: "waiting",
+  retrying: "retrying",
+  canceled: "cancelled",
+  failed: "error",
+  successful: "success",
+} as const satisfies Record<
+  GroupRunStatus,
+  ComponentProps<typeof NodeStatusMark>["status"]
+>;
 
 type GroupNodeProps = NodeProps & {
   data?: WorkflowNodeData;
@@ -96,24 +116,16 @@ export const GroupNode = memo(
         />
         {isCompact ? (
           <>
-            <NodeIssueBadge issues={data.issues} />
-            {/* The run status straddles the top edge where a step card's
-              status chip sits, since the compact card has no room for the
-              status line and member counts. */}
-            {runSummary && runSummary.status !== "idle" ? (
-              <div className="pointer-events-none absolute top-0 right-2 left-[calc(50%+10px)] z-10 flex -translate-y-1/2 justify-end-safe">
-                <span
-                  className={cn(
-                    "shrink-0 rounded-sm border bg-card px-1.5 py-0.5 font-medium text-xs leading-none",
-                    statusToneTextClass(groupRunStatusTone(runSummary.status))
-                  )}
-                  data-testid={`group-run-status-${id}`}
-                  role="status"
-                >
-                  {groupRunStatusLabel(runSummary.status)}
-                </span>
-              </div>
-            ) : null}
+            {/* The compact card has no room for the status line and member
+              counts, so the run status shows as the mark a step card wears. */}
+            <NodeStatusMark
+              status={
+                runSummary
+                  ? GROUP_STATUS_AS_STEP_STATUS[runSummary.status]
+                  : undefined
+              }
+              testSkipped={false}
+            />
             <NodeCompactBody
               lead={
                 stepNumber === undefined ? (
@@ -123,9 +135,10 @@ export const GroupNode = memo(
                     strokeWidth={2}
                   />
                 ) : (
-                  <NodeStepNumber className="shrink-0" value={stepNumber} />
+                  <NodeStepNumber value={stepNumber} />
                 )
               }
+              marks={<NodeIssueBadge issues={data.issues} placement="inline" />}
               className="flex-1"
               title={label}
             />

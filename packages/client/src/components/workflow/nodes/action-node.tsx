@@ -456,6 +456,37 @@ function GeneratedImageThumbnail({ base64 }: { base64: string }) {
   );
 }
 
+/**
+ * The disabled mark or, on an enabled step, the issue badge: in the card's
+ * top-left corner on a full card, and in the top row beside the step number
+ * on a compact one. A disabled step is left out of validation upstream, so
+ * the two never compete.
+ */
+function StepMarks(input: {
+  disabled: boolean;
+  issues: WorkflowNodeData["issues"];
+  inline: boolean;
+}) {
+  if (input.disabled) {
+    return (
+      <div
+        className={cn(
+          "rounded-full bg-muted-foreground/50 p-1",
+          input.inline ? "shrink-0" : "absolute top-2 left-2"
+        )}
+      >
+        <EyeOff className="size-3.5 text-background" />
+      </div>
+    );
+  }
+  return (
+    <NodeIssueBadge
+      issues={input.issues}
+      placement={input.inline ? "inline" : "corner"}
+    />
+  );
+}
+
 type ActionNodeProps = NodeProps & {
   data?: WorkflowNodeData;
   id: string;
@@ -566,6 +597,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
     return (
       <Node
         className={cn(isDisabled && "opacity-50")}
+        compact={isCompact}
         data-card-form={isCompact ? "compact" : "full"}
         data-testid={`action-node-${id}`}
         handles={{ target: true, source: true }}
@@ -580,29 +612,33 @@ export const ActionNode = memo((props: ActionNodeProps) => {
         <ComparisonMarker
           comparison={data[COMPARISON_NODE_ANNOTATION] ?? reviewMarker}
         />
-        {isDisabled && (
-          <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
-            <EyeOff className="size-3.5 text-background" />
-          </div>
-        )}
-        {!isDisabled && <NodeIssueBadge issues={data.issues} />}
         {isCompact ? (
           <NodeCompactBody
-            lead={<NodeStepNumber className="shrink-0" value={stepNumber} />}
+            lead={<NodeStepNumber value={stepNumber} />}
+            marks={
+              <StepMarks disabled={isDisabled} inline issues={data.issues} />
+            }
             title={unconfiguredTitle}
           />
         ) : (
-          <NodeBody>
-            <Zap
-              className={cn(NODE_ICON_CLASS, "text-muted-foreground")}
-              strokeWidth={1.5}
+          <>
+            <StepMarks
+              disabled={isDisabled}
+              inline={false}
+              issues={data.issues}
             />
-            <NodeTitle title={unconfiguredTitle}>
-              <NodeStepNumber className="mr-1.5" value={stepNumber} />
-              {unconfiguredTitle}
-            </NodeTitle>
-            <NodeDescription>Select an action</NodeDescription>
-          </NodeBody>
+            <NodeBody>
+              <Zap
+                className={cn(NODE_ICON_CLASS, "text-muted-foreground")}
+                strokeWidth={1.5}
+              />
+              <NodeTitle title={unconfiguredTitle}>
+                <NodeStepNumber className="mr-1.5" value={stepNumber} />
+                {unconfiguredTitle}
+              </NodeTitle>
+              <NodeDescription>Select an action</NodeDescription>
+            </NodeBody>
+          </>
         )}
       </Node>
     );
@@ -646,6 +682,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
   return (
     <Node
       className={cn(isDisabled && "opacity-50")}
+      compact={isCompact}
       data-card-form={isCompact ? "compact" : "full"}
       data-testid={`action-node-${id}`}
       isConnectable={isConnectable}
@@ -705,18 +742,6 @@ export const ActionNode = memo((props: ActionNodeProps) => {
       <ComparisonMarker
         comparison={data[COMPARISON_NODE_ANNOTATION] ?? reviewMarker}
       />
-      {/* Disabled badge in top left */}
-      {isDisabled && (
-        <div className="absolute top-2 left-2 rounded-full bg-muted-foreground/50 p-1">
-          <EyeOff className="size-3.5 text-background" />
-        </div>
-      )}
-
-      {/* Validation badge in the same corner, for every kind of issue. A
-          disabled node is excluded from validation upstream, so this is absent
-          there rather than competing with the EyeOff badge above. */}
-      {!isDisabled && <NodeIssueBadge issues={data.issues} />}
-
       {isConditionAction && (
         <>
           <BranchOutletLabel
@@ -756,32 +781,42 @@ export const ActionNode = memo((props: ActionNodeProps) => {
 
       {isCompact ? (
         <NodeCompactBody
-          lead={<NodeStepNumber className="shrink-0" value={stepNumber} />}
+          lead={<NodeStepNumber value={stepNumber} />}
+          marks={
+            <StepMarks disabled={isDisabled} inline issues={data.issues} />
+          }
           title={displayTitle}
         />
       ) : (
-        <NodeBody>
-          {generatedImageBase64 ? (
-            <GeneratedImageThumbnail base64={generatedImageBase64} />
-          ) : (
-            <ProviderLogo actionType={actionType} catalog={catalog} />
-          )}
-          <NodeTitle title={displayTitle}>
-            <NodeStepNumber className="mr-1.5" value={stepNumber} />
-            {displayTitle}
-          </NodeTitle>
-          {displayDescription && (
-            <NodeDescription
-              className={
-                waitPreview && !reviewEdit
-                  ? "font-medium tabular-nums"
-                  : undefined
-              }
-            >
-              {displayDescription}
-            </NodeDescription>
-          )}
-        </NodeBody>
+        <>
+          <StepMarks
+            disabled={isDisabled}
+            inline={false}
+            issues={data.issues}
+          />
+          <NodeBody>
+            {generatedImageBase64 ? (
+              <GeneratedImageThumbnail base64={generatedImageBase64} />
+            ) : (
+              <ProviderLogo actionType={actionType} catalog={catalog} />
+            )}
+            <NodeTitle title={displayTitle}>
+              <NodeStepNumber className="mr-1.5" value={stepNumber} />
+              {displayTitle}
+            </NodeTitle>
+            {displayDescription && (
+              <NodeDescription
+                className={
+                  waitPreview && !reviewEdit
+                    ? "font-medium tabular-nums"
+                    : undefined
+                }
+              >
+                {displayDescription}
+              </NodeDescription>
+            )}
+          </NodeBody>
+        </>
       )}
     </Node>
   );

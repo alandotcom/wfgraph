@@ -12,7 +12,7 @@ import {
   workflowFitViewOptions,
   worldCameraFromViewport,
 } from "#src/components/workflow/workflow-viewport";
-import { NODE_COMPACT_TYPE_PX } from "#src/lib/workflow-node-dimensions";
+import { COMPACT_TITLE_MIN_PX } from "#src/components/flow-elements/compact-card";
 
 describe("workspace camera", () => {
   it("restores the same world-space center on a canvas of another size", () => {
@@ -240,16 +240,17 @@ describe("workflow viewport policy", () => {
 
   it("opens the seeded 16-step workflow on compact cards whose titles draw at 11px or more", () => {
     // The canvas between a 340px outline and a 400px details column in a
-    // 1440px window, with the toolbar above it.
+    // 1512 by 982 window, below the toolbar, where the fitted zoom is 0.53.
     const viewport = openingViewport({
-      usable: { x: 0, y: 0, width: 700, height: 798 },
+      usable: { x: 0, y: 0, width: 770, height: 872 },
       graphBounds: { x: 0, y: 0, width: 1050, height: 1370 },
       lifecycle: { nodePosition: { x: 429, y: 0 }, nodeWidth: 192 },
       zoomLimit: WORKFLOW_FIT_VIEW_MAX_ZOOM,
     });
 
+    expect(viewport.zoom).toBeCloseTo(0.53, 2);
     expect(isCompactCardZoom(viewport.zoom)).toBe(true);
-    expect(NODE_COMPACT_TYPE_PX * viewport.zoom).toBeGreaterThanOrEqual(11);
+    expect(COMPACT_TITLE_MIN_PX * viewport.zoom).toBeGreaterThanOrEqual(11);
   });
 });
 

@@ -8,7 +8,12 @@ import {
   RotateCw,
   XCircle,
 } from "lucide-react";
-import type { ComponentProps, CSSProperties, ReactNode } from "react";
+import {
+  type ComponentProps,
+  type CSSProperties,
+  type ReactNode,
+  useSyncExternalStore,
+} from "react";
 import { AnimatedBorder } from "#src/components/ui/animated-border";
 import { Card, CardTitle } from "#src/components/ui/card";
 import {
@@ -19,7 +24,14 @@ import {
 } from "#src/components/ui/tooltip";
 import { stepRunStatusLabel } from "#src/components/workflow/workflow-run-shared";
 import { isCompactCardZoom } from "#src/components/workflow/workflow-viewport";
-import { NODE_COMPACT_TYPE_PX } from "#src/lib/workflow-node-dimensions";
+import {
+  COMPACT_MARK_PX,
+  COMPACT_TITLE_BOX,
+  COMPACT_TITLE_LINE_HEIGHT,
+  type CompactTitleFit,
+  fitCompactTitle,
+  measureCompactTitle,
+} from "#src/components/flow-elements/compact-card";
 import { useElementOverflow } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
 
@@ -53,6 +65,11 @@ export type NodeProps = ComponentProps<typeof Card> & {
    * `isConnectable` React Flow gives the node component.
    */
   isConnectable: boolean;
+  /**
+   * Whether the card draws its compact form, where the run status shows as a
+   * mark inside the card's top-right corner in place of the chip.
+   */
+  compact?: boolean | undefined;
 };
 
 // Run status is worn as a border color, which a colorblind user cannot read and
@@ -141,6 +158,42 @@ const NodeStatusChip = ({
   );
 };
 
+/**
+ * The run status on a compact card: the chip's icon at the compact type size
+ * inside the card's top-right corner, where it reads at 11px or more when the
+ * whole workflow is fitted. The word stays in the accessible name and the
+ * tooltip, and the border carries the outcome as it does on a full card.
+ */
+export const NodeStatusMark = ({
+  status,
+  testSkipped,
+}: {
+  status?: NodeProps["status"];
+  testSkipped: boolean;
+}) => {
+  if (!status || status === "idle") {
+    return null;
+  }
+  const chip = STATUS_CHIP[testSkipped ? "skipped" : status];
+  const label = stepRunStatusLabel(status, testSkipped).text;
+  return (
+    <div
+      aria-label={label}
+      className="pointer-events-none absolute top-1.5 right-2 z-10 rounded-full bg-card"
+      data-slot="node-status-mark"
+      role="status"
+      title={label}
+    >
+      <chip.Icon
+        aria-hidden="true"
+        className={chip.iconClassName}
+        strokeWidth={2.5}
+        style={{ width: COMPACT_MARK_PX, height: COMPACT_MARK_PX }}
+      />
+    </div>
+  );
+};
+
 type NodeHandleConfig = {
   id?: string | undefined;
   label?: string | undefined;
@@ -214,6 +267,7 @@ export const Node = ({
   sourcePosition = Position.Bottom,
   targetPosition = Position.Top,
   isConnectable,
+  compact = false,
   ...props
 }: NodeProps) => (
   <Card
@@ -232,10 +286,17 @@ export const Node = ({
     {...props}
   >
     {status === "running" && <AnimatedBorder />}
-    <NodeStatusChip
-      status={status}
-      testSkipped={testSkipped && status === "success"}
-    />
+    {compact ? (
+      <NodeStatusMark
+        status={status}
+        testSkipped={testSkipped && status === "success"}
+      />
+    ) : (
+      <NodeStatusChip
+        status={status}
+        testSkipped={testSkipped && status === "success"}
+      />
+    )}
     {renderHandles("target", handles.target, targetPosition, isConnectable)}
     {renderHandles("source", handles.source, sourcePosition, isConnectable)}
     {props.children}
@@ -320,8 +381,9 @@ export function useCompactCard(): boolean {
 }
 
 /**
- * A step's number in run order, set before its title on a full card and
- * beside it on a compact one. Nothing draws when the step has no number.
+ * A step's number in run order, set before its title on a full card and in
+ * the top-left corner of a compact one. Nothing draws when the step has no
+ * number.
  */
 export const NodeStepNumber = ({
   value,
@@ -342,39 +404,101 @@ export const NodeStepNumber = ({
     </span>
   );
 
+let fontsLoaded =
+  typeof document === "undefined" || document.fonts?.status !== "loading";
+const fontListeners = new Set<() => void>();
+/** Each compact title's fit, by title, measured in the fonts loaded so far. */
+const titleFits = new Map<string, CompactTitleFit>();
+if (!fontsLoaded) {
+  void document.fonts.ready.then(() => {
+    fontsLoaded = true;
+    titleFits.clear();
+    for (const listener of fontListeners) {
+      listener();
+    }
+  });
+}
+function subscribeToFonts(listener: () => void): () => void {
+  fontListeners.add(listener);
+  return () => fontListeners.delete(listener);
+}
+
+/** The line clamp for each number of lines a compact title can take. */
+const TITLE_LINE_CLAMP: Readonly<Record<number, string>> = {
+  2: "line-clamp-2",
+  3: "line-clamp-3",
+  4: "line-clamp-4",
+};
+
 /**
- * The whole content of a card in its compact form: `lead`, which is the
- * step's number or a glyph standing in for one, beside the title in type
- * that reads at the zoom fitting a whole workflow. The card keeps its size,
- * so its handles, connections and hit area stay where they are. The top
- * padding keeps the title clear of the run status chip on the top edge.
+ * The whole content of a card in its compact form. A top row holds `lead`,
+ * the step's number or a glyph standing in for one, and `marks`, such as the
+ * issue badge. Below it the title takes the card's full width at the largest
+ * size `fitCompactTitle` finds where it breaks only between words. The card
+ * keeps its size, so its handles, connections and hit area stay where they
+ * are. The title is measured again once the page's fonts finish loading.
  */
 export const NodeCompactBody = ({
   lead,
+  marks,
   title,
   className,
 }: {
   lead: ReactNode;
+  marks?: ReactNode;
   title: string;
   className?: string | undefined;
-}) => (
-  <div
-    className={cn(
-      "flex w-full min-w-0 items-center gap-2 px-3 pt-3.5 pb-2 text-left leading-[1.15]",
-      className
-    )}
-    data-slot="node-compact-body"
-    style={{ fontSize: NODE_COMPACT_TYPE_PX }}
-  >
-    {lead}
-    <span
-      className="line-clamp-3 min-w-0 flex-1 font-semibold [overflow-wrap:anywhere]"
-      title={title}
+}) => {
+  // Subscribed so the card draws again, and measures again, once the page's
+  // fonts finish loading.
+  useSyncExternalStore(subscribeToFonts, () => fontsLoaded, () => true);
+  let fit = titleFits.get(title);
+  if (fit === undefined) {
+    fit = fitCompactTitle(title, measureCompactTitle);
+    titleFits.set(title, fit);
+  }
+  return (
+    <div
+      className={cn(
+        "flex h-full w-full min-w-0 flex-col px-3 py-1 text-left",
+        className
+      )}
+      data-slot="node-compact-body"
     >
-      {title}
-    </span>
-  </div>
-);
+      <div
+        className="flex shrink-0 items-center gap-1.5 leading-none"
+        style={{
+          height: COMPACT_MARK_PX + 2,
+          fontSize: COMPACT_MARK_PX,
+        }}
+      >
+        {lead}
+        {marks}
+      </div>
+      <div
+        className="flex min-h-0 flex-1 items-center"
+        style={{ maxHeight: COMPACT_TITLE_BOX.height }}
+      >
+        <span
+          className={cn(
+            "w-full overflow-hidden font-semibold [overflow-wrap:normal] [word-break:normal]",
+            TITLE_LINE_CLAMP[fit.maxLines] ?? "line-clamp-3"
+          )}
+          data-slot="node-compact-title"
+          lang="en"
+          style={{
+            fontSize: fit.fontPx,
+            lineHeight: COMPACT_TITLE_LINE_HEIGHT,
+            hyphens: fit.hyphenate ? "auto" : "manual",
+          }}
+          title={title}
+        >
+          {title}
+        </span>
+      </div>
+    </div>
+  );
+};
 
 // `text-center` is what centres the words. The title and description are
 // full-width blocks, so `items-center` reaches only the icon, the one child

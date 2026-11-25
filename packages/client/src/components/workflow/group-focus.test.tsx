@@ -1107,12 +1107,18 @@ describe("the collapsed Group overview", () => {
     );
     expect(chipText(view, "welcome")).toBe("Successful");
     // The overview comes back zoomed out far enough for compact cards, which
-    // carry the Group's run status on their top edge.
+    // carry the Group's run status as a mark named by the status.
     await leaveOutreach(router);
-    const completedStatus = await view.findByTestId(
-      "group-run-status-outreach"
-    );
-    expect(completedStatus.textContent).toBe("Successful");
+    const completedStatus = await waitFor(() => {
+      const mark = view
+        .getByTestId("group-node-outreach")
+        .querySelector("[data-slot='node-status-mark']");
+      if (!mark) {
+        throw new Error("the compact Group card shows no run status");
+      }
+      return mark;
+    });
+    expect(completedStatus.getAttribute("aria-label")).toBe("Successful");
   });
 
   it.each([
