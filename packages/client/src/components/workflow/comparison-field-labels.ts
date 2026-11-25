@@ -5,6 +5,7 @@
  * sentences. Nothing here renders.
  */
 
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
   type ConditionModel,
   parseConditionModel,
@@ -26,12 +27,24 @@ import {
   eventLabel,
 } from "#src/components/workflow/config/lifecycle-policy-summary";
 import {
+  WAIT_DELAY_TIMING_OPTIONS,
+  WAIT_FIELD_LABELS,
+  WAIT_GATE_OPTIONS,
+  WAIT_MODE_OPTIONS,
+  WAIT_TIMEOUT_OPTIONS,
+  WAIT_WINDOW_OPTIONS,
+  type WaitOption,
+  waitOptionLabel,
+} from "#src/components/workflow/config/wait-options";
+import {
   type ConditionSelectableField,
   getEntityConditionFields,
   getEventConditionFields,
+  getUpstreamConditionFields,
 } from "#src/lib/upstream-node-fields";
 import {
   comparisonNodeTitle,
+  toEditorEdge,
   toEditorNode,
 } from "#src/lib/workflow-graph-types";
 
@@ -39,6 +52,9 @@ import {
 export type ComparisonNode = ReturnType<
   typeof toWorkflowGraphData
 >["nodes"][number];
+
+/** One side of a comparison: the published version's graph or the draft's. */
+export type ComparisonGraph = ReturnType<typeof toWorkflowGraphData>;
 
 /** The label of a config value the step's action does not describe. */
 const GENERIC_CONFIG_LABEL = "Configuration value";
@@ -104,12 +120,65 @@ const actionFieldLabels = new WeakMap<
   Map<string, Map<string, string>>
 >();
 
+/**
+ * The name a Condition's rules and a Wait's Events show under, the heading
+ * each one's Browse gives them.
+ */
+const CONTINUE_WHEN_LABEL = "Continue when";
+
+/**
+ * The two config keys holding a Condition's rules: `conditionModel`, the rules
+ * the editor edits, and `condition`, the expression compiled from them. A
+ * comparison shows both as one row of rules.
+ */
+const CONDITION_RULE_KEYS: ReadonlySet<string> = new Set([
+  "condition",
+  "conditionModel",
+]);
+
+/** Whether `key` of a node running `actionType` holds a Condition's rules. */
+export function isConditionRuleKey(actionType: unknown, key: unknown): boolean {
+  return (
+    actionType === BUILT_IN_ACTION_IDS.condition &&
+    typeof key === "string" &&
+    CONDITION_RULE_KEYS.has(key)
+  );
+}
+
+/** The label of each Wait setting, by config key. */
+const WAIT_LABELS: ReadonlyMap<string, string> = new Map(
+  Object.entries(WAIT_FIELD_LABELS)
+);
+
+/** The choices of each Wait setting that stores one of a fixed set of values. */
+const WAIT_OPTIONS: ReadonlyMap<string, readonly WaitOption[]> = new Map<
+  string,
+  readonly WaitOption[]
+>([
+  ["waitMode", WAIT_MODE_OPTIONS],
+  ["waitDelayTimingMode", WAIT_DELAY_TIMING_OPTIONS],
+  ["waitGateMode", WAIT_GATE_OPTIONS],
+  ["waitAllowedHoursMode", WAIT_WINDOW_OPTIONS],
+  ["waitTimeoutBehavior", WAIT_TIMEOUT_OPTIONS],
+]);
+
+/**
+ * The label of config value `key` of a step running `actionType`. A Wait's
+ * settings take the labels its form uses, a Condition's rules read as
+ * "Continue when", and any other action's settings take the labels its catalog
+ * entry declares.
+ */
 export function configFieldLabel(
   catalog: ExtensionCatalog,
   actionType: unknown,
   key: string
 ): string {
   if (typeof actionType !== "string") return GENERIC_CONFIG_LABEL;
+  if (actionType === BUILT_IN_ACTION_IDS.wait) {
+    if (key === "waitFor") return CONTINUE_WHEN_LABEL;
+    return WAIT_LABELS.get(key) ?? GENERIC_CONFIG_LABEL;
+  }
+  if (isConditionRuleKey(actionType, key)) return CONTINUE_WHEN_LABEL;
   let catalogLabels = actionFieldLabels.get(catalog);
   if (!catalogLabels) {
     catalogLabels = new Map();
@@ -264,15 +333,16 @@ export function comparisonFieldLabel(
 }
 
 /**
- * A stored condition model as sentences reading `fields`, a note when the
- * model does not decode, and undefined when nothing is stored. `nodes` is the
- * graph of the side the condition comes from.
+ * A stored condition model as sentences reading `fields`, the note
+ * `unreadable` when the model does not decode, and undefined when nothing is
+ * stored. `nodes` is the graph of the side the condition comes from.
  */
 function readableCondition(input: {
   stored: string;
   fields: () => readonly ConditionSelectableField[];
   setOperatorsRequireEnumValues: boolean;
-  nodes: ReadonlyMap<string, ComparisonNode>;
+  nodes: readonly ComparisonNode[];
+  unreadable: string;
 }): ConditionValue | ValueNote | undefined {
   if (isBlank(input.stored)) return undefined;
   const parsed = parseConditionModel(input.stored);
@@ -281,9 +351,43 @@ function readableCondition(input: {
         parsed.model,
         input.fields(),
         input.setOperatorsRequireEnumValues,
-        [...input.nodes.values()]
+        input.nodes
       )
-    : new ValueNote("Filter changed");
+    : new ValueNote(input.unreadable);
+}
+
+/**
+ * The rules of the Condition `node` as sentences, each rule's field named from
+ * the values `graph`, the side the node comes from, offers above it. Answers
+ * undefined when the node stores no rules, and a note when its rules do not
+ * decode or when it holds only an expression written outside the editor.
+ */
+export function readableConditionRules(input: {
+  catalog: ExtensionCatalog;
+  node: ComparisonNode | undefined;
+  graph: ComparisonGraph;
+}): ConditionValue | ValueNote | undefined {
+  const { node, graph, catalog } = input;
+  const config = node?.data.config;
+  const stored = config?.conditionModel;
+  if (node === undefined || typeof stored !== "string" || isBlank(stored)) {
+    return config?.condition === undefined
+      ? undefined
+      : new ValueNote("Rules set outside the editor");
+  }
+  return readableCondition({
+    stored,
+    fields: () =>
+      getUpstreamConditionFields({
+        currentNodeId: node.id,
+        nodes: graph.nodes.map(toEditorNode),
+        edges: graph.edges.map(toEditorEdge),
+        catalog,
+      }),
+    setOperatorsRequireEnumValues: false,
+    nodes: graph.nodes,
+    unreadable: "Rules changed",
+  });
 }
 
 /**
@@ -323,7 +427,8 @@ function readableLifecycleValue(input: {
                 [...input.nodes.values()].map(toEditorNode)
               ),
             setOperatorsRequireEnumValues: false,
-            nodes: input.nodes,
+            nodes: [...input.nodes.values()],
+            unreadable: "Filter changed",
           });
     case "connectionIds": {
       const name = input.connections?.find(
@@ -351,7 +456,8 @@ function readableLifecycleValue(input: {
             ? []
             : getEntityConditionFields(catalog, entityType),
         setOperatorsRequireEnumValues: true,
-        nodes: input.nodes,
+        nodes: [...input.nodes.values()],
+        unreadable: "Filter changed",
       });
     }
     default:
@@ -380,7 +486,7 @@ export function groupMembershipTitle(input: {
 /**
  * The value a person reads for a property whose stored value is an identifier
  * or a serialized rule: a node type, an action id, a Group's node id, a
- * or a Lifecycle Rules value. A value the server hid, and any other value, is
+ * Lifecycle Rules value, or the choice a Wait setting stores. A value the server hid, and any other value, is
  * returned as it is. `node` and `nodes` are the node and the graph of the side
  * the value comes from.
  */
@@ -416,5 +522,10 @@ export function readableValue(input: {
       value,
     });
   }
-  return value;
+  const waitOptions =
+    path.length === 3 &&
+    input.node?.data.config?.actionType === BUILT_IN_ACTION_IDS.wait
+      ? WAIT_OPTIONS.get(path[2] ?? "")
+      : undefined;
+  return waitOptions ? (waitOptionLabel(waitOptions, value) ?? value) : value;
 }

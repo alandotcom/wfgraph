@@ -14,6 +14,7 @@ import { ComparisonMarker } from "#src/components/flow-elements/comparison-marke
 import {
   comparisonFields,
   comparisonMetadataNotice,
+  comparisonSideNodes,
   comparisonSides,
   comparisonValuesAvailable,
   ComparisonFieldTable,
@@ -378,6 +379,7 @@ function StepProperties({
               caption={`Settings of this ${noun}`}
               fields={settingFields}
               layout={layout}
+              nodes={comparisonSideNodes(payload)}
               sides={comparisonSides(change.kind)}
             />
           )}
@@ -391,6 +393,7 @@ function StepProperties({
             caption="Group membership of this step"
             fields={membershipFields}
             layout={layout}
+            nodes={comparisonSideNodes(payload)}
             sides={comparisonSides(change.kind)}
           />
         </Section>
@@ -498,6 +501,7 @@ function ConnectionProperties({
         caption="This connection"
         fields={fields}
         layout={layout}
+        nodes={comparisonSideNodes(payload)}
         sides={comparisonSides(inspection.change)}
       />
     </Section>

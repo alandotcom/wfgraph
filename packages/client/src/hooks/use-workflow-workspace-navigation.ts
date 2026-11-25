@@ -2,7 +2,10 @@ import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useStore } from "jotai";
 import { useCallback } from "react";
 import { useRevealNavigation } from "#src/components/workflow/canvas-reveal/use-reveal-navigation";
-import { comparisonSessionAtom } from "#src/lib/workflow-comparison-store";
+import {
+  comparisonSessionAtom,
+  setComparisonSubviewAtom,
+} from "#src/lib/workflow-comparison-store";
 import {
   workspaceAddressFromSearch,
   type WorkflowRouteSearch,
@@ -24,6 +27,11 @@ export type WorkflowWorkspaceNavigation = {
   showDraft: () => void;
   showRuns: () => void;
   showChanges: () => void;
+  /**
+   * Switch to Changes with version history open in Browse, where the In use
+   * section counts the runs on each version.
+   */
+  showVersionHistory: () => void;
 };
 
 /**
@@ -49,18 +57,26 @@ export function useWorkflowWorkspaceNavigation(
   // The route has not synced the search just navigated to, so the address is
   // read from the search itself.
   const switchTo = useCallback(
-    (view: WorkspaceView, search?: WorkflowRouteSearch) => {
+    (
+      view: WorkspaceView,
+      options?: { search?: WorkflowRouteSearch; openInspector?: boolean }
+    ) => {
       const remembered = store.get(rememberedRouteSearchesAtom)[view];
-      const target = search ?? remembered ?? (view === "draft" ? {} : { view });
+      const target =
+        options?.search ?? remembered ?? (view === "draft" ? {} : { view });
       void navigate({ search: target });
       if (view !== "draft") {
+        const address = workspaceAddressFromSearch(
+          store.get(currentWorkflowIdAtom) ?? "",
+          target
+        );
         navigation.showSwitchedWorkspace({
-          address: workspaceAddressFromSearch(
-            store.get(currentWorkflowIdAtom) ?? "",
-            target
-          ),
+          address,
           firstVisit: remembered === undefined,
         });
+        if (options?.openInspector) {
+          navigation.openInspector(address);
+        }
       }
     },
     [navigate, navigation, store]
@@ -76,35 +92,59 @@ export function useWorkflowWorkspaceNavigation(
     switchTo("runs");
   }, [openInspector, switchTo, workspaceView]);
 
-  const showChanges = useCallback(() => {
-    if (workspaceView === "changes") {
-      openInspector();
-      return;
-    }
-    const session = store.get(comparisonSessionAtom);
-    if (!session) {
-      // The Changes route opens its comparison once it is applied.
-      switchTo("changes");
-      return;
-    }
-    // A comparison chosen while its base was the current publication follows
-    // the current publication, which a publish since then has replaced. A
-    // comparison against an older version refreshes against that version. The
-    // request starts first, so route recovery sees it pending.
-    const base = session.payload.baseVersion;
-    if (base === null || base.isCurrent) {
-      void openComparison?.({ current: true });
-      // The rest of the search Changes last showed, such as its focused Group,
-      // stays in the route, and route recovery removes a Group the new
-      // comparison does not hold.
-      const { compare: _compare, ...remembered } =
-        store.get(rememberedRouteSearchesAtom).changes ?? {};
-      switchTo("changes", { ...remembered, view: "changes" });
-    } else {
-      void openComparison?.({ force: true });
-      switchTo("changes");
-    }
-  }, [openComparison, openInspector, store, switchTo, workspaceView]);
+  /**
+   * Switch to Changes. With `openInspector`, Canvas Reveal opens at Browse
+   * however the comparison's address was left.
+   */
+  const switchToChanges = useCallback(
+    (options: { openInspector: boolean }) => {
+      if (workspaceView === "changes") {
+        openInspector();
+        return;
+      }
+      const openInspectorAfter = { openInspector: options.openInspector };
+      const session = store.get(comparisonSessionAtom);
+      if (!session) {
+        // The Changes route opens its comparison once it is applied.
+        switchTo("changes", openInspectorAfter);
+        return;
+      }
+      // A comparison chosen while its base was the current publication follows
+      // the current publication, which a publish since then has replaced. A
+      // comparison against an older version refreshes against that version. The
+      // request starts first, so route recovery sees it pending.
+      const base = session.payload.baseVersion;
+      if (base === null || base.isCurrent) {
+        void openComparison?.({ current: true });
+        // The rest of the search Changes last showed, such as its focused Group,
+        // stays in the route, and route recovery removes a Group the new
+        // comparison does not hold.
+        const { compare: _compare, ...remembered } =
+          store.get(rememberedRouteSearchesAtom).changes ?? {};
+        switchTo("changes", {
+          ...openInspectorAfter,
+          search: { ...remembered, view: "changes" },
+        });
+      } else {
+        void openComparison?.({ force: true });
+        switchTo("changes", openInspectorAfter);
+      }
+    },
+    [openComparison, openInspector, store, switchTo, workspaceView]
+  );
 
-  return { showDraft, showRuns, showChanges };
+  const showChanges = useCallback(
+    () => switchToChanges({ openInspector: false }),
+    [switchToChanges]
+  );
+
+  const showVersionHistory = useCallback(() => {
+    const workflowId = store.get(currentWorkflowIdAtom);
+    if (workflowId) {
+      store.set(setComparisonSubviewAtom, { workflowId, subview: "history" });
+    }
+    switchToChanges({ openInspector: true });
+  }, [store, switchToChanges]);
+
+  return { showDraft, showRuns, showChanges, showVersionHistory };
 }

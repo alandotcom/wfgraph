@@ -3,8 +3,19 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
+import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
+import {
+  type ConditionModel,
+  serializeConditionModel,
+} from "@wfgraph/shared/conditions/conditions";
+import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import {
+  ConditionValue,
+  ValueNote,
+} from "#src/components/workflow/comparison-field-labels";
 import {
   comparisonFields,
+  comparisonMetadataNotice,
   formatComparisonValue,
   changedNodeTitle,
 } from "#src/components/workflow/comparison-properties";
@@ -346,5 +357,257 @@ describe("comparison fields of a mail step", () => {
       "Property",
     ]);
     expect(new Set(fields.map((field) => field.key)).size).toBe(2);
+  });
+});
+
+/** The two built-in actions as the server's catalog lists them, with no fields. */
+const builtInCatalog: ExtensionCatalog = {
+  ...catalog,
+  actions: [BUILT_IN_ACTION_IDS.condition, BUILT_IN_ACTION_IDS.wait].map(
+    (id) => ({
+      id,
+      label: id,
+      description: "",
+      category: "System",
+      configFields: [],
+      outputFields: [],
+    })
+  ),
+};
+
+/** A Condition whose one rule compares `minutes` against a number field. */
+function minutesRule(minutes: number): ConditionModel {
+  return {
+    version: 2,
+    groupLogic: "and",
+    groups: [
+      {
+        id: "group",
+        logic: "and",
+        conditions: [
+          {
+            id: "rule",
+            field: "$node:lifecycle.minutesUntil",
+            fieldType: "number",
+            operator: "greater_than",
+            value: minutes,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function conditionNode(minutes: number): WorkflowNode {
+  return {
+    id: "condition",
+    type: "action",
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Enough time for reminders?",
+      type: "action",
+      config: {
+        actionType: BUILT_IN_ACTION_IDS.condition,
+        condition: `node.minutesUntil > ${minutes}`,
+        conditionModel: serializeConditionModel(minutesRule(minutes)),
+      },
+    },
+  };
+}
+
+function waitNode(config: Record<string, unknown>): WorkflowNode {
+  return {
+    id: "wait",
+    type: "action",
+    position: { x: 0, y: 0 },
+    data: {
+      label: "Wait a day",
+      type: "action",
+      config: { actionType: BUILT_IN_ACTION_IDS.wait, ...config },
+    },
+  };
+}
+
+function builtInPayload(
+  before: WorkflowNode,
+  after: WorkflowNode,
+  fields: WorkflowComparisonPayload["nodeChanges"][number]["fields"]
+): WorkflowComparisonPayload {
+  return {
+    baseVersion: null,
+    proposedVersion: 2,
+    baseGraph: createSerializedWorkflowGraph({ nodes: [before], edges: [] }),
+    draftGraph: createSerializedWorkflowGraph({ nodes: [after], edges: [] }),
+    hasChanges: true,
+    nodeChanges: [{ nodeId: before.id, kind: "modified", fields }],
+    edgeChanges: [],
+  };
+}
+
+describe("comparison fields of a Condition", () => {
+  it("shows a changed Condition as one row of rules for each side", () => {
+    const comparison = builtInPayload(conditionNode(30), conditionNode(45), [
+      {
+        path: ["data", "config", "condition"],
+        kind: "modified",
+        before: "node.minutesUntil > 30",
+        after: "node.minutesUntil > 45",
+      },
+      {
+        path: ["data", "config", "conditionModel"],
+        kind: "modified",
+        before: serializeConditionModel(minutesRule(30)),
+        after: serializeConditionModel(minutesRule(45)),
+      },
+    ]);
+    const fields = comparisonFields(
+      builtInCatalog,
+      comparison,
+      comparison.nodeChanges[0]!
+    );
+
+    expect(fields.map((field) => [field.key, field.label])).toEqual([
+      ["field:condition-rules", "Continue when"],
+    ]);
+    const [rules] = fields;
+    expect(rules?.before).toBeInstanceOf(ConditionValue);
+    expect(rules?.after).toBeInstanceOf(ConditionValue);
+    expect(
+      rules?.before instanceof ConditionValue &&
+        rules.before.model.groups[0]?.conditions[0]
+    ).toMatchObject({ value: 30 });
+    expect(
+      rules?.after instanceof ConditionValue &&
+        rules.after.model.groups[0]?.conditions[0]
+    ).toMatchObject({ value: 45 });
+    expect(
+      comparisonMetadataNotice({
+        catalog: builtInCatalog,
+        payload: comparison,
+        change: comparison.nodeChanges[0]!,
+        fields,
+      })
+    ).toBeNull();
+  });
+
+  it("shows an added Condition's rules as one row and leaves the expression out", () => {
+    const node = conditionNode(30);
+    const comparison: WorkflowComparisonPayload = {
+      ...builtInPayload(node, node, []),
+      baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+      nodeChanges: [{ nodeId: node.id, kind: "added", fields: [] }],
+    };
+    const fields = comparisonFields(
+      builtInCatalog,
+      comparison,
+      comparison.nodeChanges[0]!
+    );
+
+    expect(fields.map((field) => field.label)).toEqual([
+      "Type",
+      "Label",
+      "Action",
+      "Continue when",
+    ]);
+    expect(fields.at(-1)?.after).toBeInstanceOf(ConditionValue);
+  });
+
+  it("says so when stored rules cannot be read", () => {
+    const broken = conditionNode(30);
+    const comparison = builtInPayload(
+      broken,
+      {
+        ...broken,
+        data: {
+          ...broken.data,
+          config: { ...broken.data.config, conditionModel: "{not json" },
+        },
+      },
+      [
+        {
+          path: ["data", "config", "conditionModel"],
+          kind: "modified",
+          before: serializeConditionModel(minutesRule(30)),
+          after: "{not json",
+        },
+      ]
+    );
+    const [rules] = comparisonFields(
+      builtInCatalog,
+      comparison,
+      comparison.nodeChanges[0]!
+    );
+
+    expect(rules?.after).toEqual(new ValueNote("Rules changed"));
+  });
+});
+
+describe("comparison fields of a Wait", () => {
+  it("names a Wait's settings and choices in the words its form uses", () => {
+    const comparison = builtInPayload(
+      waitNode({ waitDuration: "30m", waitGateMode: "off" }),
+      waitNode({ waitDuration: "45m", waitGateMode: "max_lateness" }),
+      [
+        {
+          path: ["data", "config", "waitDuration"],
+          kind: "modified",
+          before: "30m",
+          after: "45m",
+        },
+        {
+          path: ["data", "config", "waitGateMode"],
+          kind: "modified",
+          before: "off",
+          after: "max_lateness",
+        },
+      ]
+    );
+    const fields = comparisonFields(
+      builtInCatalog,
+      comparison,
+      comparison.nodeChanges[0]!
+    );
+
+    expect(
+      fields.map(({ label, before, after }) => ({ label, before, after }))
+    ).toEqual([
+      { label: "Duration", before: "30m", after: "45m" },
+      {
+        label: "If the scheduled time has passed",
+        before: "Continue immediately",
+        after: "Continue within a limit",
+      },
+    ]);
+    expect(
+      comparisonMetadataNotice({
+        catalog: builtInCatalog,
+        payload: comparison,
+        change: comparison.nodeChanges[0]!,
+        fields,
+      })
+    ).toBeNull();
+  });
+
+  it("reads an added Wait's stored choices as their labels", () => {
+    const node = waitNode({ waitMode: "delay", waitDuration: "1d" });
+    const comparison: WorkflowComparisonPayload = {
+      ...builtInPayload(node, node, []),
+      baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+      nodeChanges: [{ nodeId: node.id, kind: "added", fields: [] }],
+    };
+    const fields = comparisonFields(
+      builtInCatalog,
+      comparison,
+      comparison.nodeChanges[0]!
+    );
+
+    expect(
+      fields
+        .filter((field) => field.key.startsWith("snapshot:config:"))
+        .map(({ label, after }) => ({ label, after }))
+    ).toEqual([
+      { label: "Duration", after: "1d" },
+      { label: "How should this step wait?", after: "Wait for time" },
+    ]);
   });
 });

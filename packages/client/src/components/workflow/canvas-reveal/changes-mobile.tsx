@@ -12,7 +12,10 @@ import { useExtensionCatalog } from "#src/components/extension-catalog-provider"
 import { Button } from "#src/components/ui/button";
 import { StatusPlaceholder } from "#src/components/workflow/status-placeholder";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
-import { WorkflowVersionHistory } from "#src/components/workflow/workflow-version-history";
+import {
+  RestoreVersionControl,
+  WorkflowVersionHistory,
+} from "#src/components/workflow/workflow-version-history";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
 import type { WorkspaceAddress } from "#src/lib/workflow-navigation-state";
@@ -185,8 +188,9 @@ function ChangeListEntry({
 }
 
 /**
- * Refresh comparison, Version history, and Exit comparison. Refresh and
- * Version history wait for a comparison to be shown and for its request to
+ * Refresh comparison, Version history, and Exit comparison, and Restore for a
+ * comparison against a version other than the current publication. Refresh
+ * and Version history wait for a comparison to be shown and for its request to
  * settle.
  */
 function ComparisonCommands({
@@ -200,8 +204,12 @@ function ComparisonCommands({
   const openSection = useSetAtom(openMobileAddressSectionAtom);
   const { showDraft } = useWorkflowWorkspaceNavigation();
   const unavailable = !("payload" in comparison) || actions.isPending;
+  const base = "payload" in comparison ? comparison.payload.baseVersion : null;
   return (
     <div className="flex flex-wrap gap-2 border-t px-4 py-3">
+      {base && !base.isCurrent ? (
+        <RestoreVersionControl actions={actions} version={base} />
+      ) : null}
       <Button
         disabled={unavailable || !actions.canCompare}
         onClick={() => void actions.openComparison({ force: true })}

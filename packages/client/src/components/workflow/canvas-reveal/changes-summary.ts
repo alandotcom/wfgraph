@@ -6,7 +6,7 @@
  * a pure function.
  */
 
-import { compact, groupBy, partition } from "es-toolkit/array";
+import { compact, groupBy, partition, uniq } from "es-toolkit/array";
 import { atom } from "jotai";
 import { isBuiltInActionId } from "@wfgraph/shared/actions/built-in-actions";
 import {
@@ -34,6 +34,7 @@ import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
 import {
   changedNodeTitle,
   comparisonGroupMembership,
+  isConditionRulesPath,
 } from "#src/components/workflow/comparison-properties";
 import type { MobileSheet } from "#src/lib/mobile-sheet-navigation";
 import type { ComparisonDisplayGraph } from "#src/lib/workflow-comparison";
@@ -648,12 +649,23 @@ export function describeInspection(
           "Execution behavior is unchanged for this step.",
         ]).join(" ");
       }
-      const count =
-        inspection.nodeChange?.fields.filter(
-          (field) =>
-            fieldChangeCategory({ path: field.path, groupFrame: false }) ===
-            "behavior"
-        ).length ?? 0;
+      // A Condition's stored rules and the expression compiled from them show
+      // as one row, so they count as one setting.
+      const nodeChange = inspection.nodeChange;
+      const count = nodeChange
+        ? uniq(
+            nodeChange.fields.flatMap((field, position) =>
+              fieldChangeCategory({ path: field.path, groupFrame: false }) ===
+              "behavior"
+                ? [
+                    isConditionRulesPath(payload, nodeChange.nodeId, field.path)
+                      ? "condition-rules"
+                      : position,
+                  ]
+                : []
+            )
+          ).length
+        : 0;
       return compact([
         `${count} ${count === 1 ? "setting differs" : "settings differ"} between ${base} and the draft.`,
         membership,

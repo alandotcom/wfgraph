@@ -28,10 +28,12 @@ import {
   activeSelectionAtom,
   activeWorkspaceCamerasAtom,
   recordWorkspaceCameraAtom,
+  setWorkspaceRevealLevelAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import {
   CHANGES_WORKFLOW_ID,
   changesStep,
+  installComparison,
   renderChangesReveal,
   stubComparisonServer,
 } from "./changes-reveal.test-support";
@@ -314,6 +316,48 @@ describe("Changes Browse navigation", () => {
         .getAttribute("aria-pressed")
     ).toBe("true");
     await waitFor(() => expect(list()?.scrollTop).toBe(120));
+  });
+
+  it("opens a version chosen in history at its change list with Restore, even when it was left at Focus", async () => {
+    installAuthorizationGrantsForTests([
+      WfGraphOperations.workflowCompareVersion.id,
+      WfGraphOperations.workflowGetVersionHistory.id,
+      WfGraphOperations.workflowRestoreVersion.id,
+      WfGraphOperations.workflowUpdate.id,
+    ]);
+    stubServer();
+    const { store, router, aside, inReveal, list, click, show } =
+      await renderChanges();
+    expect(
+      inReveal().queryByRole("button", { name: /^Restore version/ })
+    ).toBeNull();
+    const versionOne: WorkflowRouteSearch = {
+      view: "changes",
+      compare: "version_1",
+    };
+    // Version 1's comparison was last left at Focus.
+    store.set(setWorkspaceRevealLevelAtom, {
+      address: workspaceAddressFromSearch(WORKFLOW_ID, versionOne),
+      level: "focus",
+    });
+
+    click("Version history");
+    fireEvent.click(
+      await inReveal().findByRole("button", { name: /Version 1/ })
+    );
+    await waitFor(() =>
+      expect(router.state.location.search).toMatchObject(versionOne)
+    );
+    // The harness does not sync the route, so the case applies it and installs
+    // the comparison the route requests.
+    await show(versionOne);
+    await act(async () => installComparison(store, comparisonAgainst(1)));
+
+    expect(
+      inReveal().getByRole("button", { name: "Restore version 1 as draft" })
+    ).toBeTruthy();
+    expect(aside().dataset.level).toBe("browse");
+    expect(list()).not.toBeNull();
   });
 
   it("returns from version history to the change list on Escape, then closes", async () => {

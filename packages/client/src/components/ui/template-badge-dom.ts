@@ -89,10 +89,19 @@ const FILLER_ATTRIBUTE = "data-filler";
 // type size measures taller than the space that leaves.
 const BADGE_BASE_CLASS =
   "inline-flex h-[calc(--spacing(4.75))] items-center gap-1 rounded px-1.5 font-mono text-xs border mx-0.5";
-const LIVE_BADGE_CLASS = `${BADGE_BASE_CLASS} bg-info/10 text-info border-info/20`;
-// A broken badge's words are foreground text and its border carries the red at
-// full strength, because red text on a red tint measures under 4.5:1.
-const BROKEN_BADGE_CLASS = `${BADGE_BASE_CLASS} bg-destructive/10 text-foreground border-destructive`;
+/**
+ * The colors of a template reference badge: `live` for a reference whose source
+ * the workflow still offers, `broken` for one whose source is gone. A broken
+ * badge's words are foreground text and its border carries the red at full
+ * strength, because red text on a red tint measures under 4.5:1. Read-only
+ * surfaces draw their references in these same colors.
+ */
+export const TEMPLATE_BADGE_TONE = {
+  live: "bg-info/10 text-info border-info/20",
+  broken: "bg-destructive/10 text-foreground border-destructive",
+} as const;
+const LIVE_BADGE_CLASS = `${BADGE_BASE_CLASS} ${TEMPLATE_BADGE_TONE.live}`;
+const BROKEN_BADGE_CLASS = `${BADGE_BASE_CLASS} ${TEMPLATE_BADGE_TONE.broken}`;
 
 /** The raw token a badge stands for, or null for anything that is not a badge. */
 function templateOf(node: Node): string | null {

@@ -682,11 +682,16 @@ the first of those steps, and opens Browse when Reveal is closed.
 Collapse, camera, Group depth, selection, Reveal state, and scroll never enter
 a comparison.
 The Publish confirmation shows the same Behavior and Organization counts, and
-the same sentence for a version whose only changes are Organization.
+the same sentence for a version whose only changes are Organization. Under the
+counts it lists each changed step by name with the settings that changed, and it
+says how many active runs stay on older versions, with **Show version usage**
+opening version history.
 While a different comparison is loading or has failed, Browse shows that state
 and never the comparison it replaces, and the canvas shows the draft without
 change markers until the comparison the route names arrives. Version history opens inside Browse with focus
-on its heading. **Back to changes** or Escape returns to the list with its
+on its heading. Choosing a version there opens that comparison's change list in
+Browse, and a comparison against a version other than the current publication
+offers **Restore version N as draft** above its list. **Back to changes** or Escape returns to the list with its
 selection and scroll, and focus on **Version history**; Escape from the list
 closes Reveal. **Reset comparison layout** also hands focus to **Version
 history**.
@@ -696,12 +701,16 @@ With one changed step or connection selected, on the canvas or from the list,
 object's title. A table lists each setting under readable names, with a column
 for the published version ("Version N") and one for **Current draft**: both
 columns for a modified step, the draft column alone for an added one, and the
-published column alone for a removed one. A long value starts shortened with
-its length and **Show full value**, and a value the server redacted or masked
-reads "Hidden for security". A Lifecycle rule keyed by Event names that Event,
+published column alone for a removed one. When both columns hold text that
+shares words, removed words are struck through on a red tint, added words sit on
+a green tint, and long unchanged text folds around each change until the row's
+**Show full value**. Any other long value starts shortened with its length and
+**Show full value**, and a value the server redacted or masked reads "Hidden
+for security". A template reference reads as the badge the Draft editor draws. A Lifecycle rule keyed by Event names that Event,
 as "Start filter › Appointment booked", a Start or Cancel Filter reads as its
-rules or "Filter changed" when it cannot be read, and a Connection reads as its
-name or "Connection changed". Focus says so when a step's action is missing from
+rules or "Filter changed" when it cannot be read, a Condition's rules read as
+sentences under "Continue when" or "Rules changed", a Wait's settings use its
+form's labels, and a Connection reads as its name or "Connection changed". Focus says so when a step's action is missing from
 the catalog and its settings show general names, when the comparison lacks a
 side's values, and when a step is unchanged and only its connections changed,
 listing those connections. A changed Group lists its own settings and the

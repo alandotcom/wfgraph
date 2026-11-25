@@ -291,6 +291,68 @@ describe("Changes Focus properties", () => {
     ).toBeTruthy();
   });
 
+  it("marks the changed words of two long values, folds the rest, and draws template references as badges", async () => {
+    const reference = "{{@kept:Kept.name}}";
+    const opening = `Hi ${reference}, ${"this sentence stays the same. ".repeat(12)}`;
+    const before = `${opening}Your visit is on Monday.`;
+    const after = `${opening}Your visit is tomorrow.`;
+    const withSubject = (subject: string) =>
+      createSerializedWorkflowGraph({
+        nodes: [
+          changesStep("kept", "Kept"),
+          email("reminder", "Reminder", { subject }),
+        ],
+        edges: [],
+      });
+    const view = await renderFocus({
+      installed: {
+        ...comparisonAgainst(3),
+        baseGraph: withSubject(before),
+        draftGraph: withSubject(after),
+        nodeChanges: [
+          {
+            nodeId: "reminder",
+            kind: "modified",
+            fields: [
+              {
+                path: ["data", "config", "subject"],
+                kind: "modified",
+                before,
+                after,
+              },
+            ],
+          },
+        ],
+        edgeChanges: [],
+      },
+    });
+    compare(view, "Reminder Modified");
+
+    const table = view
+      .inReveal()
+      .getByRole("table", { name: "Settings of this step" });
+    const texts = (selector: string) =>
+      [...table.querySelectorAll(selector)].map((item) => item.textContent);
+    expect(texts("del")).toEqual(["on Monday"]);
+    expect(texts("ins")).toEqual(["tomorrow"]);
+    // The opening the two values share is folded in both columns, with one
+    // control for the row.
+    expect(
+      within(table).getAllByRole("img", { name: "Unchanged text" })
+    ).toHaveLength(2);
+    expect(texts("[data-slot=template-reference]")).toEqual([]);
+
+    view.click("Show full value");
+    expect(
+      within(table).queryAllByRole("img", { name: "Unchanged text" })
+    ).toEqual([]);
+    expect(texts("[data-slot=template-reference]")).toEqual([
+      "Kept.name",
+      "Kept.name",
+    ]);
+    expect(table.textContent).not.toContain("{{@");
+  });
+
   it("shows a removed step's published values alone", async () => {
     const view = await renderFocus();
     compare(view, "Gone Removed");

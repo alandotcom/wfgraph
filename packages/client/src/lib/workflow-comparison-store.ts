@@ -38,6 +38,13 @@ type ComparisonRequestState = {
 };
 
 const comparisonSessionsStateAtom = atom<ComparisonSessions>({});
+/**
+ * The subview asked for, by workflow, while that workflow had no comparison
+ * installed. The next install opens at it and clears it.
+ */
+const requestedSubviewsAtom = atom<Readonly<Record<string, ComparisonSubview>>>(
+  {}
+);
 const comparisonRequestStateAtom = atom<
   Readonly<Record<string, ComparisonRequestState>>
 >({});
@@ -260,6 +267,10 @@ export const installWorkflowComparisonAtom = atom(
     ) {
       return false;
     }
+    const { [input.workflowId]: requestedSubview, ...otherRequests } = get(
+      requestedSubviewsAtom
+    );
+    set(requestedSubviewsAtom, otherRequests);
     set(comparisonSessionsStateAtom, (sessions) => {
       const existing = sessions[input.workflowId];
       const preserve = (input.preserveSession ?? Boolean(existing)) && existing;
@@ -271,7 +282,7 @@ export const installWorkflowComparisonAtom = atom(
             input.selectedHistoryVersionId ??
             input.payload.baseVersion?.id ??
             (preserve ? existing.selectedHistoryVersionId : null),
-          subview: preserve ? existing.subview : "review",
+          subview: requestedSubview ?? (preserve ? existing.subview : "review"),
           positionOverrides: preserve ? existing.positionOverrides : {},
         },
       };
@@ -285,6 +296,10 @@ export const clearWorkflowComparisonAtom = atom(
   (get, set, workflowId: string) => {
     set(comparisonSessionsStateAtom, (sessions) => {
       const { [workflowId]: _cleared, ...remaining } = sessions;
+      return remaining;
+    });
+    set(requestedSubviewsAtom, (requests) => {
+      const { [workflowId]: _cleared, ...remaining } = requests;
       return remaining;
     });
     const state = requestStateFor(get(comparisonRequestStateAtom), workflowId);
@@ -317,9 +332,21 @@ export const selectComparisonHistoryVersionAtom = atom(
   }
 );
 
+/**
+ * Show the change list or version history in a workflow's comparison. Asked
+ * while the workflow has no comparison installed, the comparison that installs
+ * next opens at `subview`.
+ */
 export const setComparisonSubviewAtom = atom(
   null,
-  (_get, set, input: { workflowId: string; subview: ComparisonSubview }) => {
+  (get, set, input: { workflowId: string; subview: ComparisonSubview }) => {
+    if (!get(comparisonSessionsStateAtom)[input.workflowId]) {
+      set(requestedSubviewsAtom, (requests) => ({
+        ...requests,
+        [input.workflowId]: input.subview,
+      }));
+      return;
+    }
     set(comparisonSessionsStateAtom, (sessions) => {
       const session = sessions[input.workflowId];
       return session

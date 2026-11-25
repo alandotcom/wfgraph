@@ -7,7 +7,10 @@ import { ComparisonMarker } from "#src/components/flow-elements/comparison-marke
 import { Button } from "#src/components/ui/button";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { StatusPlaceholder } from "#src/components/workflow/status-placeholder";
-import { WorkflowVersionHistory } from "#src/components/workflow/workflow-version-history";
+import {
+  RestoreVersionControl,
+  WorkflowVersionHistory,
+} from "#src/components/workflow/workflow-version-history";
 import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
@@ -167,11 +170,17 @@ export function ChangesBrowse(_props: RevealBodyProps) {
         historyButtonRef={historyButtonRef}
       />
       {"payload" in comparison ? (
-        <ChangeList
-          address={address}
-          payload={comparison.payload}
-          status={comparison.status}
-        />
+        <>
+          <EarlierVersionRestore
+            actions={actions}
+            payload={comparison.payload}
+          />
+          <ChangeList
+            address={address}
+            payload={comparison.payload}
+            status={comparison.status}
+          />
+        </>
       ) : (
         <ComparisonState
           actions={actions}
@@ -221,18 +230,17 @@ function ChangesControls({
         <RefreshCw />
       </Button>
       <Button
-        aria-label="Version history"
         disabled={unavailable}
         onClick={() =>
           setSubview({ workflowId: address.workflowId, subview: "history" })
         }
         ref={historyButtonRef}
-        size="icon-sm"
-        title="Version history"
+        size="sm"
         type="button"
         variant="ghost"
       >
-        <History />
+        <History data-icon="inline-start" />
+        Version history
       </Button>
       {layoutChanged ? (
         <Button
@@ -259,6 +267,28 @@ function ChangesControls({
         <X data-icon="inline-start" />
         Exit comparison
       </Button>
+    </div>
+  );
+}
+
+/**
+ * Restore for a comparison against a version other than the current
+ * publication, which is how choosing a version in history lands: its change
+ * list with Restore in reach. A comparison against the current publication
+ * leaves Restore to version history.
+ */
+function EarlierVersionRestore({
+  actions,
+  payload,
+}: {
+  actions: ComparisonActions;
+  payload: WorkflowComparisonPayload;
+}) {
+  const base = payload.baseVersion;
+  if (base === null || base.isCurrent || !actions.canRestore) return null;
+  return (
+    <div className="shrink-0 border-b px-4 py-2">
+      <RestoreVersionControl actions={actions} version={base} />
     </div>
   );
 }

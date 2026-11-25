@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { ArrowLeft, RotateCcw } from "lucide-react";
 import { type Ref, useMemo, useState } from "react";
 import { Button } from "#src/components/ui/button";
@@ -14,7 +14,15 @@ import {
 } from "#src/components/ui/dialog";
 import { StatusPlaceholder } from "#src/components/workflow/status-placeholder";
 import { WorkflowVersionUsage } from "#src/components/workflow/workflow-version-usage";
-import { comparisonSessionAtom } from "#src/lib/workflow-comparison-store";
+import {
+  comparisonSessionAtom,
+  setComparisonSubviewAtom,
+} from "#src/lib/workflow-comparison-store";
+import {
+  type WorkflowRouteSearch,
+  workspaceAddressFromSearch,
+} from "#src/lib/workflow-navigation-state";
+import { setWorkspaceRevealLevelAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   currentWorkflowDraftRevisionAtom,
   currentWorkflowIdAtom,
@@ -38,7 +46,8 @@ type WorkflowComparisonActions = ReturnType<
  * `headingRef` receives and which can take focus; a frame that names the
  * history itself leaves both out. Choosing a version calls `onChooseBase`
  * first, then navigates to that version's comparison, or refreshes the
- * comparison when that version is the one already compared.
+ * comparison when that version is the one already compared. Either way the
+ * comparison opens at its change list in Browse, which offers Restore.
  */
 export function WorkflowVersionHistory({
   actions,
@@ -52,10 +61,10 @@ export function WorkflowVersionHistory({
   onChooseBase?: (() => void) | undefined;
 }) {
   const workflowId = useAtomValue(currentWorkflowIdAtom);
-  const draftRevision = useAtomValue(currentWorkflowDraftRevisionAtom);
   const session = useAtomValue(comparisonSessionAtom);
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
-  const [restoreOpen, setRestoreOpen] = useState(false);
+  const setSubview = useSetAtom(setComparisonSubviewAtom);
+  const setRevealLevel = useSetAtom(setWorkspaceRevealLevelAtom);
   const canReadHistory = can(WfGraphOperations.workflowGetVersionHistory.id);
   const canReadUsage = can(WfGraphOperations.workflowGetVersionUsage.id);
 
@@ -144,14 +153,23 @@ export function WorkflowVersionHistory({
                     if (!workflowId) return;
                     // Choosing another base is navigation: the route names the
                     // comparison, and applying the route opens it. Choosing the
-                    // base already shown refreshes it.
+                    // base already shown refreshes it. The chosen comparison
+                    // shows its change list at Browse, even when its address
+                    // was last left at Focus.
                     onChooseBase?.();
+                    setSubview({ workflowId, subview: "review" });
                     if (session.payload.baseVersion?.id === item.id) {
                       void actions.openComparison({ baseVersionId: item.id });
                     } else {
-                      void navigate({
-                        search: { view: "changes", compare: item.id },
+                      const search: WorkflowRouteSearch = {
+                        view: "changes",
+                        compare: item.id,
+                      };
+                      setRevealLevel({
+                        address: workspaceAddressFromSearch(workflowId, search),
+                        level: "browse",
                       });
+                      void navigate({ search });
                     }
                   }}
                   type="button"
@@ -186,40 +204,64 @@ export function WorkflowVersionHistory({
       </div>
       {actions.canRestore ? (
         <div className="border-t p-3">
-          <Button
+          <RestoreVersionControl
+            actions={actions}
             className="w-full"
-            disabled={!selectedHistory || actions.restore.isPending}
-            onClick={() => setRestoreOpen(true)}
-            type="button"
-            variant="outline"
-          >
-            <RotateCcw data-icon="inline-start" />
-            Restore{" "}
-            {selectedHistory
-              ? `version ${selectedHistory.version}`
-              : "version"}{" "}
-            as draft
-          </Button>
+            version={selectedHistory}
+          />
         </div>
       ) : null}
-      {actions.canRestore && selectedHistory ? (
+    </div>
+  );
+}
+
+/**
+ * Restore version N as draft, and the confirmation it opens. With no
+ * `version` the button names no number and is disabled. It renders nothing
+ * for a person who cannot restore.
+ */
+export function RestoreVersionControl({
+  actions,
+  version,
+  className,
+}: {
+  actions: WorkflowComparisonActions;
+  version: { id: string; version: number } | undefined;
+  className?: string | undefined;
+}) {
+  const workflowId = useAtomValue(currentWorkflowIdAtom);
+  const draftRevision = useAtomValue(currentWorkflowDraftRevisionAtom);
+  const [open, setOpen] = useState(false);
+  if (!actions.canRestore) return null;
+  return (
+    <>
+      <Button
+        className={className}
+        disabled={!version || actions.restore.isPending}
+        onClick={() => setOpen(true)}
+        type="button"
+        variant="outline"
+      >
+        <RotateCcw data-icon="inline-start" />
+        Restore {version ? `version ${version.version}` : "version"} as draft
+      </Button>
+      {version ? (
         <RestoreDialog
           isPending={actions.restore.isPending}
-          onOpenChange={setRestoreOpen}
+          onOpenChange={setOpen}
           onRestore={() =>
-            actions.canRestore &&
             workflowId &&
             actions.restore.mutate({
               workflowId,
-              versionId: selectedHistory.id,
+              versionId: version.id,
               expectedDraftRevision: draftRevision,
             })
           }
-          open={restoreOpen}
-          version={selectedHistory.version}
+          open={open}
+          version={version.version}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 
