@@ -22,6 +22,7 @@ import {
 } from "#src/lib/rpc-fetch-test-support";
 import { orpcQuery } from "#src/lib/rpc-query";
 import WorkflowsPage from "#src/routes/workflows/page";
+import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 
@@ -95,7 +96,9 @@ async function renderWorkflowsPage() {
       value={{ entities: [], events: [], actions: [], integrations: [] }}
     >
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <OverlayProvider>
+          <RouterProvider router={router} />
+        </OverlayProvider>
       </QueryClientProvider>
     </ExtensionCatalogProvider>
   );
@@ -305,6 +308,75 @@ describe("WorkflowsPage structure and states", () => {
       await view.findByRole("checkbox", { name: "Select Welcome email" })
     );
     expect(router.state.location.pathname).toBe("/");
+  });
+
+  it("makes the workflow table one Tab stop that the list keys move through", async () => {
+    stubDashboardRpc(null, [
+      workflow("workflow_1", "Welcome email"),
+      workflow("workflow_2", "Renewal reminder"),
+    ]);
+    const { view, router } = await renderWorkflowsPage();
+
+    await view.findByText("Renewal reminder");
+    const rows = () =>
+      Array.from(
+        view.container.querySelectorAll<HTMLElement>("tbody tr[data-row-index]")
+      );
+    const [first, second] = rows();
+    if (!first || !second) {
+      throw new Error("expected two workflow rows");
+    }
+    expect(rows().map((row) => row.tabIndex)).toEqual([0, -1]);
+    // The row's own controls are no Tab stops.
+    for (const control of first.querySelectorAll(
+      "a, button, [role=checkbox]"
+    )) {
+      expect((control as HTMLElement).tabIndex).toBe(-1);
+    }
+
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(second);
+    expect(rows().map((row) => row.tabIndex)).toEqual([-1, 0]);
+    fireEvent.keyDown(second, { key: "k" });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: "j" });
+    expect(document.activeElement).toBe(second);
+
+    fireEvent.keyDown(second, { key: " " });
+    expect(await view.findByText("1 selected")).toBeTruthy();
+
+    fireEvent.keyDown(second, { key: "Enter" });
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/workflows/workflow_2")
+    );
+  });
+
+  it("opens a palette with the chord that opens a workflow by name", async () => {
+    stubDashboardRpc(null, [
+      workflow("workflow_1", "Welcome email"),
+      workflow("workflow_2", "Renewal reminder"),
+    ]);
+    const { view, router } = await renderWorkflowsPage();
+    await view.findByText("Renewal reminder");
+
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    const input = await view.findByRole("combobox", {
+      name: "Search workflows and commands",
+    });
+    expect(view.getByRole("option", { name: "New workflow" })).toBeTruthy();
+    expect(view.getByRole("option", { name: /^Theme: Dark/ })).toBeTruthy();
+    expect(
+      view.getByRole("option", { name: /^Keyboard shortcuts/ })
+    ).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "renew" } });
+    fireEvent.click(
+      await view.findByRole("option", { name: "Renewal reminder" })
+    );
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/workflows/workflow_2")
+    );
   });
 
   it("shows the bulk actions only once a workflow is selected", async () => {

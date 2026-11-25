@@ -12,7 +12,8 @@ import {
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { useMemo, useRef } from "react";
+import { useId, useMemo, useRef } from "react";
+import { useListRowKeys } from "#src/hooks/use-list-row-keys";
 import { Button } from "#src/components/ui/button";
 import { RunsLoadFailure } from "#src/components/workflow/workflow-runs";
 import {
@@ -95,11 +96,11 @@ const runHistoryTableFeatures = tableFeatures({
 });
 
 /**
- * A run row. The whole row opens the run, and the workflow name inside it
- * stays a button for the keyboard.
+ * A run row. The whole row opens the run. The rows are the list's one Tab
+ * stop, and its keyboard focus wears the hover's wash and a 2px ring outline.
  */
 const ROW_CLASS =
-  "grid w-full cursor-pointer items-center border-b px-4 last:border-b-0 hover:bg-muted/60 active:bg-muted";
+  "grid w-full cursor-pointer items-center border-b px-4 outline-none last:border-b-0 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring active:bg-muted";
 
 const columnHelper = createColumnHelper<
   typeof runHistoryTableFeatures,
@@ -197,11 +198,13 @@ function createRunHistoryColumns(
         const identity = getRunIdentity(run, catalog);
         return (
           <div className="min-w-0">
+            {/* Enter on the row opens the run, so the name is no Tab stop. */}
             <button
               className="max-w-full truncate text-left font-medium text-foreground text-sm hover:underline"
               onClick={() => {
                 onOpenRun(run);
               }}
+              tabIndex={-1}
               type="button"
             >
               {run.workflowName}
@@ -330,6 +333,23 @@ export function RunHistoryTable({
     getItemKey: (index) => rows[index]?.id ?? index,
   });
 
+  // One Tab stop for the whole list: the keys move between rows and scroll a
+  // row the virtualizer has not rendered into view, and Enter opens the run.
+  const keysHintId = useId();
+  const rowKeys = useListRowKeys({
+    count: rows.length,
+    container: scrollRef,
+    actions: {
+      open: (index) => {
+        const row = rows[index];
+        if (row) {
+          onOpenRun(row.original);
+        }
+      },
+      reveal: (index) => rowVirtualizer.scrollToIndex(index),
+    },
+  });
+
   const onScroll = () => {
     const element = scrollRef.current;
     if (!element || !hasNextPage || isLoadingMore) {
@@ -409,8 +429,10 @@ export function RunHistoryTable({
         ref={scrollRef}
       >
         {virtualItems.length === 0 ? (
-          rows.map((row) => (
+          rows.map((row, index) => (
             <div
+              {...rowKeys(index)}
+              aria-describedby={keysHintId}
               className={cn(ROW_CLASS, GRID_COLUMNS)}
               key={row.id}
               onClick={(event) => {
@@ -444,6 +466,8 @@ export function RunHistoryTable({
               }
               return (
                 <div
+                  {...rowKeys(virtualRow.index)}
+                  aria-describedby={keysHintId}
                   className={cn("absolute", ROW_CLASS, GRID_COLUMNS)}
                   data-index={virtualRow.index}
                   key={row.id}
@@ -476,6 +500,10 @@ export function RunHistoryTable({
         )}
       </div>
 
+      <p className="sr-only" id={keysHintId}>
+        Use the arrow keys or J and K to move between runs. Press Enter to open
+        one.
+      </p>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3">
         <p className="text-muted-foreground text-xs">
           Page {pageIndex + 1}

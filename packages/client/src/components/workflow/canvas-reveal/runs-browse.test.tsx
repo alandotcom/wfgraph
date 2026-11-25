@@ -107,6 +107,23 @@ describe("Runs Browse run list and selected run", () => {
     await waitFor(() => expect(document.activeElement).toBe(rows()[1]));
   });
 
+  // The Runs tab opens the newest run from Draft. Back on that run goes to the
+  // run list and stays in Runs, rather than returning to Draft.
+  it("goes back to the run list from a run the Runs tab opened", async () => {
+    served.items = [
+      execution("exec_b", "completed"),
+      execution("exec_a", "running"),
+    ];
+    const { router, title, rows, show, back } = await renderRunsReveal({});
+    await show({ view: "runs" });
+    await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
+
+    back();
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(router.state.location.search).toEqual({ view: "runs" });
+    expect(title()).toBe("Runs");
+  });
+
   // The path names where the run list is, and its Runs segment opens it the
   // way Back does: the run's entry is replaced and its row takes focus.
   it("opens the run list from the Runs segment of an open run's path", async () => {

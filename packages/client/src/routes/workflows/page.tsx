@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { Circle, Copy, MoreHorizontalIcon } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getClientLogger } from "#src/lib/logger";
 import { can } from "#src/lib/authorization";
@@ -37,6 +37,8 @@ import {
 import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import { copyWorkflowId } from "#src/components/workflow/workflow-toolbar-chrome";
 import { useDocumentTitle } from "#src/hooks/effects";
+import { useListRowKeys } from "#src/hooks/use-list-row-keys";
+import { WorkflowsPagePalette } from "#src/components/workflows/workflows-page-palette";
 import { opensRow } from "#src/lib/row-click";
 import { RunRetentionNote } from "#src/components/run-retention-note";
 import { RunHistorySearch } from "#src/components/workflows/run-history-search";
@@ -128,6 +130,14 @@ const NO_WORKFLOWS: WorkflowSummaryPayload[] = [];
 
 /** A row that opens its workflow: a hover fill, and a darker one while pressed. */
 const OPENABLE_ROW_CLASS = "cursor-pointer hover:bg-muted/60 active:bg-muted";
+
+/**
+ * The keyboard focus on a row, which is the list's one Tab stop: the wash the
+ * pointer's hover uses, and the 2px ring outline an element with no ring of its
+ * own gets.
+ */
+const FOCUSABLE_ROW_CLASS =
+  "outline-none focus-visible:bg-muted/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring";
 
 /**
  * The one status a workflow row states, answering whether it reaches anyone
@@ -410,6 +420,18 @@ export default function WorkflowsPage() {
     );
   };
 
+  const openWorkflow = (workflowId: string) => {
+    void navigate({
+      to: "/workflows/$workflowId",
+      params: { workflowId },
+    });
+  };
+
+  const openCreateDialog = () => {
+    setCreateDialogSession((session) => session + 1);
+    setIsCreateDialogOpen(true);
+  };
+
   const toggleSelectOne = (workflowId: string, checked: boolean) => {
     setSelectedWorkflowIds((prev) => {
       const next = new Set(prev);
@@ -422,18 +444,18 @@ export default function WorkflowsPage() {
     });
   };
 
-  const openRun = useCallback(
-    (item: GlobalExecutionItem) => {
-      if (canOpenGlobalRuns) {
-        void navigate({
-          to: "/workflows/$workflowId",
-          params: { workflowId: item.workflowId },
-          search: { view: "runs", executionId: item.id },
-        });
-      }
-    },
-    [canOpenGlobalRuns, navigate]
-  );
+  // A plain function rather than `useCallback`: `navigate` also reaches the
+  // row-key hook below, and the React Compiler cannot keep a manual memo whose
+  // dependency a hook receives. The compiler memoizes this itself.
+  const openRun = (item: GlobalExecutionItem) => {
+    if (canOpenGlobalRuns) {
+      void navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: item.workflowId },
+        search: { view: "runs", executionId: item.id },
+      });
+    }
+  };
 
   const lifecycle = useMutation(
     orpcQuery.workflow.bulkLifecycle.mutationOptions({
@@ -534,6 +556,41 @@ export default function WorkflowsPage() {
     [canBulkLifecycle, workflows]
   );
 
+  // The table is one Tab stop: the keys move between rows, Enter opens one,
+  // Space ticks its checkbox, and Shift+F10 opens its actions menu.
+  const workflowRowsRef = useRef<HTMLTableSectionElement>(null);
+  const workflowKeysHintId = useId();
+  const workflowRowKeys = useListRowKeys({
+    count: workflowRows.length,
+    container: workflowRowsRef,
+    actions: {
+      open: (index) => {
+        const workflow = workflowRows[index];
+        if (workflow && canOpenWorkflow) {
+          openWorkflow(workflow.id);
+        }
+      },
+      toggle: canBulkLifecycle
+        ? (index) => {
+            const workflow = workflowRows[index];
+            if (workflow) {
+              toggleSelectOne(
+                workflow.id,
+                !selectedWorkflowIds.has(workflow.id)
+              );
+            }
+          }
+        : undefined,
+      openMenu: (index) => {
+        workflowRowsRef.current
+          ?.querySelector<HTMLElement>(
+            `[data-row-index="${index}"] [data-row-menu]`
+          )
+          ?.click();
+      },
+    },
+  });
+
   const renderWorkflowContent = () => {
     if (workflowsLoadFailed) {
       return (
@@ -567,183 +624,201 @@ export default function WorkflowsPage() {
     // `md` the State and Updated columns drop out and the name cell carries
     // State on a second line.
     return (
-      <table className="w-full table-fixed text-left text-sm">
-        <thead className="sticky top-0 z-10 bg-card text-muted-foreground text-xs">
-          <tr className="h-9 border-b">
-            {canBulkLifecycle ? (
-              <th className="w-10 pr-0 pl-4 font-medium">
-                <Checkbox
-                  aria-label="Select all workflows"
-                  checked={allSelected}
-                  onCheckedChange={(checked) => {
-                    toggleSelectAll(checked);
-                  }}
-                />
+      <>
+        <table className="w-full table-fixed text-left text-sm">
+          <thead className="sticky top-0 z-10 bg-card text-muted-foreground text-xs">
+            <tr className="h-9 border-b">
+              {canBulkLifecycle ? (
+                <th className="w-10 pr-0 pl-4 font-medium">
+                  <Checkbox
+                    aria-label="Select all workflows"
+                    checked={allSelected}
+                    onCheckedChange={(checked) => {
+                      toggleSelectAll(checked);
+                    }}
+                  />
+                </th>
+              ) : null}
+              <th className="px-2 font-medium">Name</th>
+              <th className="hidden w-36 px-2 font-medium md:table-cell">
+                State
               </th>
-            ) : null}
-            <th className="px-2 font-medium">Name</th>
-            <th className="hidden w-36 px-2 font-medium md:table-cell">
-              State
-            </th>
-            <th className="hidden w-16 px-2 font-medium md:table-cell">
-              Updated
-            </th>
-            <th className="w-11 pr-3 font-medium">
-              <span className="sr-only">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {workflowRows.map((workflow) => {
-            const isSelected = selectedWorkflowIds.has(workflow.id);
-            const isOpening = openingWorkflowId === workflow.id;
-            const isTestMode = workflow.mode === "test";
-            const toggleAction = workflow.isPaused ? "resume" : "pause";
-            const toggleActionLabel = workflow.isPaused ? "Resume" : "Pause";
-            // A workflow with no published version starts no run, so there
-            // is nothing for a pause to stop. A paused one can still resume.
-            const offersPauseToggle =
-              workflow.isPaused || workflow.publishedVersionId !== undefined;
+              <th className="hidden w-16 px-2 font-medium md:table-cell">
+                Updated
+              </th>
+              <th className="w-11 pr-3 font-medium">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody ref={workflowRowsRef}>
+            {workflowRows.map((workflow, index) => {
+              const isSelected = selectedWorkflowIds.has(workflow.id);
+              const isOpening = openingWorkflowId === workflow.id;
+              const isTestMode = workflow.mode === "test";
+              const toggleAction = workflow.isPaused ? "resume" : "pause";
+              const toggleActionLabel = workflow.isPaused ? "Resume" : "Pause";
+              // A workflow with no published version starts no run, so there
+              // is nothing for a pause to stop. A paused one can still resume.
+              const offersPauseToggle =
+                workflow.isPaused || workflow.publishedVersionId !== undefined;
 
-            return (
-              <tr
-                aria-busy={isOpening || undefined}
-                className={`h-11 border-b last:border-b-0 ${canOpenWorkflow ? OPENABLE_ROW_CLASS : ""} ${isOpening ? "bg-muted" : ""}`}
-                key={workflow.id}
-                onClick={(event) => {
-                  if (canOpenWorkflow && opensRow(event)) {
-                    void navigate({
-                      to: "/workflows/$workflowId",
-                      params: { workflowId: workflow.id },
-                    });
-                  }
-                }}
-              >
-                {canBulkLifecycle ? (
-                  <td className="pr-0 pl-4">
-                    <Checkbox
-                      aria-label={`Select ${workflow.name}`}
-                      checked={isSelected}
-                      onCheckedChange={(checked) => {
-                        toggleSelectOne(workflow.id, checked);
-                      }}
-                    />
-                  </td>
-                ) : null}
-                <td className="px-2 py-1.5">
-                  <div className="flex min-w-0 items-center gap-2">
-                    {canOpenWorkflow ? (
-                      // A real link, so a keyboard user can reach it and a
-                      // middle click or Cmd+click opens a new tab. Preloading
-                      // stays off because the editor route's loader writes the
-                      // open workflow into the editor's store.
-                      <Link
-                        className="truncate rounded-sm font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                        params={{ workflowId: workflow.id }}
-                        preload={false}
-                        title={workflow.name}
-                        to="/workflows/$workflowId"
-                      >
-                        {workflow.name}
-                      </Link>
-                    ) : (
-                      <span
-                        className="truncate font-medium text-foreground"
-                        title={workflow.name}
-                      >
-                        {workflow.name}
-                      </span>
-                    )}
-                    {isOpening ? (
-                      <Spinner
-                        aria-label="Opening workflow"
-                        className="size-3.5 text-muted-foreground"
+              return (
+                <tr
+                  {...workflowRowKeys(index)}
+                  aria-busy={isOpening || undefined}
+                  aria-describedby={workflowKeysHintId}
+                  className={cn(
+                    "h-11 border-b last:border-b-0",
+                    FOCUSABLE_ROW_CLASS,
+                    canOpenWorkflow && OPENABLE_ROW_CLASS,
+                    isOpening && "bg-muted"
+                  )}
+                  key={workflow.id}
+                  onClick={(event) => {
+                    if (canOpenWorkflow && opensRow(event)) {
+                      openWorkflow(workflow.id);
+                    }
+                  }}
+                >
+                  {canBulkLifecycle ? (
+                    <td className="pr-0 pl-4">
+                      <Checkbox
+                        aria-label={`Select ${workflow.name}`}
+                        checked={isSelected}
+                        onCheckedChange={(checked) => {
+                          toggleSelectOne(workflow.id, checked);
+                        }}
+                        // Space on the row ticks it, so it is no Tab stop.
+                        tabIndex={-1}
                       />
-                    ) : null}
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-3 md:hidden">
-                    <WorkflowStateLabel workflow={workflow} />
-                  </div>
-                </td>
-                <td className="hidden px-2 md:table-cell">
-                  <WorkflowStateLabel workflow={workflow} />
-                </td>
-                <td className="hidden px-2 text-muted-foreground text-xs tabular-nums md:table-cell">
-                  <time
-                    dateTime={workflow.updatedAt}
-                    title={formatExactTime(new Date(workflow.updatedAt))}
-                  >
-                    {getCompactRelativeTime(workflow.updatedAt)}
-                  </time>
-                </td>
-                <td className="pr-3 text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      aria-label={`Actions for ${workflow.name}`}
-                      render={
-                        <Button
-                          className="text-muted-foreground"
-                          size="icon-sm"
-                          variant="ghost"
+                    </td>
+                  ) : null}
+                  <td className="px-2 py-1.5">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {canOpenWorkflow ? (
+                        // A real link, so a keyboard user can reach it and a
+                        // middle click or Cmd+click opens a new tab. Preloading
+                        // stays off because the editor route's loader writes the
+                        // open workflow into the editor's store.
+                        // Enter on the row opens it, so the link is no Tab stop.
+                        <Link
+                          className="truncate rounded-sm font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                          params={{ workflowId: workflow.id }}
+                          preload={false}
+                          tabIndex={-1}
+                          title={workflow.name}
+                          to="/workflows/$workflowId"
+                        >
+                          {workflow.name}
+                        </Link>
+                      ) : (
+                        <span
+                          className="truncate font-medium text-foreground"
+                          title={workflow.name}
+                        >
+                          {workflow.name}
+                        </span>
+                      )}
+                      {isOpening ? (
+                        <Spinner
+                          aria-label="Opening workflow"
+                          className="size-3.5 text-muted-foreground"
                         />
-                      }
+                      ) : null}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-3 md:hidden">
+                      <WorkflowStateLabel workflow={workflow} />
+                    </div>
+                  </td>
+                  <td className="hidden px-2 md:table-cell">
+                    <WorkflowStateLabel workflow={workflow} />
+                  </td>
+                  <td className="hidden px-2 text-muted-foreground text-xs tabular-nums md:table-cell">
+                    <time
+                      dateTime={workflow.updatedAt}
+                      title={formatExactTime(new Date(workflow.updatedAt))}
                     >
-                      <MoreHorizontalIcon />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {canUpdate ? (
-                        <DropdownMenuItem
-                          disabled={setPublishedMode.isPending}
-                          onClick={() => {
-                            changePublishedMode(
-                              workflow,
-                              isTestMode ? "live" : "test"
-                            );
-                          }}
-                        >
-                          {isTestMode
-                            ? "Set Published mode to Live"
-                            : "Set Published mode to Test"}
-                        </DropdownMenuItem>
-                      ) : null}
-                      {canBulkLifecycle && offersPauseToggle ? (
-                        <DropdownMenuItem
-                          disabled={lifecycleAction !== null}
-                          onClick={() => {
-                            runLifecycleAction(toggleAction, [workflow.id]);
-                          }}
-                        >
-                          {toggleActionLabel}
-                        </DropdownMenuItem>
-                      ) : null}
-                      <DropdownMenuItem
-                        onClick={() => void copyWorkflowId(workflow.id)}
+                      {getCompactRelativeTime(workflow.updatedAt)}
+                    </time>
+                  </td>
+                  <td className="pr-3 text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        aria-label={`Actions for ${workflow.name}`}
+                        // Shift+F10 on the row opens this menu, which finds the
+                        // trigger by this attribute.
+                        data-row-menu=""
+                        render={
+                          <Button
+                            className="text-muted-foreground"
+                            size="icon-sm"
+                            tabIndex={-1}
+                            variant="ghost"
+                          />
+                        }
                       >
-                        <Copy />
-                        Copy workflow ID
-                      </DropdownMenuItem>
-                      {canBulkLifecycle ? (
-                        <>
-                          <DropdownMenuSeparator />
+                        <MoreHorizontalIcon />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {canUpdate ? (
+                          <DropdownMenuItem
+                            disabled={setPublishedMode.isPending}
+                            onClick={() => {
+                              changePublishedMode(
+                                workflow,
+                                isTestMode ? "live" : "test"
+                              );
+                            }}
+                          >
+                            {isTestMode
+                              ? "Set Published mode to Live"
+                              : "Set Published mode to Test"}
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canBulkLifecycle && offersPauseToggle ? (
                           <DropdownMenuItem
                             disabled={lifecycleAction !== null}
                             onClick={() => {
-                              openDeleteConfirmation([workflow.id]);
+                              runLifecycleAction(toggleAction, [workflow.id]);
                             }}
-                            variant="destructive"
                           >
-                            Delete
+                            {toggleActionLabel}
                           </DropdownMenuItem>
-                        </>
-                      ) : null}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                        ) : null}
+                        <DropdownMenuItem
+                          onClick={() => void copyWorkflowId(workflow.id)}
+                        >
+                          <Copy />
+                          Copy workflow ID
+                        </DropdownMenuItem>
+                        {canBulkLifecycle ? (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              disabled={lifecycleAction !== null}
+                              onClick={() => {
+                                openDeleteConfirmation([workflow.id]);
+                              }}
+                              variant="destructive"
+                            >
+                              Delete
+                            </DropdownMenuItem>
+                          </>
+                        ) : null}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <p className="sr-only" id={workflowKeysHintId}>
+          Use the arrow keys or J and K to move between workflows. Press Enter
+          to open one, Space to select it, and Shift+F10 for its actions.
+        </p>
+      </>
     );
   };
 
@@ -758,17 +833,18 @@ export default function WorkflowsPage() {
       <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 p-3 md:p-6 xl:h-full">
         <header className="flex min-h-8 flex-wrap items-center justify-between gap-3">
           <h1 className="font-semibold text-base text-foreground">Workflows</h1>
-          {canCreate ? (
-            <Button
-              onClick={() => {
-                setCreateDialogSession((session) => session + 1);
-                setIsCreateDialogOpen(true);
-              }}
-              type="button"
-            >
-              New workflow
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <WorkflowsPagePalette
+              onNewWorkflow={canCreate ? openCreateDialog : undefined}
+              onOpenWorkflow={canOpenWorkflow ? openWorkflow : undefined}
+              workflows={workflowRows}
+            />
+            {canCreate ? (
+              <Button onClick={openCreateDialog} type="button">
+                New workflow
+              </Button>
+            ) : null}
+          </div>
         </header>
 
         <div className="grid grid-cols-1 gap-4 md:gap-6 xl:min-h-0 xl:flex-1 xl:grid-cols-2 xl:grid-rows-[minmax(0,1fr)]">
