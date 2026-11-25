@@ -467,14 +467,14 @@
 }
 
 /* At the lowest card tier a card's lead row (its glyph, number and marks)
-   and its run status mark draw at 14px on screen, and a Group region header's
+   draws centred in the card at 18px on screen, its run status mark at 14px, and a Group region header's
    glyph and step count at 12px, at every zoom of that tier. Only the card box
    scales with the canvas. `scale` changes no layout, so zooming stays a pure
    transform. The lead row and the status mark are set in 22px type, and the
    header mark in 36px. */
 .react-flow__node [data-card-form="number"] [data-slot="node-lead"] {
-  transform-origin: top left;
-  scale: calc(14 / (22 * var(--rf-zoom, 1)));
+  transform-origin: center;
+  scale: calc(18 / (22 * var(--rf-zoom, 1)));
 }
 .react-flow__node [data-card-form="number"] > [data-slot="node-status-mark"] {
   transform-origin: top right;

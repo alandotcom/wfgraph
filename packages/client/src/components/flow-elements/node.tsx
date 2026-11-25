@@ -440,12 +440,13 @@ export const NodeStepNumber = ({
   );
 
 /**
- * A card's content, one anatomy at every tier. The lead row in the top-left
- * corner holds the kind's `glyph`, the step's number when it has one, and
- * `marks` such as the issue badge, and it keeps that place at every zoom. The
- * full card adds the title and `description` below it; the compact card
- * keeps the title at the size `fitCompactTitle` finds; the number tier keeps
- * the lead row alone, which `globals.css` holds at 14px on screen. The run
+ * A card's content, one anatomy at every tier. The lead row holds the kind's
+ * `glyph`, the step's number when it has one, and `marks` such as the issue
+ * badge, in that order at every zoom. It sits in the top-left corner while a
+ * title follows it. The full card adds the title and `description` below it;
+ * the compact card keeps the title at the size `fitCompactTitle` finds; the
+ * number tier keeps the lead row alone, centred in the card, which
+ * `globals.css` holds at 18px on screen so the number is what the card says. The run
  * status stays in the card's top-right corner, as a chip on the full card and
  * a mark below it. The card keeps its size, so its handles, connections and
  * hit area stay where they are.
@@ -468,12 +469,16 @@ export const NodeContent = ({
   <div
     className={cn(
       "flex h-full w-full min-w-0 flex-col text-left",
-      tier === "full" ? "gap-1 px-3 py-2" : "px-3 py-1"
+      tier === "full" ? "gap-1 px-3 py-2" : "px-3 py-1",
+      tier === "number" && "justify-center"
     )}
     data-slot="node-content"
   >
     <div
-      className="flex shrink-0 items-center gap-1.5 leading-none"
+      className={cn(
+        "flex shrink-0 items-center gap-1.5 leading-none",
+        tier === "number" && "justify-center"
+      )}
       data-slot="node-lead"
       style={{
         fontSize: LEAD_PX[tier],
