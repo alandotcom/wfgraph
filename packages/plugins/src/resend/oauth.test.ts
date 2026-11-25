@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resend } from "#src/resend/index";
 
-const oauth = resend.oauth;
+const oauth = resend().oauth;
 
 if (oauth === undefined) {
   throw new Error("Resend must always offer OAuth");

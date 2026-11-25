@@ -228,7 +228,7 @@ Source: alandotcom/wfgraph:docs/integrations.md (Evolving an action)
 
 ### HIGH Pass decoded handler input to runAction
 
-Wrong: `runAction(twilio, "send-sms", { input: { mediaUrls: ["https://a"] } })`
+Wrong: `runAction(twilio(), "send-sms", { input: { mediaUrls: ["https://a"] } })`
 when the schema transforms from comma-separated text.
 
 Correct: encoded side, what a builder typed.

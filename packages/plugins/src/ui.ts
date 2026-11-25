@@ -4,7 +4,8 @@
  *
  * A component cannot be serialized, so this is the one half of an integration the
  * browser imports rather than reads off `/api/extensions`. Only the browser
- * imports it; a server bundle takes `@wfgraph/plugins` alone and carries no React.
+ * imports it; a server bundle takes the integration entries such as
+ * `@wfgraph/plugins/slack` and carries no React.
  */
 
 import type { ComponentType } from "react";

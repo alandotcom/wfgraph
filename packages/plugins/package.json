@@ -1,7 +1,7 @@
 {
   "name": "@wfgraph/plugins",
   "version": "4.1.2",
-  "description": "The six built-in Workflow Graph integrations, plus the icons and output renderers the editor draws them with",
+  "description": "The six built-in Workflow Graph integrations, one entry each, plus the icons and output renderers the editor draws them with",
   "keywords": [
     "automation",
     "clerk",
@@ -26,9 +26,29 @@
     "#src/*": "./src/*.js"
   },
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+    "./clerk": {
+      "types": "./dist/clerk.d.ts",
+      "default": "./dist/clerk.js"
+    },
+    "./linear": {
+      "types": "./dist/linear.d.ts",
+      "default": "./dist/linear.js"
+    },
+    "./posthog": {
+      "types": "./dist/posthog.d.ts",
+      "default": "./dist/posthog.js"
+    },
+    "./resend": {
+      "types": "./dist/resend.d.ts",
+      "default": "./dist/resend.js"
+    },
+    "./slack": {
+      "types": "./dist/slack.d.ts",
+      "default": "./dist/slack.js"
+    },
+    "./twilio": {
+      "types": "./dist/twilio.d.ts",
+      "default": "./dist/twilio.js"
     },
     "./ui": {
       "types": "./dist/ui.d.ts",

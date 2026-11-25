@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { afterEach, beforeEach } from "vitest";
 import { clerk } from "#src/clerk/index";
 
-const underTest = clerk;
+const underTest = clerk();
 
 /**
  * The four Clerk steps in one file, because what they have to say is the same

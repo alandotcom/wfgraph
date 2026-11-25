@@ -216,7 +216,7 @@ function buildIssueFilter(
   return isEmptyObject(filter) ? undefined : filter;
 }
 
-export const linear = defineIntegration({
+const linearIntegration = defineIntegration({
   type: "linear",
   label: "Linear",
   description: "Create and manage issues in Linear",
@@ -362,3 +362,10 @@ export const linear = defineIntegration({
     },
   },
 });
+
+/**
+ * Returns the Linear integration, for a host to list under
+ * `extensions.integrations` in `createWfGraphApp`. The definition is built once
+ * when this module loads, so every call returns the same value.
+ */
+export const linear = () => linearIntegration;

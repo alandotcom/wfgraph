@@ -74,7 +74,7 @@ describe("linear/find-issues", () => {
   it.effect("flattens the issue with its state and assignee", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(linear, "find-issues", {
+        yield* runAction(linear(), "find-issues", {
           input: {},
           credentials: credentialsRead(),
         })
@@ -102,7 +102,7 @@ describe("linear/find-issues", () => {
   // "any" is how the status select spells "do not filter on status".
   it.effect("asks for no filter when nothing was filled in", () =>
     Effect.gen(function* () {
-      yield* runAction(linear, "find-issues", {
+      yield* runAction(linear(), "find-issues", {
         input: { linearStatus: "any", linearLabel: "" },
         credentials: credentialsRead(),
       });
@@ -113,7 +113,7 @@ describe("linear/find-issues", () => {
 
   it.effect("builds Linear's filter shape from the fields given", () =>
     Effect.gen(function* () {
-      yield* runAction(linear, "find-issues", {
+      yield* runAction(linear(), "find-issues", {
         input: {
           linearAssigneeId: "user_1",
           linearTeamId: "team_1",
@@ -161,7 +161,7 @@ describe("linear/find-issues", () => {
       ];
 
       const result = actionData(
-        yield* runAction(linear, "find-issues", {
+        yield* runAction(linear(), "find-issues", {
           input: { linearTeamId: "team_1" },
           credentials: credentialsRead(),
         })
@@ -199,7 +199,7 @@ describe("linear/find-issues", () => {
       ];
 
       const result = actionData(
-        yield* runAction(linear, "find-issues", {
+        yield* runAction(linear(), "find-issues", {
           input: {},
           credentials: credentialsRead(),
         })
@@ -238,7 +238,7 @@ describe("linear/find-issues", () => {
       ];
 
       const error = actionError(
-        yield* runAction(linear, "find-issues", {
+        yield* runAction(linear(), "find-issues", {
           input: {},
           credentials: credentialsRead(),
         })
@@ -253,7 +253,7 @@ describe("linear/find-issues", () => {
   it.effect("says which credential is missing before reaching Linear", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(linear, "find-issues", {
+        yield* runAction(linear(), "find-issues", {
           input: {},
           credentials: credentialsRead({}),
         })

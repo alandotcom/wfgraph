@@ -811,6 +811,7 @@ describe("an integration this server does not hold", () => {
 
         assert.instanceOf(failure, InvalidInput);
         assert.include(failure.error, "extensions.integrations");
+        assert.include(failure.error, '"@wfgraph/plugins/slack"');
         // The list is what shows the cause: this build and the editor's disagree.
         assert.include(failure.error, "This server holds: slack.");
       })

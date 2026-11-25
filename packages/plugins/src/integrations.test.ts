@@ -1,15 +1,21 @@
 import { checkIntegration } from "@wfgraph/core/plugin";
 import { describe, expect, it } from "vitest";
-import {
-  builtInIntegrations,
-  clerk,
-  linear,
-  posthog,
-  resend,
-  twilio,
-} from "#src/index";
+import { clerk } from "#src/clerk/index";
+import { linear } from "#src/linear/index";
+import { posthog } from "#src/posthog/index";
+import { resend } from "#src/resend/index";
+import { slack } from "#src/slack/index";
+import { twilio } from "#src/twilio/index";
 
-const integrations = builtInIntegrations();
+// Each integration's own module, which is the file its package entry builds from.
+const integrations = [
+  clerk(),
+  linear(),
+  posthog(),
+  resend(),
+  slack(),
+  twilio(),
+];
 
 /**
  * Every check `assembleExtensions` runs over an integration, run here over the real
@@ -19,9 +25,9 @@ const integrations = builtInIntegrations();
  * place for a host and the wrong place for this repo: a description missing from one
  * field of one output schema would otherwise reach a reviewer as a green suite and an
  * adopter as a startup crash. `checkIntegration` is the function assembly itself
- * calls, exported for exactly this, and it throws naming the offender -- so the line
- * below is a check as much as the cases are, and a bad definition fails this file's
- * collection.
+ * calls, exported for exactly this, and it throws naming the offender. The
+ * `actions` constant is therefore a check as much as the cases are, and a bad
+ * definition fails this file's collection.
  */
 const actions = integrations.flatMap((integration) =>
   checkIntegration(integration)
@@ -40,26 +46,28 @@ describe("every built-in integration", () => {
     expect(actions).not.toHaveLength(0);
   });
 
-  it("reuses immutable built-ins and keeps Slack options server-only", () => {
-    const configured = builtInIntegrations({
-      slack: {
-        oauthClient: {
-          clientId: "client-id",
-          clientSecret: "client-secret",
-        },
+  // A host may call an integration function on every request, so the five that
+  // take no options hand back the definition their module built when it loaded.
+  it.each([
+    ["clerk", clerk],
+    ["linear", linear],
+    ["posthog", posthog],
+    ["resend", resend],
+    ["twilio", twilio],
+  ] as const)("%s returns the same definition on every call", (_, create) => {
+    expect(create()).toBe(create());
+  });
+
+  it("keeps Slack's OAuth client credentials out of the catalog", () => {
+    const configured = slack({
+      oauthClient: {
+        clientId: "client-id",
+        clientSecret: "client-secret",
       },
     });
 
-    expect(configured).not.toBe(integrations);
-    expect(configured.map((integration) => integration.type)).toEqual(
-      integrations.map((integration) => integration.type)
-    );
-    expect(configured[0]).toBe(clerk);
-    expect(configured[1]).toBe(linear);
-    expect(configured[2]).toBe(posthog);
-    expect(configured[3]).toBe(resend);
-    expect(configured[5]).toBe(twilio);
-    expect(configured[4]).not.toHaveProperty("oauthClient");
+    expect(configured.oauth).toBeDefined();
+    expect(configured).not.toHaveProperty("oauthClient");
     expect(JSON.stringify(configured)).not.toContain("client-secret");
   });
 

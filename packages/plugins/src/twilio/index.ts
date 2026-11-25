@@ -130,7 +130,7 @@ function resolveTwilioTestBehavior(
   return value === "send_to_test_phone" ? "send_to_test_phone" : "log_only";
 }
 
-export const twilio = defineIntegration({
+const twilioIntegration = defineIntegration({
   type: "twilio",
   label: "Twilio",
   description: "Send SMS messages with Twilio Programmable Messaging",
@@ -339,3 +339,10 @@ export const twilio = defineIntegration({
     },
   },
 });
+
+/**
+ * Returns the Twilio integration, for a host to list under
+ * `extensions.integrations` in `createWfGraphApp`. The definition is built once
+ * when this module loads, so every call returns the same value.
+ */
+export const twilio = () => twilioIntegration;

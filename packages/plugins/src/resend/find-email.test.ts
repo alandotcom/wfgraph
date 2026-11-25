@@ -49,7 +49,7 @@ describe("the find-email action", () => {
     () =>
       Effect.gen(function* () {
         const result = actionData(
-          yield* runAction(resend, "find-email", {
+          yield* runAction(resend(), "find-email", {
             input: { emailId: "email_123" },
             credentials: Effect.succeed(RESEND_CREDENTIALS),
           })
@@ -77,7 +77,7 @@ describe("the find-email action", () => {
   it.effect("requires a configured API key", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(resend, "find-email", {
+        yield* runAction(resend(), "find-email", {
           input: { emailId: "email_123" },
           credentials: Effect.succeed({}),
         })
@@ -92,7 +92,7 @@ describe("the find-email action", () => {
   it.effect("requires a non-empty resolved email id", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(resend, "find-email", {
+        yield* runAction(resend(), "find-email", {
           input: { emailId: "   " },
           credentials: Effect.succeed(RESEND_CREDENTIALS),
         })
@@ -109,7 +109,7 @@ describe("the find-email action", () => {
       );
 
       const error = actionError(
-        yield* runAction(resend, "find-email", {
+        yield* runAction(resend(), "find-email", {
           input: { emailId: "missing" },
           credentials: Effect.succeed(RESEND_CREDENTIALS),
         })

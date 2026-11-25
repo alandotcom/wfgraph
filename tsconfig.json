@@ -109,8 +109,13 @@
       "@wfgraph/core": ["./packages/core/src/index.ts"],
       "@wfgraph/core/*": ["./packages/core/src/*"],
       "@wfgraph/client": ["./packages/client/src/index.ts"],
-      "@wfgraph/plugins": ["./packages/plugins/src/index.ts"],
-      "@wfgraph/plugins/*": ["./packages/plugins/src/*"]
+      "@wfgraph/plugins/clerk": ["./packages/plugins/src/clerk/index.ts"],
+      "@wfgraph/plugins/linear": ["./packages/plugins/src/linear/index.ts"],
+      "@wfgraph/plugins/posthog": ["./packages/plugins/src/posthog/index.ts"],
+      "@wfgraph/plugins/resend": ["./packages/plugins/src/resend/index.ts"],
+      "@wfgraph/plugins/slack": ["./packages/plugins/src/slack/index.ts"],
+      "@wfgraph/plugins/twilio": ["./packages/plugins/src/twilio/index.ts"],
+      "@wfgraph/plugins/ui": ["./packages/plugins/src/ui.ts"]
     }
   },
   "include": [

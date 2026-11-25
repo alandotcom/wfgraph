@@ -360,7 +360,7 @@ const buildEmailPayload = Effect.fn(function* (
   return payload;
 });
 
-export const resend = defineIntegration({
+const resendIntegration = defineIntegration({
   type: "resend",
   label: "Resend",
   description: "Send transactional emails",
@@ -721,3 +721,10 @@ export const resend = defineIntegration({
     },
   },
 });
+
+/**
+ * Returns the Resend integration, for a host to list under
+ * `extensions.integrations` in `createWfGraphApp`. The definition is built once
+ * when this module loads, so every call returns the same value.
+ */
+export const resend = () => resendIntegration;

@@ -106,7 +106,7 @@ const deleteUserOutput = Schema.Struct({
   deleted: Schema.Boolean.annotate({ title: "Deletion success" }),
 });
 
-export const clerk = defineIntegration({
+const clerkIntegration = defineIntegration({
   type: "clerk",
   label: "Clerk",
   description: "User authentication and management",
@@ -420,3 +420,10 @@ export const clerk = defineIntegration({
     },
   },
 });
+
+/**
+ * Returns the Clerk integration, for a host to list under
+ * `extensions.integrations` in `createWfGraphApp`. The definition is built once
+ * when this module loads, so every call returns the same value.
+ */
+export const clerk = () => clerkIntegration;

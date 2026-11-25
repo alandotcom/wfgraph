@@ -105,6 +105,12 @@ function resolveSlackTestBehavior(
   return value === "send_message" ? "send_message" : "log_only";
 }
 
+/**
+ * Returns the Slack integration, for a host to list under
+ * `extensions.integrations` in `createWfGraphApp`. Each call builds a new
+ * definition, because the definition holds the Slack OAuth client that
+ * `options.oauthClient` names.
+ */
 export const slack = (options?: SlackOptions) => {
   const clientId = options?.oauthClient?.clientId?.trim();
   const clientSecret = options?.oauthClient?.clientSecret?.trim();

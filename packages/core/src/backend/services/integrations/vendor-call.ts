@@ -62,5 +62,5 @@ export function describeUnavailableIntegration(
       ? `This server holds: ${available.join(", ")}.`
       : "This server holds no integration at all.";
 
-  return `Integration "${type}" is not available on this server. Pass it to createWfGraphApp under extensions.integrations, or pass builtInIntegrations() from "@wfgraph/plugins" for the built-in ones. ${holds}`;
+  return `Integration "${type}" is not available on this server. Pass it to createWfGraphApp under extensions.integrations. A built-in integration is a function imported from its own entry, such as slack from "@wfgraph/plugins/slack". ${holds}`;
 }

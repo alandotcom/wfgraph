@@ -79,7 +79,7 @@ describe("the capture-event action", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = actionData(
-        yield* runAction(posthog, "capture-event", {
+        yield* runAction(posthog(), "capture-event", {
           input: { eventName: "user_signed_up", distinctId: "user_1" },
           credentials,
           runMode: "test",
@@ -102,7 +102,7 @@ describe("the capture-event action", () => {
     Effect.gen(function* () {
       const { reads, credentials } = credentialsRead();
 
-      yield* runAction(posthog, "capture-event", {
+      yield* runAction(posthog(), "capture-event", {
         input: {
           eventName: "user_signed_up",
           distinctId: "user_1",
@@ -123,7 +123,7 @@ describe("the capture-event action", () => {
       Effect.gen(function* () {
         const { credentials } = credentialsRead();
 
-        yield* runAction(posthog, "capture-event", {
+        yield* runAction(posthog(), "capture-event", {
           input: {
             eventName: "user_signed_up",
             distinctId: "user_1",
@@ -148,7 +148,7 @@ describe("the capture-event action", () => {
       const { credentials } = credentialsRead();
 
       const result = actionData(
-        yield* runAction(posthog, "capture-event", {
+        yield* runAction(posthog(), "capture-event", {
           input: { eventName: "user_signed_up", distinctId: "user_1" },
           credentials,
         })
@@ -172,7 +172,7 @@ describe("the capture-event action", () => {
       const { credentials } = credentialsRead();
 
       const result = actionData(
-        yield* runAction(posthog, "capture-event", {
+        yield* runAction(posthog(), "capture-event", {
           input: {
             eventName: "user_signed_up",
             distinctId: "user_1",
@@ -191,7 +191,7 @@ describe("the capture-event action", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* runAction(posthog, "capture-event", {
+      yield* runAction(posthog(), "capture-event", {
         input: {
           eventName: "user_signed_up",
           distinctId: "user_1",
@@ -214,7 +214,7 @@ describe("the capture-event action", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* runAction(posthog, "capture-event", {
+      yield* runAction(posthog(), "capture-event", {
         input: {
           eventName: "user_signed_up",
           distinctId: "user_1",
@@ -240,7 +240,7 @@ describe("the capture-event action", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* runAction(posthog, "capture-event", {
+      yield* runAction(posthog(), "capture-event", {
         input: {
           eventName: "user_signed_up",
           distinctId: "user_1",
@@ -267,7 +267,7 @@ describe("the capture-event action", () => {
         vi.spyOn(console, "error").mockImplementation(() => {});
         const { credentials } = credentialsRead();
 
-        yield* runAction(posthog, "capture-event", {
+        yield* runAction(posthog(), "capture-event", {
           input: {
             eventName: "user_signed_up",
             distinctId: "user_1",
@@ -286,7 +286,7 @@ describe("the capture-event action", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* runAction(posthog, "capture-event", {
+      yield* runAction(posthog(), "capture-event", {
         input: {
           eventName: "user_signed_up",
           distinctId: "user_1",
@@ -303,7 +303,7 @@ describe("the capture-event action", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* runAction(posthog, "capture-event", {
+      yield* runAction(posthog(), "capture-event", {
         input: {
           eventName: "page_viewed",
           distinctId: "visitor_1",
@@ -322,7 +322,7 @@ describe("the capture-event action", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* runAction(posthog, "capture-event", {
+      yield* runAction(posthog(), "capture-event", {
         input: { eventName: "user_signed_up", distinctId: "user_1" },
         credentials,
       });
@@ -340,7 +340,7 @@ describe("the capture-event action", () => {
         POSTHOG_PROJECT_API_KEY: "phc_test_key",
       });
 
-      yield* runAction(posthog, "capture-event", {
+      yield* runAction(posthog(), "capture-event", {
         input: { eventName: "user_signed_up", distinctId: "user_1" },
         credentials,
       });
@@ -357,7 +357,7 @@ describe("the capture-event action", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(posthog, "capture-event", {
+        yield* runAction(posthog(), "capture-event", {
           input: { eventName: "user_signed_up", distinctId: "user_1" },
           credentials,
         })
@@ -374,7 +374,7 @@ describe("the capture-event action", () => {
       const { credentials } = credentialsRead({});
 
       const error = actionError(
-        yield* runAction(posthog, "capture-event", {
+        yield* runAction(posthog(), "capture-event", {
           input: { eventName: "user_signed_up", distinctId: "user_1" },
           credentials,
         })
@@ -395,7 +395,7 @@ describe("the capture-event action", () => {
       });
 
       const error = actionError(
-        yield* runAction(posthog, "capture-event", {
+        yield* runAction(posthog(), "capture-event", {
           input: { eventName: "user_signed_up", distinctId: "user_1" },
           credentials,
         })
@@ -416,7 +416,7 @@ describe("the capture-event action", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(posthog, "capture-event", {
+        yield* runAction(posthog(), "capture-event", {
           input: { eventName: "user_signed_up", distinctId: "   " },
           credentials,
         })
@@ -434,7 +434,7 @@ describe("the capture-event action", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(posthog, "capture-event", {
+        yield* runAction(posthog(), "capture-event", {
           input: { eventName: "", distinctId: "user_1" },
           credentials,
         })
@@ -453,7 +453,7 @@ describe("the identify-person action", () => {
       const { reads, credentials } = credentialsRead();
 
       const result = actionData(
-        yield* runAction(posthog, "identify-person", {
+        yield* runAction(posthog(), "identify-person", {
           input: {
             distinctId: "user_1",
             setProperties: keyValue({ email: "a@example.com" }),
@@ -481,7 +481,7 @@ describe("the identify-person action", () => {
         const { credentials } = credentialsRead();
 
         const result = actionData(
-          yield* runAction(posthog, "identify-person", {
+          yield* runAction(posthog(), "identify-person", {
             input: {
               distinctId: "user_1",
               setProperties: keyValue({ email: "a@example.com" }),
@@ -507,7 +507,7 @@ describe("the identify-person action", () => {
     Effect.gen(function* () {
       const { credentials } = credentialsRead();
 
-      yield* runAction(posthog, "identify-person", {
+      yield* runAction(posthog(), "identify-person", {
         input: {
           distinctId: "user_1",
           setProperties: keyValue({ email: "a@example.com" }),
@@ -526,7 +526,7 @@ describe("the identify-person action", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(posthog, "identify-person", {
+        yield* runAction(posthog(), "identify-person", {
           input: { distinctId: "user_1" },
           credentials,
         })
@@ -547,7 +547,7 @@ describe("the identify-person action", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(posthog, "identify-person", {
+        yield* runAction(posthog(), "identify-person", {
           input: {
             distinctId: "user_1",
             setProperties: keyValue({ email: "a@example.com" }),
@@ -568,7 +568,7 @@ describe("the identify-person action", () => {
       const { credentials } = credentialsRead();
 
       const error = actionError(
-        yield* runAction(posthog, "identify-person", {
+        yield* runAction(posthog(), "identify-person", {
           input: {
             distinctId: "user_1",
             setPropertiesJson: "{not json",

@@ -125,7 +125,7 @@ function resolvePostHogTestBehavior(
   return value === "send" ? "send" : "log_only";
 }
 
-export const posthog = defineIntegration({
+const posthogIntegration = defineIntegration({
   type: "posthog",
   label: "PostHog",
   description: "Capture product analytics events and identify people",
@@ -404,3 +404,10 @@ export const posthog = defineIntegration({
     },
   },
 });
+
+/**
+ * Returns the PostHog integration, for a host to list under
+ * `extensions.integrations` in `createWfGraphApp`. The definition is built once
+ * when this module loads, so every call returns the same value.
+ */
+export const posthog = () => posthogIntegration;

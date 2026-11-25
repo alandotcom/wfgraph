@@ -4,6 +4,10 @@
 around a handler, the canonical JSON codec and which optional spelling goes on which side.
 This file holds what is specific to the six integrations in this directory.
 
+Each integration is one entry of the package: `@wfgraph/plugins/[name]` is built from
+`[name]/index.ts`, which exports a function named after the integration that returns its
+definition. The package has no root entry, so a host loads only the integrations it imports.
+
 ## The files
 
 The minimum, which `slack/` and `twilio/` are:
@@ -70,10 +74,10 @@ on a Resend webhook. Every call to a vendor's API goes through `callExternal`.
 are specific to maintaining the built-in adapters in this package.
 
 Put a provider's OAuth protocol in `[name]/oauth.ts` when it is more than a few lines.
-Export one `IntegrationOAuth` value and attach it to the integration in `index.ts`. Keep
-an integration as a static value unless host-provided client credentials require a
-factory. Slack is the example of that exception; Resend and PostHog are the
-metadata-client pattern.
+Export one `IntegrationOAuth` value and attach it to the integration in `index.ts`. Build
+the definition once at module level and have the exported function return it, unless
+host-provided client credentials require building it on each call. Slack is the example of
+that exception; Resend and PostHog are the metadata-client pattern.
 
 Keep provider behavior out of core. The adapter owns client registration, authorization
 parameters, token and error response schemas, exchange, refresh, revocation, and the
@@ -203,10 +207,15 @@ pattern, and a field-derivation test alone catches none of what a vendor type ge
 ## Adding one
 
 1. Write the files above under `packages/plugins/src/[name]/`.
-2. Export the integration from `src/index.ts`, by name and in `builtInIntegrations`.
+2. Add `./[name]` to the `exports` map in `packages/plugins/package.json` and `[name]` to
+   the `entry` record in `packages/plugins/tsdown.config.ts`. Map `@wfgraph/plugins/[name]`
+   to `[name]/index.ts` in the root `tsconfig.json`, in `tsconfig.build.json`, and in
+   `scripts/plugins/workspace-source-aliases.ts`.
 3. Add an entry to the `integrationUi` record in `src/ui.ts`.
-4. `pnpm run type-check && pnpm run test && pnpm run fix`.
-5. `pnpm run dev`, then add a connection, build a workflow on the action, and run it.
+4. Add the integration to the list in `src/integrations.test.ts`.
+5. `pnpm run type-check && pnpm run test && pnpm run fix`.
+6. Import it in `examples/app.ts`, then `pnpm run dev`, add a connection, build a workflow
+   on the action, and run it.
 
 Naming: the folder is the integration `type` in kebab-case; the credential type is
 `[Name]Credentials`; the connection test is `test[Name]`; the icon is
@@ -238,8 +247,8 @@ vocabulary, the action slugs, and the field list `requireOutputFieldsFromSchema`
 each output schema. What Workflow Graph itself does around a handler is covered once, in
 `packages/core/src/backend/extensions/steps/define-step.test.ts`.
 
-`src/index.test.ts` runs `checkIntegration` over all six at module level, which is every
-check `assembleExtensions` runs on one integration — including its Events and webhook —
+`src/integrations.test.ts` runs `checkIntegration` over all six at module level, which is
+every check `assembleExtensions` runs on one integration, including its Events and webhook,
 so a bad definition fails that file's collection. Cross-integration uniqueness stays in
 `assembleExtensions`. A host would otherwise meet a bad definition as a startup crash,
 and a description missing from one field of one output schema would reach a reviewer as

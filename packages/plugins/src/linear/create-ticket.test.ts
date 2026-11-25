@@ -71,7 +71,7 @@ describe("linear/create-ticket", () => {
   it.effect("files under the team the integration names", () =>
     Effect.gen(function* () {
       const result = actionData(
-        yield* runAction(linear, "create-ticket", {
+        yield* runAction(linear(), "create-ticket", {
           input: { ticketTitle: "Bug report", ticketDescription: "It broke" },
           credentials: credentialsRead({
             ...LINEAR_CREDENTIALS,
@@ -98,7 +98,7 @@ describe("linear/create-ticket", () => {
 
   it.effect("falls back to the workspace's first team", () =>
     Effect.gen(function* () {
-      yield* runAction(linear, "create-ticket", {
+      yield* runAction(linear(), "create-ticket", {
         input: { ticketTitle: "Bug report" },
         credentials: credentialsRead(),
       });
@@ -115,7 +115,7 @@ describe("linear/create-ticket", () => {
       answers.firstTeam = Response.json({ data: { teams: { nodes: [] } } });
 
       const error = actionError(
-        yield* runAction(linear, "create-ticket", {
+        yield* runAction(linear(), "create-ticket", {
           input: { ticketTitle: "Bug report" },
           credentials: credentialsRead(),
         })
@@ -133,7 +133,7 @@ describe("linear/create-ticket", () => {
       });
 
       const error = actionError(
-        yield* runAction(linear, "create-ticket", {
+        yield* runAction(linear(), "create-ticket", {
           input: { ticketTitle: "Bug report" },
           credentials: credentialsRead(),
         })
@@ -159,7 +159,7 @@ describe("linear/create-ticket", () => {
       );
 
       const error = actionError(
-        yield* runAction(linear, "create-ticket", {
+        yield* runAction(linear(), "create-ticket", {
           input: { ticketTitle: "Bug report" },
           credentials: credentialsRead(),
         })
@@ -189,7 +189,7 @@ describe("linear/create-ticket", () => {
       );
 
       const error = actionError(
-        yield* runAction(linear, "create-ticket", {
+        yield* runAction(linear(), "create-ticket", {
           input: { ticketTitle: "Bug report" },
           credentials: credentialsRead(),
         })
@@ -205,7 +205,7 @@ describe("linear/create-ticket", () => {
   it.effect("says which credential is missing before reaching Linear", () =>
     Effect.gen(function* () {
       const error = actionError(
-        yield* runAction(linear, "create-ticket", {
+        yield* runAction(linear(), "create-ticket", {
           input: { ticketTitle: "Bug report" },
           credentials: credentialsRead({}),
         })
