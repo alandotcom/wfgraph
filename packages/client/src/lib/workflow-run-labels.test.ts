@@ -126,16 +126,20 @@ describe("runSendsLabel", () => {
 });
 
 describe("runOverlayCopy", () => {
-  it("describes the draft run and names no version", () => {
+  // A test run sends nothing unless a step's setting or the app's handler
+  // says to, so the dialog says what each step does in place of naming
+  // recipients that may receive nothing.
+  it("describes the draft run as a test run and names no version", () => {
     expect(runOverlayCopy({ graph: "draft" })).toEqual({
       title: "Run draft",
-      description: "Runs the draft and sends to test recipients.",
+      description:
+        'Runs the draft as a test run. A step with an "In test runs" setting follows it. Other steps run as usual unless the app skips them.',
       confirmLabel: "Run draft",
     });
   });
 
-  // The sentence is where the recipients are named, so the heading and the
-  // button read the same in both Published modes.
+  // The description says what the mode does, so the heading and the button
+  // read the same in both Published modes.
   it("names the real recipients a live published run reaches", () => {
     expect(
       runOverlayCopy({
@@ -150,7 +154,7 @@ describe("runOverlayCopy", () => {
     });
   });
 
-  it("names the test recipients a test published run reaches", () => {
+  it("describes a test published run as a test run", () => {
     expect(
       runOverlayCopy({
         graph: "published",
@@ -159,7 +163,8 @@ describe("runOverlayCopy", () => {
       })
     ).toEqual({
       title: "Run v7",
-      description: "Runs v7 and sends to test recipients.",
+      description:
+        'Runs v7 as a test run. A step with an "In test runs" setting follows it. Other steps run as usual unless the app skips them.',
       confirmLabel: "Run v7",
     });
   });

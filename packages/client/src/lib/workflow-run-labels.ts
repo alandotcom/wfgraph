@@ -1,8 +1,8 @@
 /**
  * Every label a run is named by, before it starts and after it finishes.
  *
- * A draft run has no mode: it always reaches test recipients, so the draft arm
- * of `WorkflowRunTarget` carries no mode field. `runSends` lives here because
+ * A draft run has no mode: it is always a test run, so the draft arm of
+ * `WorkflowRunTarget` carries no mode field. `runSends` lives here because
  * the run overlay states the sends in the same sentence it confirms.
  */
 
@@ -59,8 +59,8 @@ export function workflowRunTarget(input: {
   publishedVersion: number | undefined;
 }): WorkflowRunTarget | null {
   if (input.graph === "draft") {
-    // The draft says nothing about the published version: it runs the canvas,
-    // with test recipients, whether or not anything has ever been published.
+    // The draft says nothing about the published version: it runs the canvas
+    // as a test run, whether or not anything has ever been published.
     return { graph: "draft" };
   }
   if (input.publishedVersion === undefined) {
@@ -181,11 +181,21 @@ export function runSendsLabel(sends: RunSends): string {
 }
 
 /**
+ * What every step of a test run does, in the words a finished run uses. A test
+ * run calls each step's handler: a built-in step follows its "In test runs"
+ * setting, which defaults to doing nothing, and any other step runs as it would
+ * in a live run unless the app's own handler skips it. A finished run marks a
+ * step that did nothing "Skipped (test run)".
+ */
+const TEST_RUN_STEPS =
+  'A step with an "In test runs" setting follows it. Other steps run as usual unless the app skips them.';
+
+/**
  * The run dialog's heading, opening sentence, and confirm button.
  *
  * The heading and the button both repeat the command that opened the dialog.
- * The sentence is where the recipients are named, so the button never has to
- * carry them.
+ * The description says what the run does with each step, so the button never
+ * has to carry it.
  */
 export function runOverlayCopy(target: WorkflowRunTarget): {
   title: string;
@@ -195,20 +205,20 @@ export function runOverlayCopy(target: WorkflowRunTarget): {
   if (target.graph === "draft") {
     return {
       title: "Run draft",
-      description: "Runs the draft and sends to test recipients.",
+      description: `Runs the draft as a test run. ${TEST_RUN_STEPS}`,
       confirmLabel: "Run draft",
     };
   }
 
   // "Run v5" rather than the full command label: the dialog confirms one
-  // version, and its sentence already says which recipients that mode reaches.
+  // version, and its description already says what that mode does.
   const command = `Run v${target.publishedVersion}`;
   return {
     title: command,
     description:
       target.workflowMode === "live"
         ? `Runs v${target.publishedVersion} and sends to real recipients.`
-        : `Runs v${target.publishedVersion} and sends to test recipients.`,
+        : `Runs v${target.publishedVersion} as a test run. ${TEST_RUN_STEPS}`,
     confirmLabel: command,
   };
 }

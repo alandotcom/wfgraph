@@ -102,14 +102,16 @@ describe("RunOverlay", () => {
   /**
    * One component with three headings. The Event and payload halves are the
    * same for every run command. What changes is the sentence naming which graph
-   * runs and who receives what it sends.
+   * runs and what it does with each step.
    */
-  it("states that a draft run reaches test recipients", () => {
+  it("states that a draft run is a test run", () => {
     renderOverlay({ target: { graph: "draft" } });
 
     expect(screen.getByRole("heading", { name: "Run draft" })).toBeTruthy();
     expect(
-      screen.getByText("Runs the draft and sends to test recipients.")
+      screen.getByText(
+        /^Runs the draft as a test run\. A step with an "In test runs" setting follows it\./
+      )
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Run draft" })).toBeTruthy();
     expect(screen.queryByText(/reaches? outside this workflow/)).toBeNull();
@@ -146,9 +148,7 @@ describe("RunOverlay", () => {
     });
 
     expect(screen.getByRole("heading", { name: "Run v7" })).toBeTruthy();
-    expect(
-      screen.getByText("Runs v7 and sends to test recipients.")
-    ).toBeTruthy();
+    expect(screen.getByText(/^Runs v7 as a test run\./)).toBeTruthy();
     expect(
       screen.queryByText("3 steps reach outside this workflow: Slack, Resend")
     ).toBeNull();
