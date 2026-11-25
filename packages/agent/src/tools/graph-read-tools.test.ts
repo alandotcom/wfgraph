@@ -6,6 +6,7 @@ import {
   heroGraph,
   outlineTestCatalog,
 } from "@wfgraph/shared/graph/workflow-outline-test-support";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { emptyLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { fixtureCatalog } from "#src/tools/catalog-fixture";
 import { agentToolsFor } from "#src/testing";
@@ -75,6 +76,7 @@ describe("read_workflow", () => {
           type: "action",
           stepNumber: 1,
           actionType: "slack/send-message",
+          testRun: expect.stringContaining('Has no "In test runs" setting'),
           description: "Tell #hiring about the applicant.",
         },
       ]);
@@ -250,6 +252,114 @@ describe("step numbers", () => {
   );
 });
 
+describe("testRun", () => {
+  /**
+   * An SMS action with the "In test runs" select the built-in Twilio action
+   * declares, and a host action with no such setting, as the seeded clinic's
+   * Send Patient Message is.
+   */
+  const testRunCatalog: ExtensionCatalog = {
+    ...fixtureCatalog,
+    actions: [
+      {
+        id: "twilio/send-sms",
+        label: "Send SMS",
+        description: "Send a text message.",
+        category: "Messaging",
+        integration: "twilio",
+        sideEffect: true,
+        configFields: [
+          { key: "smsTo", label: "To", type: "template-input" },
+          {
+            key: "testBehavior",
+            label: "In test runs",
+            type: "select",
+            defaultValue: "log_only",
+            options: [
+              { value: "log_only", label: "Log only (do nothing)" },
+              { value: "send_to_test_phone", label: "Send to test phone" },
+            ],
+          },
+          {
+            key: "testPhoneTo",
+            label: "Test Phone Number",
+            type: "text",
+            showWhen: { field: "testBehavior", equals: "send_to_test_phone" },
+          },
+        ],
+        outputFields: [],
+      },
+      {
+        id: "patients/send-message",
+        label: "Send Patient Message",
+        description: "Message the patient.",
+        category: "Patients",
+        sideEffect: true,
+        configFields: [{ key: "body", label: "Message", type: "text" }],
+        outputFields: [],
+      },
+    ],
+  };
+
+  function actionStep(
+    id: string,
+    config: Record<string, unknown>
+  ): WorkflowNode {
+    return {
+      id,
+      position: { x: 0, y: 0 },
+      type: "action",
+      data: { label: id, type: "action", config },
+    };
+  }
+
+  it.effect("says what a test run does at each step, from its settings", () =>
+    Effect.gen(function* () {
+      const { tools } = yield* agentToolsFor({
+        nodes: [
+          lifecycle,
+          actionStep("sms default", { actionType: "twilio/send-sms" }),
+          actionStep("sms to test phone", {
+            actionType: "twilio/send-sms",
+            testBehavior: "send_to_test_phone",
+            testPhoneTo: "+15557654321",
+          }),
+          actionStep("sms to empty test phone", {
+            actionType: "twilio/send-sms",
+            testBehavior: "send_to_test_phone",
+          }),
+          actionStep("patient message", {
+            actionType: "patients/send-message",
+          }),
+          actionStep("wait", { actionType: BUILT_IN_ACTION_IDS.wait }),
+        ],
+        catalog: testRunCatalog,
+      });
+
+      const topology = yield* tools.read_workflow({});
+      const detail = yield* tools.read_nodes({ nodeIds: ["sms default"] });
+
+      expect(
+        Object.fromEntries(
+          topology.nodes.map((node) => [node.id, node.testRun])
+        )
+      ).toEqual({
+        entry: undefined,
+        "sms default":
+          'Follows its "In test runs" setting, set to "Log only (do nothing)".',
+        "sms to test phone":
+          'Follows its "In test runs" setting, set to "Send to test phone". Test Phone Number is "+15557654321".',
+        "sms to empty test phone":
+          'Follows its "In test runs" setting, set to "Send to test phone". Test Phone Number is empty.',
+        "patient message":
+          'Has no "In test runs" setting. A test run still calls this step\'s handler, and the action\'s own handler decides whether it does its work; a step it skipped shows as "Skipped (test run)" in that run.',
+        wait: "Runs as it does in a live run. It reaches nothing outside the workflow.",
+      });
+      expect(detail.nodes[0]?.testRun).toContain("Log only (do nothing)");
+    })
+  );
+});
+
 describe("read_nodes", () => {
   it.effect("returns full config for selected nodes", () =>
     Effect.gen(function* () {
@@ -268,6 +378,7 @@ describe("read_nodes", () => {
           type: "action",
           stepNumber: 1,
           actionType: "slack/send-message",
+          testRun: expect.stringContaining('Has no "In test runs" setting'),
           description: "Tell #hiring about the applicant.",
           config: {
             actionType: "slack/send-message",

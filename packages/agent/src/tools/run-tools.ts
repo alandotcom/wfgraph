@@ -53,7 +53,7 @@ export const ListRuns = Tool.make("list_runs", {
 
 export const ReadRun = Tool.make("read_run", {
   description:
-    "Read one run of this workflow: its status and error, and each step it reached with that step's status, error, and output (cut to a bounded length; outputBytes gives the full size). Omit runId to read the most recent run. Read the run before explaining why it failed.",
+    'Read one run of this workflow: its status and error, and each step it reached with that step\'s status, error, and output (cut to a bounded length; outputBytes gives the full size). In a test run, a successful step whose output holds a reasonCode starting test_mode_, or a status of "skipped", did nothing, and the editor shows it as "Skipped (test run)". Omit runId to read the most recent run. Read the run before explaining why it failed.',
   parameters: Schema.Struct({
     runId: Schema.optionalKey(Schema.String).annotate({
       description: "A runId from list_runs. Omit for the most recent run.",
@@ -83,7 +83,7 @@ export const ReadRun = Tool.make("read_run", {
 
 export const StartTestRun = Tool.make("start_test_run", {
   description:
-    "Start a Draft run of the saved draft with a payload, and answer its runId for read_run. A Draft run calls the real action handlers in test mode: an integration step does what its test-mode setting says, and a host action runs as written. Start one only when the person asks for a test run.",
+    "Start a Draft run of the saved draft with a payload, and answer its runId for read_run. A Draft run is a test run, and read_workflow's testRun says what it does at each step. Start one only when the person asks for a test run.",
   parameters: Schema.Struct({
     payload: Schema.String.annotate({
       description:

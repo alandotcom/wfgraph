@@ -4,7 +4,8 @@
  * `read_workflow` speaks the vocabulary a tool writes back in: node ids, the
  * four node types, the action id a node's config carries, and Group membership.
  * It also gives each step the number the editor prints on its outline row and
- * canvas card, which is how a person names a step ("step 7"). Positions are
+ * canvas card, which is how a person names a step ("step 7"), and what a test
+ * run does at that step (`test-run-behavior.ts`). Positions are
  * left out on purpose, because the editor lays the graph out and the agent
  * never chooses coordinates.
  */
@@ -29,6 +30,7 @@ import {
   resultLimitSchema,
   resultOffsetSchema,
 } from "#src/tools/result-page";
+import { testRunBehavior } from "#src/tools/test-run-behavior";
 import { readHints } from "#src/tools/tool-hints";
 
 const graphNodeSummarySchema = Schema.Struct({
@@ -43,6 +45,11 @@ const graphNodeSummarySchema = Schema.Struct({
   stepNumber: Schema.optionalKey(Schema.Number),
   /** The action a node runs, present on action nodes alone. */
   actionType: Schema.optionalKey(Schema.String),
+  /**
+   * What a Draft run or another test run does at this step, from its "In test
+   * runs" setting or its action. Present on action steps alone.
+   */
+  testRun: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
   /** False when the node is switched off and the run walks past it. */
   enabled: Schema.optionalKey(Schema.Boolean),
@@ -64,6 +71,11 @@ const graphNodeDetailSchema = Schema.Struct({
   stepNumber: Schema.optionalKey(Schema.Number),
   /** The action a node runs, present on action nodes alone. */
   actionType: Schema.optionalKey(Schema.String),
+  /**
+   * What a Draft run or another test run does at this step, from its "In test
+   * runs" setting or its action. Present on action steps alone.
+   */
+  testRun: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
   /** False when the node is switched off and a run walks past it. */
   enabled: Schema.optionalKey(Schema.Boolean),
@@ -109,13 +121,14 @@ function readableConfig(node: WorkflowNode): JsonObject {
 }
 
 /**
- * What the read tools need from the whole graph to describe one node: every
- * node, which a Group node reads its member ids from in graph order, and each
- * step's number in run order.
+ * What the read tools need beyond one node to describe it: every node, which
+ * a Group node reads its member ids from in graph order, each step's number in
+ * run order, and the catalog that says what a test run does at a step.
  */
 type GraphContext = {
   readonly nodes: readonly WorkflowNode[];
   readonly stepNumbers: ReadonlyMap<string, number>;
+  readonly catalog: ExtensionCatalog;
 };
 
 /**
@@ -129,6 +142,7 @@ function graphContextOf(
 ): GraphContext {
   return {
     nodes: document.nodes,
+    catalog,
     stepNumbers: workflowStepNumbers({
       nodes: document.nodes,
       edges: document.edges,
@@ -146,6 +160,7 @@ function readableNodeSummary(node: WorkflowNode, graph: GraphContext) {
     type: node.data.type,
     stepNumber: graph.stepNumbers.get(node.id),
     actionType: actionTypeOf(node),
+    testRun: testRunBehavior(node, graph.catalog),
     description: node.data.description,
     enabled: persistedNodeEnabled(node.data.enabled),
     groupId: node.parentId,
@@ -177,7 +192,7 @@ function readableEdge(edge: {
 
 export const ReadWorkflow = Tool.make("read_workflow", {
   description:
-    "Read the workflow topology in bounded pages: compact node identities and edges. Nodes come in stored order. Each step carries stepNumber, its number in run order as the editor's outline and canvas show it, so the step a person calls step 7 is the node whose stepNumber is 7. A step inside a Group carries groupId, and a Group node carries memberIds. Use read_nodes for selected node config. Node positions are omitted because the editor owns layout.",
+    "Read the workflow topology in bounded pages: compact node identities and edges. Nodes come in stored order. Each step carries stepNumber, its number in run order as the editor's outline and canvas show it, so the step a person calls step 7 is the node whose stepNumber is 7. Each action step carries testRun, what a Draft run or another test run does at that step. A step inside a Group carries groupId, and a Group node carries memberIds. Use read_nodes for selected node config. Node positions are omitted because the editor owns layout.",
   parameters: Schema.Struct({
     nodeOffset: Schema.optionalKey(
       resultOffsetSchema.annotate({

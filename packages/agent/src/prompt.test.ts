@@ -62,6 +62,14 @@ describe("buildSystemPrompt", () => {
     );
   });
 
+  it("answers what a test run does from each step's own settings", () => {
+    const prompt = unwrapped(buildSystemPrompt());
+
+    expect(prompt).toContain("A Draft run is always a test run");
+    expect(prompt).toContain("that step's testRun in read_workflow");
+    expect(prompt).not.toContain("calls the real action handlers");
+  });
+
   it("distinguishes a useful blocked draft from publish readiness", () => {
     const prompt = unwrapped(buildSystemPrompt());
 
