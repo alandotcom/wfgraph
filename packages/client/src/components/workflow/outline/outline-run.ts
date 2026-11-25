@@ -8,7 +8,12 @@
 
 import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
 import type { OutlineRow } from "@wfgraph/shared/graph/workflow-outline";
-import { formatClockTimeWithSeconds } from "@wfgraph/shared/utils/time";
+import { unwrapStepOutput } from "@wfgraph/shared/graph/node-references";
+import { isJsonObject, readJsonValue } from "@wfgraph/shared/types/json";
+import {
+  formatClockTimeWithSeconds,
+  formatExactTime,
+} from "@wfgraph/shared/utils/time";
 import { type RunPath, runPathOutletMark } from "#src/lib/run-path";
 import { TEST_RUN_SKIP_LABEL } from "#src/lib/test-run-skip";
 import type { OutlineDisplayRow } from "./outline-view";
@@ -16,7 +21,10 @@ import type { OutlineDisplayRow } from "./outline-view";
 /** What the run did at one step, as its row shows it. */
 export type RunOutcome = {
   tone: "done" | "failed" | "waiting" | "running" | "quiet";
-  /** "Ran", "Took True", "Failed", "Waiting", "Skipped (test run)", "Not reached". */
+  /**
+   * "Ran", "Took True", "Woke on Payment settled", "Failed", "Waiting ·
+   * resumes Nov 26, 2:00 PM", "Skipped (test run)", "Not reached".
+   */
   text: string;
   /** When the step finished, or started while it is unfinished, as "9:14:02 AM". Null when it never ran. */
   time: string | null;
@@ -30,10 +38,31 @@ export type RunOutline = {
 
 type RunLog = {
   nodeId: string;
+  status: "pending" | "running" | "success" | "error" | "cancelled";
   startedAt: Date;
   completedAt: Date | null;
   output?: unknown;
 };
+
+/** A Wait the run is parked on: what wakes it and when its timer ends. */
+type RunWait = {
+  nodeId: string;
+  subscribedEvents: readonly string[];
+  waitUntil: Date | null;
+};
+
+/** What a Wait's recorded output says woke it, or null when it says nothing. */
+function waitWakeText(
+  output: unknown,
+  eventLabel: (eventName: string) => string
+): string | null {
+  const value = unwrapStepOutput(readJsonValue(output));
+  if (!isJsonObject(value)) return null;
+  if (value.timedOut === true) return "Timed out";
+  return typeof value.event === "string"
+    ? `Woke on ${eventLabel(value.event)}`
+    : null;
+}
 
 export function runOutline(input: {
   rows: readonly OutlineRow[];
@@ -41,6 +70,10 @@ export function runOutline(input: {
   statuses: ReadonlyMap<string, RunNodeEvidenceStatus>;
   logs: readonly RunLog[];
   testSkipped: ReadonlySet<string>;
+  /** The Waits the run is parked on now. */
+  waits: readonly RunWait[];
+  /** An Event's label for a sentence, by its name. */
+  eventLabel: (eventName: string) => string;
   /** Whether the run has ended, so a step it did not reach never will be. */
   ended: boolean;
 }): RunOutline {
@@ -65,7 +98,10 @@ export function runOutline(input: {
     const time = log
       ? formatClockTimeWithSeconds(log.completedAt ?? log.startedAt)
       : null;
-    const status = input.statuses.get(row.nodeId) ?? "none";
+    // The projection names each node it has read; a node it has not yet is
+    // read from its own log.
+    const status: RunNodeEvidenceStatus =
+      input.statuses.get(row.nodeId) ?? log?.status ?? "none";
     if (row.kind === "lifecycle") {
       return { tone: "done", text: "Started", time: null };
     }
@@ -74,16 +110,24 @@ export function runOutline(input: {
     }
     switch (status) {
       case "success":
-        return { tone: "done", text: tookText(row) ?? "Ran", time };
+        return {
+          tone: "done",
+          text:
+            tookText(row) ??
+            (row.stepKind === "wait"
+              ? (waitWakeText(log?.output, input.eventLabel) ?? "Waited")
+              : "Ran"),
+          time,
+        };
       case "error":
         return { tone: "failed", text: "Failed", time };
       case "waiting":
-        return { tone: "waiting", text: "Waiting", time: null };
+        return { tone: "waiting", text: waitingText(row.nodeId), time };
       case "retrying":
-        return { tone: "running", text: "Retrying", time: null };
+        return { tone: "running", text: "Retrying", time };
       case "running":
       case "pending":
-        return { tone: "running", text: "Running", time: null };
+        return { tone: "running", text: "Running", time };
       case "cancelled":
         return { tone: "quiet", text: "Canceled", time };
       default:
@@ -96,6 +140,18 @@ export function runOutline(input: {
           time: null,
         };
     }
+  };
+
+  /** What a parked Wait waits for, or until when. */
+  const waitingText = (nodeId: string): string => {
+    const wait = input.waits.find((item) => item.nodeId === nodeId);
+    if (wait?.waitUntil) {
+      return `Waiting · resumes ${formatExactTime(wait.waitUntil)}`;
+    }
+    if (wait && wait.subscribedEvents.length > 0) {
+      return `Waiting for ${wait.subscribedEvents.map(input.eventLabel).join(" or ")}`;
+    }
+    return "Waiting";
   };
 
   /** "Took True" for a Condition, the Event's name for an Event Split. */

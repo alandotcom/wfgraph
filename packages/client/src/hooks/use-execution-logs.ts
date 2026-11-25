@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
+import type { ExecutionLogsResult } from "#src/lib/rpc-client";
 import {
+  type ExecutionWait,
+  toExecutionDetail,
   toExecutionLogsByNodeId,
   toTestSkippedNodeIds,
 } from "#src/lib/execution-logs";
@@ -59,4 +62,30 @@ export function useTestSkippedNodeIds(): ReadonlySet<string> {
   });
 
   return data ?? NO_NODE_IDS;
+}
+
+const NO_WAITS: readonly ExecutionWait[] = [];
+
+/** The Waits a logs payload's run is parked on, as one stable selector. */
+function toExecutionWaits(payload: ExecutionLogsResult): ExecutionWait[] {
+  return toExecutionDetail(payload).waits;
+}
+
+/**
+ * The Waits the run the user is looking at is parked on. It observes the same
+ * query as `useExecutionLogsByNode`, so it adds no request.
+ */
+export function useOpenRunWaits(): readonly ExecutionWait[] {
+  const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
+  const { data } = useQuery({
+    ...orpcQuery.workflow.getExecutionLogs.queryOptions({
+      input: { executionId: selectedExecutionId ?? "" },
+      select: toExecutionWaits,
+    }),
+    enabled:
+      selectedExecutionId !== null &&
+      can(WfGraphOperations.workflowGetExecutionLogs.id),
+  });
+
+  return data ?? NO_WAITS;
 }

@@ -27,7 +27,11 @@ import { ProviderLogo } from "#src/components/workflow/nodes/action-node";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { Input } from "#src/components/ui/input";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
-import { useTestSkippedNodeIds } from "#src/hooks/use-execution-logs";
+import {
+  useOpenRunWaits,
+  useTestSkippedNodeIds,
+} from "#src/hooks/use-execution-logs";
+import { eventLabel } from "@wfgraph/shared/graph/workflow-summary";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
 import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
@@ -154,6 +158,7 @@ export function WorkflowOutline() {
   const runStatuses = useAtomValue(runNodeEvidenceStatusesAtom);
   const runLogs = useAtomValue(projectedRunLogsAtom);
   const testSkipped = useTestSkippedNodeIds();
+  const runWaits = useOpenRunWaits();
 
   const editing = view === "draft" && !reviewShown;
   // While the review sheet shows, the graph holds removed steps too, and the
@@ -196,10 +201,21 @@ export function WorkflowOutline() {
             statuses: runStatuses,
             logs: runLogs.logs,
             testSkipped,
+            waits: runWaits,
+            eventLabel: (name) => eventLabel(catalog, name),
             ended: !isRunInProgress(runLogs.executionStatus),
           })
         : null,
-    [view, runPath, runLogs, runStatuses, testSkipped, outlineRowList]
+    [
+      view,
+      runPath,
+      runLogs,
+      runStatuses,
+      testSkipped,
+      runWaits,
+      catalog,
+      outlineRowList,
+    ]
   );
   const rows: readonly OutlineDisplayRow[] = run?.rows ?? outlineRowList;
   const unreachable = useMemo(

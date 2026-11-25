@@ -7,6 +7,7 @@ import {
   heroGraph,
   outlineTestCatalog,
 } from "@wfgraph/shared/graph/workflow-outline-test-support";
+import type { RunNodeEvidenceStatus } from "@wfgraph/shared/graph/group-run-status";
 import { runPath } from "#src/lib/run-path";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
 import { runOutline } from "./outline-run";
@@ -25,6 +26,12 @@ function log(nodeId: string, output?: unknown) {
 function endedRun(input: {
   logs: ReturnType<typeof log>[];
   testSkipped?: ReadonlySet<string>;
+  waits?: {
+    nodeId: string;
+    subscribedEvents: string[];
+    waitUntil: Date | null;
+  }[];
+  statuses?: ReadonlyMap<string, RunNodeEvidenceStatus>;
 }) {
   const graph = heroGraph();
   const rows = outlineRows(
@@ -38,9 +45,13 @@ function endedRun(input: {
       logs: input.logs,
       executionStatus: "canceled",
     }),
-    statuses: new Map(input.logs.map((entry) => [entry.nodeId, "success"])),
+    statuses:
+      input.statuses ??
+      new Map(input.logs.map((entry) => [entry.nodeId, "success"])),
     logs: input.logs,
     testSkipped: input.testSkipped ?? new Set(),
+    waits: input.waits ?? [],
+    eventLabel: (name) => `event ${name}`,
     ended: true,
   });
 }
@@ -89,5 +100,37 @@ describe("runOutline", () => {
     expect(result.outcomes.get("Send booking confirmation")?.text).toBe(
       "Skipped (test run)"
     );
+  });
+
+  it("says what woke a Wait, and when a parked Wait resumes", () => {
+    const woke = endedRun({
+      logs: [
+        log("Enough time for reminders?", { condition: true }),
+        log("Send booking confirmation"),
+        log("Wait for deposit or reschedule", {
+          timedOut: false,
+          event: "billing/payment.settled",
+        }),
+      ],
+    });
+    expect(woke.outcomes.get("Wait for deposit or reschedule")?.text).toBe(
+      "Woke on event billing/payment.settled"
+    );
+
+    const resumesAt = new Date(2026, 10, 30, 14, 0, 0);
+    const parked = endedRun({
+      logs: [log("Wait until 24 hours before")],
+      statuses: new Map([["Wait until 24 hours before", "waiting"]]),
+      waits: [
+        {
+          nodeId: "Wait until 24 hours before",
+          subscribedEvents: [],
+          waitUntil: resumesAt,
+        },
+      ],
+    });
+    const outcome = parked.outcomes.get("Wait until 24 hours before");
+    expect(outcome?.tone).toBe("waiting");
+    expect(outcome?.text).toMatch(/^Waiting · resumes /u);
   });
 });
