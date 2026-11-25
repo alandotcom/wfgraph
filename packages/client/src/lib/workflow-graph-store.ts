@@ -1319,5 +1319,17 @@ export const redoAtom = atom(null, (get, set) => {
   requestGraphSave(get, set, { immediate: true });
 });
 
+/**
+ * Ends the redo branch of `workflowId` when it is the open workflow. A publish
+ * calls this, so an edit undone before the publish cannot come back after it
+ * and leave the draft just published changed again. The undo history stays:
+ * undoing past a publish is an ordinary edit of the draft.
+ */
+export const endRedoBranchAtom = atom(null, (get, set, workflowId: string) => {
+  if (get(currentWorkflowIdAtom) === workflowId) {
+    set(futureAtom, []);
+  }
+});
+
 export const canUndoAtom = atom((get) => get(historyAtom).length > 0);
 export const canRedoAtom = atom((get) => get(futureAtom).length > 0);

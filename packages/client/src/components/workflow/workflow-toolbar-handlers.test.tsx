@@ -36,11 +36,15 @@ import {
 import { PREFLIGHT_BUSY_MESSAGE } from "#src/hooks/use-workflow-issue-preflight";
 import { orpcQuery } from "#src/lib/rpc-query";
 import {
+  canRedoAtom,
+  canUndoAtom,
   canvasEditingLockedAtom,
   hydrateWorkflowAtom,
   loadWorkflowGraphAtom,
   nodesAtom,
   onNodesChangeAtom,
+  undoAtom,
+  updateNodeDataAtom,
 } from "#src/lib/workflow-graph-store";
 import {
   currentWorkflowDraftRevisionAtom,
@@ -1304,6 +1308,68 @@ describe("useWorkflowActions publication preflight", () => {
     fireEvent.click(view.getByRole("button", { name: "Confirm publish" }));
     await waitFor(() => expect(publishInput).toBeDefined());
     expect(publishInput).toMatchObject({ expectedDraftRevision: 3 });
+  });
+
+  it("ends the redo branch when the publish lands, and keeps the undo history", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async (url: RequestInfo | URL) => {
+        const path = extractRpcProcedurePath(rpcUrl(url));
+        if (path === "workflow/update") {
+          return rpcJsonResponse(
+            savedWorkflowResponse({ hasUnpublishedChanges: true })
+          );
+        }
+        if (path === "workflow/publish") {
+          return rpcJsonResponse({
+            ...savedWorkflowResponse({
+              hasUnpublishedChanges: false,
+              publishedVersionId: "version_1",
+            }),
+            warnings: [],
+          });
+        }
+        return rpcJsonResponse({
+          baseVersion: null,
+          proposedVersion: 1,
+          baseGraph: createSerializedWorkflowGraph({ nodes: [], edges: [] }),
+          draftGraph: expectedSnapshot,
+          hasChanges: true,
+          nodeChanges: [{ nodeId: "lifecycle_1", kind: "added", fields: [] }],
+          edgeChanges: [],
+        });
+      }
+    );
+    const store = workflowStore();
+    store.set(loadWorkflowGraphAtom, { nodes, edges: [] });
+    // Two label edits, the second undone: one step to undo, one to redo.
+    const [first] = nodes;
+    if (!first) {
+      throw new Error("The fixture graph has no node");
+    }
+    store.set(updateNodeDataAtom, { id: first.id, data: { label: "One" } });
+    store.set(updateNodeDataAtom, { id: first.id, data: { label: "Two" } });
+    store.set(undoAtom);
+    expect(store.get(canUndoAtom)).toBe(true);
+    expect(store.get(canRedoAtom)).toBe(true);
+
+    const firstState = state();
+    firstState.publication = {
+      isPublished: false,
+      isPaused: false,
+      hasUnpublishedChanges: false,
+    };
+    const view = renderProbe({
+      store,
+      probe: <PublishProbe workflowState={firstState} />,
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
+    fireEvent.click(
+      await view.findByRole("button", { name: "Confirm publish" })
+    );
+
+    await waitFor(() => expect(store.get(canRedoAtom)).toBe(false));
+    expect(store.get(canUndoAtom)).toBe(true);
   });
 
   it("asks the server to compare a first publication with no base version", async () => {

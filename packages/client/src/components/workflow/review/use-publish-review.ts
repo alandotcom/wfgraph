@@ -29,6 +29,7 @@ import {
   isPublicationReviewPendingAtom,
   publicationReviewAtom,
 } from "#src/lib/workflow-publication-review-store";
+import { endRedoBranchAtom } from "#src/lib/workflow-graph-store";
 import { clearReviewPagesAtom } from "#src/lib/workflow-review-store";
 import {
   currentWorkflowIdAtom,
@@ -97,6 +98,7 @@ export function usePublishReview(): PublishReviewActions {
   const reviewPending = useAtomValue(isPublicationReviewPendingAtom);
   const clearPublicationReview = useSetAtom(clearPublicationReviewAtom);
   const clearReviewPages = useSetAtom(clearReviewPagesAtom);
+  const endRedoBranch = useSetAtom(endRedoBranchAtom);
   const recordLoadedDraftRevision = useSetAtom(recordLoadedDraftRevisionAtom);
   const canPublish = can(WfGraphOperations.workflowPublish.id);
   const publishingReviewRef = useRef<string | null>(null);
@@ -155,6 +157,7 @@ export function usePublishReview(): PublishReviewActions {
             workflowId: payload.id,
             draftRevision: payload.draftRevision,
           });
+          endRedoBranch(payload.id);
           cacheWorkflowPublication(queryClient, payload);
           void refreshWorkflowList(queryClient);
           void refreshWorkflowVersionHistory(queryClient);

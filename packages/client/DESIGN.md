@@ -746,7 +746,9 @@ changes, and only then, checks it for blocking issues, and compares the exact dr
 A draft with blocking issues lists them instead, and a draft with no change
 says "No changes to publish" and opens nothing. **Review changes**, in the
 command palette and the Actions menu, runs the same path. **Version history**
-in the Actions menu opens the sheet on the list of versions.
+in the Actions menu opens the sheet on the list of versions. A publish that
+lands ends the redo branch, so an edit undone before the publish cannot come
+back after it; Undo still steps back through the edits made before it.
 
 The sheet covers the details column and reaches over the canvas from the
 editor's right edge, 8px inside it, up to 640px wide. The details column keeps
