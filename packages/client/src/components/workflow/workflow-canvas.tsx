@@ -82,7 +82,6 @@ import {
 } from "./canvas-interaction";
 import { useWorkspaceCamera } from "./use-workspace-camera";
 import { useRevealCamera } from "./canvas-reveal/use-reveal-camera";
-import { WorkflowSummaryCard } from "./workflow-summary-card";
 import { CANVAS_OBSTACLE_SLOTS } from "./canvas-reveal/reveal-geometry";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
 import {
@@ -695,13 +694,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
                 graphEditingLocked || !topologyAuthoring ? undefined : reflow
               }
             >
-              {/* Draft says what the workflow does. Runs keeps the zoom cue,
-                    since its canvas shows a graph other than the draft. */}
-              {workspaceView !== "draft" ? (
-                <OverviewCue />
-              ) : (
-                <WorkflowSummaryCard />
-              )}
+              {/* Runs keeps the zoom cue, since its canvas shows a graph
+                    other than the draft. In Draft the outline says what the
+                    workflow does. */}
+              {workspaceView !== "draft" ? <OverviewCue /> : null}
             </Controls>
           </Panel>
           {/* A workflow with nothing but its Lifecycle Node shows how to

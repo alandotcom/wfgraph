@@ -39,12 +39,6 @@ export const openRenameWorkflowDialogAtom = atom(null, (get, set) => {
 });
 
 /**
- * Whether the Draft canvas's "What this workflow does" card shows the whole
- * account or only its first sentence. Kept for the session, across workflows.
- */
-export const workflowSummaryExpandedAtom = atom(false);
-
-/**
  * Whether a run start this editor requested is still being created: from the
  * confirm until the started run's first status read, or until the server
  * starts nothing. Whether the open run is in progress is the projection's.
