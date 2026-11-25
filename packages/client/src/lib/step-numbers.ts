@@ -13,18 +13,18 @@ import { presentedGraphAtom } from "#src/lib/workflow-graph-presentation-store";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
 
-const NO_NUMBERS: ReadonlyMap<string, number> = new Map();
-
 /**
- * The graph whose steps are numbered: the open run's pinned graph in Runs, and
- * the draft everywhere else. The review sheet draws removed steps beside the
+ * The graph whose steps are numbered, which is the graph the canvas draws: the
+ * open run's pinned graph in Runs, and the draft everywhere else, including
+ * Runs with no run open. The review sheet draws removed steps beside the
  * draft's, and those keep no number, so review numbers come from the draft too.
  */
-const numberedGraphAtom = atom((get) =>
-  get(workflowWorkspaceViewAtom) === "runs"
-    ? get(presentedGraphAtom)
-    : { nodes: get(nodesAtom), edges: get(edgesAtom) }
-);
+const numberedGraphAtom = atom((get) => {
+  const draft = { nodes: get(nodesAtom), edges: get(edgesAtom) };
+  return get(workflowWorkspaceViewAtom) === "runs"
+    ? (get(presentedGraphAtom) ?? draft)
+    : draft;
+});
 
 function sameNumbers(
   a: ReadonlyMap<string, number>,
@@ -49,13 +49,11 @@ function sameNumbers(
 const outlineStepNumbersAtom = selectAtom(
   numberedGraphAtom,
   (graph) =>
-    graph
-      ? workflowStepNumbers({
-          nodes: graph.nodes,
-          edges: graph.edges,
-          catalog: getExtensionCatalog(),
-        })
-      : NO_NUMBERS,
+    workflowStepNumbers({
+      nodes: graph.nodes,
+      edges: graph.edges,
+      catalog: getExtensionCatalog(),
+    }),
   sameNumbers
 );
 
