@@ -209,7 +209,10 @@ function RegionHeader({
             className="size-[0.8em] shrink-0 text-muted-foreground"
             strokeWidth={2}
           />
-          <span aria-label={`${memberCount} steps`}>{memberCount}</span>
+          {/* Written out, so the count is not read as a step number. */}
+          <span className="font-normal text-muted-foreground">
+            {memberCount === 1 ? "1 step" : `${memberCount} steps`}
+          </span>
           {markStatus ? (
             <NodeStatusMark
               placement="inline"

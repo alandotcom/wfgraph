@@ -535,7 +535,7 @@ describe("the number tier, below a compact title's 11px", () => {
       "[data-slot='group-region-header-mark']"
     );
     expect(mark?.querySelector("svg")).not.toBeNull();
-    expect(view.getByLabelText("0 steps")).toBeTruthy();
+    expect(view.getByText("0 steps")).toBeTruthy();
     expect(view.queryByRole("button", { name: /Collapse group/ })).toBeNull();
   });
 
