@@ -216,7 +216,7 @@ function AgentCard({
         <motion.button
           animate={{ opacity: 1 }}
           aria-hidden
-          className="pointer-events-auto fixed inset-0 z-10 cursor-default bg-foreground/40"
+          className="pointer-events-auto fixed inset-0 z-10 cursor-default bg-scrim"
           initial={{ opacity: 0 }}
           onClick={() => setIsExpanded(false)}
           tabIndex={-1}

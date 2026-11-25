@@ -11,6 +11,7 @@ colors:
   page-dark: "oklch(0.18 0 0)"
   panel: "oklch(0.985 0 0)"
   void: "oklch(0 0 0)"
+  scrim: "oklch(0 0 0 / 0.4)"
   paper-dark: "oklch(0.98 0 0)"
   graphite-line-dark: "oklch(0.27 0 0)"
   graphite-wash-dark: "oklch(0.15 0 0)"
@@ -228,6 +229,8 @@ The editor shell is inset 12px from the viewport on all four sides at `md` and a
 ### Named Rules
 
 **The Overlay Rule.** Anything at shadow-lg must be dismissible. If it can't be dismissed, it isn't floating, and it doesn't get the shadow.
+
+**The Scrim Rule.** A modal layer dims the page behind it with `bg-scrim`: black at 40% in both themes, with no blur, so dark mode darkens too. Dialogs, alert dialogs, stacked overlays, the phone drawer and the expanded build agent all use it. The command palette uses none, because the canvas it acts on stays readable behind it. A stacked overlay shares the dialog's container and motion: Popover fill, 14px radius, hairline ring, shadow-lg, and a 200ms fade with a 95% zoom.
 
 ## 5. Components
 

@@ -36,30 +36,32 @@ export function OverlayHeader({
   };
 
   return (
-    <div className={cn("relative flex flex-col gap-1.5 p-6 pb-0", className)}>
+    // The header recipe of the shared dialog: 16px padding, a 14px/500 title,
+    // a 12px description and a 24px close button in the corner.
+    <div className={cn("relative flex flex-col gap-1 p-4 pb-0", className)}>
       {/* Fixed min-height to prevent layout shift when back button appears */}
       <div
         className={cn(
-          "flex min-h-8 items-center gap-2",
-          showCloseButton && "pr-10"
+          "flex min-h-6 items-center gap-2",
+          showCloseButton && "pr-8"
         )}
       >
         {showBackButton && (
           <Button
             aria-label="Go back"
-            className="ml-[-8px] size-8 shrink-0"
+            className="-ml-1.5 shrink-0"
             onClick={handleBack}
-            size="icon"
+            size="icon-sm"
             variant="ghost"
           >
-            <ChevronLeftIcon className="size-5" />
+            <ChevronLeftIcon />
           </Button>
         )}
         {title && (
           // The container points aria-labelledby here, so the id has to track
           // the overlay's own id rather than being generated per render.
           <h2
-            className="flex-1 font-semibold text-base leading-none"
+            className="flex-1 font-medium text-sm"
             id={overlayId ? `overlay-title-${overlayId}` : undefined}
           >
             {title}
@@ -71,17 +73,17 @@ export function OverlayHeader({
         {showCloseButton && (
           <Button
             aria-label="Close"
-            className="absolute top-4 right-4 size-8 shrink-0 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            className="absolute top-2 right-2"
             onClick={handleClose}
-            size="icon"
+            size="icon-sm"
             variant="ghost"
           >
-            <XIcon className="size-4" />
+            <XIcon />
           </Button>
         )}
       </div>
       {description && (
-        <p className="text-muted-foreground text-sm">{description}</p>
+        <p className="text-muted-foreground text-xs/relaxed">{description}</p>
       )}
     </div>
   );

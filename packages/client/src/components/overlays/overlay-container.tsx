@@ -34,7 +34,9 @@ const drawerSpring = {
 } as const;
 
 /**
- * Variants for the dialog container (fade in/out)
+ * The entrance and exit of `DialogContent` in `components/ui/dialog.tsx`: a
+ * 200ms fade and 95% zoom on the same front-loaded curve, so a stacked overlay
+ * opens the way every other dialog does.
  */
 const containerVariants: Variants = {
   hidden: {
@@ -44,11 +46,7 @@ const containerVariants: Variants = {
   visible: {
     opacity: 1,
     transform: "translate(-50%, -50%) scale(1)",
-    transition: {
-      type: "spring",
-      stiffness: 400,
-      damping: 30,
-    },
+    transition: { duration: 0.2, ease: [0.23, 1, 0.32, 1] },
   },
   exit: {
     opacity: 0,
@@ -150,11 +148,14 @@ function DesktopOverlayContainer() {
             {/* Backdrop - standalone clickable div */}
             <motion.div
               animate={{ opacity: 1 }}
-              className="fixed inset-0 z-50 bg-foreground/60"
+              className="fixed inset-0 z-50 bg-scrim"
               exit={{ opacity: 0 }}
               initial={{ opacity: 0 }}
               onClick={handleBackdropClick}
-              transition={{ duration: 0.2 }}
+              transition={{
+                duration: shouldReduceMotion ? 0.1 : 0.2,
+                ease: [0.23, 1, 0.32, 1],
+              }}
             />
 
             {/* Dialog container.
@@ -181,7 +182,8 @@ function DesktopOverlayContainer() {
             >
               <LayoutGroup>
                 <motion.div
-                  className="relative flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-xl border bg-card shadow-lg ring-1 ring-border"
+                  // The container recipe of `DialogContent`.
+                  className="relative flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground text-xs/relaxed shadow-lg ring-1 ring-foreground/10"
                   layout={shouldReduceMotion ? false : "position"}
                   style={{ minHeight: minHeight > 0 ? minHeight : "auto" }}
                   transition={iosSpring}
@@ -297,7 +299,7 @@ function MobileOverlayContainer() {
             `data-ending-style` the one it leaves to, and while a finger is on
             the sheet `--drawer-swipe-progress` (0 to 1) fades the backdrop out
             in step with the drag. */}
-        <DrawerPrimitive.Backdrop className="fixed inset-0 z-50 bg-black opacity-[calc(0.6*(1-var(--drawer-swipe-progress)))] transition-opacity duration-[450ms] ease-[cubic-bezier(0.32,0.72,0,1)] data-swiping:duration-0 data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:duration-[calc(var(--drawer-swipe-strength)*400ms)] motion-reduce:transition-none" />
+        <DrawerPrimitive.Backdrop className="fixed inset-0 z-50 bg-scrim opacity-[calc(1-var(--drawer-swipe-progress))] transition-opacity duration-[450ms] ease-[cubic-bezier(0.32,0.72,0,1)] data-swiping:duration-0 data-starting-style:opacity-0 data-ending-style:opacity-0 data-ending-style:duration-[calc(var(--drawer-swipe-strength)*400ms)] motion-reduce:transition-none" />
 
         {/* Viewport has no vaul counterpart and is not optional: it owns the
             swipe gesture and the touch scroll lock, and it is what holds the

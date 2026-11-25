@@ -38,4 +38,34 @@ describe("Dialog motion", () => {
     expect(content?.className).toContain("motion-reduce:animate-none");
     expect(content?.className).toContain("motion-reduce:transition-opacity");
   });
+
+  it("dims the page with the shared scrim and no blur", () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Settings</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    );
+
+    const overlay = document.querySelector('[data-slot="dialog-overlay"]');
+
+    expect(overlay?.className).toContain("bg-scrim");
+    expect(overlay?.className).not.toContain("backdrop-blur");
+  });
+
+  it("lets a surface that acts on the page drop the scrim", () => {
+    render(
+      <Dialog open>
+        <DialogContent overlayClassName="bg-transparent">
+          <DialogTitle>Commands</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    );
+
+    const overlay = document.querySelector('[data-slot="dialog-overlay"]');
+
+    expect(overlay?.className).toContain("bg-transparent");
+    expect(overlay?.className).not.toContain("bg-scrim");
+  });
 });

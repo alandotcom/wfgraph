@@ -35,7 +35,7 @@ export function OverlayFooter({
     return (
       <div
         className={cn(
-          "flex flex-col-reverse gap-2 p-6 pt-4 sm:flex-row sm:justify-end",
+          "flex flex-col-reverse gap-2 p-4 sm:flex-row sm:justify-end",
           className
         )}
       >
@@ -66,7 +66,7 @@ export function OverlayFooter({
   return (
     <div
       className={cn(
-        "flex flex-col-reverse gap-2 p-6 pt-4 sm:flex-row",
+        "flex flex-col-reverse gap-2 p-4 sm:flex-row",
         hasLeftActions && hasRightActions
           ? "sm:justify-between"
           : "sm:justify-end",

@@ -69,6 +69,8 @@
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
   --color-selection: var(--selection);
+  /* The one dim behind a modal layer, `bg-scrim`. */
+  --color-scrim: var(--scrim);
   --color-cancelled: var(--cancelled);
   /* Node-type identity. The one sanctioned tinted-neutral and decorative-hue
      exception in the system; see DESIGN.md section 2. Each clears 3:1 on both
@@ -141,6 +143,10 @@
   --info-foreground: oklch(0.985 0 0);
   --selection: oklch(0.56 0.21 264);
   --cancelled: oklch(0.52 0.046 257.417);
+  /* Black in both themes, so a modal layer darkens what it covers in dark as
+     well as light. A `--foreground` dim inverts with the theme and lightened
+     the black canvas instead. No blur goes with it. */
+  --scrim: oklch(0 0 0 / 0.4);
   --node-lifecycle: oklch(0.646 0.19 259.815);
   --node-split: oklch(0.646 0.13 232.661);
   --node-wait: oklch(0.661 0.14 66.29);
@@ -214,6 +220,7 @@
   --info-foreground: oklch(0.09 0 0);
   --selection: oklch(0.72 0.17 264);
   --cancelled: oklch(0.7 0.046 257.417);
+  --scrim: oklch(0 0 0 / 0.4);
   --border: oklch(0.27 0 0);
   --input: oklch(0.27 0 0);
   /* 3.21:1 on Void, where the light theme's 0.6 would measure 8.4:1 and paint a

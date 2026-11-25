@@ -55,7 +55,7 @@ export function Overlay({
       {/* Content area. `min-h-0` lets this scroll inside a height-capped card
           rather than pushing the footer actions off the bottom of the screen. */}
       {children && (
-        <div className="min-h-0 flex-1 overflow-y-auto p-6">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
       )}
 
       {/* Footer with actions */}
