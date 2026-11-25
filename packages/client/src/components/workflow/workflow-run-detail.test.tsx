@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, within } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
@@ -59,8 +59,6 @@ function renderDetail(
     nodes?: WorkflowNode[];
     executionNodes?: WorkflowNode[];
     onSelectLog?: (log: WorkflowRunDetailLogs[number]) => void;
-    focusLogId?: string;
-    onFocusRestored?: () => void;
   }
 ) {
   const store = createStore();
@@ -91,8 +89,6 @@ function renderDetail(
                   execution={execution}
                   exit={extras?.exit ?? null}
                   executor={extras?.executor ?? null}
-                  focusLogId={extras?.focusLogId}
-                  onFocusRestored={extras?.onFocusRestored}
                   onSelectLog={extras?.onSelectLog ?? vi.fn()}
                   isCanceling={false}
                   isResuming={false}
@@ -341,49 +337,15 @@ describe("WorkflowRunDetail", () => {
     expect(view.queryByText("appointmentRemindersEnabled")).toBeNull();
     expect(view.getByText("is true")).toBeTruthy();
     expect(view.getByText("Eligibility rule did not match")).toBeTruthy();
-    expect(view.getByText("Prevented Send reminder")).toBeTruthy();
     expect(view.queryByText("Draft-only label")).toBeNull();
     expect(view.queryByText("condition_digest")).toBeNull();
     expect(view.queryByText(/appt_secret|active=true/)).toBeNull();
   });
 
-  it("hands a chosen journey entry to its frame and focuses a requested entry", () => {
-    const logs: WorkflowRunDetailLogs = [
-      {
-        id: "log_wait",
-        nodeId: "wait_1",
-        nodeName: "Wait",
-        nodeType: "wait",
-        status: "success",
-        startedAt: new Date("2026-02-22T10:00:00Z"),
-        completedAt: new Date("2026-02-22T10:00:09Z"),
-        duration: "9030",
-        input: { invoiceId: "inv_1" },
-        output: {},
-        error: null,
-        retries: 0,
-        retryLimit: 4,
-      },
-    ];
-    const onSelectLog = vi.fn();
-    const onFocusRestored = vi.fn();
-    const view = renderDetail(
-      { ...BASE_EXECUTION, status: "completed" },
-      { logs, onSelectLog, focusLogId: "log_wait", onFocusRestored }
-    );
-
-    const entry = view.getByRole("button", { name: "Wait, Successful" });
-    expect(document.activeElement).toBe(entry);
-    expect(onFocusRestored).toHaveBeenCalledOnce();
-    fireEvent.click(entry);
-    expect(onSelectLog).toHaveBeenCalledWith(logs[0]);
-    expect(view.queryByText(/invoiceId/)).toBeNull();
-  });
-
   // A step that failed closes its node's log as `error` before the executor
-  // tries it again, so the header and the journey read the node as retrying,
-  // as the canvas chip does, while the schedule lists the step as failing.
-  it("reads a node with a failing step as retrying in the header and the journey", () => {
+  // tries it again, so the header reads the node as retrying, as the canvas
+  // chip does, while the schedule lists the step as failing.
+  it("reads a node with a failing step as retrying in the header", () => {
     const logs: WorkflowRunDetailLogs = [
       {
         id: "log_send",
@@ -427,98 +389,6 @@ describe("WorkflowRunDetail", () => {
     });
 
     expect(view.getByText("Retrying Send reminder")).toBeTruthy();
-    const entry = view.getByRole("button", { name: "Send reminder, Retrying" });
-    expect(within(entry).getByText("Retrying").className).toContain(
-      "text-warning"
-    );
-  });
-
-  // A Wait's log row stays `running` for as long as the run is parked on it,
-  // which is hours or days. The journey reads that row as waiting, as the
-  // canvas does, so a parked run does not look like one that is executing.
-  it("reads the step a run is parked on as waiting in the journey", () => {
-    const logs: WorkflowRunDetailLogs = [
-      {
-        id: "log_wait",
-        nodeId: "wait_1",
-        nodeName: "Wait for delivery",
-        nodeType: "Wait",
-        status: "running",
-        startedAt: new Date("2026-02-22T10:00:00Z"),
-        completedAt: null,
-        duration: null,
-        error: null,
-        retries: 0,
-        retryLimit: 4,
-      },
-    ];
-    const view = renderDetail(
-      { ...BASE_EXECUTION, status: "waiting" },
-      {
-        logs,
-        waits: [
-          {
-            id: "wait_1",
-            nodeId: "wait_1",
-            nodeName: "Wait for delivery",
-            resumeToken: "tok_1",
-            subscribedEvents: ["resend/email.delivered"],
-            waitUntil: null,
-          },
-        ],
-      }
-    );
-
-    const entry = view.getByRole("button", {
-      name: "Wait for delivery, Waiting",
-    });
-    expect(within(entry).getByText("Waiting").className).toContain(
-      "text-warning"
-    );
-    expect(within(entry).queryByText("In progress")).toBeNull();
-  });
-
-  // Cancel paints the list row first and stops the logs poll. The journey and
-  // waits can still be the last in-flight snapshot, so they follow the run
-  // status rather than those leftover rows.
-  it("treats leftover running steps as cancelled once the run is canceled", () => {
-    const logs: WorkflowRunDetailLogs = [
-      {
-        id: "log_lifecycle",
-        nodeId: "lifecycle_1",
-        nodeName: "Lifecycle",
-        nodeType: "lifecycle",
-        status: "success",
-        startedAt: new Date("2026-02-22T10:00:00Z"),
-        completedAt: new Date("2026-02-22T10:00:01Z"),
-        duration: "1000",
-        error: null,
-        retries: 0,
-        retryLimit: 4,
-      },
-      {
-        id: "log_wait",
-        nodeId: "wait_1",
-        nodeName: "Wait",
-        nodeType: "action",
-        status: "running",
-        startedAt: new Date("2026-02-22T10:00:01Z"),
-        completedAt: null,
-        duration: null,
-        error: null,
-        retries: 0,
-        retryLimit: 4,
-      },
-    ];
-
-    const view = renderDetail(
-      { ...BASE_EXECUTION, status: "canceled" },
-      { logs }
-    );
-
-    expect(view.getByRole("button", { name: "Wait, Canceled" })).toBeTruthy();
-    expect(view.queryByText("In progress")).toBeNull();
-    expect(view.queryByText("Running")).toBeNull();
   });
 
   it("hides parked waits once the run is no longer waiting", () => {
@@ -572,7 +442,7 @@ describe("WorkflowRunDetail", () => {
     }
   );
 
-  describe("a failed run's journey", () => {
+  describe("a failed run's summary", () => {
     const step = (
       id: string,
       status: "success" | "error",
@@ -598,42 +468,6 @@ describe("WorkflowRunDetail", () => {
     ];
     const failed = { ...BASE_EXECUTION, status: "failed" as const };
 
-    // The step where the run stopped stays in view: the steps that succeeded
-    // before it fold into one row the reader can expand.
-    it("folds the successful steps before the failure into one row", () => {
-      const view = renderDetail(failed, { logs });
-
-      expect(
-        view.queryByRole("button", { name: "Step a, Successful" })
-      ).toBeNull();
-      expect(view.getByRole("button", { name: "Step d, Failed" })).toBeTruthy();
-
-      fireEvent.click(
-        view.getByRole("button", { name: "Show 3 successful steps" })
-      );
-      const entry = view.getByRole("button", { name: "Step a, Successful" });
-      // The colored dot marks the status; the word stays quiet on success.
-      expect(within(entry).getByText("Successful").className).toContain(
-        "text-muted-foreground"
-      );
-      // A step that took milliseconds prints no duration in the list.
-      expect(within(entry).queryByText("<1s")).toBeNull();
-    });
-
-    it("shows a folded step when focus returns to it", () => {
-      const onFocusRestored = vi.fn();
-      const view = renderDetail(failed, {
-        logs,
-        focusLogId: "b",
-        onFocusRestored,
-      });
-
-      expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Step b, Successful" })
-      );
-      expect(onFocusRestored).toHaveBeenCalledOnce();
-    });
-
     it("opens the failed step's evidence from the failure summary", () => {
       const onSelectLog = vi.fn();
       const view = renderDetail(failed, { logs, onSelectLog });
@@ -642,16 +476,10 @@ describe("WorkflowRunDetail", () => {
       expect(onSelectLog).toHaveBeenCalledWith(logs[3]);
     });
 
-    // The band states the failure once, so the failed row does not repeat it.
-    it("states the failure in the band and leaves it off the failed row", () => {
+    it("states the failure once, in the band", () => {
       const view = renderDetail(failed, { logs });
 
       expect(view.getAllByText("Request failed")).toHaveLength(1);
-      expect(
-        within(
-          view.getByRole("button", { name: "Step d, Failed" })
-        ).queryByText("Request failed")
-      ).toBeNull();
     });
 
     it("words an Entity the app did not find and keeps the stored error", () => {
@@ -742,66 +570,6 @@ describe("WorkflowRunDetail", () => {
         )
       ).toBeTruthy();
     });
-
-    it("keeps every step of a completed run in view", () => {
-      const view = renderDetail(
-        { ...BASE_EXECUTION, status: "completed" },
-        { logs: logs.slice(0, 3) }
-      );
-
-      expect(
-        view.getByRole("button", { name: "Step a, Successful" })
-      ).toBeTruthy();
-      expect(
-        view.queryByRole("button", { name: /successful steps/ })
-      ).toBeNull();
-    });
-  });
-
-  // A test run calls every handler, and a handler that sends nothing still
-  // succeeds, so the journey names the skip and never folds it away.
-  it("reads a step a test run skipped as skipped, and keeps it out of a fold", () => {
-    const skippedStep = (id: string, minute: number) => ({
-      id,
-      nodeId: `node_${id}`,
-      nodeName: `Step ${id}`,
-      nodeType: "action",
-      status: "success" as const,
-      startedAt: new Date(`2026-02-22T10:0${minute}:00Z`),
-      completedAt: new Date(`2026-02-22T10:0${minute}:01Z`),
-      duration: "12",
-      error: null,
-      retries: 0,
-      retryLimit: 4,
-      output: id === "b" ? { status: "skipped" } : { status: "sent" },
-    });
-    const logs = [
-      skippedStep("a", 0),
-      skippedStep("b", 1),
-      skippedStep("c", 2),
-      skippedStep("d", 3),
-    ];
-    const view = renderDetail(
-      { ...BASE_EXECUTION, status: "failed", runMode: "test" },
-      { logs }
-    );
-
-    const entry = view.getByRole("button", {
-      name: "Step b, Skipped (test run)",
-    });
-    expect(within(entry).getByText("Skipped (test run)").className).toContain(
-      "text-muted-foreground"
-    );
-
-    // The same output in a run with Live recipients claims nothing.
-    view.unmount();
-    const live = renderDetail(
-      { ...BASE_EXECUTION, status: "completed", runMode: "live" },
-      { logs }
-    );
-    expect(
-      live.getByRole("button", { name: "Step b, Successful" })
-    ).toBeTruthy();
   });
 
   it("words a run's activity, with its clock time and stored type", () => {

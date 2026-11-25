@@ -263,7 +263,7 @@ All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, 
 
 The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: a 16px integration icon, a 14px semibold title that wraps to two lines and starts with the step's number in run order, and a one-line description. A Condition holding more than one rule leads that line with how many must match, such as "All of 2 rules", because its title names one question. Below zoom 0.79, where that title would draw under 11px on screen, every card draws its compact form at the same size. A top row holds the step number in 22px type and, beside it, the issue badge or the disabled mark. Below it the title takes the card's full width and breaks only between words: 24px on two lines, or down to 21px on three, after which it ends in an ellipsis. A title holding one word wider than the card shrinks until the word fits, and hyphenates below 16px. At the zoom that fits the seeded 16-step workflow in a 1512 by 982 window, 0.53, the number and title draw at 11px or more. The Lifecycle card shows its Play glyph where a number would be, and a Group with no number shows its Group glyph. A compact card's run status is its border and a 22px status icon in its top-right corner, named by the status word. Outlet captions and connection labels are not drawn while cards are compact, because the outline names every outlet in words. The change marker straddles a compact card's top-right corner, clear of the title. Event Split is wider at 264px on purpose, because it carries two labelled outlets. A collapsed Group draws at the same 192×112. The card is flat; elevation on the canvas would compete with the status border.
 
-At rest the border is 1.5px of Canvas Line. Status is worn on that same border, stepping up to 2px: Signal Green for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. A step the run is parked on keeps the resting border and shows a Waiting chip, and a step the executor is retrying after a failure keeps it too and shows a Retrying chip in Signal Amber. Every status also renders its word in a chip, so the border is never the only carrier. The chip straddles the card's top edge, right-aligned in the strip between the top handle and the card's right corner, so it covers neither the type icon nor the handle. A chip wider than that strip starts just right of the handle and runs past the card's right edge into the gap between siblings. The chip reads Running, Waiting, Retrying, Successful, Failed, or Canceled, the same words a run's Group card, Group summary, and member rows use for that step. A successful step that did nothing because the run has Test recipients keeps the resting border and reads "Skipped (test run)" on its chip, its journey entry, and its evidence, which says why in one sentence. Focus shifts the border to Graphite Ink rather than the ring color, because the resting border already sits at the ring's lightness and the shift would otherwise read as nothing.
+At rest the border is 1.5px of Canvas Line. Status is worn on that same border, stepping up to 2px: Signal Green for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. A step the run is parked on keeps the resting border and shows a Waiting chip, and a step the executor is retrying after a failure keeps it too and shows a Retrying chip in Signal Amber. Every status also renders its word in a chip, so the border is never the only carrier. The chip straddles the card's top edge, right-aligned in the strip between the top handle and the card's right corner, so it covers neither the type icon nor the handle. A chip wider than that strip starts just right of the handle and runs past the card's right edge into the gap between siblings. The chip reads Running, Waiting, Retrying, Successful, Failed, or Canceled, the same words a run's Group card, Group summary, and member rows use for that step. A successful step that did nothing because the run has Test recipients keeps the resting border and reads "Skipped (test run)" on its chip, its outline row, and its evidence, which says why in one sentence. Focus shifts the border to Graphite Ink rather than the ring color, because the resting border already sits at the ring's lightness and the shift would otherwise read as nothing.
 
 The workflow overview draws each Group as one collapsed card: solid Graphite Wash behind a 1.5px Canvas Line border, a title band holding the Group icon, the label, the issue badge, and an **Enter group** arrow, and below a rule an optional one-line description above the number of steps, or on a run's canvas above the Group's run status and step counts. The description uses the same overflow tooltip as a step's description. The compact form drops the description, the counts and the Enter group arrow. The Wash is what separates a Group from a step, and it inverts on its own in dark. Its members never expand in place. Edges entering the Group attach to the card's one top handle, and edges leaving it attach to its one bottom handle, which carries no label. Every edge from inside the Group to the same outside step draws as one edge from that handle, and when every edge it stands for leaves by the same Condition branch, it carries that branch's True or False label. While nothing leaves the Group, dragging from the bottom handle to an outside step adds a connection from each terminal non-Condition member. Unused Condition outlets stay unwired, so taking an unused branch ends the path without running the outside step. If only unused Condition outlets remain, the editor asks the builder to open the Group and choose a branch. A join the rules refuse, such as terminal steps on opposite branches of one Condition, is refused with its notice. Once the Group continues, dragging from the bottom handle adds a connection from the outlets it already continues by. Deleting an edge drawn from the card deletes every connection it stands for, and an outlet entering the Group at several steps draws one edge onto the card, whose deletion deletes the connection to each of those steps. Changing which branch continues is done on the focused Group canvas.
 
@@ -483,28 +483,26 @@ workflow's name. The short id, the last eight characters of the run's id, is a
 detail row of the run's summary and appears in the status strip.
 Browse holds the run's start identity, outcome, timing, and entity, then its
 active waits with **Resume now**, **Cancel**, exit details, the failure summary,
-the node journey, and activity. The failure summary states the cause once, in a
+and activity. The failure summary states the cause once, in a
 plain sentence above the stored error. When a step's Connection refused or
 lacked its credentials, the sentence names the Connection and offers **Edit
 connection**. Activity entries read in the Runs view's words, with a clock time
-and the stored type as secondary text. In a failed run the journey folds each stretch
-of three or more successful steps into one row, so the failed step stays in
-view. **Back** and Escape on a run replace the history
+and the stored type as secondary text. **Back** and Escape on a run replace the history
 entry with the run list and put focus on that run's row, or on the header title
 when the list shows no row for it. A run past the newest 50, or one that leaves
 the list, keeps its view and says why it is not listed. Each run list remembers
 whether it shows superseded runs.
 
-Selecting a node on a run's canvas, or its entry in the node journey, opens
-Focus on that node's evidence. A journey entry for a Group member opens that
+Selecting a node on a run's canvas, or its row in the run's outline, opens
+Focus on that node's evidence. A row for a Group member opens that
 Group's view with the member selected. The header adds the node to the path and
 shows the status of the execution on screen; **Show evidence** and **Return to
 run** switch levels. An execution is one time the run reached the node, such as
 a second pass through a branch run. Retries inside one execution leave no
 separate record, so an execution shows their final outcome, and Focus says so.
 Focus lists every execution of a node the run reached more than once, as
-"Execution N of M", and choosing one changes neither the canvas selection, the
-journey, nor the control that has focus. Each execution shows its status, start,
+"Execution N of M", and choosing one changes neither the canvas selection nor
+the control that has focus. Each execution shows its status, start,
 finish and duration, its error or cancellation, the wait it holds with **Resume
 now**, what the step did in words, and the node's activity such as parking and
 resuming. A Condition leads with its answer, such as "Took False", and the step
@@ -535,8 +533,8 @@ that step's evidence in Focus. **Back** and Escape from that evidence return to
 Browse in the Group, then to the overview with the Group card selected and its
 summary shown, then to the run with focus on the card, and then to the run
 list. From evidence Focus opened on the overview they return to the run's
-Browse at the journey position it was left at, with focus on the journey entry
-or canvas node that opened Focus. A click
+Browse at the scroll position it was left at, with focus on the outline row or
+canvas node that opened Focus. A click
 on the empty canvas clears the evidence. Selecting another node replaces the
 evidence and shows its latest execution. The chosen execution is remembered for
 each run. On a phone the evidence replaces the run overview in the sheet, and
@@ -616,8 +614,8 @@ address itself or about one object. Entering Runs, or **Configuration** in Runs,
 opens the run list or the open run as a summary sheet, and the first visit opens
 the newest run. A run row opens that run's summary sheet, which holds its
 status, **Cancel**, active waits with **Resume now**, exit details, the failure
-summary, the node journey, and activity, and adds a history entry. A journey
-entry, a step pressed on the run's canvas, or **Show evidence** opens that
+summary, and activity, and adds a history entry. A row of the run's outline,
+a step pressed on the run's canvas, or **Show evidence** opens that
 step's evidence as the inspector over the run's sheet, and another step swaps
 the evidence in place. A Group card shows its run summary in the run's sheet.
 Back is named for the level it returns to: the run from the evidence or a Group
@@ -644,8 +642,8 @@ and the Group's camera.
 
 Runs uses the same Group sequence on a phone. A Group
 card shows the Group's run summary in the run's sheet, with its run status, its
-member counts, and each step with its status. A step in that summary, or a
-journey entry for a step inside a collapsed Group, opens the Group's focused
+member counts, and each step with its status. A step in that summary, or an
+outline row for a step inside a collapsed Group, opens the Group's focused
 canvas with the step's evidence as the inspector over the run's sheet, and
 **Enter group** opens the focused canvas with the run's sheet still open.
 Inside a Group, Draft and Runs give the first sheet the same Back

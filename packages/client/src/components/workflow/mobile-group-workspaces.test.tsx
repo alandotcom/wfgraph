@@ -35,6 +35,7 @@ import { ExtensionCatalogProvider } from "#src/components/extension-catalog-prov
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
 import { DetailsPanel } from "#src/components/workflow/details/details-panel";
+import { OutlineColumn } from "#src/components/workflow/outline/outline-column";
 import {
   MobileReveal,
   MobileRevealCovered,
@@ -242,6 +243,8 @@ async function renderPhoneEditor(input: {
           <MobileRevealCovered>
             <WorkflowCanvas canEdit />
           </MobileRevealCovered>
+          {/* The outline is a phone's main view, beside the canvas. */}
+          <OutlineColumn />
           <DetailsPanel />
           <MobileReveal />
         </div>
@@ -591,7 +594,7 @@ describe("mobile Runs Group drill-in", () => {
     expectDraftUntouched(editor.store);
   });
 
-  it("enters the Group first when a waiting member's journey entry is chosen on the overview", async () => {
+  it("enters the Group first when a waiting member's outline row is chosen on the overview", async () => {
     served.items = [execution("exec_w", "waiting")];
     served.logsByExecutionId = {
       exec_w: [
@@ -635,8 +638,10 @@ describe("mobile Runs Group drill-in", () => {
     press(`Back to ${runHeading("exec_w")}`);
     await waitFor(() => expect(title()).toBe(runHeading("exec_w")));
 
-    // The journey entry names a step the overview hides inside the Group.
-    press("Send welcome back, Waiting");
+    // The outline lists a step the overview hides inside the Group.
+    fireEvent.click(
+      await view.findByRole("treeitem", { name: /Send welcome back/ })
+    );
     await waitFor(() =>
       expect(search()).toEqual({
         view: "runs",

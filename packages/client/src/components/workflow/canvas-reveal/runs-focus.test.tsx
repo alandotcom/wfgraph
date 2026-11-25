@@ -37,7 +37,7 @@ beforeEach(() => {
 afterEach(removeRunsRevealRpc);
 
 describe("Runs Focus node evidence", () => {
-  it("opens the same evidence from a canvas node and its journey entry, and returns to each", async () => {
+  it("opens the same evidence from a canvas node and its outline row, and returns to each", async () => {
     served.items = [execution("exec_s", "completed")];
     served.graphs = {
       ver_exec_s: labelledGraph([{ id: "send", label: "Send reminder" }]),
@@ -64,6 +64,7 @@ describe("Runs Focus node evidence", () => {
       evidence,
       canvasNode,
       overviewScroller,
+      outlineRow,
     } = await renderRunsReveal({ view: "runs", executionId: "exec_s" });
     await waitFor(() => expect(title()).toBe(runHeading("exec_s")));
 
@@ -94,10 +95,8 @@ describe("Runs Focus node evidence", () => {
     overview.scrollTop = 90;
     fireEvent.scroll(overview);
     fireEvent(overview, new Event("scrollend"));
-    const entry = view.getByRole("button", {
-      name: "Send reminder, Successful",
-    });
-    fireEvent.click(entry);
+    const row = await outlineRow("Send reminder");
+    fireEvent.click(row);
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(title()).toBe("Send reminder");
     expect(within(evidence()).getByText(/patient@example.com/)).toBeTruthy();
@@ -105,10 +104,8 @@ describe("Runs Focus node evidence", () => {
 
     escape();
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Send reminder, Successful" })
-      )
+    await waitFor(async () =>
+      expect(document.activeElement).toBe(await outlineRow("Send reminder"))
     );
     await afterPaint();
     expect(overviewScroller()?.scrollTop).toBe(90);
@@ -386,18 +383,28 @@ describe("Runs Focus node evidence", () => {
         }),
       ],
     };
-    const { view, store, aside, title, show, evidence, canvasNode } =
-      await renderRunsReveal({ view: "runs", executionId: "exec_m" });
+    const {
+      view,
+      store,
+      aside,
+      title,
+      show,
+      evidence,
+      canvasNode,
+      outlineRow,
+    } = await renderRunsReveal({ view: "runs", executionId: "exec_m" });
     await waitFor(() => expect(title()).toBe(runHeading("exec_m")));
     await canvasNode("Loop step");
 
-    fireEvent.click(
-      view.getByRole("button", { name: "Loop step, Successful" })
-    );
+    // The row opens the latest execution, as the card does.
+    fireEvent.click(await outlineRow("Loop step"));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
-    expect(
-      within(evidence()).getByRole("heading", { name: "Execution 1 of 2" })
-    ).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: /Execution 1/ }));
+    await waitFor(() =>
+      expect(
+        within(evidence()).getByRole("heading", { name: "Execution 1 of 2" })
+      ).toBeTruthy()
+    );
     const scroller = evidence().parentElement;
     if (!scroller) {
       throw new Error("the evidence has no scroll container");
@@ -642,7 +649,9 @@ describe("Runs Focus node evidence", () => {
   });
 
   it("explains a removed node and a node that never ran", async () => {
-    served.items = [execution("exec_x", "completed")];
+    // A step the graph no longer holds has no row or card, and the failure
+    // summary is the way into its evidence.
+    served.items = [execution("exec_x", "failed")];
     served.graphs = {
       ver_exec_x: labelledGraph([{ id: "send", label: "Send reminder" }]),
     };
@@ -652,7 +661,8 @@ describe("Runs Focus node evidence", () => {
           id: "log_gone",
           nodeId: "gone",
           nodeName: "Old step",
-          status: "success",
+          status: "error",
+          error: "Request failed",
         }),
       ],
     };
@@ -661,7 +671,7 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(title()).toBe(runHeading("exec_x")));
     await canvasNode("Send reminder");
 
-    fireEvent.click(view.getByRole("button", { name: "Old step, Successful" }));
+    fireEvent.click(view.getByRole("button", { name: "Failed at Old step" }));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(title()).toBe("Old step");
     expect(store.get(selectedNodeAtom)).toBeNull();
@@ -678,11 +688,6 @@ describe("Runs Focus node evidence", () => {
 
     escape();
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Old step, Successful" })
-      )
-    );
 
     fireEvent.click(await canvasNode("Send reminder"));
     await waitFor(() => expect(title()).toBe("Send reminder"));
@@ -715,25 +720,22 @@ describe("Runs Focus node evidence", () => {
         }),
       ],
     };
-    const { view, aside, title, evidence } = await renderRunsReveal({
+    const { view, title } = await renderRunsReveal({
       view: "runs",
       executionId: "exec_u",
     });
     await waitFor(() => expect(title()).toBe(runHeading("exec_u")));
 
-    fireEvent.click(
-      view.getByRole("button", { name: "Send reminder, Successful" })
+    await waitFor(() =>
+      expect(
+        within(view.getByTestId("outline-column")).getByText(
+          "The graph this run used could not be loaded, so its steps cannot be listed."
+        )
+      ).toBeTruthy()
     );
-    await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
-    expect(
-      within(evidence()).getByText(
-        "The graph this run used could not be loaded, so its configuration is unavailable."
-      )
-    ).toBeTruthy();
-    expect(title()).toBe("Send reminder");
   });
 
-  it("enters a collapsed Group's view for a member reached from the journey on the overview", async () => {
+  it("enters a collapsed Group's view for a member reached from the outline on the overview", async () => {
     served.items = [execution("exec_g", "completed")];
     served.graphs = {
       ver_exec_g: labelledGraph(
@@ -754,14 +756,20 @@ describe("Runs Focus node evidence", () => {
         }),
       ],
     };
-    const { view, store, router, aside, title, escape, evidence, canvasNode } =
-      await renderRunsReveal({ view: "runs", executionId: "exec_g" });
+    const {
+      store,
+      router,
+      aside,
+      title,
+      escape,
+      evidence,
+      canvasNode,
+      outlineRow,
+    } = await renderRunsReveal({ view: "runs", executionId: "exec_g" });
     await waitFor(() => expect(title()).toBe(runHeading("exec_g")));
     await canvasNode("Send reminder");
 
-    fireEvent.click(
-      view.getByRole("button", { name: "Send reminder, Successful" })
-    );
+    fireEvent.click(await outlineRow("Send reminder"));
     await waitFor(() =>
       expect(router.state.location.search).toEqual({
         view: "runs",
@@ -784,15 +792,13 @@ describe("Runs Focus node evidence", () => {
 
     escape();
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Send reminder, Successful" })
-      )
+    await waitFor(async () =>
+      expect(document.activeElement).toBe(await outlineRow("Send reminder"))
     );
   });
 
   it("dismisses a chosen execution of a node nothing selects with a click on the canvas pane", async () => {
-    served.items = [execution("exec_x", "completed")];
+    served.items = [execution("exec_x", "failed")];
     served.graphs = {
       ver_exec_x: labelledGraph([{ id: "send", label: "Send reminder" }]),
     };
@@ -802,7 +808,8 @@ describe("Runs Focus node evidence", () => {
           id: "log_gone",
           nodeId: "gone",
           nodeName: "Old step",
-          status: "success",
+          status: "error",
+          error: "Request failed",
         }),
       ],
     };
@@ -811,7 +818,7 @@ describe("Runs Focus node evidence", () => {
     await waitFor(() => expect(title()).toBe(runHeading("exec_x")));
     await canvasNode("Send reminder");
 
-    fireEvent.click(view.getByRole("button", { name: "Old step, Successful" }));
+    fireEvent.click(view.getByRole("button", { name: "Failed at Old step" }));
     await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
     expect(store.get(activeChosenExecutionAtom)).toEqual({
       nodeId: "gone",

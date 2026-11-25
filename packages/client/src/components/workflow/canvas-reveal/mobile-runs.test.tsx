@@ -109,7 +109,7 @@ async function renderMobileRuns(
 }
 
 describe("mobile Runs sequence", () => {
-  it("goes from the run list to a run's summary and journey to node evidence, one sheet at a time", async () => {
+  it("goes from the run list to a run's summary and a row's node evidence, one sheet at a time", async () => {
     serveTwoRuns();
     const {
       view,
@@ -123,6 +123,7 @@ describe("mobile Runs sequence", () => {
       levels,
       canvasCovered,
       evidence,
+      outlineRow,
     } = await renderMobileRuns({});
 
     press("Show Runs");
@@ -156,18 +157,11 @@ describe("mobile Runs sequence", () => {
     });
     await waitFor(() => expect(document.activeElement).toBe(sheetTitle()));
 
-    const entry = await view.findByRole("button", {
-      name: "Send reminder, Successful",
-    });
-    fireEvent.click(entry);
+    fireEvent.click(await outlineRow("Send reminder"));
     await waitFor(() => expect(sheet()?.dataset.level).toBe("inspector"));
     expect(levels()).toEqual(["summary:address", "inspector:send"]);
     expect(sheetTitle()?.textContent).toBe("Send reminder");
     expect(within(evidence()).getByText(/patient@example.com/)).toBeTruthy();
-    // One pane at a time: the journey is hidden behind the evidence.
-    expect(
-      view.queryByRole("button", { name: "Send reminder, Successful" })
-    ).toBeNull();
     expect(canvasCovered()).toBe(true);
     expect(store.get(selectedNodeAtom)).toBe("send");
 
@@ -175,10 +169,8 @@ describe("mobile Runs sequence", () => {
     await waitFor(() => expect(sheet()?.dataset.level).toBe("summary"));
     expect(canvasCovered()).toBe(false);
     expect(sheetTitle()?.textContent).toBe(runHeading("exec_a"));
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Send reminder, Successful" })
-      )
+    await waitFor(async () =>
+      expect(document.activeElement).toBe(await outlineRow("Send reminder"))
     );
 
     press("Back to Runs");

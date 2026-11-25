@@ -173,7 +173,13 @@ export function RunsColumn() {
             />
           </div>
         ) : null}
-        {screen.kind === "run" ? (
+        {screen.kind === "run" && screen.pinnedGraph === "unavailable" ? (
+          <p className="px-3 py-3 text-muted-foreground text-sm">
+            The graph this run used could not be loaded, so its steps cannot be
+            listed.
+          </p>
+        ) : null}
+        {screen.kind === "run" && screen.pinnedGraph === "ready" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <WorkflowOutline
               openRun={{

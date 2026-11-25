@@ -272,7 +272,7 @@ describe("Runs Browse run list and selected run", () => {
 });
 
 describe("Runs Browse selected-run content", () => {
-  it("shows active waits, the journey, activity, and Cancel and Resume", async () => {
+  it("shows active waits, activity, and Cancel and Resume", async () => {
     served.items = [execution("exec_w", "waiting")];
     served.logsByExecutionId = {
       exec_w: [
@@ -322,7 +322,6 @@ describe("Runs Browse selected-run content", () => {
     ).toBeTruthy();
     expect(aside()?.querySelector("header")?.textContent).toContain("Waiting");
     expect(view.getByText("Waiting for app/reply")).toBeTruthy();
-    expect(view.getByText("Node journey")).toBeTruthy();
     expect(await view.findByText("Activity · 1")).toBeTruthy();
     expect(view.getByRole("button", { name: "Cancel" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Resume now" })).toBeTruthy();
@@ -620,7 +619,7 @@ describe("Runs Browse edge cases", () => {
     await waitFor(() => expect(title()).toBe(runHeading("exec_a")));
 
     await show({ view: "runs", executionId: "exec_b" });
-    expect(await view.findByText("B step")).toBeTruthy();
+    expect(await view.findByText(/^b_step$/i)).toBeTruthy();
     await act(async () => {
       for (const release of held) {
         release();
@@ -628,8 +627,8 @@ describe("Runs Browse edge cases", () => {
     });
 
     expect(title()).toBe(runHeading("exec_b"));
-    expect(view.queryByText("A step")).toBeNull();
-    expect(view.getByText("B step")).toBeTruthy();
+    expect(view.queryByText(/^a_step$/i)).toBeNull();
+    expect(view.getByText(/^b_step$/i)).toBeTruthy();
     await waitFor(() =>
       expect(
         store.get(executionOverlayGraphAtom)?.nodes.map((node) => node.id)

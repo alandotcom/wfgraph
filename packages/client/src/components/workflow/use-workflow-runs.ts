@@ -49,15 +49,11 @@ export const runRowFocusRequestAtom = atom<string | null>(null);
 
 /**
  * What an open run's detail view shows, before a frame adds its Back, its
- * journey handling, its focus requests, and its scroll.
+ * failed-step handling, its focus requests, and its scroll.
  */
 export type OpenRun = Omit<
   WorkflowRunDetailProps,
-  | "scroll"
-  | "onSelectLog"
-  | "focusLogId"
-  | "onFocusRestored"
-  | "focusSummaryOnMount"
+  "scroll" | "onSelectLog" | "focusSummaryOnMount"
 >;
 
 /**

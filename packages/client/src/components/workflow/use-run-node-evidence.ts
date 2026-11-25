@@ -47,13 +47,15 @@ import { useRevealNavigation } from "./canvas-reveal/use-reveal-navigation";
 import { runEvidenceOriginAtom } from "./run-evidence-origin";
 
 /**
- * Where DOM focus goes the next time Runs Browse shows the open run: a journey
- * entry by log id, or the canvas node when `logId` is null. Leaving Focus sets
- * it, and Browse clears it once it has moved focus.
+ * Where DOM focus goes the next time Runs Browse shows the open run: the
+ * node's row in the run's outline when `fromOutline` is true, or else its
+ * canvas node. Leaving Focus sets it, and Browse clears it once it has moved
+ * focus.
  */
 export const runBrowseFocusRequestAtom = atom<{
   nodeId: string;
   logId: string | null;
+  fromOutline?: boolean | undefined;
 } | null>(null);
 
 /** The reads of one open run that its node evidence is built from. */

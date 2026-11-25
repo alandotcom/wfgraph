@@ -24,7 +24,16 @@ import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { editFocusTarget } from "#src/components/workflow/canvas-reveal/reveal-edit-target";
 import { requestRevealEditFocusAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { ProviderLogo } from "#src/components/workflow/nodes/action-node";
+import { runEvidenceOriginAtom } from "#src/components/workflow/run-evidence-origin";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
+import { useInspectRunNode } from "#src/components/workflow/use-run-node-evidence";
+import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
+import { scopeOfNode } from "#src/lib/workflow-scope-graph";
+import {
+  scopeId,
+  workspaceAddressId,
+} from "#src/lib/workflow-navigation-state";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { Input } from "#src/components/ui/input";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
 import { eventLabel } from "@wfgraph/shared/graph/workflow-summary";
@@ -37,6 +46,7 @@ import { editOfNode, workflowEdits } from "#src/lib/workflow-edits";
 import {
   canvasSelectionAtom,
   edgesAtom,
+  executionOverlayGraphAtom,
   nodesAtom,
   presentedGraphAtom,
   runNodeEvidenceStatusesAtom,
@@ -167,6 +177,8 @@ export function WorkflowOutline({
   const issuesByNode = useAtomValue(canvasIssuesByNodeIdAtom);
   const workflowId = useAtomValue(currentWorkflowIdAtom);
   const focusNode = useFocusWorkflowNode();
+  const inspectRunNode = useInspectRunNode();
+  const requestPlacement = useSetAtom(requestRevealPlacementAtom);
   const setHighlight = useSetAtom(reviewHighlightAtom);
   const requestReviewScroll = useSetAtom(requestReviewScrollAtom);
   const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
@@ -335,6 +347,24 @@ export function WorkflowOutline({
       // row scrolls the sheet to its edit, as a press on its card does.
       setHighlight(nodeId);
       if (edits && editOfNode(edits, nodeId)) requestReviewScroll(nodeId);
+      return;
+    }
+    if (view === "runs") {
+      // On a run the row shows the step's evidence, entering its Group as the
+      // failure summary's link does, and Back and Escape return to the row.
+      inspectRunNode({ nodeId, logId: null });
+      const origin = store.get(runEvidenceOriginAtom);
+      if (origin?.nodeId === nodeId) {
+        store.set(runEvidenceOriginAtom, { ...origin, fromOutline: true });
+      }
+      const active = store.get(activeWorkspaceAddressAtom);
+      const nodes = store.get(executionOverlayGraphAtom)?.nodes ?? [];
+      if (scopeId(scopeOfNode(nodes, nodeId)) === scopeId(active.scope)) {
+        requestPlacement({
+          addressId: workspaceAddressId(active),
+          nodeIds: [nodeId],
+        });
+      }
       return;
     }
     if (workflowId !== null) {

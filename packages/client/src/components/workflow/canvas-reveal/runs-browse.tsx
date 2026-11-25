@@ -28,6 +28,7 @@ import { runTitle } from "#src/components/workflow/workflow-run-summary-row";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { RunsSkeleton } from "#src/components/workflow/workflow-runs";
+import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
 import { useAfterCommit } from "#src/hooks/effects";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { groupLabel } from "#src/lib/workflow-graph-types";
@@ -278,6 +279,7 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
     store.set(runBrowseFocusRequestAtom, {
       nodeId: target.nodeId,
       logId: origin?.logId ?? null,
+      fromOutline: origin?.fromOutline === true,
     });
     unwindLevel();
     return;
@@ -382,20 +384,26 @@ export function RunsBody({ subject, level, mobile }: RevealBodyProps) {
     onScrollEnd,
   } = useAddressBodyScroll(showsScroller ? address : null, mobile);
 
-  // Leaving Focus for a canvas node hands DOM focus back to that node once the
-  // overview shows again. A journey entry answers its own request below.
-  const canvasFocusNodeId =
-    showsScroller && focusRequest?.logId === null ? focusRequest.nodeId : null;
-  useAfterCommit(canvasFocusNodeId, () => {
-    if (canvasFocusNodeId === null) {
+  // Leaving Focus hands DOM focus back to what opened the evidence once the
+  // overview shows again: the node's row in the run's outline, or its canvas
+  // card.
+  const returnFocusNodeId =
+    showsScroller && focusRequest !== null ? focusRequest.nodeId : null;
+  const returnsToRow = focusRequest?.fromOutline === true;
+  useAfterCommit(returnFocusNodeId, () => {
+    if (returnFocusNodeId === null) {
       return;
     }
     setFocusRequest(null);
-    document
-      .querySelector<HTMLElement>(
-        `.react-flow__node[data-id="${CSS.escape(canvasFocusNodeId)}"]`
-      )
-      ?.focus({ preventScroll: true });
+    const card = () =>
+      document.querySelector<HTMLElement>(
+        `.react-flow__node[data-id="${CSS.escape(returnFocusNodeId)}"]`
+      );
+    (returnsToRow
+      ? (document.getElementById(outlineRowElementId(returnFocusNodeId)) ??
+        card())
+      : card()
+    )?.focus({ preventScroll: true });
   });
 
   // Choosing another execution of the same node keeps the evidence mounted, so
@@ -419,11 +427,9 @@ export function RunsBody({ subject, level, mobile }: RevealBodyProps) {
         >
           <WorkflowRunDetail
             {...openRun.run}
-            focusLogId={showsScroller ? (focusRequest?.logId ?? null) : null}
             focusSummaryOnMount={showsScroller && focusRequest === null}
             // A new run starts from its own journey selection and focus.
             key={openRun.run.execution.id}
-            onFocusRestored={() => setFocusRequest(null)}
             onSelectLog={inspectLog}
             scroll={{ ref: scrollRef, onScroll, onScrollEnd }}
           />

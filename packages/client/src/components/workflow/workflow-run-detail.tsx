@@ -41,7 +41,6 @@ import {
 } from "./workflow-run-summary-row";
 import { compact } from "es-toolkit/array";
 import { RunFailureText } from "./workflow-run-failure";
-import { WorkflowRunNodeIndex } from "./workflow-run-timeline";
 
 export type WorkflowRunDetailProps = {
   execution: WorkflowExecution;
@@ -60,11 +59,8 @@ export type WorkflowRunDetailProps = {
   isResuming: boolean;
   onCancel?: ((executionId: string) => void) | undefined;
   onResume?: ((token: string) => void) | undefined;
-  /** A journey entry was chosen, which shows that execution's evidence. */
+  /** The failed step was chosen, which shows that execution's evidence. */
   onSelectLog: (log: ExecutionLog) => void;
-  /** The journey entry, by log id, to focus once it renders. */
-  focusLogId?: string | null | undefined;
-  onFocusRestored?: (() => void) | undefined;
   /** Whether the run summary's heading takes focus when the detail mounts. */
   focusSummaryOnMount?: boolean | undefined;
   /**
@@ -196,8 +192,9 @@ export function waitingSummary(
 
 /**
  * The overview of one run: its summary, active waits, exit details, failure
- * summary, node journey, and activity. A node's own evidence is shown by the
- * frame around it, which `onSelectLog` asks for.
+ * summary, and activity. The run's steps are its outline in the left column.
+ * A node's own evidence is shown by the frame around it, which `onSelectLog`
+ * asks for.
  */
 export function WorkflowRunDetail({
   execution,
@@ -212,8 +209,6 @@ export function WorkflowRunDetail({
   onCancel,
   onResume,
   onSelectLog,
-  focusLogId,
-  onFocusRestored,
   focusSummaryOnMount = false,
   scroll,
 }: WorkflowRunDetailProps) {
@@ -222,8 +217,8 @@ export function WorkflowRunDetail({
   // Whether the summary takes focus is decided once, when the overview mounts.
   const [focusesSummary] = useState(focusSummaryOnMount);
   // The list row is what cancel paints first. Logs and waits can still be the
-  // last in-flight snapshot until their query refetches, so the journey follows
-  // the run status the header already shows.
+  // last in-flight snapshot until their query refetches, so the failed step
+  // follows the run status the header already shows.
   const sortedLogs = orderedRunLogs(logs, execution.status);
   const activeWaits = isRunInProgress(execution.status) ? waits : [];
 
@@ -261,13 +256,11 @@ export function WorkflowRunDetail({
       : (nodeName ??
         executionGraph?.nodes.find((node) => node.id === nodeId)?.data.label ??
         nodeId);
-  // The nodes with a step the executor will run again, which the header and
-  // the journey call retrying, as the canvas does.
+  // The nodes with a step the executor will run again, which the header calls
+  // retrying, as the canvas does.
   const retryingNodeIds = isRunInProgress(execution.status)
     ? compact(executor?.schedule.failingSteps.map((step) => step.nodeId) ?? [])
     : [];
-  // The nodes the run is parked on, which the journey reads as waiting.
-  const waitingNodeIds = activeWaits.map((wait) => wait.nodeId);
   const primaryWait = activeWaits[0];
   const outcome =
     execution.status === "waiting" &&
@@ -277,7 +270,7 @@ export function WorkflowRunDetail({
       : getRunOutcome(execution, sortedLogs, retryingNodeIds);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col" data-slot="run-overview">
       <WorkflowRunSummaryRow
         execution={execution}
         focusOnMount={focusesSummary}
@@ -425,23 +418,6 @@ export function WorkflowRunDetail({
               </div>
             </section>
           ) : null}
-
-          <WorkflowRunNodeIndex
-            exit={
-              exit && exitNodeLabel ? { nodeLabel: exitNodeLabel } : undefined
-            }
-            focusLogId={focusLogId}
-            foldSuccessful={execution.status === "failed"}
-            logs={sortedLogs}
-            failureStatedLogId={
-              execution.status === "failed" ? (failedLog?.id ?? null) : null
-            }
-            onFocusRestored={onFocusRestored}
-            retryingNodeIds={retryingNodeIds}
-            runMode={execution.runMode}
-            waitingNodeIds={waitingNodeIds}
-            onSelect={onSelectLog}
-          />
 
           {events.length > 0 ? (
             <CollapsibleSection title={`Activity · ${events.length}`}>

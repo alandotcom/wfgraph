@@ -20,7 +20,7 @@ import {
   RouterProvider,
   type SearchSchemaInput,
 } from "@tanstack/react-router";
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import { vi } from "vitest";
@@ -416,6 +416,17 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
     ) ?? null;
   const sheet = () =>
     view.container.querySelector<HTMLElement>('[data-slot="mobile-reveal"]');
+  /** The open run's outline row whose text holds `label`. */
+  const outlineRow = async (label: string) =>
+    waitFor(() => {
+      const row = view
+        .queryAllByRole("treeitem")
+        .find((item) => item.textContent?.includes(label));
+      if (!row) {
+        throw new Error(`no outline row holds "${label}"`);
+      }
+      return row;
+    });
   return {
     view,
     store,
@@ -434,6 +445,7 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
     overviewScroller,
     listScroller,
     sheet,
+    outlineRow,
   };
 }
 

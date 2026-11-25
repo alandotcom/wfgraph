@@ -96,7 +96,11 @@ describe("Runs Group summary", () => {
       "Wait for reply, Not run",
     ]);
     // The run overview stays mounted behind the summary, hidden.
-    expect(view.getByText("Node journey").closest("[hidden]")).not.toBeNull();
+    expect(
+      view.container
+        .querySelector('[data-slot="run-overview"]')
+        ?.closest("[hidden]")
+    ).not.toBeNull();
 
     fireEvent.click(
       within(steps).getByRole("button", { name: "Send reminder, Failed" })
@@ -228,7 +232,11 @@ describe("Runs Group summary", () => {
     expect(store.get(selectedNodeAtom)).toBeNull();
     expect(aside()?.dataset.level).toBe("browse");
     expect(view.queryByTestId("runs-group-summary")).toBeNull();
-    expect(view.getByText("Node journey").closest("[hidden]")).toBeNull();
+    expect(
+      view.container
+        .querySelector('[data-slot="run-overview"]')
+        ?.closest("[hidden]")
+    ).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(card));
   });
 
