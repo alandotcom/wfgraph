@@ -58,6 +58,7 @@ import * as dbModule from "#src/backend/lib/db/index";
 import { createIntegrationCipher } from "#src/backend/services/integrations/cipher";
 import { wfPostgres } from "#src/backend/persistence/postgres";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
+import { wfOpenAi } from "#src/backend/agent/providers/openai";
 import { BASE_OPTIONS } from "#src/app-test-support";
 
 async function createTestApp(basePath?: string): Promise<WfGraphApp> {
@@ -862,7 +863,7 @@ describe("createWfGraphApp runner", () => {
       ...BASE_OPTIONS,
       client: { dir: join(dir, "no-such-bundle") },
       mcp: true,
-      agent: { apiKey: "sk-test" },
+      agent: wfOpenAi({ apiKey: "sk-test" }),
       events: { key: "events-key", retentionMs: 86_400_000 },
       runner: false,
     };

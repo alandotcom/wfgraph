@@ -143,6 +143,7 @@ import {
   defineEvent,
   WfGraphRoles,
 } from "@wfgraph/core";
+import { wfOpenAi } from "@wfgraph/core/openai";
 import { wfPostgres } from "@wfgraph/core/postgres";
 import { resend } from "@wfgraph/plugins/resend";
 import { twilio } from "@wfgraph/plugins/twilio";
@@ -190,7 +191,9 @@ const wfgraph = await createWfGraphApp({
     migrations: { runOnStartup: true },
   }),
   encryption: { key: process.env.INTEGRATION_ENCRYPTION_KEY },
-  agent: { apiKey: process.env.OPENAI_API_KEY },
+  // The build agent, off while the key is blank. Each model provider has its
+  // own entry.
+  agent: wfOpenAi({ apiKey: process.env.OPENAI_API_KEY }),
   // Answer the session's access policy, or null when nobody is signed in.
   auth: async (request) => {
     const session = await readSession(request);

@@ -9,7 +9,9 @@ import pluginsManifest from "../../packages/plugins/package.json" with { type: "
  * esbuild's metafile. Every integration export of `@wfgraph/plugins` must have
  * a row in `ADDED_KIB_CEILING`. Each integration entry must stay under that
  * ceiling and must not reach an `import()` of bundled code. The Worker host
- * entry of `@wfgraph/core` is checked for that `import()` rule alone.
+ * entry of `@wfgraph/core` is checked for that `import()` rule, and for
+ * bundling no module of the four model provider packages, which a host loads
+ * only through the provider entry it imports.
  */
 
 /**
@@ -31,6 +33,46 @@ const ADDED_KIB_CEILING: Record<string, number> = {
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const PLUGIN_BASELINE_ENTRY = "packages/core/src/plugin.ts";
 const WORKER_HOST_ENTRY = "packages/core/src/worker.ts";
+
+/**
+ * The Effect provider packages behind `@wfgraph/core/openai`,
+ * `@wfgraph/core/anthropic`, `@wfgraph/core/openrouter` and
+ * `@wfgraph/core/openai-compatible`. Each is imported by its own entry alone.
+ */
+const MODEL_PROVIDER_PACKAGES = [
+  "@effect/ai-openai",
+  "@effect/ai-anthropic",
+  "@effect/ai-openrouter",
+  "@effect/ai-openai-compat",
+] as const;
+
+/** Whether a bundle input path lies inside one of the provider packages. */
+function isModelProviderInput(path: string): boolean {
+  return MODEL_PROVIDER_PACKAGES.some((name) =>
+    path.includes(`/node_modules/${name}/`)
+  );
+}
+
+/**
+ * Each bundle input from a provider package, with the inputs that import it
+ * from outside the provider packages, which is where the chain starts.
+ */
+function modelProviderInputs(metafile: Metafile): string[] {
+  return Object.keys(metafile.inputs)
+    .filter(isModelProviderInput)
+    .map((path) => {
+      const importers = Object.entries(metafile.inputs)
+        .filter(
+          ([importer, input]) =>
+            !isModelProviderInput(importer) &&
+            input.imports.some((imported) => imported.path === path)
+        )
+        .map(([importer]) => importer);
+      return importers.length === 0
+        ? path
+        : `${path} imported by ${importers.join(", ")}`;
+    });
+}
 
 function integrationEntry(name: string): string {
   return `packages/plugins/src/${name}/index.ts`;
@@ -147,6 +189,14 @@ describe("Worker bundles", () => {
     expect(
       dynamicImportsOfBundledCode(metafile),
       `${WORKER_HOST_ENTRY} reaches an import() of bundled code; import it statically`
+    ).toEqual([]);
+  });
+
+  it("the Worker host entry bundles no model provider package", async () => {
+    const metafile = await bundleForWorker(WORKER_HOST_ENTRY);
+    expect(
+      modelProviderInputs(metafile),
+      `${WORKER_HOST_ENTRY} bundles a model provider package; only that provider's own entry may import it`
     ).toEqual([]);
   });
 });

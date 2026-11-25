@@ -931,10 +931,10 @@ skills:
     packages:
       - "@wfgraph/core"
     covers:
-      - agent.provider (openai, anthropic, openrouter, openai-compatible)
-      - agent.apiKey, agent.model, agent.reasoningEffort and agent.baseUrl
+      - the provider entries @wfgraph/core/openai, /anthropic, /openrouter and /openai-compatible
+      - wfOpenAi, wfAnthropic, wfOpenRouter and wfOpenAiCompatible, and their apiKey, model, reasoningEffort and baseUrl options
       - the default model gpt-6.1-terra
-      - agent.maxConcurrentTurns
+      - maxConcurrentTurns on a provider function and beside agent.runner
       - agent.runner, WfGraphAgentRunner and WfGraphAgentTurn
       - streamAgentTurn
       - agent.use and the per-tool grants a turn checks
@@ -942,24 +942,34 @@ skills:
       - prompt caching and store false
     tasks:
       - Turn on the editor's build agent against a chosen provider or gateway, or run its turns on the host's own model, and size its turn limit and grants.
-      - Choose openai-compatible for a gateway that serves Chat Completions alone.
+      - Choose wfOpenAiCompatible for a gateway that serves Chat Completions alone.
       - Explain a missing chat panel, a startup refusal of the agent option, or a refused tool call.
     failure_modes:
       - mistake: Anthropic or OpenRouter with no model
-        mechanism: Only openai has a default model, so a key with a blank model fails at startup.
+        mechanism: Only wfOpenAi has a default model, so wfAnthropic or wfOpenRouter given a key and a blank model throws where the host calls it.
         wrong_pattern: |
-          agent: { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY }
+          agent: wfAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY, model: "" })
         correct_pattern: |
-          agent: { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY, model: "claude-opus-5-5" }
+          agent: wfAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY, model: "claude-opus-5-5" })
         source: alandotcom/wfgraph:docs/embedding.md (The build agent)
         priority: HIGH
         status: active
-      - mistake: A Chat Completions gateway under the default provider
-        mechanism: The default provider calls POST {baseUrl}/responses, so a gateway serving Chat Completions alone fails every turn.
+      - mistake: A Chat Completions gateway under wfOpenAi
+        mechanism: wfOpenAi calls POST {baseUrl}/responses, so a gateway serving Chat Completions alone fails every turn.
         wrong_pattern: |
-          agent: { apiKey, baseUrl: "http://llm-gateway.internal/v1" }
+          agent: wfOpenAi({ apiKey, baseUrl: "http://llm-gateway.internal/v1" })
         correct_pattern: |
-          agent: { provider: "openai-compatible", baseUrl: "http://llm-gateway.internal/v1", model }
+          agent: wfOpenAiCompatible({ baseUrl: "http://llm-gateway.internal/v1", model })
+        source: alandotcom/wfgraph:docs/embedding.md (The build agent)
+        priority: HIGH
+        status: active
+      - mistake: The agent option as a plain object
+        mechanism: The agent option takes what a provider function returns, or { runner }. A plain object with a provider key fails to type-check, and from JavaScript startup throws.
+        wrong_pattern: |
+          agent: { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY, model: "claude-opus-5-5" }
+        correct_pattern: |
+          import { wfAnthropic } from "@wfgraph/core/anthropic";
+          agent: wfAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY, model: "claude-opus-5-5" })
         source: alandotcom/wfgraph:docs/embedding.md (The build agent)
         priority: HIGH
         status: active
@@ -984,6 +994,10 @@ skills:
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/core/src/backend/agent/config.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openai.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/anthropic.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openrouter.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openai-compatible.ts
       - alandotcom/wfgraph:packages/core/src/backend/agent/runner.ts
 
 tensions:
@@ -1045,8 +1059,8 @@ gaps:
     context: The task checks cover the entry's types, wfWorker's start-up and per-invocation refusals, tick behavior with SQLite standing in for Hyperdrive, and wfHyperdrive's current_schema() refusal and the createWfGraphRunner refusal against a live PostgreSQL. Query caching, the Wrangler configuration, Node.js compatibility, the wall-time, CPU and statement limits, and Queue delivery itself are unverified.
     status: open
   - skill: wfgraph-core
-    question: Does configuring the build agent (agent.apiKey, agent.model, agent.reasoningEffort, agent.baseUrl) need adopter guidance?
-    context: The agent option grew providers, a host runner, streamAgentTurn and a turn limit, which made it a task of its own. The build-agent skill now covers it, and the mcp skill covers the MCP endpoint that wfgraph-core used to describe in bullets.
+    question: Does configuring the build agent (its key, model, reasoning effort and base URL) need adopter guidance?
+    context: The agent option grew providers, a host runner, streamAgentTurn and a turn limit, which made it a task of its own. The build-agent skill now covers it, and the mcp skill covers the MCP endpoint that wfgraph-core used to describe in bullets. Those options now belong to the provider functions in their own entries (skill_spec.md decision 10).
     status: resolved
   - skill: wfgraph-core
     question: Discovery checks for every skill, executable task checks for the five batch 1 skills, and a fresh consumer session for any skill.
@@ -1062,5 +1076,5 @@ gaps:
     status: resolved
   - skill: build-agent
     question: Which build agent claims can be checked without a live model?
-    context: The task check covers startup refusals and agent.enabled for each provider form and a host runner. Whether a gateway passes streaming, tools and the cache fields through, adaptive thinking on older Claude models, and a turn's tool grants in a live turn are unverified.
+    context: The task check covers startup refusals and agent.enabled for the provider functions and a host runner. Whether a gateway passes streaming, tools and the cache fields through, adaptive thinking on older Claude models, and a turn's tool grants in a live turn are unverified.
     status: open

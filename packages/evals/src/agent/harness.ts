@@ -1,11 +1,12 @@
 import { Cause, Effect, Stream } from "effect";
+import { wfAnthropic } from "@wfgraph/core/anthropic";
+import type { EnabledAgentSettings } from "@wfgraph/core/backend/agent/config";
 import {
   type AgentReasoningEffort,
-  type EnabledAgentSettings,
   AGENT_REASONING_EFFORTS,
-  DEFAULT_AGENT_REASONING_EFFORT,
-  readAgentSettings,
-} from "@wfgraph/core/backend/agent/config";
+} from "@wfgraph/core/backend/agent/model";
+import { wfOpenAi } from "@wfgraph/core/openai";
+import { wfOpenRouter } from "@wfgraph/core/openrouter";
 import { validateAgentDraft } from "@wfgraph/core/backend/agent/publication-validation";
 import {
   runAgentRunner,
@@ -92,8 +93,8 @@ function readReasoningEffort(): AgentReasoningEffort | undefined {
 /**
  * The settings a run measures against, resolved the way a host's would be.
  *
- * `readAgentSettings` owns every default and the rule for a blank value, so a
- * change to how the application resolves its model cannot leave the evals
+ * The provider functions own every default and the rule for a blank value, so
+ * a change to how the application resolves its model cannot leave the evals
  * measuring the old one. What is added here is where the values come from, the
  * environment rather than an option, and that a missing key is fatal to a run
  * whose whole purpose is to call a model. Every provider but OpenAI has no
@@ -122,7 +123,7 @@ export function readEvalModelSettings(
   return settings;
 }
 
-/** `readAgentSettings` for the measured provider, each with its own effort scale. */
+/** The measured provider's function, each with its own effort scale. */
 function readProviderSettings(input: {
   provider: EvalProvider;
   apiKey: string | undefined;
@@ -131,10 +132,10 @@ function readProviderSettings(input: {
 }) {
   const { apiKey, reasoningEffort } = input;
   if (input.provider === "openai") {
-    return readAgentSettings({
+    return wfOpenAi({
       apiKey,
       model: input.model,
-      reasoningEffort: reasoningEffort ?? DEFAULT_AGENT_REASONING_EFFORT,
+      reasoningEffort,
       baseUrl: process.env.OPENAI_BASE_URL,
     });
   }
@@ -151,19 +152,9 @@ function readProviderSettings(input: {
           `${REASONING_EFFORT_ENV} is "none", which Anthropic does not take. Use low, medium, high, xhigh or max.`
         );
       }
-      return readAgentSettings({
-        provider: "anthropic",
-        apiKey,
-        model,
-        reasoningEffort,
-      });
+      return wfAnthropic({ apiKey, model, reasoningEffort });
     default:
-      return readAgentSettings({
-        provider: "openrouter",
-        apiKey,
-        model,
-        reasoningEffort,
-      });
+      return wfOpenRouter({ apiKey, model, reasoningEffort });
   }
 }
 

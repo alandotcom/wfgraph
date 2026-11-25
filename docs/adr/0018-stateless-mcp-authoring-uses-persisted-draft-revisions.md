@@ -99,3 +99,40 @@ layout discarded positions a person had set by hand on every write. Each write
 placed only the steps it added, beside a neighbour that already had a position,
 and left every other step where it was. A graph with no positioned step was
 still laid out whole.
+
+## Amendment: each model provider moved to its own entry
+
+Date: 2026-11-25
+
+No ADR recorded the built-in agent's model providers, so this amendment records
+them beside the authoring decision for that agent.
+
+The `agent` option had taken plain data with a `provider` key naming OpenAI,
+Anthropic, OpenRouter or an OpenAI-compatible server, and
+`packages/core/src/backend/agent/model.ts` imported all four Effect provider
+packages statically. Every entry that reached the app, `@wfgraph/core/worker`
+included, therefore loaded all four at startup, whether the host configured an
+agent or not, and a host used at most one. Cloudflare allows a Worker 1 second
+of startup CPU. Measured on a Worker with no integrations, local startup took
+120 ms as shipped, 91 ms with no provider bundled, and 93 to 110 ms with exactly
+one: about 93 ms for OpenAI or an OpenAI-compatible server, about 100 ms for
+Anthropic and about 110 ms for OpenRouter. The four packages were about 1.6 MiB
+of that Worker's 5.9 MiB.
+
+A dynamic `import()` of the provider was rejected. In a single-file Worker
+bundle, esbuild wraps the target of a dynamic import, and every module it imports
+statically, in a lazy initializer, which measured 3.6 MiB larger and about 10 ms
+slower for these four packages.
+
+Each provider moved to its own package entry: `@wfgraph/core/openai`,
+`@wfgraph/core/anthropic`, `@wfgraph/core/openrouter` and
+`@wfgraph/core/openai-compatible`, exporting `wfOpenAi`, `wfAnthropic`,
+`wfOpenRouter` and `wfOpenAiCompatible`. The host imports the one it uses
+statically and passes what the function returns as `agent`, the way it passes
+what `wfPostgres` returns as `persistence`. The returned value carries the
+function that builds the provider's `LanguageModel` layer for a turn, so core's
+agent code no longer switches on a provider name. The plain-data form, with or
+without a `provider` key, was removed with no compatibility path. The host's own
+runner form, `{ runner, maxConcurrentTurns }`, was unchanged.
+`scripts/plugins/worker-bundle.test.ts` gained a case that fails when a module
+of a provider package reaches the bundle of `@wfgraph/core/worker`.

@@ -82,6 +82,18 @@ integrations). The published skills ship inside the `@wfgraph/core` and
    Cloudflare limits Worker startup to 1 second of CPU. wfgraph-plugins teaches
    the entries and the call form, and has a failure mode for importing the
    package root or passing an uncalled function.
+10. **Model providers live in their own entries, decided 2026-11-25.**
+    `@wfgraph/core` has an entry per model provider
+    (`@wfgraph/core/openai`, `/anthropic`, `/openrouter` and
+    `/openai-compatible`), each exporting one function (`wfOpenAi`,
+    `wfAnthropic`, `wfOpenRouter`, `wfOpenAiCompatible`) and its options
+    type. The `agent` option of `createWfGraphApp` and of a `wfWorker` request
+    takes what one of those functions returns, or `{ runner,
+    maxConcurrentTurns? }`. The plain-data form with a `provider` key is
+    removed, with no compatibility path. The reason is Worker startup time:
+    every entry that reached the app loaded all four Effect provider packages,
+    and a host uses at most one. build-agent teaches the entries and has a
+    failure mode for the plain-object form.
 
 ## Domains
 
@@ -104,7 +116,7 @@ integrations). The published skills ship inside the `@wfgraph/core` and
 | observability     | sub-skill | embedding       | implemented | `configureWfGraphLogging`, `logger`, LogTape, OpenTelemetry, Sentry, span names, record groups                                                                                                     | 4             |
 | cloudflare-worker | sub-skill | embedding       | implemented | `wfWorker`, `wfHyperdrive`, Cron Trigger, wake Queue, Hyperdrive caching and `search_path`, platform limits, tick records                                                                          | 5             |
 | mcp               | sub-skill | embedding       | implemented | the `mcp` option, Host and Origin allowlists, bearer tokens in `auth`, `mcp.authorization`, protocol revisions, per-tool grants, the draft-revision protocol                                       | 7             |
-| build-agent       | sub-skill | embedding       | implemented | `agent.provider` and its fields, the default model, `agent.runner`, `streamAgentTurn`, `agent.maxConcurrentTurns`, the per-tool grants a turn checks                                               | 4             |
+| build-agent       | sub-skill | embedding       | implemented | the four provider entries and their functions' options, the default model, `agent.runner`, `streamAgentTurn`, `maxConcurrentTurns`, the per-tool grants a turn checks                              | 5             |
 
 ## Failure Mode Inventory
 
@@ -205,14 +217,15 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 | 6   | Publish on canSave                                   | MEDIUM   | docs/embedding.md (MCP authoring)               | none         |
 | 7   | start_test_run treated as a dry run                  | MEDIUM   | docs/embedding.md (Test runs call your handler) | host-actions |
 
-### build-agent (4 failure modes)
+### build-agent (5 failure modes)
 
-| #   | Mistake                                               | Priority | Source                                                     | Cross-skill? |
-| --- | ----------------------------------------------------- | -------- | ---------------------------------------------------------- | ------------ |
-| 1   | Anthropic or OpenRouter with no model                 | HIGH     | docs/embedding.md (The build agent)                        | none         |
-| 2   | A Chat Completions gateway under the default provider | HIGH     | docs/embedding.md (The build agent)                        | none         |
-| 3   | An unset variable read as a startup check             | MEDIUM   | docs/embedding.md (The build agent)                        | none         |
-| 4   | A runner that draws the canvas itself                 | MEDIUM   | docs/embedding.md (Run turns on your own gateway or model) | none         |
+| #   | Mistake                                   | Priority | Source                                                     | Cross-skill? |
+| --- | ----------------------------------------- | -------- | ---------------------------------------------------------- | ------------ |
+| 1   | Anthropic or OpenRouter with no model     | HIGH     | docs/embedding.md (The build agent)                        | none         |
+| 2   | A Chat Completions gateway under wfOpenAi | HIGH     | docs/embedding.md (The build agent)                        | none         |
+| 3   | The agent option as a plain object        | HIGH     | docs/embedding.md (The build agent)                        | none         |
+| 4   | An unset variable read as a startup check | MEDIUM   | docs/embedding.md (The build agent)                        | none         |
+| 5   | A runner that draws the canvas itself     | MEDIUM   | docs/embedding.md (Run turns on your own gateway or model) | none         |
 
 ### wfgraph-plugins (5 failure modes)
 
@@ -260,7 +273,7 @@ Each failure mode comes from the Common Mistakes section of the skill that owns 
 
 | Skill             | Question                                                                                                                                                                                                                                           | Status   |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| wfgraph-core      | Does configuring the build agent (`agent.apiKey`, `agent.model`, `agent.reasoningEffort`, `agent.baseUrl`) need adopter guidance? Resolved by decision 8: the build-agent skill covers it.                                                         | resolved |
+| wfgraph-core      | Does configuring the build agent (its key, model, reasoning effort and base URL) need adopter guidance? Resolved by decision 8: the build-agent skill covers it, and decision 10 moved those options onto the provider functions.                  | resolved |
 | all               | Discovery checks have not run for any skill, and no fresh consumer session has attempted a task. Executable task checks exist for auth, observability, cloudflare-worker, host-actions, mcp and build-agent (`packages/evals/src/skills/`).        | open     |
 | build-agent       | Without a live model these claims are unverified: a gateway passing streaming, tools and the cache fields through, adaptive thinking on older Claude models, the `usage` part, and a turn's per-tool grants in a live turn.                        | open     |
 | auth              | `docs/embedding.md` ("createWfGraphApp options") says Workflow Graph refuses to start without `auth`. The code starts, and every operator request answers `500`; only the type requires the option. Resolved: the manual now states that behavior. | resolved |
@@ -623,6 +636,32 @@ sources, apart from the source checks each later batch records.
   definitions and that each of the five functions without options returns the
   same value on every call. No eval task check was added, and discovery and a
   fresh consumer session are unverified, as for every earlier batch.
+
+### Batch 8: model providers behind their own entries (packages at 4.1.2, branch perf/core-optional-entries)
+
+- Source: the branch's change that gives each model provider its own
+  `@wfgraph/core` entry and makes the `agent` option take what a provider
+  function returns (decision 10). `docs/embedding.md` ("The build agent", the
+  `createWfGraphApp` options table and "Package exports"), `README.md`'s embed
+  and `examples/app.ts` were rewritten for the new form.
+- build-agent: the description, `metadata.purpose`, the provider table,
+  procedure steps 1, 2, 3, 4 and 6, and the reasoning-effort section name the
+  four functions and their entries. The no-model mistake calls `wfAnthropic`,
+  the gateway mistake is now "A Chat Completions gateway under wfOpenAi", and a
+  new HIGH mistake covers passing the `agent` option as a plain object. The
+  skill's sources name the four provider modules.
+- wfgraph-core: the `agent` routing line names a provider entry's function.
+- Startup messages are unchanged: a blank `model` for a provider with no
+  default still throws `agent.model is required for the "<provider>" provider`,
+  now where the host calls the function, and a bad turn limit still throws
+  `agent.maxConcurrentTurns must be a positive integer`.
+- `library_version` stays at 4.1.1, as in batch 7.
+- Checks: `intent validate` passed. The task check
+  `packages/evals/src/skills/build-agent/agent-config.test.ts` grades the
+  provider functions and the runner form. Each provider's settings and wire
+  request are covered by the tests beside its module in
+  `packages/core/src/backend/agent/providers/`. Discovery and a fresh consumer
+  session are unverified, as for every earlier batch.
 
 ### Remaining work
 

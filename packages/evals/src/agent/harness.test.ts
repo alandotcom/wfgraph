@@ -1,5 +1,6 @@
 import { Effect, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_AGENT_MODEL } from "@wfgraph/core/backend/agent/providers/openai";
 import type { AgentRunner } from "@wfgraph/core/backend/agent/runner";
 import {
   collectAgentTurn,
@@ -107,9 +108,9 @@ describe("readEvalModelSettings", () => {
     vi.stubEnv("OPENAI_API_KEY", "sk-test");
 
     expect(readEvalModelSettings()).toMatchObject({
+      enabled: true,
       provider: "openai",
-      apiKey: "sk-test",
-      reasoningEffort: "medium",
+      model: DEFAULT_AGENT_MODEL,
     });
   });
 
@@ -122,10 +123,9 @@ describe("readEvalModelSettings", () => {
 
     expect(evalProviderKeyIsSet()).toBe(true);
     expect(readEvalModelSettings()).toMatchObject({
+      enabled: true,
       provider: "anthropic",
-      apiKey: "sk-ant-test",
       model: "claude-sonnet-5-5",
-      reasoningEffort: "low",
     });
   });
 

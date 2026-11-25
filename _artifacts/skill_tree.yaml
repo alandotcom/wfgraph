@@ -277,9 +277,9 @@ skills:
     description: >
       Use when turning on or configuring the Workflow Graph editor's chat agent,
       the build agent, in a host application: setting the agent option of
-      createWfGraphApp or wfWorker for OpenAI, Anthropic, OpenRouter or an
-      OpenAI-compatible server with apiKey, model, reasoningEffort and baseUrl,
-      limiting agent.maxConcurrentTurns, running turns on the host's own gateway
+      createWfGraphApp or wfWorker with wfOpenAi, wfAnthropic, wfOpenRouter or
+      wfOpenAiCompatible and their apiKey, model, reasoningEffort and baseUrl,
+      limiting maxConcurrentTurns, running turns on the host's own gateway
       or model with agent.runner and streamAgentTurn, granting agent.use and the
       operations the agent's tools check, or explaining why the chat panel is
       missing, why startup refuses the agent option, or why a tool call is
@@ -289,13 +289,17 @@ skills:
       wfgraph-core/mcp; for roles and custom grants in general use
       wfgraph-core/auth.
     purpose: >
-      Configure the editor's build agent: the agent option's four providers and
-      their defaults, gateways through baseUrl, a host runner through
+      Configure the editor's build agent: the four provider entries and their
+      defaults, gateways through baseUrl, a host runner through
       agent.runner and streamAgentTurn, the turn limit, and the grants a turn's
       tools check.
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/core/src/backend/agent/config.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openai.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/anthropic.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openrouter.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/providers/openai-compatible.ts
       - alandotcom/wfgraph:packages/core/src/backend/agent/runner.ts
     requires:
       - wfgraph-core

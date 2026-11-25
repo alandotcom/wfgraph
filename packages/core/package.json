@@ -64,6 +64,22 @@
     "./inngest": {
       "types": "./dist/inngest.d.ts",
       "default": "./dist/inngest.js"
+    },
+    "./openai": {
+      "types": "./dist/openai.d.ts",
+      "default": "./dist/openai.js"
+    },
+    "./anthropic": {
+      "types": "./dist/anthropic.d.ts",
+      "default": "./dist/anthropic.js"
+    },
+    "./openrouter": {
+      "types": "./dist/openrouter.d.ts",
+      "default": "./dist/openrouter.js"
+    },
+    "./openai-compatible": {
+      "types": "./dist/openai-compatible.d.ts",
+      "default": "./dist/openai-compatible.js"
     }
   },
   "publishConfig": {

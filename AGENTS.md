@@ -434,7 +434,12 @@ reachable from no entry. `inngest` is an optional peer dependency, so in product
 only `backend/lib/inngest/`, which the `@wfgraph/core/inngest` entry alone reaches, may
 import it. A host without the SDK must load every other
 entry, which `pnpm run package:smoke` checks by importing each of them from the packed
-tarball installed without `inngest`. Verify a packaging change with `pnpm pack` and read
+tarball installed without `inngest`. The four Effect model provider packages are
+dependencies, but each is imported by one module under `backend/agent/providers/`, which
+one provider entry (`@wfgraph/core/openai`, `/anthropic`, `/openrouter` or
+`/openai-compatible`) alone reaches. `backend/agent/model.ts` holds what the providers share
+and imports none of them, and the `agent` option carries a provider's `modelLayer`, so no
+other module names a provider. Verify a packaging change with `pnpm pack` and read
 the extracted manifest. `docs/embedding.md` ("Package exports") is the one home of the
 core entry points.
 
@@ -448,7 +453,9 @@ Nothing reachable from `@wfgraph/core/worker` or from an integration entry of
 dependency an entry of its own, the way `@wfgraph/core/inngest` holds the Inngest SDK.
 `scripts/plugins/worker-bundle.test.ts` bundles each of those entries with wrangler's
 settings, fails on an `import()` of bundled code, and holds each integration to its row of
-`ADDED_KIB_CEILING`.
+`ADDED_KIB_CEILING`. A model provider package is imported only by its own entry, which a
+host imports statically; the same test fails when a module of one reaches the bundle of
+`@wfgraph/core/worker`.
 
 ## Code cleanliness
 

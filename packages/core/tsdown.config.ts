@@ -4,7 +4,8 @@ import { defineConfig } from "tsdown";
 // Each entry is named in the "exports" map in package.json, so the emitted
 // file names have to keep matching that map; `docs/embedding.md` ("Package
 // exports") says what each entry is for. `src/inngest.ts` is the one entry
-// that imports the optional `inngest` peer.
+// that imports the optional `inngest` peer, and each of the four model
+// provider entries is the one entry that imports its Effect provider package.
 export default defineConfig({
   entry: [
     "src/index.ts",
@@ -16,6 +17,10 @@ export default defineConfig({
     "src/sqlite.ts",
     "src/worker.ts",
     "src/inngest.ts",
+    "src/openai.ts",
+    "src/anthropic.ts",
+    "src/openrouter.ts",
+    "src/openai-compatible.ts",
   ],
   format: "esm",
   // Selects Node-flavoured resolution and externalization, which is what a

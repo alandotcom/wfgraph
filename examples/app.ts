@@ -29,6 +29,7 @@ import {
   WfGraphOperations,
 } from "@wfgraph/core";
 import { configureWfGraphLogging } from "@wfgraph/core/logging";
+import { wfOpenAi } from "@wfgraph/core/openai";
 import { wfSqlite } from "@wfgraph/core/sqlite";
 // The built-in integrations, one entry each. Nothing registers on import: the
 // `extensions.integrations` list passed to `createWfGraphApp` is what turns each one
@@ -298,10 +299,10 @@ const wfgraph = await createWfGraphApp({
   },
   // The build agent is off without a key, and the editor then shows no chat
   // panel, so an adopter who wants no AI in their editor writes nothing here.
-  agent: {
+  agent: wfOpenAi({
     model: "gpt-6-luna",
     apiKey: process.env.OPENAI_API_KEY,
-  },
+  }),
   // The example exposes the authoring tools to local MCP clients. A tool
   // request authenticates with the editor's demo session cookie, or with
   // `WFGRAPH_MCP_TOKEN` as a bearer token, and any other request answers 401.

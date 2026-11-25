@@ -110,9 +110,10 @@ export type WfGraphWorkerRequestConfig = {
   persistence: WfGraphPersistence;
   encryption: EncryptionRuntimeConfig;
   /**
-   * The build agent's model settings. Read per invocation like every other
-   * secret here, because a Worker reads its bindings from the environment it
-   * was invoked with.
+   * The build agent, as on `createWfGraphApp`: what a provider entry's
+   * function returns, such as `wfAnthropic` from `@wfgraph/core/anthropic`, or
+   * `{ runner }`. Read per invocation like every other secret here, because a
+   * Worker reads its bindings from the environment it was invoked with.
    */
   agent?: WfGraphAgentConfig | undefined;
   /**
