@@ -78,6 +78,7 @@ import {
   useTopologyAuthoring,
 } from "./canvas-interaction";
 import { useWorkspaceCamera } from "./use-workspace-camera";
+import { outlineRowElementId } from "#src/components/workflow/outline/workflow-outline";
 import { useRevealCamera } from "./canvas-reveal/use-reveal-camera";
 import { CANVAS_OBSTACLE_SLOTS } from "./canvas-reveal/reveal-geometry";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
@@ -125,6 +126,28 @@ const nodeTypes = {
   add: AddNode,
   group: GroupNode,
 };
+
+/**
+ * React Flow deselects a focused, selected card on Escape and blurs it a frame
+ * later, which leaves keyboard focus on the page body. Two frames on, when
+ * focus is still on the body, it goes to the step's outline row when the
+ * outline shows it, and otherwise back to the card, so the next key continues
+ * from the step the person was on.
+ */
+function keepFocusAfterEscape(nodeId: string, card: Element | null): void {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active !== null && active !== document.body) {
+        return;
+      }
+      const row = document.getElementById(outlineRowElementId(nodeId));
+      const target =
+        row ?? (card instanceof HTMLElement && card.isConnected ? card : null);
+      target?.focus({ preventScroll: true });
+    });
+  });
+}
 
 export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const catalog = useExtensionCatalog();
@@ -601,6 +624,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         ?.getAttribute("data-id");
       if (nodeId && !selection.nodeIds.includes(nodeId)) {
         event.stopPropagation();
+        return;
+      }
+      if (nodeId) {
+        keepFocusAfterEscape(nodeId, event.target.closest(".react-flow__node"));
       }
     },
     [

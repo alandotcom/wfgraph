@@ -337,6 +337,36 @@ describe("canvas selection", () => {
     ).not.toEqual({ x: 400, y: 180 });
   });
 
+  it("keeps keyboard focus on a card that Escape deselects", async () => {
+    const { store, view } = await renderEditor();
+    await act(async () => {
+      fireEvent.click(view.getByTestId("action-node-qualify"));
+    });
+    const card = view.container.querySelector<HTMLElement>(
+      '.react-flow__node[data-id="qualify"]'
+    );
+    if (!card) {
+      throw new Error("the canvas did not render the Qualification card");
+    }
+    card.focus();
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["qualify"]);
+
+    await act(async () => {
+      fireEvent.keyDown(card, { key: "Escape", bubbles: true });
+    });
+    // React Flow blurs the card a frame after it deselects it.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual([]);
+    const focused = document.activeElement;
+    expect(focused).not.toBe(document.body);
+    expect(
+      focused?.closest('.react-flow__node[data-id="qualify"]')
+    ).not.toBeNull();
+  });
+
   it("keeps modifier-click additive", async () => {
     const { store, view } = await renderEditor();
 
