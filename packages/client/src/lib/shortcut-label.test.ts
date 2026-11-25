@@ -65,4 +65,45 @@ describe("shortcutReference", () => {
     expect(keys).toContain(SHORTCUT_REFERENCE_KEY);
     expect(keys.some((key) => key.includes("⌘"))).toBe(false);
   });
+
+  it("lists the outline's keys, J and K between runs, and Escape in each place", () => {
+    const sections = shortcutReference(false);
+    const keysOf = (title: string) =>
+      sections
+        .find((section) => section.title === title)
+        ?.entries.flatMap((entry) => entry.keys) ?? [];
+
+    for (const key of [
+      "↓",
+      "↑",
+      "Home",
+      "End",
+      "←",
+      "→",
+      "Space",
+      "Enter",
+      "/",
+      "Alt+↑",
+      "Alt+↓",
+      "Ctrl+F",
+    ]) {
+      expect(keysOf("Outline")).toContain(key);
+    }
+    expect(keysOf("Runs")).toEqual(["J", "K"]);
+    const escapes =
+      sections
+        .find((section) => section.title === "Escape")
+        ?.entries.map((entry) => entry.label) ?? [];
+    for (const place of [
+      "In details",
+      "In floating details",
+      "On the canvas",
+      "In the outline filter",
+      "In a run's evidence",
+      "In the agent's conversation",
+      "In the command palette",
+    ]) {
+      expect(escapes.some((label) => label.startsWith(place))).toBe(true);
+    }
+  });
 });

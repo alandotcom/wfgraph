@@ -105,6 +105,7 @@ export function shortcutReference(
   const enter = onApple ? "↵" : "Enter";
   const backspace = onApple ? "⌫" : "Backspace";
   const rowActions = onApple ? "⇧F10" : "Shift+F10";
+  const alt = onApple ? "⌥" : "Alt+";
   return [
     {
       title: "Anywhere",
@@ -130,7 +131,6 @@ export function shortcutReference(
         { label: "Run draft", keys: [keys.run] },
         { label: "Undo", keys: [keys.undo] },
         { label: "Redo", keys: [keys.redo] },
-        { label: "Find a step in the outline", keys: [keys.findStep] },
         {
           label: "Collapse or show the outline",
           keys: [COLUMN_SHORTCUT_KEYS.outline],
@@ -139,9 +139,59 @@ export function shortcutReference(
           label: "Collapse or show details",
           keys: [COLUMN_SHORTCUT_KEYS.details],
         },
-        { label: "Go back in details", keys: ["Esc"] },
         { label: "Send a message to the agent", keys: [enter] },
-        { label: "Close the agent's conversation", keys: ["Esc"] },
+      ],
+    },
+    {
+      title: "Outline",
+      entries: [
+        { label: "Move to the next or previous row", keys: ["↓", "↑"] },
+        { label: "Move to the first or last row", keys: ["Home", "End"] },
+        { label: "Fold a section, or move to the parent row", keys: ["←"] },
+        { label: "Unfold a section, or move into it", keys: ["→"] },
+        { label: "Select the row's step", keys: ["Space"] },
+        {
+          label: "Select the step and put the cursor in its first field",
+          keys: [enter],
+        },
+        { label: "Add a step after the row's step", keys: ["/"] },
+        {
+          label: "Move the step up or down its sequence",
+          keys: [`${alt}↑`, `${alt}↓`],
+        },
+        { label: "Filter the steps", keys: [keys.findStep] },
+      ],
+    },
+    {
+      title: "Runs",
+      entries: [
+        { label: "Open the next, older run", keys: ["J"] },
+        { label: "Open the previous, newer run", keys: ["K"] },
+      ],
+    },
+    {
+      title: "Escape",
+      entries: [
+        {
+          label:
+            "In details: close what is open, go back, then return to the step's outline row",
+          keys: ["Esc"],
+        },
+        { label: "In floating details: close it", keys: ["Esc"] },
+        {
+          label: "On the canvas: clear the selection, keeping your place",
+          keys: ["Esc"],
+        },
+        {
+          label: "In the outline filter: clear it, then return to the rows",
+          keys: ["Esc"],
+        },
+        { label: "In a run's evidence: go back to the run", keys: ["Esc"] },
+        { label: "In the agent's conversation: collapse it", keys: ["Esc"] },
+        {
+          label: "In the command palette: go back a page, then close",
+          keys: ["Esc"],
+        },
       ],
     },
     {
