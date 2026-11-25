@@ -150,4 +150,36 @@ describe("RunsColumn", () => {
       })
     );
   });
+
+  it("says which version a published run's step numbers belong to, and says nothing for a draft run", async () => {
+    served.items = [
+      {
+        ...execution("exec_v", "completed"),
+        versionKind: "published",
+        versionNumber: 2,
+      },
+      {
+        ...execution("exec_d", "completed"),
+        versionKind: "draft_snapshot",
+        versionNumber: null,
+      },
+    ];
+    const { view, title, show } = await renderRunsReveal({
+      view: "runs",
+      executionId: "exec_v",
+    });
+    await waitFor(() => expect(title()).toBe(runHeading("exec_v")));
+    const column = view.getByTestId("outline-column");
+    await waitFor(() =>
+      expect(
+        within(column).getByText(
+          "Steps as of v2, so a number can differ from the draft."
+        )
+      ).toBeTruthy()
+    );
+
+    await show({ view: "runs", executionId: "exec_d" });
+    await waitFor(() => expect(title()).toBe(runHeading("exec_d")));
+    expect(column.querySelector('[data-slot="run-steps-version"]')).toBeNull();
+  });
 });

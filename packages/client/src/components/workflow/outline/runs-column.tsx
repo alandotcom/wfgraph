@@ -143,6 +143,18 @@ export function RunsColumn() {
           </>
         )}
       </ColumnHeader>
+      {openRun?.versionKind === "published" &&
+      openRun.versionNumber !== null ? (
+        // Each version numbers its own steps, so a run of an earlier version
+        // can number a step differently from the draft.
+        <p
+          className="shrink-0 border-b px-3 py-1.5 text-muted-foreground text-xs"
+          data-slot="run-steps-version"
+        >
+          Steps as of v{openRun.versionNumber}, so a number can differ from the
+          draft.
+        </p>
+      ) : null}
       <div className="flex min-h-0 flex-1 flex-col" data-slot="runs-column">
         {loadingList ? <RunsSkeleton /> : null}
         {screen.kind === "run-unavailable" ? (
