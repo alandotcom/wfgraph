@@ -258,6 +258,36 @@ function withSelectedFlag<T extends { selected?: boolean | undefined }>(
   return flagged;
 }
 
+/** The class a card a list points at wears, for the canvas's soft tint ring. */
+export const POINTED_NODE_CLASS = "node-pointed";
+
+/**
+ * `item` wearing `POINTED_NODE_CLASS` exactly when `pointed`. A flipped copy
+ * is cached per item, so an unchanged pointer keeps element identity.
+ */
+function withPointedClass<T extends { className?: string | undefined }>(
+  item: T,
+  pointed: boolean,
+  cache: WeakMap<T, T>
+): T {
+  const classes = compact((item.className ?? "").split(" "));
+  if (classes.includes(POINTED_NODE_CLASS) === pointed) {
+    return item;
+  }
+  const cached = cache.get(item);
+  if (cached) {
+    return cached;
+  }
+  const className = pointed
+    ? [...classes, POINTED_NODE_CLASS].join(" ")
+    : classes.filter((name) => name !== POINTED_NODE_CLASS).join(" ");
+  const flipped = { ...item, className };
+  cache.set(item, flipped);
+  return flipped;
+}
+
+const pointedNodes = new WeakMap<WorkflowNode, WorkflowNode>();
+
 /** The Group summaries handed out last time, so an unchanged Group keeps its identity. */
 let lastGroupIssueSummaries: ReadonlyMap<string, NodeIssueSummary> = new Map();
 
@@ -321,23 +351,28 @@ export const displayNodesAtom = atom((get) => {
   const issuesByNodeId = displayGraph
     ? EMPTY_ISSUES
     : get(canvasIssuesByNodeIdAtom);
-  // The halo marks the selection and the step a list points at: an edit in
-  // the review sheet, or a row of the outline. While the sheet is open the
-  // canvas holds no selection, so only the pointed step wears it. A step
-  // inside a Group also marks the Group's card, which stands for it on the
-  // overview; the focused Group canvas draws no card for the Group itself.
+  // The selection wears the solid halo. The step a list points at, an edit
+  // in the review sheet or a row of the outline, wears a soft tint ring that
+  // cannot be mistaken for it. While the sheet is open the canvas holds no
+  // selection. A step inside a Group also marks the Group's card, which stands
+  // for it on the overview; the focused Group canvas draws no card for the
+  // Group itself.
   const highlighted = get(reviewHighlightAtom);
   const highlightedParent =
     highlighted === null
       ? undefined
       : nodes.find((node) => node.id === highlighted)?.parentId;
-  const pointed = compact([highlighted, highlightedParent]);
+  const pointedIds = new Set(compact([highlighted, highlightedParent]));
   const selectedIds = new Set(
-    comparison ? pointed : [...get(activeSelectionAtom).nodeIds, ...pointed]
+    comparison ? [] : get(activeSelectionAtom).nodeIds
   );
   const paintSelection = (items: WorkflowNode[]) =>
     mapOrSame(items, (node) =>
-      withSelectedFlag(node, selectedIds.has(node.id), flaggedNodes)
+      withPointedClass(
+        withSelectedFlag(node, selectedIds.has(node.id), flaggedNodes),
+        pointedIds.has(node.id),
+        pointedNodes
+      )
     );
 
   if (

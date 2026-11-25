@@ -75,6 +75,7 @@ import {
 import { savedWorkflow, unreadableDraft } from "./workflow-save-test-support";
 import { PASTE_OFFSET } from "#src/lib/copy-selection";
 import { reviewHighlightAtom } from "#src/lib/workflow-review-store";
+import { POINTED_NODE_CLASS } from "#src/lib/workflow-graph-presentation-store";
 import { formatTemplateToken } from "@wfgraph/shared/graph/node-references";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
@@ -85,6 +86,14 @@ import {
 } from "#src/lib/workflow-publication-review-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+
+/** The ids of the cards wearing the pointed tint, in display order. */
+function pointed(store: ReturnType<typeof createStore>): string[] {
+  return store
+    .get(displayNodesAtom)
+    .filter((node) => node.className?.includes(POINTED_NODE_CLASS))
+    .map((node) => node.id);
+}
 
 const updateMock = vi.fn(() => Promise.resolve(savedWorkflow("workflow_1")));
 
@@ -1410,7 +1419,7 @@ describe("displayNodesAtom memoization", () => {
     ]);
   });
 
-  it("puts the halo on the step the review sheet points at and on its Group's card", () => {
+  it("puts the pointed tint on the step the review sheet points at and on its Group's card", () => {
     const nodes = [groupNode("group"), groupedChild("member", "group")];
     const store = createGraphStore([...nodes, actionNode("selected")]);
     showWorkspaceRoute(store, {});
@@ -1427,15 +1436,17 @@ describe("displayNodesAtom memoization", () => {
         .filter((node) => node.selected)
         .map((node) => node.id);
 
-    // The draft's own selection does not show while the sheet is open.
+    // The draft's own selection does not show while the sheet is open, and
+    // pointing at an edit tints its card without selecting it.
     expect(haloed()).toEqual([]);
     store.set(reviewHighlightAtom, "member");
-    expect(haloed()).toEqual(["group", "member"]);
-    store.set(reviewHighlightAtom, null);
     expect(haloed()).toEqual([]);
+    expect(pointed(store)).toEqual(["group", "member"]);
+    store.set(reviewHighlightAtom, null);
+    expect(pointed(store)).toEqual([]);
   });
 
-  it("adds the step an outline row points at to the Draft's own selection halo", () => {
+  it("tints the step an outline row points at and leaves the selection alone", () => {
     const store = createGraphStore([
       groupNode("group"),
       groupedChild("member", "group"),
@@ -1451,9 +1462,11 @@ describe("displayNodesAtom memoization", () => {
         .map((node) => node.id);
 
     store.set(reviewHighlightAtom, "member");
-    expect(haloed().toSorted()).toEqual(["group", "member", "selected"]);
+    expect(haloed()).toEqual(["selected"]);
+    expect(pointed(store)).toEqual(["group", "member"]);
     store.set(reviewHighlightAtom, null);
     expect(haloed()).toEqual(["selected"]);
+    expect(pointed(store)).toEqual([]);
   });
 });
 

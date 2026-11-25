@@ -155,7 +155,7 @@ function outlineSections(input: {
  * fold, Enter selects the step and asks the details for focus, and `/` opens
  * the step picker to add a step after the row's step, and Alt+Up and Alt+Down
  * move the step within its sequence. Pointing at
- * or focusing a row puts the selection halo on its card without moving the
+ * or focusing a row puts the pointed tint on its card without moving the
  * camera. Cmd+F or Ctrl+F focuses the filter field.
  */
 export function WorkflowOutline({

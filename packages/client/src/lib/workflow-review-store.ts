@@ -189,7 +189,8 @@ export const settleVersionReviewAtom = atom(
 /**
  * The step whose card a list points at: an edit in the review sheet, or a row
  * of the outline under the pointer or keyboard focus. The canvas draws that
- * card with the selection halo. Pointing never moves the camera.
+ * card with the pointed tint, a soft ring that never reads as selection.
+ * Pointing never moves the camera.
  */
 export const reviewHighlightAtom = atom<string | null>(null);
 

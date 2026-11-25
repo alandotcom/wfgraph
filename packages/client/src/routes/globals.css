@@ -425,6 +425,15 @@
   outline-offset: calc(3px / var(--rf-zoom, 1));
 }
 
+/* A card a list points at, such as the step under the pointer in the outline,
+   wears a soft tint ring outside its edge. It is a wash of the selection
+   colour with no solid stroke, so it never reads as a second selection. */
+.react-flow__node.node-pointed .node-container,
+.react-flow__node.node-pointed .group-node-container {
+  box-shadow: 0 0 0 calc(8px / var(--rf-zoom, 1))
+    color-mix(in oklch, var(--selection) 22%, transparent);
+}
+
 /* A change marker on a canvas card grows as the canvas zooms out, so its 12px
    letter still reads at 12px on screen. Changes opens near 0.5 zoom, where an
    unscaled letter measured 5px. The cap of 3 keeps the disc inside the card. */

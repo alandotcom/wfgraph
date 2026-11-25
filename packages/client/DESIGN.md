@@ -144,7 +144,7 @@ Each signal is one token carrying both the fill and the text form. As text, ever
 - **Signal Green** (oklch(0.526 0.148 149.58)): Successful runs. `--success`.
 - **Signal Amber** (oklch(0.546 0.12 70.08)): Waiting runs, a step the executor is retrying, an Unclaimed run (one no worker has picked up within its host's threshold, a minute for a worker loop at its default poll), test recipients (a Published mode of Test, and every Draft run), and unmet prerequisites. Nothing else uses it; a paused workflow is graphite. `--warning`.
 - **Signal Blue** (oklch(0.482 0.18 259.8)): Work in progress, including the running-node border sweep, and live template variables. `--info`.
-- **Selection Blue** (oklch(0.56 0.21 264), oklch(0.72 0.17 264) in dark): The persistent outer halo on the selected canvas object. `--selection`. It stays separate from Signal Blue so selection never reads as execution state, and it leaves the node surface unchanged.
+- **Selection Blue** (oklch(0.56 0.21 264), oklch(0.72 0.17 264) in dark): The persistent outer halo on the selected canvas object. `--selection`. The card a list points at, such as an outline row under the pointer or a review edit, wears the pointed tint instead: an 8px wash of Selection Blue at 22% outside the card's edge, with no solid stroke, so it never reads as a second selection. It stays separate from Signal Blue so selection never reads as execution state, and it leaves the node surface unchanged.
 - **Signal Slate** (oklch(0.52 0.046 257.417)): Cancelled and superseded runs. `--cancelled`.
 
 ### Node-type accents
@@ -805,7 +805,7 @@ While the sheet is open, the Draft canvas draws the comparison and refuses
 every edit. Changed cards wear the `A`, `M`, or `D` marker and the same one
 line the sheet uses, and a collapsed Group card counts its changed steps, as "2
 changed". The canvas holds no selection. Pointing at or focusing an edit puts
-the selection halo on its card, and on its Group's card when the step sits in
+the pointed tint on its card, and on its Group's card when the step sits in
 a collapsed Group, with no camera move. **Show on canvas** places the step
 once beside the sheet, entering its Group when it sits inside one. Pressing a
 changed card scrolls the sheet to its edit and moves focus to the edit's title,
