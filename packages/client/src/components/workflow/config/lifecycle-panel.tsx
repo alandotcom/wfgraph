@@ -7,7 +7,10 @@ import {
   connectionIdForIntegration,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { IntegrationEventConnectionEditor } from "./integration-event-connection";
-import { LifecycleConcurrencyGroup } from "./lifecycle-concurrency-group";
+import {
+  LifecycleConcurrencyGroup,
+  LifecycleManualStartGroup,
+} from "./lifecycle-concurrency-group";
 import { LifecycleEntityEligibilityGroup } from "./lifecycle-entity-eligibility-group";
 import { LifecycleEventGroup } from "./lifecycle-event-group";
 import { unsavedScheduleMessage } from "./lifecycle-schedule";
@@ -89,7 +92,6 @@ function LifecycleGroups({
   editor: LifecycleRulesEditor;
   disabled: boolean;
 }) {
-  const manualStartId = useId();
   return (
     <div className="divide-y">
       <LifecycleRoleEventGroup
@@ -99,9 +101,7 @@ function LifecycleGroups({
       />
       <LifecycleConcurrencyGroup
         disabled={disabled}
-        manualStartId={manualStartId}
         onConcurrencyChange={editor.setConcurrency}
-        onManualStartChange={editor.setManualStart}
         rules={editor.rules}
       />
       <LifecycleScheduleGroup
@@ -124,7 +124,11 @@ function LifecycleGroups({
   );
 }
 
-/** The Start or Cancel Events group, writing through one Lifecycle Rules editor. */
+/**
+ * The Start or Cancel Events group, writing through one Lifecycle Rules
+ * editor. The start role also holds whether a person may run it by hand,
+ * since both answer what starts a run.
+ */
 export function LifecycleRoleEventGroup({
   role,
   editor,
@@ -135,7 +139,7 @@ export function LifecycleRoleEventGroup({
   disabled: boolean;
 }) {
   const inputId = useId();
-  return (
+  const events = (
     <LifecycleEventGroup
       catalog={editor.catalog}
       disabled={disabled}
@@ -155,6 +159,18 @@ export function LifecycleRoleEventGroup({
       role={role}
       rules={editor.rules}
     />
+  );
+  return role === "start" ? (
+    <div className="space-y-3">
+      {events}
+      <LifecycleManualStartGroup
+        disabled={disabled}
+        onManualStartChange={editor.setManualStart}
+        rules={editor.rules}
+      />
+    </div>
+  ) : (
+    events
   );
 }
 

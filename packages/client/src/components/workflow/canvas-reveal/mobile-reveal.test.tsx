@@ -410,8 +410,19 @@ describe("mobile Reveal for complex nodes", () => {
     const { view, store, sheet, select } = await renderMobile();
     await select("lifecycle-1");
 
-    fireEvent.click(view.getByRole("button", { name: "Edit Cancel Events" }));
+    // A rule the start has not set opens from "Add a rule", and the section
+    // list holds what is set beside the section open now.
+    const trigger = view.getByRole("button", { name: "Add a rule" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyUp(trigger, { key: "ArrowDown" });
+    fireEvent.click(view.getByRole("menuitem", { name: "Stop a run when…" }));
     expect(sheet()?.dataset.level).toBe("inspector");
+    const list = view.getByRole("navigation", { name: "Start rules" });
+    expect(
+      within(list)
+        .getAllByRole("button")
+        .map((entry) => entry.textContent)
+    ).toEqual(["Starts when1", "Cancel Events"]);
     expect(
       view
         .getByRole("button", { name: /^Cancel Events/ })
@@ -421,9 +432,9 @@ describe("mobile Reveal for complex nodes", () => {
       "cancel-events"
     );
 
-    fireEvent.click(view.getByRole("button", { name: /^Event Connections/ }));
+    fireEvent.click(view.getByRole("button", { name: /^Starts when/ }));
     expect(store.get(activeMobileSheetsAtom).at(-1)?.section).toBe(
-      "connections"
+      "start-events"
     );
     expect(store.get(activeRevealPresentationAtom).inspectorSection).toBeNull();
   });

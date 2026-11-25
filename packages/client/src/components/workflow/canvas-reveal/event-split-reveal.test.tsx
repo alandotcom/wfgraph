@@ -443,7 +443,7 @@ describe("Event Split Browse", () => {
     expect(aside()?.dataset.level).toBe("browse");
     expect(view.getByRole("heading", { name: "Lifecycle" })).toBeTruthy();
     expect(
-      view.getByRole("button", { name: "Done editing Start Events" })
+      view.getByRole("button", { name: "Done editing what starts it" })
     ).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: "Back" }));
@@ -463,16 +463,16 @@ describe("Event Split Browse", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Open start Events" }));
     expect(
-      view.getByRole("button", { name: "Done editing Start Events" })
+      view.getByRole("button", { name: "Done editing what starts it" })
     ).toBeTruthy();
 
     fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
     expect(
-      view.queryByRole("button", { name: "Done editing Start Events" })
+      view.queryByRole("button", { name: "Done editing what starts it" })
     ).toBeNull();
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Edit Start Events" })
+        view.getByRole("button", { name: "Choose what starts it" })
       )
     );
     expect(

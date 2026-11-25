@@ -29,7 +29,10 @@ import {
   lifecycleEditButtonId,
   lifecycleIssueSection,
   lifecycleSectionHeadingId,
+  lifecycleSectionShown,
+  type RemovableLifecycleSection,
   useLifecycleOpenSection,
+  withoutLifecycleRule,
   useLifecycleSection,
 } from "./lifecycle-reveal-model";
 import type { RevealBodyProps } from "./reveal-kinds";
@@ -53,6 +56,8 @@ export function useLifecycleSectionEditors(input: {
   rules: LifecycleRules;
   nodeIssues: WorkflowIssue[];
   bodies: Record<LifecycleSectionId, ReactNode>;
+  /** Puts a set rule back to its default, or undefined when edits are off. */
+  remove: ((section: RemovableLifecycleSection) => void) | undefined;
 } {
   const { node, showSection } = input;
   const catalog = useExtensionCatalog();
@@ -64,7 +69,6 @@ export function useLifecycleSectionEditors(input: {
     config: node.data.config ?? EMPTY_CONFIG,
     onUpdateConfig: updateConfig,
   });
-  const manualStartId = useId();
   const { rules } = editor;
   const nodeIssues = issues.filter((issue) => issue.nodeId === node.id);
 
@@ -79,9 +83,7 @@ export function useLifecycleSectionEditors(input: {
     "overlapping-runs": (
       <LifecycleConcurrencyGroup
         disabled={disabled}
-        manualStartId={manualStartId}
         onConcurrencyChange={editor.setConcurrency}
-        onManualStartChange={editor.setManualStart}
         rules={rules}
       />
     ),
@@ -139,7 +141,14 @@ export function useLifecycleSectionEditors(input: {
       </ConfigGroup>
     ),
   };
-  return { rules, nodeIssues, bodies };
+  return {
+    rules,
+    nodeIssues,
+    bodies,
+    remove: disabled
+      ? undefined
+      : (section) => editor.setRules(withoutLifecycleRule(rules, section)),
+  };
 }
 
 /**
@@ -169,10 +178,23 @@ function LifecyclePolicyEditor({
     show(next);
     document.getElementById(navButtonId(next))?.focus();
   };
+  const catalog = useExtensionCatalog();
   const { rules, nodeIssues, bodies } = useLifecycleSectionEditors({
     node,
     showSection: goTo,
   });
+  // The list holds what the start has set, as its summary does, and the
+  // section open now, which is how a rule being added is reached.
+  const listed = LIFECYCLE_SECTIONS.filter(
+    (entry) =>
+      entry.id === section ||
+      lifecycleSectionShown({
+        section: entry.id,
+        rules,
+        catalog,
+        issueCount: nodeIssues.length,
+      })
+  );
   const counts: Partial<Record<LifecycleSectionId, number>> = {
     "start-events": rules.startEvents.length,
     schedule: rules.schedules?.length ?? 0,
@@ -187,7 +209,7 @@ function LifecyclePolicyEditor({
           Start rules
         </p>
         <ul className="flex flex-wrap gap-1">
-          {LIFECYCLE_SECTIONS.map((entry) => {
+          {listed.map((entry) => {
             const count = counts[entry.id];
             return (
               <li key={entry.id}>
@@ -268,7 +290,8 @@ function LifecycleEditorBody({
     open(next);
     focusField(lifecycleSectionHeadingId(next));
   };
-  const { rules, nodeIssues, bodies } = useLifecycleSectionEditors({
+  const catalog = useExtensionCatalog();
+  const { rules, nodeIssues, bodies, remove } = useLifecycleSectionEditors({
     node,
     showSection: show,
   });
@@ -284,18 +307,37 @@ function LifecycleEditorBody({
           onDone: () => {
             if (section !== null) {
               close();
-              focusField(lifecycleEditButtonId(section));
+              // A rule left unset hides its section, so focus moves to the
+              // start's own control.
+              const stays = lifecycleSectionShown({
+                section,
+                rules,
+                catalog,
+                issueCount: nodeIssues.length,
+              });
+              focusField(
+                lifecycleEditButtonId(stays ? section : "start-events")
+              );
             }
           },
+          onRemove:
+            remove &&
+            ((removed) => {
+              remove(removed);
+              focusField(lifecycleEditButtonId("start-events"));
+            }),
         }}
+        issueCount={nodeIssues.length}
         rules={rules}
       />
-      <Section title="Validation">
-        <NodeIssueList
-          issues={nodeIssues}
-          onSelect={(_fieldKey, issue) => show(lifecycleIssueSection(issue))}
-        />
-      </Section>
+      {nodeIssues.length > 0 ? (
+        <Section title="Validation">
+          <NodeIssueList
+            issues={nodeIssues}
+            onSelect={(_fieldKey, issue) => show(lifecycleIssueSection(issue))}
+          />
+        </Section>
+      ) : null}
     </div>
   );
 }

@@ -454,19 +454,35 @@ empty canvas, a duplicate or a paste, the camera then moves once, the least it
 must, to show the new steps clear of the agent's prompt line and the canvas
 controls, and does not move when they are already in view.
 
-Selecting the Lifecycle node opens its inspector with the workflow's lifecycle
-policy, one section each in this order: an editable label, the Start Events
-with each payload Start Filter, the overlapping-run behavior and whether manual
-runs are allowed, each schedule in words with its next run, the Cancel Events,
-the tracked Entity with its binding in each Event, the eligibility rule and when
-it is checked, the Connection each integration Event arrives through, and the
-validation issues. Start Filters and eligibility sit in
-separate sections, and each says what it reads: the arriving Event's payload,
-or the Entity's current state from the host. Each section's **Edit** shows that
-section's editor in place of its summary, in the same panel, and moves focus to
-the section's heading. **Done** or Escape returns the section to its summary
-and puts focus on its **Edit**. One section is open at a time. Each issue opens
-the section that edits what it names. Every Lifecycle Rules problem Publish refuses, including a Start or
+Selecting the start opens its details, which show only what is set. Beneath
+an editable label, **Starts when** always shows: each Start Event with its
+payload Start Filter, or with none the sentence saying a schedule, a person or
+nothing starts a run, and a line when someone can also run it by hand. Under
+it sit **Choose what starts it**, which edits the Start Events and whether
+manual runs are allowed, and **Add a rule**, whose items name each rule not yet
+set by what it does: "Only start when…" (a Start Filter, offered once a Start
+Event is chosen), "Stop a run when…" (Cancel Events), "If a run is already in
+progress…" (Overlapping runs), "On a schedule…", "Tie each run to a record…"
+(the tracked Entity) and "Only run while the record matches…" (its eligibility
+rule). Each set rule shows as its own section in this order: Overlapping runs
+with what a newer start does to the run in progress, each schedule in words
+with its next run, the Cancel Events, and the Entity with its binding in each
+Event, its eligibility rule and when it is checked. Two sections show without
+being added, because the workflow is wrong without them: Event Connections,
+while a Start or Cancel Event arrives through an integration, since such an
+Event reaches no run until its Connection is chosen, and Validation, while the
+start has an issue. A set rule's **Remove** puts it back to its default, every
+arrival starting its own run, no schedule, no Cancel Event, or no Entity, and
+its section hides again; focus moves to **Choose what starts it**. Start
+Filters and eligibility sit in separate sections, and each says what it reads:
+the arriving Event's payload, or the Entity's current state from the host. A
+section's **Edit**, **Choose what starts it** and an **Add a rule** item show
+that section's editor in place of its summary, in the same panel, and move
+focus to the section's heading; a rule being added shows its section while
+its editor is open. **Done** or Escape returns the section to its summary and
+puts focus on its **Edit**, or on **Choose what starts it** when the rule was
+left unset and its section hides. One section is open at a time. Each issue
+opens the section that edits what it names. Every Lifecycle Rules problem Publish refuses, including a Start or
 Cancel Filter reading a path its Event does not declare, is a blocking issue.
 Entity tracking, its eligibility rule, and the
 rule's check timing stay together in the Entity section. A schedule is a preset
@@ -635,8 +651,9 @@ summary sheet that opens moves the camera once, the least it must, to keep its
 subject above the sheet's top edge, and only when the sheet would cover it. The sheet's header names the object and its
 validation status beside **Close** and the control that opens its full-screen
 editor: **Edit step**, **Edit rules** for a Condition, or **Edit group**. That
-control, an issue, and a start section's **Edit** open the full-screen
-editor; the start's section list sits above its section there. An Event Split's action opens the start's details
+control, an issue, a start section's **Edit** and an **Add a rule** item open
+the full-screen editor; the start's section list sits above its section there
+and holds the sections the start has set and the one open now. An Event Split's action opens the start's details
 at its section, or the Wait's summary, over the Event Split's summary. Every
 sheet above the first leads with a Back control named for the sheet beneath,
 **Summary** when that sheet shows the same object. Back and Escape remove one

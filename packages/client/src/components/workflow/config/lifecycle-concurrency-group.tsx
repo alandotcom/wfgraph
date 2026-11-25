@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Checkbox } from "#src/components/ui/checkbox";
 import { Label } from "#src/components/ui/label";
@@ -23,15 +24,11 @@ import {
 export function LifecycleConcurrencyGroup({
   rules,
   disabled,
-  manualStartId,
   onConcurrencyChange,
-  onManualStartChange,
 }: {
   rules: LifecycleRules;
   disabled: boolean;
-  manualStartId: string;
   onConcurrencyChange: (value: Concurrency) => void;
-  onManualStartChange: (allowed: boolean) => void;
 }) {
   const catalog = useExtensionCatalog();
   const relatedRunsDescription = describeRelatedRuns(rules, catalog);
@@ -90,34 +87,51 @@ export function LifecycleConcurrencyGroup({
             {consequence}
           </p>
         )}
-
-        <div className="space-y-2 border-t pt-3">
-          <p className="font-medium text-sm">Manual starts</p>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              checked={rules.allowManualStart === true}
-              disabled={disabled}
-              id={manualStartId}
-              onCheckedChange={onManualStartChange}
-            />
-            <div className="flex items-center gap-1">
-              <Label htmlFor={manualStartId}>Allow manual runs</Label>
-              <ConfigHelp label="Allow manual runs">
-                <ul className="list-disc space-y-1 pl-4">
-                  <li>The editor and API can start runs manually.</li>
-                  <li>When this is off, only Start Events can start runs.</li>
-                  <li>
-                    Entity tracking and Event Splits require selecting a Start
-                    Event.
-                  </li>
-                </ul>
-              </ConfigHelp>
-            </div>
-          </div>
-          <ManualRunPayloadNotice rules={rules} />
-        </div>
       </div>
     </ConfigGroup>
+  );
+}
+
+/**
+ * Whether a person may start a run by hand, from the editor or the API. It
+ * sits with the Start Events, since both answer what starts a run.
+ */
+export function LifecycleManualStartGroup({
+  rules,
+  disabled,
+  onManualStartChange,
+}: {
+  rules: LifecycleRules;
+  disabled: boolean;
+  onManualStartChange: (allowed: boolean) => void;
+}) {
+  const manualStartId = useId();
+  return (
+    <div className="space-y-2 border-t pt-3">
+      <p className="font-medium text-sm">Manual starts</p>
+      <div className="flex items-center gap-2">
+        <Checkbox
+          checked={rules.allowManualStart === true}
+          disabled={disabled}
+          id={manualStartId}
+          onCheckedChange={onManualStartChange}
+        />
+        <div className="flex items-center gap-1">
+          <Label htmlFor={manualStartId}>Allow manual runs</Label>
+          <ConfigHelp label="Allow manual runs">
+            <ul className="list-disc space-y-1 pl-4">
+              <li>The editor and API can start runs manually.</li>
+              <li>When this is off, only Start Events can start runs.</li>
+              <li>
+                Entity tracking and Event Splits require selecting a Start
+                Event.
+              </li>
+            </ul>
+          </ConfigHelp>
+        </div>
+      </div>
+      <ManualRunPayloadNotice rules={rules} />
+    </div>
   );
 }
 

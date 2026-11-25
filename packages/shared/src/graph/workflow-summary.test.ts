@@ -433,7 +433,7 @@ describe("summarizeWorkflow", () => {
 
   it("says what an empty workflow does, and names no id for an unlabelled step", () => {
     expect(summarize([lifecycle({})], [])).toEqual({
-      starts: ["Starts only when someone runs it by hand."],
+      starts: ["Starts when someone runs it by hand."],
       steps: [],
       stops: [],
     });

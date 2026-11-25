@@ -913,7 +913,12 @@ export function overlappingRunsSentence(
     : `While a run is in progress, a newer ${arrival}${same} starts no run.`;
 }
 
-function startSentences(
+/**
+ * What starts a run, one sentence per Start Event group or schedule, such as
+ * "Starts when Appointment created arrives, if Status is scheduled.", or one
+ * sentence saying a person starts it by hand or that nothing does.
+ */
+export function startSentences(
   rules: LifecycleRules | undefined,
   catalog: ExtensionCatalog
 ): string[] {
@@ -927,7 +932,7 @@ function startSentences(
   }
   return [
     manualStartAllowed(rules)
-      ? "Starts only when someone runs it by hand."
+      ? "Starts when someone runs it by hand."
       : "Nothing starts this workflow yet.",
   ];
 }

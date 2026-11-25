@@ -1,4 +1,16 @@
-import { overlappingRunsSentence } from "@wfgraph/shared/graph/workflow-summary";
+import {
+  overlappingRunsSentence,
+  startSentences,
+} from "@wfgraph/shared/graph/workflow-summary";
+import { ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "#src/components/ui/dropdown-menu";
+import { useLifecycleRulesEditor } from "#src/components/workflow/config/use-lifecycle-rules-editor";
+import { useNodeConfigWriter } from "#src/components/workflow/config/use-node-config-writer";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { ReactNode } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -42,20 +54,24 @@ import {
 import { scheduleIdentity } from "@wfgraph/shared/lifecycle/cron-schedule";
 import {
   connectionIdForIntegration,
-  initialLifecycleRules,
   type LifecycleRules,
-  readLifecycleRules,
+  manualStartAllowed,
 } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import {
   readStartFilter,
   readStartFilterLayout,
 } from "@wfgraph/shared/lifecycle/start-filters";
 import {
+  isRemovableLifecycleSection,
   type LifecycleSectionId,
   lifecycleEditButtonId,
   lifecycleIssueSection,
   lifecycleSectionHeadingId,
+  lifecycleSectionShown,
+  offeredLifecycleRules,
+  type RemovableLifecycleSection,
   useOpenLifecycleSection,
+  withoutLifecycleRule,
 } from "./lifecycle-reveal-model";
 import type { RevealBodyProps } from "./reveal-kinds";
 import { NodeIssueList, Section } from "./reveal-sections";
@@ -81,12 +97,15 @@ function ConditionText({
 }: {
   model: string | undefined;
   fields: readonly ConditionSelectableField[];
-  emptyText: string;
+  /** What an unset rule says, or null to say nothing. */
+  emptyText: string | null;
   setOperatorsRequireEnumValues?: boolean | undefined;
 }) {
   const nodes = useAtomValue(nodesAtom);
   if (!model) {
-    return <p className="text-muted-foreground text-xs">{emptyText}</p>;
+    return emptyText === null ? null : (
+      <p className="text-muted-foreground text-xs">{emptyText}</p>
+    );
   }
   const parsed = parseConditionModel(model);
   return parsed.valid ? (
@@ -144,7 +163,8 @@ const ROLE_SUMMARY = {
     readLayout: readStartFilterLayout,
     filterNoun: "Start Filter",
     noEventsText: "No Start Events.",
-    noFilterText: () => "No Start Filter. Every arrival starts a run.",
+    // The start's sentences already say every arrival starts a run.
+    noFilterText: () => null,
   },
   cancel: {
     eventNames: (rules: LifecycleRules) => rules.cancelEvents,
@@ -351,31 +371,115 @@ function EventConnectionsSummary({
 }
 
 /**
- * How the sections of `LifecyclePolicySections` edit. `onEdit` is the Edit
- * button of a section showing its summary. `open` names the one section shown
- * as its editor, `editors` holds each section's editor, and `onDone` is that
- * section's Done button.
+ * How the sections of `LifecyclePolicySections` edit. `onEdit` opens a
+ * section's editor, from its Edit button, from "Choose what starts it" or from
+ * "Add a rule". `open` names the one section shown as its editor, `editors`
+ * holds each section's editor, and `onDone` is that section's Done button.
+ * `onRemove`, when given, puts a set rule back to its default, which hides
+ * its section.
  */
 export type LifecycleSectionEditing = {
   onEdit: (section: LifecycleSectionId) => void;
   open?: LifecycleSectionId | null | undefined;
   editors?: Readonly<Record<LifecycleSectionId, ReactNode>> | undefined;
   onDone?: (() => void) | undefined;
+  onRemove?: ((section: RemovableLifecycleSection) => void) | undefined;
 };
 
+/** "Add a rule": each rule not set yet, named for what it does. */
+function AddRuleMenu({
+  rules,
+  onEdit,
+}: {
+  rules: LifecycleRules;
+  onEdit: (section: LifecycleSectionId) => void;
+}) {
+  const offered = offeredLifecycleRules(rules);
+  if (offered.length === 0) {
+    return null;
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<Button size="sm" type="button" variant="outline" />}
+      >
+        Add a rule
+        <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {offered.map((choice) => (
+          <DropdownMenuItem
+            key={choice.id}
+            onClick={() => onEdit(choice.section)}
+          >
+            {choice.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /**
- * The workflow's lifecycle policy as a summary, one section per concept. Start
- * and Cancel Events show the payload filters that admit an arrival, kept apart
- * from Entity eligibility, which reads current Entity State. With `editing`,
- * each section has an Edit button, and the section `editing.open` names shows
- * its editor in place of its summary, with Done.
+ * What starts a run: each Start Event with the filter it holds, or, with none,
+ * the sentence saying a schedule, a person or nothing starts it. A start with
+ * Start Events or a schedule that also allows hand runs says so.
+ */
+function StartSummary({
+  rules,
+  catalog,
+  nodes,
+}: {
+  rules: LifecycleRules;
+  catalog: ExtensionCatalog;
+  nodes: readonly WorkflowNode[];
+}) {
+  const alsoByHand =
+    manualStartAllowed(rules) &&
+    (rules.startEvents.length > 0 || (rules.schedules?.length ?? 0) > 0);
+  return (
+    <div className="space-y-2">
+      {rules.startEvents.length > 0 ? (
+        <RoleEvents
+          catalog={catalog}
+          nodes={nodes}
+          role="start"
+          rules={rules}
+        />
+      ) : (
+        startSentences(rules, catalog).map((sentence) => (
+          <p className="text-sm" key={sentence}>
+            {sentence}
+          </p>
+        ))
+      )}
+      {alsoByHand ? (
+        <p className="text-muted-foreground text-xs">
+          Someone can also run it by hand.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The start's rules as a summary. What starts a run always shows, and each
+ * other rule shows once it is set (`lifecycleSectionShown`). Start and Cancel
+ * Events show the payload filters that admit an arrival, kept apart from
+ * Entity eligibility, which reads current Entity State. With `editing`, the
+ * start offers "Choose what starts it" and "Add a rule", each set rule has an
+ * Edit button and, with `editing.onRemove`, a Remove button, and the section
+ * `editing.open` names shows its editor in place of its summary, with Done.
  */
 export function LifecyclePolicySections({
   rules,
   editing,
+  issueCount = 0,
 }: {
   rules: LifecycleRules;
   editing?: LifecycleSectionEditing | undefined;
+  /** The start's issues, which decide whether Validation shows. */
+  issueCount?: number | undefined;
 }) {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
@@ -383,31 +487,51 @@ export function LifecyclePolicySections({
   const overlap = overlappingRunsSentence(rules, catalog);
   const isOpen = (section: LifecycleSectionId) =>
     editing?.open === section && editing.editors !== undefined;
+  const shown = (section: LifecycleSectionId) =>
+    isOpen(section) ||
+    lifecycleSectionShown({ section, rules, catalog, issueCount });
   const editAction = (title: string, section: LifecycleSectionId) => {
     if (!editing) {
       return undefined;
     }
-    return isOpen(section) ? (
-      <Button
-        aria-label={`Done editing ${title}`}
-        onClick={editing.onDone}
-        size="sm"
-        type="button"
-        variant="outline"
-      >
-        Done
-      </Button>
-    ) : (
-      <Button
-        aria-label={`Edit ${title}`}
-        id={lifecycleEditButtonId(section)}
-        onClick={() => editing.onEdit(section)}
-        size="sm"
-        type="button"
-        variant="ghost"
-      >
-        Edit
-      </Button>
+    if (isOpen(section)) {
+      return (
+        <Button
+          aria-label={`Done editing ${title}`}
+          onClick={editing.onDone}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Done
+        </Button>
+      );
+    }
+    const onRemove = editing.onRemove;
+    return (
+      <div className="flex items-center gap-1">
+        {onRemove && isRemovableLifecycleSection(section) ? (
+          <Button
+            aria-label={`Remove ${title}`}
+            onClick={() => onRemove(section)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            Remove
+          </Button>
+        ) : null}
+        <Button
+          aria-label={`Edit ${title}`}
+          id={lifecycleEditButtonId(section)}
+          onClick={() => editing.onEdit(section)}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          Edit
+        </Button>
+      </div>
     );
   };
   /** The section's editor while it is open, and otherwise its summary. */
@@ -419,95 +543,107 @@ export function LifecyclePolicySections({
   return (
     <>
       <Section
-        action={editAction("Start Events", "start-events")}
+        action={
+          isOpen("start-events")
+            ? editAction("what starts it", "start-events")
+            : undefined
+        }
         headingId={headingId("start-events")}
-        title="Start Events"
+        title="Starts when"
       >
         {body(
           "start-events",
           <>
-            <p className="text-muted-foreground text-xs">
-              A Start Filter can limit which arrivals start runs.
-            </p>
+            <StartSummary catalog={catalog} nodes={nodes} rules={rules} />
+            {editing ? (
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  id={lifecycleEditButtonId("start-events")}
+                  onClick={() => editing.onEdit("start-events")}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Choose what starts it
+                </Button>
+                <AddRuleMenu onEdit={editing.onEdit} rules={rules} />
+              </div>
+            ) : null}
+          </>
+        )}
+      </Section>
+
+      {shown("overlapping-runs") ? (
+        <Section
+          action={editAction("Overlapping runs", "overlapping-runs")}
+          headingId={headingId("overlapping-runs")}
+          title="Overlapping runs"
+        >
+          {body(
+            "overlapping-runs",
+            <>
+              <p className="text-sm">{concurrency.label}</p>
+              {overlap === null ? null : (
+                <p className="text-muted-foreground text-xs">{overlap}</p>
+              )}
+            </>
+          )}
+        </Section>
+      ) : null}
+
+      {shown("schedule") ? (
+        <Section
+          action={editAction("Schedule", "schedule")}
+          headingId={headingId("schedule")}
+          title="Schedule"
+        >
+          {body("schedule", <ScheduleSummary rules={rules} />)}
+        </Section>
+      ) : null}
+
+      {shown("cancel-events") ? (
+        <Section
+          action={editAction("Cancel Events", "cancel-events")}
+          headingId={headingId("cancel-events")}
+          title="Cancel Events"
+        >
+          {body(
+            "cancel-events",
             <RoleEvents
               catalog={catalog}
               nodes={nodes}
-              role="start"
+              role="cancel"
               rules={rules}
             />
-          </>
-        )}
-      </Section>
+          )}
+        </Section>
+      ) : null}
 
-      <Section
-        action={editAction("Overlapping runs", "overlapping-runs")}
-        headingId={headingId("overlapping-runs")}
-        title="Overlapping runs"
-      >
-        {body(
-          "overlapping-runs",
-          <>
-            <p className="text-sm">{concurrency.label}</p>
-            {concurrency.description ? (
-              <p className="text-muted-foreground text-xs">
-                {concurrency.description}
-              </p>
-            ) : null}
-            {overlap === null ? null : <p className="text-sm">{overlap}</p>}
-            <dl>
-              <Row label="Manual runs">
-                {rules.allowManualStart ? "Allowed" : "Not allowed"}
-              </Row>
-            </dl>
-          </>
-        )}
-      </Section>
+      {shown("entity-eligibility") ? (
+        <Section
+          action={editAction("Entity", "entity-eligibility")}
+          headingId={headingId("entity-eligibility")}
+          title="Entity"
+        >
+          {body(
+            "entity-eligibility",
+            <EntityEligibilitySummary catalog={catalog} rules={rules} />
+          )}
+        </Section>
+      ) : null}
 
-      <Section
-        action={editAction("Schedule", "schedule")}
-        headingId={headingId("schedule")}
-        title="Schedule"
-      >
-        {body("schedule", <ScheduleSummary rules={rules} />)}
-      </Section>
-
-      <Section
-        action={editAction("Cancel Events", "cancel-events")}
-        headingId={headingId("cancel-events")}
-        title="Cancel Events"
-      >
-        {body(
-          "cancel-events",
-          <RoleEvents
-            catalog={catalog}
-            nodes={nodes}
-            role="cancel"
-            rules={rules}
-          />
-        )}
-      </Section>
-
-      <Section
-        action={editAction("Entity", "entity-eligibility")}
-        headingId={headingId("entity-eligibility")}
-        title="Entity"
-      >
-        {body(
-          "entity-eligibility",
-          <EntityEligibilitySummary catalog={catalog} rules={rules} />
-        )}
-      </Section>
-
-      <Section
-        action={editAction("Event Connections", "connections")}
-        headingId={headingId("connections")}
-        title="Event Connections"
-      >
-        {body(
-          "connections",
-          <EventConnectionsSummary catalog={catalog} rules={rules} />
-        )}
-      </Section>
+      {shown("connections") ? (
+        <Section
+          action={editAction("Event Connections", "connections")}
+          headingId={headingId("connections")}
+          title="Event Connections"
+        >
+          {body(
+            "connections",
+            <EventConnectionsSummary catalog={catalog} rules={rules} />
+          )}
+        </Section>
+      ) : null}
     </>
   );
 }
@@ -541,28 +677,46 @@ export function LifecycleLabelSection({ node }: { node: WorkflowNode }) {
  */
 export function LifecycleSummarySheet({ subject }: RevealBodyProps) {
   const nodes = useAtomValue(nodesAtom);
-  const issues = useAtomValue(workflowIssuesAtom);
   const node = nodes.find((item) => item.id === subject.nodeId);
-  const openSection = useOpenLifecycleSection(subject.nodeId ?? "");
-  if (!node) {
-    return null;
-  }
-  const rules = readLifecycleRules(node.data.config) ?? initialLifecycleRules;
+  return node ? <LifecycleSummarySheetBody key={node.id} node={node} /> : null;
+}
+
+function LifecycleSummarySheetBody({ node }: { node: WorkflowNode }) {
+  const issues = useAtomValue(workflowIssuesAtom);
+  const openSection = useOpenLifecycleSection(node.id);
+  const { updateConfig } = useNodeConfigWriter(node.id);
+  const editor = useLifecycleRulesEditor({
+    config: node.data.config ?? EMPTY_CONFIG,
+    onUpdateConfig: updateConfig,
+  });
+  const nodeIssues = issues.filter((issue) => issue.nodeId === node.id);
+  const canUpdate = can(WfGraphOperations.workflowUpdate.id);
   return (
     <div className="pb-4">
       <LifecycleLabelSection node={node} />
       <LifecyclePolicySections
-        editing={{ onEdit: openSection }}
-        rules={rules}
+        editing={{
+          onEdit: openSection,
+          onRemove: canUpdate
+            ? (section) =>
+                editor.setRules(withoutLifecycleRule(editor.rules, section))
+            : undefined,
+        }}
+        issueCount={nodeIssues.length}
+        rules={editor.rules}
       />
-      <Section title="Validation">
-        <NodeIssueList
-          issues={issues.filter((issue) => issue.nodeId === node.id)}
-          onSelect={(_fieldKey, issue) =>
-            openSection(lifecycleIssueSection(issue))
-          }
-        />
-      </Section>
+      {nodeIssues.length > 0 ? (
+        <Section title="Validation">
+          <NodeIssueList
+            issues={nodeIssues}
+            onSelect={(_fieldKey, issue) =>
+              openSection(lifecycleIssueSection(issue))
+            }
+          />
+        </Section>
+      ) : null}
     </div>
   );
 }
+
+const EMPTY_CONFIG: Record<string, unknown> = {};
