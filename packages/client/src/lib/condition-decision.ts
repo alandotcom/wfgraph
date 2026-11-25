@@ -3,16 +3,31 @@
  * reads it in: the branch its answer took, the steps that branch connects to
  * in the graph the run pinned, and for each rule whether it matched and the
  * value it compared, where the run's evidence holds them. Pure.
+ *
+ * A Condition's log row records only its answer, so each rule's value is read
+ * from the records the engine read it from. A rule naming the Lifecycle Node
+ * reads the payload of the branch's Arriving Event, as the engine does: the
+ * Event that woke the nearest event-mode Wait above, else the Start Event. A
+ * rule's verdict comes from the answer where the logic decides it, and else
+ * from comparing its value, kept only where the verdicts agree with the answer.
  */
 
 import { normalizeConditionBranch } from "@wfgraph/shared/conditions/condition-branch";
 import {
   type ConditionModel,
+  type ConditionRule,
   conditionRuleReadPath,
+  isNullCheckConditionRule,
+  isStringSetConditionRule,
   parseNodeOutputConditionPath,
 } from "@wfgraph/shared/conditions/condition-model";
 import { parseConditionModel } from "@wfgraph/shared/conditions/condition-schema";
-import { readConfigString } from "@wfgraph/shared/graph/node-config";
+import {
+  isLifecycleNode,
+  isWaitNode,
+  readConfigString,
+} from "@wfgraph/shared/graph/node-config";
+import { LIFECYCLE_CANCELED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
 import {
   resolveJsonPath,
   unwrapStepOutput,
@@ -25,15 +40,17 @@ import {
 } from "@wfgraph/shared/types/json";
 import { isBlank } from "@wfgraph/shared/types/string";
 import type { ExecutionLog } from "#src/lib/execution-logs";
-import type { WorkflowEdge } from "#src/lib/workflow-graph-types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /**
- * The value a rule read in the run: `value` when the step it names recorded
- * one at its path, and `missing` when that step's output lacks the path.
+ * The value a rule read in the run: `value` when the record it reads holds one
+ * at its path, `missing` when that record lacks the path, and `unrecorded`
+ * when the run keeps no record of what the rule read, such as Entity State.
  */
 export type ComparedValue =
   | { kind: "value"; value: JsonValue }
-  | { kind: "missing" };
+  | { kind: "missing" }
+  | { kind: "unrecorded" };
 
 export type ConditionRuleEvidence = {
   /**
@@ -42,12 +59,14 @@ export type ConditionRuleEvidence = {
    * all-rules group that answered False.
    */
   matched: boolean | null;
+  /** The value the rule compared, or `unrecorded` where no record holds it. */
+  compared: ComparedValue;
   /**
-   * The value the rule compared, or null where the run's evidence holds no
-   * record of it: a rule on Entity State, or on a step with no recorded output
-   * before this execution.
+   * Whether this rule alone settled the answer: a rule that did not match in
+   * an all-rules Condition that answered False, or one that matched in an
+   * any-rule Condition that answered True. Read for a single group of rules.
    */
-  compared: ComparedValue | null;
+  decisive: boolean;
 };
 
 export type ConditionDecision = {
@@ -101,34 +120,192 @@ function ruleMatched(
   return group.logic === "or" && !matched ? false : null;
 }
 
+/** The latest successful execution of `nodeId` that started by `before`. */
+function latestSuccess(
+  logs: readonly ExecutionLog[],
+  nodeId: string,
+  before: Date
+): ExecutionLog | undefined {
+  return logs.findLast(
+    (log) =>
+      log.nodeId === nodeId &&
+      log.status === "success" &&
+      log.startedAt.getTime() <= before.getTime()
+  );
+}
+
 /**
- * The value the rule reading `path` compared, from the latest output the step
- * it names recorded before `before`. A rule naming no step reads Entity State
- * or the run's merged payload, which the evidence does not hold.
+ * The payload of the Arriving Event on the Condition's branch, or null where
+ * the records cannot say. The walk goes up the first incoming connection the
+ * run took, as the engine hands an arrival down the first incoming edge. An
+ * event-mode Wait hands on the Event that woke it, or none after a timeout;
+ * the Started outlet hands on the Start Event's payload, which the Lifecycle
+ * Node's own record holds. The Canceled outlet's payload is not recorded.
+ */
+function arrivingPayload(input: {
+  nodeId: string;
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  logs: readonly ExecutionLog[];
+  before: Date;
+}): JsonValue | null {
+  const byId = new Map(input.nodes.map((node) => [node.id, node]));
+  const seen = new Set<string>();
+  let current = input.nodeId;
+  while (!seen.has(current)) {
+    seen.add(current);
+    const edge = input.edges.find(
+      (candidate) =>
+        candidate.target === current &&
+        (isLifecycleNode(byId.get(candidate.source)) ||
+          latestSuccess(input.logs, candidate.source, input.before) !==
+            undefined)
+    );
+    if (edge === undefined) return null;
+    const source = byId.get(edge.source);
+    if (isLifecycleNode(source)) {
+      if (edge.sourceHandle === LIFECYCLE_CANCELED_HANDLE) return null;
+      const start = latestSuccess(input.logs, edge.source, input.before);
+      return start === undefined
+        ? null
+        : unwrapStepOutput(readJsonValue(start.output));
+    }
+    const record = latestSuccess(input.logs, edge.source, input.before);
+    const output = unwrapStepOutput(readJsonValue(record?.output));
+    if (
+      isWaitNode(source) &&
+      isJsonObject(output) &&
+      output.waitType === "event"
+    ) {
+      // A Wait that timed out hands on no Event, so nothing is set.
+      return output.payload ?? {};
+    }
+    current = edge.source;
+  }
+  return null;
+}
+
+/**
+ * The value the rule reading `path` compared. A rule naming a step reads that
+ * step's latest output recorded before `before`; one naming the Lifecycle Node
+ * reads the branch's Arriving Event. A rule on Entity State or on the Event's
+ * name reads what the records do not hold.
  */
 function comparedValue(input: {
   path: string;
+  conditionId: string;
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
   logs: readonly ExecutionLog[];
   before: Date;
-}): ComparedValue | null {
+}): ComparedValue {
   const reference = parseNodeOutputConditionPath(input.path);
   if (reference === null) {
-    return null;
+    return { kind: "unrecorded" };
   }
-  const source = input.logs.findLast(
-    (log) =>
-      log.nodeId === reference.nodeId &&
-      log.status === "success" &&
-      log.startedAt.getTime() <= input.before.getTime()
-  );
-  if (source === undefined) {
-    return null;
+  const referenced = input.nodes.find((node) => node.id === reference.nodeId);
+  const record = isLifecycleNode(referenced)
+    ? arrivingPayload({ ...input, nodeId: input.conditionId })
+    : (() => {
+        const source = latestSuccess(
+          input.logs,
+          reference.nodeId,
+          input.before
+        );
+        return source === undefined
+          ? null
+          : unwrapStepOutput(readJsonValue(source.output));
+      })();
+  if (record === null) {
+    return { kind: "unrecorded" };
   }
-  const value = resolveJsonPath(
-    unwrapStepOutput(readJsonValue(source.output)),
-    reference.fieldPath
-  );
+  const value = resolveJsonPath(record, reference.fieldPath);
   return value === undefined ? { kind: "missing" } : { kind: "value", value };
+}
+
+/**
+ * Whether `rule` matched the value it compared, as the compiled expression
+ * would answer, or null where that cannot be told from the value: a moment
+ * relative to when the Condition ran, or a value of a type the rule does not
+ * compare. An absent value fails every rule but "is not set".
+ */
+function ruleVerdict(
+  rule: ConditionRule,
+  compared: ComparedValue
+): boolean | null {
+  if (compared.kind === "unrecorded") return null;
+  if (isNullCheckConditionRule(rule)) {
+    return (compared.kind === "value") === (rule.operator === "is_set");
+  }
+  if (compared.kind === "missing") return false;
+  const { value } = compared;
+  switch (rule.fieldType) {
+    case "number": {
+      if (typeof value !== "number") return null;
+      switch (rule.operator) {
+        case "equals":
+          return value === rule.value;
+        case "not_equals":
+          return value !== rule.value;
+        case "greater_than":
+          return value > rule.value;
+        case "greater_or_equal":
+          return value >= rule.value;
+        case "less_than":
+          return value < rule.value;
+        default:
+          return value <= rule.value;
+      }
+    }
+    case "string": {
+      if (typeof value !== "string") return null;
+      if (isStringSetConditionRule(rule)) {
+        const member = rule.values.includes(value);
+        return rule.operator === "is_one_of" ? member : !member;
+      }
+      switch (rule.operator) {
+        case "equals":
+          return value === rule.value;
+        case "not_equals":
+          return value !== rule.value;
+        default:
+          return value.includes(rule.value);
+      }
+    }
+    case "boolean":
+      return typeof value === "boolean"
+        ? value === (rule.operator === "is_true")
+        : null;
+    default:
+      return null;
+  }
+}
+
+/** Verdicts joined by `logic`, or null when one of them is unknown. */
+function combine(
+  logic: "and" | "or",
+  values: readonly (boolean | null)[]
+): boolean | null {
+  if (values.includes(null)) return null;
+  return logic === "and"
+    ? values.every((value) => value === true)
+    : values.some((value) => value === true);
+}
+
+/** The answer `model` gives for these rule verdicts, or null if one is unknown. */
+function modelAnswer(
+  model: ConditionModel,
+  verdicts: ReadonlyMap<string, boolean | null>
+): boolean | null {
+  return combine(
+    model.groupLogic,
+    model.groups.map((group) =>
+      combine(
+        group.logic,
+        group.conditions.map((rule) => verdicts.get(rule.id) ?? null)
+      )
+    )
+  );
 }
 
 /**
@@ -141,6 +318,7 @@ export function conditionDecision(input: {
   nodeId: string;
   execution: ExecutionLog;
   config: Readonly<Record<string, unknown>> | null;
+  nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
   logs: readonly ExecutionLog[];
 }): ConditionDecision | null {
@@ -156,23 +334,63 @@ export function conditionDecision(input: {
       : parseConditionModel(stored);
   const model = parsed?.valid ? parsed.model : null;
   const groupOutcome = model === null ? null : groupMatched(model, answer);
-  const rules = new Map(
-    (model?.groups ?? []).flatMap((group) => {
-      const matched = ruleMatched(group, groupOutcome);
-      return group.conditions.map(
-        (rule) =>
-          [
-            rule.id,
-            {
-              matched,
-              compared: comparedValue({
-                path: conditionRuleReadPath(rule),
-                logs: input.logs,
-                before: input.execution.startedAt,
-              }),
-            },
-          ] as const
-      );
+  const rules = (model?.groups ?? []).flatMap((group) => {
+    const decided = ruleMatched(group, groupOutcome);
+    return group.conditions.map((rule) => {
+      const compared = comparedValue({
+        path: conditionRuleReadPath(rule),
+        conditionId: input.nodeId,
+        nodes: input.nodes,
+        edges: input.edges,
+        logs: input.logs,
+        before: input.execution.startedAt,
+      });
+      return {
+        rule,
+        decided,
+        compared,
+        evaluated: ruleVerdict(rule, compared),
+      };
+    });
+  });
+  // A verdict read from a value stands only while every one of them agrees
+  // with what the answer decides and, where all are known, gives the answer
+  // the Condition recorded. Otherwise the panel claims no verdict it cannot
+  // stand behind.
+  const evaluatedAgree =
+    model !== null &&
+    rules.every(
+      (entry) =>
+        entry.decided === null ||
+        entry.evaluated === null ||
+        entry.decided === entry.evaluated
+    ) &&
+    [
+      modelAnswer(
+        model,
+        new Map(
+          rules.map((entry) => [
+            entry.rule.id,
+            entry.decided ?? entry.evaluated,
+          ])
+        )
+      ),
+    ].every((derived) => derived === null || derived === answer);
+  const onlyGroup = model?.groups.length === 1 ? model.groups[0] : undefined;
+  const ruleEvidence = new Map(
+    rules.map((entry) => {
+      const matched =
+        entry.decided ?? (evaluatedAgree ? entry.evaluated : null);
+      const decisive =
+        onlyGroup !== undefined &&
+        onlyGroup.conditions.length > 1 &&
+        matched !== null &&
+        ((onlyGroup.logic === "and" && !answer && !matched) ||
+          (onlyGroup.logic === "or" && answer && matched));
+      return [
+        entry.rule.id,
+        { matched, compared: entry.compared, decisive },
+      ] as const;
     })
   );
   return {
@@ -185,6 +403,6 @@ export function conditionDecision(input: {
       )
       .map((edge) => edge.target),
     model,
-    rules,
+    rules: ruleEvidence,
   };
 }

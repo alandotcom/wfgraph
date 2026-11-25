@@ -219,10 +219,7 @@ function RuleEvidenceLine({
 }: {
   evidence: ConditionRuleEvidence | undefined;
 }) {
-  if (
-    evidence === undefined ||
-    (evidence.matched === null && evidence.compared === null)
-  ) {
+  if (evidence === undefined) {
     return null;
   }
   return (
@@ -237,9 +234,10 @@ function RuleEvidenceLine({
           {evidence.matched ? "Matched" : "Did not match"}
         </span>
       )}
-      {evidence.compared === null ? null : (
-        <ComparedValueText compared={evidence.compared} />
-      )}
+      <ComparedValueText compared={evidence.compared} />
+      {evidence.decisive ? (
+        <span className="font-medium text-foreground">Decided the branch</span>
+      ) : null}
     </p>
   );
 }
@@ -247,6 +245,11 @@ function RuleEvidenceLine({
 function ComparedValueText({ compared }: { compared: ComparedValue }) {
   if (compared.kind === "missing") {
     return <span>Not set in this run</span>;
+  }
+  if (compared.kind === "unrecorded") {
+    // The run keeps no record of this value, which is not the same as the
+    // value being absent when the rule was tested.
+    return <span>Value not recorded</span>;
   }
   return (
     <span className="inline-flex min-w-0 items-baseline gap-1">

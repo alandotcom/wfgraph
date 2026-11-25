@@ -718,6 +718,135 @@ describe("Runs Focus node evidence", () => {
     expect(shown.getByRole("button", { name: "Hide raw data" })).toBeTruthy();
   });
 
+  it("reads a Condition's rule from the Event that woke the Wait above it, and marks the rule that decided", async () => {
+    const amount = nodeOutputConditionPath("booked", "amountCents") ?? "";
+    const status = nodeOutputConditionPath("confirm", "status") ?? "";
+    const action = (id: string, label: string, y: number, config: object) => ({
+      id,
+      type: "action",
+      position: { x: 0, y },
+      data: { label, type: "action" as const, config },
+    });
+    served.items = [execution("exec_d", "failed")];
+    served.graphs = {
+      ver_exec_d: createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "booked",
+            type: "lifecycle",
+            position: { x: 0, y: -200 },
+            data: { label: "Appointment booked", type: "lifecycle" },
+          },
+          action("confirm", "Send confirmation", 0, {
+            actionType: "host/send",
+          }),
+          action("deposit", "Wait for deposit", 200, {
+            actionType: "Wait",
+            waitMode: "event",
+            waitFor: [{ event: "billing/payment.settled" }],
+          }),
+          action("check", "Deposit covers the visit?", 400, {
+            actionType: "Condition",
+            condition: "true",
+            conditionModel: JSON.stringify({
+              version: 2,
+              groupLogic: "and",
+              groups: [
+                {
+                  id: "group_1",
+                  logic: "and",
+                  conditions: [
+                    {
+                      id: "rule_amount",
+                      field: amount,
+                      fieldType: "number",
+                      operator: "greater_or_equal",
+                      value: 7500,
+                    },
+                    {
+                      id: "rule_status",
+                      field: status,
+                      fieldType: "string",
+                      operator: "not_equals",
+                      value: "failed",
+                    },
+                  ],
+                },
+              ],
+            }),
+          }),
+        ],
+        edges: [
+          {
+            id: "e_start",
+            source: "booked",
+            target: "confirm",
+            sourceHandle: "started",
+          },
+          { id: "e_confirm", source: "confirm", target: "deposit" },
+          { id: "e_deposit", source: "deposit", target: "check" },
+        ],
+      }),
+    };
+    served.logsByExecutionId = {
+      exec_d: [
+        log({
+          id: "log_booked",
+          nodeId: "booked",
+          nodeName: "Appointment booked",
+          status: "success",
+          output: { patientId: "pat_1008" },
+        }),
+        log({
+          id: "log_confirm",
+          nodeId: "confirm",
+          nodeName: "Send confirmation",
+          status: "success",
+          startedAt: "2026-03-01T10:00:01.000Z",
+          output: { status: "sent" },
+        }),
+        log({
+          id: "log_deposit",
+          nodeId: "deposit",
+          nodeName: "Wait for deposit",
+          status: "success",
+          startedAt: "2026-03-01T10:00:02.000Z",
+          output: {
+            waitType: "event",
+            timedOut: false,
+            hops: 0,
+            event: "billing/payment.settled",
+            payload: { amountCents: 2500 },
+          },
+        }),
+        log({
+          id: "log_check",
+          nodeId: "check",
+          nodeName: "Deposit covers the visit?",
+          status: "success",
+          startedAt: "2026-03-01T10:00:03.000Z",
+          input: { condition: false, expression: "true" },
+          output: { condition: false },
+        }),
+      ],
+    };
+    const { aside, title, evidence, canvasNode } = await renderRunsReveal({
+      view: "runs",
+      executionId: "exec_d",
+    });
+    await waitFor(() => expect(title()).toBe(runHeading("exec_d")));
+
+    fireEvent.click(await canvasNode("Deposit covers the visit?"));
+    await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
+    const shown = within(evidence());
+    expect(shown.getByText("Took False")).toBeTruthy();
+    expect(shown.queryByText("Not set in this run")).toBeNull();
+    expect(shown.getByText("2500")).toBeTruthy();
+    expect(shown.getByText("Did not match")).toBeTruthy();
+    expect(shown.getByText("Matched")).toBeTruthy();
+    expect(shown.getAllByText("Decided the branch")).toHaveLength(1);
+  });
+
   it("shows a step's input and output as labeled values before its raw data", async () => {
     served.items = [execution("exec_s", "completed")];
     served.graphs = {

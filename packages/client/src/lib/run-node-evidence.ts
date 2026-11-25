@@ -279,6 +279,7 @@ export function buildRunNodeEvidence(input: {
             nodeId,
             execution: shown,
             config: node?.data.config ?? null,
+            nodes,
             edges: input.edges,
             logs,
           })
