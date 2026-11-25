@@ -1,0 +1,12 @@
+// The tsconfig `pnpm run start` hands to tsx. The root tsconfig maps every
+// `@wfgraph/*` specifier to its package's `src`, which type-checking and
+// `pnpm run dev` rely on. Clearing `paths` makes each `@wfgraph/*` import resolve
+// through the package's `exports` to its built `dist`, the way an adopter's install
+// does, so the server and the editor bundle `clientBundle` points at come from
+// the same `pnpm run build`.
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {}
+  }
+}

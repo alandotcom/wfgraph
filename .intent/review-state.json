@@ -3,9 +3,9 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "60292a480fae185d5c05966bbdc846961bb882dd71013fde5d6404dc3356005c",
+      "fingerprint": "ba336e36f0772f5dc0abdfe73764f9b6eb53e16f48820309dca53f1c32a19dd3",
       "snapshot": {
-        "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
+        "README.md": "fbf73ed7f222ce2e2b542ccd9aedbda685e03219be780d6f5d8a28656b4b99c4",
         "docs/embedding.md": "96a71d70acd9cd9af4f2f6edb6fc76a910286d8d0540201c0a8335124231fe7d",
         "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
@@ -17,10 +17,12 @@
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "b87f623f6e4a4a26230c820dced48d03c9724aa8",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. wfgraph-core/SKILL.md says only that workflows.readDraftNode applies no auth and routes to host-actions, which still holds; host-actions/SKILL.md changed as recorded on its own item.",
-      "evidence": ["git diff f4fba82f..9babc305 -- docs/embedding.md"]
+      "reason": "README.md changed one sentence: the production-style start now says it runs every @wfgraph/* package from its build output. The skill teaches an adopter to pass clientBundle from @wfgraph/client to createWfGraphApp as client, and that contract is unchanged. The defect was inside this repository: tsx applied the root tsconfig paths and loaded @wfgraph/client from src, where no built editor exists. An adopter's install has no such mapping.",
+      "evidence": [
+        "git diff 9c446a76..b87f623f -- README.md (one sentence); packages/core/skills/wfgraph-core/SKILL.md lines 6, 22 and 51 name clientBundle and stay accurate; packages/client/src/index.ts and examples/app.ts are unchanged. pnpm run build, start:smoke, type-check, lint, knip, skills:validate, test (6755 passed) and fix all passed at b87f623f."
+      ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
       "fingerprint": "13c32b7096ee573305bfcb31e99446c9bf1ea13f64f5c3ec9eed98c797b0c903",
@@ -81,9 +83,9 @@
       "evidence": ["git diff f4fba82f..9babc305 -- docs/embedding.md"]
     },
     "planning:_artifacts": {
-      "fingerprint": "a694e5b58331c92d56ce428cf297e39691b4abfa5d31bab0b755788be42b80ea",
+      "fingerprint": "de5934095b2a7cc03c0a599d1bd10b3e837614e298d7fafb86ec16664ffa0585",
       "snapshot": {
-        "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
+        "README.md": "fbf73ed7f222ce2e2b542ccd9aedbda685e03219be780d6f5d8a28656b4b99c4",
         "_artifacts/domain_map.yaml": "37ef738271d10b949f08193d0d01be93b44e9936e557412d90c3c24845b22306",
         "_artifacts/skill_spec.md": "dc4aad758112644e8a57887d13f5a2f35fe49f6ea7279b3ddd979555968f55d6",
         "_artifacts/skill_tree.yaml": "cdd9970c82abb906e5fbf7e3374e0edf936f9270af64f8735edec9d9339e4d8e",
@@ -112,11 +114,11 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
-      "outcome": "updated",
-      "reason": "domain_map.yaml's host-actions task and skill_spec.md's batch 6 source now say the links show in Canvas Reveal, and skill_tree.yaml carries the host-actions description intent maintainer sync copied. No domain, task boundary or decision changed.",
+      "head": "b87f623f6e4a4a26230c820dced48d03c9724aa8",
+      "outcome": "no-change",
+      "reason": "domain_map.yaml, skill_spec.md and skill_tree.yaml describe adopter tasks and skill sources. The change repairs how this repository's example starts in production mode and adds a CI smoke test. It adds no developer task, changes no recommended pattern, and moves no skill source, so all three documents stay accurate.",
       "evidence": [
-        "intent maintainer sync reported 0 files to sync after pnpm run fix"
+        "grep for 'pnpm run start', 'tsconfig.start' and 'Production-style' in _artifacts returns nothing; _artifacts/skill_tree.yaml lines 20 and 34 and _artifacts/skill_spec.md line 17 name clientBundle as an adopter passes it, which the change leaves as it was. pnpm run build, start:smoke, type-check, lint, knip, skills:validate, test (6755 passed) and fix all passed at b87f623f."
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -8214,6 +8216,42 @@
       "evidence": [
         "fix(client): name references by the source step's current name in summaries",
         "pnpm run skills:validate passed"
+      ]
+    },
+    "source:.github/workflows/pr-checks.yml": {
+      "fingerprint": "7ed5a1e5818f8da525f7d015b658984de80b395ca997f16d74d670b451800d5e",
+      "snapshot": {
+        ".github/workflows/pr-checks.yml": "3f80dd2f334c04fa844c3670b640b8d5e4332fab07e035b8e48709eb11b642c5"
+      },
+      "head": "b87f623f6e4a4a26230c820dced48d03c9724aa8",
+      "outcome": "out-of-scope",
+      "reason": "The workflow gains one step that runs pnpm run start:smoke after the build. It is this repository's CI and reaches no adopter.",
+      "evidence": [
+        "git diff 9c446a76..b87f623f -- .github/workflows/pr-checks.yml adds the step 'Smoke test pnpm run start'."
+      ]
+    },
+    "source:examples/tsconfig.start.json": {
+      "fingerprint": "e2a25c9319d097d2457a65411cfb7237cdcfece6356e5f68491bc86640f4e89d",
+      "snapshot": {
+        "examples/tsconfig.start.json": "0bdc221841c3974c9963f97f7a76091f629fa75e6813e9e0339c61290de635d3"
+      },
+      "head": "b87f623f6e4a4a26230c820dced48d03c9724aa8",
+      "outcome": "out-of-scope",
+      "reason": "The file is the tsconfig the example's start script hands to tsx so that @wfgraph/* imports resolve to built dist output inside this monorepo. An adopter installs the published packages, has no root paths mapping, and needs no such file, so no skill should teach it.",
+      "evidence": [
+        "examples/tsconfig.start.json extends ../tsconfig.json and clears compilerOptions.paths; examples/package.json start script passes it with --tsconfig. @wfgraph/example-app is private and in the changeset ignore list."
+      ]
+    },
+    "source:scripts/smoke-example-start.ts": {
+      "fingerprint": "94b94a6af85f56cd7b39b9703c056f8e195e1d244daa16ab558a93007f0dbe08",
+      "snapshot": {
+        "scripts/smoke-example-start.ts": "f8b7625dbff037b19e9295d23cadf652c505d88e813129ef30689f1ea242189b"
+      },
+      "head": "b87f623f6e4a4a26230c820dced48d03c9724aa8",
+      "outcome": "out-of-scope",
+      "reason": "The script is a repository smoke test that starts the example in production mode and checks that the built editor is served. It is not published and describes no adopter task.",
+      "evidence": [
+        "scripts/smoke-example-start.ts is run by the root start:smoke script and by pr-checks.yml; pnpm run start:smoke exited 0 at b87f623f."
       ]
     }
   }
