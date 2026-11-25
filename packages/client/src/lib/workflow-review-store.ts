@@ -187,8 +187,9 @@ export const settleVersionReviewAtom = atom(
 );
 
 /**
- * The step whose card the sheet points at, which the canvas draws with the
- * selection halo while the sheet is open. Pointing never moves the camera.
+ * The step whose card a list points at: an edit in the review sheet, or a row
+ * of the outline under the pointer or keyboard focus. The canvas draws that
+ * card with the selection halo. Pointing never moves the camera.
  */
 export const reviewHighlightAtom = atom<string | null>(null);
 

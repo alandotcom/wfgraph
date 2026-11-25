@@ -1433,6 +1433,27 @@ describe("displayNodesAtom memoization", () => {
     store.set(reviewHighlightAtom, null);
     expect(haloed()).toEqual([]);
   });
+
+  it("adds the step an outline row points at to the Draft's own selection halo", () => {
+    const store = createGraphStore([
+      groupNode("group"),
+      groupedChild("member", "group"),
+      groupedChild("other", "group"),
+      actionNode("selected"),
+    ]);
+    showWorkspaceRoute(store, {});
+    store.set(selectOnlyNodeAtom, "selected");
+    const haloed = () =>
+      store
+        .get(displayNodesAtom)
+        .filter((node) => node.selected)
+        .map((node) => node.id);
+
+    store.set(reviewHighlightAtom, "member");
+    expect(haloed().toSorted()).toEqual(["group", "member", "selected"]);
+    store.set(reviewHighlightAtom, null);
+    expect(haloed()).toEqual(["selected"]);
+  });
 });
 
 /**

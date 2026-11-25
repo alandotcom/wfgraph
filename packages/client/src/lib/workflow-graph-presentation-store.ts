@@ -315,19 +315,19 @@ export const displayNodesAtom = atom((get) => {
   const issuesByNodeId = displayGraph
     ? EMPTY_ISSUES
     : get(canvasIssuesByNodeIdAtom);
-  // While the review sheet is open the canvas holds no selection, and the
-  // halo marks the step whose edit the sheet points at. A step inside a Group
-  // also marks the Group's card, which stands for it on the overview; the
-  // focused Group canvas draws no card for the Group itself.
-  const highlighted = comparison ? get(reviewHighlightAtom) : null;
+  // The halo marks the selection and the step a list points at: an edit in
+  // the review sheet, or a row of the outline. While the sheet is open the
+  // canvas holds no selection, so only the pointed step wears it. A step
+  // inside a Group also marks the Group's card, which stands for it on the
+  // overview; the focused Group canvas draws no card for the Group itself.
+  const highlighted = get(reviewHighlightAtom);
   const highlightedParent =
     highlighted === null
       ? undefined
       : nodes.find((node) => node.id === highlighted)?.parentId;
+  const pointed = compact([highlighted, highlightedParent]);
   const selectedIds = new Set(
-    comparison
-      ? compact([highlighted, highlightedParent])
-      : get(activeSelectionAtom).nodeIds
+    comparison ? pointed : [...get(activeSelectionAtom).nodeIds, ...pointed]
   );
   const paintSelection = (items: WorkflowNode[]) =>
     mapOrSame(items, (node) =>
