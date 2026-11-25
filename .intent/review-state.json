@@ -3,24 +3,27 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "60292a480fae185d5c05966bbdc846961bb882dd71013fde5d6404dc3356005c",
+      "fingerprint": "d4f282c46c53456fe41f97445f77027b506e4c54c812339d39856988b044f47b",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
-        "docs/embedding.md": "96a71d70acd9cd9af4f2f6edb6fc76a910286d8d0540201c0a8335124231fe7d",
+        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
         "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "827928bb0a6d99ea1234d03c45f1921437430d00d4a2d4c40b309b19d690dd4d",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "3f10ace37eabf896a18eb9870bb2a7fb48f540d9d093aa3f1184e8a79c0e2547",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. wfgraph-core/SKILL.md says only that workflows.readDraftNode applies no auth and routes to host-actions, which still holds; host-actions/SKILL.md changed as recorded on its own item.",
-      "evidence": ["git diff f4fba82f..9babc305 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. wfgraph-core/SKILL.md says only that workflows.readDraftNode applies no auth and routes to host-actions, which still holds; host-actions/SKILL.md changed as recorded on its own item.",
+      "evidence": [
+        "git diff main...f8a23675 -- docs/embedding.md",
+        "grep finds fields of readDraftNode named only in host-actions/SKILL.md"
+      ]
     },
     "skill:packages/core/skills/wfgraph-core/events/SKILL.md": {
       "fingerprint": "13c32b7096ee573305bfcb31e99446c9bf1ea13f64f5c3ec9eed98c797b0c903",
@@ -38,19 +41,20 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/host-actions/SKILL.md": {
-      "fingerprint": "eda67c4744e93258cf8cfda94c748a9c65037d8589a98c2ea6e5bc5b0246140b",
+      "fingerprint": "04fd09dfd170f676f895ed56e58ec91848025b8c753384e78407d921ee978b2c",
       "snapshot": {
-        "docs/embedding.md": "96a71d70acd9cd9af4f2f6edb6fc76a910286d8d0540201c0a8335124231fe7d",
+        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "827928bb0a6d99ea1234d03c45f1921437430d00d4a2d4c40b309b19d690dd4d"
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "3f10ace37eabf896a18eb9870bb2a7fb48f540d9d093aa3f1184e8a79c0e2547"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "updated",
-      "reason": "The Action links section now says links show in Canvas Reveal at Browse and at Focus, that a placeholder never stands in the host or the port, and that defineAction throws for two links with one label; the description says 'links from the editor'. Each matches normalizeActionLinks in define-action.ts and actionLinkUrlProblem in action-links.ts at this revision.",
+      "reason": "The readDraftNode paragraph now says fields holds, for a host action node, each declared input the node stores, read as a template of text and reference segments, rows for a key-value field, or a stored value, that an input named actionType or integrationId has no entry, and that every other node answers no fields. Each matches draftFields in draft-node.ts and readConfigValue in template-config.ts at this revision. The Action links paragraph still matches checkActionLinks in action-links.ts, whose messages defineAction throws unchanged.",
       "evidence": [
         "pnpm run skills:validate: 10 skill files passed",
-        "define-action.test.ts refuses a second link labelled ' Fine ' with 'link 2: the label is the same as link 1's'",
-        "action-links.test.ts names a placeholder in the port as one before the path"
+        "draft-node.test.ts passed, including 'answers the declared fields in the declared order, leaving out a stored key the action does not declare', 'answers no field for an input named actionType or integrationId', 'reads a key-value field as rows, each value split and each name as written' and 'answers a literal field and a condition input as stored values'",
+        "pnpm exec vitest run --project node over draft-node, app.workflows, action-links, define-action, template-config, node-display, workflow-issues, workflow-template-validation and host-actions/refund-action.test.ts: 9 files, 259 tests passed",
+        "Discovery and a fresh consumer session are unverified; no isolated agent session was available"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/integrations/SKILL.md": {
@@ -69,25 +73,25 @@
       ]
     },
     "skill:packages/plugins/skills/wfgraph-plugins/SKILL.md": {
-      "fingerprint": "b4bc8381839fe298114cdbde5350decab501de6f0d98d68946054aae9030a23f",
+      "fingerprint": "2e3bdda765c2306eb10a1e8ae721604ed394881f5f29d1e12168d0dfa2f85e59",
       "snapshot": {
-        "docs/embedding.md": "96a71d70acd9cd9af4f2f6edb6fc76a910286d8d0540201c0a8335124231fe7d",
+        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. Integration actions declare no links, and the wfgraph-plugins skill states nothing about the section.",
-      "evidence": ["git diff f4fba82f..9babc305 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. An integration action node answers no fields, and the wfgraph-plugins skill states nothing about the section.",
+      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
     },
     "planning:_artifacts": {
-      "fingerprint": "a694e5b58331c92d56ce428cf297e39691b4abfa5d31bab0b755788be42b80ea",
+      "fingerprint": "7c97589f988004fd62750464124ddc7a608a406a75054e5fbe1ac8659ea5e251",
       "snapshot": {
         "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
         "_artifacts/domain_map.yaml": "37ef738271d10b949f08193d0d01be93b44e9936e557412d90c3c24845b22306",
-        "_artifacts/skill_spec.md": "dc4aad758112644e8a57887d13f5a2f35fe49f6ea7279b3ddd979555968f55d6",
+        "_artifacts/skill_spec.md": "749229a41b29f8a4677d011105089cbf4e2475fe2d1e94c29c076cd0b4fb4e44",
         "_artifacts/skill_tree.yaml": "cdd9970c82abb906e5fbf7e3374e0edf936f9270af64f8735edec9d9339e4d8e",
-        "docs/embedding.md": "96a71d70acd9cd9af4f2f6edb6fc76a910286d8d0540201c0a8335124231fe7d",
+        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
         "docs/events.md": "ec1aba5049e0679f23bc94e4113dca694e322d645e12a57f01ff805c59d4e76c",
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
@@ -95,7 +99,7 @@
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/skills/wfgraph-core/events/SKILL.md": "d1ec732cb258db21685a66fe35e278ddc8b71875d62f7143634fe2bfa8fd6365",
-        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "827928bb0a6d99ea1234d03c45f1921437430d00d4a2d4c40b309b19d690dd4d",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "3f10ace37eabf896a18eb9870bb2a7fb48f540d9d093aa3f1184e8a79c0e2547",
         "packages/core/skills/wfgraph-core/integrations/SKILL.md": "af4e7f913f7083ea8063ee8ed780cf13216188052a0fee5d3c83aab9cf243b53",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
@@ -112,11 +116,12 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "updated",
-      "reason": "domain_map.yaml's host-actions task and skill_spec.md's batch 6 source now say the links show in Canvas Reveal, and skill_tree.yaml carries the host-actions description intent maintainer sync copied. No domain, task boundary or decision changed.",
+      "reason": "skill_spec.md gained a history entry after batch 6 recording that readDraftNode answers a host action's declared inputs as template, rows or value, that defineAction checks links through checkActionLinks with unchanged messages, and the checks that ran. domain_map.yaml and skill_tree.yaml say only that the page reads the node with readDraftNode and that defineAction refuses a relative url, which still holds, so neither changed.",
       "evidence": [
-        "intent maintainer sync reported 0 files to sync after pnpm run fix"
+        "intent maintainer sync: Nothing to synchronize",
+        "grep of _artifacts for readDraftNode, fields, key-value, literal and links found no sentence the branch made false"
       ]
     },
     "source:.changeset/skill-activation-descriptions.md": {
@@ -133,17 +138,17 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/auth/SKILL.md": {
-      "fingerprint": "ab821bd801318af3c05ec3b044a2f61aa062045b56ce4bfe13ba9c8841f762c2",
+      "fingerprint": "d33ebbf451366794cbe27701e76aef40917a1540fd7295e35317157c098ca12f",
       "snapshot": {
-        "docs/embedding.md": "96a71d70acd9cd9af4f2f6edb6fc76a910286d8d0540201c0a8335124231fe7d",
+        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. The auth skill covers the access policy and states nothing about Action Links or readDraftNode.",
-      "evidence": ["git diff f4fba82f..9babc305 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The auth skill covers the access policy and states nothing about Action Links or readDraftNode.",
+      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
     },
     "source:packages/evals/src/skills/auth/access-policy.test.ts": {
       "fingerprint": "3ee0533adfeac10df9fefff86d8615bebf429b7b1a61076fcf0440caab43de0d",
@@ -159,33 +164,30 @@
       ]
     },
     "source:packages/evals/src/skills/host.ts": {
-      "fingerprint": "04716abdc89994ecfeb4e2f09ae5eddc8b2dbbac4dafa7321f77ec933062eab5",
+      "fingerprint": "d860490ed0c61aa45f6e5c36cf8ea3ecf889558bc366ce279a6f2e38008ffad0",
       "snapshot": {
-        "packages/evals/src/skills/host.ts": "b1e0518bcd56ac2e29404d1afb2dfae5eaec8833916806142473f348d5423a75"
+        "packages/evals/src/skills/host.ts": "d24700317bca03743ad89c83241b2b43c63be5d7df44887a3c205c0145205141"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The skill task checks this batch added or extended: the mcp, build-agent and host-actions checks and the host module's mcp and agent passthrough. They are the executable evidence for those skills.",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "out-of-scope",
+      "reason": "The shared fixture of the skill task checks (decision 5) writes the action id's config key through ACTION_TYPE_CONFIG_KEY. It grades the guidance and is no source of it, and the graph it builds is unchanged.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "9bec1944 feat(skills): add a wfgraph-core/build-agent skill",
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "packages/evals/src/skills/host-actions/refund-action.test.ts passed"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/observability/SKILL.md": {
-      "fingerprint": "2d254f4f257f907aef560039a1393fcd813f12ffc9cddff37442ff08a0b39cea",
+      "fingerprint": "aec657a6c4f52091992481f8fb4ab9a9748163d283806a9dc78291fc8d0c9e30",
       "snapshot": {
-        "docs/embedding.md": "96a71d70acd9cd9af4f2f6edb6fc76a910286d8d0540201c0a8335124231fe7d",
+        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b",
         "packages/core/src/backend/lib/log-config.ts": "aeb4f336e561854ea2f0f0f4da0324fd7db8fde0ba260ebd393b0c0eeed20e77",
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. The observability skill states nothing about Action Links or readDraftNode.",
-      "evidence": ["git diff f4fba82f..9babc305 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The observability skill states nothing about Action Links or readDraftNode.",
+      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
     },
     "source:packages/evals/src/skills/observability/logging.test.ts": {
       "fingerprint": "f7b9e4046cfb3c14d3e427344152b7e5c4b475bd530b856e7e1e993bf6476543",
@@ -227,17 +229,17 @@
       ]
     },
     "skill:packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": {
-      "fingerprint": "c65ab6de0bd0b8636508d6c3968ea964440c6750dae459a6c472a6718455d16f",
+      "fingerprint": "76d976fde23707e619bc5c3921574ed7dc37c7a219ef0bf929e2d9e49009dc7d",
       "snapshot": {
-        "docs/embedding.md": "96a71d70acd9cd9af4f2f6edb6fc76a910286d8d0540201c0a8335124231fe7d",
+        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
         "packages/core/skills/wfgraph-core/cloudflare-worker/SKILL.md": "dedb702e22d03e12a3be83cf81686aab19722bd034097ea30d6d672f4f2573a3",
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. The manual's sentence that a Worker deployment has no readDraftNode is unchanged, and the cloudflare-worker skill states nothing else about the section.",
-      "evidence": ["git diff f4fba82f..9babc305 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The manual's sentence that a Worker deployment has no readDraftNode is unchanged, and the cloudflare-worker skill states nothing else about the section.",
+      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
     },
     "source:packages/evals/src/skills/cloudflare-worker/hyperdrive.pg.test.ts": {
       "fingerprint": "cc7599f1637d2993b948d3e4600eaf434e6b2298e4821136ed54c0d1b63ea320",
@@ -3039,79 +3041,81 @@
       ]
     },
     "source:packages/core/src/backend/services/workflows/validation/workflow-template-validation.test.ts": {
-      "fingerprint": "e7b6ecfbee82d27e7016b4da0923becf3b8ed245d45c4624c0aa35f800acaaf5",
+      "fingerprint": "2e5e4238f61e3f79d5d00c32362c54f311d29c8ac2536c6afb8c86c4e7f4e247",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/validation/workflow-template-validation.test.ts": "4b2458c3b84c2548a32d79d952ac175ab4beae0f36c7b499d6a0e217d01619e3"
+        "packages/core/src/backend/services/workflows/validation/workflow-template-validation.test.ts": "97c399b056ad37faf081ab10bb3e47a7cb1f00eeed28a080723eef3b64dbfae0"
       },
-      "head": "a3700181e9fabafc20fe4017c4daf22273591dc7",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "The rule that a template may name only a node upstream of the node holding it (a Canceled-side node may also name a Started-side one): the shared issue collector, the Publish and run preflight checks, the build agent's blockers and system prompt, the editor's change summary, the migration snapshot test case, and the CONTEXT.md term. It governs how a workflow builder writes templates in the editor; nothing a host configures, registers or calls changes.",
+      "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
-        "_artifacts/skill_tree.yaml lists no workflow validation, publish check, preflight, engine, agent or CONTEXT.md sources.",
-        "No file under packages/core/skills or packages/plugins/skills describes template references between nodes or which node a template may name; host-actions/SKILL.md mentions template autocomplete only as what an action's input schema draws, which is unchanged."
+        "grep of packages/core/skills and packages/plugins/skills finds no issue or validation message text",
+        "workflow-issues.test.ts, node-display.test.ts and workflow-template-validation.test.ts passed"
       ]
     },
     "source:packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts": {
-      "fingerprint": "3c6d9a592f5c023f9a106ac563dbe25f8e80fe3b2741295ea8d3dfbe68516051",
+      "fingerprint": "864c168b068294245c5e81bbfbfc04e6ab52ea3a98103691bcfb93d9c75c51aa",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts": "4da9147dc628a22f1f216d881e084642859bc99b6fe724e9445f7abdb7cd84a8"
+        "packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts": "580a5fc63ec7e14f130e2f1f299d3e1cd6cc18e3032e5cd693f55d6664c28519"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "grep of packages/core/skills and packages/plugins/skills finds no issue or validation message text",
+        "workflow-issues.test.ts, node-display.test.ts and workflow-template-validation.test.ts passed"
       ]
     },
     "source:packages/shared/src/graph/workflow-issues.test.ts": {
-      "fingerprint": "b4244ae187667aa505213fc0e3964f6cbc9f45928c10823bc01f67f07d6b46e8",
+      "fingerprint": "653f41c8e3bebe6e0c1c3ee968018c00ba7f24d986b3c9a6473dc7cae48432ea",
       "snapshot": {
-        "packages/shared/src/graph/workflow-issues.test.ts": "69faa3d5d12569fe4edebef2a1691cb997b10f8a09e0eeadcff16c6a74ed8a6a"
+        "packages/shared/src/graph/workflow-issues.test.ts": "cacedf279ebdea9666e1ff1d5b1cdb21e5ff34290e8d0584794726fcf7d7b1c0"
       },
-      "head": "3eaa5c66043de2995c8ffa21a3a4bfeb952d5b96",
-      "outcome": "no-change",
-      "reason": "workflow-issues.ts now takes a not-upstream issue's displayText from the referenced step's current name; no published skill describes issue display text",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "out-of-scope",
+      "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
-        "Changed: packages/shared/src/graph/workflow-issues.test.ts at 3eaa5c66043de2995c8ffa21a3a4bfeb952d5b96"
+        "grep of packages/core/skills and packages/plugins/skills finds no issue or validation message text",
+        "workflow-issues.test.ts, node-display.test.ts and workflow-template-validation.test.ts passed"
       ]
     },
     "source:packages/shared/src/graph/workflow-issues.ts": {
-      "fingerprint": "4e72ad39f5046d2661908fe3af8f4eab2b3dacd47055fb2596665ca8aa365914",
+      "fingerprint": "65e90be5130f456f1a2a53d4f908a8ab905f60848598fd2a611f9b5d667073a3",
       "snapshot": {
-        "packages/shared/src/graph/workflow-issues.ts": "50c7ad94b705c58ab54144a9964c22fab835abfd2e7ae81e1f8ee864b0f56150"
+        "packages/shared/src/graph/workflow-issues.ts": "2a05f863516000db03360d354447d2764de3aaceeeea16caff5ecd41efa10af8"
       },
-      "head": "3eaa5c66043de2995c8ffa21a3a4bfeb952d5b96",
-      "outcome": "no-change",
-      "reason": "workflow-issues.ts now takes a not-upstream issue's displayText from the referenced step's current name; no published skill describes issue display text",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "out-of-scope",
+      "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
-        "Changed: packages/shared/src/graph/workflow-issues.ts at 3eaa5c66043de2995c8ffa21a3a4bfeb952d5b96"
+        "grep of packages/core/skills and packages/plugins/skills finds no issue or validation message text",
+        "workflow-issues.test.ts, node-display.test.ts and workflow-template-validation.test.ts passed"
       ]
     },
     "skill:packages/core/skills/wfgraph-core/build-agent/SKILL.md": {
-      "fingerprint": "2bbd385f10f2cfdb4de4a319baac92db2d0507700300af7bbb379778baf065de",
+      "fingerprint": "10de0a4dede7bfcc37a3b2882b370b22a70bafcce7af3eb740c85a9565f9766d",
       "snapshot": {
-        "docs/embedding.md": "96a71d70acd9cd9af4f2f6edb6fc76a910286d8d0540201c0a8335124231fe7d",
+        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
         "packages/core/skills/wfgraph-core/build-agent/SKILL.md": "38ae85d244ba5327338ea698c602ba21f36cb40c767af1d82b932c19925ff3c0",
         "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. The build-agent skill states nothing about Action Links or readDraftNode.",
-      "evidence": ["git diff f4fba82f..9babc305 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The build-agent skill states nothing about Action Links or readDraftNode.",
+      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
     },
     "skill:packages/core/skills/wfgraph-core/mcp/SKILL.md": {
-      "fingerprint": "2da2e830cd4101ee6f17ff8fd0a18539fad0559b65f0dc0668aa32c989f98ba4",
+      "fingerprint": "34d1063cd9f26e65c9ee0c0ed586e9e0e1ba4e74054f54d0d446b671765692cb",
       "snapshot": {
-        "docs/embedding.md": "96a71d70acd9cd9af4f2f6edb6fc76a910286d8d0540201c0a8335124231fe7d",
+        "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "no-change",
-      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the url rules now name the port and refuse two links with one label, the browser reasoning moved to actionLinkUrlProblem, a reference's source lost its label field, and every reader of the workflow sees a link. The mcp skill states nothing about Action Links or readDraftNode.",
-      "evidence": ["git diff f4fba82f..9babc305 -- docs/embedding.md"]
+      "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The mcp skill states nothing about Action Links or readDraftNode.",
+      "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
     },
     "source:.agents/behaviors/workflow-authoring/BEHAVIOR.md": {
       "fingerprint": "a9593fc154a998f98c5a0ae696eeee810b317bcbe9119d69bf1532fdd447285a",
@@ -3410,17 +3414,15 @@
       ]
     },
     "source:packages/agent/src/tools/graph-write-tools.ts": {
-      "fingerprint": "96a4b9444a95f521a6b1bec8f03e67c399be42a6cf80c60cd0b443b7c736d65c",
+      "fingerprint": "753136afc1f9b3d9c32b1cf2ac9f0b95c13ade4c7d1ada5e64bce5b502556421",
       "snapshot": {
-        "packages/agent/src/tools/graph-write-tools.ts": "35a50669ce24e4385a32ef3d9a5534dd9464cf555939a896619b7b8331f6acbf"
+        "packages/agent/src/tools/graph-write-tools.ts": "82532101b687bbca0bcc7b552f5ee8135f0ecaf9a75d25ceac6f3735c742d30c"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "The build agent's tools, toolkit and system prompt: apply_edits, the run tools, newIssues, validate_workflow's canSave and canPublish, label-and-id names in results, placement that keeps positions, and prompt rules. A host neither calls nor configures these; mcp and build-agent describe the tool contract an MCP client or a host runner sees, and docs/embedding.md (MCP authoring) now names canSave and canPublish.",
+      "reason": "The build agent's tools read and write the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType', and every tool message is unchanged. @wfgraph/agent is private and inlined into core, so no skill describes it.",
       "evidence": [
-        "64b8d45e feat(skills): add a wfgraph-core/mcp skill",
-        "4f1d4fec docs(embedding): document mcp.authorization and validate_workflow's answer",
-        "@wfgraph/agent is private and inlined into core; no published entry exports its modules"
+        "git diff main...f8a23675 shows only the constant replacing the literal"
       ]
     },
     "source:packages/agent/src/tools/lifecycle-tools.test.ts": {
@@ -3478,16 +3480,15 @@
       ]
     },
     "source:packages/agent/src/tools/reference-tools.ts": {
-      "fingerprint": "e30091df43a62431887a4f6744495a0bd53f896200a80e4fd95d8d43bb601479",
+      "fingerprint": "71c8f1cf6163598335cf302af8f6f470e9ec1aa6f9347d6c5d5b8dd7cdd7efcf",
       "snapshot": {
-        "packages/agent/src/tools/reference-tools.ts": "8dae3b2f536cf6bd56b4826b1f1025c4941e98bc8341dd94982b618c8f5d43bb"
+        "packages/agent/src/tools/reference-tools.ts": "22310695323cd5302cb0bdb4aa31cd820f6f593df2c8344fce3464f194b60f8c"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "reason": "The build agent's tools read and write the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType', and every tool message is unchanged. @wfgraph/agent is private and inlined into core, so no skill describes it.",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "git diff main...f8a23675 shows only the constant replacing the literal"
       ]
     },
     "source:packages/agent/src/tools/run-tools.test.ts": {
@@ -4059,16 +4060,16 @@
       ]
     },
     "source:packages/core/src/app.ts": {
-      "fingerprint": "38cdbe4d438cde73e36dfdeb861a29f0f645555aab36f0eb18b9d7e2b393f759",
+      "fingerprint": "65e1893160e23acd90ce6f005ce0d980c3885ff9fabb075385415db9fdf207ec",
       "snapshot": {
-        "packages/core/src/app.ts": "c6d4470dbc5cac42ccb81f95e0527b5514b78674e8c40aaef1334ca664c5c9d5"
+        "packages/core/src/app.ts": "6fa8339be0c423748c066e33bdea781aeb0a20d54276d554a00112c00e198d69"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
-      "outcome": "no-change",
-      "reason": "readDraftNode's reference source no longer carries a label, its display follows the badge's tracked-Entity rule, an id holding a NUL byte answers null, and the module headers shrank. docs/embedding.md describes the new shape; host-actions/SKILL.md names fields as text and reference segments without the source's keys, and its no-auth mistake still holds.",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "updated",
+      "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
         "draft-node.test.ts and app.workflows.test.ts passed",
-        "grep finds no source label in packages/core/skills"
+        "pnpm run skills:validate: 10 skill files passed"
       ]
     },
     "source:packages/core/src/backend/agent/config.test.ts": {
@@ -4439,31 +4440,27 @@
       ]
     },
     "source:packages/core/src/backend/engine/scheduler.ts": {
-      "fingerprint": "a05e359695ba015ec4e590cb8686cf359a36f1476d32ada893e0bdd4bd9b0bdd",
+      "fingerprint": "4379f97f676dff35ae8e3ff1ba4a13288cf8fdba73ffaf1f2330c32e9c25ccb9",
       "snapshot": {
-        "packages/core/src/backend/engine/scheduler.ts": "044b856e6744fafc1eed476777dfc436e3954af0feb866e524af43ccf2af74bb"
+        "packages/core/src/backend/engine/scheduler.ts": "53bd30ebe7b06a0c645958638ded4829511f26c5a81471e4c6de13a7bd5e970b"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Engine, executor, persistence and service internals and their migrations: per-branch Arriving Events, routes decided once, run-log rows without memo steps, lease clocks and expiry charging, fence backoff, run-ending checks, cursor precision, indexes, shared stream pollers, batched history deletes and the conformance and replay suites. Their effects reach adopters only through contracts the skills already state or through `pnpm run db:migrate` and migrateWfGraphDatabase, which the skills already prescribe; none adds a configuration, call or failure a host handles.",
+      "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
       "evidence": [
-        "Source range 270446ee..777cdf25 with its 107 changesets; skills reviewed at 55e6fcd6",
-        "_artifacts/skill_tree.yaml lists no engine, executor, persistence or service source",
-        "The changesets for these files name no new option or export"
+        "git diff main...f8a23675 shows only the constant replacing the literal"
       ]
     },
     "source:packages/core/src/backend/engine/strategies/action.ts": {
-      "fingerprint": "f39ec84cabc7c4bf93e270a61184957cbaebb006a061f582a74a5be4ab77e4b5",
+      "fingerprint": "4478dc63ac1eec6d7664d34b352875d3d920b60116b6835f271d4c8bce5a0d0c",
       "snapshot": {
-        "packages/core/src/backend/engine/strategies/action.ts": "f050d7050470adec9898fc170e18234c294d5927f517506c56d1a42b546efa8c"
+        "packages/core/src/backend/engine/strategies/action.ts": "f431c169f2dbc22e1fefe5be3b6d79d467fc1d4a8d35003b3a30df49c4ce0df9"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The action strategy that runs a host handler once per node and places each step.run under its node's namespace, which host-actions and integrations now describe. The strategy wiring itself has no adopter-facing name.",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "out-of-scope",
+      "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
       "evidence": [
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "de816c1d fix(skills): add step keys, test runs and revoke on delete to integrations",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
+        "git diff main...f8a23675 shows only the constant replacing the literal"
       ]
     },
     "source:packages/core/src/backend/engine/strategies/condition.ts": {
@@ -4712,15 +4709,16 @@
       ]
     },
     "source:packages/core/src/backend/extensions/define-action.ts": {
-      "fingerprint": "313e43a749c5ecd1bc7445247a169cfa8e2877bdb8601aa4d0982c2b12bbc20d",
+      "fingerprint": "a3f16739813205bcd1f5c9d93365960536fc665791ebb1b0fc765de16c70a7e0",
       "snapshot": {
-        "packages/core/src/backend/extensions/define-action.ts": "f066f4095978eacb9b6531a244cc34aab93d449b0359fc195cbb2c75aba962a2"
+        "packages/core/src/backend/extensions/define-action.ts": "db06ee176ccecb8bb4a38e6fbc38fcd35bb993261eae5ad7671f57865a507e4a"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
-      "outcome": "updated",
-      "reason": "The link url check and normalization behind the host-actions Action Links rules: one sentinel parse for placeholders before the path, the port named, a duplicate label refused, and fillActionLinkUrl leaving out an empty or ill-formed id. host-actions/SKILL.md and docs/embedding.md were updated to match.",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "no-change",
+      "reason": "normalizeActionLinks in define-action.ts now calls checkActionLinks in action-links.ts, which trims each link and checks a blank label, a repeated label and actionLinkUrlProblem in the same order. defineAction throws the same messages, so the host-actions links paragraph and its relative-url mistake still hold.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions packages/core/src/backend/extensions/define-action.test.ts passed"
+        "action-links.test.ts and define-action.test.ts passed",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md"
       ]
     },
     "source:packages/core/src/backend/extensions/extension-set.test.ts": {
@@ -4779,18 +4777,14 @@
       ]
     },
     "source:packages/core/src/backend/extensions/steps/step-handler.ts": {
-      "fingerprint": "1746b580de93d53fd9b3eb87f38afbaebb67f0f906164174014bce0fd58dd213",
+      "fingerprint": "b99d7488616300757012fc0c300c6f9340acf9f6191e4185074b186dcc55cb37",
       "snapshot": {
-        "packages/core/src/backend/extensions/steps/step-handler.ts": "23d190f367c35bf00b2dad44e0d0eecea7069be0fd3c786ba27de85abd901af9"
+        "packages/core/src/backend/extensions/steps/step-handler.ts": "6983b936154b4aa4f9736cb1941060758a020b7dc4605b366b92e013f8b3bb6b"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
-      "outcome": "updated",
-      "reason": "The step boundary: a host handler running inside one durable step of its node, step names namespaced under node:<id>:step:<name> and held to 1 to 64 characters, the per-node and per-step idempotency keys, and executionId always a string. host-actions and integrations now state these.",
-      "evidence": [
-        "a9b31fc9 fix(skills): teach host-actions the once-per-node handler and test runs",
-        "de816c1d fix(skills): add step keys, test runs and revoke on delete to integrations",
-        "pnpm run skills:validate passed for ten skills; pnpm exec vitest run packages/evals/src/skills passed (31 passed, 3 skipped without WFGRAPH_TEST_DATABASE_URL); fresh-consumer and discovery checks unverified, no isolated agent session was available"
-      ]
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "no-change",
+      "reason": "readConfigValue and templateConfigRules in template-config.ts name the engine's existing reading of a config value, and STEP_INTERNAL_INPUT_KEYS in step-handler.ts names the keys stripInternalFields already removed. The engine reads and strips the same values as before; readDraftNode now uses both, which host-actions describes on the draft-node.ts item.",
+      "evidence": ["template-config.test.ts and draft-node.test.ts passed"]
     },
     "source:packages/core/src/backend/host-events.ts": {
       "fingerprint": "0bbb19d80743bc3a71b0039fd873c46961cedd332829b078ccc6228fb5c475a1",
@@ -5733,16 +5727,16 @@
       ]
     },
     "source:packages/core/src/index.ts": {
-      "fingerprint": "167c1474b15b00d6f81b9573c7e6d883144274e9ce76f479fada3ab0c66b43dc",
+      "fingerprint": "c79bb217114f5880592e50570483dc63721eaddd9731e4c85bef6d919ace4c2a",
       "snapshot": {
-        "packages/core/src/index.ts": "0b777360bddb8f920e7fb8a15175d7e3a39e106d0b7d7e51d6351ad39a910469"
+        "packages/core/src/index.ts": "b471ae3dabad07d81bb6d19441dacbabbb74394c6fec659a450c668fc7822640"
       },
-      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
-      "outcome": "out-of-scope",
-      "reason": "Implementation of defineAction links, the editor's link list and save on click, or workflows.readDraftNode. The adopter-visible contract is documented in docs/embedding.md and taught by wfgraph-core/host-actions, which this change updated.",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "updated",
+      "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
-        "git diff c0f1fe00 -- packages/core/src/index.ts",
-        "wfgraph-core/host-actions SKILL.md updated in the same change"
+        "draft-node.test.ts and app.workflows.test.ts passed",
+        "pnpm run skills:validate: 10 skill files passed"
       ]
     },
     "source:packages/core/src/mcp-authoring.test.ts": {
@@ -5922,15 +5916,15 @@
       ]
     },
     "source:packages/evals/src/agent/judges/graph.ts": {
-      "fingerprint": "f45423934c1ee3b2bbe226f9066fea23c4780cc44b3ae93a0db0dcec2ed72964",
+      "fingerprint": "6e18a845c114b2503a53b223e059cb0174428a5d8d919fa3dd8e9bda686a0b01",
       "snapshot": {
-        "packages/evals/src/agent/judges/graph.ts": "1dbfdb5b631b48aa33a086cc52cb1c2e1c0603538bfe98242084e41ea52ba186"
+        "packages/evals/src/agent/judges/graph.ts": "bb89f4c7858fd561ca06d2c540da190d0d1f39bc896bf17f6a9cb66dc2797b15"
       },
-      "head": "55e6fcd6979bdd7ce68bac866d2bc7a1ed284757",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "The private eval harness, judges and scenarios for the build agent. @wfgraph/evals is neither built nor published, and no adopter task touches it.",
+      "reason": "The eval harness's graph judge allows the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. Eval code is no source of any skill.",
       "evidence": [
-        "packages/evals/package.json is private and in the changesets ignore list"
+        "git diff main...f8a23675 shows only the constant replacing the literal"
       ]
     },
     "source:packages/evals/src/agent/judges/validation.test.ts": {
@@ -6953,16 +6947,16 @@
       ]
     },
     "source:packages/client/src/lib/upstream-node-fields.ts": {
-      "fingerprint": "821d254ba7370a46dc6d0d811e4f8bc5907664fc9cdb1e4e119755f6506e380e",
+      "fingerprint": "f46828bc598057c7f5b2a5303c45aa77813ce860164917354ecfbb22b8c1acd5",
       "snapshot": {
-        "packages/client/src/lib/upstream-node-fields.ts": "2d24e741534d352bd9a7b2baf9eb6bdad671c2bd0b3ae2aef4f820933d06d046"
+        "packages/client/src/lib/upstream-node-fields.ts": "ce00fb8e3c8f8a7c0a12734c1d4762b03726b0e1a73443405e9d12bb2a05a93f"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "_artifacts/skill_spec.md decision 2",
+        "git diff main...f8a23675 -- packages/client"
       ]
     },
     "source:packages/core/src/backend/engine/core-condition-source.test.ts": {
@@ -7122,16 +7116,15 @@
       ]
     },
     "source:packages/shared/src/graph/condition-sources.ts": {
-      "fingerprint": "c9cfa92f91d566f7bdf5241496bee60e3cd598b493eba34fa4cfe8beb037920f",
+      "fingerprint": "81fbabb5b7ae04bccfa1db7c9607e0af50d57065aa28c3a2f513b5f1ccb53a41",
       "snapshot": {
-        "packages/shared/src/graph/condition-sources.ts": "6961200ecd120191041d387326d80e25de5d6572fbe0bbe76af866eac0b94452"
+        "packages/shared/src/graph/condition-sources.ts": "d7bd2c74e8d18e4c48ac69c7856d6e76536ebf65e543dc50830f58eee1427216"
       },
-      "head": "c85dd0c67c6d59de810e196d319b04361849524d",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Repository internals of the Condition Source change: the node-qualified rule form and its compile in packages/shared, the engine's node root, the shared-path warning and the not-upstream blocker, the editor's field picker and issues list, the build agent's set_condition and reference diagnosis, and the evals that grade them. The adopter-visible contract they implement is taught by docs/embedding.md and the mcp skill, recorded on those items; CONTEXT.md and ADR-0020 are the repository's own vocabulary and decision record, which no published skill reads.",
+      "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
       "evidence": [
-        "a56e9507..c85dd0c6 on branch t3/qualified-condition-fields",
-        "_artifacts/skill_tree.yaml"
+        "git diff main...f8a23675 shows only the constant replacing the literal"
       ]
     },
     "source:packages/shared/src/graph/events-reaching.test.ts": {
@@ -7187,16 +7180,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/nodes/action-node.tsx": {
-      "fingerprint": "0dc7e4f3b63072a8a9c5667de0a03992113ee8ccf89c82ba743fddf7bdc46740",
+      "fingerprint": "fdbd1a343ef1483c3419991df31b5e2545617aec563b7d6c55563f4e81d65319",
       "snapshot": {
-        "packages/client/src/components/workflow/nodes/action-node.tsx": "209bb6fae5e71dfd42d0fe61edefc3b084c72472fc33ed22a4cf929c08a0dcae"
+        "packages/client/src/components/workflow/nodes/action-node.tsx": "b0627a53492d675a7657fd07e8f53cf617169a9106aa1ea23f7795609921fb23"
       },
-      "head": "01a51ae54c3b1dd839208cc7c7beca672eb5de63",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Editor behaviour: the run journey's Waiting label, the node badge's category, and the reload notice after a refused save. No published skill teaches the editor.",
+      "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
-        "git log bc8a556e..HEAD for the path",
-        "pnpm run test passes at HEAD"
+        "_artifacts/skill_spec.md decision 2",
+        "git diff main...f8a23675 -- packages/client"
       ]
     },
     "source:packages/client/src/components/workflow/workflow-run-detail.tsx": {
@@ -7778,16 +7771,15 @@
       ]
     },
     "source:examples/message-preview-page.tsx": {
-      "fingerprint": "645c537ea81fdda1794485f4ab1e303e32fba27c47624e4a280e57441c7d02d5",
+      "fingerprint": "6b7bd43344e4aee4f0a4402b8fa1f795612c44da4e8f7cba0f5b72066c0c8cd6",
       "snapshot": {
-        "examples/message-preview-page.tsx": "ac15ad7f51a1c27c5fa5d060e56729150bf539738583de5bce68976f552a7a65"
+        "examples/message-preview-page.tsx": "6cffbdcae66ddfd36961773f1b8b426ca9b712a97f0614af9e4ca44f7c14b4d8"
       },
-      "head": "f6fef0205ea597a37ba79d42fa77f4c0cb92297d",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "The example app demonstrates an Action Link and a preview page that calls readDraftNode, and Vite's dev server proxies that page. The repository's dev harness is not a published contract; host-actions teaches the contract from docs/embedding.md.",
+      "reason": "The example preview page prints any field that is not a template as JSON, since readDraftNode can now answer rows. The repository's dev harness is not a published contract; host-actions teaches the contract from docs/embedding.md.",
       "evidence": [
-        "git diff c0f1fe00 -- examples/message-preview-page.tsx",
-        "wfgraph-core/host-actions SKILL.md updated in the same change"
+        "git diff main...f8a23675 -- examples/message-preview-page.tsx"
       ]
     },
     "source:packages/client/src/components/workflow/config/action-links.test.tsx": {
@@ -7869,66 +7861,68 @@
       ]
     },
     "source:packages/core/src/backend/host-workflows.ts": {
-      "fingerprint": "979008be6b756a328e67181455271e65a622de006bd3c561238c4ace0864c2ae",
+      "fingerprint": "9dee003e04fa3d9cf95e75b2ecc1ecec71fa815bb667a1c42ea4e66ec2daf8f8",
       "snapshot": {
-        "packages/core/src/backend/host-workflows.ts": "0ab4e6fda9a4f03e18383875f40b2b836f4b23a7a8319da484cb7b9ef71c8444"
+        "packages/core/src/backend/host-workflows.ts": "efcb68f06711251d916d9fd275293d98ece6fa9921c4a158f58d54ce0be663d4"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
-      "outcome": "no-change",
-      "reason": "readDraftNode's reference source no longer carries a label, its display follows the badge's tracked-Entity rule, an id holding a NUL byte answers null, and the module headers shrank. docs/embedding.md describes the new shape; host-actions/SKILL.md names fields as text and reference segments without the source's keys, and its no-auth mistake still holds.",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "updated",
+      "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
         "draft-node.test.ts and app.workflows.test.ts passed",
-        "grep finds no source label in packages/core/skills"
+        "pnpm run skills:validate: 10 skill files passed"
       ]
     },
     "source:packages/core/src/backend/services/workflows/draft-node.test.ts": {
-      "fingerprint": "37160c25511d8ce9c98f3c48f3ed17301bb1baedc08518cd846066f966b39bd3",
+      "fingerprint": "c8d11c4c2c00c0289293c2cc938955282be531d882f400a5d57a7954da222082",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/draft-node.test.ts": "c829436bbc3d436320d7837c94588e2f744d9b20e3f5e047274cecd8dfe9edff"
+        "packages/core/src/backend/services/workflows/draft-node.test.ts": "dc6daa87cbc4365cff4e900132f401907dca626e0b84b62fc9163b3f4c2ceaef"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
-      "outcome": "no-change",
-      "reason": "readDraftNode's reference source no longer carries a label, its display follows the badge's tracked-Entity rule, an id holding a NUL byte answers null, and the module headers shrank. docs/embedding.md describes the new shape; host-actions/SKILL.md names fields as text and reference segments without the source's keys, and its no-auth mistake still holds.",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "updated",
+      "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
         "draft-node.test.ts and app.workflows.test.ts passed",
-        "grep finds no source label in packages/core/skills"
+        "pnpm run skills:validate: 10 skill files passed"
       ]
     },
     "source:packages/core/src/backend/services/workflows/draft-node.ts": {
-      "fingerprint": "87839855b357b4d5a4d00939f5ddc2395896d9ae17af2090e7478796ea2557c8",
+      "fingerprint": "04b356b3c13df71efbcc0ad79b9433929a889b1a88abacd132c266707c2b983c",
       "snapshot": {
-        "packages/core/src/backend/services/workflows/draft-node.ts": "25f6babeb1a412fb2436ca4fe765ea905383254c64ee01359c75fee0db19d159"
+        "packages/core/src/backend/services/workflows/draft-node.ts": "71ef1b1b570f1191aa91e6618434647b0175bac5378c1b71a18f93409a557c0d"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
-      "outcome": "no-change",
-      "reason": "readDraftNode's reference source no longer carries a label, its display follows the badge's tracked-Entity rule, an id holding a NUL byte answers null, and the module headers shrank. docs/embedding.md describes the new shape; host-actions/SKILL.md names fields as text and reference segments without the source's keys, and its no-auth mistake still holds.",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "updated",
+      "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
         "draft-node.test.ts and app.workflows.test.ts passed",
-        "grep finds no source label in packages/core/skills"
+        "pnpm run skills:validate: 10 skill files passed"
       ]
     },
     "source:packages/shared/src/extensions/action-links.test.ts": {
-      "fingerprint": "d644d996d934a047c90033e530959c08c56460e1cf3e3a8e8dd47771584b34c8",
+      "fingerprint": "0ad1873539de3a874e8a9ed006056ca394347e9569fa338d770ed3bc4fb4aa5d",
       "snapshot": {
-        "packages/shared/src/extensions/action-links.test.ts": "4d5473917a78437034fe8967d832cb3d997bb72287dc00756116709173bb6872"
+        "packages/shared/src/extensions/action-links.test.ts": "30b93d4d0364a7f417a0a3fbb338bcb61e741094adc685605191f77e455365b5"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
-      "outcome": "updated",
-      "reason": "The link url check and normalization behind the host-actions Action Links rules: one sentinel parse for placeholders before the path, the port named, a duplicate label refused, and fillActionLinkUrl leaving out an empty or ill-formed id. host-actions/SKILL.md and docs/embedding.md were updated to match.",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "no-change",
+      "reason": "normalizeActionLinks in define-action.ts now calls checkActionLinks in action-links.ts, which trims each link and checks a blank label, a repeated label and actionLinkUrlProblem in the same order. defineAction throws the same messages, so the host-actions links paragraph and its relative-url mistake still hold.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions packages/core/src/backend/extensions/define-action.test.ts passed"
+        "action-links.test.ts and define-action.test.ts passed",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md"
       ]
     },
     "source:packages/shared/src/extensions/action-links.ts": {
-      "fingerprint": "123edbfa87cdec3ae0f6a236bacee174c8f2cb516d520295b2800790c6d8b476",
+      "fingerprint": "1fa3284d03b027dda97b4b03130fa710939ef213569f64372b2502190b7e2fc9",
       "snapshot": {
-        "packages/shared/src/extensions/action-links.ts": "7505c72cf81de057fc0932294de29a55049ba0f2d13b8e1e546530be5daaa79c"
+        "packages/shared/src/extensions/action-links.ts": "4c58db3045b955b419daddc4a7692706f7cea7e0f7b47bb8324e96809f576087"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
-      "outcome": "updated",
-      "reason": "The link url check and normalization behind the host-actions Action Links rules: one sentinel parse for placeholders before the path, the port named, a duplicate label refused, and fillActionLinkUrl leaving out an empty or ill-formed id. host-actions/SKILL.md and docs/embedding.md were updated to match.",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "no-change",
+      "reason": "normalizeActionLinks in define-action.ts now calls checkActionLinks in action-links.ts, which trims each link and checks a blank label, a repeated label and actionLinkUrlProblem in the same order. defineAction throws the same messages, so the host-actions links paragraph and its relative-url mistake still hold.",
       "evidence": [
-        "pnpm exec vitest run packages/shared/src/extensions packages/core/src/backend/extensions/define-action.test.ts passed"
+        "action-links.test.ts and define-action.test.ts passed",
+        "packages/core/skills/wfgraph-core/host-actions/SKILL.md"
       ]
     },
     "source:packages/shared/src/extensions/catalog-wire.test.ts": {
@@ -7996,16 +7990,16 @@
       ]
     },
     "source:packages/client/src/components/ui/template-badge-dom.ts": {
-      "fingerprint": "637b51cc9c915d2942dd52a4eea3398bd8f67f47b1927510156522100e203397",
+      "fingerprint": "7d03173b7f230166ba3ce3c68629f62a61ee37fd17837a5ed2ebbfc72f70b333",
       "snapshot": {
-        "packages/client/src/components/ui/template-badge-dom.ts": "31ff00d1395adb4a08282e666dcab67de4de5d5d6228114f5736328992a125fa"
+        "packages/client/src/components/ui/template-badge-dom.ts": "b55fdcfce0b11ca3dff8f08ed3c630714abd301a71788f4eb35bd7d2de6c12d3"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
+      "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
         "_artifacts/skill_spec.md decision 2",
-        "pnpm run test passed"
+        "git diff main...f8a23675 -- packages/client"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/canvas-reveal.test.tsx": {
@@ -8048,16 +8042,16 @@
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": {
-      "fingerprint": "71de5439ba8ec3194ee5991c04af2fae7cb9e930bed43e237b3f21403f6be369",
+      "fingerprint": "980fec49e348c697d5359d0782e0c36bdcbb3977da5036a7dc7a725bb42a1073",
       "snapshot": {
-        "packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": "0ab33889a975d4c0461fe9ca8d6290f146e43175c57b61b1ebfe8ce829850d23"
+        "packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": "2dee85a6578843a6e1c67b305f89d778f9ac0ba8c785f3697dcc6ffed2ada577"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
+      "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
         "_artifacts/skill_spec.md decision 2",
-        "pnpm run test passed"
+        "git diff main...f8a23675 -- packages/client"
       ]
     },
     "source:packages/client/src/components/workflow/canvas-reveal/step-summary.test.ts": {
@@ -8087,29 +8081,29 @@
       ]
     },
     "source:packages/client/src/components/workflow/comparison-field-labels.ts": {
-      "fingerprint": "793d3bde33d1fbf006dab12ff813a90c63ab84c551072bf3cc195a6022202309",
+      "fingerprint": "1b4e8cfde2bc51b97060f1ccdbaa6881b4e4a481a02306a24fd00e39ddc8fb67",
       "snapshot": {
-        "packages/client/src/components/workflow/comparison-field-labels.ts": "a5c6a53cd21ccca8886029d99cb28e27a3c129a11c5d2f9097bc054f88e394d9"
+        "packages/client/src/components/workflow/comparison-field-labels.ts": "73cd58a6909cb5e7e2fdbeda0e8f94b0d6a3b140c03e2d84cb76814918a355ea"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
+      "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
         "_artifacts/skill_spec.md decision 2",
-        "pnpm run test passed"
+        "git diff main...f8a23675 -- packages/client"
       ]
     },
     "source:packages/client/src/components/workflow/comparison-properties.tsx": {
-      "fingerprint": "2d8243969a5cc7af0b8bd6f1c114c074d330dab1159ea057fded1e40ab86e2f4",
+      "fingerprint": "192138ad9ccb6ebe73f0fd1060b1736cd603c2b070b1b6626513031c462f1afb",
       "snapshot": {
-        "packages/client/src/components/workflow/comparison-properties.tsx": "b282b5c19373e95142fabfd9f24f770ab85db46aeaa7113594ad329f46ff8eba"
+        "packages/client/src/components/workflow/comparison-properties.tsx": "bb5d2a9e2cf7ef15d6002f46d44201720f5d117015b2313bfa70bb84b0d8e6da"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
+      "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
         "_artifacts/skill_spec.md decision 2",
-        "pnpm run test passed"
+        "git diff main...f8a23675 -- packages/client"
       ]
     },
     "source:packages/client/src/components/workflow/config/condition-builder-row.tsx": {
@@ -8165,56 +8159,164 @@
       ]
     },
     "source:packages/shared/src/graph/node-display.test.ts": {
-      "fingerprint": "0ccca5d96bbae085db04cc5ee7fd69b8233101be1f8a5c8ec9d7c0baec290a2c",
+      "fingerprint": "056d6169d668f6510707363c8a000c6709b9b0677140412528a5d8505461a040",
       "snapshot": {
-        "packages/shared/src/graph/node-display.test.ts": "e2e2e15dd439e4bb7cfa7b45c8d70e3a629d9848febcec2f3877aa3b9a90cb60"
+        "packages/shared/src/graph/node-display.test.ts": "6810286333e645f1071d3bf95061130234da48efa47f706db1e3e67076525fdd"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
+      "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
-        "_artifacts/skill_spec.md decision 2",
-        "pnpm run test passed"
+        "grep of packages/core/skills and packages/plugins/skills finds no issue or validation message text",
+        "workflow-issues.test.ts, node-display.test.ts and workflow-template-validation.test.ts passed"
       ]
     },
     "source:packages/shared/src/graph/node-display.ts": {
-      "fingerprint": "b885418a6b3b6527ffce562a3db71474e2d51bb61eaca4cd7b7fae11928b7e9b",
+      "fingerprint": "49f292585bb6c1be7da797aeba5214848aae953b5475cc967e5ac1edbac0ae90",
       "snapshot": {
-        "packages/shared/src/graph/node-display.ts": "c0ff5dd27edf9025c6481f4a9ed43d2b72ede41ffe993147eaf97dd038460490"
+        "packages/shared/src/graph/node-display.ts": "a05e610a92afdd85acd5f109d92a96d862e2bc307b3c691219e3626f0d6eb2fc"
       },
-      "head": "9babc305f47abdca3d8a2b8f1af4bd55e378a4a4",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Editor UI in @wfgraph/client, or the shared naming rule it draws with: Action Links' className and key, the autosave flush helper, ConditionSummary and the set-value inputs reading the catalog themselves, and the badge sharing the tracked-Entity rule. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
+      "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
-        "_artifacts/skill_spec.md decision 2",
-        "pnpm run test passed"
+        "grep of packages/core/skills and packages/plugins/skills finds no issue or validation message text",
+        "workflow-issues.test.ts, node-display.test.ts and workflow-template-validation.test.ts passed"
       ]
     },
     "source:packages/shared/src/graph/node-references.test.ts": {
-      "fingerprint": "51cfed29ebfc84e843cc38a02d8ccf269a953b7966249e64bbbfe07ea40342ee",
+      "fingerprint": "3ffa8fd8ce0eb82b2b2c7c7fe74a1e26a5a6f115d868ee5f851eb6d99d5db93b",
       "snapshot": {
-        "packages/shared/src/graph/node-references.test.ts": "6185e00ceafa47261b2aed87ea1a1194f716813943030c069a2cf92aa6afd543"
+        "packages/shared/src/graph/node-references.test.ts": "693f14f60114b94421a4e47a972f8e9fe2bf1e3a955477f1e7451da6caf20347"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: template references in summaries name their source by its current name. No published API, skill or host manual describes this text.",
+      "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
-        "f7e2a668: fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "grep of packages/core/skills and packages/plugins/skills finds no issue or validation message text",
+        "workflow-issues.test.ts, node-display.test.ts and workflow-template-validation.test.ts passed"
       ]
     },
     "source:packages/shared/src/graph/node-references.ts": {
-      "fingerprint": "8941feae6d613398e45911fcd165b2872cb281a1e70353e33f10dec5e924390e",
+      "fingerprint": "89a9ba2a658452dbeaa251a7dc8a5dca70f43e298e87fbeac5c736e268c7775a",
       "snapshot": {
-        "packages/shared/src/graph/node-references.ts": "5884d2b4f9ede90a522a74841909eb81211f279899bfe8add26313b49e7dacc4"
+        "packages/shared/src/graph/node-references.ts": "60db7409e135ad131806ec848fbdfc259b59757b4de9df6cce8ec8cb00d0876d"
       },
-      "head": "f7e2a668bcb4a23c76ae99420917783e9d5eaa40",
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
       "outcome": "out-of-scope",
-      "reason": "Editor display fix: displayTemplateText removed and templateTokenDisplayText's comment reworded. No published API, skill or host manual describes this text.",
+      "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
-        "fix(client): name references by the source step's current name in summaries",
-        "pnpm run skills:validate passed"
+        "grep of packages/core/skills and packages/plugins/skills finds no issue or validation message text",
+        "workflow-issues.test.ts, node-display.test.ts and workflow-template-validation.test.ts passed"
       ]
+    },
+    "source:packages/client/src/components/workflow/canvas-reveal/reveal-kinds.tsx": {
+      "fingerprint": "d0c1e9552b513cc734a6ff388d1708b9c9fe802dfe9b81d0e2ccd2300633fa68",
+      "snapshot": {
+        "packages/client/src/components/workflow/canvas-reveal/reveal-kinds.tsx": "0ab3a1a6054cc7904e3caff262c17668eda19b38c893477c1d8a3b37d42f6ec3"
+      },
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "out-of-scope",
+      "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
+      "evidence": [
+        "_artifacts/skill_spec.md decision 2",
+        "git diff main...f8a23675 -- packages/client"
+      ]
+    },
+    "source:packages/client/src/components/workflow/config/action-config.tsx": {
+      "fingerprint": "3a7a9c37417eafcabb3b44118670dc71874665a398a237efe7b43b59c172a714",
+      "snapshot": {
+        "packages/client/src/components/workflow/config/action-config.tsx": "d45673c639960d8256247f1fc0ed9ae93ec2874ffb3493c4c872c1c6052e680e"
+      },
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "out-of-scope",
+      "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
+      "evidence": [
+        "_artifacts/skill_spec.md decision 2",
+        "git diff main...f8a23675 -- packages/client"
+      ]
+    },
+    "source:packages/client/src/lib/node-integration.ts": {
+      "fingerprint": "9c7293842a9dc270c77cf146f4d0951e016b87a7a128cb21417d3a1bb216b1a5",
+      "snapshot": {
+        "packages/client/src/lib/node-integration.ts": "5c1258e8cb1cda0a9f12ae63f9a045c638a7bce0d284705ed971ff6c25d82221"
+      },
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "out-of-scope",
+      "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
+      "evidence": [
+        "_artifacts/skill_spec.md decision 2",
+        "git diff main...f8a23675 -- packages/client"
+      ]
+    },
+    "source:packages/client/src/lib/open-record-keys.ts": {
+      "fingerprint": "b20f55d7d4ae016e86776123aff9b84d19477c8c78dff9c9c45a938e2c2a8255",
+      "snapshot": {
+        "packages/client/src/lib/open-record-keys.ts": "015a82b5e241baee22c9161715d2fe20b532d153c4c234c210be3d4383ec0a92"
+      },
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "out-of-scope",
+      "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
+      "evidence": [
+        "_artifacts/skill_spec.md decision 2",
+        "git diff main...f8a23675 -- packages/client"
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/validation/workflow-action-validation.ts": {
+      "fingerprint": "d975190d45499eaeeb2b555c07009fef79aee19f300008a7f63a90a5eb654fdc",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/validation/workflow-action-validation.ts": "7934633af0505efcb5bcd74c0c42787c0cbce898fa4ea6aeef51424112a8a89e"
+      },
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "out-of-scope",
+      "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
+      "evidence": [
+        "git diff main...f8a23675 shows only the constant replacing the literal"
+      ]
+    },
+    "source:packages/core/src/backend/services/workflows/validation/workflow-integration-validation.ts": {
+      "fingerprint": "07e048500d6eeaa30a7a06767caae29dc0c2eff5cd813db7161403b2292165a6",
+      "snapshot": {
+        "packages/core/src/backend/services/workflows/validation/workflow-integration-validation.ts": "7dda7435ed398cbb2ea1583b6498ba5b89c4f57186fa766d10155fc8389a6da2"
+      },
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "out-of-scope",
+      "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
+      "evidence": [
+        "git diff main...f8a23675 shows only the constant replacing the literal"
+      ]
+    },
+    "source:packages/shared/src/actions/action-config-validation.ts": {
+      "fingerprint": "7bbb2f153ad7247a4252c10c11a264fbb5b1d4e46211eb8cd5a3c532552a9ce9",
+      "snapshot": {
+        "packages/shared/src/actions/action-config-validation.ts": "62838f9b873394bb7ba04632fa4ad755612fac898ec0195cc3e1826c2639af15"
+      },
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "out-of-scope",
+      "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
+      "evidence": [
+        "git diff main...f8a23675 shows only the constant replacing the literal"
+      ]
+    },
+    "source:packages/shared/src/plugins/template-config.test.ts": {
+      "fingerprint": "8c105459fd717527137a13a0661e8c11de3e22358c3f7bbeb13a20a8b07c65e3",
+      "snapshot": {
+        "packages/shared/src/plugins/template-config.test.ts": "9cd430513de5c808da3532e2c2751e5d1e8b1a07750a18dd273c74bbac9973de"
+      },
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "no-change",
+      "reason": "readConfigValue and templateConfigRules in template-config.ts name the engine's existing reading of a config value, and STEP_INTERNAL_INPUT_KEYS in step-handler.ts names the keys stripInternalFields already removed. The engine reads and strips the same values as before; readDraftNode now uses both, which host-actions describes on the draft-node.ts item.",
+      "evidence": ["template-config.test.ts and draft-node.test.ts passed"]
+    },
+    "source:packages/shared/src/plugins/template-config.ts": {
+      "fingerprint": "1e7638256f7b26375703a912b23d7793b83225bb49d51f0efeb8815c3b386c41",
+      "snapshot": {
+        "packages/shared/src/plugins/template-config.ts": "28a73b5253e2b822946c25e6cf9b6c2bd00a656749a24d7bb67f8fae2ca1d12f"
+      },
+      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "outcome": "no-change",
+      "reason": "readConfigValue and templateConfigRules in template-config.ts name the engine's existing reading of a config value, and STEP_INTERNAL_INPUT_KEYS in step-handler.ts names the keys stripInternalFields already removed. The engine reads and strips the same values as before; readDraftNode now uses both, which host-actions describes on the draft-node.ts item.",
+      "evidence": ["template-config.test.ts and draft-node.test.ts passed"]
     }
   }
 }

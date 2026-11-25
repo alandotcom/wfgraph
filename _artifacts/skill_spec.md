@@ -552,6 +552,33 @@ sources, apart from the source checks each later batch records.
   discovery and a fresh consumer session are unverified, as for every earlier
   batch.
 
+### readDraftNode answers a host action's declared inputs (packages at 4.1.2, branch refactor/action-links-design-review)
+
+- Source: the branch's commits on top of 9c446a76. `readDraftNode` in
+  `packages/core/src/backend/services/workflows/draft-node.ts` answers fields
+  only for a node running a host action: one entry per input the action
+  declares and the node stores, read through `readConfigValue` in
+  `packages/shared/src/plugins/template-config.ts` as `template`, `rows` (a
+  `key-value` field) or `value` (stored, such as a `literal` field). An input
+  named `actionType` or `integrationId` has no entry, and every other node
+  answers `fields: {}`. Before, it answered every top-level config key, with
+  each string as a template. `docs/embedding.md` ("Action links and draft
+  reads") states the new shape.
+- host-actions: the readDraftNode paragraph names the three field kinds, the
+  two input names with no entry, and the empty `fields` of every other node.
+- `defineAction` now checks links through `checkActionLinks` in
+  `packages/shared/src/extensions/action-links.ts`, which calls
+  `actionLinkUrlProblem` for each url. Every message `defineAction` throws is
+  unchanged, so the host-actions links paragraph and its relative-url mistake
+  stay accurate.
+- No domain, task boundary or decision changed. The other skills whose source
+  lists `docs/embedding.md` state nothing about `fields`.
+- Checks: `intent validate` passed for ten skills. `draft-node.test.ts`,
+  `app.workflows.test.ts`, `action-links.test.ts`, `define-action.test.ts`,
+  `template-config.test.ts` and the host-actions task check
+  `refund-action.test.ts` passed. Discovery and a fresh consumer session are
+  unverified, as for every earlier batch.
+
 ### Remaining work
 
 1. Add discovery prompts for every skill, and executable task checks for
