@@ -3,7 +3,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactFlowProvider, useStoreApi } from "@xyflow/react";
 import { createStore, Provider } from "jotai";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { InsertStepSlot } from "#src/components/flow-elements/edge";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { ActionNode } from "#src/components/workflow/nodes/action-node";
@@ -221,6 +222,81 @@ describe("a card's kind glyph", () => {
     expect(
       leadRow(wait.view.container)?.querySelector("svg")?.getAttribute("class")
     ).toContain("text-node-wait");
+  });
+});
+
+describe("the + at an open end", () => {
+  function renderWithInserting(input: {
+    data: WorkflowNodeData;
+    zoom: number;
+    insertsSteps?: boolean;
+  }) {
+    const afterOutlet = vi.fn();
+    const card = (
+      <ActionNode
+        data={input.data}
+        id="end"
+        type="action"
+        {...requiredNodeProps}
+      />
+    );
+    const rendered = renderAtZoom({
+      card:
+        input.insertsSteps === false ? (
+          card
+        ) : (
+          <InsertStepSlot.Provider value={{ onEdge: vi.fn(), afterOutlet }}>
+            {card}
+          </InsertStepSlot.Provider>
+        ),
+      zoom: input.zoom,
+    });
+    const pluses = () =>
+      rendered.view.queryAllByRole("button", { name: "Add a step here" });
+    return { ...rendered, afterOutlet, pluses };
+  }
+
+  it("draws a + under an outlet nothing leaves, at the sizes that draw a title, which adds a step there", () => {
+    const { pluses, setZoom, afterOutlet } = renderWithInserting({
+      data: reminder,
+      zoom: 1,
+    });
+    expect(pluses()).toHaveLength(1);
+    setZoom(0.6);
+    expect(pluses()).toHaveLength(1);
+
+    fireEvent.click(pluses()[0] as HTMLElement);
+    expect(afterOutlet).toHaveBeenCalledWith({
+      source: { nodeId: "end", handle: null },
+    });
+
+    setZoom(0.3);
+    expect(pluses()).toHaveLength(0);
+  });
+
+  it("draws one + under each open branch of a Condition", () => {
+    const { pluses, afterOutlet } = renderWithInserting({
+      data: {
+        label: "Eligible?",
+        type: "action",
+        config: { actionType: BUILT_IN_ACTION_IDS.condition },
+      },
+      zoom: 1,
+    });
+    expect(pluses()).toHaveLength(2);
+    fireEvent.click(pluses()[1] as HTMLElement);
+    expect(afterOutlet).toHaveBeenCalledWith({
+      source: { nodeId: "end", handle: "false" },
+    });
+  });
+
+  it("draws no + where the canvas offers no adding, as on a run", () => {
+    const { pluses } = renderWithInserting({
+      data: reminder,
+      zoom: 1,
+      insertsSteps: false,
+    });
+    expect(pluses()).toHaveLength(0);
   });
 });
 

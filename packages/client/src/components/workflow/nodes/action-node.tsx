@@ -17,6 +17,7 @@ import {
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
+import { OutletAddStep } from "./outlet-add-step";
 import { useReviewEdit } from "#src/components/workflow/review/use-review-edit";
 import { Dialog, DialogContent, DialogTitle } from "#src/components/ui/dialog";
 import { readBase64ImageOutput } from "#src/components/workflow/workflow-run-shared";
@@ -618,6 +619,13 @@ export const ActionNode = memo((props: ActionNodeProps) => {
           title={unconfiguredTitle}
           value={stepNumber}
         />
+        <OutletAddStep
+          captioned={false}
+          handleId={null}
+          nodeId={id}
+          offset="50%"
+          outlet={outlet}
+        />
       </Node>
     );
   }
@@ -739,7 +747,44 @@ export const ActionNode = memo((props: ActionNodeProps) => {
           >
             False
           </BranchOutletLabel>
+          <OutletAddStep
+            captioned
+            handleId="true"
+            nodeId={id}
+            offset={CONDITION_TRUE_OUTLET_OFFSET}
+            outlet={outlet}
+          />
+          <OutletAddStep
+            captioned
+            handleId="false"
+            nodeId={id}
+            offset={CONDITION_FALSE_OUTLET_OFFSET}
+            outlet={outlet}
+          />
         </>
+      )}
+
+      {isEventSplitAction
+        ? splitOutlets.map((event, index) => (
+            <OutletAddStep
+              captioned
+              handleId={eventSplitOutlet(event.name)}
+              key={event.name}
+              nodeId={id}
+              offset={eventSplitOutletOffset(index, splitOutlets.length)}
+              outlet={outlet}
+            />
+          ))
+        : null}
+
+      {isConditionAction || isEventSplitAction ? null : (
+        <OutletAddStep
+          captioned={false}
+          handleId={null}
+          nodeId={id}
+          offset="50%"
+          outlet={outlet}
+        />
       )}
 
       {isEventSplitAction &&

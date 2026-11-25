@@ -502,6 +502,12 @@
   border-radius: 9999px;
   background: var(--card);
 }
+/* The + under an open outlet stays at least 20px on screen, so it can be
+   pressed at the compact tier. */
+.react-flow__node [data-slot="outlet-add-step"] {
+  transform-origin: top center;
+  scale: max(1, calc(1 / var(--rf-zoom, 1)));
+}
 .react-flow__node [data-slot="group-region-header-mark"] {
   transform-origin: left center;
   scale: calc(12 / (36 * var(--rf-zoom, 1)));

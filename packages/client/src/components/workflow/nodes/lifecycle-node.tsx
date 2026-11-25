@@ -11,6 +11,7 @@ import {
 } from "#src/components/flow-elements/node";
 import { NodeIssueBadge } from "#src/components/flow-elements/node-issue-badge";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
+import { OutletAddStep } from "./outlet-add-step";
 import { useReviewEdit } from "#src/components/workflow/review/use-review-edit";
 import { workflowNodeSize } from "#src/lib/workflow-node-dimensions";
 import { cn } from "@wfgraph/shared/utils";
@@ -123,6 +124,24 @@ export const LifecycleNode = memo(
             </div>
           </>
         ) : null}
+        <OutletAddStep
+          captioned
+          handleId={LIFECYCLE_STARTED_HANDLE}
+          nodeId={id}
+          offset={STARTED_HANDLE_LEFT}
+          outlet={Position.Bottom}
+        />
+        {/* A Canceled outlet no Cancel Event can take ends nothing, so it
+          offers no step until one is named. */}
+        {canceledInactive ? null : (
+          <OutletAddStep
+            captioned
+            handleId={LIFECYCLE_CANCELED_HANDLE}
+            nodeId={id}
+            offset={CANCELED_HANDLE_LEFT}
+            outlet={Position.Bottom}
+          />
+        )}
         <NodeContent
           description={
             displayDescription ? (

@@ -28,13 +28,17 @@ import {
 import { isLiveRunCanvasAtom } from "#src/lib/workflow-graph-store";
 
 /**
- * What the + control on a connection does: put a step inside that connection.
- * The canvas fills the slot while inserting steps is offered; null leaves every
- * connection without the control, as a run, a comparison and a phone do.
+ * What the canvas's + controls do: `onEdge` puts a step inside a connection,
+ * and `afterOutlet` adds one after an outlet nothing leaves yet, the open end
+ * of a path. The canvas fills the slot while inserting steps is offered; null
+ * draws neither control, as a run, a comparison and a phone do.
  */
-export const InsertStepSlot = createContext<
-  ((input: { edgeId: string }) => void) | null
->(null);
+export const InsertStepSlot = createContext<{
+  onEdge: (input: { edgeId: string }) => void;
+  afterOutlet: (input: {
+    source: { nodeId: string; handle: string | null };
+  }) => void;
+} | null>(null);
 
 /** The radius of the + control a connection draws, in flow pixels. */
 const INSERT_CONTROL_RADIUS = 11;
@@ -154,7 +158,7 @@ const Animated = memo(function Animated({
   // connection must not draw across.
   const sourceRegion = useInternalNode(sourceNode?.parentId ?? "");
   const targetRegion = useInternalNode(targetNode?.parentId ?? "");
-  const insertStepOnEdge = useContext(InsertStepSlot);
+  const insertStepOnEdge = useContext(InsertStepSlot)?.onEdge;
   const liveRun = useAtomValue(isLiveRunCanvasAtom);
   // While cards are compact a connection draws no caption: at its 12px it
   // would draw at 6px when the whole workflow is fitted, and the outline

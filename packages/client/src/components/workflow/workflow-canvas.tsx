@@ -27,7 +27,10 @@ import { Controls } from "#src/components/flow-elements/controls";
 import "@xyflow/react/dist/style.css";
 
 import { Edge, InsertStepSlot } from "#src/components/flow-elements/edge";
-import { useInsertStepOnEdge } from "#src/components/workflow/use-add-step";
+import {
+  useAddStepAfter,
+  useInsertStepOnEdge,
+} from "#src/components/workflow/use-add-step";
 import { Panel } from "#src/components/flow-elements/panel";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { useAfterDelay, useAfterPaint, useDomEvent } from "#src/hooks/effects";
@@ -301,6 +304,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   // the placement camera runs after paint, so a placement always compares
   // against the restored camera.
   const insertStepOnEdge = useInsertStepOnEdge();
+  const addStepAfter = useAddStepAfter();
+  const insertStep = useMemo(
+    () => ({ onEdge: insertStepOnEdge, afterOutlet: addStepAfter }),
+    [addStepAfter, insertStepOnEdge]
+  );
   const revealCamera = useRevealCamera({
     isCanvasPlaced,
     isCanvasReady,
@@ -664,7 +672,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
     >
       {/* React Flow Canvas. */}
       <InsertStepSlot.Provider
-        value={interaction.insertsNodes ? insertStepOnEdge : null}
+        value={interaction.insertsNodes ? insertStep : null}
       >
         <Canvas
           className="bg-background"
