@@ -8,6 +8,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { revealRefusedFieldsAtom } from "#src/lib/required-field-errors";
 import { useCallback } from "react";
 import { toast } from "sonner";
 import { ConfirmOverlay } from "#src/components/overlays/confirm-overlay";
@@ -88,6 +89,7 @@ export function useWorkflowActions(
   const beginPublicationReview = useSetAtom(beginPublicationReviewAtom);
   const installPublicationReview = useSetAtom(installPublicationReviewAtom);
   const clearPublicationReview = useSetAtom(clearPublicationReviewAtom);
+  const revealRefusedFields = useSetAtom(revealRefusedFieldsAtom);
   const isPublishing = useIsPublishing();
   // Only the fields this hook's own bodies read. The run and issue handlers
   // take the whole state and destructure it themselves.
@@ -274,6 +276,7 @@ export function useWorkflowActions(
     const { issues } = preflight;
     if (hasBlockingWorkflowIssues(issues)) {
       clearPublicationReview({ workflowId: currentWorkflowId, epoch });
+      revealRefusedFields(issues);
       openOverlay<WorkflowIssuesOverlayInput>(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),
         trigger: "publish",

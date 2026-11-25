@@ -5,8 +5,13 @@
  * provider shows no messages.
  */
 
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
+import {
+  requiredFieldKey,
+  revealedRequiredFieldsAtom,
+  revealLeftFieldAtom,
+} from "#src/lib/required-field-errors";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
 import { cn } from "@wfgraph/shared/utils";
@@ -27,7 +32,13 @@ function issueFieldKey(issue: WorkflowIssue): string | null {
   return issue.kind === "missing_integration" ? CONNECTION_FIELD_KEY : null;
 }
 
-/** Hands the issues of the node `nodeId` to every field inside it, by key. */
+/**
+ * Hands the issues of the node `nodeId` to every field inside it, by key. An
+ * empty required field's issue is handed over only once the field has been
+ * focused and left, which the provider hears as a blur from the control whose
+ * id is the field's config key, or once a Run draft or Publish was refused for
+ * it (`required-field-errors.ts`).
+ */
 export function FieldIssuesProvider({
   nodeId,
   children,
@@ -36,19 +47,36 @@ export function FieldIssuesProvider({
   children: ReactNode;
 }) {
   const issues = useAtomValue(workflowIssuesAtom);
+  const revealed = useAtomValue(revealedRequiredFieldsAtom);
+  const revealLeftField = useSetAtom(revealLeftFieldAtom);
   const byField = useMemo(
     (): ReadonlyMap<string, readonly WorkflowIssue[]> =>
       Map.groupBy(
         issues.filter(
-          (issue) => issue.nodeId === nodeId && issueFieldKey(issue) !== null
+          (issue) =>
+            issue.nodeId === nodeId &&
+            issueFieldKey(issue) !== null &&
+            (issue.kind !== "missing_required_field" ||
+              issue.unreadable === true ||
+              revealed.has(requiredFieldKey(nodeId, issue.fieldKey)))
         ),
         (issue) => issueFieldKey(issue) ?? ""
       ),
-    [issues, nodeId]
+    [issues, nodeId, revealed]
   );
   return (
     <FieldIssuesContext.Provider value={byField}>
-      {children}
+      <div
+        className="contents"
+        onBlur={(event) => {
+          const { id } = event.target;
+          if (id !== "") {
+            revealLeftField({ nodeId, fieldKey: id });
+          }
+        }}
+      >
+        {children}
+      </div>
     </FieldIssuesContext.Provider>
   );
 }

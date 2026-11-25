@@ -477,10 +477,13 @@ describe("details panel presentation states", () => {
       ]);
     });
     expect(region.textContent).toContain("1 issue");
-    // The issue shows beneath the field it names and in the Validation list.
-    const field = view
-      .getByRole("textbox", { name: "To" })
-      .closest("div.flex-col");
+    // The Validation list names the issue at once. The field waits until it
+    // has been focused and left empty before it says so beneath itself.
+    const to = view.getByRole("textbox", { name: "To" });
+    const field = to.closest("div.flex-col");
+    expect(field?.querySelector('[data-slot="field-issues"]')).toBeNull();
+    fireEvent.focus(to);
+    fireEvent.blur(to);
     expect(
       field?.querySelector('[data-slot="field-issues"]')?.textContent
     ).toBe("To is required.");

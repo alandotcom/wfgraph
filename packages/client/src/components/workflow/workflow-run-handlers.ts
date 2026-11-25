@@ -7,6 +7,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useSetAtom } from "jotai";
+import { revealRefusedFieldsAtom } from "#src/lib/required-field-errors";
 import { toast } from "sonner";
 import { getClientLogger } from "#src/lib/logger";
 import {
@@ -206,6 +207,7 @@ export function useWorkflowHandlers({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const setExecutionOverlay = useSetAtom(executionOverlayGraphAtom);
+  const revealRefusedFields = useSetAtom(revealRefusedFieldsAtom);
   const setNodeStatuses = useSetAtom(setNodeStatusesAtom);
   const setCurrentWorkflowMode = useSetAtom(currentWorkflowModeAtom);
 
@@ -477,6 +479,7 @@ export function useWorkflowHandlers({
       // A Group problem stops Publish only, so a draft whose only blockers are
       // Group problems is offered "Run draft anyway".
       const hasBlocking = hasDraftRunBlockingIssues(issues);
+      revealRefusedFields(issues);
       openOverlay<WorkflowIssuesOverlayInput>(WorkflowIssuesOverlay, {
         issues: groupWorkflowIssuesForOverlay(issues),
         trigger: "run",

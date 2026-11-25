@@ -407,7 +407,11 @@ searchable list grouped by category that adding a step uses, with focus in its
 search; choosing an action closes it, and Escape closes it with focus back on
 the field.
 Each issue shows beneath the field it names, and the Validation list repeats
-every issue, where choosing one puts focus in its field. A template field's
+every issue, where choosing one puts focus in its field. An empty required
+field waits: it says "is required" beneath itself once it has been focused and
+left empty, or once a Run draft or Publish was refused for it, so a step just
+added shows no red text before anyone types. The issue counts from the start,
+in the Validation list, the outline's issue mark and the issues list. A template field's
 help line says that typing @ inserts a value from the Event or an earlier step.
 Edits write to the draft as they are made, and autosave carries on. Typing in
 one field is one undo step until the field loses focus or the typing pauses for

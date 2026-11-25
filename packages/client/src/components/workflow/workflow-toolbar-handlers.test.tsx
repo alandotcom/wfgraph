@@ -12,6 +12,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
+import {
+  requiredFieldKey,
+  revealedRequiredFieldsAtom,
+} from "#src/lib/required-field-errors";
 import type { RunRequest } from "#src/components/overlays/run-overlay";
 import { useWorkflowActions } from "#src/components/workflow/workflow-toolbar-handlers";
 import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
@@ -776,6 +780,79 @@ describe("useWorkflowActions Cmd+S", () => {
     expect(event.defaultPrevented).toBe(true);
     expect(requests).toEqual([]);
   });
+});
+
+const requiredFieldCatalog: ExtensionCatalog = {
+  ...groupProblemCatalog,
+  actions: [
+    {
+      id: "custom/notify",
+      label: "Notify",
+      description: "Sends a note",
+      category: "Custom",
+      configFields: [
+        { key: "to", label: "To", type: "template-input", required: true },
+      ],
+      outputFields: [],
+    },
+  ],
+};
+
+function requiredFieldState(): WorkflowToolbarState {
+  return {
+    ...state(),
+    nodes: toWorkflowGraphData(
+      createSerializedWorkflowGraph({
+        nodes: [
+          {
+            id: "lifecycle_1",
+            type: "lifecycle",
+            position: { x: 0, y: 0 },
+            data: { label: "Lifecycle", type: "lifecycle" },
+          },
+          {
+            id: "notify_1",
+            type: "action",
+            position: { x: 0, y: 180 },
+            data: {
+              label: "Notify",
+              type: "action",
+              config: { actionType: "custom/notify" },
+            },
+          },
+        ],
+        edges: [],
+      })
+    ).nodes.map(toEditorNode),
+  };
+}
+
+// An empty required field says so under itself once Run draft or Publish was
+// refused for it, whether or not anyone has visited the field.
+describe("useWorkflowActions and an empty required field", () => {
+  it.each(["Run draft", "Start publish"])(
+    "shows the field's text once %s is refused for it",
+    async (button) => {
+      serveRunRequests({});
+      const store = workflowStore();
+      const view = renderProbe({
+        probe: <IssueGateProbe workflowState={requiredFieldState()} />,
+        extensionCatalog: requiredFieldCatalog,
+        store,
+      });
+      expect(store.get(revealedRequiredFieldsAtom).size).toBe(0);
+
+      fireEvent.click(await view.findByRole("button", { name: button }));
+
+      await waitFor(() =>
+        expect(
+          store
+            .get(revealedRequiredFieldsAtom)
+            .has(requiredFieldKey("notify_1", "to"))
+        ).toBe(true)
+      );
+    }
+  );
 });
 
 describe("useWorkflowActions Publish and the save", () => {
