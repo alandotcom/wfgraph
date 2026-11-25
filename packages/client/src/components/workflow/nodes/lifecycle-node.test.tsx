@@ -3,7 +3,7 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { LifecycleNode } from "#src/components/workflow/nodes/lifecycle-node";
-import { getStartSummary } from "#src/components/workflow/nodes/lifecycle-node-summary";
+import { getStartSummary } from "@wfgraph/shared/graph/node-display";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
@@ -286,6 +286,40 @@ describe("LifecycleNode handles", () => {
 
     expect(view.getByText("On Email sent, Email delivered")).toBeTruthy();
     expect(view.queryByText(/resend\/email\.sent/)).toBeNull();
+  });
+
+  it("names one start by its Start Event alone when the builder gave it no name", () => {
+    const config = {
+      lifecycleRules: {
+        startEvents: ["app/appointment.created"],
+        cancelEvents: [],
+        concurrency: "unlimited",
+      },
+    };
+    const unnamed = renderLifecycleNode(
+      { label: "", description: "", type: "lifecycle", config, status: "idle" },
+      false,
+      labeledCatalog
+    );
+    expect(unnamed.getByText("When Appointment created")).toBeTruthy();
+    expect(unnamed.queryByText(/On Appointment created/)).toBeNull();
+    unnamed.unmount();
+
+    // A named start keeps its name as the title and says what starts it,
+    // as the outline's "Starts when" row does.
+    const named = renderLifecycleNode(
+      {
+        label: "Appointment booked",
+        description: "",
+        type: "lifecycle",
+        config,
+        status: "idle",
+      },
+      false,
+      labeledCatalog
+    );
+    expect(named.getByText("Appointment booked")).toBeTruthy();
+    expect(named.getByText("On Appointment created")).toBeTruthy();
   });
 
   it("softens the Canceled chip when no Cancel Event is declared", () => {

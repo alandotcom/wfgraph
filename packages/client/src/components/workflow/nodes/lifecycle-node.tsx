@@ -1,4 +1,7 @@
-import { startNodeTitle } from "@wfgraph/shared/graph/node-display";
+import {
+  startDescription,
+  startNodeTitle,
+} from "@wfgraph/shared/graph/node-display";
 import { type NodeProps, Position } from "@xyflow/react";
 import { Play } from "lucide-react";
 import { memo } from "react";
@@ -25,7 +28,6 @@ import {
 } from "#src/lib/workflow-graph-types";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { configDeclaresCancelEvent } from "@wfgraph/shared/lifecycle/lifecycle-rules";
-import { getStartSummary } from "./lifecycle-node-summary";
 
 // Two bottom handles split left/right rather than stacked, so both stay
 // reachable for a drag, and each carries a label chip centred on it.
@@ -57,9 +59,11 @@ export const LifecycleNode = memo(
     }
 
     const displayTitle = startNodeTitle(catalog, data);
-    const startSummary = getStartSummary(data.config, catalog);
+    // The title and this line name the start as the outline's "Starts when"
+    // row does: the builder's name over what starts it, or the Start Events.
     const displayDescription =
-      reviewEdit?.summary ?? (data.description || startSummary);
+      reviewEdit?.summary ??
+      (data.description || startDescription(data, catalog));
     const status = data.status;
     // Soften the chip when no Cancel Event can take this outlet; the handle stays
     // connectable so a builder can still wire the branch before naming Events.

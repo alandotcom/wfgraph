@@ -30,7 +30,12 @@ import {
   templateTokenDisplayText,
 } from "#src/graph/node-references";
 import type { WorkflowNode } from "#src/graph/types";
-import { readLifecycleRules } from "#src/lifecycle/lifecycle-rules";
+import {
+  manualStartAllowed,
+  readLifecycleRules,
+} from "#src/lifecycle/lifecycle-rules";
+import { readStartFilter } from "#src/lifecycle/start-filters";
+import { compact } from "es-toolkit/array";
 
 /**
  * What the interface titles the Lifecycle Node: its own label, else the Start
@@ -56,6 +61,77 @@ export function startNodeTitle(
   return `When ${events
     .map((name) => findEvent(catalog, name)?.label ?? name)
     .join(" or ")}`;
+}
+
+/** Returns the canvas summary for the sources that can start a workflow. */
+export function getStartSummary(
+  config: Record<string, unknown> | undefined,
+  catalog: ExtensionCatalog
+): string {
+  const rules = readLifecycleRules(config);
+  const scheduleCount = rules?.schedules?.length ?? 0;
+  const schedules =
+    scheduleCount === 1 ? "a schedule" : `${scheduleCount} schedules`;
+
+  if (rules?.startEvents.length) {
+    const labels = rules.startEvents.map(
+      (name) => findEvent(catalog, name)?.label ?? name
+    );
+    // A filtered Start Event says so on the card, because the difference it makes
+    // is a run that never appears: a builder looking for one and finding nothing
+    // needs the canvas to point at the filter rather than at the Event.
+    const filtered = rules.startEvents.some((name) =>
+      readStartFilter(rules, name)
+    );
+    const events = filtered
+      ? `On ${labels.join(", ")}, filtered`
+      : `On ${labels.join(", ")}`;
+    return scheduleCount > 0 ? `${events}, and on ${schedules}` : events;
+  }
+
+  if (scheduleCount > 0) {
+    return `On ${schedules}`;
+  }
+
+  return manualStartAllowed(rules)
+    ? "Manual runs only"
+    : "Nothing starts this yet";
+}
+
+/**
+ * The line beneath the start's title, on its card and in the outline's
+ * "Starts when" row. A start a builder named says what starts it, as
+ * `getStartSummary` words it. An unnamed start is already titled by its Start
+ * Events, so the line says only what the title leaves out: that a Start
+ * Filter limits them, or that a schedule also starts runs. Null when the title
+ * says it all.
+ */
+export function startDescription(
+  data: {
+    label?: string | undefined;
+    config?: Record<string, unknown> | undefined;
+  },
+  catalog: ExtensionCatalog
+): string | null {
+  const rules = readLifecycleRules(data.config);
+  if (data.label?.trim() || !rules?.startEvents.length) {
+    return getStartSummary(data.config, catalog);
+  }
+  const filtered = rules.startEvents.some((name) =>
+    readStartFilter(rules, name)
+  );
+  const scheduleCount = rules.schedules?.length ?? 0;
+  const parts = compact([
+    filtered ? "Filtered" : null,
+    scheduleCount === 0
+      ? null
+      : `also on ${scheduleCount === 1 ? "a schedule" : `${scheduleCount} schedules`}`,
+  ]);
+  if (parts.length === 0) {
+    return null;
+  }
+  const line = parts.join(", ");
+  return line.charAt(0).toUpperCase() + line.slice(1);
 }
 
 export function getNodeDisplayName(

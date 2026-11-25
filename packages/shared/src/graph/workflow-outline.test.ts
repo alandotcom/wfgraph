@@ -55,7 +55,11 @@ describe("workflowOutline", () => {
     const { nodes, edges } = heroGraph();
     const result = outline(nodes, edges);
 
-    expect(lines(result.starts)).toEqual(["[start] Appointment created"]);
+    // The builder's name for the start leads, over what starts it, as the
+    // start's card titles it.
+    expect(lines(result.starts)).toEqual([
+      "[start] Appointment booked · On Appointment created",
+    ]);
     expect(lines(result.steps)).toEqual([
       "1 If Enough time for reminders? · All of 2 rules",
       "  <If true>",
@@ -308,11 +312,15 @@ describe("workflowOutline", () => {
   });
 
   it("opens an empty workflow with how it starts and lists no steps", () => {
-    expect(lines(outlineRows(outline([lifecycle({})], [])))).toEqual([
+    const unnamed = (rules: Parameters<typeof lifecycle>[0]) => {
+      const node = lifecycle(rules);
+      return { ...node, data: { ...node.data, label: "" } };
+    };
+    expect(lines(outlineRows(outline([unnamed({})], [])))).toEqual([
       "[start] Someone runs it by hand",
     ]);
     expect(
-      lines(outlineRows(outline([lifecycle({ allowManualStart: false })], [])))
+      lines(outlineRows(outline([unnamed({ allowManualStart: false })], [])))
     ).toEqual(["[start] Nothing starts it yet"]);
   });
 

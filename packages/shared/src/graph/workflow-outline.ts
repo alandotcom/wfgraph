@@ -7,6 +7,7 @@
  * so the editor's outline and its canvas cards share them.
  */
 
+import { getStartSummary } from "#src/graph/node-display";
 import { compact, sortBy, uniq } from "es-toolkit/array";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import {
@@ -61,9 +62,17 @@ type RowBase = {
 export type OutlineLifecycleRow = RowBase & {
   kind: "lifecycle";
   nodeId: string;
-  /** The Start Events or Schedules, such as "Appointment created". */
+  /**
+   * The builder's name for the start, such as "Appointment booked", else what
+   * starts it, such as "Appointment created". The canvas card titles the start
+   * the same way.
+   */
   label: string;
-  /** The Start Filter in words, or null when there is none. */
+  /**
+   * Beneath a named start, what starts it as its card says it, such as "On
+   * Appointment created"; beneath an unnamed one, the Start Filter in words.
+   * Null when there is nothing to add.
+   */
   summary: string | null;
   /**
    * What a newer start does to a run in progress, or null when every arrival
@@ -744,14 +753,17 @@ class RowWriter {
         : manualStartAllowed(rules)
           ? "Someone runs it by hand"
           : "Nothing starts it yet";
+    const name = node.data.label?.trim();
     return {
       kind: "lifecycle",
       key: node.id,
       depth: 0,
       parentKey: null,
       nodeId: node.id,
-      label,
-      summary: joinOrNull(compact(clauses.map((clause) => clause.condition))),
+      label: name || label,
+      summary: name
+        ? getStartSummary(node.data.config, this.walker.catalog)
+        : joinOrNull(compact(clauses.map((clause) => clause.condition))),
       overlap: overlappingRunsSentence(rules, this.walker.catalog),
     };
   }
