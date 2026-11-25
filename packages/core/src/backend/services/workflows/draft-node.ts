@@ -19,7 +19,6 @@ import {
 import {
   currentTokenDisplayText,
   getNodeDisplayName,
-  trackedEntityTypeOf,
 } from "@wfgraph/shared/graph/node-display";
 import {
   isEntityStateSourceId,
@@ -74,7 +73,6 @@ export type WfGraphDraftField =
 type DraftWorkflow = {
   nodes: readonly WorkflowNode[];
   catalog: ExtensionCatalog;
-  trackedEntityType: string | undefined;
 };
 
 /** One node of a workflow's saved draft. */
@@ -125,12 +123,7 @@ function referenceSegment(
     kind: "reference",
     source,
     fieldPath: token.fieldPath,
-    display: currentTokenDisplayText(
-      token,
-      workflow.nodes,
-      workflow.catalog,
-      workflow.trackedEntityType
-    ),
+    display: currentTokenDisplayText(token, workflow.nodes, workflow.catalog),
   };
 }
 
@@ -194,11 +187,7 @@ export const readDraftNode = Effect.fn("readDraftNode")(
       return null;
     }
 
-    const draftWorkflow: DraftWorkflow = {
-      nodes,
-      catalog,
-      trackedEntityType: trackedEntityTypeOf(nodes),
-    };
+    const draftWorkflow: DraftWorkflow = { nodes, catalog };
     const config = readJsonObjectLeniently(node.data.config) ?? {};
     const fields = Object.fromEntries(
       Object.entries(config)

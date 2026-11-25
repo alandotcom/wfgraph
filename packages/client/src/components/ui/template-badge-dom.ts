@@ -2,7 +2,6 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   currentTokenDisplayText,
   tokenSourceIsLive,
-  trackedEntityTypeOf,
 } from "@wfgraph/shared/graph/node-display";
 import { parseTemplate } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -379,10 +378,6 @@ export function createBadgeEditor(
       return;
     }
 
-    // An Entity token reads the workflow's tracked Entity alone, so a token
-    // naming another Entity type draws broken and keeps its stored label.
-    const trackedEntityType = trackedEntityTypeOf(renderOptions.nodes);
-
     for (const segment of parseTemplate(text)) {
       if (segment.kind === "literal") {
         appendLiteral(segment.text);
@@ -393,8 +388,7 @@ export function createBadgeEditor(
       badge.className = tokenSourceIsLive(
         segment.token,
         renderOptions.nodes,
-        catalog,
-        trackedEntityType
+        catalog
       )
         ? LIVE_BADGE_CLASS
         : BROKEN_BADGE_CLASS;
@@ -404,8 +398,7 @@ export function createBadgeEditor(
       badge.textContent = currentTokenDisplayText(
         segment.token,
         renderOptions.nodes,
-        catalog,
-        trackedEntityType
+        catalog
       );
       appendCaretStop();
       container.appendChild(badge);
