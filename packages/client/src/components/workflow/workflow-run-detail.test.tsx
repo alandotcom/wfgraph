@@ -13,7 +13,7 @@ import {
   executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
 } from "#src/lib/workflow-graph-store";
-import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import { serializeConditionModel } from "@wfgraph/shared/conditions/conditions";
 import {
   emptyExtensionCatalog,
@@ -58,6 +58,7 @@ function renderDetail(
     catalog?: ExtensionCatalog;
     nodes?: WorkflowNode[];
     executionNodes?: WorkflowNode[];
+    executionEdges?: WorkflowEdge[];
     onSelectLog?: (log: WorkflowRunDetailLogs[number]) => void;
   }
 ) {
@@ -69,7 +70,7 @@ function renderDetail(
     showWorkspaceRoute(store, { view: "runs" });
     store.set(executionOverlayGraphAtom, {
       nodes: extras.executionNodes,
-      edges: [],
+      edges: extras.executionEdges ?? [],
     });
   }
   return {
@@ -470,6 +471,49 @@ describe("WorkflowRunDetail", () => {
       step("d", "error", 3),
     ];
     const failed = { ...BASE_EXECUTION, status: "failed" as const };
+
+    it("says which steps after the failure did not run, and that the run is not retried", () => {
+      const node = (id: string): WorkflowNode => ({
+        id,
+        type: "action",
+        position: { x: 0, y: 0 },
+        data: { label: `Step ${id}`, type: "action", config: {} },
+      });
+      const view = renderDetail(failed, {
+        logs,
+        executionNodes: [
+          {
+            id: "start",
+            type: "lifecycle",
+            position: { x: 0, y: 0 },
+            data: { label: "Start", type: "lifecycle" },
+          },
+          ...["node_a", "node_b", "node_c", "node_d", "node_e"].map(node),
+        ],
+        executionEdges: [
+          {
+            id: "s",
+            source: "start",
+            target: "node_a",
+            sourceHandle: "started",
+          },
+          { id: "ab", source: "node_a", target: "node_b" },
+          { id: "bc", source: "node_b", target: "node_c" },
+          { id: "cd", source: "node_c", target: "node_d" },
+          { id: "de", source: "node_d", target: "node_e" },
+        ],
+      });
+
+      const aftermath = view.container.querySelector(
+        '[data-slot="run-aftermath"]'
+      );
+      expect(aftermath?.textContent).toContain(
+        'Step 5 "Step node_e" did not run.'
+      );
+      expect(aftermath?.textContent).toContain(
+        "This run has ended and is not retried."
+      );
+    });
 
     it("opens the failed step's evidence from the failure summary", () => {
       const onSelectLog = vi.fn();

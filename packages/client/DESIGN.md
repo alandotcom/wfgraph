@@ -516,7 +516,9 @@ active waits with **Resume now**, **Cancel**, exit details, the failure summary,
 and activity. The failure summary states the cause once, in a
 plain sentence above the stored error. When a step's Connection refused or
 lacked its credentials, the sentence names the Connection and offers **Edit
-connection**. Activity entries read in the Runs view's words, with a clock time
+connection**. Beneath the cause, the summary names the steps after the failed
+one that did not run, by number and name, and says the run has ended and is
+not retried, so a fix reaches the next run. Activity entries read in the Runs view's words, with a clock time
 and the stored type as secondary text. **Back** and Escape on a run replace the history
 entry with the run list and put focus on that run's row, or on the header title
 when the list shows no row for it. A run past the newest 50, or one that leaves

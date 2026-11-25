@@ -6,7 +6,10 @@
  * sentence for a developer. Every function is pure.
  */
 
-import { compact } from "es-toolkit/array";
+import { compact, sortBy } from "es-toolkit/array";
+import { descendantsOf } from "@wfgraph/shared/graph/descendants";
+import { stepName } from "@wfgraph/shared/graph/step-name";
+import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 
 /** The Connection a failed step used, as the Runs view can name it. */
 export type FailedStepConnection =
@@ -170,4 +173,55 @@ export function describeConnectionTestFailure(input: {
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** How many steps the aftermath names before it counts the rest. */
+const NAMED_STEPS = 3;
+
+/**
+ * What a failed run left undone and what fixing its cause changes, in two
+ * sentences built from the run's own records: the steps after the failed one
+ * that never ran, by number and name, and that the run has ended for good.
+ * `failedNodeId` is the step that failed, `ranNodeIds` the steps the run
+ * recorded an execution of, and `numberOf` the step numbers of the graph the
+ * run pinned. A failed run is never retried: its steps retried before it
+ * failed, and a later run is a new run.
+ */
+export function failedRunAftermath(input: {
+  failedNodeId: string;
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  ranNodeIds: ReadonlySet<string>;
+  numberOf: ReadonlyMap<string, number>;
+  nameOf: (node: WorkflowNode) => string;
+}): { notRun: string; next: string } {
+  const after = descendantsOf({
+    startIds: [input.failedNodeId],
+    edges: input.edges,
+  });
+  const notRun = sortBy(
+    input.nodes.filter(
+      (node) =>
+        after.has(node.id) &&
+        !input.ranNodeIds.has(node.id) &&
+        input.numberOf.has(node.id)
+    ),
+    [(node) => input.numberOf.get(node.id) ?? 0]
+  );
+  const named = notRun
+    .slice(0, NAMED_STEPS)
+    .map((node) => stepName(input.nameOf(node), input.numberOf.get(node.id)));
+  const rest = notRun.length - named.length;
+  const list = new Intl.ListFormat("en", { type: "conjunction" }).format(
+    rest > 0
+      ? [...named, `${rest} more ${rest === 1 ? "step" : "steps"}`]
+      : named
+  );
+  return {
+    notRun:
+      notRun.length === 0
+        ? "No step after the failed one was left to run."
+        : `${list} did not run.`,
+    next: "This run has ended and is not retried. Once the cause is fixed, the next run uses the fix.",
+  };
 }
