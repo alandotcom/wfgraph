@@ -63,7 +63,7 @@ import {
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
 import { publishedModeWord } from "#src/lib/workflow-run-labels";
 import {
-  formatDayAndTime,
+  formatExactTime,
   getCompactRelativeTime,
 } from "@wfgraph/shared/utils/time";
 import { cn } from "@wfgraph/shared/utils";
@@ -671,7 +671,7 @@ export default function WorkflowsPage() {
                 <td className="hidden px-2 text-muted-foreground text-xs tabular-nums md:table-cell">
                   <time
                     dateTime={workflow.updatedAt}
-                    title={formatDayAndTime(new Date(workflow.updatedAt))}
+                    title={formatExactTime(new Date(workflow.updatedAt))}
                   >
                     {getCompactRelativeTime(workflow.updatedAt)}
                   </time>

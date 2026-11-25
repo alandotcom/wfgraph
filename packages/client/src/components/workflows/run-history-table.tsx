@@ -32,7 +32,7 @@ import {
   runRecipientsLabel,
 } from "#src/lib/workflow-run-labels";
 import {
-  formatDayAndTime,
+  formatExactTime,
   getCompactRelativeTime,
 } from "@wfgraph/shared/utils/time";
 import { opensRow } from "#src/lib/row-click";
@@ -252,7 +252,7 @@ function createRunHistoryColumns(
         <time
           className="text-muted-foreground text-xs tabular-nums"
           dateTime={info.getValue()}
-          title={formatDayAndTime(new Date(info.getValue()))}
+          title={formatExactTime(new Date(info.getValue()))}
         >
           {getCompactRelativeTime(info.getValue())}
         </time>

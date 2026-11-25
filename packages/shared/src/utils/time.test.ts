@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   formatClockTime,
   formatClockTimeWithSeconds,
-  formatDayAndTime,
   getCompactRelativeTime,
   formatExactTime,
 } from "#src/utils/time";
