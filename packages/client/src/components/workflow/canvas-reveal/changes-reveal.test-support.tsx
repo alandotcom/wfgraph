@@ -156,8 +156,9 @@ function ComparisonCanvasNodes() {
  * Render Canvas Reveal inside the editor route at `search`, over a Draft of
  * `draftNodes`, with `installed` installed as the comparison when it is given.
  * With `mobile`, the mobile Reveal sequence renders over a canvas whose nodes
- * are buttons, or over the real `WorkflowCanvas` with `workflowCanvas`. The route is not synced to the store, so a case that follows a
- * navigation calls `show` with the route's search.
+ * are buttons, or over the real `WorkflowCanvas` with `workflowCanvas`. The
+ * route is not synced to the store, so a case that follows a navigation calls
+ * `show` with the route's search.
  */
 export async function renderChangesReveal(input: {
   search: WorkflowRouteSearch;
@@ -166,6 +167,8 @@ export async function renderChangesReveal(input: {
   catalog?: ExtensionCatalog | undefined;
   mobile?: boolean | undefined;
   workflowCanvas?: boolean | undefined;
+  /** Writes to the store after the route is shown and before Reveal renders. */
+  beforeRender?: ((store: Store) => void) | undefined;
 }) {
   const { search } = input;
   const store = createStore();
@@ -179,6 +182,7 @@ export async function renderChangesReveal(input: {
   if (input.installed) {
     installComparison(store, input.installed);
   }
+  input.beforeRender?.(store);
 
   const rootRoute = createRootRoute({ component: () => <Outlet /> });
   const workflowRoute = createRoute({

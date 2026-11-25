@@ -1,47 +1,44 @@
 /**
- * How both Changes bodies move between changed objects: the comparison's change
- * list with the selected entry, and the Previous and Next bar. Choosing an entry
- * writes the canvas selection, which both bodies and the camera follow. A step
- * inside a collapsed Group is selected on that Group's focused canvas, and
- * Previous and Next reach it by replacing the route's history entry. A
- * collapsed Group card leads to the changed steps inside it the same way.
+ * How the Changes change list moves between changed objects and which of its
+ * rows are open. Choosing an object writes the canvas selection, which the list
+ * and the camera follow. A step inside a collapsed Group is selected on that
+ * Group's focused canvas, and a collapsed Group card's changed count leads to
+ * the changed steps inside it the same way.
  */
 
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useStore } from "jotai";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { useAtom, useAtomValue, useStore } from "jotai";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
 import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
-import type { InspectedObject } from "#src/lib/workflow-navigation-state";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import {
   openMobileChangedObject,
   selectChangedObject,
-  type SelectChangeOptions,
 } from "./changed-object-navigation";
 import {
   changedObjects,
+  changeRowsComparisonKey,
+  initiallyOpenChangeRows,
+  openChangeRowsAtom,
+  opensInPlace,
   selectedChangeIndex,
   type ChangedObject,
 } from "./changes-summary";
 import { useRevealNavigation } from "./use-reveal-navigation";
 
-/** Choose one changed object, doing nothing for an undefined one. */
-export type ChooseChange = (
-  item: ChangedObject | undefined,
-  options?: SelectChangeOptions
-) => void;
+/** Choose one changed object of the change list. */
+export type ChooseChange = (item: ChangedObject) => void;
 
 /**
- * The changed objects of `payload` on the comparison canvas, and the index and
- * key of the selected one (-1 and null when the selection holds none of them).
+ * The changed objects of `payload` on the comparison canvas, and the key of
+ * the selected one (null when the selection holds none of them).
  */
 export function useChangedObjects(payload: WorkflowComparisonPayload): {
   objects: readonly ChangedObject[];
-  selectedIndex: number;
   selectedKey: string | null;
 } {
   const catalog = useExtensionCatalog();
@@ -51,60 +48,32 @@ export function useChangedObjects(payload: WorkflowComparisonPayload): {
     () => (graph ? changedObjects({ payload, graph, catalog }) : []),
     [catalog, graph, payload]
   );
-  const selectedIndex = selectedChangeIndex(objects, selection);
   return {
     objects,
-    selectedIndex,
-    selectedKey: objects[selectedIndex]?.key ?? null,
+    selectedKey: objects[selectedChangeIndex(objects, selection)]?.key ?? null,
   };
 }
 
 /**
- * Select a changed object on the canvas, as `useSelectChangedObject`
- * describes, which Canvas Reveal's Browse and Focus follow.
+ * Select a changed object on the canvas, as `selectChangedObject` describes,
+ * which the change list follows by opening that object's row.
  */
 export function useSelectChange(): ChooseChange {
-  const selectChange = useSelectChangedObject();
-  return (item, options) => {
-    if (item) {
-      selectChange(item.object, options);
-    }
-  };
+  const store = useStore();
+  const navigate = useNavigate({ from: "/workflows/$workflowId" });
+  return (item) =>
+    selectChangedObject({ store, navigate, object: item.object });
 }
 
 /**
- * Show the field differences of a changed object in the mobile Reveal sequence
- * of the scope that shows it, through `openMobileChangeAtom`. Reaching another
- * scope writes that scope's sequence, then pushes its route, or replaces it
- * with `options.replace`.
+ * Select a changed object in the phone's change list sheet of the scope that
+ * shows it, as `openMobileChangedObject` describes.
  */
 export function useOpenMobileChange(): ChooseChange {
-  const openChangedObject = useOpenMobileChangedObject();
-  return (item, options) => {
-    if (item) {
-      openChangedObject(item.object, options);
-    }
-  };
-}
-
-function useOpenMobileChangedObject(): (
-  object: InspectedObject,
-  options?: SelectChangeOptions
-) => void {
   const store = useStore();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
-  return (object, options) =>
-    openMobileChangedObject({ store, navigate, object }, options);
-}
-
-function useSelectChangedObject(): (
-  object: InspectedObject,
-  options?: SelectChangeOptions
-) => void {
-  const store = useStore();
-  const navigate = useNavigate({ from: "/workflows/$workflowId" });
-  return (object, options) =>
-    selectChangedObject({ store, navigate, object }, options);
+  return (item) =>
+    openMobileChangedObject({ store, navigate, object: item.object });
 }
 
 /**
@@ -146,54 +115,44 @@ export function GroupChangedStepsButton({
 }
 
 /**
- * Previous, the selected object's place in the list, and Next. With nothing in
- * the list selected, Next selects the first change. Each step replaces the
- * route's history entry when it reaches another scope.
+ * The open rows of the change list of `payload`, and the writes that change
+ * them. Until the reader or a selection first opens or closes a row of this
+ * comparison, the list shows `initiallyOpenChangeRows`. `toggle` opens or
+ * closes a row. `reveal` records `item` as the selected object the list has
+ * shown, as `revealed`, and opens its row when it has one; null records that
+ * no changed object is selected. Neither moves the camera or the selection.
  */
-export function ChangeNavigation({
-  objects,
-  selectedIndex,
-  onSelect,
-}: {
-  objects: readonly ChangedObject[];
-  selectedIndex: number;
-  onSelect: (
-    item: ChangedObject | undefined,
-    options: SelectChangeOptions
-  ) => void;
-}) {
-  return (
-    <nav
-      aria-label="Changed objects"
-      className="flex shrink-0 items-center justify-between border-t px-2 py-1.5"
-    >
-      <Button
-        aria-label="Previous change"
-        disabled={selectedIndex <= 0}
-        onClick={() => onSelect(objects[selectedIndex - 1], { replace: true })}
-        size="sm"
-        type="button"
-        variant="ghost"
-      >
-        <ArrowLeft data-icon="inline-start" />
-        Previous
-      </Button>
-      <span className="text-muted-foreground text-xs">
-        {selectedIndex >= 0
-          ? `${selectedIndex + 1} of ${objects.length}`
-          : `${objects.length} ${objects.length === 1 ? "change" : "changes"}`}
-      </span>
-      <Button
-        aria-label="Next change"
-        disabled={selectedIndex >= objects.length - 1}
-        onClick={() => onSelect(objects[selectedIndex + 1], { replace: true })}
-        size="sm"
-        type="button"
-        variant="ghost"
-      >
-        Next
-        <ArrowRight data-icon="inline-end" />
-      </Button>
-    </nav>
-  );
+export function useOpenChangeRows(
+  payload: WorkflowComparisonPayload,
+  objects: readonly ChangedObject[]
+): {
+  open: ReadonlySet<string>;
+  revealed: string | null;
+  toggle: (key: string) => void;
+  reveal: (item: ChangedObject | null) => void;
+} {
+  const workflowId = useAtomValue(currentWorkflowIdAtom);
+  const [stored, setStored] = useAtom(openChangeRowsAtom);
+  const comparison = changeRowsComparisonKey(workflowId, payload);
+  const current = stored?.comparison === comparison ? stored : null;
+  const initial = useMemo(() => initiallyOpenChangeRows(objects), [objects]);
+  const open = current?.keys ?? initial;
+  const revealed = current?.revealed ?? null;
+  return {
+    open,
+    revealed,
+    toggle: (key) => {
+      const keys = new Set(open);
+      if (!keys.delete(key)) {
+        keys.add(key);
+      }
+      setStored({ comparison, keys, revealed });
+    },
+    reveal: (item) =>
+      setStored({
+        comparison,
+        keys: item && opensInPlace(item) ? new Set([...open, item.key]) : open,
+        revealed: item?.key ?? null,
+      }),
+  };
 }

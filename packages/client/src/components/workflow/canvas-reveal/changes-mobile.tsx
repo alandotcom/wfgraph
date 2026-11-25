@@ -1,14 +1,13 @@
 /**
  * The Changes sheets on a phone: the comparison summary, the change list, and
- * version history as address sheets, and one object's field differences as its
- * inspector. Every sheet reads only the comparison the route names, so while
- * another comparison loads it shows that state instead.
+ * version history, each an address sheet. The change list's rows open in place
+ * to show each object's differences, stacked to fit the width. Every sheet
+ * reads only the comparison the route names, so while another comparison loads
+ * it shows that state instead.
  */
 
 import { useAtomValue, useSetAtom } from "jotai";
 import { History, ListChecks, RefreshCw, X } from "lucide-react";
-import { useMemo } from "react";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
 import { StatusPlaceholder } from "#src/components/workflow/status-placeholder";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
@@ -17,7 +16,6 @@ import {
   WorkflowVersionHistory,
 } from "#src/components/workflow/workflow-version-history";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
-import { comparisonDisplayGraphAtom } from "#src/lib/workflow-comparison-store";
 import type { WorkspaceAddress } from "#src/lib/workflow-navigation-state";
 import {
   closeMobileSheetAtom,
@@ -30,7 +28,6 @@ import {
   ComparisonState,
   ComparisonSummarySection,
 } from "./changes-browse";
-import { ChangeFieldDifferences } from "./changes-focus";
 import { useChangedObjects, useOpenMobileChange } from "./changes-navigation";
 import {
   CHANGE_LIST_SECTION,
@@ -38,46 +35,21 @@ import {
   changesMobileSheet,
   changesMobileSheetName,
   comparisonRevealContextAtom,
-  inspectChange,
   noChangesLabel,
   VERSION_HISTORY_SECTION,
-  type ChangeInspection,
 } from "./changes-summary";
 import { MobileSheetHeader } from "./mobile-sheet-header";
 import type { MobileKindHeaderProps } from "./reveal-kinds";
 
-/**
- * The header of the Changes sheet on screen. Back is named for the sheet
- * beneath. The field differences are the deepest sheet, so no sheet names an
- * inspector control.
- */
+/** The header of the Changes sheet on screen. Back is named for the sheet beneath. */
 export function ChangesMobileHeader({
   state,
   controls,
 }: MobileKindHeaderProps) {
   const comparison = useAtomValue(comparisonRevealContextAtom);
-  const graph = useAtomValue(comparisonDisplayGraphAtom);
-  const catalog = useExtensionCatalog();
-  const payload = "payload" in comparison ? comparison.payload : null;
-  const objectKind = state.sheet.inspected?.kind;
-  const objectId = state.sheet.inspected?.id;
-  const inspection = useMemo(
-    (): ChangeInspection =>
-      payload && graph && objectKind !== undefined && objectId !== undefined
-        ? inspectChange({
-            payload,
-            graph,
-            catalog,
-            objects: [],
-            object: { kind: objectKind, id: objectId },
-          })
-        : { kind: "unavailable" },
-    [catalog, graph, objectId, objectKind, payload]
-  );
   const heading = changesMobileHeading({
     comparison,
     sheet: changesMobileSheet(state.sheet),
-    inspection,
   });
   return (
     <MobileSheetHeader
@@ -102,9 +74,6 @@ export function ChangesMobileBody({ mobile: state }: RevealBodyProps) {
     return null;
   }
   const sheet = changesMobileSheet(state.sheet);
-  if (sheet === "change") {
-    return <ChangeFieldDifferences />;
-  }
   if (!("payload" in comparison)) {
     return (
       <>
@@ -243,8 +212,9 @@ function ComparisonCommands({
 }
 
 /**
- * The change list as a sheet. Choosing a row shows that object's field
- * differences in a sheet over the list, which keeps its scroll for Back.
+ * The change list as a sheet. Its rows open in place, and the sheet scrolls a
+ * selected object's row into view. Pressing a name selects that object in the
+ * scope that shows it, entering its Group and carrying these sheets there.
  */
 function ChangeListSheet({ payload }: { payload: WorkflowComparisonPayload }) {
   const { objects, selectedKey } = useChangedObjects(payload);
@@ -255,8 +225,10 @@ function ChangeListSheet({ payload }: { payload: WorkflowComparisonPayload }) {
   return (
     <div data-slot="change-list">
       <ChangeListSections
+        layout="stacked"
         objects={objects}
         onChoose={openChange}
+        payload={payload}
         selectedKey={selectedKey}
       />
     </div>

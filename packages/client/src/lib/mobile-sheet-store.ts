@@ -104,19 +104,24 @@ export const openMobileAddressSectionAtom = atom(
 );
 
 /**
- * Show the field differences of one changed object in a named comparison
- * address, selecting it alone, in one navigation write. When that address has
- * no sheet open and is another scope of the active comparison, the active
- * address's sheets are carried first, as applying its route would carry them,
- * so Back from a Group member reaches the change list the member was chosen
- * from. The inspector then opens as `withMobileInspectorOverAddress` describes.
+ * Select one changed object in a named comparison address and show the sheet
+ * of `section`, the change list, which opens that object's row, in one
+ * navigation write. When that address has no sheet open and is another scope
+ * of the active comparison, the active address's sheets are carried first, as
+ * applying its route would carry them, so Back from a Group member reaches the
+ * sheets the member was chosen from. The section sheet then opens as
+ * `withMobileAddressSection` describes, as a summary sheet.
  */
 export const openMobileChangeAtom = atom(
   null,
   (
     get,
     set,
-    input: { address: WorkspaceAddress; inspected: InspectedObject }
+    input: {
+      address: WorkspaceAddress;
+      inspected: InspectedObject;
+      section: string;
+    }
   ) => {
     const { address, inspected } = input;
     const active = get(activeWorkspaceAddressAtom);
@@ -125,14 +130,14 @@ export const openMobileChangeAtom = atom(
       workspaceAddressId(address);
     const sheets = sameComparison ? get(activeMobileSheetsAtom) : [];
     set(updateAddressNavigationAtom, address, (scope) =>
-      withMobileInspectorOverAddress(
+      withMobileAddressSection(
         withSelection(
           withMobileSequenceFrom(scope, { sheets, sameKey: true }),
           inspected.kind === "node"
             ? { nodeIds: [inspected.id], edgeIds: [] }
             : { nodeIds: [], edgeIds: [inspected.id] }
         ),
-        inspected
+        { level: "summary", section: input.section }
       )
     );
   }

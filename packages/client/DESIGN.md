@@ -570,9 +570,9 @@ nothing selected, and moving to another workspace closes it.
 
 Below `md`, **Runs** uses the same sequence of sheets. A sheet has one of two
 shapes: a summary sheet over the bottom of the canvas, or an inspector that
-covers it. A Draft sheet is about one object, and a Runs or **Changes** sheet
-is about the address itself or about one object; **Changes** is described under
-Publication review. Entering Runs, or **Configuration** in Runs,
+covers it. A Draft sheet is about one object, a Runs sheet is about the
+address itself or about one object, and a **Changes** sheet is about the
+address; **Changes** is described under Publication review. Entering Runs, or **Configuration** in Runs,
 opens the run list or the open run as a summary sheet, and the first visit opens
 the newest run. A run row opens that run's summary sheet, which holds its
 status, **Cancel**, active waits with **Resume now**, exit details, the failure
@@ -608,17 +608,17 @@ member counts, and each step with its status. A step in that summary, or a
 journey entry for a step inside a collapsed Group, opens the Group's focused
 canvas with the step's evidence as the inspector over the run's sheet, and
 **Enter group** opens the focused canvas with the run's sheet still open. In
-**Changes**, a Group card opens the Group's organization summary as the
-inspector: the Group's own settings, whether execution behavior changed, the
-changed steps inside it, and **Enter group**, at every width. A changed step in
-that summary, a change list row, the Group card's **N changed** control, and
-**Previous** or **Next** each open the focused canvas of the Group that holds
-the step, with the step's field differences over the sheets that were open.
+**Changes**, a Group card opens the change list with the Group's row open: the
+Group's own settings, whether execution behavior changed, the changed steps
+inside it, and **Enter group**, at every width. A changed step in that row, a
+step's name in the change list, and the Group card's **N changed** control each
+open the focused canvas of the Group that holds the step, with the change list
+carried over and the step's row open.
 Inside a Group, Draft, Runs, and **Changes** give the first sheet the same Back
 control named for the Group. Back and Escape on that sheet remove it and leave
 the focused canvas showing. **Workflow** or browser Back returns to the
-overview with the sheets it last showed, such as the Group's run summary or its
-organization summary. Runs and **Changes** draw every focused Group top to
+overview with the sheets it last showed, such as the Group's run summary or the
+change list. Runs and **Changes** draw every focused Group top to
 bottom and offer no topology authoring. Switching between Draft, Runs, and **Changes** returns each
 workspace to the Group it showed, with its sheets, selection, and camera.
 
@@ -672,13 +672,33 @@ Group's label, description, creation, and removal, and a step's Group
 membership, are Organization; a step's settings, its enabled state, and every
 connection are Behavior. A comparison whose only changes are Organization shows
 "Execution behavior is unchanged. Only how steps are organized in Groups
-differs." in place of the Behavior counts. The list shows each changed Group,
-then each changed step, then each changed connection with its marker and
-change, and a step whose only change is its Group reads **Group membership**.
-Choosing a row, **Previous**, or **Next** selects that object on the canvas and
-places it. A collapsed Group card on the comparison canvas counts the changed
-steps inside it, as "2 changed"; pressing that count enters the Group, selects
-the first of those steps, and opens Browse when Reveal is closed.
+differs." in place of the Behavior counts. Changes has
+one level. Its header holds the comparison's title and **Close**, and no
+control in it acts on the selection.
+
+Under the counts, the change list is the review, read top to bottom: each
+changed Group, then each changed step, then each changed connection. A row
+shows its marker, its name, and one line saying what changed: "Added",
+"Removed", one changed setting by name as "Body changed", several as "2
+settings changed", or a step's Group as "Moved into Pre-visit reminders". A
+Group or step row is a disclosure. Opened, it shows that object's differences
+beneath it, and pressing anywhere on the row's header outside the name opens or
+closes it. Each row's chevron and name are separate stops in the Tab order, and
+Enter or Space on the chevron opens or closes the row. Modified Groups and steps
+start open, and added and removed ones start closed. A list of more than eight
+changed objects starts with only its first modified row open. The open rows are
+kept for the comparison while the editor stays open, through version history,
+a Group's view, and a visit to another workspace. A connection row is one
+control and does not open.
+
+Pressing a row's name, or a connection row, selects that object on the canvas
+and places it once, entering its Group when it sits inside one. Selecting a
+changed object anywhere, on the canvas or from a Group card's count, opens its
+row and scrolls the row's header to the top of the list when it is out of view.
+Opening or closing a row never moves the camera or the selection. A collapsed
+Group card on the comparison canvas counts the changed steps inside it, as "2
+changed"; pressing that count enters the Group, selects the first of those
+steps, and opens Browse when Reveal is closed.
 Collapse, camera, Group depth, selection, Reveal state, and scroll never enter
 a comparison.
 The Publish confirmation shows the same Behavior and Organization counts, and
@@ -692,16 +712,15 @@ change markers until the comparison the route names arrives. Version history ope
 on its heading. Choosing a version there opens that comparison's change list in
 Browse, and a comparison against a version other than the current publication
 offers **Restore version N as draft** above its list. **Back to changes** or Escape returns to the list with its
-selection and scroll, and focus on **Version history**; Escape from the list
-closes Reveal. **Reset comparison layout** also hands focus to **Version
-history**.
+selection, open rows, and scroll, and focus on **Version history**; Escape from
+the list closes Reveal. **Reset comparison layout** also hands focus to
+**Version history**.
 
-With one changed step or connection selected, on the canvas or from the list,
-**Compare fields** opens Focus for that object. Its path ends with the
-object's title. A table lists each setting under readable names, with a column
-for the published version ("Version N") and one for **Current draft**: both
-columns for a modified step, the draft column alone for an added one, and the
-published column alone for a removed one. When both columns hold text that
+An open row starts with a sentence saying which versions hold the object and
+what differs. A table then lists each setting under readable names, with a
+column for the published version ("Version N") and one for **Current draft**:
+both columns for a modified step, the draft column alone for an added one, and
+the published column alone for a removed one. When both columns hold text that
 shares words, removed words are struck through on a red tint, added words sit on
 a green tint, and long unchanged text folds around each change until the row's
 **Show full value**. Any other long value starts shortened with its length and
@@ -710,25 +729,23 @@ for security". A template reference reads as the badge the Draft editor draws. A
 as "Start filter › Appointment booked", a Start or Cancel Filter reads as its
 rules or "Filter changed" when it cannot be read, a Condition's rules read as
 sentences under "Continue when" or "Rules changed", a Wait's settings use its
-form's labels, and a Connection reads as its name or "Connection changed". Focus says so when a step's action is missing from
-the catalog and its settings show general names, when the comparison lacks a
-side's values, and when a step is unchanged and only its connections changed,
-listing those connections. A changed Group lists its own settings and the
-changed steps inside it, each entering the Group to show that step. It says execution
+form's labels, and a Connection reads as its name or "Connection changed". The row says so when a step's action is missing from
+the catalog and its settings show general names, and when the comparison lacks
+a side's values. A changed step lists the changed connections that touch it,
+each selecting that connection. A changed Group lists its own settings, the
+changed steps inside it, each entering the Group and opening that step's row,
+and **Enter group**. It says execution
 behavior is unchanged when none of those steps changed behavior, and otherwise
 says that the Group's own change does not affect execution. A step whose Group changed shows a **Group membership** table
 naming each version's Group or "Not in a Group", and its sentence names the
 Groups it moved between. A changed step also shows how the editor's issue
 checks differ between the two versions, and says validation is unknown for a
-version whose action is missing from the catalog. **Previous** and **Next** in Focus move the canvas selection and
-Focus together, and a changed step inside a collapsed Group is selected on that
-Group's focused canvas. Previous and Next replace the
-route's history entry when they reach another scope. Back or Escape returns to
-the change list in Browse with the list scroll Focus was entered with, the
-selection, and the camera, and focus on the object's row, scrolled into view
-when it is outside the list. Restore
-always says "Restore version N as draft" and requires confirmation that the
-published version remains unchanged.
+version whose action is missing from the catalog. A changed step inside a
+collapsed Group is selected on that Group's focused canvas, which adds a
+browser history entry, and the list keeps its scroll there. A route or a
+remembered state that names the Focus level of a comparison shows Browse, with
+the selected object's row open. Restore always says "Restore version N as
+draft" and requires confirmation that the published version remains unchanged.
 
 Version history starts with **In use** when the viewer can inspect version
 usage. Its count names versions, not runs: the current publication remains
@@ -748,28 +765,27 @@ Signal Red. The marker is a solid signal disc with a 12px letter, and on the
 canvas it grows as the zoom drops so the letter stays 12px on screen. Deleted edges use a distinct dotted treatment. Node position,
 dimensions, and measured geometry never create a change marker.
 
-Below `md`, **Changes** uses the mobile sequence of sheets. Switching to
-Changes, or **Configuration** with no sheet open, opens the comparison summary
-sheet: its title names the comparison, it counts changes under **Behavior** and
-**Organization**, and it holds **Review N changes**, **Refresh comparison**,
-**Version history**, and **Exit comparison**. **Review N changes** opens the
-change list as a summary sheet with the same sections and rows as Browse. A row,
-or a changed node tapped on the canvas, opens that object's field differences as
-the inspector, titled by the object over its change; a tap with no sheet open
-puts the comparison summary beneath it. Each setting lists "Version N" and
-**Current draft** under it, with only the sides that hold the object, so no two
-versions sit side by side. **Previous** and **Next** stay pinned to the bottom
-and show the next object in the same sheet. Choosing a changed step inside a
-Group opens that Group's view with the summary and the change list beneath the
-field differences, so Back reaches the list. **Version history** opens as an
-inspector over the summary, and Back from history returns to the summary with
-its scroll. Choosing a version in history closes history and opens that
-comparison's summary; choosing the version already compared refreshes it. Back
-from the field differences returns to the list with its scroll and the
-selection, leaves the camera where it is, and puts focus on the row of the
-object shown last, scrolled into view. Each comparison, and each Group view of it, keeps its own sheets, so
-switching to Draft and back returns to the same comparison at the same sheet. A
-phone cannot move deleted nodes, so it offers no **Reset comparison layout**.
+Below `md`, **Changes** uses the mobile sequence of sheets, and every Changes
+sheet is about the comparison. Switching to Changes, or **Configuration** with
+no sheet open, opens the comparison summary sheet: its title names the
+comparison, it counts changes under **Behavior** and **Organization**, and it
+holds **Review N changes**, **Refresh comparison**, **Version history**, and
+**Exit comparison**. **Review N changes** opens the change list as a summary
+sheet with the same sections and rows as Browse, and its rows open in place the
+same way. Each setting in an open row lists "Version N" and **Current draft**
+under it, with only the sides that hold the object, so no two versions sit side
+by side. A changed node tapped on the canvas opens the change list with that
+node's row open, with the comparison summary beneath it when no sheet was
+open. Pressing a name selects the object without opening a sheet or moving the
+camera. A name of a changed step inside a Group opens that Group's view with
+the summary and the change list carried over, so Back reaches the summary.
+**Version history** opens as an inspector over the summary, and Back from
+history returns to the summary with its scroll. Choosing a version in history
+closes history and opens that comparison's summary; choosing the version
+already compared refreshes it. Each comparison, and each Group view of it, keeps
+its own sheets, so switching to Draft and back returns to the same comparison at
+the same sheet with the same rows open. A phone cannot move deleted nodes, so it
+offers no **Reset comparison layout**.
 
 On desktop, modified nodes show published and draft values side by side, added
 nodes show draft values only, and deleted nodes show published values only.

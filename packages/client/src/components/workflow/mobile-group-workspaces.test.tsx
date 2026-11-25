@@ -734,7 +734,7 @@ function childModification(): WorkflowComparisonPayload {
 }
 
 describe("mobile Changes Group drill-in", () => {
-  it("opens the first changed member from a Group card's changed count, and Previous and Next cross the Group boundary", async () => {
+  it("opens the first changed member's row from a Group card's changed count, and a name crosses the Group boundary", async () => {
     const editor = await renderPhoneEditor({
       search: "?view=changes&compare=version_3",
       comparison: childModification(),
@@ -742,8 +742,13 @@ describe("mobile Changes Group drill-in", () => {
     const { store, search, inSheet, title, press } = editor;
     const sheets = () =>
       store.get(activeMobileSheetsAtom).map(changesMobileSheet);
+    const row = (name: string) =>
+      inSheet()
+        .getByRole("button", { name })
+        .closest('[data-slot="change-row"]') as HTMLElement | null;
 
-    // The Group card's changed count opens the member's field differences.
+    // The Group card's changed count opens the change list inside the Group
+    // with the member's row open.
     const changed = await waitFor(() => {
       const button = editor.view.container.querySelector<HTMLElement>(
         '[data-slot="group-changed-steps"]'
@@ -764,11 +769,15 @@ describe("mobile Changes Group drill-in", () => {
         group: "outreach",
       })
     );
-    await waitFor(() => expect(title()).toBe("Send case study"));
-    expect(sheets()).toEqual(["summary", "change"]);
+    await waitFor(() => expect(title()).toBe("Changes"));
+    expect(sheets()).toEqual(["summary", "changes"]);
     expect(store.get(activeSelectionAtom).nodeIds).toEqual(["case_study"]);
+    const member = row("Send case study");
+    if (!member) {
+      throw new Error("the member has no change list row");
+    }
     expect(
-      within(inSheet().getByRole("list", { name: "Settings of this step" }))
+      within(member)
         .getAllByRole("listitem")
         .map((item) => item.textContent)
     ).toEqual([expect.stringContaining("Case study, updated")]);
@@ -777,18 +786,17 @@ describe("mobile Changes Group drill-in", () => {
     );
     expectNoTopologyAuthoring(editor);
 
-    // Previous leaves the Group for the change drawn on the overview, and Next
-    // enters the Group again, each in the same sheet.
-    press("Previous change");
+    // A step drawn on the overview leaves the Group, carrying the sheets, and
+    // the member's name enters the Group again.
+    press("Route outcome");
     await waitFor(() => expect(editor.scope()).toEqual({ kind: "overview" }));
-    await waitFor(() => expect(title()).toBe("Route outcome"));
-    expect(sheets()).toEqual(["summary", "change"]);
-    press("Next change");
+    expect(sheets()).toEqual(["summary", "changes"]);
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["route"]);
+    press("Send case study");
     await waitFor(() =>
       expect(editor.scope()).toEqual({ kind: "group", groupId: "outreach" })
     );
-    await waitFor(() => expect(title()).toBe("Send case study"));
-    expect(sheets()).toEqual(["summary", "change"]);
+    expect(sheets()).toEqual(["summary", "changes"]);
 
     // The comparison summary inside the Group leads back to the Group canvas.
     press("Back to Summary");
@@ -849,12 +857,20 @@ describe("mobile Changes Group drill-in", () => {
     const sheets = () =>
       store.get(activeMobileSheetsAtom).map(changesMobileSheet);
 
-    // The Group card opens the Group's organization summary.
+    // The Group card opens the change list with the Group's row open.
     await editor.tapNode("outreach");
-    await waitFor(() => expect(title()).toBe("Initial outreach"));
-    expect(sheets()).toEqual(["summary", "change"]);
-    expect(inSheet().getByText(/execution behavior is unchanged/)).toBeTruthy();
-    const members = inSheet()
+    await waitFor(() => expect(title()).toBe("Changes"));
+    expect(sheets()).toEqual(["summary", "changes"]);
+    const groupRow = inSheet()
+      .getByRole("button", { name: "Initial outreach" })
+      .closest('[data-slot="change-row"]') as HTMLElement | null;
+    if (!groupRow) {
+      throw new Error("the Group has no change list row");
+    }
+    expect(
+      within(groupRow).getByText(/execution behavior is unchanged/)
+    ).toBeTruthy();
+    const members = within(groupRow)
       .getByRole("heading", { name: "Changed steps in this Group" })
       .closest("section") as HTMLElement;
     expectNoTopologyAuthoring(editor);
@@ -862,24 +878,34 @@ describe("mobile Changes Group drill-in", () => {
     // A membership-only member shows inside the Group.
     fireEvent.click(
       within(members).getByRole("button", {
-        name: "Send welcome back Group membership",
+        name: "Send welcome back Moved into Initial outreach",
       })
     );
     await waitFor(() => expect(search()).toMatchObject({ group: "outreach" }));
-    await waitFor(() => expect(title()).toBe("Send welcome back"));
-    expect(
-      inSheet().getByRole("list", { name: "Group membership of this step" })
-    ).toBeTruthy();
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["welcome"]);
+    const memberRow = inSheet()
+      .getByRole("button", { name: "Send welcome back" })
+      .closest('[data-slot="change-row"]') as HTMLElement | null;
+    if (!memberRow) {
+      throw new Error("the member has no change list row");
+    }
+    await waitFor(() =>
+      expect(
+        within(memberRow).getByRole("list", {
+          name: "Group membership of this step",
+        })
+      ).toBeTruthy()
+    );
 
-    // Back inside the Group removes the member's sheet, and Workflow returns to
-    // the overview's organization summary, which enters the Group.
+    // Back inside the Group removes the change list, and Workflow returns to
+    // the overview's change list, whose Group row enters the Group.
     press("Back to Summary");
     await waitFor(() => expect(sheets()).toEqual(["summary"]));
     expect(editor.scope()).toEqual({ kind: "group", groupId: "outreach" });
     await editor.leaveGroup();
     await waitFor(() => expect(editor.scope()).toEqual({ kind: "overview" }));
-    await waitFor(() => expect(title()).toBe("Initial outreach"));
-    expect(sheets()).toEqual(["summary", "change"]);
+    await waitFor(() => expect(title()).toBe("Changes"));
+    expect(sheets()).toEqual(["summary", "changes"]);
     press(/Enter group/);
     await waitFor(() =>
       expect(editor.scope()).toEqual({ kind: "group", groupId: "outreach" })
@@ -922,7 +948,7 @@ describe("mobile workspace switching inside Groups", () => {
       });
     };
 
-    // Changes: the member's field differences inside the Group.
+    // Changes: the change list inside the Group, with the member's row open.
     await editor.openSheet();
     await waitFor(() => expect(title()).toBe("Version 3 → proposed version 4"));
     const changed = await waitFor(() => {
@@ -937,7 +963,7 @@ describe("mobile workspace switching inside Groups", () => {
     await act(async () => {
       fireEvent.click(changed);
     });
-    await waitFor(() => expect(title()).toBe("Send case study"));
+    await waitFor(() => expect(title()).toBe("Changes"));
     const changesCamera = { x: 30, y: -300, zoom: 0.8 };
     await editor.moveCamera(changesCamera);
 
@@ -975,10 +1001,10 @@ describe("mobile workspace switching inside Groups", () => {
         group: "outreach",
       })
     );
-    await waitFor(() => expect(title()).toBe("Send case study"));
+    await waitFor(() => expect(title()).toBe("Changes"));
     expect(store.get(activeMobileSheetsAtom).map(changesMobileSheet)).toEqual([
       "summary",
-      "change",
+      "changes",
     ]);
     expect(selected()).toEqual(["case_study"]);
     editor.expectCamera(changesCamera);

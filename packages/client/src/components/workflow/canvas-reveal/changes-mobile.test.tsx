@@ -253,15 +253,41 @@ async function renderMobileChanges(options?: {
       fireEvent.mouseUp(window, at(110, 90));
     });
   };
-  /** Each stacked setting as its label followed by each side's name and value. */
-  const settings = (name: string) =>
-    within(inSheet().getByRole("list", { name }))
+  /** The change list row whose object is named `title`. */
+  const row = (title: string) => {
+    const element = inSheet()
+      .getByRole("button", { name: title })
+      .closest<HTMLElement>('[data-slot="change-row"]');
+    if (!element) {
+      throw new Error(`${title} has no change list row`);
+    }
+    return element;
+  };
+  /** Whether the row of `title` shows its differences. */
+  const isOpen = (title: string) =>
+    row(title).querySelector("[aria-expanded]")?.getAttribute("aria-expanded");
+  /** The differences under the row of `title`, which must be open. */
+  const rowDifferences = (title: string) =>
+    within(within(row(title)).getByRole("region"));
+  /**
+   * Each stacked setting in the open row of `title`, as its label followed by
+   * each side's name and value.
+   */
+  const settings = (title: string, name: string) =>
+    within(rowDifferences(title).getByRole("list", { name }))
       .getAllByRole("listitem")
       .map((item) =>
         [...item.querySelectorAll("p, dt, dd")].map(
           (element) => element.textContent
         )
       );
+  /** The titles of the rows in the change list region named `name`. */
+  const titles = (name: string) =>
+    [
+      ...inSheet()
+        .getByRole("region", { name })
+        .querySelectorAll("[data-slot=change-title]"),
+    ].map((element) => element.textContent);
   return {
     ...rendered,
     server,
@@ -277,7 +303,11 @@ async function renderMobileChanges(options?: {
     canvasNode,
     flowNode,
     drag,
+    row,
+    isOpen,
+    rowDifferences,
     settings,
+    titles,
   };
 }
 
@@ -296,7 +326,7 @@ afterEach(() => {
 });
 
 describe("mobile Changes sequence", () => {
-  it("moves from the comparison summary to the change list to stacked field differences, and goes Back one sheet at a time", async () => {
+  it("moves from the comparison summary to the change list, opens rows in place, and goes Back one sheet at a time", async () => {
     const view = await renderMobileChanges();
     expect(
       view.view.container.querySelector('[data-slot="canvas-reveal"]')
@@ -317,89 +347,91 @@ describe("mobile Changes sequence", () => {
     expect(view.sheets()).toEqual(["summary", "changes"]);
     expect(view.sheet()?.dataset.level).toBe("summary");
     expect(view.heading()).toBe("Changes");
-    expect(
-      within(view.inSheet().getByRole("region", { name: "Changed steps" }))
-        .getAllByRole("button")
-        .map((row) => row.textContent)
-    ).toEqual(["AFreshAdded", "MReminderModified", "DGoneRemoved"]);
+    expect(view.titles("Changed steps")).toEqual(["Fresh", "Reminder", "Gone"]);
 
-    view.press("Reminder Modified");
-    expect(view.sheets()).toEqual(["summary", "changes", "change"]);
-    expect(view.sheet()?.dataset.level).toBe("inspector");
-    expect(view.heading()).toBe("Reminder");
-    expect(view.status()).toBe("Modified");
+    // The modified step starts open, with each version stacked under its
+    // setting, and no table.
+    expect(view.isOpen("Reminder")).toBe("true");
     expect(view.inSheet().queryByRole("table")).toBeNull();
-    expect(view.settings("Settings of this step")).toEqual([
+    expect(view.settings("Reminder", "Settings of this step")).toEqual([
       ["Label", "Version 3", "Old reminder", "Current draft", "Reminder"],
       ["Subject", "Version 3", "Before", "Current draft", "After"],
     ]);
-
-    view.press("Back to Changes");
+    expect(view.isOpen("Fresh")).toBe("false");
+    view.press("Fresh Added");
+    expect(view.isOpen("Fresh")).toBe("true");
     expect(view.sheets()).toEqual(["summary", "changes"]);
-    view.press("Back to Summary");
-    expect(view.sheet()?.dataset.level).toBe("summary");
-    view.press("Close");
-    expect(view.sheet()).toBeNull();
     expect(view.store.get(activeSelectionAtom)).toEqual({
-      nodeIds: ["reminder"],
+      nodeIds: [],
       edgeIds: [],
     });
+
+    view.press("Back to Summary");
+    expect(view.sheets()).toEqual(["summary"]);
+    view.press("Close");
+    expect(view.sheet()).toBeNull();
   });
 
   it("goes Back one sheet on Escape", async () => {
     const view = await renderMobileChanges();
     await view.openSummary();
     view.press("Review 5 changes");
-    view.press("Fresh Added");
 
-    await act(async () => {
-      fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
-    });
-    expect(view.sheets()).toEqual(["summary", "changes"]);
     await act(async () => {
       fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
     });
     expect(view.sheets()).toEqual(["summary"]);
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
+    });
+    expect(view.sheets()).toEqual([]);
   });
 
-  it("opens a changed step tapped on the canvas over the comparison summary", async () => {
+  it("opens the change list over the comparison summary with a tapped changed step's row open", async () => {
     const view = await renderMobileChanges();
-    fireEvent.click(view.canvasNode("Reminder"));
+    fireEvent.click(view.canvasNode("Fresh"));
 
-    expect(view.sheets()).toEqual(["summary", "change"]);
-    expect(view.heading()).toBe("Reminder");
+    expect(view.sheets()).toEqual(["summary", "changes"]);
+    expect(view.heading()).toBe("Changes");
+    await waitFor(() => expect(view.isOpen("Fresh")).toBe("true"));
+    expect(
+      view
+        .inSheet()
+        .getByRole("button", { name: "Fresh" })
+        .getAttribute("aria-pressed")
+    ).toBe("true");
+
+    // Another tap keeps the same sheets and opens that row too.
+    fireEvent.click(view.canvasNode("Gone"));
+    expect(view.sheets()).toEqual(["summary", "changes"]);
+    await waitFor(() => expect(view.isOpen("Gone")).toBe("true"));
+    expect(view.isOpen("Fresh")).toBe("true");
+
     view.press("Back to Summary");
     expect(view.heading()).toBe("Version 3 → proposed version 4");
-    expect(view.store.get(activeSelectionAtom).nodeIds).toEqual(["reminder"]);
-  });
-
-  it("moves between changed objects in the field differences sheet without adding a sheet", async () => {
-    const view = await renderMobileChanges();
-    await view.openSummary();
-    view.press("Review 5 changes");
-    view.press("Reminder Modified");
-
-    view.press("Next change");
-    expect(view.sheets()).toEqual(["summary", "changes", "change"]);
-    expect(view.heading()).toBe("Gone");
     expect(view.store.get(activeSelectionAtom).nodeIds).toEqual(["gone"]);
-
-    view.press("Next change");
-    expect(view.heading()).toBe("Kept → Fresh");
-    expect(view.settings("This connection")).toEqual([
-      ["From", "Current draft", "Kept"],
-      ["To", "Current draft", "Fresh"],
-    ]);
-    expect(view.store.get(activeSelectionAtom).edgeIds).toEqual(["kept-fresh"]);
   });
-});
 
-describe("mobile Changes restoration", () => {
-  it("restores the list scroll and the selection on Back, leaves the camera, and focuses the row of the object shown last", async () => {
+  it("opens a tapped step's row after the reader has opened and closed rows", async () => {
     const view = await renderMobileChanges();
     await view.openSummary();
     view.press("Review 5 changes");
-    view.scrollTo(40);
+    view.press("Reminder 2 settings changed");
+    expect(view.isOpen("Reminder")).toBe("false");
+    view.press("Back to Summary");
+    view.press("Close");
+    expect(view.sheet()).toBeNull();
+
+    fireEvent.click(view.canvasNode("Gone"));
+    expect(view.sheets()).toEqual(["summary", "changes"]);
+    await waitFor(() => expect(view.isOpen("Gone")).toBe("true"));
+    expect(view.isOpen("Reminder")).toBe("false");
+  });
+
+  it("selects an object from its name and a connection from its row, without a new sheet or a camera move", async () => {
+    const view = await renderMobileChanges();
+    await view.openSummary();
+    view.press("Review 5 changes");
     const camera = { centerX: 120, centerY: 80, zoom: 0.8 };
     act(() => {
       view.store.set(recordWorkspaceCameraAtom, {
@@ -409,25 +441,22 @@ describe("mobile Changes restoration", () => {
       });
     });
 
-    view.press("Fresh Added");
-    await waitFor(() => expect(view.scroller()?.scrollTop).toBe(0));
-    view.press("Next change");
+    view.press("Gone");
+    expect(view.store.get(activeSelectionAtom).nodeIds).toEqual(["gone"]);
+    await waitFor(() => expect(view.isOpen("Gone")).toBe("true"));
+    expect(view.sheets()).toEqual(["summary", "changes"]);
 
-    view.press("Back to Changes");
-    await waitFor(() => expect(view.scroller()?.scrollTop).toBe(40));
-    expect(view.store.get(activeWorkspaceCamerasAtom).mobile).toEqual(camera);
-    expect(view.store.get(activeSelectionAtom).nodeIds).toEqual(["reminder"]);
+    view.press("Kept → Fresh Added");
+    expect(view.store.get(activeSelectionAtom).edgeIds).toEqual(["kept-fresh"]);
     expect(
-      view
-        .inSheet()
-        .getByRole("button", { name: "Reminder Modified" })
-        .getAttribute("aria-pressed")
-    ).toBe("true");
-    await waitFor(() =>
-      expect(document.activeElement?.textContent).toBe("MReminderModified")
-    );
+      view.row("Kept → Fresh Added").querySelector("[aria-expanded]")
+    ).toBeNull();
+    expect(view.sheets()).toEqual(["summary", "changes"]);
+    expect(view.store.get(activeWorkspaceCamerasAtom).mobile).toEqual(camera);
   });
+});
 
+describe("mobile Changes restoration", () => {
   it("opens version history and returns to the exact comparison context", async () => {
     const view = await renderMobileChanges();
     await view.openSummary();
@@ -549,37 +578,39 @@ describe("mobile Changes restoration", () => {
     await view.openSummary();
     view.press("Review 1 change");
 
-    view.press("Member Modified");
+    view.press("Member");
     const groupSearch = view.router.state.location.search;
     expect(groupSearch).toMatchObject({ view: "changes", group: "group" });
     await view.show(groupSearch);
-    expect(view.sheets()).toEqual(["summary", "changes", "change"]);
-    expect(view.heading()).toBe("Member");
-
-    view.press("Back to Changes");
     expect(view.sheets()).toEqual(["summary", "changes"]);
+    expect(view.heading()).toBe("Changes");
     expect(
       view
         .inSheet()
-        .getByRole("button", { name: "Member Modified" })
+        .getByRole("button", { name: "Member" })
         .getAttribute("aria-pressed")
     ).toBe("true");
+    expect(view.isOpen("Member")).toBe("true");
+
     view.press("Back to Summary");
     expect(view.sheets()).toEqual(["summary"]);
   });
 
-  it("restores the comparison identity and sheet depth after visiting Draft", async () => {
+  it("restores the comparison identity, sheet depth and open rows after visiting Draft", async () => {
     const view = await renderMobileChanges();
     await view.openSummary();
     view.press("Review 5 changes");
-    view.press("Reminder Modified");
+    view.press("Fresh Added");
+    view.press("Reminder 2 settings changed");
 
     await view.show({});
     expect(view.sheet()).toBeNull();
     await view.show(CHANGES_V3);
 
-    expect(view.sheets()).toEqual(["summary", "changes", "change"]);
-    expect(view.heading()).toBe("Reminder");
+    expect(view.sheets()).toEqual(["summary", "changes"]);
+    expect(view.heading()).toBe("Changes");
+    expect(view.isOpen("Fresh")).toBe("true");
+    expect(view.isOpen("Reminder")).toBe("false");
     expect(view.store.get(activeWorkspaceAddressAtom).key).toEqual({
       workspace: "changes",
       baseVersionId: "version_3",
@@ -636,7 +667,7 @@ describe("mobile Changes restoration", () => {
     expect(view.sheets()).toEqual(["summary", "changes"]);
     expect(view.heading()).toBe("No comparison open");
     expect(
-      view.inSheet().queryByRole("button", { name: "Reminder Modified" })
+      view.inSheet().queryByRole("button", { name: "Reminder" })
     ).toBeNull();
   });
 });
@@ -645,26 +676,27 @@ describe("mobile Changes states at phone width", () => {
   it("shows an added step's draft values alone and a removed step's published values alone", async () => {
     const view = await renderMobileChanges();
     fireEvent.click(view.canvasNode("Fresh"));
-    expect(view.status()).toBe("Added");
+    await waitFor(() => expect(view.isOpen("Fresh")).toBe("true"));
     expect(
-      view.inSheet().getByText(/This step is new in the draft/)
+      view.rowDifferences("Fresh").getByText(/This step is new in the draft/)
     ).toBeTruthy();
     expect(
       view
-        .settings("Settings of this step")
-        .every((row) => !row.includes("Version 3"))
+        .settings("Fresh", "Settings of this step")
+        .every((setting) => !setting.includes("Version 3"))
     ).toBe(true);
 
+    view.press("Gone Removed");
     expect(
-      view.inSheet().getByRole("button", { name: "Previous change" })
-    ).toHaveProperty("disabled", true);
-    view.press("Next change");
-    view.press("Next change");
-    expect(view.heading()).toBe("Gone");
-    expect(view.status()).toBe("Removed");
-    expect(
-      view.inSheet().getByText(/This step is removed from the draft/)
+      view
+        .rowDifferences("Gone")
+        .getByText(/This step is removed from the draft/)
     ).toBeTruthy();
+    expect(
+      view
+        .settings("Gone", "Settings of this step")
+        .every((setting) => !setting.includes("Current draft"))
+    ).toBe(true);
   });
 
   it("marks a masked value as hidden and says when the comparison lacks a side's values", async () => {
@@ -697,7 +729,8 @@ describe("mobile Changes states at phone width", () => {
       },
     });
     fireEvent.click(view.canvasNode("Reminder"));
-    expect(view.settings("Settings of this step")).toEqual([
+    await waitFor(() => expect(view.isOpen("Reminder")).toBe("true"));
+    expect(view.settings("Reminder", "Settings of this step")).toEqual([
       [
         "Subject",
         "Version 3",
@@ -708,10 +741,12 @@ describe("mobile Changes states at phone width", () => {
     ]);
 
     fireEvent.click(view.canvasNode("Kept"));
-    expect(
-      view.sheet()?.querySelector("[data-state=unavailable]")?.textContent
-    ).toBe(
-      "The draft's values for this step are not available in this comparison."
+    await waitFor(() =>
+      expect(
+        view.sheet()?.querySelector("[data-state=unavailable]")?.textContent
+      ).toBe(
+        "The draft's values for this step are not available in this comparison."
+      )
     );
   });
 
@@ -784,12 +819,13 @@ describe("mobile Changes states at phone width", () => {
     expect(
       within(
         view.inSheet().getByRole("region", { name: "Changed steps" })
-      ).getByRole("button", { name: "Moved Group membership" })
+      ).getByText("Moved into Follow-ups")
     ).toBeTruthy();
-    view.press("Follow-ups Modified");
-    expect(view.heading()).toBe("Follow-ups");
+    expect(view.isOpen("Follow-ups")).toBe("true");
     expect(
-      view.inSheet().getByText(/execution behavior is unchanged/)
+      view
+        .rowDifferences("Follow-ups")
+        .getByText(/execution behavior is unchanged/)
     ).toBeTruthy();
   });
 });
@@ -823,7 +859,7 @@ describe("mobile Changes accessibility and authoring", () => {
     expect(Object.keys(overrides ?? {})).toEqual(["gone"]);
   });
 
-  it("moves focus to each sheet's title and takes the canvas out of navigation under the field differences", async () => {
+  it("moves focus to each sheet's title and keeps the canvas in navigation under the change list", async () => {
     const view = await renderMobileChanges();
     await view.openSummary();
     await waitFor(() =>
@@ -837,24 +873,11 @@ describe("mobile Changes accessibility and authoring", () => {
     await waitFor(() =>
       expect(document.activeElement?.textContent).toBe("Changes")
     );
-    view.press("Kept → Gone Removed");
-    await waitFor(() =>
-      expect(document.activeElement?.textContent).toBe("Kept → Gone")
-    );
-    expect(view.canvasNode("Kept").closest("[inert]")).not.toBeNull();
-    const region = view.view.getByRole("region", {
-      name: "Changes inspector",
-    });
-    const reachable = [
-      ...view.view.container.querySelectorAll<HTMLElement>(
-        "button, input, [tabindex]:not([tabindex='-1'])"
-      ),
-    ].filter((element) => element.closest("[inert]") === null);
-    expect(reachable.every((element) => region.contains(element))).toBe(true);
+    expect(view.canvasNode("Kept").closest("[inert]")).toBeNull();
 
-    view.press("Back to Changes");
+    view.press("Back to Summary");
     await waitFor(() =>
-      expect(document.activeElement?.textContent).toBe("DKept → GoneRemoved")
+      expect(document.activeElement?.textContent).toBe("Review 5 changes")
     );
   });
 
@@ -867,7 +890,7 @@ describe("mobile Changes accessibility and authoring", () => {
       view.inSheet().queryByRole("button", { name: topologyCommand })
     ).toBeNull();
     view.press("Review 5 changes");
-    view.press("Reminder Modified");
+    expect(view.isOpen("Reminder")).toBe("true");
     expect(
       view.inSheet().queryByRole("button", { name: topologyCommand })
     ).toBeNull();

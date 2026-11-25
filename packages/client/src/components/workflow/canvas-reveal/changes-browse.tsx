@@ -1,20 +1,19 @@
 import { isEmptyObject } from "es-toolkit/predicate";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
-import { History, RefreshCw, RotateCcw, X } from "lucide-react";
-import { type RefObject, useMemo, useRef } from "react";
-import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { useAtomValue, useSetAtom } from "jotai";
+import { ChevronRight, History, RefreshCw, RotateCcw, X } from "lucide-react";
+import { type RefObject, useId, useRef } from "react";
 import { ComparisonMarker } from "#src/components/flow-elements/comparison-marker";
 import { Button } from "#src/components/ui/button";
+import type { ComparisonLayout } from "#src/components/workflow/comparison-properties";
 import { useWorkflowComparisonActions } from "#src/components/workflow/use-workflow-comparison-actions";
 import { StatusPlaceholder } from "#src/components/workflow/status-placeholder";
 import {
   RestoreVersionControl,
   WorkflowVersionHistory,
 } from "#src/components/workflow/workflow-version-history";
-import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
+import { useAfterCommit } from "#src/hooks/effects";
 import { useWorkflowWorkspaceNavigation } from "#src/hooks/use-workflow-workspace-navigation";
 import {
-  comparisonDisplayGraphAtom,
   comparisonSessionAtom,
   resetComparisonLayoutAtom,
   setComparisonSubviewAtom,
@@ -23,31 +22,28 @@ import {
   workspaceAddressId,
   type WorkspaceAddress,
 } from "#src/lib/workflow-navigation-state";
-import { selectedObject } from "#src/lib/canvas-selection";
 import {
   comparisonSummary,
   ORGANIZATION_ONLY_STATEMENT,
 } from "#src/lib/workflow-change-summary";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
-import {
-  activeSelectionAtom,
-  activeWorkspaceAddressAtom,
-} from "#src/lib/workflow-workspace-navigation";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import type { WorkflowComparisonPayload } from "@wfgraph/shared/graph/publication-contracts";
 import { cn } from "@wfgraph/shared/utils";
+import { ChangeDifferences } from "./change-differences";
 import {
-  ChangeNavigation,
   useChangedObjects,
+  useOpenChangeRows,
   useSelectChange,
   type ChooseChange,
 } from "./changes-navigation";
 import {
   changeListSections,
-  changeRowFocusRequestAtom,
   changesHeaderModel,
+  comparisonIdentity,
   comparisonRevealContextAtom,
-  inspectChange,
   noChangesLabel,
+  opensInPlace,
   type ChangedObject,
   type ComparisonShownStatus,
   type ComparisonWaitingStatus,
@@ -59,49 +55,18 @@ import { useInspectorScroll } from "./use-inspector-scroll";
 type ComparisonActions = ReturnType<typeof useWorkflowComparisonActions>;
 
 /**
- * The Changes header: the comparison's name and path, what its latest request
- * is doing, and at Focus the title of the inspected object. It reads the
- * comparison and selection itself, so the shell passes only its level controls.
+ * The Changes header: the comparison's name and path, and what its latest
+ * request is doing. It reads the comparison itself, so the shell passes only
+ * its controls.
  */
 export function ChangesHeader({ level, controls }: RevealKindHeaderProps) {
   const comparison = useAtomValue(comparisonRevealContextAtom);
   const workflowName = useAtomValue(currentWorkflowNameAtom);
-  const graph = useAtomValue(comparisonDisplayGraphAtom);
-  const selection = useAtomValue(activeSelectionAtom);
-  const catalog = useExtensionCatalog();
-  const object = selectedObject(selection);
-  const objectKind = object?.kind;
-  const objectId = object?.id;
-  const payload = "payload" in comparison ? comparison.payload : null;
-  const inspectedTitle = useMemo(() => {
-    if (
-      level !== "focus" ||
-      payload === null ||
-      graph === null ||
-      objectKind === undefined ||
-      objectId === undefined
-    ) {
-      return null;
-    }
-    const inspection = inspectChange({
-      payload,
-      graph,
-      catalog,
-      objects: [],
-      object: { kind: objectKind, id: objectId },
-    });
-    return inspection.kind === "unavailable" ? null : inspection.title;
-  }, [catalog, graph, level, objectId, objectKind, payload]);
   return (
     <RevealHeader
       controls={controls}
       level={level}
-      model={changesHeaderModel({
-        comparison,
-        workflowName,
-        level,
-        inspectedTitle,
-      })}
+      model={changesHeaderModel({ comparison, workflowName })}
     />
   );
 }
@@ -119,19 +84,7 @@ export function ChangesBrowse(_props: RevealBodyProps) {
   const historyHeadingRef = useRef<HTMLHeadingElement>(null);
   const historyButtonRef = useRef<HTMLButtonElement>(null);
   const showsHistory = "payload" in comparison && comparison.showsHistory;
-  const showsList = "payload" in comparison && !comparison.showsHistory;
-  const rowFocusRequest = useAtomValue(changeRowFocusRequestAtom);
-  const setRowFocusRequest = useSetAtom(changeRowFocusRequestAtom);
   const setSubview = useSetAtom(setComparisonSubviewAtom);
-
-  // A row focus request is for the change list alone. Without the list it is
-  // dropped, so it cannot take focus when the list mounts later.
-  const unusedRequest = showsList ? null : rowFocusRequest;
-  useAfterCommit(unusedRequest, () => {
-    if (unusedRequest !== null) {
-      setRowFocusRequest(null);
-    }
-  });
 
   // Opening or leaving version history unmounts the control that did it, so
   // focus moves to the history heading, or back to Version history. The view
@@ -333,11 +286,14 @@ export function ComparisonState({
   );
 }
 
-/** Whether any part of `row` lies outside the visible area of `scroller`. */
-function isOutsideScroller(row: HTMLElement, scroller: HTMLElement): boolean {
-  const rowBox = row.getBoundingClientRect();
+/** Whether any part of `element` lies outside the visible area of `scroller`. */
+function isOutsideScroller(
+  element: HTMLElement,
+  scroller: HTMLElement
+): boolean {
+  const box = element.getBoundingClientRect();
   const scrollerBox = scroller.getBoundingClientRect();
-  return rowBox.top < scrollerBox.top || rowBox.bottom > scrollerBox.bottom;
+  return box.top < scrollerBox.top || box.bottom > scrollerBox.bottom;
 }
 
 const LIVE_STATUS: Record<ComparisonShownStatus, string> = {
@@ -411,10 +367,9 @@ export function ComparisonSummarySection({
 }
 
 /**
- * The comparison's counts, its changed Groups, steps, then connections, and
- * Previous and Next. Choosing a row selects that object on the canvas, which places it, and
- * Compare fields in the header shows it in Focus. The list keeps its scroll for
- * the address, and a selection made anywhere scrolls its row into view.
+ * The comparison's counts, then its changed Groups, steps, and connections,
+ * read top to bottom. Each Group and step row opens in place to show its
+ * differences. The list keeps its scroll for the address.
  */
 function ChangeList({
   address,
@@ -425,11 +380,8 @@ function ChangeList({
   payload: WorkflowComparisonPayload;
   status: ComparisonShownStatus;
 }) {
-  const { objects, selectedIndex, selectedKey } = useChangedObjects(payload);
+  const { objects, selectedKey } = useChangedObjects(payload);
   const select = useSelectChange();
-  const rows = useRef(new Map<string, HTMLButtonElement>());
-  const store = useStore();
-  const addressId = workspaceAddressId(address);
   const {
     ref: scrollRef,
     onScroll,
@@ -437,46 +389,23 @@ function ChangeList({
     adoptScroll,
   } = useInspectorScroll({
     address,
-    addressId,
+    addressId: workspaceAddressId(address),
     inspectedId: null,
     level: "browse",
   });
-
-  // Back from Focus mounts the list with its restored scroll, then hands DOM
-  // focus to the row of the object Focus showed. A row outside the list's
-  // visible area, which Previous and Next in Focus can select, is scrolled
-  // into view first and that scroll is kept.
-  useAfterPaint(addressId, () => {
-    if (store.get(changeRowFocusRequestAtom) !== addressId) {
-      return;
-    }
-    store.set(changeRowFocusRequestAtom, null);
-    const row = selectedKey === null ? null : rows.current.get(selectedKey);
-    if (!row) {
-      return;
-    }
-    const scroller = scrollRef.current;
-    if (scroller && isOutsideScroller(row, scroller)) {
-      row.scrollIntoView?.({ block: "nearest" });
+  // Only the list scrolls, which keeps the position. Reveal stays mounted
+  // while closed and slid off the canvas, where scrollIntoView could scroll an
+  // ancestor sideways.
+  const showRow = (header: HTMLElement) => {
+    const box = scrollRef.current;
+    if (box && isOutsideScroller(header, box)) {
+      box.scrollBy({
+        top:
+          header.getBoundingClientRect().top - box.getBoundingClientRect().top,
+      });
       adoptScroll();
     }
-    row.focus({ preventScroll: true });
-  });
-
-  // A selection that changes while the list is shown brings its row into view.
-  // The selection the list mounts with keeps the restored scroll.
-  const shownKeyRef = useRef(selectedKey);
-  useAfterCommit(selectedKey, () => {
-    if (selectedKey === shownKeyRef.current) {
-      return;
-    }
-    shownKeyRef.current = selectedKey;
-    const row = selectedKey === null ? null : rows.current.get(selectedKey);
-    if (row) {
-      row.scrollIntoView?.({ block: "nearest" });
-      adoptScroll();
-    }
-  });
+  };
 
   return (
     <>
@@ -492,38 +421,70 @@ function ChangeList({
           ref={scrollRef}
         >
           <ChangeListSections
+            layout="columns"
             objects={objects}
             onChoose={select}
-            rows={rows}
+            payload={payload}
             selectedKey={selectedKey}
+            showRow={showRow}
           />
         </div>
       )}
-      <ChangeNavigation
-        objects={objects}
-        onSelect={select}
-        selectedIndex={selectedIndex}
-      />
     </>
   );
 }
 
+/** Scroll `header` into view in whichever boxes scroll it, the least they must. */
+function scrollIntoNearestView(header: HTMLElement): void {
+  header.scrollIntoView?.({ block: "nearest" });
+}
+
 /**
  * The change list's sections of changed Groups, steps, then connections, one
- * row per object. Choosing a row calls `onChoose`, and the row of `selectedKey`
- * is pressed. `rows`, when given, holds each mounted row by its object's key.
+ * row per object. A Group or step row opens in place to show its differences
+ * in `layout`, and a connection row is a single control. Pressing an object's
+ * name calls `onChoose`, which selects it on the canvas, and its row shows as
+ * pressed while `selectedKey` names it.
+ *
+ * The selected object's row opens whenever the list shows a selection it has
+ * not revealed yet, whether the selection changed on the canvas, from a Group
+ * card's count, or by a name, and whether the list was showing or mounts with
+ * it. `showRow` then brings the row's header into view; without it the header
+ * scrolls into view in whichever box scrolls it, such as a phone's sheet. A
+ * list that mounts with the selection it last revealed, such as after version
+ * history, keeps its open rows and restored scroll. Clearing the selection
+ * forgets it, so selecting the same object again opens its row again.
  */
 export function ChangeListSections({
+  payload,
   objects,
   selectedKey,
   onChoose,
-  rows,
+  layout,
+  showRow = scrollIntoNearestView,
 }: {
+  payload: WorkflowComparisonPayload;
   objects: readonly ChangedObject[];
   selectedKey: string | null;
   onChoose: ChooseChange;
-  rows?: RefObject<Map<string, HTMLButtonElement>> | undefined;
+  layout: ComparisonLayout;
+  showRow?: ((header: HTMLElement) => void) | undefined;
 }) {
+  const rows = useOpenChangeRows(payload, objects);
+  const headers = useRef(new Map<string, HTMLElement>());
+  useAfterCommit(selectedKey, () => {
+    const item =
+      objects.find((candidate) => candidate.key === selectedKey) ?? null;
+    if ((item?.key ?? null) === rows.revealed) {
+      return;
+    }
+    rows.reveal(item);
+    const header = item ? headers.current.get(item.key) : undefined;
+    if (header) {
+      showRow(header);
+    }
+  });
+
   return changeListSections(objects).map((section, index) => (
     <section aria-label={section.label} key={section.id}>
       <h3
@@ -534,43 +495,174 @@ export function ChangeListSections({
       >
         {section.title}
       </h3>
-      <div className="divide-y">
-        {section.items.map((item) => {
-          const pressed = item.key === selectedKey;
-          return (
-            <button
-              aria-pressed={pressed}
-              className={cn(
-                "flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-muted",
-                pressed && "bg-muted"
-              )}
-              data-change={item.change}
-              key={item.key}
-              onClick={() => onChoose(item)}
-              ref={(element) => {
-                if (element) {
-                  rows?.current.set(item.key, element);
-                } else {
-                  rows?.current.delete(item.key);
-                }
-              }}
-              type="button"
-            >
-              <ComparisonMarker
-                className="static shrink-0"
-                comparison={{ kind: item.change }}
-              />
-              {/* A phone's row reads at body size, and Browse's at caption size. */}
-              <span className="min-w-0 flex-1 truncate font-medium text-sm md:text-xs">
-                {item.title}
-              </span>
-              <span className="shrink-0 text-muted-foreground text-xs">
-                {item.detail}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <ul className="divide-y">
+        {section.items.map((item) => (
+          <ChangeRow
+            headerRef={(element) => {
+              if (element) {
+                headers.current.set(item.key, element);
+              } else {
+                headers.current.delete(item.key);
+              }
+            }}
+            item={item}
+            key={item.key}
+            layout={layout}
+            objects={objects}
+            onChoose={onChoose}
+            onToggle={() => rows.toggle(item.key)}
+            open={rows.open.has(item.key)}
+            payload={payload}
+            selected={item.key === selectedKey}
+          />
+        ))}
+      </ul>
     </section>
   ));
+}
+
+/**
+ * One row of the change list: the change marker, the object's name, and a
+ * line saying what changed. A Group or step row is a disclosure. Its chevron
+ * control covers the whole row header and opens or closes the differences
+ * beneath it, and the name above it is a control of its own that selects the
+ * object on the canvas. A connection row is one control that selects it.
+ */
+function ChangeRow({
+  item,
+  payload,
+  objects,
+  layout,
+  open,
+  selected,
+  onToggle,
+  onChoose,
+  headerRef,
+}: {
+  item: ChangedObject;
+  payload: WorkflowComparisonPayload;
+  objects: readonly ChangedObject[];
+  layout: ComparisonLayout;
+  open: boolean;
+  selected: boolean;
+  onToggle: () => void;
+  onChoose: ChooseChange;
+  headerRef: (element: HTMLElement | null) => void;
+}) {
+  const id = useId();
+  const nameId = `${id}-name`;
+  const summaryId = `${id}-summary`;
+  const panelId = `${id}-differences`;
+  const marker = (
+    <ComparisonMarker
+      className="static mt-px shrink-0"
+      comparison={{ kind: item.change }}
+    />
+  );
+  // A phone's row reads at body size, and Browse's at caption size.
+  const name = "font-medium text-sm md:text-xs";
+  const summary = (
+    <p
+      className="text-muted-foreground text-xs"
+      data-slot="change-summary"
+      id={summaryId}
+    >
+      {item.summary}
+    </p>
+  );
+  if (!opensInPlace(item)) {
+    return (
+      <li data-change={item.change} data-slot="change-row">
+        <button
+          aria-pressed={selected}
+          className={cn(
+            "flex w-full items-start gap-2 px-4 py-2.5 text-left hover:bg-muted",
+            selected && "bg-muted"
+          )}
+          onClick={() => onChoose(item)}
+          ref={headerRef}
+          type="button"
+        >
+          {/* Keeps the marker in line with the disclosure rows' markers. */}
+          <span aria-hidden className="size-4 shrink-0" />
+          {marker}
+          <span className="min-w-0 flex-1">
+            <span
+              className={cn("block truncate", name)}
+              data-slot="change-title"
+            >
+              {item.title}
+            </span>
+            {summary}
+          </span>
+        </button>
+      </li>
+    );
+  }
+  return (
+    <li data-change={item.change} data-open={open} data-slot="change-row">
+      <div
+        className={cn(
+          "relative flex items-start gap-2 px-4 py-2.5 hover:bg-muted",
+          selected && "bg-muted"
+        )}
+        ref={headerRef}
+      >
+        {/* The chevron's ::after spans the header, so a press anywhere on the
+            row toggles it. The name sits above that layer. */}
+        <button
+          aria-controls={open ? panelId : undefined}
+          aria-expanded={open}
+          aria-labelledby={`${nameId} ${summaryId}`}
+          className="mt-px flex size-4 shrink-0 items-center justify-center text-muted-foreground outline-none after:absolute after:inset-0 focus-visible:after:outline-2 focus-visible:after:outline-ring focus-visible:after:-outline-offset-2"
+          onClick={onToggle}
+          type="button"
+        >
+          <ChevronRight
+            aria-hidden
+            className={cn(
+              "size-4 transition-transform duration-150 motion-reduce:transition-none",
+              open && "rotate-90"
+            )}
+          />
+        </button>
+        {marker}
+        <div className="min-w-0 flex-1">
+          <button
+            aria-pressed={selected}
+            className={cn(
+              "relative z-10 block max-w-full truncate rounded-sm text-left underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring",
+              name
+            )}
+            data-slot="change-title"
+            id={nameId}
+            onClick={() => onChoose(item)}
+            title="Show on the canvas"
+            type="button"
+          >
+            {item.title}
+          </button>
+          {summary}
+        </div>
+      </div>
+      {open ? (
+        <div
+          aria-labelledby={nameId}
+          className="border-t bg-card pb-1"
+          data-slot="change-differences"
+          id={panelId}
+          role="region"
+        >
+          <ChangeDifferences
+            key={comparisonIdentity(payload)}
+            layout={layout}
+            object={item.object}
+            objects={objects}
+            onSelect={onChoose}
+            payload={payload}
+          />
+        </div>
+      ) : null}
+    </li>
+  );
 }

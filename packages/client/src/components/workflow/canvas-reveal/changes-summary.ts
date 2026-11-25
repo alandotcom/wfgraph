@@ -1,9 +1,9 @@
 /**
  * What the Changes kind of Canvas Reveal reads: the comparison the active
  * address names and the state of its request, the header that identifies it,
- * the changed nodes and connections a person moves between, and what Focus
- * says about one of them. Everything except `comparisonRevealContextAtom` is
- * a pure function.
+ * the changed nodes and connections its change list shows, which rows start
+ * open, and what an open row says about one of them. Everything except the
+ * two atoms is a pure function.
  */
 
 import { compact, groupBy, partition, uniq } from "es-toolkit/array";
@@ -33,8 +33,11 @@ import {
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
 import {
   changedNodeTitle,
+  comparisonFields,
   comparisonGroupMembership,
   isConditionRulesPath,
+  isConditionRulesRow,
+  type ComparisonField,
 } from "#src/components/workflow/comparison-properties";
 import type { MobileSheet } from "#src/lib/mobile-sheet-navigation";
 import type { ComparisonDisplayGraph } from "#src/lib/workflow-comparison";
@@ -55,7 +58,6 @@ import {
 import {
   type CanvasSelection,
   type InspectedObject,
-  type OpenRevealLevel,
 } from "#src/lib/workflow-navigation-state";
 import { selectedObject } from "#src/lib/canvas-selection";
 import type { RevealHeaderModel } from "./reveal-header";
@@ -127,13 +129,6 @@ export const comparisonRevealContextAtom = atom(
 );
 
 /**
- * The workspace address id whose change list takes DOM focus on its selected
- * row when it next mounts, or null. Back from Changes Focus sets it, so Browse
- * hands focus to the row of the object Focus showed.
- */
-export const changeRowFocusRequestAtom = atom<string | null>(null);
-
-/**
  * The name of a comparison: the published version it starts from and the
  * version number publishing the draft would take, as "Version 3 → proposed
  * version 4".
@@ -158,49 +153,37 @@ const SHOWN_STATUS: Record<ComparisonShownStatus, RevealHeaderModel["status"]> =
     "refresh-failed": { text: "Refresh failed", tone: "warning" },
   };
 
-/** The Changes header's Focus toggle text at Browse and at Focus. */
-const COMPARE_FIELDS_TOGGLE_TEXT = {
-  browse: "Compare fields",
-  focus: "Return to summary",
-};
-
 /**
  * The Changes header. Its title names the comparison while one is shown and
  * stays the same while that comparison refreshes; the status says only what
- * the latest request is doing. At Focus the path ends with `inspectedTitle`,
- * the inspected object's title, and Back is offered to return to Browse.
+ * the latest request is doing. Changes has one level, so the header offers no
+ * Back and no Focus toggle.
  */
 export function changesHeaderModel(input: {
   comparison: ComparisonRevealContext;
   workflowName: string;
-  level: OpenRevealLevel;
-  inspectedTitle: string | null;
 }): RevealHeaderModel {
-  const { comparison, level, inspectedTitle } = input;
+  const { comparison } = input;
   if (!("payload" in comparison)) {
     return {
       workspaceLabel: "Changes",
       title: TITLE_WITHOUT_COMPARISON[comparison.status],
       path: [],
       status: null,
-      showsBack: level === "focus",
-      focusToggleText: COMPARE_FIELDS_TOGGLE_TEXT,
+      showsBack: false,
     };
   }
   const title = comparisonTitle(comparison.payload);
-  const trail =
-    level === "focus"
-      ? compact([inspectedTitle])
-      : comparison.showsHistory
-        ? ["Version history"]
-        : [];
   return {
     workspaceLabel: "Changes",
     title,
-    path: [input.workflowName || "Untitled workflow", title, ...trail],
+    path: [
+      input.workflowName || "Untitled workflow",
+      title,
+      ...(comparison.showsHistory ? ["Version history"] : []),
+    ],
     status: SHOWN_STATUS[comparison.status],
-    showsBack: level === "focus",
-    focusToggleText: COMPARE_FIELDS_TOGGLE_TEXT,
+    showsBack: false,
   };
 }
 
@@ -212,16 +195,14 @@ export const VERSION_HISTORY_SECTION = "history";
 
 /**
  * Which Changes sheet a mobile sheet is: the comparison summary, the change
- * list, version history, or one object's field differences.
+ * list, or version history. The change list shows each changed object's
+ * differences in place, so no Changes sheet is about one object.
  */
-export type ChangesMobileSheet = "summary" | "changes" | "history" | "change";
+export type ChangesMobileSheet = "summary" | "changes" | "history";
 
 export function changesMobileSheet(
-  sheet: Pick<MobileSheet, "inspected" | "section">
+  sheet: Pick<MobileSheet, "section">
 ): ChangesMobileSheet {
-  if (sheet.inspected !== null) {
-    return "change";
-  }
   if (sheet.section === CHANGE_LIST_SECTION) {
     return "changes";
   }
@@ -231,16 +212,14 @@ export function changesMobileSheet(
 /**
  * The title and status of a Changes sheet on a phone. The comparison summary
  * is titled by the comparison, and the change list and version history by
- * their own names over the comparison's name. The field differences of an
- * object are titled by the object, over its change. A refresh's progress takes
- * the status line while it runs or after it failed.
+ * their own names over the comparison's name. A refresh's progress takes the
+ * status line while it runs or after it failed.
  */
 export function changesMobileHeading(input: {
   comparison: ComparisonRevealContext;
   sheet: ChangesMobileSheet;
-  inspection: ChangeInspection;
 }): Pick<RevealHeaderModel, "title" | "status"> {
-  const { comparison, sheet, inspection } = input;
+  const { comparison, sheet } = input;
   if (!("payload" in comparison)) {
     return {
       title:
@@ -255,20 +234,6 @@ export function changesMobileHeading(input: {
   if (sheet === "summary") {
     return { title: name, status };
   }
-  if (sheet === "change") {
-    return inspection.kind === "unavailable"
-      ? { title: "Change unavailable", status }
-      : {
-          title: inspection.title,
-          status: status ?? {
-            text:
-              inspection.change === "unchanged"
-                ? "Unchanged"
-                : COMPARISON_CHANGE_KIND_LABEL[inspection.change],
-            tone: "muted",
-          },
-        };
-  }
   return {
     title: changesMobileSheetName(sheet),
     status: status ?? { text: name, tone: "muted" },
@@ -281,14 +246,10 @@ export function changesMobileSheetName(sheet: ChangesMobileSheet): string {
     summary: "Summary",
     changes: "Changes",
     history: "Version history",
-    change: "Change",
   }[sheet];
 }
 
 export type ChangeKind = WorkflowNodeChange["kind"];
-
-/** What a change list row says for a step whose only change is its Group. */
-const GROUP_MEMBERSHIP_DETAIL = "Group membership";
 
 /** One changed node or connection, as the change list shows it. */
 export type ChangedObject = {
@@ -299,13 +260,66 @@ export type ChangedObject = {
   change: ChangeKind;
   title: string;
   /**
-   * The words beside the title: the change kind, or `GROUP_MEMBERSHIP_DETAIL`
-   * for a step whose only change is the Group it sits in.
+   * One line under the title saying what changed, such as "Added", "Body
+   * changed", "2 settings changed", or "Moved into Pre-visit reminders".
    */
-  detail: string;
+  summary: string;
   /** Whether the object is a Group frame. */
   groupFrame: boolean;
 };
+
+/** What a row says for one changed setting, or for several by their count. */
+function changedSettingsPhrase(fields: readonly ComparisonField[]): string {
+  const labels = uniq(
+    fields.map((field) => (isConditionRulesRow(field) ? "Rules" : field.label))
+  );
+  if (labels.length === 1) {
+    return `${labels[0]} changed`;
+  }
+  return labels.length === 0
+    ? "Settings changed"
+    : `${labels.length} settings changed`;
+}
+
+/** What a row says about the Groups a step moved between. */
+function membershipPhrase(membership: GroupMembershipChange): string {
+  const { before, after } = membership;
+  if (before === null) {
+    return after === null ? "Group membership changed" : `Moved into ${after}`;
+  }
+  return after === null
+    ? `Moved out of ${before}`
+    : `Moved from ${before} to ${after}`;
+}
+
+/**
+ * The line a modified node's row shows: which settings changed, and for a step
+ * whose Group changed, which Group it moved into or out of. A Group frame names
+ * its own settings, all of which are Organization.
+ */
+function modifiedNodeSummary(input: {
+  catalog: ExtensionCatalog;
+  payload: WorkflowComparisonPayload;
+  change: WorkflowNodeChange;
+  groupFrame: boolean;
+}): string {
+  const fields = comparisonFields(input.catalog, input.payload, input.change);
+  if (input.groupFrame) {
+    return changedSettingsPhrase(fields);
+  }
+  const behavior = fields.filter((field) => field.category === "behavior");
+  const membership = comparisonGroupMembership(
+    input.catalog,
+    input.payload,
+    input.change
+  );
+  return compact([
+    behavior.length > 0 || membership === null
+      ? changedSettingsPhrase(behavior)
+      : undefined,
+    membership ? membershipPhrase(membership) : undefined,
+  ]).join(" · ");
+}
 
 /**
  * The changed Group frames, then the changed steps, each in the order the
@@ -327,16 +341,15 @@ export function changedObjects(input: {
   };
   const categories = classifyWorkflowComparison(payload);
   const nodes = payload.nodeChanges.map((change): ChangedObject => {
-    const nodeCategories = categories.nodes.get(change.nodeId);
     const groupFrame = categories.groupFrameIds.has(change.nodeId);
     return {
       key: `node:${change.nodeId}`,
       object: { kind: "node", id: change.nodeId },
       change: change.kind,
       title: changedNodeTitle(catalog, payload, change),
-      detail:
-        !groupFrame && nodeCategories?.behavior === false
-          ? GROUP_MEMBERSHIP_DETAIL
+      summary:
+        change.kind === "modified"
+          ? modifiedNodeSummary({ catalog, payload, change, groupFrame })
           : COMPARISON_CHANGE_KIND_LABEL[change.kind],
       groupFrame,
     };
@@ -350,20 +363,73 @@ export function changedObjects(input: {
         annotation.kind === change.kind
       );
     });
-    return edge
-      ? [
-          {
-            key: `edge:${edge.id}`,
-            object: { kind: "edge", id: edge.id },
-            change: change.kind,
-            title: `${nodeTitle(edge.source)} → ${nodeTitle(edge.target)}`,
-            detail: COMPARISON_CHANGE_KIND_LABEL[change.kind],
-            groupFrame: false,
-          },
-        ]
-      : [];
+    if (!edge) {
+      return [];
+    }
+    const branch = resolveEdgeLabel(edge.sourceHandle, edge.data);
+    const kind = COMPARISON_CHANGE_KIND_LABEL[change.kind];
+    return [
+      {
+        key: `edge:${edge.id}`,
+        object: { kind: "edge", id: edge.id },
+        change: change.kind,
+        title: `${nodeTitle(edge.source)} → ${nodeTitle(edge.target)}`,
+        summary: branch ? `${kind} on the ${branch} branch` : kind,
+        groupFrame: false,
+      },
+    ];
   });
   return [...groupFrames, ...steps, ...edges];
+}
+
+/** Whether a change list row opens in place to show field differences. */
+export function opensInPlace(item: ChangedObject): boolean {
+  return item.object.kind === "node";
+}
+
+/**
+ * The most changed objects a list holds with every modified row open. A longer
+ * list starts with only its first modified row open, so it reads as an index.
+ */
+const OPEN_MODIFIED_ROWS_LIMIT = 8;
+
+/**
+ * The rows a change list opens before the reader toggles any: every modified
+ * step and Group, or only the first of them in a list of more than
+ * `OPEN_MODIFIED_ROWS_LIMIT` changed objects. Added and removed objects and
+ * connections start closed.
+ */
+export function initiallyOpenChangeRows(
+  objects: readonly ChangedObject[]
+): ReadonlySet<string> {
+  const modified = objects
+    .filter((item) => opensInPlace(item) && item.change === "modified")
+    .map((item) => item.key);
+  return new Set(
+    objects.length > OPEN_MODIFIED_ROWS_LIMIT ? modified.slice(0, 1) : modified
+  );
+}
+
+/**
+ * The change list rows a reader has open, for the one comparison `comparison`
+ * names (`changeRowsComparisonKey`), and `revealed`, the key of the selected
+ * object whose row the list last opened. Null, or an entry for another
+ * comparison, means the list shows `initiallyOpenChangeRows` and has revealed
+ * nothing. It lives outside the list so the open rows survive version history,
+ * a Group's scope, and the phone's sheets, which each unmount the list.
+ */
+export const openChangeRowsAtom = atom<{
+  comparison: string;
+  keys: ReadonlySet<string>;
+  revealed: string | null;
+} | null>(null);
+
+/** The key `openChangeRowsAtom` holds a workflow's comparison under. */
+export function changeRowsComparisonKey(
+  workflowId: string | null,
+  payload: WorkflowComparisonPayload
+): string {
+  return `${workflowId ?? ""}|${comparisonIdentity(payload)}`;
 }
 
 /** One section of the change list and the changed objects it holds. */
@@ -426,8 +492,9 @@ export function selectedChangeIndex(
 }
 
 /**
- * A name for the comparison a payload holds. It changes exactly when Focus
- * must drop what it shows: another base, or another proposed version.
+ * A name for the comparison a payload holds. It changes exactly when the
+ * change list must drop what its open rows show: another base, or another
+ * proposed version.
  */
 export function comparisonIdentity(payload: WorkflowComparisonPayload): string {
   return `${payload.baseVersion?.id ?? "unpublished"}|${payload.proposedVersion}`;
@@ -452,11 +519,10 @@ export type GroupMembershipChange = {
 };
 
 /**
- * What Focus shows for the selected object. A node carries its server change,
+ * What an open change list row shows for a changed node: its server change,
  * null when the node is unchanged, and the changed connections that touch it.
- * A Group frame also carries the changed steps drawn inside it. A connection
- * carries the titles of the steps it joins and its branch label. `unavailable`
- * is an object the comparison graph does not hold.
+ * A Group frame also carries the changed steps drawn inside it. `unavailable`
+ * is a node the comparison graph does not hold.
  */
 export type ChangeInspection =
   | {
@@ -474,89 +540,59 @@ export type ChangeInspection =
       /** The changed steps a Group frame holds on the comparison canvas. */
       changedMembers: readonly ChangedObject[];
     }
-  | {
-      kind: "edge";
-      edgeId: string;
-      change: "added" | "removed" | "unchanged";
-      title: string;
-      source: string;
-      target: string;
-      /** The branch the connection leaves from, as "True", or null. */
-      branch: string | null;
-    }
   | { kind: "unavailable" };
 
 /**
- * The inspection of `object` on the comparison canvas `graph`. `objects` is the
- * change list from `changedObjects`, which a node's connections are read from.
+ * The inspection of the node `nodeId` on the comparison canvas `graph`.
+ * `objects` is the change list from `changedObjects`, which the node's
+ * connections and a Group frame's changed steps are read from.
  */
 export function inspectChange(input: {
   payload: WorkflowComparisonPayload;
   graph: ComparisonDisplayGraph;
   catalog: ExtensionCatalog;
   objects: readonly ChangedObject[];
-  object: InspectedObject;
+  nodeId: string;
 }): ChangeInspection {
-  const { payload, graph, catalog, object } = input;
+  const { payload, graph, catalog, nodeId } = input;
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
-  const nodeTitle = (nodeId: string) => {
-    const node = nodesById.get(nodeId);
-    return node ? comparisonNodeTitle(node.data, catalog) : "Unavailable step";
-  };
-  if (object.kind === "node") {
-    const node = nodesById.get(object.id);
-    if (!node) {
-      return { kind: "unavailable" };
-    }
-    const nodeChange =
-      payload.nodeChanges.find((change) => change.nodeId === object.id) ?? null;
-    const edgesById = new Map(graph.edges.map((edge) => [edge.id, edge]));
-    const categories = classifyWorkflowComparison(payload);
-    const groupFrame = nodeChange
-      ? categories.groupFrameIds.has(object.id)
-      : isGroupNode(node);
-    return {
-      kind: "node",
-      nodeId: object.id,
-      change: nodeChange?.kind ?? "unchanged",
-      nodeChange,
-      title: nodeChange
-        ? changedNodeTitle(catalog, payload, nodeChange)
-        : comparisonNodeTitle(node.data, catalog),
-      connections: input.objects.filter((item) => {
-        const edge =
-          item.object.kind === "edge" ? edgesById.get(item.object.id) : null;
-        return edge?.source === object.id || edge?.target === object.id;
-      }),
-      groupFrame,
-      categories: categories.nodes.get(object.id) ?? null,
-      membership:
-        groupFrame || !nodeChange
-          ? null
-          : comparisonGroupMembership(catalog, payload, nodeChange),
-      changedMembers: groupFrame
-        ? input.objects.filter(
-            (item) =>
-              item.object.kind === "node" &&
-              nodesById.get(item.object.id)?.parentId === object.id
-          )
-        : [],
-    };
-  }
-  const edge = graph.edges.find((candidate) => candidate.id === object.id);
-  if (!edge) {
+  const node = nodesById.get(nodeId);
+  if (!node) {
     return { kind: "unavailable" };
   }
-  const source = nodeTitle(edge.source);
-  const target = nodeTitle(edge.target);
+  const nodeChange =
+    payload.nodeChanges.find((change) => change.nodeId === nodeId) ?? null;
+  const edgesById = new Map(graph.edges.map((edge) => [edge.id, edge]));
+  const categories = classifyWorkflowComparison(payload);
+  const groupFrame = nodeChange
+    ? categories.groupFrameIds.has(nodeId)
+    : isGroupNode(node);
   return {
-    kind: "edge",
-    edgeId: edge.id,
-    change: edge.data?.[COMPARISON_EDGE_ANNOTATION]?.kind ?? "unchanged",
-    title: `${source} → ${target}`,
-    source,
-    target,
-    branch: resolveEdgeLabel(edge.sourceHandle, edge.data),
+    kind: "node",
+    nodeId,
+    change: nodeChange?.kind ?? "unchanged",
+    nodeChange,
+    title: nodeChange
+      ? changedNodeTitle(catalog, payload, nodeChange)
+      : comparisonNodeTitle(node.data, catalog),
+    connections: input.objects.filter((item) => {
+      const edge =
+        item.object.kind === "edge" ? edgesById.get(item.object.id) : null;
+      return edge?.source === nodeId || edge?.target === nodeId;
+    }),
+    groupFrame,
+    categories: categories.nodes.get(nodeId) ?? null,
+    membership:
+      groupFrame || !nodeChange
+        ? null
+        : comparisonGroupMembership(catalog, payload, nodeChange),
+    changedMembers: groupFrame
+      ? input.objects.filter(
+          (item) =>
+            item.object.kind === "node" &&
+            nodesById.get(item.object.id)?.parentId === nodeId
+        )
+      : [],
   };
 }
 
@@ -624,13 +660,6 @@ export function describeInspection(
   const base = payload.baseVersion
     ? `version ${payload.baseVersion.version}`
     : "any published version";
-  if (inspection.kind === "edge") {
-    return {
-      added: `This connection is new in the draft. It is not in ${base}.`,
-      removed: `This connection is removed from the draft. Only ${base} has it.`,
-      unchanged: `This connection is the same in ${base} and the draft.`,
-    }[inspection.change];
-  }
   if (inspection.groupFrame) {
     return describeGroupInspection(inspection, payload, base);
   }

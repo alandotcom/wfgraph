@@ -1309,11 +1309,17 @@ describe("the collapsed Group overview", () => {
       })
     );
     expect(reveal()?.dataset.level).toBe("browse");
-    expect(
-      view
-        .getByRole("button", { name: "Send case study Modified" })
-        .getAttribute("aria-pressed")
-    ).toBe("true");
+    const name = view.getByRole("button", { name: "Send case study" });
+    expect(name.getAttribute("aria-pressed")).toBe("true");
+    // The change list opens the step's row to show its differences.
+    await waitFor(() =>
+      expect(
+        name
+          .closest('[data-slot="change-row"]')
+          ?.querySelector("[aria-expanded]")
+          ?.getAttribute("aria-expanded")
+      ).toBe("true")
+    );
   });
 });
 

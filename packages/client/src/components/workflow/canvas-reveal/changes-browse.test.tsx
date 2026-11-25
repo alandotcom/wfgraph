@@ -1,4 +1,4 @@
-import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
@@ -153,21 +153,26 @@ describe("Changes Browse orientation", () => {
       name: "Changed connections",
     });
     const rows = (region: HTMLElement) =>
-      within(region)
-        .getAllByRole("button")
-        .map((row) => ({
-          name: row.textContent,
+      [...region.querySelectorAll<HTMLElement>('[data-slot="change-row"]')].map(
+        (row) => ({
+          title: row.querySelector("[data-slot=change-title]")?.textContent,
+          summary: row.querySelector("[data-slot=change-summary]")?.textContent,
           change: row.dataset.change,
-          marker: row.querySelector("[aria-hidden=true]")?.className,
-        }));
-    expect(rows(steps).map(({ name, change }) => [name, change])).toEqual([
-      ["AFreshAdded", "added"],
-      ["MNewModified", "modified"],
-      ["DGoneRemoved", "removed"],
+          marker: row.querySelector(".comparison-marker")?.className,
+        })
+      );
+    expect(
+      rows(steps).map(({ title, summary, change }) => [title, summary, change])
+    ).toEqual([
+      ["Fresh", "Added", "added"],
+      ["New", "Settings changed", "modified"],
+      ["Gone", "Removed", "removed"],
     ]);
-    expect(rows(connections).map(({ name }) => name)).toEqual([
-      "AKept → FreshAdded",
-      "DKept → GoneRemoved",
+    expect(
+      rows(connections).map(({ title, summary }) => [title, summary])
+    ).toEqual([
+      ["Kept → Fresh", "Added"],
+      ["Kept → Gone", "Removed"],
     ]);
     const [added, modified, removed] = rows(steps).map(({ marker }) => marker);
     expect(added).toContain("text-success");
@@ -177,34 +182,29 @@ describe("Changes Browse orientation", () => {
 });
 
 describe("Changes Browse navigation", () => {
-  it("selects changed steps and connections from the list and Previous and Next", async () => {
+  it("selects changed steps and connections from the list by name", async () => {
     stubServer();
     const { store, inReveal, click } = await renderChanges();
 
-    click("Gone Removed");
+    click("Gone");
     expect(store.get(activeSelectionAtom)).toEqual({
       nodeIds: ["gone"],
       edgeIds: [],
     });
     expect(
       inReveal()
-        .getByRole("button", { name: "Gone Removed" })
+        .getByRole("button", { name: "Gone" })
         .getAttribute("aria-pressed")
     ).toBe("true");
-    expect(inReveal().getByText("3 of 5")).toBeTruthy();
 
-    click("Next change");
+    click("Kept → Fresh Added");
     expect(store.get(activeSelectionAtom)).toEqual({
       nodeIds: [],
       edgeIds: ["kept-fresh"],
     });
-    click("Next change");
     expect(
-      inReveal().getByRole("button", { name: "Next change" })
-    ).toHaveProperty("disabled", true);
-    click("Previous change");
-    click("Previous change");
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["gone"]);
+      inReveal().queryByRole("navigation", { name: "Changed objects" })
+    ).toBeNull();
   });
 
   it("highlights a step selected on the canvas", async () => {
@@ -216,10 +216,9 @@ describe("Changes Browse navigation", () => {
     });
     expect(
       inReveal()
-        .getByRole("button", { name: "New Modified" })
+        .getByRole("button", { name: "New" })
         .getAttribute("aria-pressed")
     ).toBe("true");
-    expect(inReveal().getByText("2 of 5")).toBeTruthy();
   });
 
   it("opens, refreshes, and exits a comparison without changing the Draft", async () => {
@@ -284,7 +283,7 @@ describe("Changes Browse navigation", () => {
   it("opens version history in Changes and returns to the same selection and list scroll", async () => {
     stubServer();
     const { store, aside, inReveal, list, click } = await renderChanges();
-    click("Gone Removed");
+    click("Gone");
     const scroller = list();
     if (!scroller) {
       throw new Error("the change list did not render");
@@ -312,7 +311,7 @@ describe("Changes Browse navigation", () => {
     expect(store.get(activeSelectionAtom).nodeIds).toEqual(["gone"]);
     expect(
       inReveal()
-        .getByRole("button", { name: "Gone Removed" })
+        .getByRole("button", { name: "Gone" })
         .getAttribute("aria-pressed")
     ).toBe("true");
     await waitFor(() => expect(list()?.scrollTop).toBe(120));
@@ -455,7 +454,7 @@ describe("Changes Browse states", () => {
     expect(
       inReveal().getByText("This draft has no changes from version 3.")
     ).toBeTruthy();
-    expect(inReveal().getByText("0 changes")).toBeTruthy();
+    expect(inReveal().queryByRole("button", { name: /change/ })).toBeNull();
   });
 
   it("keeps the comparison and reports a failed refresh", async () => {

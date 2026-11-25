@@ -280,6 +280,11 @@ export function isConditionRulesPath(
   );
 }
 
+/** Whether `field`, a row of `comparisonFields`, is a modified Condition's rules. */
+export function isConditionRulesRow(field: ComparisonField): boolean {
+  return field.key === `field:${CONDITION_RULES_ROW_KEY}`;
+}
+
 /**
  * The property rows for a node change. An added node lists the draft's values
  * and a removed node the published values, each from its snapshot. A modified

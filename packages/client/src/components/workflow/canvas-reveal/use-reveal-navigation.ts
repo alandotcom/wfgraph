@@ -37,6 +37,7 @@ import {
   openMobileChangedObject,
   selectChangedObject,
 } from "./changed-object-navigation";
+import { CHANGE_LIST_SECTION } from "./changes-summary";
 import { requestRevealPlacementAtom } from "./reveal-requests";
 
 /** The object an inspector shows and the section it shows for that object. */
@@ -109,8 +110,8 @@ export type RevealNavigation = {
    * Show a node pressed on a canvas outside a run, or chosen elsewhere, once
    * the selection is written. Desktop reopens a closed Canvas Reveal when the
    * address follows its selection and holds `nodeId` alone. Below `md` a
-   * comparison shows the node's field differences, and any other address opens
-   * its inspector.
+   * comparison selects the node in the change list sheet with its row open,
+   * and any other address opens its inspector.
    */
   showPressedNode: (input: {
     address: WorkspaceAddress;
@@ -138,9 +139,10 @@ export type RevealNavigation = {
   }) => void;
   /**
    * Show a changed object of the active comparison in the scope that shows it,
-   * entering its Group when the object is a step inside one. At `md` and wider
-   * it selects the object and opens a closed Reveal at Browse; below `md` it
-   * opens the object's field differences in the mobile Reveal sequence.
+   * entering its Group when the object is a step inside one, with its change
+   * list row open. At `md` and wider it selects the object and opens a closed
+   * Reveal at Browse; below `md` it selects the object in the change list
+   * sheet.
    */
   showChangedObject: (object: InspectedObject) => void;
 };
@@ -220,6 +222,7 @@ export function useRevealNavigation(): RevealNavigation {
             store.set(openMobileChangeAtom, {
               address,
               inspected: node(nodeId),
+              section: CHANGE_LIST_SECTION,
             });
           } else {
             openSheet(address);

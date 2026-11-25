@@ -23,9 +23,11 @@ import {
   describeInspection,
   describeMembershipChange,
   describeValidationDifference,
+  initiallyOpenChangeRows,
   inspectChange,
   issueIdentity,
   nodeValidationSides,
+  opensInPlace,
   selectedChangeIndex,
 } from "./changes-summary";
 
@@ -189,8 +191,6 @@ describe("changesHeaderModel", () => {
     const refreshing = changesHeaderModel({
       comparison: { status: "refreshing", payload, showsHistory: true },
       workflowName: "Reminders",
-      level: "browse",
-      inspectedTitle: null,
     });
     expect(refreshing).toMatchObject({
       workspaceLabel: "Changes",
@@ -201,20 +201,17 @@ describe("changesHeaderModel", () => {
     });
   });
 
-  it("ends the path with the inspected object at Focus and offers Back", () => {
-    expect(
-      changesHeaderModel({
-        comparison: { status: "ready", payload, showsHistory: false },
-        workflowName: "Reminders",
-        level: "focus",
-        inspectedTitle: "New",
-      })
-    ).toMatchObject({
-      title: "Version 3 → proposed version 4",
-      path: ["Reminders", "Version 3 → proposed version 4", "New"],
-      showsBack: true,
-      focusToggleText: { browse: "Compare fields", focus: "Return to summary" },
+  it("offers no Back and no Focus toggle, since Changes has one level", () => {
+    const model = changesHeaderModel({
+      comparison: { status: "ready", payload, showsHistory: false },
+      workflowName: "Reminders",
     });
+    expect(model).toMatchObject({
+      title: "Version 3 → proposed version 4",
+      path: ["Reminders", "Version 3 → proposed version 4"],
+      showsBack: false,
+    });
+    expect(model.focusToggleText).toBeUndefined();
   });
 
   it("names what is happening while no comparison is shown", () => {
@@ -222,8 +219,6 @@ describe("changesHeaderModel", () => {
       changesHeaderModel({
         comparison: { status },
         workflowName: "Reminders",
-        level: "browse",
-        inspectedTitle: null,
       });
     expect(title("loading")).toMatchObject({
       title: "Comparing changes",
@@ -274,6 +269,110 @@ describe("changedObjects", () => {
   });
 });
 
+describe("change list rows", () => {
+  const withFields: WorkflowComparisonPayload = {
+    ...payload,
+    nodeChanges: [
+      { nodeId: "fresh", kind: "added", fields: [] },
+      {
+        nodeId: "edited",
+        kind: "modified",
+        fields: [
+          {
+            path: ["data", "label"],
+            kind: "modified",
+            before: "Old",
+            after: "New",
+          },
+        ],
+      },
+      { nodeId: "gone", kind: "removed", fields: [] },
+    ],
+  };
+  const objectsOf = (source: WorkflowComparisonPayload) =>
+    changedObjects({
+      payload: source,
+      graph: buildComparisonDisplayGraph(source),
+      catalog,
+    });
+
+  it("says what changed in each row in words", () => {
+    expect(
+      objectsOf(withFields).map(({ title, summary }) => ({ title, summary }))
+    ).toEqual([
+      { title: "Fresh", summary: "Added" },
+      { title: "New", summary: "Label changed" },
+      { title: "Gone", summary: "Removed" },
+      { title: "Kept → Fresh", summary: "Added" },
+      { title: "Kept → Gone", summary: "Removed" },
+    ]);
+    const twoSettings: WorkflowComparisonPayload = {
+      ...withFields,
+      nodeChanges: [
+        {
+          nodeId: "edited",
+          kind: "modified",
+          fields: [
+            {
+              path: ["data", "label"],
+              kind: "modified",
+              before: "Old",
+              after: "New",
+            },
+            { path: ["data", "enabled"], kind: "added", after: false },
+          ],
+        },
+      ],
+      edgeChanges: [],
+    };
+    expect(objectsOf(twoSettings).map((item) => item.summary)).toEqual([
+      "2 settings changed",
+    ]);
+  });
+
+  it("opens modified Groups and steps by default and leaves additions, removals and connections closed", () => {
+    const objects = objectsOf(withFields);
+    expect([...initiallyOpenChangeRows(objects)]).toEqual(["node:edited"]);
+    expect(objects.map(opensInPlace)).toEqual([true, true, true, false, false]);
+  });
+
+  it("opens only the first modified row in a list of more than eight changed objects", () => {
+    const ids = Array.from({ length: 9 }, (_, index) => `step_${index}`);
+    const many: WorkflowComparisonPayload = {
+      ...payload,
+      baseGraph: createSerializedWorkflowGraph({
+        nodes: ids.map((id) => step(id, `Old ${id}`)),
+        edges: [],
+      }),
+      draftGraph: createSerializedWorkflowGraph({
+        nodes: ids.map((id) => step(id, `New ${id}`)),
+        edges: [],
+      }),
+      nodeChanges: ids.map((id) => ({
+        nodeId: id,
+        kind: "modified" as const,
+        fields: [
+          {
+            path: ["data", "label"],
+            kind: "modified" as const,
+            before: `Old ${id}`,
+            after: `New ${id}`,
+          },
+        ],
+      })),
+      edgeChanges: [],
+    };
+    expect([...initiallyOpenChangeRows(objectsOf(many))]).toEqual([
+      "node:step_0",
+    ]);
+    expect([
+      ...initiallyOpenChangeRows(
+        objectsOf({ ...many, nodeChanges: many.nodeChanges.slice(0, 8) })
+      ),
+    ]).toHaveLength(8);
+  });
+});
+
 describe("describeChangeCounts", () => {
   it("counts each kind present, in added, modified, removed order", () => {
     expect(describeChangeCounts(payload.nodeChanges)).toBe(
@@ -289,8 +388,8 @@ describe("describeChangeCounts", () => {
 describe("inspectChange", () => {
   const graph = buildComparisonDisplayGraph(payload);
   const objects = changedObjects({ payload, graph, catalog });
-  const inspect = (object: { kind: "node" | "edge"; id: string }) =>
-    inspectChange({ payload, graph, catalog, objects, object });
+  const inspect = (object: { kind: "node"; id: string }) =>
+    inspectChange({ payload, graph, catalog, objects, nodeId: object.id });
 
   it("describes added, modified, removed, and unchanged steps by the sides that hold them", () => {
     const sentence = (id: string) => {
@@ -319,14 +418,7 @@ describe("inspectChange", () => {
     });
   });
 
-  it("names a connection by the steps it joins, and an object off the canvas as unavailable", () => {
-    expect(inspect({ kind: "edge", id: "kept-gone" })).toMatchObject({
-      kind: "edge",
-      change: "removed",
-      source: "Kept",
-      target: "Gone",
-      branch: null,
-    });
+  it("calls a node off the canvas unavailable", () => {
     expect(inspect({ kind: "node", id: "missing" })).toEqual({
       kind: "unavailable",
     });
@@ -498,7 +590,7 @@ describe("Group organization in a comparison", () => {
       graph,
       catalog,
       objects,
-      object: { kind: "node", id },
+      nodeId: id,
     });
     if (inspection.kind !== "node") {
       throw new Error(`${id} is not a node on the comparison canvas`);
@@ -534,10 +626,10 @@ describe("Group organization in a comparison", () => {
     const graph = buildComparisonDisplayGraph(organizationOnly);
     expect(
       changedObjects({ payload: organizationOnly, graph, catalog }).map(
-        ({ key, title, detail, groupFrame }) => ({
+        ({ key, title, summary, groupFrame }) => ({
           key,
           title,
-          detail,
+          summary,
           groupFrame,
         })
       )
@@ -545,16 +637,24 @@ describe("Group organization in a comparison", () => {
       {
         key: "node:group",
         title: "Follow-ups",
-        detail: "Modified",
+        summary: "2 settings changed",
         groupFrame: true,
       },
       {
         key: "node:moved",
         title: "Moved",
-        detail: "Group membership",
+        summary: "Moved into Follow-ups",
         groupFrame: false,
       },
     ]);
+    const mixedObjects = changedObjects({
+      payload: mixed,
+      graph: buildComparisonDisplayGraph(mixed),
+      catalog,
+    });
+    expect(
+      mixedObjects.find((item) => item.key === "node:moved")?.summary
+    ).toBe("Enabled changed · Moved into Follow-ups");
   });
 
   it("describes a Group with its changed steps and says it leaves behavior unchanged", () => {
