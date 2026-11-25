@@ -1,5 +1,10 @@
 import { getSmoothStepPath, type InternalNode, Position } from "@xyflow/react";
+import { compact } from "es-toolkit/array";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
+import {
+  GROUP_REGION_HEADER_HEIGHT,
+  GROUP_REGION_INSET,
+} from "@wfgraph/shared/graph/workflow-layout-geometry";
 
 /** One complete rounded path per edge, with an optional shared row bend. */
 export function getWorkflowEdgePath(
@@ -56,3 +61,39 @@ export const getEdgeParams = (
     targetPos: end.position,
   };
 };
+
+/** A rectangle in flow coordinates. */
+export type FlowRect = { x: number; y: number; width: number; height: number };
+
+/**
+ * The header bands a connection runs through on its way into or out of a
+ * Group region: the band of the region holding its target when its source
+ * stands outside that region, and of the region holding its source when its
+ * target stands outside. A region's header sits above its first members, so a
+ * connection reaching a member from above crosses it. `regionBox` answers a
+ * region's node box, which starts where its members' positions start; the
+ * header band sits `GROUP_REGION_INSET` outside it.
+ */
+export function crossedRegionHeaders(input: {
+  sourceRegionId: string | undefined;
+  targetRegionId: string | undefined;
+  regionBox: (regionId: string) => FlowRect | undefined;
+}): FlowRect[] {
+  const { sourceRegionId, targetRegionId } = input;
+  if (sourceRegionId === targetRegionId) {
+    return [];
+  }
+  return compact([sourceRegionId, targetRegionId]).flatMap((regionId) => {
+    const box = input.regionBox(regionId);
+    return box
+      ? [
+          {
+            x: box.x - GROUP_REGION_INSET.left,
+            y: box.y - GROUP_REGION_INSET.top,
+            width: box.width + GROUP_REGION_INSET.left,
+            height: GROUP_REGION_HEADER_HEIGHT,
+          },
+        ]
+      : [];
+  });
+}

@@ -10,6 +10,8 @@ import { cn } from "@wfgraph/shared/utils";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
 import { useCompactCard } from "#src/components/flow-elements/node";
 import {
+  crossedRegionHeaders,
+  type FlowRect,
   getEdgeParams,
   getWorkflowEdgePath,
 } from "#src/components/flow-elements/edge-path";
@@ -77,6 +79,64 @@ export function heldDashes(pattern: string): string {
         .join(", ");
 }
 
+/** A node's box in flow coordinates, once React Flow has measured it. */
+function flowBox(node: {
+  internals: { positionAbsolute: { x: number; y: number } };
+  measured: { width?: number | undefined; height?: number | undefined };
+}): FlowRect | undefined {
+  const { width, height } = node.measured;
+  return width === undefined || height === undefined
+    ? undefined
+    : { ...node.internals.positionAbsolute, width, height };
+}
+
+/** How far past a connection's two ends its mask reaches, in flow pixels. */
+const MASK_MARGIN = 64;
+
+/**
+ * Hides a connection's stroke inside `bands`, so it reads as passing under a
+ * Group region's header. The mask covers the connection's ends with
+ * `MASK_MARGIN` to spare, which holds the bends of its rounded path.
+ */
+function HeaderBandMask({
+  id,
+  bands,
+  from,
+  to,
+}: {
+  id: string;
+  bands: readonly FlowRect[];
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+}) {
+  const x = Math.min(from.x, to.x) - MASK_MARGIN;
+  const y = Math.min(from.y, to.y) - MASK_MARGIN;
+  const width = Math.abs(from.x - to.x) + 2 * MASK_MARGIN;
+  const height = Math.abs(from.y - to.y) + 2 * MASK_MARGIN;
+  return (
+    <mask
+      height={height}
+      id={id}
+      maskUnits="userSpaceOnUse"
+      width={width}
+      x={x}
+      y={y}
+    >
+      <rect fill="white" height={height} width={width} x={x} y={y} />
+      {bands.map((band) => (
+        <rect
+          fill="black"
+          height={band.height}
+          key={`${band.x}:${band.y}`}
+          width={band.width}
+          x={band.x}
+          y={band.y}
+        />
+      ))}
+    </mask>
+  );
+}
+
 const Animated = memo(function Animated({
   id,
   source,
@@ -89,6 +149,10 @@ const Animated = memo(function Animated({
 }: EdgeProps<WorkflowEdge>) {
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
+  // The Group regions the two ends stand in, whose header bands the
+  // connection must not draw across.
+  const sourceRegion = useInternalNode(sourceNode?.parentId ?? "");
+  const targetRegion = useInternalNode(targetNode?.parentId ?? "");
   const insertStepOnEdge = useContext(InsertStepSlot);
   const liveRun = useAtomValue(isLiveRunCanvasAtom);
   // While cards are compact a connection draws no caption: at its 12px it
@@ -117,6 +181,19 @@ const Animated = memo(function Animated({
     targetPosition: targetPos,
   };
   const [edgePath, labelX, labelY] = getWorkflowEdgePath(pathInput);
+  // A connection into or out of a Group region passes under the region's
+  // header, so the Group's name and marks are never struck through.
+  const headerBands = crossedRegionHeaders({
+    sourceRegionId: sourceNode.parentId,
+    targetRegionId: targetNode.parentId,
+    regionBox: (regionId) =>
+      regionId === sourceRegion?.id
+        ? flowBox(sourceRegion)
+        : regionId === targetRegion?.id
+          ? flowBox(targetRegion)
+          : undefined,
+  });
+  const maskId = headerBands.length > 0 ? `edge-header-mask-${id}` : null;
   const edgeLabel = resolveEdgeLabel(sourceHandleId, data);
   // `canvasEdgesAtom` sets `inactive` on every edge landing where the run
   // cannot go, and on a run's canvas `runPath` on every edge the run decided.
@@ -133,9 +210,18 @@ const Animated = memo(function Animated({
 
   return (
     <>
+      {maskId ? (
+        <HeaderBandMask
+          bands={headerBands}
+          from={{ x: sx, y: sy }}
+          id={maskId}
+          to={{ x: tx, y: ty }}
+        />
+      ) : null}
       <BaseEdge
         id={id}
         interactionWidth={20}
+        mask={maskId ? `url(#${maskId})` : undefined}
         path={edgePath}
         style={{
           ...style,

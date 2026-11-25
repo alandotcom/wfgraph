@@ -1,6 +1,11 @@
 import { type InternalNode, Position } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
 import {
+  GROUP_REGION_HEADER_HEIGHT,
+  GROUP_REGION_INSET,
+} from "@wfgraph/shared/graph/workflow-layout-geometry";
+import {
+  crossedRegionHeaders,
   getEdgeParams,
   getWorkflowEdgePath,
 } from "#src/components/flow-elements/edge-path";
@@ -170,5 +175,56 @@ describe("getEdgeParams", () => {
       expect(point.x).toBeGreaterThanOrEqual(206);
       expect(point.x).toBeLessThanOrEqual(294);
     }
+  });
+});
+
+describe("crossedRegionHeaders", () => {
+  // A region whose members start at (100, 300), 400 by 200.
+  const regionBox = (regionId: string) =>
+    regionId === "reminders"
+      ? { x: 100, y: 300, width: 400, height: 200 }
+      : undefined;
+  const band = {
+    x: 100 - GROUP_REGION_INSET.left,
+    y: 300 - GROUP_REGION_INSET.top,
+    width: 400 + GROUP_REGION_INSET.left,
+    height: GROUP_REGION_HEADER_HEIGHT,
+  };
+
+  it("names the header band of the region a connection enters from outside", () => {
+    expect(
+      crossedRegionHeaders({
+        sourceRegionId: undefined,
+        targetRegionId: "reminders",
+        regionBox,
+      })
+    ).toEqual([band]);
+  });
+
+  it("names the band of the region a connection leaves for a step outside", () => {
+    expect(
+      crossedRegionHeaders({
+        sourceRegionId: "reminders",
+        targetRegionId: undefined,
+        regionBox,
+      })
+    ).toEqual([band]);
+  });
+
+  it("names no band for a connection between two members of one region, or two steps outside", () => {
+    expect(
+      crossedRegionHeaders({
+        sourceRegionId: "reminders",
+        targetRegionId: "reminders",
+        regionBox,
+      })
+    ).toEqual([]);
+    expect(
+      crossedRegionHeaders({
+        sourceRegionId: undefined,
+        targetRegionId: undefined,
+        regionBox,
+      })
+    ).toEqual([]);
   });
 });
