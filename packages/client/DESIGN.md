@@ -710,6 +710,11 @@ The Workflows page opens its own palette on Cmd+K: a workflow by name, **New
 workflow**, and the Settings rows. The Workflows table and the All Runs list are
 each one Tab stop. Arrow keys or J and K move between rows, Enter opens the row,
 Space ticks a workflow's checkbox, and Shift+F10 opens its actions menu.
+A workflow row with failed or waiting runs says so after its name, such as "2
+failed" and "1 waiting", each count a signal dot beside muted words. The failed
+count covers the runs the workflow's Runs view lists, and the waiting count
+covers every run waiting now. Choosing a count filters All Runs to that
+workflow and state and brings the list into view.
 
 ### Publication review
 

@@ -17,6 +17,7 @@ import {
 import {
   extractRpcProcedurePath,
   rpcErrorResponse,
+  parseRpcRequestInput,
   rpcJsonResponse,
   rpcUrl,
 } from "#src/lib/rpc-fetch-test-support";
@@ -158,7 +159,11 @@ describe("WorkflowsPage workflow list", () => {
     id: string,
     name: string,
     publishedVersionId?: string,
-    overrides: { isPaused?: boolean; mode?: "live" | "test" } = {}
+    overrides: {
+      isPaused?: boolean;
+      mode?: "live" | "test";
+      runCounts?: { failedRecently: number; waiting: number };
+    } = {}
   ) {
     return omitUndefined({
       id,
@@ -169,6 +174,7 @@ describe("WorkflowsPage workflow list", () => {
       createdAt: "2026-03-01T10:00:00.000Z",
       updatedAt: "2026-03-01T10:00:00.000Z",
       publishedVersionId,
+      runCounts: overrides.runCounts ?? { failedRecently: 0, waiting: 0 },
     });
   }
 
@@ -194,6 +200,67 @@ describe("WorkflowsPage workflow list", () => {
     expect(
       view.queryByRole("columnheader", { name: "Published mode" })
     ).toBeNull();
+  });
+
+  // The row says which workflows need a look, and each count shows those
+  // runs in All Runs: the URL names the workflow and the state, and the
+  // runs read asks the server for them.
+  it("marks a row with its failed and waiting runs, and shows them in All Runs", async () => {
+    stubDashboardRpc(null, [
+      summary("workflow_1", "Reminders", "version_1", {
+        runCounts: { failedRecently: 2, waiting: 1 },
+      }),
+      summary("workflow_2", "Quiet", "version_2"),
+    ]);
+    const { view, router } = await renderWorkflowsPage();
+
+    const row = (await view.findByText("Reminders")).closest("tr");
+    expect(row?.textContent).toContain("2 failed");
+    expect(row?.textContent).toContain("1 waiting");
+    const quiet = (await view.findByText("Quiet")).closest("tr");
+    expect(quiet?.textContent).not.toContain("failed");
+    expect(quiet?.textContent).not.toContain("waiting");
+
+    fireEvent.click(
+      view.getByRole("button", {
+        name: "Show 2 failed runs of Reminders in All Runs",
+      })
+    );
+
+    // The mark is a control of its own, so the row does not open.
+    expect(view.queryByText("Editor")).toBeNull();
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        filters: [
+          {
+            field: "workflow",
+            operator: "is",
+            value: "workflow_1",
+            valueLabel: "Reminders",
+          },
+          { field: "status", operator: "is", value: "failed" },
+        ],
+      })
+    );
+    const runsReads = async () =>
+      await Promise.all(
+        vi
+          .mocked(globalThis.fetch)
+          .mock.calls.filter(
+            ([input]) =>
+              extractRpcProcedurePath(rpcUrl(input)) ===
+              "workflow/getExecutionsGlobal"
+          )
+          .map(async ([, init]) => await parseRpcRequestInput(init))
+      );
+    await waitFor(async () =>
+      expect(await runsReads()).toContainEqual(
+        expect.objectContaining({
+          workflowIds: ["workflow_1"],
+          statuses: ["failed"],
+        })
+      )
+    );
   });
 
   it("offers Pause only for a workflow that has a published version", async () => {
@@ -242,6 +309,7 @@ describe("WorkflowsPage structure and states", () => {
       createdAt: "2026-03-01T10:00:00.000Z",
       updatedAt: "2026-03-01T10:00:00.000Z",
       publishedVersionId: undefined,
+      runCounts: { failedRecently: 0, waiting: 0 },
     });
 
   it("names the page with a level-one heading, a main landmark and the tab title", async () => {

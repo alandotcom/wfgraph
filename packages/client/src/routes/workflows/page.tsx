@@ -54,8 +54,17 @@ import {
 import { withExecutorReading } from "#src/lib/run-executor-activity";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { RUN_POLL_MS } from "#src/components/workflow/use-workflow-runs";
-import type { WorkflowSummaryPayload } from "@wfgraph/shared/graph/api-contracts";
 import {
+  runStatusTone,
+  statusToneDotClass,
+} from "#src/components/workflow/workflow-run-shared";
+import { compact } from "es-toolkit/array";
+import type {
+  WorkflowListItemPayload,
+  WorkflowSummaryPayload,
+} from "@wfgraph/shared/graph/api-contracts";
+import {
+  createRunFilter,
   filterRuns,
   runFiltersFromSearch,
   runEntityKey,
@@ -108,8 +117,8 @@ const RUNS_PAGE_SIZE = 100;
  * identity instead of re-sorting on every render.
  */
 function toSortedWorkflows(
-  payload: readonly WorkflowSummaryPayload[]
-): WorkflowSummaryPayload[] {
+  payload: readonly WorkflowListItemPayload[]
+): WorkflowListItemPayload[] {
   return payload.toSorted(byUpdatedDesc);
 }
 
@@ -136,7 +145,7 @@ function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural;
 }
 
-const NO_WORKFLOWS: WorkflowSummaryPayload[] = [];
+const NO_WORKFLOWS: WorkflowListItemPayload[] = [];
 
 /** A row that opens its workflow: a hover fill, and a darker one while pressed. */
 const OPENABLE_ROW_CLASS = "cursor-pointer hover:bg-muted/60 active:bg-muted";
@@ -208,6 +217,74 @@ function WorkflowStateLabel({
   );
 }
 
+/** The two run states a workflow row counts. */
+type RunMarkStatus = "failed" | "waiting";
+
+/**
+ * A workflow's failed and waiting runs, such as "2 failed · 1 waiting", each a
+ * signal dot beside its words. `failedRecently` counts the failed runs among
+ * the ones the workflow's Runs view lists, and `waiting` its runs waiting now.
+ * A workflow with neither shows nothing. With `onShow`, each count is a
+ * button that shows those runs in All Runs; the row's own keys open the
+ * workflow, so the buttons are no Tab stop.
+ */
+function WorkflowRunMarks({
+  workflow,
+  onShow,
+}: {
+  workflow: WorkflowListItemPayload;
+  onShow: ((status: RunMarkStatus) => void) | null;
+}) {
+  const { failedRecently, waiting } = workflow.runCounts;
+  const marks = compact([
+    failedRecently > 0
+      ? { status: "failed" as const, count: failedRecently }
+      : null,
+    waiting > 0 ? { status: "waiting" as const, count: waiting } : null,
+  ]).map((mark) => ({
+    ...mark,
+    text: `${mark.count} ${mark.status}`,
+    runs: mark.count === 1 ? "run" : "runs",
+  }));
+  if (marks.length === 0) {
+    return null;
+  }
+  return (
+    <span className="inline-flex shrink-0 items-center gap-2 text-muted-foreground text-xs">
+      {marks.map((mark) => {
+        const content = (
+          <>
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                statusToneDotClass(runStatusTone(mark.status))
+              )}
+            />
+            {mark.text}
+          </>
+        );
+        return onShow === null ? (
+          <span className="inline-flex items-center gap-1" key={mark.status}>
+            {content}
+          </span>
+        ) : (
+          <button
+            aria-label={`Show ${mark.text} ${mark.runs} of ${workflow.name} in All Runs`}
+            className="inline-flex items-center gap-1 rounded-sm whitespace-nowrap outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            key={mark.status}
+            onClick={() => onShow(mark.status)}
+            tabIndex={-1}
+            type="button"
+          >
+            {content}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
+
 /** A list that failed to load, said in the panel with a Retry beside it. */
 function ListLoadFailure({
   message,
@@ -270,6 +347,28 @@ export default function WorkflowsPage() {
   };
   const setRunFilters = (filters: RunFilter[]) => writeRunSearch({ filters });
   const setRunQuery = (q: string) => writeRunSearch({ q });
+  // A row's run mark replaces the All Runs filters with its workflow and the
+  // run state it counts, clears the search text, and brings the panel into
+  // view, which below `xl` sits under the workflow list.
+  const allRunsRef = useRef<HTMLElement>(null);
+  const showWorkflowRuns = (
+    workflow: Pick<WorkflowListItemPayload, "id" | "name">,
+    status: RunMarkStatus
+  ) => {
+    writeRunSearch({
+      filters: [
+        createRunFilter({
+          field: "workflow",
+          operator: "is",
+          value: workflow.id,
+          valueLabel: workflow.name,
+        }),
+        createRunFilter({ field: "status", operator: "is", value: status }),
+      ],
+      q: "",
+    });
+    allRunsRef.current?.scrollIntoView({ block: "nearest" });
+  };
   const [showSelectedRunsOnly, setShowSelectedRunsOnly] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   // Bumped on every open so the dialog remounts and re-suggests a name. It stays
@@ -766,6 +865,14 @@ export default function WorkflowsPage() {
                           className="size-3.5 text-muted-foreground"
                         />
                       ) : null}
+                      <WorkflowRunMarks
+                        onShow={
+                          canOpenGlobalRuns
+                            ? (status) => showWorkflowRuns(workflow, status)
+                            : null
+                        }
+                        workflow={workflow}
+                      />
                     </div>
                     <div className="mt-0.5 flex items-center gap-3 md:hidden">
                       <WorkflowStateLabel workflow={workflow} />
@@ -970,6 +1077,7 @@ export default function WorkflowsPage() {
             // the run list is virtualized and needs a bounded scroller.
             <section
               aria-labelledby="all-runs-heading"
+              ref={allRunsRef}
               className="flex h-[min(85dvh,48rem)] min-h-0 flex-col rounded-xl border bg-card xl:h-auto"
             >
               <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
