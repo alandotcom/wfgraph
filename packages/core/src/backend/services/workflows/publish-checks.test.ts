@@ -165,7 +165,7 @@ describe("publish-checks", () => {
       )
     ).rejects.toMatchObject({
       _tag: "InvalidInput",
-      error: 'Node "Send" is missing required fields: to',
+      error: 'Step 1 "Send" is missing required fields: to',
     });
 
     expect(integrationLookups).toBe(0);

@@ -19,6 +19,7 @@
 import { Effect } from "effect";
 import { InvalidInput } from "#src/backend/lib/effect/failures";
 import { validateWorkflowConditionConfigs } from "#src/backend/services/workflows/validation/workflow-conditions-validation";
+import { stepNames } from "#src/backend/services/workflows/validation/step-names";
 import {
   validateCancelFilterModels,
   validateStartFilterModels,
@@ -58,7 +59,10 @@ export function validateGraphSaveShape(
     return graphValidation;
   }
 
-  const conditions = validateWorkflowConditionConfigs(graphValidation.nodes);
+  const conditions = validateWorkflowConditionConfigs(
+    graphValidation.nodes,
+    stepNames(graphValidation)
+  );
   if (!conditions.valid) {
     return conditions;
   }

@@ -227,8 +227,7 @@ describe("focused scenarios", () => {
           publishBlockers: [
             {
               kind: "missing_integration",
-              message:
-                'Node "Notify recruiting" needs a Slack connection before publishing.',
+              message: 'Step 2 "Notify recruiting" needs a Slack connection',
             },
           ],
         },

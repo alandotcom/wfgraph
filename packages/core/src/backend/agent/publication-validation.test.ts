@@ -442,7 +442,9 @@ describe("validateAgentPublication", () => {
     );
   });
 
-  it("blocks a missing Wait Event connection", () => {
+  // validate_workflow reads these messages, so they name the step as the
+  // outline numbers it, never by its id or as a "Node".
+  it("blocks a missing Wait Event connection, naming the step by its number", () => {
     const result = validateAgentPublication({
       document: {
         nodes: [manualLifecycle, integrationEventWait("deleted-slack")],
@@ -457,6 +459,7 @@ describe("validateAgentPublication", () => {
         kind: "missing_integration",
         nodeId: "wait-for-slack",
         nodeLabel: "Wait for Slack",
+        message: 'Step 1 "Wait for Slack" needs a connected slack integration.',
       })
     );
   });
@@ -749,7 +752,7 @@ describe("validateAgentDraft", () => {
 
     expect(result.draftValid).toBe(false);
     expect(result.structuralIssues).toEqual([
-      expect.stringContaining("condition CEL that does not match"),
+      'Step 1 "Check appointment" has a condition that no longer matches its rules. Open the step and save its rules again.',
     ]);
   });
 

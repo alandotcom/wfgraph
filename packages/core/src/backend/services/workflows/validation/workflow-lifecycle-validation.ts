@@ -34,7 +34,10 @@ import {
   checkCancelFilters,
 } from "@wfgraph/shared/lifecycle/cancel-filters";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
-import { getNodeLabel } from "#src/backend/services/workflows/validation/workflow-graph";
+import {
+  type StepNames,
+  stepNames,
+} from "#src/backend/services/workflows/validation/step-names";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 
 export type WorkflowLifecycleValidationResult =
@@ -47,12 +50,14 @@ export type WorkflowLifecycleValidationResult =
  * The node's outlets are derived rather than configured, so a handle naming
  * anything else belongs to a graph whose Events cannot actually reach it, or
  * to an API write. Either way it is a branch no run travels, which is silence
- * a builder cannot see, so the save says it instead.
+ * a builder cannot see, so the save says it instead. `names` numbers the
+ * steps in the message, and is built from the graph when not handed in.
  */
 export function validateEventSplitOutlets(
   nodes: readonly WorkflowNode[],
   edges: readonly WorkflowEdge[],
-  catalog: ExtensionCatalog
+  catalog: ExtensionCatalog,
+  names: StepNames = stepNames({ nodes, edges, catalog })
 ): WorkflowLifecycleValidationResult {
   for (const node of nodes) {
     if (!isEventSplitNode(node)) {
@@ -77,14 +82,14 @@ export function validateEventSplitOutlets(
       if (!eventName) {
         return {
           valid: false,
-          error: `Node "${getNodeLabel(node)}" has an edge that leaves by no outlet. Every edge out of a split names the Event it carries.`,
+          error: `${names.of(node)} has a branch that names no Event. Every branch out of an Event Split names the Event it carries.`,
         };
       }
 
       if (!reachable.has(eventName)) {
         return {
           valid: false,
-          error: `Node "${getNodeLabel(node)}" splits on "${eventName}", which cannot reach it. Remove that branch, or name the Event on the Lifecycle Node or a Wait above this split.`,
+          error: `${names.of(node)} has a branch for "${findEvent(catalog, eventName)?.label ?? eventName}", an Event that cannot reach it. Remove that branch, or name the Event on the Lifecycle Node or a Wait above this split.`,
         };
       }
     }

@@ -413,7 +413,10 @@ describe("validateEventSplitOutlets", () => {
     );
 
     expect(result.valid).toBe(false);
-    expect(errorOf(result)).toContain("app/appointment.canceled");
+    // The Event goes by its catalog label, and the split by its outline number.
+    expect(errorOf(result)).toMatch(
+      /^Step \d+ ".*" has a branch for "Appointment canceled", an Event that cannot reach it\./
+    );
   });
 
   it("refuses an edge leaving the split by no outlet at all", () => {

@@ -80,7 +80,8 @@ describe("validateWorkflowActionConfigs", () => {
 
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.error).toContain("has no action selected");
+      expect(result.error).toContain("has no action chosen");
+      expect(result.error).not.toContain("Node");
     }
   });
 

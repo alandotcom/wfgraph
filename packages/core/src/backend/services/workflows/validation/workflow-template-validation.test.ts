@@ -259,7 +259,7 @@ describe("validateUpstreamTemplateReferences", () => {
     });
 
     expect(errorOf(result)).toMatch(
-      /^"After" reads "Source" in subject, .* \(2 more references to a node that is not upstream\)$/
+      /^"After" reads "Source" in subject, .* \(2 more references to a step that is not upstream\)$/
     );
   });
 
@@ -565,7 +565,7 @@ describe("validateWorkflowTemplates Entity State", () => {
     );
 
     expect(errorOf(result)).toMatch(
-      /^Node ".*" reads Patient\.gone, which Entity "patient" does not declare\.$/
+      /^Step 1 "Wait" reads Patient\.gone, which Entity "patient" does not declare\.$/
     );
   });
 

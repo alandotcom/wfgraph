@@ -21,7 +21,8 @@ const blockedFacts: CompletionFacts = {
   publishBlockers: [
     {
       kind: "missing_integration",
-      message: 'Node "Notify recruiting" needs a connected slack integration.',
+      message:
+        'Step 2 "Notify recruiting" needs a connected slack integration.',
       nodeId: "notify",
       nodeLabel: "Notify recruiting",
     },
@@ -337,7 +338,7 @@ describe("assessExpectedCompletion", () => {
             {
               kind: "missing_integration",
               message:
-                'Node "Notify billing" needs a connected slack integration.',
+                'Step 2 "Notify billing" needs a connected slack integration.',
             },
           ],
         },

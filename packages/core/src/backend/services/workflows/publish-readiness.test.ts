@@ -122,7 +122,8 @@ describe("checkPublishReadiness", () => {
         );
 
         assert.instanceOf(failure, InvalidInput);
-        assert.isTrue(failure.error.includes("no action selected"));
+        assert.isTrue(failure.error.endsWith("has no action chosen"));
+        assert.notInclude(failure.error, "Node");
       })
     );
 

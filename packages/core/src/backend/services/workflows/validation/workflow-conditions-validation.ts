@@ -7,6 +7,10 @@ import {
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
+import {
+  type StepNames,
+  unnumberedStepNames,
+} from "#src/backend/services/workflows/validation/step-names";
 
 export type WorkflowConditionsValidationResult =
   | { valid: true }
@@ -19,20 +23,6 @@ function asNonEmptyString(value: unknown): string | null {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function getNodeLabel(node: WorkflowNode): string {
-  const explicitLabel = node.data.label?.trim();
-  if (explicitLabel) {
-    return explicitLabel;
-  }
-
-  const actionType = node.data.config?.actionType;
-  if (typeof actionType === "string" && actionType.trim()) {
-    return actionType;
-  }
-
-  return node.id;
 }
 
 /**
@@ -52,7 +42,8 @@ function getNodeLabel(node: WorkflowNode): string {
  */
 function validateWaitMatches(
   node: WorkflowNode,
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  names: StepNames
 ): WorkflowConditionsValidationResult {
   for (const subscription of readWaitSubscriptions(config)) {
     const match = asNonEmptyString(subscription.match);
@@ -64,7 +55,7 @@ function validateWaitMatches(
     if (!compiled.valid && !compiled.incomplete) {
       return {
         valid: false,
-        error: `Node "${getNodeLabel(node)}" has an invalid match for "${subscription.event}": ${compiled.error}`,
+        error: `${names.of(node)} has a match for "${subscription.event}" that cannot be read: ${compiled.error}`,
       };
     }
   }
@@ -72,17 +63,24 @@ function validateWaitMatches(
   return { valid: true };
 }
 
+/**
+ * A Condition's stored expression, held to the rules it was built from. The
+ * model's own errors name what is wrong with a rule and never quote its
+ * value. The CEL check's error can quote the expression, which holds the
+ * values the person typed, so that sentence stops at the step.
+ */
 function validateCompiledExpression(input: {
   node: WorkflowNode;
   expression: string;
   modelRaw: unknown;
-  fieldName: "condition";
+  names: StepNames;
 }): WorkflowConditionsValidationResult {
+  const step = input.names.of(input.node);
   const parsedModel = parseConditionModel(input.modelRaw);
   if (!parsedModel.valid) {
     return {
       valid: false,
-      error: `Node "${getNodeLabel(input.node)}" has invalid ${input.fieldName} model: ${parsedModel.error}`,
+      error: `${step} has condition rules that cannot be read: ${parsedModel.error}`,
     };
   }
 
@@ -90,14 +88,14 @@ function validateCompiledExpression(input: {
   if (!compiled.valid) {
     return {
       valid: false,
-      error: `Node "${getNodeLabel(input.node)}" has invalid ${input.fieldName} model: ${compiled.error}`,
+      error: `${step} has condition rules that cannot be read: ${compiled.error}`,
     };
   }
 
   if (compiled.expression !== input.expression) {
     return {
       valid: false,
-      error: `Node "${getNodeLabel(input.node)}" has ${input.fieldName} CEL that does not match its structured model`,
+      error: `${step} has a condition that no longer matches its rules. Open the step and save its rules again.`,
     };
   }
 
@@ -105,15 +103,20 @@ function validateCompiledExpression(input: {
   if (!celValidation.ok) {
     return {
       valid: false,
-      error: `Node "${getNodeLabel(input.node)}" has invalid ${input.fieldName} CEL: ${celValidation.error}`,
+      error: `${step} has a condition the engine cannot evaluate`,
     };
   }
 
   return { valid: true };
 }
 
+/**
+ * Every Condition's rules and every Wait's matches. `names` numbers the steps
+ * in the messages; without it a step is named by its label alone.
+ */
 export function validateWorkflowConditionConfigs(
-  nodes: WorkflowNode[]
+  nodes: WorkflowNode[],
+  names: StepNames = unnumberedStepNames()
 ): WorkflowConditionsValidationResult {
   for (const node of nodes) {
     if (node.data.type !== "action") {
@@ -143,7 +146,7 @@ export function validateWorkflowConditionConfigs(
       if (!conditionModel) {
         return {
           valid: false,
-          error: `Node "${getNodeLabel(node)}" must be configured with the structured condition builder`,
+          error: `${names.of(node)} has a condition written outside the rule builder. Build it with the rule builder.`,
         };
       }
 
@@ -151,7 +154,7 @@ export function validateWorkflowConditionConfigs(
         node,
         expression: conditionExpression,
         modelRaw: conditionModel,
-        fieldName: "condition",
+        names,
       });
       if (!conditionValidation.valid) {
         return conditionValidation;
@@ -159,7 +162,7 @@ export function validateWorkflowConditionConfigs(
     }
 
     if (actionType === BUILT_IN_ACTION_IDS.wait) {
-      const matchValidation = validateWaitMatches(node, config);
+      const matchValidation = validateWaitMatches(node, config, names);
       if (!matchValidation.valid) {
         return matchValidation;
       }

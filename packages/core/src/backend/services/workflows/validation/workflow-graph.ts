@@ -17,11 +17,6 @@ function hasDuplicates(values: string[]): boolean {
   return new Set(values).size !== values.length;
 }
 
-/** What a refusal calls a node: the builder's label, or its id as a fallback. */
-export function getNodeLabel(node: WorkflowNode): string {
-  return node.data.label?.trim() || node.id;
-}
-
 export type WorkflowGraphValidationResult =
   | {
       valid: true;

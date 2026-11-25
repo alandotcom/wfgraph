@@ -16,6 +16,11 @@ import {
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { findUnconfiguredIntegrationNodes } from "@wfgraph/shared/graph/workflow-issues";
+import { stepLabelForMessage } from "@wfgraph/shared/graph/step-name";
+import {
+  type StepNames,
+  unnumberedStepNames,
+} from "#src/backend/services/workflows/validation/step-names";
 
 type IntegrationTypeMap = Record<string, string>;
 
@@ -34,6 +39,7 @@ export type IntegrationRequirement = {
   integrationId: string;
   requiredType: string;
   nodeId: string;
+  /** What the step is called: its label, or what its card is titled. */
   nodeLabel: string;
 };
 
@@ -97,7 +103,7 @@ export function extractRequiredIntegrationRequirements(
         integrationId: trimmedIntegrationId,
         requiredType,
         nodeId: node.id,
-        nodeLabel: node.data.label || node.id,
+        nodeLabel: stepLabelForMessage(node),
       });
     }
   };
@@ -218,7 +224,11 @@ export const validateWorkflowIntegrations = Effect.fn(
   nodes: WorkflowNode[],
   catalog: ExtensionCatalog,
   getIntegrationTypesByIds: GetIntegrationTypesByIds,
-  options: { strictValidation?: boolean } = {}
+  options: {
+    strictValidation?: boolean;
+    /** Numbers the steps in a refusal; without it a step goes by its label. */
+    names?: StepNames | undefined;
+  } = {}
 ) {
   const strictValidationEnabled = shouldEnforceStrictIntegrationValidation(
     options.strictValidation
@@ -238,10 +248,13 @@ export const validateWorkflowIntegrations = Effect.fn(
       );
     } else {
       const first = unconfigured[0];
+      const names = options.names ?? unnumberedStepNames(catalog);
+      const firstNode = nodes.find((node) => node.id === first.nodeId);
+      const step = firstNode ? names.of(firstNode) : `"${first.nodeLabel}"`;
       const invalid: IntegrationValidation = {
         valid: false,
         reason: "unconfigured",
-        error: `Node "${first.nodeLabel}" needs a ${first.integrationLabel} connection`,
+        error: `${step} needs a ${first.integrationLabel} connection`,
       };
       return invalid;
     }

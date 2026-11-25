@@ -929,7 +929,7 @@ describe("postWorkflowExecute", () => {
         );
 
         assert.strictEqual(failure.kind, "invalid");
-        assert.include(failure.payload.error, "has no action selected");
+        assert.include(failure.payload.error, "has no action chosen");
         assert.deepStrictEqual(workflows.snapshots, []);
         assert.deepStrictEqual(repo.starts, []);
       })

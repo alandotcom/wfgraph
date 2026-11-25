@@ -7,6 +7,10 @@ import {
   NotFound,
 } from "#src/backend/lib/effect/failures";
 import { validateWorkflowActionConfigs } from "#src/backend/services/workflows/validation/workflow-action-validation";
+import {
+  type StepNames,
+  stepNames,
+} from "#src/backend/services/workflows/validation/step-names";
 import { validateWorkflowConditionConfigs } from "#src/backend/services/workflows/validation/workflow-conditions-validation";
 import { validateWorkflowGraph } from "#src/backend/services/workflows/validation/workflow-graph";
 import { validateWorkflowIntegrations } from "#src/backend/services/workflows/validation/workflow-integration-validation";
@@ -84,6 +88,8 @@ type GraphCheck =
   | {
       valid: true;
       workflowNodes: WorkflowNode[];
+      /** How a refusal names a step, numbered as the outline numbers it. */
+      names: StepNames;
       workflowGraph: SerializedWorkflowGraph;
       lifecycleRules: LifecycleRules | undefined;
       hasEventSplit: boolean;
@@ -159,16 +165,23 @@ function checkGraphAndCatalog(input: {
     return { valid: false, error: "Workflow graph is invalid" };
   }
 
+  const names = stepNames({
+    nodes: graphValidation.nodes,
+    edges: graphValidation.edges,
+    catalog: input.catalog,
+  });
   const actionValidation = validateWorkflowActionConfigs(
     graphValidation.nodes,
-    input.catalog
+    input.catalog,
+    names
   );
   if (!actionValidation.valid) {
     return { valid: false, error: actionValidation.error };
   }
 
   const conditionValidation = validateWorkflowConditionConfigs(
-    graphValidation.nodes
+    graphValidation.nodes,
+    names
   );
   if (!conditionValidation.valid) {
     return { valid: false, error: conditionValidation.error };
@@ -201,6 +214,7 @@ function checkGraphAndCatalog(input: {
     valid: true,
     workflowGraph: graphValidation.graph,
     workflowNodes: graphValidation.nodes,
+    names,
     lifecycleRules: readLifecycleRules(lifecycleNode?.data.config),
     hasEventSplit: graphSplitsOnEvent(graphValidation.nodes),
   };
@@ -253,7 +267,8 @@ export const runWorkflowExecutionPreflight = Effect.fn(
   const integrationValidation = yield* validateWorkflowIntegrations(
     check.workflowNodes,
     catalog,
-    integrations.typesByIds
+    integrations.typesByIds,
+    { names: check.names }
   );
   if (!integrationValidation.valid) {
     if (integrationValidation.reason === "unconfigured") {

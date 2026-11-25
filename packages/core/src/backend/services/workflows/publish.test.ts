@@ -720,7 +720,8 @@ describe("publishWorkflow", () => {
       );
 
       assert.instanceOf(failure, InvalidInput);
-      assert.isTrue(failure.error.includes("no action selected"));
+      // The step is named as the outline numbers it.
+      assert.strictEqual(failure.error, 'Step 1 "Notify" has no action chosen');
       assert.strictEqual(minted, 0);
     })
   );

@@ -24,6 +24,7 @@ import {
   collectSynchronousPublicationFailures,
   type SynchronousPublicationFailure,
 } from "#src/backend/services/workflows/publish-checks";
+import { stepNames } from "#src/backend/services/workflows/validation/step-names";
 import {
   extractRequiredIntegrationRequirements,
   shouldEnforceStrictIntegrationValidation,
@@ -123,6 +124,12 @@ export function validateAgentPublication(input: {
   }
 
   const missingIntegrationKeys = new Set<string>();
+  const names = stepNames({ nodes, edges, catalog: input.catalog });
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const stepOf = (requirement: { nodeId: string; nodeLabel: string }) => {
+    const node = nodesById.get(requirement.nodeId);
+    return node ? names.of(node) : `"${requirement.nodeLabel}"`;
+  };
   for (const issue of blockingWorkflowIssues) {
     if (issue.kind !== "missing_integration") {
       continue;
@@ -159,7 +166,7 @@ export function validateAgentPublication(input: {
         kind: "missing_integration",
         nodeId: requirement.nodeId,
         nodeLabel: requirement.nodeLabel,
-        message: `Node "${requirement.nodeLabel}" needs a connected ${requirement.requiredType} integration.`,
+        message: `${stepOf(requirement)} needs a connected ${requirement.requiredType} integration.`,
       });
       missingIntegrationKeys.add(
         integrationBlockerKey(requirement.nodeId, requirement.requiredType)

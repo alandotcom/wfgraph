@@ -49,7 +49,10 @@ import { findTrackedEntityStateSource } from "@wfgraph/shared/lifecycle/entity-e
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { readJsonObjectLeniently } from "@wfgraph/shared/types/json";
 import { collectReferenceNotUpstreamIssues } from "@wfgraph/shared/graph/workflow-issues";
-import { getNodeLabel } from "#src/backend/services/workflows/validation/workflow-graph";
+import {
+  type StepNames,
+  stepNames,
+} from "#src/backend/services/workflows/validation/step-names";
 
 export type WorkflowTemplateValidationResult =
   | { valid: true }
@@ -133,16 +136,23 @@ export function validateUpstreamTemplateReferences(input: {
     error:
       rest.length === 0
         ? first.message
-        : `${first.message} (${rest.length} more ${rest.length === 1 ? "reference" : "references"} to a node that is not upstream)`,
+        : `${first.message} (${rest.length} more ${rest.length === 1 ? "reference" : "references"} to a step that is not upstream)`,
   };
 }
 
+/**
+ * Every template and Entity State rule, held to the fields its source
+ * declares. `names` numbers the steps in the message, and is built from the
+ * graph when not handed in.
+ */
 export function validateWorkflowTemplates(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
+  names?: StepNames | undefined;
 }): WorkflowTemplateValidationResult {
   const { nodes, edges, catalog } = input;
+  const names = input.names ?? stepNames({ nodes, edges, catalog });
   // A Map rather than a keyBy record: both lookups below are keyed by text the
   // operator typed inside a template token, and a plain object would answer a
   // token named `constructor` or `toString` with a prototype member.
@@ -189,7 +199,7 @@ export function validateWorkflowTemplates(input: {
     }
 
     for (const reference of entityConditionReferences) {
-      const where = `Node "${getNodeLabel(node)}" reads Entity State field "${reference.fieldPath}"`;
+      const where = `${names.of(node)} reads Entity State field "${reference.fieldPath}"`;
       if (!entitySource) {
         return {
           valid: false,
@@ -233,7 +243,7 @@ export function validateWorkflowTemplates(input: {
         entitySource && reference.sourceType === entitySource.type
           ? referenceFieldForPath(entitySource.stateFields, reference.fieldPath)
           : undefined;
-      const where = `Node "${getNodeLabel(node)}" reads ${currentTokenDisplayText(reference, nodes, catalog)}`;
+      const where = `${names.of(node)} reads ${currentTokenDisplayText(reference, nodes, catalog)}`;
       if (!entitySource) {
         return {
           valid: false,
@@ -281,7 +291,7 @@ export function validateWorkflowTemplates(input: {
         continue;
       }
 
-      const where = `Node "${getNodeLabel(node)}" reads ${reference.fieldPath}`;
+      const where = `${names.of(node)} reads ${reference.fieldPath}`;
 
       if (field.typeClash) {
         return {

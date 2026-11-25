@@ -19,6 +19,7 @@ import {
   InvalidInput,
 } from "#src/backend/lib/effect/failures";
 import { validateWorkflowActionConfigs } from "#src/backend/services/workflows/validation/workflow-action-validation";
+import { stepNames } from "#src/backend/services/workflows/validation/step-names";
 import { validateWorkflowIntegrations } from "#src/backend/services/workflows/validation/workflow-integration-validation";
 import {
   validateUpstreamTemplateReferences,
@@ -79,11 +80,13 @@ function synchronousPublicationChecks(input: {
   catalog: ExtensionCatalog;
 }): readonly SynchronousPublicationCheck[] {
   const { nodes, edges, catalog } = input;
+  // Numbered once, so every refusal names a step as the outline does.
+  const names = stepNames({ nodes, edges, catalog });
 
   return [
     [
       "missing_required_field",
-      () => validateWorkflowActionConfigs(nodes, catalog),
+      () => validateWorkflowActionConfigs(nodes, catalog, names),
     ],
     ["invalid_event", () => validateWorkflowEvents(nodes, catalog)],
     [
@@ -97,7 +100,7 @@ function synchronousPublicationChecks(input: {
     ["invalid_schedule", () => validateSchedules(nodes)],
     [
       "invalid_event_split",
-      () => validateEventSplitOutlets(nodes, edges, catalog),
+      () => validateEventSplitOutlets(nodes, edges, catalog, names),
     ],
     ["invalid_group", () => checkGroupContract({ nodes, edges })],
     [
@@ -106,7 +109,7 @@ function synchronousPublicationChecks(input: {
     ],
     [
       "invalid_template",
-      () => validateWorkflowTemplates({ nodes, edges, catalog }),
+      () => validateWorkflowTemplates({ nodes, edges, catalog, names }),
     ],
     ["unreachable_node", () => checkUnreachableSubtrees({ nodes, edges })],
   ];
@@ -273,7 +276,8 @@ export const checkPublishReadiness = Effect.fn(
     const integrationValidation = yield* validateWorkflowIntegrations(
       nodes,
       catalog,
-      integrations.typesByIds
+      integrations.typesByIds,
+      { names: stepNames({ nodes, edges, catalog }) }
     );
     if (!integrationValidation.valid) {
       if (integrationValidation.reason === "unconfigured") {
