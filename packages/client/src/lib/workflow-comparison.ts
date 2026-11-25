@@ -1,7 +1,8 @@
 /**
  * Builds the read-only graph the Draft canvas draws while the review sheet is
  * open. The server decides semantic changes; this module adds the editor-only
- * annotations, and draws each removed step where the published version held it.
+ * annotations, and starts each removed step where the published version held
+ * it. The canvas then lays out a comparison holding a removed step.
  */
 
 import { omit } from "es-toolkit/object";
@@ -25,6 +26,12 @@ import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
 export type ComparisonDisplayGraph = {
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  /**
+   * The steps the published version held and the draft removed. The canvas
+   * lays the whole comparison out when there is one, since a removed step's
+   * published position can sit under a card the draft has moved there.
+   */
+  removedNodeIds: ReadonlySet<string>;
 };
 
 function absoluteBasePosition(
@@ -236,6 +243,9 @@ export function buildComparisonDisplayGraph(
   const graph: ComparisonDisplayGraph = {
     nodes: withChangedMembers(comparisonNodes, payload),
     edges: comparisonEdges,
+    removedNodeIds: new Set(
+      baseNodes.flatMap((node) => (draftNodeIds.has(node.id) ? [] : [node.id]))
+    ),
   };
   displayGraphCache.set(payload, graph);
   return graph;

@@ -831,8 +831,11 @@ version usage it acts on.
 Added nodes use Signal Green, modified nodes use Signal Amber, and deleted
 nodes use Signal Red, each with its letter. The marker is a solid signal disc
 with a 12px letter, and on the canvas it grows as the zoom drops so the letter
-stays 12px on screen. A removed step is drawn where the published version held
-it and cannot be moved. Deleted edges use a distinct dotted treatment. Node
+stays 12px on screen. When the comparison holds a removed step, the canvas
+lays the comparison out for display, so the removed step stands beside the
+steps the published version wired it to, with no card over another; the draft
+keeps its own positions. A removed step cannot be moved. Deleted edges use a
+distinct dotted treatment. Node
 position, dimensions, and measured geometry never create a change marker.
 
 Below `md` the sheet covers the screen, clear of the safe-area insets, with the

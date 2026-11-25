@@ -6,7 +6,10 @@ import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
 import { connectionRefusalReason } from "#src/components/workflow/connection-validation";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
-import { WORKFLOW_NODE_HEIGHT } from "#src/lib/workflow-node-dimensions";
+import {
+  WORKFLOW_NODE_HEIGHT,
+  WORKFLOW_NODE_WIDTH,
+} from "#src/lib/workflow-node-dimensions";
 import {
   addNodeAtom,
   applyNodeLayoutAtom,
@@ -1593,6 +1596,73 @@ describe("displayNodesAtom memoization", () => {
     expect(pointed(store)).toEqual(["group", "member"]);
     store.set(reviewHighlightAtom, null);
     expect(pointed(store)).toEqual([]);
+  });
+
+  it("lays a removed step out below the step it followed, clear of every draft card", () => {
+    const placed = (id: string, y: number): WorkflowNode => ({
+      ...actionNode(id),
+      position: { x: 0, y },
+    });
+    // The draft keeps a and b and puts a new step c where the published
+    // version held the removed step, so drawing that step at its published
+    // position would lay it over c.
+    const draftNodes = [placed("a", 0), placed("b", 200), placed("c", 400)];
+    const draftEdges = [edge("a-b", "a", "b"), edge("b-c", "b", "c")];
+    const baseNodes = [placed("a", 0), placed("b", 200), placed("gone", 400)];
+    const baseEdges = [edge("a-b", "a", "b"), edge("b-gone", "b", "gone")];
+    const store = createGraphStore(draftNodes, draftEdges);
+    showWorkspaceRoute(store, {});
+    openComparison(store, {
+      ...comparisonPayload,
+      baseGraph: createSerializedWorkflowGraph({
+        nodes: baseNodes,
+        edges: baseEdges,
+      }),
+      draftGraph: createSerializedWorkflowGraph({
+        nodes: draftNodes,
+        edges: draftEdges,
+      }),
+      nodeChanges: [
+        { nodeId: "gone", kind: "removed", fields: [] },
+        { nodeId: "c", kind: "added", fields: [] },
+      ],
+      edgeChanges: [
+        { edgeId: "b-gone", kind: "removed" },
+        { edgeId: "b-c", kind: "added" },
+      ],
+    });
+
+    const shown = store.get(displayNodesAtom);
+    const box = (id: string) => {
+      const node = shown.find((item) => item.id === id);
+      if (!node) throw new Error(`no card ${id}`);
+      return {
+        left: node.position.x,
+        top: node.position.y,
+        right: node.position.x + WORKFLOW_NODE_WIDTH,
+        bottom: node.position.y + WORKFLOW_NODE_HEIGHT,
+      };
+    };
+    const ids = ["a", "b", "c", "gone"];
+    const overlapping = ids.flatMap((left, index) =>
+      ids.slice(index + 1).flatMap((right) => {
+        const one = box(left);
+        const two = box(right);
+        return one.left < two.right &&
+          two.left < one.right &&
+          one.top < two.bottom &&
+          two.top < one.bottom
+          ? [`${left}/${right}`]
+          : [];
+      })
+    );
+    expect(overlapping).toEqual([]);
+    expect(box("gone").top).toBeGreaterThan(box("b").bottom);
+    // The display is laid out apart from the draft, which keeps its own
+    // positions.
+    expect(store.get(nodesAtom).map((node) => node.position.y)).toEqual([
+      0, 200, 400,
+    ]);
   });
 
   it("tints the step an outline row points at and leaves the selection alone", () => {
