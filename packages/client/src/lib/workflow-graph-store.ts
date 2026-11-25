@@ -1267,38 +1267,6 @@ function updateTemplatesInConfig(
   });
 }
 
-/**
- * Strip the workflow back to its Lifecycle Node.
- *
- * The Lifecycle Node survives, the same way it survives every other delete
- * path: the server rejects a graph with no Lifecycle Node, so wiping the
- * canvas outright produced something that could never be saved.
- */
-export const clearWorkflowAtom = atom(null, (get, set) => {
-  if (!draftEditable(get)) {
-    return;
-  }
-
-  const currentNodes = get(nodesStateAtom);
-  const lifecycleNodes = currentNodes.filter(
-    (node) => node.data.type === "lifecycle"
-  );
-  if (
-    lifecycleNodes.length === currentNodes.length &&
-    get(edgesStateAtom).length === 0
-  ) {
-    return;
-  }
-
-  pushHistory(get, set);
-  set(nodesStateAtom, lifecycleNodes);
-  // Every edge had at least one end on a removed node.
-  set(edgesStateAtom, []);
-  set(activeSelectionAtom, EMPTY_SELECTION);
-
-  requestGraphSave(get, set, { immediate: true });
-});
-
 export const undoAtom = atom(null, (get, set) => {
   if (!draftEditable(get)) {
     return;

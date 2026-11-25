@@ -172,7 +172,7 @@ Signal Red and the confirmation dialog are the two loudest things the editor own
 
 **Do not explain one control in the copy of another.** If a control needs a sentence about what its neighbor does, move or regroup the controls.
 
-**A setting is a control, not a command.** It lives where its state is shown, which for Published mode is the status strip. Published mode never appears in the Actions menu or the command palette.
+**A setting is a control, not a command.** It lives where its state is shown, which for Published mode is the status strip. Published mode never appears in the workflow's menu or the command palette.
 
 **Rows offering the same kind of repair use the same button weight.** Filling one button ranks it above the others, and the reader picks the row that matches the problem.
 
@@ -693,7 +693,13 @@ strip tints toward `--info`. Its height remains constant because the strip and
 graph share the column height.
 
 The 44px editor toolbar spans the full editor shell. Workflow navigation,
-**Actions**, and **Settings** form the leading group. The 320px search control
+the workflow's menu under its name, and **Settings** form the leading group.
+The workflow's menu holds everything about this workflow: **Rename**,
+**Duplicate workflow**, **Pause workflow** or **Resume workflow**, **Version
+history**, **Review changes**, **Copy workflow ID** and **Delete workflow**.
+**Settings** holds what is about the app: **Connections**, **Theme** and
+**Keyboard shortcuts**. There is no save command, because the draft saves by
+itself; Cmd+S (Ctrl+S) does nothing and keeps the browser's save dialog shut. The 320px search control
 stays centered in the shell and hides at 70rem or narrower; its keyboard
 shortcut remains available. A compact **Find a step** control stays in the
 trailing group while the search control is hidden. It and Cmd+F (Ctrl+F)
@@ -711,8 +717,8 @@ desktop control is disabled. In Runs, disabled Run and Publish
 controls say "Switch to Draft to run." or "Switch to Draft to publish." in a
 tooltip, and their menu rows say it in a detail line. A paused workflow starts
 no run, so in Draft both run commands are disabled and say "Resume the workflow
-to run." The workflow menu holds **Pause workflow** or **Resume workflow** once
-a version is published. **Configuration** stays beside that menu as an icon
+to run." The workflow's menu offers **Pause workflow** or **Resume workflow**
+once a version is published. **Configuration** stays beside that menu as an icon
 button, because the details column is absent at that width. In Draft it opens the
 selected object's summary sheet, and in Runs the sheet of the run list or the run.
 
@@ -735,9 +741,12 @@ outlet, Move up and Move down, Duplicate, and Delete. A query lists the steps
 it finds under "Steps", each named with its number, "Step 13 · Alert the front
 desk", and a query of digits alone finds the step with that number and no
 other. Its rows draw shortcuts as
-`Kbd` keycaps. The Actions menu's **Canvas** submenu holds the canvas commands, and its
-**Keyboard shortcuts** row, the palette row of that name, and "?" outside a text
-field open one searchable reference of every shortcut. Cmd+Enter submits Run
+`Kbd` keycaps. The canvas commands, **Add step**, **Undo**, **Redo**, **Tidy
+layout**, **Fit view**, **Copy selection**, **Paste**, **Duplicate selection**
+and **Group selection**, are in the palette; the canvas's context menu also
+offers Add step, Paste, Copy, Duplicate and Group.
+Settings' **Keyboard shortcuts** row, the palette row of that name, and "?"
+outside a text field open one searchable reference of every shortcut. Cmd+Enter submits Run
 draft from any field in it, and publishes from anywhere in the review sheet.
 
 The Workflows page opens its own palette on Cmd+K: a workflow by name, **Show
@@ -759,8 +768,8 @@ runs**, and so does the palette.
 changes, and only then, checks it for blocking issues, and compares the exact draft on screen with the current publication.
 A draft with blocking issues lists them instead, and a draft with no change
 says "No changes to publish" and opens nothing. **Review changes**, in the
-command palette and the Actions menu, runs the same path. **Version history**
-in the Actions menu opens the sheet on the list of versions. A publish that
+command palette and the workflow's menu, runs the same path. **Version
+history** in the workflow's menu opens the sheet on the list of versions. A publish that
 lands ends the redo branch, so an edit undone before the publish cannot come
 back after it; Undo still steps back through the edits made before it.
 

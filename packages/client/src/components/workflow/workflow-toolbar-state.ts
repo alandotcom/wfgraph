@@ -17,7 +17,6 @@ import {
   workflowPublicationQueryOptions,
 } from "#src/lib/rpc-query";
 import {
-  clearWorkflowAtom,
   edgesAtom,
   isExecutingAtom,
   nodesAtom,
@@ -53,7 +52,6 @@ export type WorkflowToolbarCapabilities = Readonly<{
   canReadRuns: boolean;
   canReadVersionHistory: boolean;
   canCompare: boolean;
-  canCreate: boolean;
   canDuplicate: boolean;
   canDelete: boolean;
   canPublish: boolean;
@@ -67,7 +65,6 @@ export function readWorkflowToolbarCapabilities(): WorkflowToolbarCapabilities {
     canReadRuns: canInspectWorkflowRuns(),
     canReadVersionHistory: can(WfGraphOperations.workflowGetVersionHistory.id),
     canCompare: can(WfGraphOperations.workflowCompareVersion.id),
-    canCreate: can(WfGraphOperations.workflowCreate.id),
     canDuplicate: can(WfGraphOperations.workflowDuplicate.id),
     canDelete: can(WfGraphOperations.workflowDelete.id),
     // Publish compares the draft before opening its review. The same capability
@@ -117,7 +114,6 @@ export type WorkflowToolbarState = WorkflowToolbarCapabilities & {
 
   // The writers behind the toolbar's controls.
   setRunStartInFlight: (value: boolean) => void;
-  clearWorkflow: () => void;
   updateNodeData: (update: NodeDataUpdate) => void;
   undo: () => void;
   redo: () => void;
@@ -131,7 +127,6 @@ export function useWorkflowToolbarState(): WorkflowToolbarState {
   const isExecuting = useAtomValue(isExecutingAtom);
   const setRunStartInFlight = useSetAtom(runStartInFlightAtom);
   const [isGenerating] = useAtom(isGeneratingAtom);
-  const clearWorkflow = useSetAtom(clearWorkflowAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const [currentWorkflowId] = useAtom(currentWorkflowIdAtom);
   const workflowName = useAtomValue(currentWorkflowNameAtom);
@@ -164,7 +159,6 @@ export function useWorkflowToolbarState(): WorkflowToolbarState {
     isExecuting,
     setRunStartInFlight,
     isGenerating,
-    clearWorkflow,
     updateNodeData,
     currentWorkflowId,
     workflowName,

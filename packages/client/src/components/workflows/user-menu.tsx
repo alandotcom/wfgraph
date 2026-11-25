@@ -1,4 +1,5 @@
-import { ChevronDown, Moon, Plug, Sun } from "lucide-react";
+import { useSetAtom } from "jotai";
+import { ChevronDown, Keyboard, Moon, Plug, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { IntegrationsOverlay } from "#src/components/overlays/integrations-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
@@ -12,15 +13,23 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
+import { SHORTCUT_REFERENCE_KEY } from "#src/lib/shortcut-label";
+import { shortcutReferenceOpenAtom } from "#src/lib/shortcut-reference-store";
 
+/**
+ * Settings: what is about the app rather than the open workflow, which is
+ * Connections, Theme and the keyboard shortcut reference.
+ */
 export const UserMenu = () => {
   const { theme, setTheme } = useTheme();
   const { open: openOverlay } = useOverlay();
+  const openShortcutReference = useSetAtom(shortcutReferenceOpenAtom);
 
   return (
     <DropdownMenu>
@@ -52,6 +61,11 @@ export const UserMenu = () => {
             </DropdownMenuRadioGroup>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
+        <DropdownMenuItem onClick={() => openShortcutReference(true)}>
+          <Keyboard className="size-4" />
+          <span>Keyboard shortcuts</span>
+          <DropdownMenuShortcut>{SHORTCUT_REFERENCE_KEY}</DropdownMenuShortcut>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

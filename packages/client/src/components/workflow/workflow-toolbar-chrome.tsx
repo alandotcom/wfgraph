@@ -1,6 +1,6 @@
 /**
- * The menu bar's controls: the Workflows page link, the workflow menu, the Actions
- * menu, the palette's trigger and Publish. Behaviour hooks live in
+ * The menu bar's controls: the Workflows page link, the workflow menu, the
+ * palette's trigger and Publish. Behaviour hooks live in
  * `workflow-toolbar-handlers`.
  *
  * Everything here sits in a bar of fixed height above the canvas, so nothing
@@ -8,15 +8,12 @@
  * Flow reacts to every pixel of it. A long workflow name truncates.
  */
 
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
-  Check,
   ChevronDown,
   CirclePlay,
   Copy,
-  Eraser,
-  Keyboard,
   Loader2,
   PanelLeft,
   Sparkles,
@@ -24,14 +21,13 @@ import {
   Pause,
   Pencil,
   Play,
-  Plus,
   Search,
   Settings2,
   Trash2,
   Upload,
   type LucideIcon,
 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { compact } from "es-toolkit/array";
 import { toast } from "sonner";
 import { useShownMobileReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import { useRevealNavigation } from "#src/components/workflow/canvas-reveal/use-reveal-navigation";
@@ -44,14 +40,8 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "#src/components/ui/dropdown-menu";
 import { Kbd } from "#src/components/ui/kbd";
@@ -69,7 +59,6 @@ import { CommandPalette } from "#src/components/workflow/command-palette";
 import { useSetWorkflowPaused } from "#src/hooks/use-set-workflow-paused";
 import { can, canUseBuildAgent } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
-import { CreateWorkflowDialog } from "#src/components/workflow/create-workflow-dialog";
 import { RenameWorkflowDialog } from "#src/components/workflow/rename-workflow-dialog";
 import { useWorkflowCommands } from "#src/components/workflow/use-workflow-commands";
 import { useColumnControls } from "#src/components/workflow/columns/use-column-controls";
@@ -81,9 +70,7 @@ import {
   currentPlatform,
   editorShortcutLabels,
   isApplePlatform,
-  SHORTCUT_REFERENCE_KEY,
 } from "#src/lib/shortcut-label";
-import { shortcutReferenceOpenAtom } from "#src/lib/shortcut-reference-store";
 import {
   WorkflowCommandIcon,
   draftViewReason,
@@ -528,96 +515,6 @@ export function RunPublishMenuItems({
   );
 }
 
-/**
- * What the builder can do to the open workflow, as one menu.
- *
- * Each item states its own name, which the six grey icon squares this replaced
- * could only do on hover. Only shortcuts that are bound appear beside an item.
- * The run commands are left out: the toolbar's run control is right beside this
- * menu, and the command palette lists them for anyone searching by name.
- */
-function ActionsMenu({ commands }: { commands: readonly WorkflowCommand[] }) {
-  const openShortcutReference = useSetAtom(shortcutReferenceOpenAtom);
-  // Canvas commands move to the shortcuts submenu below, and a `paletteOnly`
-  // command has its own control in the toolbar, so listing it here would offer
-  // the same press twice in one bar.
-  const menuCommands = commands.filter(
-    (command) => command.group !== "canvas" && !command.paletteOnly
-  );
-  const canvasCommands = commands.filter(
-    (command) => command.group === "canvas"
-  );
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={<Button size={BAR_CONTROL_SIZE} variant="ghost" />}
-      >
-        Actions
-        <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60">
-        {menuCommands.map((command, index) => (
-          <Fragment key={command.id}>
-            {index > 0 &&
-            (command.group !== menuCommands[index - 1]?.group ||
-              command.id === "undo") ? (
-              <DropdownMenuSeparator />
-            ) : null}
-            <DropdownMenuItem
-              disabled={command.disabled}
-              onClick={command.execute}
-            >
-              <WorkflowCommandIcon id={command.id} />
-              {/* The detail line says what the label has no room for, and on
-                  a disabled row it gives the reason. It is styled the same way
-                  as the Published mode menu's descriptions. */}
-              <span>
-                {command.label}
-                {command.detail ? (
-                  <span className="block font-normal text-muted-foreground text-xs">
-                    {command.detail}
-                  </span>
-                ) : null}
-              </span>
-              {command.hint ? (
-                <DropdownMenuShortcut>{command.hint}</DropdownMenuShortcut>
-              ) : null}
-            </DropdownMenuItem>
-          </Fragment>
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
-            <WorkflowCommandIcon id="fit-view" />
-            Canvas
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-56">
-            {canvasCommands.map((command) => (
-              <DropdownMenuItem
-                disabled={command.disabled}
-                key={command.id}
-                onClick={command.execute}
-              >
-                <WorkflowCommandIcon id={command.id} />
-                {command.label}
-                {command.hint ? (
-                  <DropdownMenuShortcut>{command.hint}</DropdownMenuShortcut>
-                ) : null}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-        <DropdownMenuItem onClick={() => openShortcutReference(true)}>
-          <Keyboard />
-          Keyboard shortcuts
-          <DropdownMenuShortcut>{SHORTCUT_REFERENCE_KEY}</DropdownMenuShortcut>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 export function ToolbarActions({
   state,
   actions,
@@ -652,14 +549,11 @@ function OwnerToolbarActions({
   const menuCommands = useWorkflowMenuCommands(state, actions);
 
   return (
-    <>
-      <ActionsMenu commands={commands} />
-      <CommandPalette
-        commands={commands}
-        menuCommands={menuCommands}
-        workflows={state.allWorkflows}
-      />
-    </>
+    <CommandPalette
+      commands={commands}
+      menuCommands={menuCommands}
+      workflows={state.allWorkflows}
+    />
   );
 }
 
@@ -836,14 +730,43 @@ export function ToolbarPublishControls({
   );
 }
 
+const PUBLICATION_COMMAND_IDS = ["version-history", "review-changes"] as const;
+
 /**
- * The workflow's own menu: what can be done to this workflow, which workflow is
- * open, and a way to copy its id.
- *
- * Rename, Clear and Delete are here because the properties panel that used to
- * hold them shows an empty state whenever nothing is selected. Pause and
- * Resume are here because a pause changes whether the workflow starts runs,
- * and the status strip says "Paused" while it is in effect.
+ * The two publication commands the workflow menu and the publication chip
+ * share, Version history and Review changes, gated as the palette gates them.
+ */
+function usePublicationCommands(
+  state: WorkflowToolbarState,
+  actions: WorkflowToolbarActions
+): readonly WorkflowCommand[] {
+  const commands = useWorkflowCommands({
+    state,
+    actions,
+    // Neither command adds a step.
+    onAddStep: () => undefined,
+  });
+  return compact(
+    PUBLICATION_COMMAND_IDS.map((id) =>
+      commands.find((command) => command.id === id)
+    )
+  );
+}
+
+/** One command as a menu row, with its icon and its own disabled state. */
+function CommandMenuItem({ command }: { command: WorkflowCommand }) {
+  return (
+    <DropdownMenuItem disabled={command.disabled} onClick={command.execute}>
+      <WorkflowCommandIcon id={command.id} />
+      {command.label}
+    </DropdownMenuItem>
+  );
+}
+
+/**
+ * The one menu for the open workflow, under its name: Rename, Duplicate,
+ * Pause or Resume, Version history, Review changes, Copy workflow ID and
+ * Delete. What is about the app rather than this workflow is under Settings.
  */
 export function WorkflowMenuComponent({
   workflowId,
@@ -854,26 +777,16 @@ export function WorkflowMenuComponent({
   state: WorkflowToolbarState;
   actions: WorkflowToolbarActions;
 }) {
-  const navigate = useNavigate();
-  const editingLocked = useAtomValue(canvasEditingLockedAtom);
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  // Bumped on every open so the dialog remounts and re-reads what it starts
-  // from. It stays mounted while closing, because that is what its exit
-  // animation needs. Rename keeps the same pair in an atom, because the
-  // command palette opens it too.
-  const [createDialogSession, setCreateDialogSession] = useState(0);
+  // Rename keeps its dialog's open state in an atom, because the command
+  // palette opens it too.
   const [renameDialog, setRenameDialog] = useAtom(renameWorkflowDialogAtom);
   const openRename = useSetAtom(openRenameWorkflowDialogAtom);
 
   // Each operation keeps its own authorization check.
   const offers = workflowMenuOffers(state, workflowId);
-  const canRename = offers.rename;
-  const canDuplicate = offers.duplicate;
-  const canDelete = offers.delete;
-  const currentWorkflowId = state.currentWorkflowId;
-  const isPaused = offers.isPaused;
-  const canTogglePause = offers.togglePause;
   const pause = useSetWorkflowPaused(workflowId);
+  const publicationCommands = usePublicationCommands(state, actions);
+  const currentWorkflowId = state.currentWorkflowId;
   // The names the server would refuse, which is every workflow's but this one's.
   const otherWorkflowNames = state.allWorkflows
     .filter((workflow) => workflow.id !== currentWorkflowId)
@@ -881,8 +794,7 @@ export function WorkflowMenuComponent({
 
   return (
     <>
-      {/* The switcher dropdown opening is a good moment to re-read the list. */}
-      <DropdownMenu onOpenChange={(open) => open && actions.loadWorkflows()}>
+      <DropdownMenu>
         <DropdownMenuTrigger
           render={
             <Button
@@ -901,107 +813,55 @@ export function WorkflowMenuComponent({
           </span>
           <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
-          {canRename || canDuplicate || canTogglePause ? (
+        <DropdownMenuContent align="start" className="w-60">
+          {offers.rename ? (
+            <DropdownMenuItem onClick={openRename}>
+              <Pencil />
+              Rename
+            </DropdownMenuItem>
+          ) : null}
+          {offers.duplicate ? (
+            <DropdownMenuItem
+              disabled={actions.isDuplicating}
+              onClick={actions.handleDuplicate}
+            >
+              {actions.isDuplicating ? (
+                <Loader2 className="animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Copy />
+              )}
+              Duplicate workflow
+            </DropdownMenuItem>
+          ) : null}
+          {offers.togglePause ? (
+            <DropdownMenuItem
+              disabled={pause.isPending}
+              onClick={() => pause.setPaused(!offers.isPaused)}
+            >
+              {offers.isPaused ? <Play /> : <Pause />}
+              {offers.isPaused ? "Resume workflow" : "Pause workflow"}
+            </DropdownMenuItem>
+          ) : null}
+          {currentWorkflowId ? (
             <>
-              {canRename ? (
-                <DropdownMenuItem onClick={openRename}>
-                  <Pencil />
-                  Rename
-                </DropdownMenuItem>
-              ) : null}
-              {canDuplicate ? (
-                <DropdownMenuItem
-                  disabled={actions.isDuplicating}
-                  onClick={actions.handleDuplicate}
-                >
-                  {actions.isDuplicating ? (
-                    <Loader2 className="animate-spin motion-reduce:animate-none" />
-                  ) : (
-                    <Copy />
-                  )}
-                  Duplicate workflow
-                </DropdownMenuItem>
-              ) : null}
-              {canTogglePause ? (
-                <DropdownMenuItem
-                  disabled={pause.isPending}
-                  onClick={() => pause.setPaused(!isPaused)}
-                >
-                  {isPaused ? <Play /> : <Pause />}
-                  {isPaused ? "Resume workflow" : "Pause workflow"}
-                </DropdownMenuItem>
-              ) : null}
               <DropdownMenuSeparator />
+              {publicationCommands.map((command) => (
+                <CommandMenuItem command={command} key={command.id} />
+              ))}
+              <DropdownMenuSeparator />
+              {/* The id is what a support conversation asks for. The row
+                  copies it without printing it, the way the workflows page's
+                  row menu does, so a 36-character id stays out of the
+                  default view. */}
+              <DropdownMenuItem
+                onClick={() => void copyWorkflowId(currentWorkflowId)}
+              >
+                <Copy />
+                Copy workflow ID
+              </DropdownMenuItem>
             </>
           ) : null}
-
-          {/* The label belongs to a group: Base UI reads its context to name the
-              group, and a loose one throws. */}
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Workflows</DropdownMenuLabel>
-            {state.allWorkflows.length === 0 ? (
-              <DropdownMenuItem disabled>No workflows found</DropdownMenuItem>
-            ) : (
-              state.allWorkflows
-                .filter((w) => w.name !== "__current__")
-                .map((workflow) => (
-                  <DropdownMenuItem
-                    className="justify-between"
-                    key={workflow.id}
-                    onClick={() =>
-                      navigate({
-                        to: "/workflows/$workflowId",
-                        params: { workflowId: workflow.id },
-                      })
-                    }
-                  >
-                    <span className="truncate">{workflow.name}</span>
-                    {workflow.id === currentWorkflowId && (
-                      <Check className="size-3.5 shrink-0" />
-                    )}
-                  </DropdownMenuItem>
-                ))
-            )}
-            {state.canCreate ? (
-              <DropdownMenuItem
-                onClick={() => {
-                  setCreateDialogSession((session) => session + 1);
-                  setIsCreateDialogOpen(true);
-                }}
-              >
-                <Plus />
-                New workflow
-              </DropdownMenuItem>
-            ) : null}
-          </DropdownMenuGroup>
-
-          {/* Clear empties the graph and keeps the workflow; Delete takes the
-              workflow with it. Both were on the properties panel until that
-              panel got an empty state, and this menu is where the rest of its
-              workflow-level controls went.
-
-              Clear asks only for ownership, as the panel's button did: a draft
-              nobody has saved yet has a graph to empty and no id, so gating it
-              on `canEditWorkflow` would leave the one canvas most likely to
-              need clearing unable to. It reads the same lock every graph write
-              in the Actions menu does, because `clearWorkflowAtom` returns
-              early under a pinned run and a menu item that only looks enabled
-              spends a destructive confirmation on nothing. */}
-          {state.canUpdate && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                disabled={editingLocked}
-                onClick={actions.handleClearWorkflow}
-              >
-                <Eraser />
-                Clear workflow
-              </DropdownMenuItem>
-            </>
-          )}
-
-          {canDelete ? (
+          {offers.delete ? (
             <DropdownMenuItem
               onClick={actions.handleDeleteWorkflow}
               variant="destructive"
@@ -1010,38 +870,9 @@ export function WorkflowMenuComponent({
               Delete workflow
             </DropdownMenuItem>
           ) : null}
-
-          {currentWorkflowId && (
-            <>
-              <DropdownMenuSeparator />
-              {/* The id is what a support conversation asks for. The row copies
-                  it without printing it, the way the workflows page's row menu
-                  does, so a 36-character id stays out of the default view. */}
-              <DropdownMenuItem
-                onClick={() => void copyWorkflowId(currentWorkflowId)}
-              >
-                <Copy />
-                Copy workflow ID
-              </DropdownMenuItem>
-            </>
-          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <CreateWorkflowDialog
-        key={`create-${createDialogSession}`}
-        existingWorkflowNames={state.allWorkflows.map(
-          (workflow) => workflow.name
-        )}
-        onCreated={(createdWorkflowId) =>
-          navigate({
-            to: "/workflows/$workflowId",
-            params: { workflowId: createdWorkflowId },
-          })
-        }
-        onOpenChange={setIsCreateDialogOpen}
-        open={isCreateDialogOpen}
-      />
       <RenameWorkflowDialog
         key={`rename-${renameDialog.session}`}
         currentName={state.workflowName}

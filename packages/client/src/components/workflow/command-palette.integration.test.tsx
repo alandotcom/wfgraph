@@ -384,15 +384,13 @@ describe("the command palette", () => {
 
   // Someone who chose "Add step" has already said what they want, so the root
   // page has nothing left to ask them.
-  it("sends the Actions menu's Add step straight to the node types", async () => {
-    const { findByRole } = renderChrome(ToolbarActions, {
+  it("sends the Add step row straight to the node types", async () => {
+    const rendered = renderChrome(ToolbarActions, {
       catalog: ONE_ACTION_CATALOG,
     });
-
-    const trigger = await findByRole("button", { name: "Actions" });
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    fireEvent.keyUp(trigger, { key: "ArrowDown" });
-    fireEvent.click(await findByRole("menuitem", { name: /^Add step/ }));
+    const { findByRole } = rendered;
+    await openedPalette(rendered);
+    fireEvent.click(await findByRole("option", { name: /^Add step/ }));
 
     expect(paletteInput()?.getAttribute("placeholder")).toBe(
       "Search step types"

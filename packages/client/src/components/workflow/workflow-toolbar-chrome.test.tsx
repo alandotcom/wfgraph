@@ -7,7 +7,6 @@ import {
 import { WorkflowToolbarChrome } from "#src/components/workflow/workflow-toolbar";
 import type { WorkflowToolbarState } from "#src/components/workflow/workflow-toolbar-state";
 import {
-  MANY_REAL_NODES,
   REAL_NODES,
   renderChrome,
 } from "#src/components/workflow/workflow-toolbar-chrome.test-support";
@@ -208,13 +207,34 @@ describe("mobile editing actions", () => {
   });
 });
 
-describe("ToolbarActions authorization", () => {
-  it("keeps the action group available when editing is denied", async () => {
-    const { findByRole } = renderChrome(ToolbarActions, {
-      state: { canUpdate: false },
-    });
+describe("WorkflowToolbarChrome menus", () => {
+  // Everything about the open workflow is under its name and everything about
+  // the app under Settings, so there is no third menu to guess between.
+  it("offers the workflow's menu and Settings, and no Actions menu", async () => {
+    const { findByRole, queryByRole } = renderChrome(WorkflowToolbarChrome);
 
-    expect(await findByRole("button", { name: "Actions" })).toBeTruthy();
+    expect(await findByRole("menuitem", { name: "Workflow" })).toBeTruthy();
+    expect(await findByRole("menuitem", { name: "Settings" })).toBeTruthy();
+    expect(queryByRole("menuitem", { name: "Actions" })).toBeNull();
+  });
+
+  it("holds Connections, Theme and Keyboard shortcuts under Settings", async () => {
+    installAuthorizationGrantsForTests(WfGraphOperationIds);
+    try {
+      const { findByRole, getByRole, store } = renderChrome(
+        WorkflowToolbarChrome
+      );
+      const settings = await findByRole("menuitem", { name: "Settings" });
+      fireEvent.keyDown(settings, { key: "ArrowDown" });
+      fireEvent.keyUp(settings, { key: "ArrowDown" });
+
+      expect(getByRole("menuitem", { name: "Connections" })).toBeTruthy();
+      expect(getByRole("menuitem", { name: "Theme" })).toBeTruthy();
+      fireEvent.click(getByRole("menuitem", { name: /^Keyboard shortcuts/ }));
+      expect(store.get(shortcutReferenceOpenAtom)).toBe(true);
+    } finally {
+      resetAuthorizationGrantsForTests();
+    }
   });
 });
 
@@ -264,9 +284,6 @@ describe("WorkflowToolbarChrome", () => {
       menubar.contains(await findByRole("menuitem", { name: "Workflow" }))
     ).toBe(true);
     expect(
-      menubar.contains(await findByRole("menuitem", { name: "Actions" }))
-    ).toBe(true);
-    expect(
       menubar.contains(await findByRole("menuitem", { name: "Settings" }))
     ).toBe(true);
   });
@@ -274,16 +291,16 @@ describe("WorkflowToolbarChrome", () => {
   it("opens the menu whose trigger is hovered while another menu is open", async () => {
     const { findByRole } = renderChrome(WorkflowToolbarChrome);
     const workflow = await findByRole("menuitem", { name: "Workflow" });
-    const actions = await findByRole("menuitem", { name: "Actions" });
+    const settings = await findByRole("menuitem", { name: "Settings" });
 
     fireEvent.keyDown(workflow, { key: "ArrowDown" });
     fireEvent.keyUp(workflow, { key: "ArrowDown" });
     expect(workflow.getAttribute("aria-expanded")).toBe("true");
 
-    fireEvent.mouseEnter(actions);
+    fireEvent.mouseEnter(settings);
 
     await waitFor(() => {
-      expect(actions.getAttribute("aria-expanded")).toBe("true");
+      expect(settings.getAttribute("aria-expanded")).toBe("true");
       expect(workflow.getAttribute("aria-expanded")).toBe("false");
     });
   });
@@ -334,12 +351,11 @@ describe("WorkflowToolbarChrome", () => {
     );
   });
 
-  it("puts navigation, Actions and Settings on the left and the views and Publish on the right", async () => {
+  it("puts navigation, the workflow menu and Settings on the left and the views and Publish on the right", async () => {
     const { findByRole } = renderChrome(WorkflowToolbarChrome);
 
     const dashboard = await findByRole("link", { name: "Workflows" });
     const workflow = await findByRole("menuitem", { name: "Workflow" });
-    const actions = await findByRole("menuitem", { name: "Actions" });
     const settings = await findByRole("menuitem", { name: "Settings" });
     const workspaceSwitcher = await findByRole("group", {
       name: "Workspace view",
@@ -349,7 +365,7 @@ describe("WorkflowToolbarChrome", () => {
     const findStep = await findByRole("button", { name: "Find a step" });
 
     expect(
-      [dashboard, workflow, actions, settings].map((element) =>
+      [dashboard, workflow, settings].map((element) =>
         element.closest("[data-slot='workflow-toolbar-left']")
       )
     ).not.toContain(null);
@@ -660,93 +676,6 @@ describe("WorkflowToolbarChrome", () => {
   });
 });
 
-describe("ToolbarActions menu", () => {
-  it("names every action it offers, and leaves the run commands to the toolbar", async () => {
-    const { findByRole, getByRole, queryByRole } = renderChrome(ToolbarActions);
-
-    // Base UI opens a menu on the pointer going down, not on the click that
-    // follows it, so a bare `click` leaves the popup closed.
-    const trigger = await findByRole("button", { name: "Actions" });
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    fireEvent.keyUp(trigger, { key: "ArrowDown" });
-
-    // A shortcut hint is part of the item's own text, so each name is matched
-    // from its start rather than whole. Every hint here is a binding that
-    // exists: the shortcuts are the item's promise, not decoration.
-    for (const label of [
-      /^Add step/,
-      /^Undo/,
-      /^Redo/,
-      /^Tidy layout/,
-      /^Keyboard shortcuts/,
-    ]) {
-      expect(getByRole("menuitem", { name: label })).toBeTruthy();
-    }
-    // The run control sits a few pixels away in the same bar, so the menu does
-    // not repeat it. The palette is where a run is searched for by name.
-    expect(queryByRole("menuitem", { name: /^Run/ })).toBeNull();
-    // Published mode is the status strip's setting, and no menu writes it.
-    expect(queryByRole("menuitem", { name: /Published mode/ })).toBeNull();
-  });
-
-  it("opens the shortcut reference from its own row", async () => {
-    const { findByRole, getByRole, store } = renderChrome(ToolbarActions);
-
-    const trigger = await findByRole("button", { name: "Actions" });
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    fireEvent.keyUp(trigger, { key: "ArrowDown" });
-
-    fireEvent.click(getByRole("menuitem", { name: /^Keyboard shortcuts/ }));
-    expect(store.get(shortcutReferenceOpenAtom)).toBe(true);
-  });
-
-  it("renders every canvas command through the Canvas submenu", async () => {
-    const { findByRole, getByRole } = renderChrome(ToolbarActions);
-
-    const trigger = await findByRole("button", { name: "Actions" });
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    fireEvent.keyUp(trigger, { key: "ArrowDown" });
-
-    const canvas = getByRole("menuitem", { name: /^Canvas/ });
-    fireEvent.keyDown(canvas, { key: "ArrowRight" });
-    fireEvent.keyUp(canvas, { key: "ArrowRight" });
-
-    for (const label of [
-      /^Fit view/,
-      /^Copy selection/,
-      /^Paste/,
-      /^Duplicate selection/,
-      /^Group selection/,
-    ]) {
-      expect(getByRole("menuitem", { name: label })).toBeTruthy();
-    }
-  });
-});
-
-describe("ToolbarActions menu under a pinned run", () => {
-  // The four items that write to the graph read `canvasEditingLockedAtom`, the
-  // same atom the canvas reads, so a run pinned to the canvas refuses them the
-  // way it refuses a drag. The buttons these replaced checked only generation
-  // and would happily edit a draft nobody could see.
-  it("refuses every graph edit while a past run is on the canvas", async () => {
-    const { findByRole, getByRole } = renderChrome(ToolbarActions, {
-      graph: MANY_REAL_NODES,
-      overlayActive: true,
-      state: { canUndo: true, canRedo: true, nodes: MANY_REAL_NODES },
-    });
-
-    const trigger = await findByRole("button", { name: "Actions" });
-    fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    fireEvent.keyUp(trigger, { key: "ArrowDown" });
-
-    for (const label of [/^Add step/, /^Undo/, /^Redo/, /^Tidy layout/]) {
-      expect(
-        getByRole("menuitem", { name: label }).getAttribute("data-disabled")
-      ).not.toBeNull();
-    }
-  });
-});
-
 describe("WorkflowToolbarChrome operation grants", () => {
   it("offers each toolbar command from its own operation grant", async () => {
     const executeOnly = renderChrome(WorkflowToolbarChrome, {
@@ -794,30 +723,9 @@ describe("WorkflowToolbarChrome operation grants", () => {
     expect(publishOnly.queryByRole("button", { name: "Run draft" })).toBeNull();
     publishOnly.unmount();
 
-    const createOnly = renderChrome(WorkflowMenuComponent, {
-      state: {
-        canUpdate: false,
-        canCreate: true,
-        canDuplicate: false,
-        canDelete: false,
-      },
-    });
-    await openWorkflowMenu(createOnly.findByRole);
-    expect(
-      createOnly.getByRole("menuitem", { name: "New workflow" })
-    ).toBeTruthy();
-    expect(
-      createOnly.queryByRole("menuitem", { name: "Duplicate workflow" })
-    ).toBeNull();
-    expect(
-      createOnly.queryByRole("menuitem", { name: "Delete workflow" })
-    ).toBeNull();
-    createOnly.unmount();
-
     const duplicateOnly = renderChrome(WorkflowMenuComponent, {
       state: {
         canUpdate: false,
-        canCreate: false,
         canDuplicate: true,
         canDelete: false,
       },
@@ -827,9 +735,6 @@ describe("WorkflowToolbarChrome operation grants", () => {
       duplicateOnly.getByRole("menuitem", { name: "Duplicate workflow" })
     ).toBeTruthy();
     expect(
-      duplicateOnly.queryByRole("menuitem", { name: "New workflow" })
-    ).toBeNull();
-    expect(
       duplicateOnly.queryByRole("menuitem", { name: "Delete workflow" })
     ).toBeNull();
     duplicateOnly.unmount();
@@ -837,7 +742,6 @@ describe("WorkflowToolbarChrome operation grants", () => {
     const deleteOnly = renderChrome(WorkflowMenuComponent, {
       state: {
         canUpdate: false,
-        canCreate: false,
         canDuplicate: false,
         canDelete: true,
       },
@@ -846,9 +750,6 @@ describe("WorkflowToolbarChrome operation grants", () => {
     expect(
       deleteOnly.getByRole("menuitem", { name: "Delete workflow" })
     ).toBeTruthy();
-    expect(
-      deleteOnly.queryByRole("menuitem", { name: "New workflow" })
-    ).toBeNull();
     expect(
       deleteOnly.queryByRole("menuitem", { name: "Duplicate workflow" })
     ).toBeNull();
@@ -869,76 +770,66 @@ async function openWorkflowMenu(
 }
 
 describe("WorkflowMenuComponent", () => {
-  // The menu's contents render only when it opens, and a `Menu.GroupLabel`
-  // written outside a `Menu.Group` throws there rather than at import: the
-  // whole editor route went to its error boundary the first time this opened.
-  it("opens on the workflow it belongs to and offers what can be done to it", async () => {
-    const { findByRole, getByRole } = renderChrome(WorkflowMenuComponent, {
-      state: {
-        workflowName: "Appointment reminders",
-        allWorkflows: [
-          { id: "workflow_1", name: "Appointment reminders" },
-          { id: "workflow_2", name: "Onboarding drip" },
-        ] as WorkflowToolbarState["allWorkflows"],
-      },
-    });
+  // The menu's contents render only when it opens, which is where a broken
+  // row would throw.
+  it("offers what can be done to this workflow, in one menu", async () => {
+    installAuthorizationGrantsForTests(WfGraphOperationIds);
+    try {
+      const { findByRole, getAllByRole } = renderChrome(WorkflowMenuComponent, {
+        state: {
+          workflowName: "Appointment reminders",
+          allWorkflows: [
+            { id: "workflow_1", name: "Appointment reminders" },
+            { id: "workflow_2", name: "Onboarding drip" },
+          ] as WorkflowToolbarState["allWorkflows"],
+          publication: {
+            isPublished: true,
+            isPaused: false,
+            hasUnpublishedChanges: true,
+            publishedVersionId: "version_2",
+            publishedVersion: 2,
+            publishedAt: "2026-08-23T16:00:00.000Z",
+          },
+        },
+      });
 
-    await openWorkflowMenu(findByRole);
+      await openWorkflowMenu(findByRole);
 
-    for (const label of [
-      "Rename",
-      "Duplicate workflow",
-      "Onboarding drip",
-      "New workflow",
-      "Clear workflow",
-      "Delete workflow",
-    ]) {
-      expect(getByRole("menuitem", { name: label })).toBeTruthy();
+      // Other workflows are reached from the Workflows page and the palette,
+      // and a new one from the Workflows page.
+      expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+        "Rename",
+        "Duplicate workflow",
+        "Pause workflow",
+        "Version history",
+        "Review changes",
+        "Copy workflow ID",
+        "Delete workflow",
+      ]);
+    } finally {
+      resetAuthorizationGrantsForTests();
     }
   });
 
-  // Clear moved here off the properties panel, so the item has to reach the
-  // same handler the panel's button did. An item that only reads right is one
-  // nothing has ever pressed.
-  it("clears the workflow through the handler the panel used", async () => {
+  it("opens the review sheet from Review changes", async () => {
     const { findByRole, getByRole, actions } = renderChrome(
       WorkflowMenuComponent
     );
 
     await openWorkflowMenu(findByRole);
-    fireEvent.click(getByRole("menuitem", { name: "Clear workflow" }));
+    fireEvent.click(getByRole("menuitem", { name: "Review changes" }));
 
-    expect(actions.handleClearWorkflow).toHaveBeenCalledTimes(1);
+    expect(actions.handlePublish).toHaveBeenCalledTimes(1);
   });
 
-  // The panel gated Clear on ownership alone. A draft nobody has saved yet has
-  // no id and every reason to want emptying, so gating it with Delete would
-  // have taken the control off the canvas most likely to need it.
-  it("still offers Clear on a draft with no id, and no Delete", async () => {
-    const { findByRole, getByRole, queryByRole } = renderChrome(
-      WorkflowMenuComponent,
-      { workflowId: undefined, state: { currentWorkflowId: null } }
-    );
-
-    await openWorkflowMenu(findByRole);
-
-    expect(getByRole("menuitem", { name: "Clear workflow" })).toBeTruthy();
-    expect(queryByRole("menuitem", { name: "Delete workflow" })).toBeNull();
-  });
-
-  // `clearWorkflowAtom` returns early while a past run is pinned to the canvas.
-  // Enabled, the item spends a destructive confirmation on nothing at all.
-  it("refuses Clear while a past run pins the canvas", async () => {
-    const { findByRole, getByRole } = renderChrome(WorkflowMenuComponent, {
-      overlayActive: true,
+  it("offers no Delete on a draft with no id", async () => {
+    const { findByRole, queryByRole } = renderChrome(WorkflowMenuComponent, {
+      workflowId: undefined,
+      state: { currentWorkflowId: null },
     });
 
     await openWorkflowMenu(findByRole);
 
-    expect(
-      getByRole("menuitem", { name: "Clear workflow" }).getAttribute(
-        "data-disabled"
-      )
-    ).not.toBeNull();
+    expect(queryByRole("menuitem", { name: "Delete workflow" })).toBeNull();
   });
 });

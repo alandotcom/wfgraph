@@ -60,7 +60,6 @@ import {
  */
 export type WorkflowToolbarActions = {
   handleExecute: (graph: WorkflowRunGraph) => Promise<void>;
-  handleClearWorkflow: () => void;
   handleDeleteWorkflow: () => void;
   /** Re-reads the workflow list the switcher draws. */
   loadWorkflows: () => Promise<void>;
@@ -98,7 +97,6 @@ export function useWorkflowActions(
     canExecute,
     canPublish,
     canUpdate,
-    clearWorkflow,
     currentWorkflowId,
     edges,
     hasUnsavedChanges,
@@ -161,23 +159,6 @@ export function useWorkflowActions(
   );
 
   useDomEvent(document, "keydown", handleRunShortcut, { capture: true });
-
-  const handleClearWorkflow = () => {
-    if (!canUpdate) {
-      return;
-    }
-    openOverlay(ConfirmOverlay, {
-      title: "Clear workflow",
-      message:
-        "Remove every step and connection? The Lifecycle Node is kept, and this saves right away.",
-      confirmLabel: "Clear workflow",
-      confirmVariant: "destructive" as const,
-      destructive: true,
-      onConfirm: () => {
-        clearWorkflow();
-      },
-    });
-  };
 
   const handleDeleteWorkflow = () => {
     if (!canDelete) {
@@ -344,7 +325,6 @@ export function useWorkflowActions(
 
   return {
     handleExecute,
-    handleClearWorkflow,
     handleDeleteWorkflow,
     loadWorkflows,
     handleDuplicate,

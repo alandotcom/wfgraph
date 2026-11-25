@@ -62,31 +62,6 @@ export const REAL_NODES = toWorkflowGraphData(
   })
 ).nodes.map(toEditorNode);
 
-/**
- * Two real steps, which is the fewest "Tidy layout" will act on. The single
- * lifecycle node above leaves it disabled for want of anything to arrange, and
- * a case about the run lock has to fail for the run lock.
- */
-export const MANY_REAL_NODES = toWorkflowGraphData(
-  createSerializedWorkflowGraph({
-    nodes: [
-      {
-        id: "lifecycle_1",
-        type: "lifecycle",
-        position: { x: 0, y: 0 },
-        data: { label: "Lifecycle", type: "lifecycle" },
-      },
-      {
-        id: "action_1",
-        type: "action",
-        position: { x: 0, y: 200 },
-        data: { label: "Step", type: "action" },
-      },
-    ],
-    edges: [],
-  })
-).nodes.map(toEditorNode);
-
 function baseState(): WorkflowToolbarState {
   return {
     nodes: REAL_NODES,
@@ -94,7 +69,6 @@ function baseState(): WorkflowToolbarState {
     isExecuting: false,
     setRunStartInFlight: vi.fn(),
     isGenerating: false,
-    clearWorkflow: vi.fn(),
     updateNodeData: vi.fn(),
     currentWorkflowId: "workflow_1",
     workflowName: "Workflow",
@@ -105,7 +79,6 @@ function baseState(): WorkflowToolbarState {
     canReadRuns: true,
     canReadVersionHistory: true,
     canCompare: true,
-    canCreate: true,
     canDuplicate: true,
     canDelete: true,
     canPublish: true,
@@ -125,7 +98,6 @@ function baseState(): WorkflowToolbarState {
 function baseActions(): WorkflowToolbarActions {
   return {
     handleExecute: vi.fn(async () => {}),
-    handleClearWorkflow: vi.fn(),
     handleDeleteWorkflow: vi.fn(),
     loadWorkflows: vi.fn(async () => {}),
     handleDuplicate: vi.fn(),

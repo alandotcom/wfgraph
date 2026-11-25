@@ -17,7 +17,6 @@ import {
   canUndoAtom,
   clearNodeStatusesAtom,
   clearSelectionAtom,
-  clearWorkflowAtom,
   connectNodesAtom,
   copySelectionAtom,
   deleteEdgeAtom,
@@ -287,7 +286,6 @@ describe("graph mutations are undoable and persisted", () => {
     ],
     ["deleteNode", (store) => store.set(deleteNodeAtom, "a")],
     ["deleteEdge", (store) => store.set(deleteEdgeAtom, "e1")],
-    ["clearWorkflow", (store) => store.set(clearWorkflowAtom)],
     [
       "updateNodeData",
       (store) =>
@@ -596,7 +594,6 @@ describe("graph history", () => {
     // consume an undo step or fire a save.
     store.set(onNodesChangeAtom, [{ type: "select", id: "t", selected: true }]);
     store.set(deleteSelectedItemsAtom);
-    store.set(clearWorkflowAtom);
     store.set(deleteNodeAtom, "t");
     store.set(deleteEdgeAtom, "missing");
 
@@ -803,19 +800,6 @@ describe("the one outlet of a Group the viewer collapsed", () => {
       ["x", "True"],
       ["y", "True"],
     ]);
-  });
-});
-
-describe("clearWorkflowAtom", () => {
-  it("keeps the Lifecycle Node", () => {
-    const store = createGraphStore(...standardGraph());
-
-    store.set(clearWorkflowAtom);
-
-    // A graph with no Lifecycle Node is one the server always rejects, so
-    // clearing has to stop short of removing it.
-    expect(store.get(nodesAtom).map((node) => node.id)).toEqual(["t"]);
-    expect(store.get(edgesAtom)).toEqual([]);
   });
 });
 

@@ -62,16 +62,6 @@ describe("readWorkflowToolbarCapabilities", () => {
     expect(readWorkflowToolbarCapabilities().canPublish).toBe(true);
   });
 
-  it("allows workflow creation independently of the open workflow", () => {
-    installAuthorizationGrantsForTests([WfGraphOperations.workflowCreate.id]);
-
-    expect(readWorkflowToolbarCapabilities()).toMatchObject({
-      canCreate: true,
-      canDuplicate: false,
-      canDelete: false,
-    });
-  });
-
   it("allows duplication independently of updates and deletion", () => {
     installAuthorizationGrantsForTests([
       WfGraphOperations.workflowDuplicate.id,
