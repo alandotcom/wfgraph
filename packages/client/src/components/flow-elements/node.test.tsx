@@ -162,13 +162,17 @@ describe("Node status chip", () => {
   }
 
   // The chip sits across the card's top edge, so it never shares a box with
-  // the type icon centred in the card body.
-  it("hangs the chip across the card's top edge", () => {
+  // the type icon centred in the card body, and its strip starts right of the
+  // 12px top handle centred on that edge, so the handle never draws over it.
+  it("hangs the chip across the card's top edge, right of the top handle", () => {
     const view = renderCard("success", false);
     const chip = view.getByRole("status");
     expect(chip.textContent).toBe("Successful");
-    expect(chip.className).toContain("top-0");
-    expect(chip.className).toContain("-translate-y-1/2");
+    const strip = chip.parentElement?.className ?? "";
+    expect(strip).toContain("top-0");
+    expect(strip).toContain("-translate-y-1/2");
+    expect(strip).toContain("left-[calc(50%+10px)]");
+    expect(strip).toContain("justify-end-safe");
   });
 
   // A test run that sent nothing must not wear the border of a send.

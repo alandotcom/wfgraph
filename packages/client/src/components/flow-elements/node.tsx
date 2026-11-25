@@ -99,9 +99,14 @@ const STATUS_CHIP = {
   },
 } as const;
 
-// The chip straddles the card's top edge at the right, half above the card, so
-// it never shares a box with the type icon centred inside. The card fill under
-// the tint keeps the border from showing through the chip.
+// The chip straddles the card's top edge, half above the card, so it never
+// shares a box with the type icon centred inside. It lives in the strip from
+// just right of the top handle (the handle is 12px wide and centred) to the
+// card's right inset, aligned to the right. A chip wider than that strip, such
+// as "Skipped (test run)" on a 192px card, starts just right of the handle and
+// runs past the card's right edge into the gap between siblings, because
+// `justify-end-safe` overflows toward the end. The card fill under the tint
+// keeps the border from showing through the chip.
 const NodeStatusChip = ({
   status,
   testSkipped,
@@ -115,21 +120,20 @@ const NodeStatusChip = ({
 
   const chip = STATUS_CHIP[testSkipped ? "skipped" : status];
   return (
-    <div
-      className="absolute top-0 right-2 z-10 -translate-y-1/2 rounded-sm bg-card"
-      role="status"
-    >
-      <div
-        className={cn(
-          "flex items-center gap-1 rounded-sm py-0.5 pr-2 pl-1.5 font-medium text-foreground text-xs leading-none",
-          chip.className
-        )}
-      >
-        <chip.Icon
-          className={cn("size-3", chip.iconClassName)}
-          strokeWidth={2.5}
-        />
-        {stepRunStatusLabel(status, testSkipped).text}
+    <div className="pointer-events-none absolute top-0 right-2 left-[calc(50%+10px)] z-10 flex -translate-y-1/2 justify-end-safe">
+      <div className="shrink-0 rounded-sm bg-card" role="status">
+        <div
+          className={cn(
+            "flex items-center gap-1 whitespace-nowrap rounded-sm py-0.5 pr-2 pl-1.5 font-medium text-foreground text-xs leading-none",
+            chip.className
+          )}
+        >
+          <chip.Icon
+            className={cn("size-3", chip.iconClassName)}
+            strokeWidth={2.5}
+          />
+          {stepRunStatusLabel(status, testSkipped).text}
+        </div>
       </div>
     </div>
   );
