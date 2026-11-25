@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { EditorShortcutLabels } from "#src/lib/shortcut-label";
 import type { WorkflowMode } from "#src/lib/workflow-graph-types";
+import type { WorkflowWorkspaceView } from "#src/lib/workflow-ui-store";
 import {
   NOTHING_PUBLISHED_LABEL,
   publishedModeChoice,
@@ -125,6 +126,24 @@ type PublishEligibility = {
       }
     | undefined;
 };
+
+/**
+ * Why Run and Publish are off while Runs or Changes is the active view, or
+ * null in Draft. Those views show a run's graph or a comparison, both
+ * commands act on the Draft, and the editing lock those views hold disables
+ * them. A disabled control states this sentence where the pointer finds it.
+ */
+export function draftViewReason(
+  view: WorkflowWorkspaceView,
+  command: "run" | "publish"
+): string | null {
+  if (view === "draft") {
+    return null;
+  }
+  return command === "publish"
+    ? "Switch to Draft to publish."
+    : "Switch to Draft to run.";
+}
 
 /** The publish gate shared by the command controller and toolbar button. */
 export function isWorkflowPublishDisabled({

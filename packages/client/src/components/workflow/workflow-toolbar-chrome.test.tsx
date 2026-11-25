@@ -54,6 +54,31 @@ describe("ToolbarActions publish gating", () => {
     expect(publish.hasAttribute("disabled")).toBe(true);
   });
 
+  // A disabled button takes no pointer, so the reason hangs from a wrapper
+  // that does, as the status strip's Published mode control does.
+  it("says why Publish and Run are disabled in Runs", async () => {
+    const view = renderChrome(ToolbarActions, { overlayActive: true });
+
+    for (const [name, reason] of [
+      ["Publish", "Switch to Draft to publish."],
+      ["Run draft", "Switch to Draft to run."],
+    ] as const) {
+      const control = await view.findByRole("button", { name });
+      expect(control.hasAttribute("disabled")).toBe(true);
+      const trigger = control.closest("[data-slot='tooltip-trigger']");
+      expect(trigger).toBeTruthy();
+      fireEvent.pointerEnter(trigger as Element, { pointerType: "mouse" });
+      fireEvent.mouseEnter(trigger as Element);
+      expect(await view.findByText(reason)).toBeTruthy();
+    }
+  });
+
+  it("gives no disabled reason in Draft", async () => {
+    const { findByRole } = renderChrome(ToolbarActions);
+    const publish = await findByRole("button", { name: "Publish" });
+    expect(publish.closest("[data-slot='tooltip-trigger']")).toBeNull();
+  });
+
   // Publish and the canvas read one `canvasEditingLockedAtom`, so generation
   // gates both. This case would still pass if Publish kept its own copy of the
   // condition, and it fails if a later edit drops generation from the shared

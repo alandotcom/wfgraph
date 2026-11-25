@@ -26,7 +26,7 @@ import {
   Upload,
   type LucideIcon,
 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, type ReactElement, useState } from "react";
 import { toast } from "sonner";
 import { useShownMobileReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import { useRevealNavigation } from "#src/components/workflow/canvas-reveal/use-reveal-navigation";
@@ -51,6 +51,16 @@ import {
 } from "#src/components/ui/dropdown-menu";
 import { Kbd } from "#src/components/ui/kbd";
 import { Separator } from "#src/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "#src/components/ui/tooltip";
+import {
+  type WorkflowWorkspaceView,
+  workflowWorkspaceViewAtom,
+} from "#src/lib/workflow-ui-store";
 import { WorkflowIcon } from "#src/components/ui/workflow-icon";
 import { CommandPalette } from "#src/components/workflow/command-palette";
 import { PublishReviewDialog } from "#src/components/workflow/publish-review-dialog";
@@ -64,6 +74,7 @@ import {
 } from "#src/lib/shortcut-label";
 import {
   WorkflowCommandIcon,
+  draftViewReason,
   isDraftRunDisabled,
   isPublishedRunDisabled,
   isWorkflowPublishDisabled,
@@ -123,37 +134,71 @@ export function DashboardLink() {
   );
 }
 
+/**
+ * `control` with `reason` in a tooltip, while `reason` is not null. A disabled
+ * button carries `disabled:pointer-events-none`, so it is never a hover
+ * target and never takes focus. The wrapper receives both and holds the
+ * tooltip, as the status strip's Published mode control does for a viewer.
+ */
+function WithDisabledReason({
+  reason,
+  children,
+}: {
+  reason: string | null;
+  children: ReactElement;
+}) {
+  if (reason === null) {
+    return children;
+  }
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger
+          render={<span className="inline-flex shrink-0" tabIndex={0} />}
+        >
+          {children}
+        </TooltipTrigger>
+        <TooltipContent>{reason}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function PublishButton({
   isPublishing,
   disabled,
+  reason,
   handlePublish,
   label,
 }: {
   isPublishing: boolean;
   disabled: boolean;
+  /** Why the button is disabled, when the view states one. */
+  reason: string | null;
   handlePublish: () => void;
   label: string;
 }) {
+  // Publish is the one control here that changes what real customers receive.
+  // It gets the primary fill and a written label at every width.
   return (
-    // Publish is the one control here that changes what real customers receive,
-    // and it used to be the fifth identical 36px square in a row of six. It gets
-    // the primary fill and a written label at every width.
-    <Button
-      disabled={disabled}
-      onClick={handlePublish}
-      size={BAR_CONTROL_SIZE}
-      variant="default"
-    >
-      {isPublishing ? (
-        <Loader2
-          className="size-3.5 animate-spin motion-reduce:animate-none"
-          data-icon="inline-start"
-        />
-      ) : (
-        <Upload className="size-3.5" data-icon="inline-start" />
-      )}
-      {label}
-    </Button>
+    <WithDisabledReason reason={disabled ? reason : null}>
+      <Button
+        disabled={disabled}
+        onClick={handlePublish}
+        size={BAR_CONTROL_SIZE}
+        variant="default"
+      >
+        {isPublishing ? (
+          <Loader2
+            className="size-3.5 animate-spin motion-reduce:animate-none"
+            data-icon="inline-start"
+          />
+        ) : (
+          <Upload className="size-3.5" data-icon="inline-start" />
+        )}
+        {label}
+      </Button>
+    </WithDisabledReason>
   );
 }
 
@@ -249,6 +294,8 @@ type RunCommand = {
   /** The glyph itself, so each surface renders it at its own size. */
   readonly Icon: LucideIcon;
   readonly disabled: boolean;
+  /** Why the command is disabled, when the view states one. */
+  readonly reason: string | null;
   readonly run: () => void;
 };
 
@@ -267,9 +314,11 @@ type RunCommand = {
 function runCommands(
   state: WorkflowToolbarState,
   actions: WorkflowToolbarActions,
-  editingLocked: boolean
+  editingLocked: boolean,
+  view: WorkflowWorkspaceView
 ): readonly [RunCommand, ...RunCommand[]] {
   const eligibility = runEligibility(state, actions, editingLocked);
+  const reason = draftViewReason(view, "run");
 
   return [
     {
@@ -277,6 +326,7 @@ function runCommands(
       label: runCommandLabel({ graph: "draft" }),
       Icon: Play,
       disabled: !eligibility.canRunDraft || isDraftRunDisabled(eligibility),
+      reason,
       run: () => void actions.handleExecute("draft"),
     },
     {
@@ -288,6 +338,7 @@ function runCommands(
       Icon: CirclePlay,
       disabled:
         !eligibility.canRunPublished || isPublishedRunDisabled(eligibility),
+      reason,
       run: () => void actions.handleExecute("published"),
     },
   ];
@@ -298,8 +349,34 @@ function RunCommandMenuItem({ command }: { command: RunCommand }) {
   return (
     <DropdownMenuItem disabled={command.disabled} onClick={command.run}>
       <command.Icon />
-      {command.label}
+      <MenuItemText
+        detail={command.disabled ? command.reason : null}
+        label={command.label}
+      />
     </DropdownMenuItem>
+  );
+}
+
+/**
+ * A menu row's label, with the reason a disabled row is off as a detail line,
+ * styled as the Actions menu styles its detail lines.
+ */
+function MenuItemText({
+  label,
+  detail,
+}: {
+  label: string;
+  detail: string | null;
+}) {
+  return (
+    <span>
+      {label}
+      {detail === null ? null : (
+        <span className="block font-normal text-muted-foreground text-xs">
+          {detail}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -313,6 +390,7 @@ function usePublishGate(
   actions: WorkflowToolbarActions
 ) {
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const view = useAtomValue(workflowWorkspaceViewAtom);
   const publishedVersion = state.publication?.publishedVersion;
   const proposedVersion = publishedVersion ? publishedVersion + 1 : undefined;
 
@@ -329,6 +407,7 @@ function usePublishGate(
         hasUnsavedChanges: state.hasUnsavedChanges,
         publication: state.publication,
       }),
+    reason: draftViewReason(view, "publish"),
     // Include the version number whenever there is one, so the control states
     // exactly which version a press creates.
     label: actions.isPublishing
@@ -351,29 +430,35 @@ export function RunSplitButton({
   state: WorkflowToolbarState;
 }) {
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const view = useAtomValue(workflowWorkspaceViewAtom);
   const [face, ...behindTheChevron] = runCommands(
     state,
     actions,
-    editingLocked
+    editingLocked,
+    view
   );
 
   return (
     // The two halves are one control, so the group carries the name. Without
     // it a screen reader announces the chevron with no context.
     <ButtonGroup aria-label="Run">
-      <Button
-        // The separator supplies the divider inside this control, so the face
-        // drops its right border. Two outline halves would draw that edge at
-        // twice the weight of the other hairlines in the bar.
-        className="border-r-0"
-        disabled={face.disabled}
-        onClick={face.run}
-        size={BAR_CONTROL_SIZE}
-        variant="outline"
-      >
-        <face.Icon className="size-3.5" data-icon="inline-start" />
-        {face.label}
-      </Button>
+      <WithDisabledReason reason={face.disabled ? face.reason : null}>
+        <Button
+          // The separator supplies the divider inside this control, so the
+          // face drops its right border. Two outline halves would draw that
+          // edge at twice the weight of the other hairlines in the bar. The
+          // square right corners are the group's, set here because the
+          // tooltip wrapper can stand between the face and the group.
+          className="rounded-r-none border-r-0"
+          disabled={face.disabled}
+          onClick={face.run}
+          size={BAR_CONTROL_SIZE}
+          variant="outline"
+        >
+          <face.Icon className="size-3.5" data-icon="inline-start" />
+          {face.label}
+        </Button>
+      </WithDisabledReason>
       {/* The separator joins the two halves into one split control. The label
           runs the draft; the chevron opens the other run commands. */}
       <ButtonGroupSeparator />
@@ -415,10 +500,11 @@ export function RunPublishMenuItems({
 }) {
   const publish = usePublishGate(state, actions);
   const editingLocked = useAtomValue(canvasEditingLockedAtom);
+  const view = useAtomValue(workflowWorkspaceViewAtom);
 
   return (
     <>
-      {runCommands(state, actions, editingLocked).map((command) => (
+      {runCommands(state, actions, editingLocked, view).map((command) => (
         <RunCommandMenuItem command={command} key={command.id} />
       ))}
       <DropdownMenuItem
@@ -426,7 +512,10 @@ export function RunPublishMenuItems({
         onClick={actions.handlePublish}
       >
         <Upload />
-        {publish.label}
+        <MenuItemText
+          detail={publish.disabled ? publish.reason : null}
+          label={publish.label}
+        />
       </DropdownMenuItem>
     </>
   );
@@ -586,6 +675,7 @@ export function ToolbarPublishControls({
               handlePublish={actions.handlePublish}
               isPublishing={actions.isPublishing}
               label={publish.label}
+              reason={publish.reason}
             />
           ) : null}
         </div>

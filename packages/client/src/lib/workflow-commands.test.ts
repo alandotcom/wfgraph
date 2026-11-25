@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  draftViewReason,
   isWorkflowPublishDisabled,
   workflowCommands,
 } from "#src/lib/workflow-commands";
@@ -361,5 +362,19 @@ describe("isWorkflowPublishDisabled", () => {
         publication,
       })
     ).toBe(true);
+  });
+});
+
+describe("draftViewReason", () => {
+  it("gives no reason in Draft", () => {
+    expect(draftViewReason("draft", "run")).toBeNull();
+    expect(draftViewReason("draft", "publish")).toBeNull();
+  });
+
+  it("sends the reader to Draft from Runs and Changes", () => {
+    expect(draftViewReason("runs", "run")).toBe("Switch to Draft to run.");
+    expect(draftViewReason("changes", "publish")).toBe(
+      "Switch to Draft to publish."
+    );
   });
 });
