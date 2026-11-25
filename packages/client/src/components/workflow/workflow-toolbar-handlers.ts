@@ -26,7 +26,10 @@ import { editorChordAllowed, isSubmitChord } from "#src/lib/editor-shortcuts";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { orpcQuery, refreshWorkflowList } from "#src/lib/rpc-query";
 import type { WorkflowRunGraph } from "#src/lib/workflow-run-labels";
-import { saveWorkflowAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowDraftRevisionAtom,
+  saveWorkflowAtom,
+} from "#src/lib/workflow-save-store";
 import { toSerializedGraph } from "#src/lib/rpc-client";
 import {
   reportNothingToPublish,
@@ -99,6 +102,7 @@ export function useWorkflowActions(
     clearWorkflow,
     currentWorkflowId,
     edges,
+    hasUnsavedChanges,
     isGenerating,
     nodes,
     publication,
@@ -265,10 +269,18 @@ export function useWorkflowActions(
       return session?.workflowId === workflowId && session.epoch === epoch;
     };
     const graph = toSerializedGraph({ nodes, edges });
-    const saved = await saveWorkflow({ nodes, edges }, { immediate: true });
-    if (!saved?.ok) {
-      clearPublicationReview({ workflowId: currentWorkflowId, epoch });
-      return;
+    // A draft with no unsaved edit is already the stored draft, so Publish
+    // reviews it at the revision the editor holds. Saving it again would move
+    // the status strip's "Saved" time and the workflow's "Updated" value with
+    // nothing edited.
+    let draftRevision = store.get(currentWorkflowDraftRevisionAtom);
+    if (hasUnsavedChanges) {
+      const saved = await saveWorkflow({ nodes, edges }, { immediate: true });
+      if (!saved?.ok) {
+        clearPublicationReview({ workflowId: currentWorkflowId, epoch });
+        return;
+      }
+      draftRevision = saved.workflow.draftRevision;
     }
     if (!reviewIsOpen()) {
       return;
@@ -332,7 +344,7 @@ export function useWorkflowActions(
           epoch,
           pending: false,
           graph,
-          expectedDraftRevision: saved.workflow.draftRevision,
+          expectedDraftRevision: draftRevision,
           expectedPublishedVersionId: comparison.baseVersion?.id ?? null,
           payload: comparison,
         });

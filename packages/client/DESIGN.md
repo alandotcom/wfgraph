@@ -728,8 +728,8 @@ workflow and state and brings the list into view.
 
 ### Publication review
 
-**Publish** opens the review sheet. It saves the draft, checks it for blocking
-issues, and compares the exact draft on screen with the current publication.
+**Publish** opens the review sheet. It saves the draft when it has unsaved
+changes, and only then, checks it for blocking issues, and compares the exact draft on screen with the current publication.
 A draft with blocking issues lists them instead, and a draft with no change
 says "No changes to publish" and opens nothing. **Review changes**, in the
 command palette and the Actions menu, runs the same path. **Version history**

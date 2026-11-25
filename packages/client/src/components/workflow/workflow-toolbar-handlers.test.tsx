@@ -748,6 +748,28 @@ describe("useWorkflowActions Group problems", () => {
   });
 });
 
+describe("useWorkflowActions Publish and the save", () => {
+  it("saves before the review only when the draft has unsaved changes", async () => {
+    const requests = serveRunRequests({});
+    const view = renderProbe({
+      probe: (
+        <IssueGateProbe
+          workflowState={{ ...groupProblemState(), hasUnsavedChanges: false }}
+        />
+      ),
+      extensionCatalog: groupProblemCatalog,
+    });
+
+    fireEvent.click(await view.findByRole("button", { name: "Start publish" }));
+
+    // The preflight still runs and refuses the Group problem, with no write.
+    await waitFor(() =>
+      expect(view.getByLabelText("run draft anyway").textContent).toBe("false")
+    );
+    expect(requests.map((request) => request.path)).toEqual([]);
+  });
+});
+
 describe("useWorkflowActions publication preflight", () => {
   it("waits for the same provider preflight before opening a test run", async () => {
     const answer = deferred<Response>();
