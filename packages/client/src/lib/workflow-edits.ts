@@ -10,11 +10,7 @@
  */
 
 import { compact, uniq } from "es-toolkit/array";
-import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
-import {
-  findEvent,
-  type ExtensionCatalog,
-} from "@wfgraph/shared/extensions/catalog";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import {
   isGroupFrameChange,
   isGroupMembershipPath,
@@ -25,7 +21,7 @@ import type {
   WorkflowNodeChange,
 } from "@wfgraph/shared/graph/publication-contracts";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
-import { eventSplitOutletEvent } from "@wfgraph/shared/lifecycle/event-split";
+import { outletName } from "@wfgraph/shared/graph/workflow-outline";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
@@ -125,26 +121,6 @@ function isGroupFrame(node: WorkflowNode | undefined): boolean {
   return node?.data.type === "group";
 }
 
-/** The name of the outlet `handle` of `source`, or null when it has none. */
-function branchName(
-  source: WorkflowNode | undefined,
-  handle: string | null | undefined,
-  catalog: ExtensionCatalog
-): string | null {
-  if (handle === null || handle === undefined) return null;
-  const condition = getConditionBranchDisplayLabel(handle);
-  if (condition !== null) return condition;
-  if (source?.data.type === "lifecycle") {
-    if (handle === LIFECYCLE_STARTED_HANDLE) return "Started";
-    if (handle === LIFECYCLE_CANCELED_HANDLE) return "Canceled";
-  }
-  const eventName = eventSplitOutletEvent(handle);
-  if (eventName !== null) {
-    return findEvent(catalog, eventName)?.label ?? eventName;
-  }
-  return null;
-}
-
 function title(
   node: WorkflowNode | undefined,
   catalog: ExtensionCatalog
@@ -172,7 +148,7 @@ function stripOn(
         return {
           nodeId: edge.source,
           label: title(source, catalog),
-          branch: branchName(source, edge.sourceHandle, catalog),
+          branch: outletName(source, edge.sourceHandle, catalog),
         };
       })
       .toSorted(byPathOrder),
@@ -180,7 +156,7 @@ function stripOn(
       .map((edge) => ({
         nodeId: edge.target,
         label: title(side.nodes.get(edge.target), catalog),
-        branch: branchName(node, edge.sourceHandle, catalog),
+        branch: outletName(node, edge.sourceHandle, catalog),
       }))
       .toSorted(byPathOrder),
   };
@@ -506,7 +482,7 @@ function computeEdits(
     const side = change.kind === "removed" ? base : draft;
     const sourceRewires = (rewiresBySource.get(change.nodeId) ?? []).map(
       (entry): Rewire => ({
-        branch: branchName(
+        branch: outletName(
           draft.nodes.get(entry.source),
           entry.handle,
           catalog
@@ -573,7 +549,7 @@ function computeEdits(
 
   for (const [source, entries] of rewiresBySource) {
     const rewires = entries.map((entry): Rewire => ({
-      branch: branchName(draft.nodes.get(source), entry.handle, catalog),
+      branch: outletName(draft.nodes.get(source), entry.handle, catalog),
       to: entry.to,
       from: entry.from,
     }));
