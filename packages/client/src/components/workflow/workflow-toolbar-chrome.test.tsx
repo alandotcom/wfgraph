@@ -398,7 +398,14 @@ describe("WorkflowToolbarChrome", () => {
     // the workflow name truncates, so no menu label is cut off at phone width.
     expect(leftClasses).toEqual(expect.arrayContaining(["min-w-0", "flex-1"]));
     expect(leftClasses).not.toContain("min-w-max");
-    expect(workflow.className).toContain("min-w-0");
+    // The name keeps at least its first letters at phone width, where
+    // Settings is its icon and the publication chip its dot, and its full
+    // name stays in its title.
+    expect(workflow.className).toContain("min-w-20");
+    expect(workflow.getAttribute("title")).toBe("Workflow");
+    expect(settings.querySelector("span")?.className.split(" ")).toEqual(
+      expect.arrayContaining(["hidden", "md:inline"])
+    );
   });
 
   // The publication state is stated once, beside the workflow's name, in

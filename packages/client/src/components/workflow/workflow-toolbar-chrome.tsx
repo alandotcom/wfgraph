@@ -813,7 +813,10 @@ export function WorkflowMenuComponent({
         <DropdownMenuTrigger
           render={
             <Button
-              className="min-w-0 max-w-56 shrink"
+              // At phone width the name still shows its first letters
+              // rather than shrinking to one: the menus beside it give way
+              // first.
+              className="min-w-20 max-w-56 shrink"
               size={BAR_CONTROL_SIZE}
               variant="ghost"
             />

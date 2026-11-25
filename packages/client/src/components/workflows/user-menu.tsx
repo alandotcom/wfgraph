@@ -1,5 +1,5 @@
 import { useSetAtom } from "jotai";
-import { ChevronDown, Keyboard, Moon, Plug, Sun } from "lucide-react";
+import { ChevronDown, Keyboard, Moon, Plug, Settings, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { IntegrationsOverlay } from "#src/components/overlays/integrations-overlay";
 import { useOverlay } from "#src/components/overlays/overlay-provider";
@@ -33,9 +33,17 @@ export const UserMenu = () => {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" />}>
-        Settings
-        <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
+      {/* Below `md` the trigger is its icon, so the workflow's name beside it
+          keeps the room; the accessible name stays "Settings". */}
+      <DropdownMenuTrigger
+        render={<Button aria-label="Settings" variant="ghost" />}
+      >
+        <Settings className="md:hidden" />
+        <span className="hidden md:inline">Settings</span>
+        <ChevronDown
+          className="hidden size-3 opacity-50 md:inline"
+          data-icon="inline-end"
+        />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
         {can(WfGraphOperations.integrationGetAll.id) ? (

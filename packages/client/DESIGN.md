@@ -703,7 +703,10 @@ The workflow's menu holds everything about this workflow: **Rename**,
 history**, **Review changes**, **Copy workflow ID** and **Delete workflow**.
 **Settings** holds what is about the app: **Connections**, **Theme** and
 **Keyboard shortcuts**. There is no save command, because the draft saves by
-itself; Cmd+S (Ctrl+S) does nothing and keeps the browser's save dialog shut. The 320px search control
+itself; Cmd+S (Ctrl+S) does nothing and keeps the browser's save dialog shut. Below
+`md` the workflow's name keeps at least its first letters, with the full name
+in its title: **Settings** shows as its icon and the publication chip as its
+dot, and both keep their names for assistive technology. The 320px search control
 stays centered in the shell and hides at 70rem or narrower; its keyboard
 shortcut remains available. A compact **Find a step** control stays in the
 trailing group while the search control is hidden. It and Cmd+F (Ctrl+F)

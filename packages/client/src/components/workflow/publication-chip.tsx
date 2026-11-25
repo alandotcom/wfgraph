@@ -109,7 +109,9 @@ export function PublicationChip({
           )}
           data-icon="inline-start"
         />
-        <span className="truncate">{label}</span>
+        {/* Below `md` the chip is its dot, so the workflow's name keeps the
+            room; the accessible name and the title carry the words. */}
+        <span className="hidden truncate md:inline">{label}</span>
         <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-60">
