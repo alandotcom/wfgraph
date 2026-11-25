@@ -170,17 +170,41 @@ function PartText() {
   return <MessagePartPrimitive.Text />;
 }
 
+/**
+ * Questions the empty panel offers as one-press starts. Each sends at once,
+ * since the agent can answer it from the workflow and its runs alone.
+ */
+const STARTER_PROMPTS = [
+  "Explain this workflow",
+  "Why did the last run fail?",
+] as const;
+
 /** What the panel says before anyone has typed anything. */
 function EmptyThread() {
   return (
     <AuiIf condition={(state) => state.thread.isEmpty}>
       <div className="flex flex-col gap-2 py-4 text-muted-foreground text-sm">
-        <p className="font-medium text-foreground">Build with the agent</p>
-        <p>Describe the automation you want.</p>
-        <p>
-          The agent reads this workflow and the steps this server offers, then
-          edits the canvas as it goes.
+        <p className="font-medium text-foreground">
+          Ask the agent, or build with it
         </p>
+        <p>
+          The agent reads this workflow, its runs, and the steps this server
+          offers. It answers questions and edits the canvas.
+        </p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {STARTER_PROMPTS.map((prompt) => (
+            <ThreadPrimitive.Suggestion
+              asChild
+              key={prompt}
+              prompt={prompt}
+              send
+            >
+              <Button size="sm" type="button" variant="outline">
+                {prompt}
+              </Button>
+            </ThreadPrimitive.Suggestion>
+          ))}
+        </div>
       </div>
     </AuiIf>
   );
@@ -412,7 +436,7 @@ function Composer() {
       <ComposerPrimitive.Input
         autoFocus
         className="max-h-32 min-h-8 flex-1 resize-none bg-transparent px-1 py-1.5 text-base outline-none placeholder:text-muted-foreground md:text-sm"
-        placeholder="Describe a workflow, or ask for a change"
+        placeholder="Ask about this workflow, or describe a change"
         rows={1}
       />
       <AuiIf condition={(state) => !state.thread.isRunning}>

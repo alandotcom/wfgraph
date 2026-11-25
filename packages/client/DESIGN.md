@@ -338,6 +338,8 @@ When a drag or key press ends, the camera places the subject beside the new
 width once, the way opening Reveal places it. Resizing never moves a step,
 changes the draft, or adds an undo step.
 
+A workflow that holds only its Lifecycle Node shows its starting moves one rank below that card, in a dashed block on the canvas: one line saying it has no steps yet, then **Choose what starts it**, **Add step**, and **Describe it to the agent** when the host runs the build agent. The first opens Lifecycle Focus on Start Events and leaves once a Start Event or schedule exists. The block leaves once the workflow has a step. The build agent's empty panel offers **Explain this workflow** and **Why did the last run fail?**, and each sends at once.
+
 The Draft canvas rests with Reveal closed. Selecting an ordinary step, which is
 any Action or Wait, opens Browse. A press on a step selects it only when it ends
 as a click. Dragging a step never opens Reveal or moves the camera, and dragging

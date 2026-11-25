@@ -72,6 +72,7 @@ import { useGroupScopeNavigation } from "./use-group-scope-navigation";
 import { withoutProjectedDimensions } from "#src/lib/group-scope-canvas";
 import { scopeId } from "#src/lib/workflow-navigation-state";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
+import { EmptyWorkflowStart } from "./empty-workflow-start";
 import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasConnections } from "./use-canvas-connections";
 import { useCanvasCopyPaste } from "./use-canvas-copy-paste";
@@ -680,6 +681,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
                 }
               />
             </Panel>
+            {/* A workflow with nothing but its Lifecycle Node shows how to
+                begin, wherever the canvas can add a step. */}
+            {interaction.insertsNodes && scope.kind === "overview" ? (
+              <EmptyWorkflowStart />
+            ) : null}
             {showMinimap && (
               // maskColor and nodeColor default to hardcoded light-mode values that
               // never invert: the viewport rectangle was invisible in light (1.05:1)

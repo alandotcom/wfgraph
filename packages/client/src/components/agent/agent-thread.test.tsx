@@ -33,10 +33,32 @@ function renderThread(messages: ThreadMessageLike[]) {
 }
 
 describe("AgentThread", () => {
-  it("invites the user to describe a workflow before anything is said", async () => {
+  it("offers questions and building before anything is said", async () => {
     renderThread([]);
 
-    expect(await screen.findByText("Build with the agent")).toBeTruthy();
+    expect(
+      await screen.findByText("Ask the agent, or build with it")
+    ).toBeTruthy();
+    expect(
+      screen.getByPlaceholderText(
+        "Ask about this workflow, or describe a change"
+      )
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Why did the last run fail?" })
+    ).toBeTruthy();
+  });
+
+  // A starter question is one press: it is sent as the user's message.
+  it("sends a starter question as the first message", async () => {
+    renderThread([]);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Explain this workflow" })
+    );
+
+    expect(await screen.findByRole("article", { name: "You" })).toBeTruthy();
+    expect(screen.getByText("Explain this workflow")).toBeTruthy();
   });
 
   it("renders what the user asked for", async () => {

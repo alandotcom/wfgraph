@@ -32,7 +32,10 @@ import {
   installAuthorizationGrantsForTests,
   resetAuthorizationGrantsForTests,
 } from "#src/lib/authorization-test-support";
-import { openCommandPaletteAtom } from "#src/lib/command-palette-store";
+import {
+  commandPaletteAtom,
+  openCommandPaletteAtom,
+} from "#src/lib/command-palette-store";
 import {
   beginWorkflowComparisonRequestAtom,
   installWorkflowComparisonAtom,
@@ -360,6 +363,47 @@ describe("canvas selection", () => {
         edgeIds: [],
       })
     );
+  });
+});
+
+describe("an empty workflow", () => {
+  const lifecycleOnly: WorkflowNode[] = [
+    {
+      id: "life",
+      type: "lifecycle",
+      position: { x: 400, y: 0 },
+      data: { label: "", type: "lifecycle" },
+    },
+  ];
+
+  it("offers its starting moves below the Lifecycle Node", async () => {
+    const { view, store } = await renderEditor("", {
+      nodes: lifecycleOnly,
+      edges: [],
+    });
+
+    const start = await view.findByRole("region", {
+      name: "Start this workflow",
+    });
+    expect(
+      within(start).getByRole("button", { name: "Choose what starts it" })
+    ).toBeTruthy();
+    // No agent runs in this host, so the block does not offer one.
+    expect(
+      within(start).queryByRole("button", { name: "Describe it to the agent" })
+    ).toBeNull();
+
+    fireEvent.click(within(start).getByRole("button", { name: "Add step" }));
+    expect(store.get(commandPaletteAtom)?.pages.at(-1)?.id).toBe("add-step");
+  });
+
+  it("leaves once the workflow has a step", async () => {
+    const { view } = await renderEditor();
+
+    await view.findByTestId("action-node-route");
+    expect(
+      view.queryByRole("region", { name: "Start this workflow" })
+    ).toBeNull();
   });
 });
 
@@ -928,9 +972,25 @@ describe("the collapsed Group overview", () => {
         ? { ...node, position: { x: 200, y: 650 } }
         : node;
     });
+    // Started reaches two steps, so the path has two open ends and the new
+    // step stands alone. Both connections run down the right of the origin.
+    const edges: WorkflowEdge[] = [
+      {
+        id: "life-qualify",
+        source: "life",
+        target: "qualify",
+        sourceHandle: "started",
+      },
+      {
+        id: "life-route",
+        source: "life",
+        target: "route",
+        sourceHandle: "started",
+      },
+    ];
     const { view, store, renderedNodeIds } = await renderEditor("", {
       nodes,
-      edges: EDGES,
+      edges,
     });
     await waitFor(() => expect(renderedNodeIds()).toContain("outreach"));
     await act(async () => {
@@ -945,6 +1005,36 @@ describe("the collapsed Group overview", () => {
       .get(nodesAtom)
       .find((node) => !nodes.some((item) => item.id === node.id));
     expect(added?.position).toEqual({ x: -96, y: -56 });
+    expect(store.get(edgesAtom)).toEqual(edges);
+  });
+
+  it("joins a new step to the Started path's one open end in one undo step", async () => {
+    const { view, store, renderedNodeIds } = await renderEditor();
+    await waitFor(() => expect(renderedNodeIds()).toContain("route"));
+    const historyBefore = store.get(historyAtom).length;
+
+    fireEvent.click(view.getByRole("button", { name: "Probe add step" }));
+
+    const added = store
+      .get(nodesAtom)
+      .find((node) => !NODES.some((item) => item.id === node.id));
+    // One rank below "Route outcome", the step nothing followed.
+    expect(added?.position).toEqual({ x: 400, y: 720 });
+    expect(store.get(edgesAtom)).toContainEqual(
+      expect.objectContaining({ source: "route", target: added?.id })
+    );
+    expect(store.get(historyAtom)).toHaveLength(historyBefore + 1);
+
+    act(() => {
+      store.set(undoAtom);
+    });
+    expect(
+      store
+        .get(nodesAtom)
+        .map((node) => node.id)
+        .toSorted()
+    ).toEqual(NODES.map((node) => node.id).toSorted());
+    expect(store.get(edgesAtom)).toEqual(EDGES);
   });
 
   it("draws the collapsed card over a run's pinned graph", async () => {
