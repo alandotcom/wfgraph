@@ -67,7 +67,7 @@ export const canvasRevealAtom = atom((get): CanvasRevealState => {
 /**
  * What the mobile Reveal sequence shows for the active address: its last sheet
  * and the sheet beneath it, and the level on screen, which is the summary for
- * an object's inspector when the subject offers no Focus. Null with no sheet
+ * an object's inspector when the subject offers no inspector sheet. Null with no sheet
  * open, and while the last sheet's object is no longer what the subject
  * inspects. Form factor is the reader's to check.
  */
@@ -97,7 +97,7 @@ export const mobileRevealAtom = atom((get): MobileRevealState | null => {
   }
   const level: MobileRevealLevel =
     sheet.level === "inspector" &&
-    (sheet.inspected === null || subject.levels.includes("focus"))
+    (sheet.inspected === null || subject.offersInspectorSheet)
       ? "inspector"
       : "summary";
   return {
@@ -166,7 +166,10 @@ export const showCanvasRevealLevelAtom = atom(
   }
 );
 
-/** The level one Escape or Back leaves toward: Focus to Browse to Closed. */
+/**
+ * The level one Escape or Back leaves toward: Focus to Browse to Closed. Only
+ * Runs offers Focus, so in Draft and Changes it closes Reveal.
+ */
 export function unwoundLevel(level: RevealLevel): RevealLevel {
   return level === "focus" ? "browse" : "closed";
 }

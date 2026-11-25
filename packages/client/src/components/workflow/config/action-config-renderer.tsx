@@ -1,3 +1,4 @@
+import { compact } from "es-toolkit/array";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "#src/components/ui/button";
@@ -23,6 +24,7 @@ import {
 } from "@wfgraph/shared/plugins/key-value-rows";
 import { matchesShowWhen } from "@wfgraph/shared/types/show-when";
 import type { UpdateNodeConfig } from "./node-config-patch";
+import { FieldIssueMessages } from "./field-issues";
 import { ProviderFieldsField } from "./provider-fields-field";
 import { ProviderSelectField } from "./provider-select-field";
 import type { ConfigOptionsOwner } from "#src/lib/config-options-query";
@@ -302,6 +304,14 @@ const FIELD_RENDERERS: Record<
   "provider-fields": ProviderFieldsField,
 };
 
+/** The field types whose editor takes text and inserted values together. */
+const TEMPLATE_FIELD_TYPES: ReadonlySet<ActionConfigFieldBase["type"]> =
+  new Set(["template-input", "template-textarea"]);
+
+/** How a template field takes a value from the Event or an earlier step. */
+const TEMPLATE_INSERT_HINT =
+  "Type @ to insert a value from the Event or an earlier step.";
+
 /**
  * Renders a single base field
  */
@@ -327,10 +337,14 @@ function renderField(
     ? connectionDefaults[field.connectionDefaultKey] || field.placeholder
     : field.placeholder;
   const FieldRenderer = FIELD_RENDERERS[field.type];
+  // A template field's help line also says how to insert a value, since the
+  // `@` that opens the value picker is otherwise nowhere on screen.
+  const help = compact([
+    field.description,
+    TEMPLATE_FIELD_TYPES.has(field.type) ? TEMPLATE_INSERT_HINT : undefined,
+  ]).join(" ");
 
-  const descriptionId = field.description
-    ? `${field.key}-description`
-    : undefined;
+  const descriptionId = help ? `${field.key}-description` : undefined;
 
   return (
     <div
@@ -355,9 +369,9 @@ function renderField(
           ) : null}
         </Label>
       ) : null}
-      {field.description ? (
+      {help ? (
         <p className="ml-1 text-muted-foreground text-xs" id={descriptionId}>
-          {field.description}
+          {help}
         </p>
       ) : null}
       <FieldRenderer
@@ -370,6 +384,7 @@ function renderField(
         placeholder={placeholder}
         value={value}
       />
+      <FieldIssueMessages fieldKey={field.key} />
     </div>
   );
 }

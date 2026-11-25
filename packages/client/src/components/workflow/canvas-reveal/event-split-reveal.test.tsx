@@ -7,7 +7,13 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { act, fireEvent, render, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Schema } from "effect";
 import { createStore, Provider as JotaiProvider } from "jotai";
@@ -394,12 +400,10 @@ describe("Event Split Browse", () => {
       view.getByRole("button", { name: "Open Lifecycle Cancel Events" })
     );
 
-    expect(aside()?.dataset.level).toBe("focus");
+    expect(aside()?.dataset.level).toBe("browse");
     expect(
-      view
-        .getByRole("button", { name: /^Cancel Events/ })
-        .getAttribute("aria-current")
-    ).toBe("true");
+      view.getByRole("button", { name: "Done editing Cancel Events" })
+    ).toBeTruthy();
   });
 
   it("opens the event-mode Wait above a split and returns on Back", async () => {
@@ -442,13 +446,11 @@ describe("Event Split Browse", () => {
       view.getByRole("button", { name: "Open Lifecycle Start Events" })
     );
 
-    expect(aside()?.dataset.level).toBe("focus");
+    expect(aside()?.dataset.level).toBe("browse");
     expect(view.getByRole("heading", { name: "Lifecycle" })).toBeTruthy();
     expect(
-      view
-        .getByRole("button", { name: /^Start Events/ })
-        .getAttribute("aria-current")
-    ).toBe("true");
+      view.getByRole("button", { name: "Done editing Start Events" })
+    ).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: "Back" }));
 
@@ -459,7 +461,7 @@ describe("Event Split Browse", () => {
     ).toBeTruthy();
   });
 
-  it("returns to the split on Escape the same way as on Back", async () => {
+  it("closes the open section on Escape, then returns to the split", async () => {
     const { view, aside } = await renderEventSplit({
       nodes: [lifecycleNode, splitNode, sendNode],
       edges: BASE_EDGES,
@@ -468,7 +470,22 @@ describe("Event Split Browse", () => {
     fireEvent.click(
       view.getByRole("button", { name: "Open Lifecycle Start Events" })
     );
-    expect(aside()?.dataset.level).toBe("focus");
+    expect(
+      view.getByRole("button", { name: "Done editing Start Events" })
+    ).toBeTruthy();
+
+    fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
+    expect(
+      view.queryByRole("button", { name: "Done editing Start Events" })
+    ).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        view.getByRole("button", { name: "Edit Start Events" })
+      )
+    );
+    expect(
+      view.getByRole("complementary", { name: "Lifecycle inspector" })
+    ).toBeTruthy();
 
     fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
 
@@ -478,7 +495,7 @@ describe("Event Split Browse", () => {
     expect(aside()?.dataset.level).toBe("browse");
   });
 
-  it("forgets the split once Reveal closes, so Back later stays within the Lifecycle Node", async () => {
+  it("forgets the split once Reveal closes, so Back is no longer offered", async () => {
     const { view, store, aside } = await renderEventSplit({
       nodes: [lifecycleNode, splitNode, sendNode],
       edges: BASE_EDGES,
@@ -495,14 +512,17 @@ describe("Event Split Browse", () => {
       store.set(selectOnlyNodeAtom, "lifecycle-1");
     });
     expect(store.get(activeRevealPresentationAtom).inspectedOrigin).toBeNull();
-    expect(aside()?.dataset.level).toBe("focus");
-
-    fireEvent.click(view.getByRole("button", { name: "Back" }));
-
     expect(aside()?.dataset.level).toBe("browse");
+    expect(view.queryByRole("button", { name: "Back" })).toBeNull();
+
+    // The section stays open as it was left, and Escape closes it first.
+    fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
     expect(
       view.getByRole("complementary", { name: "Lifecycle inspector" })
     ).toBeTruthy();
+    expect(aside()?.dataset.level).toBe("browse");
+    fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
+    expect(aside()?.dataset.level).toBe("closed");
     expect(store.get(activeRevealPresentationAtom).inspected).toEqual({
       kind: "node",
       id: "lifecycle-1",

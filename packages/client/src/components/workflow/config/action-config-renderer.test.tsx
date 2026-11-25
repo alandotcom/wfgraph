@@ -43,7 +43,7 @@ const subject: ActionConfigField = {
   label: "Subject",
   description: "The subject line recipients will see.",
   type: "template-input",
-  placeholder: "Subject or {{NodeName.title}}",
+  placeholder: "Subject",
 };
 
 function fieldsTree(input: {
@@ -125,7 +125,7 @@ describe("ActionConfigRenderer", () => {
     renderFields({ fields: [subject] });
 
     const description = screen.getByText(
-      "The subject line recipients will see."
+      "The subject line recipients will see. Type @ to insert a value from the Event or an earlier step."
     );
     expect(
       screen
@@ -137,6 +137,21 @@ describe("ActionConfigRenderer", () => {
         .getByRole("textbox", { name: "Subject" })
         .getAttribute("aria-describedby")
     ).toBe(description.id);
+  });
+
+  it("tells a template field with no description how to insert a value", () => {
+    renderFields({
+      fields: [{ key: "emailBody", label: "Body", type: "template-textarea" }],
+    });
+
+    const hint = screen.getByText(
+      "Type @ to insert a value from the Event or an earlier step."
+    );
+    expect(
+      screen
+        .getByRole("textbox", { name: "Body" })
+        .getAttribute("aria-describedby")
+    ).toBe(hint.id);
   });
 
   it("draws the Connection's stored value in a template field", () => {
@@ -196,6 +211,6 @@ describe("ActionConfigRenderer", () => {
         fields: [subject],
         connectionDefaults: { RESEND_FROM_EMAIL: STORED },
       }).templatePlaceholder()
-    ).toBe("Subject or {{NodeName.title}}");
+    ).toBe("Subject");
   });
 });

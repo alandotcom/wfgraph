@@ -22,6 +22,7 @@ import {
   type WorkflowIssuesOverlayInput,
 } from "#src/components/overlays/workflow-issues-overlay";
 import { useDebouncedValue, useAfterCommit } from "#src/hooks/effects";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
@@ -49,7 +50,8 @@ import {
   isOrdinaryStep,
   revealFocusTarget,
 } from "#src/components/workflow/canvas-reveal/reveal-subject";
-import { revealFieldRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
+import { editFocusTarget } from "#src/components/workflow/canvas-reveal/reveal-edit-target";
+import { requestRevealEditFocusAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { useRevealNavigation } from "#src/components/workflow/canvas-reveal/use-reveal-navigation";
 import { groupWorkflowIssuesForOverlay } from "@wfgraph/shared/graph/workflow-issues";
 import { isConditionNode } from "@wfgraph/shared/graph/node-config";
@@ -116,21 +118,24 @@ export function useCollectWorkflowIssues(): void {
 }
 
 /**
- * The element Canvas Reveal's Focus body should hold the cursor in for an
- * issue naming `fieldKey` on `node`, or undefined when the node's kind offers
- * no Focus body to put it in. An ordinary step focuses the field itself; a
- * Condition's two rule config keys both resolve to its rule builder through
- * `revealFocusTarget`, the same mapping the issue list inside Reveal uses.
+ * The element a node's editor should hold the cursor in for an issue naming
+ * `fieldKey` on `node`, or undefined when the node's editor has no field for
+ * it. A step with no action yet focuses the action picker. An ordinary step
+ * otherwise focuses the field itself, and a Condition's two rule config keys
+ * both resolve to its rule builder through `revealFocusTarget`, the same
+ * mapping the issue list inside Reveal uses.
  */
 function issueFocusTarget(
-  node: WorkflowNode | undefined,
+  node: WorkflowNode,
   fieldKey: string | undefined
 ): string | undefined {
-  if (fieldKey === undefined || !node) {
+  if (fieldKey === undefined) {
     return undefined;
   }
   if (isOrdinaryStep(node)) {
-    return revealFocusTarget("step", fieldKey);
+    return typeof node.data.config?.actionType === "string"
+      ? revealFocusTarget("step", fieldKey)
+      : (editFocusTarget(node) ?? undefined);
   }
   if (isConditionNode(node)) {
     return revealFocusTarget("condition", fieldKey);
@@ -139,18 +144,19 @@ function issueFocusTarget(
 }
 
 /**
- * Open a step, and optionally put the cursor in the field an issue named. On a
- * wide viewport the step opens in Canvas Reveal, in Focus when the node's kind
- * offers Focus for the named field, and Reveal places the step and focuses the
- * field once its form has painted. On a narrow viewport the mobile Reveal
- * sequence opens the step's full-screen inspector over its summary for such a
- * field, and its summary sheet otherwise, and focuses the field the same way.
+ * Open a step with the cursor in the field an issue named, or in its label
+ * when the issue names no field. On a wide viewport the step opens in Canvas
+ * Reveal, which places the step and focuses the field once its editor has
+ * painted. On a narrow viewport the mobile Reveal sequence opens the step's
+ * full-screen editor over its summary for a named field, and its summary sheet
+ * otherwise, and focuses the field the same way.
  */
 export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
   const store = useStore();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const setWorkspaceSelection = useSetAtom(setWorkspaceSelectionAtom);
-  const setRevealFieldRequest = useSetAtom(revealFieldRequestAtom);
+  const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
+  const isMobile = useIsMobile();
   const navigation = useRevealNavigation();
 
   return useCallback(
@@ -174,17 +180,29 @@ export function useGoToStep(): (nodeId: string, fieldKey?: string) => void {
         selection: { nodeIds: [nodeId], edgeIds: [] },
       });
       void navigate({ search, replace: true });
-      const focusTarget = issueFocusTarget(node, fieldKey);
-      setRevealFieldRequest(
-        focusTarget === undefined ? null : { nodeId, targetId: focusTarget }
-      );
+      // A phone's sheet takes focus to its title, so only a named field asks
+      // for more there.
+      const fieldTarget = node ? issueFocusTarget(node, fieldKey) : undefined;
+      if (fieldTarget !== undefined || !isMobile) {
+        requestEditFocus({
+          nodeId,
+          targetId: fieldTarget ?? (node ? editFocusTarget(node) : null),
+        });
+      }
       navigation.openNode({
         address,
         nodeId,
-        level: focusTarget === undefined ? undefined : "focus",
+        level: fieldTarget === undefined ? undefined : "focus",
       });
     },
-    [navigate, navigation, setRevealFieldRequest, setWorkspaceSelection, store]
+    [
+      isMobile,
+      navigate,
+      navigation,
+      requestEditFocus,
+      setWorkspaceSelection,
+      store,
+    ]
   );
 }
 

@@ -209,7 +209,7 @@ const linearIntegration = defineIntegration({
           key: "ticketTitle",
           label: "Ticket Title",
           type: "template-input",
-          placeholder: "Bug report or {{NodeName.title}}",
+          placeholder: "Bug report",
           example: "Bug: Login button not working",
           required: true,
         },
@@ -217,8 +217,7 @@ const linearIntegration = defineIntegration({
           key: "ticketDescription",
           label: "Description",
           type: "template-textarea",
-          placeholder:
-            "Description. Use {{NodeName.field}} to insert data from previous nodes.",
+          placeholder: "Description",
           rows: 4,
           example: "Users are unable to click the login button on mobile.",
         },
@@ -268,13 +267,13 @@ const linearIntegration = defineIntegration({
           key: "linearAssigneeId",
           label: "Assignee (User ID)",
           type: "template-input",
-          placeholder: "user-id-123 or {{NodeName.userId}}",
+          placeholder: "user-id-123",
         },
         {
           key: "linearTeamId",
           label: "Team ID (optional)",
           type: "template-input",
-          placeholder: "team-id-456 or {{NodeName.teamId}}",
+          placeholder: "team-id-456",
         },
         {
           key: "linearStatus",
@@ -295,7 +294,7 @@ const linearIntegration = defineIntegration({
           key: "linearLabel",
           label: "Label (optional)",
           type: "template-input",
-          placeholder: "bug, feature, etc. or {{NodeName.label}}",
+          placeholder: "bug, feature, etc.",
         },
       ],
       handler: Effect.fn(function* (bag) {

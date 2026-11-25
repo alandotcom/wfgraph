@@ -152,7 +152,7 @@ export function ConditionFieldCombobox({
     >
       <ComboboxInput
         aria-label="Select field"
-        className="min-w-[280px]"
+        className="w-full min-w-0"
         placeholder="Select field"
         triggerLabel="Show the fields"
       />

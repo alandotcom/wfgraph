@@ -51,9 +51,9 @@ import { useRevealCanvasWidth } from "./use-reveal-width";
  * Canvas Reveal: the desktop inspector floating over the right of the canvas
  * box. Every subject and open level shares one width. From a 1024px canvas a
  * handle on its left edge resizes that shared width. The subject's kind supplies
- * the header and bodies. Escape,
- * Back, and Close unwind one level
- * at a time and hand focus back to what opened it. Below `md` the mobile Reveal
+ * the header and bodies. A Draft object shows its editor at the one open level.
+ * Escape and Back take one step back as the kind defines it, Close closes, and
+ * closing hands focus back to what opened Reveal. Below `md` the mobile Reveal
  * sequence replaces it.
  */
 export function CanvasReveal() {
@@ -138,11 +138,12 @@ export function CanvasReveal() {
 
   // Back and Escape both run this, so a kind's own unwind answers both.
   const unwindLevel = () => close(unwoundLevel(level));
-  const unwind = () => {
+  const unwind = (trigger: "back" | "escape") => {
     if (subject && kind?.unwind) {
       kind.unwind({
         subject,
         level: displayedLevel,
+        trigger,
         store,
         unwindLevel,
         returnFocusOnClose,
@@ -160,7 +161,7 @@ export function CanvasReveal() {
     hasOverlays,
     area: areaRef,
     onToggle: toggle,
-    onUnwind: unwind,
+    onUnwind: () => unwind("escape"),
   });
   const {
     ref: scrollRef,
@@ -179,9 +180,9 @@ export function CanvasReveal() {
       : null
   );
 
-  // A field request is answered once its step shows the level holding the
-  // field. This runs after the scroll restore above, and the field's scroll
-  // becomes the position the scope keeps.
+  // A field request is answered once Reveal shows its node, at Focus for a
+  // Runs subject that offers it. This runs after the scroll restore above, and
+  // the field's scroll becomes the position the scope keeps.
   useAfterPaint(
     `${fieldRequest?.nodeId ?? ""}|${fieldRequest?.targetId ?? ""}|${subject?.key ?? ""}|${level}`,
     () => {
@@ -224,7 +225,7 @@ export function CanvasReveal() {
 
   const headerControls: RevealHeaderControls = {
     canFocus: subject?.levels.includes("focus") ?? false,
-    onBack: unwind,
+    onBack: () => unwind("back"),
     onClose: () => close("closed"),
     onToggleFocus: () =>
       showLevel(displayedLevel === "focus" ? "browse" : "focus"),
@@ -251,6 +252,7 @@ export function CanvasReveal() {
           issues,
           workflowName,
           catalog,
+          presentation,
         })}
       />
     );
@@ -259,8 +261,7 @@ export function CanvasReveal() {
     kind && displayedLevel === "focus" && kind.Focus
       ? kind.Focus
       : kind?.Browse;
-  const openFocus = (targetId?: string) => {
-    showLevel("focus");
+  const focusField = (targetId?: string) => {
     if (targetId !== undefined && subject?.nodeId) {
       setFieldRequest({ nodeId: subject.nodeId, targetId });
     }
@@ -271,8 +272,8 @@ export function CanvasReveal() {
         frame={frame}
         key={subject.kind}
         level={displayedLevel}
+        focusField={focusField}
         mobile={null}
-        openFocus={openFocus}
         scrollToTop={scrollToTop}
         subject={subject}
       />

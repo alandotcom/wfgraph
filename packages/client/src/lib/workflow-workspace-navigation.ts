@@ -372,7 +372,7 @@ export const recordInspectorSectionAtom = atom(
     input: {
       address: WorkspaceAddress;
       inspectedId: string;
-      section: string;
+      section: string | null;
     }
   ) => {
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
@@ -387,7 +387,7 @@ export const recordInspectorSectionAtom = atom(
 
 /**
  * Select the node `nodeId` alone in a named address, record `section` as the
- * Focus section its inspector shows, and open Canvas Reveal at Focus. One
+ * section its inspector has open for editing, and open Canvas Reveal. One
  * navigation write holds all three, so the selection cannot start the new
  * object's section over after the section is recorded.
  *
@@ -411,7 +411,7 @@ export const openInspectorSectionAtom = atom(
       updateScopeNavigation(navigation, input.address, (scope) =>
         withDesktopRevealLevel(
           withInspectorSection(selectFromOrigin(scope, input), input.section),
-          "focus"
+          "browse"
         )
       )
     );

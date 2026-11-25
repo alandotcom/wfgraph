@@ -457,8 +457,8 @@ An integration-owned Event names the one it arrives through.
 
 **Action Link**:
 A labelled URL a host action declares, naming a page the host serves, such as a
-preview of the email a node will send. The editor shows it in Canvas Reveal, at
-Browse and at Focus, and fills in the open workflow's id and the node's id.
+preview of the email a node will send. The editor shows it in the node's
+inspector, and fills in the open workflow's id and the node's id.
 Workflow Graph renders nothing behind it and calls no host code when it is
 followed; the host's page reads the node's saved draft with `readDraftNode`
 after its own authorization.
@@ -466,13 +466,13 @@ after its own authorization.
 ### Editor
 
 **Canvas Reveal**:
-The editor's inspector, a panel that floats over the right side of the canvas
-in one of three levels: Closed, Browse, and Focus. Browse summarizes the
-selected object in the active workspace (Draft or Runs), and Focus holds the
-object's complete editor or a run node's evidence. Draft, each run, and each
-entered Group remember their own level, inspected object, scroll position, and
-camera. While the review sheet Publish opens is on screen, it takes Canvas
-Reveal's place. On a phone a sequence of sheets takes its place.
+The editor's inspector, a panel that floats over the right side of the canvas.
+In Draft it is closed or open, and open it holds the selected object's editor.
+In Runs it is Closed, Browse, or Focus: Browse holds the run list or a run, and
+Focus holds a run node's evidence. Draft, each run, and each entered Group
+remember their own level, inspected object, scroll position, and camera. While
+the review sheet Publish opens is on screen, it takes Canvas Reveal's place. On
+a phone a sequence of sheets takes its place.
 _Avoid_: sidebar (the retired resizable panel beside the canvas)
 
 ### Build Agent

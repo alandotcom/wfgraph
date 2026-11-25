@@ -383,7 +383,7 @@ describe("desktop Reveal level", () => {
     );
   });
 
-  it("opens another object's section at Focus in one write", () => {
+  it("opens another object with a section open in one write", () => {
     const store = draftStore();
     store.set(selectOnlyNodeAtom, "draft_step");
     const draft = store.get(activeWorkspaceAddressAtom);
@@ -400,7 +400,7 @@ describe("desktop Reveal level", () => {
       edgeIds: [],
     });
     expect(store.get(activeRevealPresentationAtom)).toMatchObject({
-      revealLevel: "focus",
+      revealLevel: "browse",
       inspected: { kind: "node", id: "child_step" },
       inspectorSection: "connections",
     });

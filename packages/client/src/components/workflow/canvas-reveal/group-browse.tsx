@@ -2,7 +2,10 @@ import { useAtomValue } from "jotai";
 import { sortBy } from "es-toolkit/array";
 import { useMemo } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { NodeDetailsFields } from "#src/components/workflow/node-properties-form";
+import { NodeControls } from "#src/components/workflow/step-controls";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
+import { can } from "#src/lib/authorization";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
 import { groupMemberCountAtom } from "#src/lib/workflow-graph-presentation-store";
 import {
@@ -12,6 +15,8 @@ import {
 } from "#src/lib/workflow-graph-types";
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { cn } from "@wfgraph/shared/utils";
 import { getConditionBranchDisplayLabel } from "@wfgraph/shared/conditions/condition-branch";
 import {
@@ -133,45 +138,32 @@ function GroupStepLinks({ groupId }: { groupId: string }) {
 }
 
 /**
- * Group Focus lists its steps, each opening that step inside the Group.
+ * What a collapsed Group holds and how it connects: `description` when given,
+ * its step count, each step, the outside ports that enter it, the member outlet
+ * it continues from, the outside ports it continues to, and its Group issues.
  */
-export function GroupFocusSections({ groupId }: { groupId: string }) {
-  return (
-    // The form pads its own content, and each section pads itself.
-    <div className="-mx-4 border-t">
-      <Section title="Steps">
-        <GroupStepLinks groupId={groupId} />
-      </Section>
-      <EnterGroupButton groupId={groupId} />
-    </div>
-  );
-}
-
-/**
- * Browse for a collapsed Group: how many steps it holds,
- * each step, the outside ports that enter it, the member outlet it continues
- * from, and the outside ports it continues to, its Group issues, and Enter
- * group, which opens the focused Group canvas. Nothing expands in place.
- */
-export function GroupBrowse({ subject, openFocus }: RevealBodyProps) {
+function GroupSummarySections({
+  groupId,
+  description,
+  focusField,
+}: {
+  groupId: string;
+  description: string | undefined;
+  focusField: RevealBodyProps["focusField"];
+}) {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
-  const groupId = subject.nodeId;
   const memberCount = useAtomValue(
-    useMemo(() => groupMemberCountAtom(groupId ?? ""), [groupId])
+    useMemo(() => groupMemberCountAtom(groupId), [groupId])
   );
-  if (groupId === null) {
-    return null;
-  }
 
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const titleOf = (nodeId: string) => {
     const node = byId.get(nodeId);
     return node ? comparisonNodeTitle(node.data, catalog) : "Unknown step";
   };
-  const description = byId.get(groupId)?.data.description;
   const boundary = analyzeGroupBoundaryById({ nodes, edges, groupId });
   const ownIssues = issues.filter((issue) => issue.nodeId === groupId);
   const memberIds = new Set(boundary.memberIds);
@@ -180,7 +172,7 @@ export function GroupBrowse({ subject, openFocus }: RevealBodyProps) {
   ).length;
 
   return (
-    <div className="pb-4">
+    <>
       <Section title="Group summary">
         {description ? (
           <p className="whitespace-pre-wrap text-sm text-muted-foreground [overflow-wrap:anywhere]">
@@ -225,7 +217,7 @@ export function GroupBrowse({ subject, openFocus }: RevealBodyProps) {
 
       <Section title="Validation">
         {ownIssues.length > 0 || memberIssueCount === 0 ? (
-          <NodeIssueList issues={ownIssues} onSelect={openFocus} />
+          <NodeIssueList issues={ownIssues} onSelect={() => focusField()} />
         ) : null}
         {memberIssueCount > 0 ? (
           <p className="text-muted-foreground text-xs">
@@ -235,7 +227,62 @@ export function GroupBrowse({ subject, openFocus }: RevealBodyProps) {
           </p>
         ) : null}
       </Section>
+    </>
+  );
+}
 
+/**
+ * The inspector of a collapsed Group: its label and description, editable in
+ * place, then its summary, Enter group, which opens the focused Group canvas,
+ * and Ungroup and Delete Group and steps. Nothing expands in place.
+ */
+export function GroupEditor({ subject, frame, focusField }: RevealBodyProps) {
+  const nodes = useAtomValue(nodesAtom);
+  const isGenerating = useAtomValue(isGeneratingAtom);
+  const groupId = subject.nodeId;
+  const node = nodes.find((item) => item.id === groupId);
+  if (groupId === null || !node) {
+    return null;
+  }
+  return (
+    <div className="pb-4">
+      <Section title="Details">
+        <NodeDetailsFields
+          disabled={isGenerating || !can(WfGraphOperations.workflowUpdate.id)}
+          node={node}
+        />
+      </Section>
+      <GroupSummarySections
+        description={undefined}
+        focusField={focusField}
+        groupId={groupId}
+      />
+      <EnterGroupButton groupId={groupId} />
+      <NodeControls className="border-t px-4 pt-3" frame={frame} node={node} />
+    </div>
+  );
+}
+
+/**
+ * The summary sheet of a collapsed Group on a phone: its description, its
+ * summary, and Enter group. The full-screen editor holds the label,
+ * description, Ungroup, and Delete Group and steps.
+ */
+export function GroupSummarySheet({ subject, focusField }: RevealBodyProps) {
+  const nodes = useAtomValue(nodesAtom);
+  const groupId = subject.nodeId;
+  if (groupId === null) {
+    return null;
+  }
+  return (
+    <div className="pb-4">
+      <GroupSummarySections
+        description={
+          nodes.find((node) => node.id === groupId)?.data.description
+        }
+        focusField={focusField}
+        groupId={groupId}
+      />
       <EnterGroupButton groupId={groupId} />
     </div>
   );

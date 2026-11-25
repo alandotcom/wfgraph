@@ -31,6 +31,7 @@ import {
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 import type { RevealBodyProps } from "./reveal-kinds";
 import { NodeIssueList, Section } from "./reveal-sections";
+import { revealFocusTarget } from "./reveal-subject";
 import {
   type SummaryRow,
   summarizeActionFields,
@@ -111,7 +112,7 @@ function WaitEventsSummary({ node }: { node: WorkflowNode }) {
             ) : (
               <p className="text-muted-foreground text-xs">
                 {subscription.match
-                  ? "The match can't be read. Open the editor to fix it."
+                  ? "The match can't be read. Edit the step to fix it."
                   : "Any arrival resumes the run."}
               </p>
             )}
@@ -123,12 +124,48 @@ function WaitEventsSummary({ node }: { node: WorkflowNode }) {
 }
 
 /**
- * Browse for an ordinary step: an editable label, the step's action and
- * connection, its settings as label and value pairs, its validation issues, and
- * its node controls. An issue opens Focus on the field it names.
- * A step with no action chosen shows the action picker.
+ * The inspector of an ordinary step: its complete form, with each issue shown
+ * beneath the field it names, and every issue listed again under Validation,
+ * where choosing one puts focus in its field. A step with no action chosen
+ * shows the action picker.
  */
-export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
+export function StepEditor({ subject, frame, focusField }: RevealBodyProps) {
+  const issues = useAtomValue(workflowIssuesAtom);
+  const { nodeId } = subject;
+  if (nodeId === null) {
+    return null;
+  }
+  return (
+    <NodePropertiesForm frame={frame} nodeId={nodeId}>
+      <div className="space-y-2">
+        <h3 className="font-medium text-sm">Validation</h3>
+        <NodeIssueList
+          issues={issues.filter((issue) => issue.nodeId === nodeId)}
+          onSelect={(fieldKey) =>
+            focusField(
+              fieldKey === undefined
+                ? undefined
+                : revealFocusTarget("step", fieldKey)
+            )
+          }
+        />
+      </div>
+    </NodePropertiesForm>
+  );
+}
+
+/**
+ * The summary sheet of an ordinary step on a phone: an editable label, the
+ * step's action and connection, its settings as label and value pairs, its
+ * validation issues, and its node controls. An issue opens the full-screen
+ * editor on the field it names. A step with no action chosen shows the action
+ * picker.
+ */
+export function StepSummarySheet({
+  subject,
+  frame,
+  focusField,
+}: RevealBodyProps) {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
   const issues = useAtomValue(workflowIssuesAtom);
@@ -193,8 +230,8 @@ export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
                 : "Not set"}
           </p>
         ) : null}
-        {/* Browse shows the action's links as well as Focus, since following
-            one needs no editing. */}
+        {/* The summary shows the action's links as well as the editor, since
+            following one needs no editing. */}
         <ActionLinks actionId={actionType} className="pt-2" nodeId={nodeId} />
       </Section>
 
@@ -220,7 +257,16 @@ export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
       ) : null}
 
       <Section title="Validation">
-        <NodeIssueList issues={nodeIssues} onSelect={openFocus} />
+        <NodeIssueList
+          issues={nodeIssues}
+          onSelect={(fieldKey) =>
+            focusField(
+              fieldKey === undefined
+                ? undefined
+                : revealFocusTarget("step", fieldKey)
+            )
+          }
+        />
       </Section>
 
       <NodeControls className="border-t px-4 pt-3" frame={frame} node={node} />

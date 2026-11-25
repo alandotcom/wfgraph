@@ -30,7 +30,10 @@ import {
   type RevealKind,
   revealKind,
 } from "#src/components/workflow/canvas-reveal/reveal-kinds";
-import { revealResizeSequenceAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
+import {
+  requestRevealEditFocusAtom,
+  revealResizeSequenceAtom,
+} from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { KEYBOARD_RESIZE_SETTLE_MS } from "#src/components/workflow/canvas-reveal/reveal-resize-handle";
 import { rememberedRevealWidthAtom } from "#src/components/workflow/canvas-reveal/reveal-width-preference";
 import { useRevealOccupiedWidth } from "#src/components/workflow/canvas-reveal/use-reveal-width";
@@ -66,7 +69,12 @@ import {
   workflowGraphUpdateAtom,
   workflowWorkspaceViewAtom,
 } from "#src/lib/workflow-ui-store";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+  openNodeRevealFromOriginAtom,
+  setWorkspaceRevealLevelAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import {
   answerWorkflowRunRpc,
@@ -217,7 +225,7 @@ function OccupiedWidthCanvas() {
 function FlowCanvas() {
   const nodes = useAtomValue(displayNodesAtom);
   const onNodesChange = useSetAtom(onNodesChangeAtom);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menu, setMenu] = useState<"pane" | "send" | null>(null);
   return (
     <div data-testid="workflow-canvas" style={{ width: 1200, height: 800 }}>
       <ReactFlow
@@ -226,22 +234,27 @@ function FlowCanvas() {
         nodes={nodes}
         onNodesChange={onNodesChange}
       />
-      <button onClick={() => setMenuOpen(true)} type="button">
+      <button onClick={() => setMenu("pane")} type="button">
         Open canvas menu
+      </button>
+      <button onClick={() => setMenu("send")} type="button">
+        Open step menu
       </button>
       <WorkflowContextMenu
         canEdit
         canInsert
         menuState={
-          menuOpen
-            ? {
-                type: "pane",
-                position: { x: 10, y: 10 },
-                flowPosition: { x: 0, y: 0 },
-              }
-            : null
+          menu === null
+            ? null
+            : menu === "pane"
+              ? {
+                  type: "pane",
+                  position: { x: 10, y: 10 },
+                  flowPosition: { x: 0, y: 0 },
+                }
+              : { type: "node", position: { x: 10, y: 10 }, nodeId: menu }
         }
-        onClose={() => setMenuOpen(false)}
+        onClose={() => setMenu(null)}
       />
     </div>
   );
@@ -342,6 +355,23 @@ async function renderReveal(
   return { view, store, router, update, aside, level, select, escape };
 }
 
+/**
+ * Select `nodeId` and open Reveal as a jump from `originId` does, such as an
+ * Event Split's action, so Back has somewhere to return to.
+ */
+async function openFromOrigin(
+  store: ReturnType<typeof createStore>,
+  input: { nodeId: string; originId: string }
+): Promise<void> {
+  await act(async () => {
+    store.set(openNodeRevealFromOriginAtom, {
+      address: store.get(activeWorkspaceAddressAtom),
+      nodeId: input.nodeId,
+      origin: { nodeId: input.originId },
+    });
+  });
+}
+
 beforeEach(() => {
   setViewportWidth(1440);
   installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
@@ -394,7 +424,7 @@ describe("Canvas Reveal presentation states", () => {
     await waitFor(() => expect(occupied()).toMatch(/^[1-9]\d*px$/));
   });
 
-  it("opens Browse with the workspace, step, path, and status for an Action", async () => {
+  it("opens an Action's editor with the workspace, step, path, and status", async () => {
     const { view, level, select, store } = await renderReveal();
     await select("send");
 
@@ -406,9 +436,13 @@ describe("Canvas Reveal presentation states", () => {
       "Appointment reminders › Send reminder"
     );
     expect(region.textContent).toContain("Ready");
-    expect(region.textContent).toContain("Mailer · Send email");
-    expect(region.textContent).toContain("Not set");
-    expect(region.textContent).toContain("Subject");
+    // Every setting is its field, and the header changes no level.
+    expect(view.getByRole("textbox", { name: "To" })).toBeTruthy();
+    expect(view.getByRole("textbox", { name: "Subject" }).textContent).toBe(
+      "Hi"
+    );
+    expect(view.queryByRole("button", { name: "Focus editor" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Back" })).toBeNull();
 
     await act(async () => {
       store.set(workflowIssuesAtom, [
@@ -424,6 +458,13 @@ describe("Canvas Reveal presentation states", () => {
       ]);
     });
     expect(region.textContent).toContain("1 issue");
+    // The issue shows beneath the field it names and in the Validation list.
+    const field = view
+      .getByRole("textbox", { name: "To" })
+      .closest("div.flex-col");
+    expect(
+      field?.querySelector('[data-slot="field-issues"]')?.textContent
+    ).toBe("To is required.");
     expect(view.getByRole("button", { name: "To is required." })).toBeTruthy();
   });
 
@@ -445,15 +486,17 @@ describe("Canvas Reveal presentation states", () => {
     expect(view.getByRole("link", { name: "Preview letter" })).toBeTruthy();
   });
 
-  it("opens Browse for a Wait with its timing summary", async () => {
+  it("opens a Wait's editor with its timing fields", async () => {
     const { view, select } = await renderReveal();
     await select("wait");
 
-    const region = view.getByRole("complementary", { name: "Step inspector" });
-    expect(view.getByRole("heading", { name: "Wait" })).toBeTruthy();
-    expect(region.textContent).toContain("Wait for time");
-    expect(region.textContent).toContain("24h");
-    expect(view.getByRole("button", { name: "Focus editor" })).toBeTruthy();
+    expect(
+      view.getByRole("complementary", { name: "Step inspector" })
+    ).toBeTruthy();
+    expect(view.getByRole("textbox", { name: "Duration" }).textContent).toBe(
+      "24h"
+    );
+    expect(view.queryByRole("button", { name: "Focus editor" })).toBeNull();
   });
 
   it("shows Event identity and description for an event-mode Wait", async () => {
@@ -466,7 +509,7 @@ describe("Canvas Reveal presentation states", () => {
     expect(region.textContent).toContain("app/reply.received");
   });
 
-  it("opens the Condition inspector at Browse for a Condition, with Focus", async () => {
+  it("opens the Condition inspector on its rule builder", async () => {
     const { view, level, select } = await renderReveal();
     await select("condition");
 
@@ -474,28 +517,26 @@ describe("Canvas Reveal presentation states", () => {
     expect(
       view.getByRole("complementary", { name: "Condition inspector" })
     ).toBeTruthy();
-    expect(view.getByRole("button", { name: "Focus editor" })).toBeTruthy();
+    expect(view.getByRole("region", { name: "Rule builder" })).toBeTruthy();
+    expect(view.queryByRole("button", { name: "Focus editor" })).toBeNull();
     expect(view.queryByTestId("properties-panel")).toBeNull();
   });
 });
 
 describe("Canvas Reveal editing", () => {
-  it("keeps Browse and Focus edits through level changes in one autosave", async () => {
+  it("writes label and description edits to the draft in one autosave", async () => {
     const { view, store, update, select, level } = await renderReveal();
     await select("send");
 
     fireEvent.change(view.getByLabelText("Label"), {
       target: { value: "Send confirmation" },
     });
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    expect(level()).toBe("focus");
     fireEvent.change(view.getByLabelText("Description"), {
       target: { value: "The day before" },
     });
     expect((view.getByLabelText("Label") as HTMLInputElement).value).toBe(
       "Send confirmation"
     );
-    fireEvent.click(view.getByRole("button", { name: "Return to summary" }));
     expect(level()).toBe("browse");
 
     const saved = store.get(nodesAtom).find((item) => item.id === "send");
@@ -509,7 +550,7 @@ describe("Canvas Reveal editing", () => {
     expect(payload).toContain("The day before");
   });
 
-  it("opens Focus on the field an issue names", async () => {
+  it("puts focus in the field an issue names", async () => {
     const { view, store, select, level } = await renderReveal();
     await select("send");
     await act(async () => {
@@ -527,7 +568,7 @@ describe("Canvas Reveal editing", () => {
     });
 
     fireEvent.click(view.getByRole("button", { name: "To is required." }));
-    expect(level()).toBe("focus");
+    expect(level()).toBe("browse");
     await waitFor(() => expect(document.activeElement?.id).toBe("to"));
   });
 
@@ -537,8 +578,9 @@ describe("Canvas Reveal editing", () => {
     const graphUpdate = store.get(workflowGraphUpdateAtom);
 
     await select("send");
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    await escape();
+    fireEvent.change(view.getByLabelText("Label"), {
+      target: { value: "Send reminder" },
+    });
     await escape();
 
     expect(store.get(nodesAtom).map((item) => item.position)).toEqual(
@@ -653,7 +695,7 @@ describe("Canvas Reveal resizing", () => {
     expect(store.get(revealResizeSequenceAtom)).toBe(1);
   });
 
-  it("shares one remembered width between Browse and Focus", async () => {
+  it("shares one remembered width between a step and a Condition", async () => {
     const { view, store, aside, select } = await renderReveal(
       {},
       { canvasWidth: 1440 }
@@ -665,7 +707,7 @@ describe("Canvas Reveal resizing", () => {
     });
     expect(shownWidth(aside())).toBe(736);
 
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    await select("condition");
     expect(shownWidth(aside())).toBe(736);
     await act(async () => {
       fireEvent.keyDown(handle(view), { key: "Home" });
@@ -785,23 +827,13 @@ describe("Canvas Reveal resizing", () => {
 });
 
 describe("Canvas Reveal keyboard and focus", () => {
-  it("unwinds Focus to Browse to Closed and returns focus to each opener", async () => {
+  it("leaves focus on the canvas object and closes on one Escape, returning focus there", async () => {
     const { view, store, select, escape, level } = await renderReveal();
     const card = view.getByText("Send reminder card");
     card.focus();
     await select("send");
-    expect(document.activeElement).toBe(card);
-
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    expect(document.activeElement).toBe(
-      view.getByRole("heading", { name: "Send reminder" })
-    );
-
-    await escape();
     expect(level()).toBe("browse");
-    expect(document.activeElement).toBe(
-      view.getByRole("button", { name: "Focus editor" })
-    );
+    expect(document.activeElement).toBe(card);
 
     await escape();
     expect(level()).toBe("closed");
@@ -834,15 +866,17 @@ describe("Canvas Reveal keyboard and focus", () => {
 
       await act(async () => {
         store.set(selectOnlyNodeAtom, "send");
+        store.set(requestRevealEditFocusAtom, {
+          nodeId: "send",
+          targetId: "label",
+        });
       });
-      fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-      expect(document.activeElement).toBe(
-        view.getByRole("heading", { name: "Send reminder" })
+      await waitFor(() =>
+        expect(document.activeElement).toBe(view.getByLabelText("Label"))
       );
       await escape();
-      expect(document.activeElement).toBe(
-        view.getByRole("button", { name: "Focus editor" })
-      );
+      expect(level()).toBe("closed");
+      expect(document.activeElement).toBe(card);
 
       expect(focus.mock.calls.length).toBeGreaterThanOrEqual(4);
       for (const call of focus.mock.calls) {
@@ -855,21 +889,21 @@ describe("Canvas Reveal keyboard and focus", () => {
     expect(aside()?.classList.contains("overflow-hidden")).toBe(false);
   });
 
-  it("unwinds one level for each Back", async () => {
-    const { view, select, level } = await renderReveal();
+  it("offers Back only where a jump began, and Back returns there", async () => {
+    const { view, store, select, level } = await renderReveal();
     await select("send");
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    expect(view.queryByRole("button", { name: "Back" })).toBeNull();
 
+    await openFromOrigin(store, { nodeId: "send", originId: "wait" });
     fireEvent.click(view.getByRole("button", { name: "Back" }));
     expect(level()).toBe("browse");
-    fireEvent.click(view.getByRole("button", { name: "Back" }));
-    expect(level()).toBe("closed");
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["wait"]);
+    expect(view.queryByRole("button", { name: "Back" })).toBeNull();
   });
 
   it("runs the kind's own unwind for both Back and Escape", async () => {
-    const { view, store, select, escape, level } = await renderReveal();
-    await select("send");
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    const { view, store, escape, level } = await renderReveal();
+    await openFromOrigin(store, { nodeId: "send", originId: "wait" });
     const { subject } = store.get(canvasRevealAtom);
     if (!subject) {
       throw new Error("no Reveal subject for the selected step");
@@ -887,27 +921,26 @@ describe("Canvas Reveal keyboard and focus", () => {
     try {
       fireEvent.click(view.getByRole("button", { name: "Back" }));
       await escape();
-      expect(level()).toBe("focus");
+      expect(level()).toBe("browse");
       expect(unwind).toHaveBeenCalledTimes(2);
       expect(unwind.mock.calls.map(([input]) => input.level)).toEqual([
-        "focus",
-        "focus",
+        "browse",
+        "browse",
       ]);
       expect(unwind.mock.calls[1]?.[0].subject).toBe(subject);
 
       await act(async () => {
         unwind.mock.calls[1]?.[0].unwindLevel();
       });
-      expect(level()).toBe("browse");
+      expect(level()).toBe("closed");
     } finally {
       kind.unwind = ownUnwind;
     }
   });
 
-  it("reopens a closed Reveal at the level it was closed from", async () => {
+  it("reopens a closed Reveal from a selection and from its chevron", async () => {
     const { view, store, select, level } = await renderReveal();
     await select("send");
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
     fireEvent.click(view.getByRole("button", { name: "Close" }));
     expect(level()).toBe("closed");
     expect(store.get(activeSelectionAtom).nodeIds).toEqual(["send"]);
@@ -916,11 +949,23 @@ describe("Canvas Reveal keyboard and focus", () => {
       store.set(clearSelectionAtom);
     });
     await select("wait");
-    expect(level()).toBe("focus");
+    expect(level()).toBe("browse");
 
     fireEvent.click(view.getByRole("button", { name: "Close" }));
     fireEvent.click(view.getByLabelText("Open inspector"));
-    expect(level()).toBe("focus");
+    expect(level()).toBe("browse");
+  });
+
+  it("opens the one level for a Focus level remembered from before", async () => {
+    const { store, select, level } = await renderReveal();
+    await select("send");
+    await act(async () => {
+      store.set(setWorkspaceRevealLevelAtom, {
+        address: store.get(activeWorkspaceAddressAtom),
+        level: "focus",
+      });
+    });
+    expect(level()).toBe("browse");
   });
 
   it("leaves Escape to a control that holds a popup open", async () => {
@@ -937,17 +982,16 @@ describe("Canvas Reveal keyboard and focus", () => {
     expect(level()).toBe("closed");
   });
 
-  it("leaves Escape to an open Select in Focus", async () => {
+  it("leaves Escape to an open Select in the editor", async () => {
     const { view, select, escape, level } = await renderReveal();
     await select("wait");
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
 
     fireEvent.click(
       await view.findByRole("combobox", { name: "How should this step wait?" })
     );
     const option = await view.findByRole("option", { name: "Wait for time" });
     await escape(option);
-    expect(level()).toBe("focus");
+    expect(level()).toBe("browse");
   });
 
   it("leaves Escape alone outside the canvas", async () => {
@@ -963,17 +1007,16 @@ describe("Canvas Reveal keyboard and focus", () => {
 });
 
 describe("Canvas Reveal navigation state", () => {
-  it("restores the Focus level, step, and inspector scroll per scope", async () => {
-    const { view, store, select, aside, level } = await renderReveal();
+  it("restores the open inspector, step, and inspector scroll per scope", async () => {
+    const { store, select, aside, level } = await renderReveal();
     await select("send");
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    expect(level()).toBe("focus");
+    expect(level()).toBe("browse");
 
     const scroller = () =>
       aside()?.querySelector<HTMLElement>(".overflow-y-auto") ?? null;
     const body = scroller();
     if (!body) {
-      throw new Error("the Focus body did not render");
+      throw new Error("the step editor did not render");
     }
     body.scrollTop = 140;
     fireEvent.scroll(body);
@@ -987,7 +1030,7 @@ describe("Canvas Reveal navigation state", () => {
       showWorkspaceRoute(store, {});
     });
 
-    expect(level()).toBe("focus");
+    expect(level()).toBe("browse");
     expect(store.get(activeSelectionAtom).nodeIds).toEqual(["send"]);
     await waitFor(() => expect(scroller()?.scrollTop).toBe(140));
   });
@@ -1058,12 +1101,12 @@ describe("Canvas Reveal over a React Flow canvas", () => {
   it("keeps the step when Backspace or Delete is pressed on a control inside Reveal", async () => {
     const { view, store, select } = await renderReveal({}, flow);
     await select("send");
-    const toggle = view.getByRole("button", { name: "Focus editor" });
-    toggle.focus();
+    const close = view.getByRole("button", { name: "Close" });
+    close.focus();
 
     await act(async () => {
-      fireEvent.keyDown(toggle, { key: "Backspace", bubbles: true });
-      fireEvent.keyDown(toggle, { key: "Delete", bubbles: true });
+      fireEvent.keyDown(close, { key: "Backspace", bubbles: true });
+      fireEvent.keyDown(close, { key: "Delete", bubbles: true });
     });
 
     expect(store.get(nodesAtom).some((item) => item.id === "send")).toBe(true);
@@ -1101,6 +1144,38 @@ describe("Canvas Reveal over a React Flow canvas", () => {
 
     expect(view.queryByRole("button", { name: /Add step/ })).toBeNull();
     expect(level()).toBe("browse");
+  });
+});
+
+describe("Canvas Reveal edit focus", () => {
+  it("opens the step from the context menu's Edit with focus in its label", async () => {
+    const { view, level } = await renderReveal({}, { canvas: FlowCanvas });
+    expect(level()).toBe("closed");
+
+    fireEvent.click(view.getByRole("button", { name: "Open step menu" }));
+    fireEvent.click(
+      await view.findByRole("button", { name: "Edit Send reminder" })
+    );
+
+    expect(level()).toBe("browse");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(view.getByLabelText("Label"))
+    );
+  });
+
+  it("moves focus from the action picker to the first field the chosen action needs", async () => {
+    const { view, store, level } = await renderReveal();
+    await act(async () => {
+      store.set(addNodeAtom, node("new", "", {}));
+    });
+    expect(level()).toBe("browse");
+    expect(document.activeElement).toBe(
+      view.getByPlaceholderText("Search actions...")
+    );
+
+    fireEvent.click(view.getByTestId("action-option-mailer/send"));
+
+    await waitFor(() => expect(document.activeElement?.id).toBe("to"));
   });
 });
 
@@ -1183,7 +1258,7 @@ describe("Canvas Reveal subjects and focus return", () => {
     );
 
     fireEvent.click(view.getByRole("button", { name: "To is required." }));
-    expect(level()).toBe("focus");
+    expect(level()).toBe("browse");
     await waitFor(() => expect(document.activeElement?.id).toBe("to"));
     // Two macrotasks: the scroll restore after paint, then anything later.
     await act(async () => {
@@ -1200,9 +1275,8 @@ describe("Canvas Reveal subjects and focus return", () => {
 
 describe("Template field Escape", () => {
   it("marks a field open only while its menu has rows to draw", async () => {
-    const { view, select } = await renderReveal();
+    const { select } = await renderReveal();
     await select("send");
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
     const field = await waitFor(() => {
       const element = document.getElementById("to");
       if (!element) {

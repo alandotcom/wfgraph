@@ -329,7 +329,7 @@ describe("the mobile Draft Group sequence", () => {
     scrollTo(30);
 
     // Child inspector: existing configuration is edited and autosaves.
-    fireEvent.click(view.getByRole("button", { name: "Open editor" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit step" }));
     expect(sheet()?.dataset.level).toBe("inspector");
     await waitFor(() => expect(scroller()?.scrollTop).toBe(0));
     fireEvent.change(view.getByLabelText("Label"), {
@@ -373,7 +373,7 @@ describe("the mobile Draft Group sequence", () => {
     expect(editor.shownCamera()).toEqual(inspectorCamera);
     await waitFor(() => expect(scroller()?.scrollTop).toBe(30));
     await waitFor(() =>
-      expect(document.activeElement?.textContent).toBe("Open editor")
+      expect(document.activeElement?.textContent).toBe("Edit step")
     );
     fireEvent.click(
       view.getByRole("button", { name: "Back to Initial outreach" })

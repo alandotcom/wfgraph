@@ -312,7 +312,9 @@ past version changed, happen in the review sheet, described under Publication
 review. Entering **Runs** opens the inspector.
 Closing the inspector doesn't change the active view.
 
-Canvas Reveal has three levels: Closed, Browse, and Focus. It floats 8px inside
+In Draft, Canvas Reveal is closed or open, and open it holds the selected
+object's editor. **Runs** adds a level, described below: Browse holds the run
+list or a run, and Focus holds a run node's evidence. Reveal floats 8px inside
 the canvas box's top, right, and bottom edges with a hairline border and
 shadow-sm, and it never resizes the canvas. Every subject uses the same width,
 so selecting another object or moving between Browse and Focus never changes
@@ -342,7 +344,7 @@ When a drag or key press ends, the camera places the subject beside the new
 width once, the way opening Reveal places it. Resizing never moves a step,
 changes the draft, or adds an undo step.
 
-A workflow that holds only its Lifecycle Node shows its starting moves one rank below that card, in a dashed block on the canvas: one line saying it has no steps yet, then **Choose what starts it**, **Add step**, and **Describe it to the agent** when the host runs the build agent. The first opens Lifecycle Focus on Start Events and leaves once a Start Event or schedule exists. The block leaves once the workflow has a step. The build agent's empty panel offers **Explain this workflow** and **Why did the last run fail?**, and each sends at once.
+A workflow that holds only its Lifecycle Node shows its starting moves one rank below that card, in a dashed block on the canvas: one line saying it has no steps yet, then **Choose what starts it**, **Add step**, and **Describe it to the agent** when the host runs the build agent. The first opens the Lifecycle node with its Start Events editor open and leaves once a Start Event or schedule exists. The block leaves once the workflow has a step. The build agent's empty panel offers **Explain this workflow** and **Why did the last run fail?**, and each sends at once.
 
 While Reveal is closed, the Draft canvas shows a Panel-toned card above the
 zoom controls titled **What this workflow does**. Collapsed, it shows the first
@@ -356,23 +358,25 @@ controls and the **Agent** button draw on the card surface, so the graph never
 shows through them.
 
 The Draft canvas rests with Reveal closed. Selecting an ordinary step, which is
-any Action or Wait, opens Browse. A press on a step selects it only when it ends
+any Action or Wait, opens its editor. A press on a step selects it only when it ends
 as a click. Dragging a step never opens Reveal or moves the camera, and dragging
 a step that is not selected clears the selection. A context header names the workspace, the step,
 the path from the workflow through any Group to the step, and the step's
-validation status, beside **Back**, **Focus editor**, and **Close**. Browse is a
-summary: an editable label, the action and its Connection, each setting as a
-label and value with "Not set" for a missing one, and the step's issues, each of
-which opens Focus on the field it names. Focus holds the complete form, and
-**Return to summary** goes back to Browse. Edits write to the draft as they are
-made, so changing level loses nothing and autosave carries on. A step with no
-action chosen shows the action picker in Browse and has no Focus. Selecting a
-collapsed Group opens its summary in Browse: the full description, the step count, each step in stored
+validation status, beside **Close**. It offers **Back** only where a jump
+reached the object, such as the Lifecycle node opened from an Event Split. No
+header control changes a level. A step's editor holds an editable label and
+description, the action and its Connection, and every setting as its field.
+Each issue shows beneath the field it names, and the Validation list repeats
+every issue, where choosing one puts focus in its field. A template field's
+help line says that typing @ inserts a value from the Event or an earlier step.
+Edits write to the draft as they are made, and autosave carries on. A step with no
+action chosen shows the action picker, and choosing an action moves focus to
+the first required field it leaves empty. Selecting a
+collapsed Group opens its editor: its label and description, the step count, each step in stored
 position order, the outside
 steps that enter it, the step it continues from with the Condition branch when
-it leaves by one, the steps it continues to, its issues, and **Enter
-group**. The context menu's **Edit** command opens Focus directly, including when Reveal is closed. Focus holds the Group's label, description, each step, **Enter group**,
-**Ungroup**, and **Delete Group and steps**. In Browse and Focus, each step is
+it leaves by one, the steps it continues to, its issues, **Enter
+group**, **Ungroup**, and **Delete Group and steps**. Each step is
 listed with its issue count and opens that step inside the Group: the Group is
 entered and the step is selected. The collapsed card hides the Group's steps, so
 the card's issue badge and the status in the Group's header count the steps'
@@ -383,55 +387,64 @@ opens that step's own inspector. A connection and a multiple selection show
 their panel at the shared width, under a header holding the panel's title and
 **Close**. **Runs** has a Browse of its own.
 
-Selecting the Lifecycle node opens Browse with the workflow's lifecycle policy:
-an editable label, the Start Events with each payload Start Filter, the
-overlapping-run behavior and whether manual runs are allowed, each schedule in
-words with its next run, the Cancel Events, the tracked Entity with its binding
-in each Event, the eligibility rule and when it is checked, and the validation
-issues. Start Filters and eligibility sit in
+Selecting an object with the pointer opens its editor and leaves keyboard focus
+on the canvas object. The context menu's **Edit**, Enter on a focused object,
+and the command palette finding a step open the editor with focus in its label,
+or in the action picker of a step with no action. **Edit** on a row of the
+workflow's issue list opens the step with focus in the field the row names. A
+step added from the palette opens with focus in the first required field it
+leaves empty, and any other new step opens with focus in the action picker.
+
+Selecting the Lifecycle node opens its inspector with the workflow's lifecycle
+policy, one section each in this order: an editable label, the Start Events
+with each payload Start Filter, the overlapping-run behavior and whether manual
+runs are allowed, each schedule in words with its next run, the Cancel Events,
+the tracked Entity with its binding in each Event, the eligibility rule and when
+it is checked, the Connection each integration Event arrives through, and the
+validation issues. Start Filters and eligibility sit in
 separate sections, and each says what it reads: the arriving Event's payload,
-or the Entity's current state from the host. Each section's edit button opens
-Focus on the matching section, and each issue opens the section that edits what
-it names. Every Lifecycle Rules problem Publish refuses, including a Start or
+or the Entity's current state from the host. Each section's **Edit** shows that
+section's editor in place of its summary, in the same panel, and moves focus to
+the section's heading. **Done** or Escape returns the section to its summary
+and puts focus on its **Edit**. One section is open at a time. Each issue opens
+the section that edits what it names. Every Lifecycle Rules problem Publish refuses, including a Start or
 Cancel Filter reading a path its Event does not declare, is a blocking issue.
-Lifecycle Focus shows a section list beside one section at a time, for
-Start Events, Overlapping runs, Schedule, Cancel Events, Entity, Event
-Connections, and Validation. Entity tracking, its eligibility rule, and the
+Entity tracking, its eligibility rule, and the
 rule's check timing stay together in the Entity section. A schedule is a preset
 (Every hour, Every day at, Every weekday at, Every week on) or a Custom cron
 expression, with its own time zone, starting from the browser's. Each one reads
 back as a sentence and its next three runs. Each schedule saves as it is
 edited. One that cannot be saved, such as an invalid expression or a duplicate,
 stays in the section unsaved, keeps the version it last saved, and is named in
-the Lifecycle warning. The list counts Start Events,
-schedules, Cancel Events, and issues. While the workflow tracks an Entity, its
+the Lifecycle warning, and it stays there when the section returns to its
+summary. While the workflow tracks an Entity, its
 Start and Cancel Events say that their Entity bindings supply run identity and
-show no Correlation Path controls. A control that shows another section moves
-focus to that section's entry in the list. The Lifecycle node shows no Delete.
+show no Correlation Path controls. The Lifecycle node shows no Delete.
 
-A selected Condition opens the same header. Its Browse reads the decision: an
-editable label, one sentence stating when the Condition takes True and which
-AND or OR joins its rules or groups, each rule as a line of text, the steps its
-True and False outlets continue to or a line saying a disconnected branch ends
-the run, the first five values its rules can compare, and its issues. **Edit
-rules** and each issue open Focus on the rule builder. Focus holds the label and
-description, the rule builder open for editing, both branch destinations, every
-available input, the issues, and the enable, Ungroup, and delete controls.
+A selected Condition opens the same header. Its editor starts with one sentence
+stating when the Condition takes True and which AND or OR joins its rules or
+groups. The rule builder sits beneath it, open for editing, with each rule on
+one line: the field and the value share the free width, the operator takes
+less, and the remove button keeps its own slot at the end. Then come the steps
+its True and False outlets continue to, or a line saying a disconnected branch
+ends the run, every value its rules can compare, the label and description, the
+issues, and the enable, Ungroup, and delete controls. Each issue puts focus in
+the rule builder.
 Placing a Condition sets the zoom from its card and both outlet handles, and
 keeps each True and False label on its outgoing edges inside the usable canvas
 too when the label fits at that zoom. A label on an edge to a distant step stays
 off screen.
 
-A selected Event Split opens the same header, with Browse only. Browse names the
+A selected Event Split opens the same header over a summary with no editor. It names the
 Event source its outlets come from: the Lifecycle node's Start Events for a
 split on the Started side, its Cancel Events for a split on the Canceled side,
 or the Wait Subscriptions of the nearest event-mode Wait above it. It lists each
 outlet with the Event's label, optional description, raw Event name, and the step
 its stored connection leads to, or a line saying a disconnected outlet ends the
 run there. The primary action opens the source: **Open Lifecycle Start Events**
-or **Open Lifecycle Cancel Events** selects the Lifecycle node and opens Focus
-on that section, and **Open** followed by the Wait's name selects the Wait and
-opens its Browse. The list also says when no Event source reaches the Event
+or **Open Lifecycle Cancel Events** selects the Lifecycle node with that
+section's editor open, and **Open** followed by the Wait's name selects the Wait
+and opens its editor. **Back** from either returns to the Event Split. The list also says when no Event source reaches the Event
 Split, when an outlet's Event is no longer declared by the app, when a stored
 connection names an Event that no longer reaches it, and when a connection
 leaves by no outlet. Placing an Event Split sets the zoom from its card and its
@@ -520,21 +533,21 @@ each run. On a phone the evidence replaces the run overview in the sheet, and
 its heading takes focus.
 
 Escape and **Back** take one step back as the shown object's kind defines it.
-For a step or Condition that step is one level: Focus to Browse to Closed. For a
-run node's evidence it is the run, for a run it is the run list, and on the run
-list Escape closes Reveal. For the Lifecycle node or a Wait opened from an Event
-Split, the step back selects that Event Split again, and the camera moves only
-if Reveal would cover it. The way back lasts while
+In Draft, Escape belongs to an open select, combobox, menu, autocomplete, or
+dialog first, then to a Lifecycle section open for editing, and then closes
+Reveal. For the Lifecycle node or a Wait opened from an Event Split, Back and
+that last Escape select the Event Split again, and the camera moves only if
+Reveal would cover it. The way back lasts while
 Reveal stays open and the source stays selected alone; closing Reveal or
-selecting anything else ends it, and Back then steps one level. **Close** closes
-Reveal from any level. Escape belongs to an open select, combobox, menu,
-autocomplete, or dialog first.
-Opening Focus moves focus to the step title, returning to Browse puts focus on
-**Focus editor**, and closing returns focus to the canvas object or control that
-opened Browse. Closing keeps the canvas selection. Selecting a step again, or
+selecting anything else ends it, and Back is then no longer offered. For a
+run node's evidence the step back is the run, for a run it is the run list, and
+on the run list Escape closes Reveal. **Close** closes Reveal from any level.
+In Runs, opening Focus moves focus to the title and returning to Browse puts
+focus on **Show evidence**. Closing returns focus to the canvas object or control that
+opened Reveal. Closing keeps the canvas selection. Selecting a step again, or
 the chevron on the canvas's right edge, reopens the level Reveal was closed
-from. Cmd+B opens and closes Canvas Reveal from anywhere but a text field. The level, the inspected step, the
-inspector's scroll position, and the Lifecycle Focus section are remembered
+from. A Focus level remembered for a Draft object opens its editor. Cmd+B opens and closes Canvas Reveal from anywhere but a text field. The level, the inspected step, the
+inspector's scroll position, and the open Lifecycle section are remembered
 separately for Draft, each Group view, the run list, and each run. Levels add
 no browser history.
 
@@ -550,19 +563,21 @@ open Reveal. The camera moves once per change and only when Reveal would cover
 the step or its 64px of neighbors: a step already in the usable canvas stays
 where it is. Opening Reveal and selecting another step can each move it. Closing Reveal by
 any path (Close, Escape, Back,
-clicking empty canvas, or clearing the selection) and returning from Focus to
-Browse never move the camera.
+clicking empty canvas, or clearing the selection), returning from Focus to
+Browse, and opening or closing a Lifecycle section never move the camera.
 
 Below `md`, Draft replaces Canvas Reveal with a sequence of sheets over the
 full-screen canvas. Selecting a step, Condition, Lifecycle node, Event Split,
-collapsed Group, or connection opens its summary sheet: the same Browse body,
-over the bottom of the canvas, which stays pannable and zoomable above it. A
+collapsed Group, or connection opens its summary sheet over the bottom of the
+canvas, which stays pannable and zoomable above it. It reads the object the way
+the desktop editor would summarize it: settings as labels and values, a
+Condition's rules as sentences, and the Lifecycle policy's sections. A
 summary sheet that opens moves the camera once, the least it must, to keep its
 subject above the sheet's top edge, and only when the sheet would cover it. The sheet's header names the object and its
-validation status beside **Open editor**, for an object with a Focus body, and
-**Close**. **Open editor**, an issue, and a Lifecycle section's edit button open
-the full-screen inspector with the Focus body; the Lifecycle section list sits
-above its section there. An Event Split's action opens the Lifecycle inspector
+validation status beside **Close** and the control that opens its full-screen
+editor: **Edit step**, **Edit rules** for a Condition, or **Edit group**. That
+control, an issue, and a Lifecycle section's **Edit** open the full-screen
+editor; the Lifecycle section list sits above its section there. An Event Split's action opens the Lifecycle inspector
 at its section, or the Wait's summary, over the Event Split's summary. Every
 sheet above the first leads with a Back control named for the sheet beneath,
 **Summary** when that sheet shows the same object. Back and Escape remove one
@@ -614,7 +629,7 @@ an independent mobile camera. Viewing the Group changes no coordinates or saved 
 handle on a phone, on a step or on a stub, starts no connection, and a touch on
 it pans the canvas. Selecting a step on the focused canvas opens its summary
 sheet, whose first control is a Back control named for the Group in place of
-**Close**, and **Open editor** opens the step's full-screen inspector.
+**Close**, and **Edit step** opens the step's full-screen editor.
 **Workflow** or browser Back returns to the overview with the Group's summary
 sheet, its scroll position, the overview's camera, and focus on **Enter group**.
 Browser Forward returns to the Group with its sheets, their scroll positions,

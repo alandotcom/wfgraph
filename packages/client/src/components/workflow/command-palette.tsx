@@ -45,7 +45,11 @@ import {
   type PaletteMenuCommand,
   useSettingsCommands,
 } from "#src/hooks/use-app-commands";
-import { revealTitleFocusRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
+import {
+  editFocusTarget,
+  newStepFocusTarget,
+} from "#src/components/workflow/canvas-reveal/reveal-edit-target";
+import { requestRevealEditFocusAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { useAddStep } from "#src/components/workflow/use-add-step";
 import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
@@ -74,6 +78,7 @@ import {
 import {
   canvasEditingLockedAtom,
   displayNodesAtom,
+  nodesAtom,
   presentedGraphAtom,
 } from "#src/lib/workflow-graph-store";
 import { nodePlaces } from "#src/lib/node-place";
@@ -365,7 +370,7 @@ function CommandPaletteDialog({
   const store = useStore();
   // The palette's search box is gone once a row is chosen, so a row that
   // selects a step asks Canvas Reveal to put focus on the step's title.
-  const focusRevealTitle = useSetAtom(revealTitleFocusRequestAtom);
+  const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
   const hintsId = useId();
   const pageId = useId();
 
@@ -432,10 +437,15 @@ function CommandPaletteDialog({
         icon: <ActionIcon action={action} className="size-3.5" />,
         select: () => {
           addStep({ actionType: action.id, at: stepAt });
-          // A step that was added is the one selection.
+          // A step that was added is the one selection, and its inspector
+          // opens with focus on the first field it needs.
           const [added, ...others] = store.get(activeSelectionAtom).nodeIds;
-          if (added !== undefined && others.length === 0) {
-            focusRevealTitle(added);
+          const node = store.get(nodesAtom).find((item) => item.id === added);
+          if (node !== undefined && others.length === 0) {
+            requestEditFocus({
+              nodeId: node.id,
+              targetId: newStepFocusTarget(node, catalog),
+            });
           }
           setPalette(null);
         },
@@ -449,7 +459,7 @@ function CommandPaletteDialog({
     topologyAuthoring,
     addStep,
     store,
-    focusRevealTitle,
+    requestEditFocus,
     setPalette,
   ]);
 
@@ -503,7 +513,10 @@ function CommandPaletteDialog({
             if (
               focusNode({ nodeId: node.id, workflowId: palette.workflowId })
             ) {
-              focusRevealTitle(node.id);
+              requestEditFocus({
+                nodeId: node.id,
+                targetId: editFocusTarget(node),
+              });
               setPalette(null);
             }
           },
@@ -514,7 +527,7 @@ function CommandPaletteDialog({
     displayNodes,
     presentedEdges,
     focusNode,
-    focusRevealTitle,
+    requestEditFocus,
     palette.workflowId,
     setPalette,
   ]);

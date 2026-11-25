@@ -21,6 +21,8 @@ import { menuClassNames } from "#src/components/ui/dropdown-menu";
 import { Kbd } from "#src/components/ui/kbd";
 import { useDomEvent } from "#src/hooks/effects";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
+import { editFocusTarget } from "./canvas-reveal/reveal-edit-target";
+import { requestRevealEditFocusAtom } from "./canvas-reveal/reveal-requests";
 import { useRevealNavigation } from "./canvas-reveal/use-reveal-navigation";
 import {
   copySelectionAtom,
@@ -104,6 +106,7 @@ export function WorkflowContextMenu({
   const ungroupSelected = useSetAtom(ungroupNodeAtom);
   const hasCopiedSelection = useAtomValue(hasCopiedSelectionAtom);
   const selectOnlyNode = useSetAtom(selectOnlyNodeAtom);
+  const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
   const deleteGroupWithMembers = useSetAtom(deleteGroupWithMembersAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const { open: openOverlay } = useOverlay();
@@ -132,18 +135,32 @@ export function WorkflowContextMenu({
     }
   }, [canEdit, menuState, deleteNode, onClose]);
 
+  // Edit opens the inspector with keyboard focus in the object's label, or in
+  // the action picker of a step with no action yet.
   const handleEditNode = useCallback(() => {
     if (menuState?.nodeId) {
       const nodeId = menuState.nodeId;
+      const node = nodes.find((item) => item.id === nodeId);
       onClose();
       selectOnlyNode(nodeId);
       navigation.openNode({
         address: store.get(activeWorkspaceAddressAtom),
         nodeId,
-        level: "focus",
+      });
+      requestEditFocus({
+        nodeId,
+        targetId: node ? editFocusTarget(node) : null,
       });
     }
-  }, [menuState, onClose, selectOnlyNode, navigation, store]);
+  }, [
+    menuState,
+    nodes,
+    onClose,
+    selectOnlyNode,
+    navigation,
+    store,
+    requestEditFocus,
+  ]);
 
   const handleDeleteGroupWithSteps = useCallback(() => {
     if (canEdit && menuState?.nodeId) {

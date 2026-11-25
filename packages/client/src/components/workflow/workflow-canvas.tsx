@@ -70,6 +70,8 @@ import { useGroupScopeNavigation } from "./use-group-scope-navigation";
 import { withoutProjectedDimensions } from "#src/lib/group-scope-canvas";
 import { scopeId } from "#src/lib/workflow-navigation-state";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
+import { editFocusTarget } from "./canvas-reveal/reveal-edit-target";
+import { requestRevealEditFocusAtom } from "./canvas-reveal/reveal-requests";
 import { EmptyWorkflowStart } from "./empty-workflow-start";
 import { LifecycleNode } from "./nodes/lifecycle-node";
 import { useCanvasConnections } from "./use-canvas-connections";
@@ -143,7 +145,10 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const canvasGraph = useAtomValueRawSync(canvasGraphAtom);
   const { nodes, edges } = canvasGraph;
   const graphNodes = useAtomValueRawSync(displayNodesAtom);
-  const { scope } = useAtomValueRawSync(activeWorkspaceAddressAtom);
+  const { scope, key: workspaceKey } = useAtomValueRawSync(
+    activeWorkspaceAddressAtom
+  );
+  const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
   const topologyAuthoring = useTopologyAuthoring();
   const { onNodeDoubleClick } = useGroupScopeNavigation();
   const storeEdges = useAtomValue(edgesAtom);
@@ -580,9 +585,31 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   // on a step that is not selected would select it and open Reveal. Escape
   // only closes or deselects, so that key press stops here. Escape on a
   // selected node still reaches React Flow, which deselects it.
+  // Enter on a focused Draft object inspects it the way a click does, and the
+  // inspector then takes keyboard focus into the object's label, since the
+  // keyboard is how the object was chosen.
   const onCanvasKeyDownCapture = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (event.key !== "Escape" || !(event.target instanceof Element)) {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+      if (
+        event.key === "Enter" &&
+        workspaceKey.workspace === "draft" &&
+        event.target.classList.contains("react-flow__node")
+      ) {
+        const nodeId = event.target.getAttribute("data-id");
+        const node = graphNodes.find((item) => item.id === nodeId);
+        if (node) {
+          inspectNode(node.id);
+          requestEditFocus({
+            nodeId: node.id,
+            targetId: editFocusTarget(node),
+          });
+        }
+        return;
+      }
+      if (event.key !== "Escape") {
         return;
       }
       const nodeId = event.target
@@ -592,7 +619,13 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
         event.stopPropagation();
       }
     },
-    [selection.nodeIds]
+    [
+      graphNodes,
+      inspectNode,
+      requestEditFocus,
+      selection.nodeIds,
+      workspaceKey.workspace,
+    ]
   );
 
   return (

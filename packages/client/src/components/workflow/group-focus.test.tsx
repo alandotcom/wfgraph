@@ -493,8 +493,8 @@ describe("canvas Delete gesture", () => {
     await waitFor(() =>
       expect(store.get(activeSelectionAtom).nodeIds).toEqual(["qualify"])
     );
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    await waitFor(() => expect(reveal()?.dataset.level).toBe("focus"));
+    await waitFor(() => expect(reveal()?.dataset.level).toBe("browse"));
+    view.getByRole("button", { name: "Close" }).focus();
 
     const focusedControl = document.activeElement;
     expect(reveal()?.contains(focusedControl)).toBe(true);
@@ -521,8 +521,7 @@ describe("canvas Delete gesture", () => {
     await waitFor(() =>
       expect(store.get(activeSelectionAtom).nodeIds).toEqual(["qualify"])
     );
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    await waitFor(() => expect(reveal()?.dataset.level).toBe("focus"));
+    await waitFor(() => expect(reveal()?.dataset.level).toBe("browse"));
     const label = view.getByRole("textbox", { name: "Label" });
     label.focus();
 
@@ -733,8 +732,12 @@ describe("the collapsed Group overview", () => {
       fireEvent.click(
         await view.findByRole("button", { name: "Edit Initial outreach" })
       );
-      await waitFor(() => expect(reveal()?.dataset.level).toBe("focus"));
-      expect(view.getByRole("textbox", { name: "Label" })).toBeTruthy();
+      await waitFor(() => expect(reveal()?.dataset.level).toBe("browse"));
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          view.getByRole("textbox", { name: "Label" })
+        )
+      );
       expect(view.getByRole("textbox", { name: "Description" })).toBeTruthy();
       expect(
         view.queryByRole("button", { name: "Edit Initial outreach" })
@@ -743,7 +746,7 @@ describe("the collapsed Group overview", () => {
     }
   );
 
-  it("shows the Group description on its card and in its summary after editing", async () => {
+  it("shows the Group description on its card and in its editor after editing", async () => {
     const description =
       "Welcome returning patients.\nSend the follow-up sequence.";
     const nodes = NODES.map((node) =>
@@ -753,27 +756,24 @@ describe("the collapsed Group overview", () => {
     );
     const { view, select } = await renderEditor("", { nodes, edges: EDGES });
     await select("outreach");
-    const inspector = () =>
-      within(view.getByRole("complementary", { name: "Group inspector" }));
-    expect(
-      inspector().getByText(
-        "Welcome returning patients. Send the follow-up sequence."
-      ).textContent
-    ).toBe(description);
+    const input = () =>
+      within(
+        view.getByRole("complementary", { name: "Group inspector" })
+      ).getByRole<HTMLInputElement>("textbox", { name: "Description" });
     const cardDescription = () =>
       view
         .getByTestId("group-node-outreach")
         .querySelector(".workflow-node-description");
     expect(cardDescription()?.textContent).toBe(description);
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    const input = await view.findByRole("textbox", { name: "Description" });
-    fireEvent.change(input, {
+    expect(input().value).toBe(
+      "Welcome returning patients.Send the follow-up sequence."
+    );
+    fireEvent.change(input(), {
       target: { value: "Updated outreach description" },
     });
-    fireEvent.blur(input);
-    fireEvent.click(view.getByRole("button", { name: "Return to summary" }));
+    fireEvent.blur(input());
     await waitFor(() =>
-      expect(inspector().getByText("Updated outreach description")).toBeTruthy()
+      expect(input().value).toBe("Updated outreach description")
     );
     expect(cardDescription()?.textContent).toBe("Updated outreach description");
   });
@@ -796,11 +796,15 @@ describe("the collapsed Group overview", () => {
     );
   });
 
-  it("offers the Group's steps and Enter group in Focus", async () => {
+  it("offers the Group's details, steps, Enter group, Ungroup, and delete", async () => {
     const { view, store, search, select, reveal } = await renderEditor();
     await select("outreach");
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    await waitFor(() => expect(reveal()?.dataset.level).toBe("focus"));
+    await waitFor(() => expect(reveal()?.dataset.level).toBe("browse"));
+    expect(view.getByRole("textbox", { name: "Label" })).toBeTruthy();
+    expect(view.getByRole("textbox", { name: "Description" })).toBeTruthy();
+    expect(
+      view.getByRole("button", { name: "Delete Group and steps" })
+    ).toBeTruthy();
 
     const steps = view.getByRole("list", { name: "Steps in this Group" });
     expect(steps.textContent).toContain("Send welcome back");
@@ -808,9 +812,6 @@ describe("the collapsed Group overview", () => {
     expect(view.getByRole("button", { name: "Enter group" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Ungroup" })).toBeTruthy();
     expect(view.queryByRole("group", { name: "Layout direction" })).toBeNull();
-    expect(reveal()?.textContent).toContain(
-      "A Group is entered from one outlet outside it, and that outlet can lead to several steps. Inside, steps can branch, join, and end. The Group continues outside from at most one outlet."
-    );
 
     fireEvent.click(view.getByRole("button", { name: "Send welcome back" }));
     await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
@@ -1315,8 +1316,10 @@ describe("the focused Group canvas", () => {
     fireEvent.click(view.getByRole("button", { name: "Enter group" }));
     await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
     await select("welcome");
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    expect(reveal()?.dataset.level).toBe("focus");
+    expect(reveal()?.dataset.level).toBe("browse");
+    expect(
+      view.getByRole("complementary", { name: "Step inspector" })
+    ).toBeTruthy();
 
     await act(async () => {
       router.history.back();
@@ -1335,7 +1338,10 @@ describe("the focused Group canvas", () => {
     await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
     await waitFor(() => expect(renderedNodeIds()).toContain("welcome"));
     expect(store.get(activeSelectionAtom).nodeIds).toEqual(["welcome"]);
-    expect(reveal()?.dataset.level).toBe("focus");
+    expect(reveal()?.dataset.level).toBe("browse");
+    expect(
+      view.getByRole("complementary", { name: "Step inspector" })
+    ).toBeTruthy();
   });
 
   it("leaves from the Workflow button with a pushed route", async () => {

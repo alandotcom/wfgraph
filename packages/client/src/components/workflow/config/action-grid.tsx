@@ -118,6 +118,9 @@ function getInitialViewMode(): ViewMode {
   }
 }
 
+/** The element id of the action picker's search field. */
+export const ACTION_FILTER_ID = "action-filter";
+
 export function ActionGrid({
   onSelectAction,
   disabled,
@@ -211,7 +214,7 @@ export function ActionGrid({
             className="pl-9"
             data-testid="action-search-input"
             disabled={disabled}
-            id="action-filter"
+            id={ACTION_FILTER_ID}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Search actions..."
             ref={searchRef}

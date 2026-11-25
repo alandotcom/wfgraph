@@ -82,7 +82,7 @@ export function EnumMultiValueInput({
       }
       value={selected}
     >
-      <ComboboxChips className="w-[240px] max-w-full">
+      <ComboboxChips className="w-full min-w-0">
         <ComboboxValue>
           {(picked: EnumChoice[]) => (
             <>
@@ -192,7 +192,7 @@ export function TextSetValueInput({
       }}
       value={selected}
     >
-      <ComboboxChips className="w-[240px] max-w-full">
+      <ComboboxChips className="w-full min-w-0">
         <ComboboxValue>
           {(picked: TextSetChoice[]) => (
             <>

@@ -101,8 +101,8 @@ export type ScopePresentation = { camera: WorldCamera | null };
  * a scope that has never been shown. `reopenLevel` is the level a newly
  * selected object opens at. `inspected` is the object the stored level,
  * `inspectorScroll` (pixels from the top, per open level), and
- * `inspectorSection` belong to. `inspectorSection` is the id of the Focus
- * section a sectioned inspector shows, and null shows its first section.
+ * `inspectorSection` belong to. `inspectorSection` is the id of the section a
+ * sectioned inspector has open for editing, and null when none is open.
  * `inspectedOrigin` is where a jump to `inspected` started. It lasts while
  * Reveal stays open and the selection holds `inspected` alone.
  */
@@ -576,8 +576,8 @@ export function withShowSuperseded(
 }
 
 /**
- * Record the Focus section a sectioned inspector shows. Another section starts
- * its Focus scroll at the top.
+ * Record the section a sectioned inspector has open for editing, or null for
+ * none. Another section starts its Focus scroll at the top.
  */
 export function withInspectorSection(
   scope: ScopeNavigation,

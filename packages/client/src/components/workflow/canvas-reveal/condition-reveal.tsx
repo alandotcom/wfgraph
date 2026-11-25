@@ -37,11 +37,11 @@ import type { RevealBodyProps } from "./reveal-kinds";
 import { NodeIssueList, Section } from "./reveal-sections";
 import { CONDITION_RULES_TARGET_ID, revealFocusTarget } from "./reveal-subject";
 
-/** The element id of the Focus heading over the available inputs. */
+/** The element id of the editor's heading over the available inputs. */
 const INPUTS_HEADING_ID = "condition-inputs";
 
-/** How many available values Browse lists before offering the rest in Focus. */
-const BROWSE_VALUE_LIMIT = 5;
+/** How many available values the summary sheet lists before the rest. */
+const SUMMARY_VALUE_LIMIT = 5;
 
 /** "True" or "False", as the canvas labels the outlet. */
 function branchLabel(branch: ConditionBranch): string {
@@ -49,15 +49,15 @@ function branchLabel(branch: ConditionBranch): string {
 }
 
 /**
- * Opens Focus for the issue field `fieldKey`, mapped through
+ * Puts focus in the field of the issue field `fieldKey`, mapped through
  * `revealFocusTarget` to the rule builder for either config key the rules
  * store, and to the field itself otherwise.
  */
 function focusIssueField(
-  openFocus: RevealBodyProps["openFocus"]
+  focusField: RevealBodyProps["focusField"]
 ): (fieldKey?: string) => void {
   return (fieldKey) =>
-    openFocus(
+    focusField(
       fieldKey === undefined
         ? undefined
         : revealFocusTarget("condition", fieldKey)
@@ -70,7 +70,6 @@ type ConditionContext = {
   fields: ConditionSelectableField[];
   branches: Record<ConditionBranch, ConditionBranchTarget[]>;
   issues: WorkflowIssue[];
-  canUpdate: boolean;
   /** Whether the bodies' controls refuse edits. */
   disabled: boolean;
 };
@@ -97,7 +96,6 @@ function useConditionContext(nodeId: string | null): ConditionContext {
     fields,
     branches,
     issues: issues.filter((issue) => issue.nodeId === nodeId),
-    canUpdate,
     disabled: isGenerating || !canUpdate,
   };
 }
@@ -147,14 +145,16 @@ const NO_VALUES_MESSAGE =
 
 /**
  * The Condition's rules read back: one sentence for the logic, then each group
- * and rule. An empty or unreadable model says so.
+ * and rule unless `sentenceOnly`. An empty or unreadable model says so.
  */
 function RulesSummary({
   config,
   fields,
+  sentenceOnly = false,
 }: {
   config: Record<string, unknown> | undefined;
   fields: ConditionSelectableField[];
+  sentenceOnly?: boolean | undefined;
 }) {
   const nodes = useAtomValue(nodesAtom);
   const rules = readStoredConditionRules(config);
@@ -164,7 +164,7 @@ function RulesSummary({
   if (rules.kind === "unreadable") {
     return (
       <p className="text-destructive text-xs">
-        The rules can't be read. Open the rule builder to fix them.
+        The rules can't be read. Use the rule builder to fix them.
       </p>
     );
   }
@@ -172,6 +172,9 @@ function RulesSummary({
     rules.model,
     new Map(fields.map((field) => [field.path, field]))
   );
+  if (sentenceOnly) {
+    return <p className="text-sm">{conditionLogicSentence(model)}</p>;
+  }
   return (
     <div className="space-y-2">
       <p className="text-sm">{conditionLogicSentence(model)}</p>
@@ -181,17 +184,18 @@ function RulesSummary({
 }
 
 /**
- * Browse for a Condition: an editable label, its rules as sentences, where True
- * and False lead, the values its rules can compare, its issues, and its node
- * controls. The rule builder itself is in Focus.
+ * The summary sheet of a Condition on a phone: an editable label, its rules as
+ * sentences, where True and False lead, the values its rules can compare, its
+ * issues, and its node controls. The rule builder is in the full-screen editor,
+ * which the sheet header's Edit rules opens.
  */
-export function ConditionBrowse({
+export function ConditionSummarySheet({
   subject,
   frame,
-  openFocus,
+  focusField,
 }: RevealBodyProps) {
   const { nodeId } = subject;
-  const { node, fields, branches, issues, canUpdate, disabled } =
+  const { node, fields, branches, issues, disabled } =
     useConditionContext(nodeId);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   if (!node || nodeId === null) {
@@ -216,14 +220,6 @@ export function ConditionBrowse({
 
       <Section title="Continue when">
         <RulesSummary config={node.data.config} fields={fields} />
-        <Button
-          onClick={() => openFocus(CONDITION_RULES_TARGET_ID)}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          {canUpdate ? "Edit rules" : "Open rules"}
-        </Button>
       </Section>
 
       <Section title="Branches">
@@ -249,13 +245,13 @@ export function ConditionBrowse({
               earlier steps can be compared.
             </p>
             <ul className="space-y-1">
-              {fields.slice(0, BROWSE_VALUE_LIMIT).map((field) => (
+              {fields.slice(0, SUMMARY_VALUE_LIMIT).map((field) => (
                 <ValueRow field={field} key={field.path} />
               ))}
             </ul>
-            {fields.length > BROWSE_VALUE_LIMIT ? (
+            {fields.length > SUMMARY_VALUE_LIMIT ? (
               <Button
-                onClick={() => openFocus(INPUTS_HEADING_ID)}
+                onClick={() => focusField(INPUTS_HEADING_ID)}
                 size="sm"
                 type="button"
                 variant="ghost"
@@ -268,7 +264,7 @@ export function ConditionBrowse({
       </Section>
 
       <Section title="Validation">
-        <NodeIssueList issues={issues} onSelect={focusIssueField(openFocus)} />
+        <NodeIssueList issues={issues} onSelect={focusIssueField(focusField)} />
       </Section>
 
       <NodeControls className="border-t px-4 pt-3" frame={frame} node={node} />
@@ -277,11 +273,16 @@ export function ConditionBrowse({
 }
 
 /**
- * Focus for a Condition: its label and description, the rule builder open for
- * editing, both branch destinations, every available input, its issues, and its
- * node controls. Every edit writes to the graph store.
+ * The inspector of a Condition: one sentence saying when it takes True, the
+ * rule builder open for editing beneath it, both branch destinations, every
+ * available input, its label and description, its issues, and its node
+ * controls. Every edit writes to the graph store.
  */
-export function ConditionFocus({ subject, frame, openFocus }: RevealBodyProps) {
+export function ConditionEditor({
+  subject,
+  frame,
+  focusField,
+}: RevealBodyProps) {
   const { nodeId } = subject;
   const { node, fields, branches, issues, disabled } =
     useConditionContext(nodeId);
@@ -292,9 +293,9 @@ export function ConditionFocus({ subject, frame, openFocus }: RevealBodyProps) {
 
   return (
     <div className="pb-4">
-      <Section title="Details">
-        <NodeDetailsFields disabled={disabled} node={node} />
-      </Section>
+      <div className="px-4 pt-3" data-slot="condition-sentence">
+        <RulesSummary config={node.data.config} fields={fields} sentenceOnly />
+      </div>
 
       <section
         aria-label="Rule builder"
@@ -338,8 +339,12 @@ export function ConditionFocus({ subject, frame, openFocus }: RevealBodyProps) {
         )}
       </Section>
 
+      <Section title="Details">
+        <NodeDetailsFields disabled={disabled} node={node} />
+      </Section>
+
       <Section title="Validation">
-        <NodeIssueList issues={issues} onSelect={focusIssueField(openFocus)} />
+        <NodeIssueList issues={issues} onSelect={focusIssueField(focusField)} />
       </Section>
 
       <NodeControls className="border-t px-4 pt-3" frame={frame} node={node} />

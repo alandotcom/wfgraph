@@ -63,6 +63,7 @@ import { ActionConfigRenderer } from "./action-config-renderer";
 import type { ConfigOptionsOwner } from "#src/lib/config-options-query";
 import { ConditionBuilderRow } from "./condition-builder-row";
 import { ConfigHelp } from "./config-section";
+import { FieldIssueMessages } from "./field-issues";
 import type { UpdateNodeConfig } from "./node-config-patch";
 import { WaitEventSelect } from "./wait-event-select";
 import {
@@ -296,12 +297,15 @@ function WaitFieldLabel({
   label: string;
 }) {
   return (
-    <div className="flex items-center gap-1">
-      <Label htmlFor={htmlFor} id={id}>
-        {label}
-      </Label>
-      <ConfigHelp label={label}>{children}</ConfigHelp>
-    </div>
+    <>
+      <div className="flex items-center gap-1">
+        <Label htmlFor={htmlFor} id={id}>
+          {label}
+        </Label>
+        <ConfigHelp label={label}>{children}</ConfigHelp>
+      </div>
+      <FieldIssueMessages fieldKey={htmlFor} />
+    </>
   );
 }
 
@@ -333,8 +337,12 @@ function WaitDurationField({
         id="waitDuration-label"
         label={WAIT_FIELD_LABELS.waitDuration}
       >
-        Counting starts when the run reaches this step. A typed length can be
-        24h, 90m, milliseconds, or an ISO 8601 duration such as P1D.
+        <p>Counting starts when the run reaches this step.</p>
+        <p>
+          A typed length can be 24h, 90m, milliseconds, or an ISO 8601 duration
+          such as P1D.
+        </p>
+        <p>Type @ to use a length from the Event or an earlier step.</p>
       </WaitFieldLabel>
       <ButtonGroup
         aria-label="Common durations"
@@ -669,6 +677,7 @@ function EventWaitFields({ config, onUpdateConfig, disabled }: WaitFieldProps) {
           placeholder={DEFAULT_WAIT_TIMEOUT}
           value={readConfigString(config, "waitTimeout")}
         />
+        <FieldIssueMessages fieldKey="waitTimeout" />
       </div>
 
       <div className="space-y-2">
@@ -1043,6 +1052,7 @@ export function ActionConfig({
             onChange={(id) => onUpdateConfig({ integrationId: id })}
             value={readConfigString(config, "integrationId")}
           />
+          <FieldIssueMessages fieldKey="integrationId" />
         </div>
       )}
 

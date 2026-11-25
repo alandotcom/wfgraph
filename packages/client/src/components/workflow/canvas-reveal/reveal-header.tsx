@@ -24,8 +24,8 @@ export type RevealHeaderModel = {
   /** Whether Back is offered. Close is always offered. */
   showsBack: boolean;
   /**
-   * The Focus toggle's text at Browse and at Focus, for a kind whose Focus is
-   * no editor. Absent, it reads "Focus editor" and "Return to summary".
+   * The Focus toggle's text at Browse and at Focus, for a kind that offers
+   * Focus. Absent, the header shows no Focus toggle.
    */
   focusToggleText?: { browse: string; focus: string } | undefined;
 };
@@ -76,8 +76,9 @@ function RevealPath({
 
 /**
  * Canvas Reveal's context header: the workspace, the object shown, the path to
- * it, and its status, with Back, the Focus toggle, and Close. The title takes
- * focus when Focus opens, so it carries `tabIndex={-1}`.
+ * it, and its status, with Back where the model offers it, the Focus toggle for
+ * a kind with Focus, and Close. The title takes focus when Focus opens, so it
+ * carries `tabIndex={-1}`.
  */
 export function RevealHeader({
   model,
@@ -90,7 +91,7 @@ export function RevealHeader({
 }) {
   const { canFocus, onBack, onToggleFocus, onClose, titleRef, focusToggleRef } =
     controls;
-  const { status } = model;
+  const { status, focusToggleText } = model;
   return (
     <header className="shrink-0 border-b px-3 py-2">
       <div className="flex items-center gap-1">
@@ -118,7 +119,7 @@ export function RevealHeader({
         >
           {model.title}
         </h2>
-        {canFocus ? (
+        {canFocus && focusToggleText ? (
           <Button
             onClick={onToggleFocus}
             ref={focusToggleRef}
@@ -127,9 +128,7 @@ export function RevealHeader({
             variant="outline"
           >
             {level === "focus" ? <Minimize2 /> : <Maximize2 />}
-            {level === "focus"
-              ? (model.focusToggleText?.focus ?? "Return to summary")
-              : (model.focusToggleText?.browse ?? "Focus editor")}
+            {level === "focus" ? focusToggleText.focus : focusToggleText.browse}
           </Button>
         ) : null}
         <Button

@@ -80,7 +80,7 @@ function TextSetValueHarness({
 }
 
 describe("TextSetValueInput", () => {
-  it("keeps the value control at the standard field width", () => {
+  it("fills the value slot of its rule row", () => {
     const view = render(
       <TextSetValueHarness
         initialValues={["a@example.com", "b@example.com"]}
@@ -93,8 +93,8 @@ describe("TextSetValueInput", () => {
       .getByLabelText("Add email values")
       .closest('[data-slot="combobox-chips"]');
     const classes = chips?.className.split(/\s+/) ?? [];
-    expect(classes).toContain("w-[240px]");
-    expect(classes).toContain("max-w-full");
+    expect(classes).toContain("w-full");
+    expect(classes).toContain("min-w-0");
   });
 
   it("shows every stored value and edits the list by typing", () => {
@@ -196,7 +196,7 @@ describe("EnumMultiValueInput", () => {
     enumValues: ["active", "paused"],
   });
 
-  it("keeps the value control at the standard field width", () => {
+  it("fills the value slot of its rule row", () => {
     const view = render(
       <EnumMultiValueHarness
         field={STATUS_FIELD}
@@ -210,8 +210,8 @@ describe("EnumMultiValueInput", () => {
       .getByLabelText("Select status values")
       .closest('[data-slot="combobox-chips"]');
     const classes = chips?.className.split(/\s+/) ?? [];
-    expect(classes).toContain("w-[240px]");
-    expect(classes).toContain("max-w-full");
+    expect(classes).toContain("w-full");
+    expect(classes).toContain("min-w-0");
   });
 
   it("labels a chip with the field's enum label", () => {

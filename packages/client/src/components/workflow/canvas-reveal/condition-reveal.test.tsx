@@ -7,10 +7,16 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { Schema } from "effect";
-import { createStore, Provider as JotaiProvider } from "jotai";
+import { createStore, Provider as JotaiProvider, useAtomValue } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayContainer } from "#src/components/overlays/overlay-container";
@@ -60,6 +66,8 @@ import {
 } from "@wfgraph/shared/conditions/conditions";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { CanvasReveal } from "./canvas-reveal";
+import { canvasRevealAtom } from "./canvas-reveal-state";
+import { ConditionSummarySheet } from "./condition-reveal";
 
 const EVENT = "app/patient.updated";
 
@@ -186,6 +194,11 @@ async function renderCondition(input: {
   upstream?: boolean;
   /** Places the Condition inside a Group frame. */
   grouped?: boolean;
+  /**
+   * Also renders the phone's summary sheet body, whose `focusField` is this
+   * function.
+   */
+  summarySheet?: (targetId?: string) => void;
 }) {
   const update = vi.fn(async (..._args: unknown[]) => savedWorkflow("wf_1"));
   const store = createStore();
@@ -228,6 +241,9 @@ async function renderCondition(input: {
         <div data-testid="workflow-canvas" tabIndex={-1} />
         <CanvasReveal />
         <ShowIssuesButton />
+        {input.summarySheet ? (
+          <SummarySheet focusField={input.summarySheet} />
+        ) : null}
       </div>
     ),
   });
@@ -272,6 +288,10 @@ async function renderCondition(input: {
     }
     return element;
   };
+  /** The sentence over the rule builder saying when the Condition is True. */
+  const sentence = () =>
+    view.container.querySelector('[data-slot="condition-sentence"]')
+      ?.textContent;
   return {
     view,
     store,
@@ -279,8 +299,30 @@ async function renderCondition(input: {
     aside,
     region,
     section,
+    sentence,
     level: () => aside()?.dataset.level,
   };
+}
+
+/** The phone's Condition summary sheet body for the selected Condition. */
+function SummarySheet({
+  focusField,
+}: {
+  focusField: (targetId?: string) => void;
+}) {
+  const subject = useAtomValue(canvasRevealAtom).subject;
+  return subject ? (
+    <div data-testid="summary-sheet">
+      <ConditionSummarySheet
+        focusField={focusField}
+        frame={{ confirm: vi.fn() }}
+        level="browse"
+        mobile={null}
+        scrollToTop={vi.fn()}
+        subject={subject}
+      />
+    </div>
+  ) : null;
 }
 
 function setViewportWidth(width: number): void {
@@ -300,8 +342,8 @@ afterEach(() => {
   resetAuthorizationGrantsForTests();
 });
 
-describe("Condition Browse", () => {
-  it("opens a Condition inspector with Browse and Focus", async () => {
+describe("Condition inspector", () => {
+  it("opens on the Condition's editor with no level control", async () => {
     const { view, level, region } = await renderCondition({});
 
     expect(level()).toBe("browse");
@@ -309,15 +351,16 @@ describe("Condition Browse", () => {
     expect(
       view.getByRole("heading", { name: "Patient eligible?" })
     ).toBeTruthy();
-    expect(view.getByRole("button", { name: "Focus editor" })).toBeTruthy();
+    expect(view.getByRole("region", { name: "Rule builder" })).toBeTruthy();
+    expect(view.queryByRole("button", { name: "Focus editor" })).toBeNull();
     expect(view.queryByTestId("properties-panel")).toBeNull();
   });
 
   it("says an empty Condition has no rules, no values, and no branches", async () => {
-    const { section } = await renderCondition({ upstream: false });
+    const { section, sentence } = await renderCondition({ upstream: false });
 
-    expect(section("Continue when").textContent).toContain("No rules yet.");
-    expect(section("Available values").textContent).toContain(
+    expect(sentence()).toBe("No rules yet.");
+    expect(section("Available inputs").textContent).toContain(
       "No values reach this Condition."
     );
     const branches = section("Branches").textContent;
@@ -325,40 +368,43 @@ describe("Condition Browse", () => {
     expect(branches).toContain("A run that takes False ends here.");
   });
 
-  it("reads a single rule as a sentence and names both destinations", async () => {
+  it("states when it takes True above the rule builder and names both destinations", async () => {
     const model: ConditionModel = {
       version: 2,
       groupLogic: "and",
       groups: [{ id: "g1", logic: "and", conditions: [rule("status", "r1")] }],
     };
-    const { section } = await renderCondition({
+    const { view, section, sentence } = await renderCondition({
       config: storedRules(model),
       edges: [TRUE_EDGE, FALSE_EDGE],
     });
 
-    const rules = section("Continue when").textContent;
-    expect(rules).toContain("True when the rule matches, and False otherwise.");
-    expect(rules).toContain("Status");
-    expect(rules).toContain("active");
+    expect(sentence()).toBe("True when the rule matches, and False otherwise.");
+    const sentenceElement = view.container.querySelector(
+      '[data-slot="condition-sentence"]'
+    );
+    const builder = view.getByRole("region", { name: "Rule builder" });
+    expect(
+      sentenceElement?.compareDocumentPosition(builder) ??
+        Node.DOCUMENT_POSITION_PRECEDING
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     const branches = section("Branches").textContent;
     expect(branches).toContain("Continues to Send reminder");
     expect(branches).toContain("Continues to Skip reminder");
-    expect(section("Available values").textContent).toContain(
-      "6 values from earlier steps can be compared."
-    );
+    const inputs = section("Available inputs").textContent;
+    for (const label of [
+      "Status",
+      "Plan",
+      "Region",
+      "Language",
+      "Clinic",
+      "Reminders",
+    ]) {
+      expect(inputs).toContain(label);
+    }
   });
 
-  it("opens Focus on every available input past the first five", async () => {
-    const { view, level } = await renderCondition({});
-
-    fireEvent.click(view.getByRole("button", { name: "Show all 6 values" }));
-    expect(level()).toBe("focus");
-    await waitFor(() =>
-      expect(document.activeElement?.textContent).toBe("Available inputs")
-    );
-  });
-
-  it("reads grouped rules with their AND and OR logic", async () => {
+  it("states grouped rules and offers their AND and OR logic", async () => {
     const model: ConditionModel = {
       version: 2,
       groupLogic: "or",
@@ -371,24 +417,24 @@ describe("Condition Browse", () => {
         { id: "g2", logic: "and", conditions: [rule("reminders", "r3")] },
       ],
     };
-    const { section } = await renderCondition({
+    const { view, section, sentence } = await renderCondition({
       config: storedRules(model),
       edges: [TRUE_EDGE],
     });
 
-    const rules = section("Continue when");
-    expect(rules.textContent).toContain(
+    expect(sentence()).toBe(
       "True when any of the 2 groups matches, and False otherwise."
     );
-    expect(rules.textContent).toContain("AND");
-    expect(rules.textContent).toContain("OR");
+    const builder = view.getByRole("region", { name: "Rule builder" });
+    expect(builder.textContent).toContain("AND");
+    expect(builder.textContent).toContain("OR");
     expect(section("Branches").textContent).toContain(
       "A run that takes False ends here."
     );
   });
 
-  it("marks unreadable rules and opens the rule builder from the issue", async () => {
-    const { view, store, section, level } = await renderCondition({
+  it("marks unreadable rules and puts focus in the rule builder from the issue", async () => {
+    const { view, store, sentence, level } = await renderCondition({
       config: { conditionModel: "{not json", condition: "" },
     });
     await act(async () => {
@@ -405,20 +451,18 @@ describe("Condition Browse", () => {
       ]);
     });
 
-    expect(section("Continue when").textContent).toContain(
-      "The rules can't be read."
-    );
+    expect(sentence()).toContain("The rules can't be read.");
     expect(view.getByText("1 issue")).toBeTruthy();
 
     fireEvent.click(
       view.getByRole("button", { name: "Condition is required." })
     );
-    expect(level()).toBe("focus");
+    expect(level()).toBe("browse");
     await waitFor(() => expect(document.activeElement?.id).toBe("condition"));
     expect(view.getByText("Condition model must be valid JSON")).toBeTruthy();
   });
 
-  it("opens the rule builder from an issue naming the stored model", async () => {
+  it("puts focus in the rule builder from an issue naming the stored model", async () => {
     const { view, store, level } = await renderCondition({});
     await act(async () => {
       store.set(workflowIssuesAtom, [
@@ -439,14 +483,14 @@ describe("Condition Browse", () => {
     fireEvent.click(
       view.getByRole("button", { name: "Condition references a missing step." })
     );
-    expect(level()).toBe("focus");
+    expect(level()).toBe("browse");
     await waitFor(() => expect(document.activeElement?.id).toBe("condition"));
   });
 
   // The workflow issues overlay's own "Edit" button reaches the rule builder
   // through the same `revealFocusTarget` mapping Reveal's own issue list uses
-  // above, rather than opening Browse with the raw `conditionModel` key.
-  it("opens Focus on the rule builder from a conditionModel issue in the workflow issues overlay", async () => {
+  // above, rather than focusing the raw `conditionModel` key.
+  it("puts focus in the rule builder from a conditionModel issue in the workflow issues overlay", async () => {
     const { view, store, level } = await renderCondition({});
     await act(async () => {
       store.set(workflowIssuesAtom, [
@@ -469,7 +513,7 @@ describe("Condition Browse", () => {
       view.getByRole("button", { name: "Edit Condition in Patient eligible?" })
     );
 
-    expect(level()).toBe("focus");
+    expect(level()).toBe("browse");
     await waitFor(() => expect(document.activeElement?.id).toBe("condition"));
   });
 
@@ -486,36 +530,18 @@ describe("Condition Browse", () => {
   });
 });
 
-describe("Condition Focus", () => {
+describe("Condition editor", () => {
   const singleRule: ConditionModel = {
     version: 2,
     groupLogic: "and",
     groups: [{ id: "g1", logic: "and", conditions: [rule("status", "r1")] }],
   };
 
-  it("ungroups a grouped Condition", async () => {
-    const { view, store, level } = await renderCondition({
-      config: storedRules(singleRule),
-      grouped: true,
-    });
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    expect(level()).toBe("focus");
-
-    fireEvent.click(view.getByRole("button", { name: "Ungroup" }));
-
-    const nodes = store.get(nodesAtom);
-    expect(nodes.find((node) => node.id === "group_1")).toBeUndefined();
-    expect(
-      nodes.find((node) => node.id === "condition")?.parentId
-    ).toBeUndefined();
-  });
-
   it("holds the rule builder, inputs, branches, issues, and delete", async () => {
     const { view, section } = await renderCondition({
       config: storedRules(singleRule),
       edges: [TRUE_EDGE],
     });
-    fireEvent.click(view.getByRole("button", { name: "Edit rules" }));
 
     expect(view.getByRole("button", { name: "Add rule set" })).toBeTruthy();
     expect(
@@ -541,16 +567,26 @@ describe("Condition Focus", () => {
     expect(view.getByRole("button", { name: /Delete/ })).toBeTruthy();
   });
 
-  it("keeps rule edits, selection, and scroll between Browse and Focus in one autosave", async () => {
-    const { view, store, update, aside, level, section } =
+  it("keeps each rule on one line with its remove button", async () => {
+    const { view } = await renderCondition({
+      config: storedRules(singleRule),
+    });
+
+    const remove = view.getByRole("button", { name: /Remove condition on/ });
+    const row = remove.parentElement;
+    expect(row?.classList.contains("grid")).toBe(true);
+    expect(row?.classList.contains("flex-wrap")).toBe(false);
+    expect(row?.children).toHaveLength(4);
+  });
+
+  it("writes rule and description edits in one autosave and keeps its scroll", async () => {
+    const { view, store, update, aside, level, sentence } =
       await renderCondition({
         config: storedRules(singleRule),
         edges: [TRUE_EDGE, FALSE_EDGE],
       });
     const history = store.get(historyAtom);
-
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    expect(level()).toBe("focus");
+    expect(level()).toBe("browse");
     expect(store.get(historyAtom)).toBe(history);
     expect(store.get(hasUnsavedChangesAtom)).toBe(false);
 
@@ -562,24 +598,16 @@ describe("Condition Focus", () => {
       aside()?.querySelector<HTMLElement>(".overflow-y-auto") ?? null;
     const body = scroller();
     if (!body) {
-      throw new Error("the Focus body did not render");
+      throw new Error("the Condition editor did not render");
     }
     body.scrollTop = 180;
     fireEvent.scroll(body);
     fireEvent(body, new Event("scrollend"));
 
-    fireEvent.click(view.getByRole("button", { name: "Return to summary" }));
-    expect(level()).toBe("browse");
-    expect(section("Continue when").textContent).toContain(
+    expect(sentence()).toBe(
       "True when each of the 2 rules matches, and False otherwise."
     );
     expect(store.get(activeSelectionAtom).nodeIds).toEqual(["condition"]);
-
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    expect(level()).toBe("focus");
-    expect((view.getByLabelText("Description") as HTMLInputElement).value).toBe(
-      "Only active patients"
-    );
     expect(
       view.getAllByRole("button", { name: /Remove condition on/ })
     ).toHaveLength(2);
@@ -591,5 +619,34 @@ describe("Condition Focus", () => {
     const payload = JSON.stringify(update.mock.calls[0]);
     expect(payload).toContain("conditionModel");
     expect(payload).toContain("Only active patients");
+  });
+});
+
+describe("Condition summary sheet", () => {
+  it("reads the rules as sentences and opens the editor for every value past five", async () => {
+    const model: ConditionModel = {
+      version: 2,
+      groupLogic: "and",
+      groups: [{ id: "g1", logic: "and", conditions: [rule("status", "r1")] }],
+    };
+    const focusField = vi.fn();
+    const { view } = await renderCondition({
+      config: storedRules(model),
+      edges: [TRUE_EDGE, FALSE_EDGE],
+      summarySheet: focusField,
+    });
+    const sheet = view.getByTestId("summary-sheet");
+
+    expect(sheet.textContent).toContain(
+      "True when the rule matches, and False otherwise."
+    );
+    expect(sheet.textContent).toContain("Status");
+    expect(sheet.textContent).toContain(
+      "6 values from earlier steps can be compared."
+    );
+    fireEvent.click(
+      within(sheet).getByRole("button", { name: "Show all 6 values" })
+    );
+    expect(focusField).toHaveBeenCalledWith("condition-inputs");
   });
 });

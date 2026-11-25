@@ -83,15 +83,17 @@ describe("isOrdinaryStep", () => {
 });
 
 describe("matchStepSubject", () => {
-  it("matches a Draft ordinary step, with Focus once its action is chosen", () => {
+  it("matches a Draft ordinary step at one level, with a phone editor once its action is chosen", () => {
     expect(matchStepSubject(input("draft", ["send"]))).toMatchObject({
       kind: "step",
       nodeId: "send",
-      levels: ["browse", "focus"],
+      levels: ["browse"],
+      offersInspectorSheet: true,
     });
     expect(matchStepSubject(input("draft", ["blank"]))).toMatchObject({
       kind: "step",
       levels: ["browse"],
+      offersInspectorSheet: false,
     });
   });
 
@@ -103,14 +105,15 @@ describe("matchStepSubject", () => {
 });
 
 describe("matchConditionSubject", () => {
-  it("matches a Draft Condition alone, with Focus and its outlets placed", () => {
+  it("matches a Draft Condition alone at one level, with its outlets placed", () => {
     expect(matchConditionSubject(input("draft", ["condition"]))).toEqual({
       kind: "condition",
       workspace: "draft",
       key: "node:condition",
       nodeId: "condition",
       placement: { kind: "node-outlets", nodeId: "condition" },
-      levels: ["browse", "focus"],
+      levels: ["browse"],
+      offersInspectorSheet: true,
       runsTarget: null,
     });
   });
@@ -126,14 +129,15 @@ describe("matchConditionSubject", () => {
 });
 
 describe("matchGroupSubject", () => {
-  it("matches a Draft Group frame selected alone, with Focus", () => {
+  it("matches a Draft Group frame selected alone at one level", () => {
     expect(matchGroupSubject(input("draft", ["group"]))).toEqual({
       kind: "group",
       workspace: "draft",
       key: "node:group",
       nodeId: "group",
       placement: { kind: "nodes", nodeIds: ["group"] },
-      levels: ["browse", "focus"],
+      levels: ["browse"],
+      offersInspectorSheet: true,
       runsTarget: null,
     });
   });
@@ -146,14 +150,15 @@ describe("matchGroupSubject", () => {
 });
 
 describe("matchLifecycleSubject", () => {
-  it("matches the Draft Lifecycle Node alone, with Focus", () => {
+  it("matches the Draft Lifecycle Node alone at one level", () => {
     expect(matchLifecycleSubject(input("draft", ["lifecycle"]))).toEqual({
       kind: "lifecycle",
       workspace: "draft",
       key: "node:lifecycle",
       nodeId: "lifecycle",
       placement: { kind: "nodes", nodeIds: ["lifecycle"] },
-      levels: ["browse", "focus"],
+      levels: ["browse"],
+      offersInspectorSheet: true,
       runsTarget: null,
     });
   });
@@ -168,7 +173,7 @@ describe("matchLifecycleSubject", () => {
 });
 
 describe("matchEventSplitSubject", () => {
-  it("matches a Draft Event Split alone, at Browse only with its outlets placed", () => {
+  it("matches a Draft Event Split alone, with no editor and its outlets placed", () => {
     expect(matchEventSplitSubject(input("draft", ["split"]))).toEqual({
       kind: "eventSplit",
       workspace: "draft",
@@ -176,6 +181,7 @@ describe("matchEventSplitSubject", () => {
       nodeId: "split",
       placement: { kind: "node-outlets", nodeId: "split" },
       levels: ["browse"],
+      offersInspectorSheet: false,
       runsTarget: null,
     });
   });
@@ -284,11 +290,12 @@ describe("revealFocusTarget", () => {
 
 describe("effectiveRevealLevel", () => {
   it("closes without a subject and limits the level to the subject's levels", () => {
+    const runNode = matchRunsSubject(runsInput("runs", ["send"]));
     const step = matchStepSubject(input("draft", ["send"]));
-    const panel = matchPanelSubject(input("draft", ["split"]));
     expect(effectiveRevealLevel("focus", null)).toBe("closed");
-    expect(effectiveRevealLevel("focus", step)).toBe("focus");
-    expect(effectiveRevealLevel("focus", panel)).toBe("browse");
+    expect(effectiveRevealLevel("focus", runNode)).toBe("focus");
+    // A Focus level remembered for a Draft step opens its one level.
+    expect(effectiveRevealLevel("focus", step)).toBe("browse");
     expect(effectiveRevealLevel("closed", step)).toBe("closed");
   });
 });

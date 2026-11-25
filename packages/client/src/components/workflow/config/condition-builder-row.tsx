@@ -182,7 +182,7 @@ function ConditionValueInput(input: {
       return (
         <>
           <Input
-            className="w-24"
+            className="w-16 shrink-0"
             disabled={disabled}
             min={1}
             onChange={(event) => {
@@ -209,7 +209,7 @@ function ConditionValueInput(input: {
             })}
             value={condition.unit}
           >
-            <SelectTrigger className="w-36">
+            <SelectTrigger className="min-w-0 flex-1">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -226,6 +226,7 @@ function ConditionValueInput(input: {
 
     return (
       <Input
+        className="min-w-0"
         disabled={disabled}
         onChange={(event) => {
           if (!isTimestampAbsoluteConditionRule(condition)) {
@@ -299,7 +300,7 @@ function ConditionValueInput(input: {
           // one of the offered values is chosen.
           value={enumValues.includes(condition.value) ? condition.value : null}
         >
-          <SelectTrigger className="min-w-[240px]">
+          <SelectTrigger className="w-full min-w-0">
             <SelectValue placeholder="Select value" />
           </SelectTrigger>
           <SelectContent>
@@ -315,7 +316,7 @@ function ConditionValueInput(input: {
 
     return (
       <TemplateBadgeInput
-        className="min-w-[240px]"
+        className="w-full min-w-0"
         currentNodeId={currentNodeId}
         disabled={disabled}
         onChange={(value) => {
@@ -684,124 +685,134 @@ export function ConditionBuilderRow({
 
                   return (
                     <div key={condition.id}>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <ConditionFieldCombobox
-                          disabled={disabled || availableFields.length === 0}
-                          fields={availableFields}
-                          onValueChange={(nextField) => {
-                            if (nextField.path === pickedPath) {
-                              return;
-                            }
-
-                            // A row for a key the graph names is a shortcut for
-                            // the record plus that key, and it carries the split
-                            // so the rule it writes is the one typing the key
-                            // would have written.
-                            const chosen: ConditionFieldDefinition =
-                              nextField.recordPath
-                                ? {
-                                    ...nextField,
-                                    path: nextField.recordPath,
-                                    openRecord: true,
-                                  }
-                                : nextField;
-
-                            updateCondition(
-                              group.id,
-                              condition.id,
-                              (existing) => {
-                                const seeded = createDefaultConditionRule(
-                                  chosen,
-                                  existing.id
-                                );
-                                return nextField.recordKey
-                                  ? {
-                                      ...seeded,
-                                      recordKey: nextField.recordKey,
-                                    }
-                                  : seeded;
+                      {/* One line per rule: the field and the value share the
+                          free width, the operator takes less, and the remove
+                          button keeps its own slot at the end. */}
+                      <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,3fr)_auto] items-center gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <ConditionFieldCombobox
+                            disabled={disabled || availableFields.length === 0}
+                            fields={availableFields}
+                            onValueChange={(nextField) => {
+                              if (nextField.path === pickedPath) {
+                                return;
                               }
-                            );
-                          }}
-                          valuePath={pickedPath}
-                        />
 
-                        {condition.recordKey !== undefined && (
-                          <Input
-                            aria-label="Key"
-                            className="w-36"
-                            disabled={disabled}
-                            onChange={(event) =>
+                              // A row for a key the graph names is a shortcut for
+                              // the record plus that key, and it carries the split
+                              // so the rule it writes is the one typing the key
+                              // would have written.
+                              const chosen: ConditionFieldDefinition =
+                                nextField.recordPath
+                                  ? {
+                                      ...nextField,
+                                      path: nextField.recordPath,
+                                      openRecord: true,
+                                    }
+                                  : nextField;
+
                               updateCondition(
                                 group.id,
                                 condition.id,
-                                (existing) => ({
-                                  ...existing,
-                                  // The key alone: every key of a record carries
-                                  // the record's value type, so the operator and
-                                  // the value the builder already chose still
-                                  // stand. Rebuilding the rule here would throw
-                                  // them away on every keystroke.
-                                  recordKey: event.target.value,
-                                })
-                              )
-                            }
-                            placeholder="key"
-                            value={condition.recordKey}
+                                (existing) => {
+                                  const seeded = createDefaultConditionRule(
+                                    chosen,
+                                    existing.id
+                                  );
+                                  return nextField.recordKey
+                                    ? {
+                                        ...seeded,
+                                        recordKey: nextField.recordKey,
+                                      }
+                                    : seeded;
+                                }
+                              );
+                            }}
+                            valuePath={pickedPath}
                           />
-                        )}
 
-                        <Select
-                          disabled={disabled}
-                          items={operatorOptions}
-                          onValueChange={whenChosen((operatorValue) => {
-                            const nextCondition = applyOperatorValueToCondition(
-                              condition,
-                              operatorValue
-                            );
-                            if (!nextCondition) {
-                              return;
-                            }
+                          {condition.recordKey !== undefined && (
+                            <Input
+                              aria-label="Key"
+                              className="w-24 shrink-0"
+                              disabled={disabled}
+                              onChange={(event) =>
+                                updateCondition(
+                                  group.id,
+                                  condition.id,
+                                  (existing) => ({
+                                    ...existing,
+                                    // The key alone: every key of a record carries
+                                    // the record's value type, so the operator and
+                                    // the value the builder already chose still
+                                    // stand. Rebuilding the rule here would throw
+                                    // them away on every keystroke.
+                                    recordKey: event.target.value,
+                                  })
+                                )
+                              }
+                              placeholder="key"
+                              value={condition.recordKey}
+                            />
+                          )}
+                        </div>
 
-                            updateCondition(
-                              group.id,
-                              condition.id,
-                              () => nextCondition
-                            );
-                          })}
-                          value={condition.operator}
-                        >
-                          <SelectTrigger
-                            aria-label={`${conditionName} operator`}
-                            className="min-w-[190px]"
+                        <div className="min-w-0">
+                          <Select
+                            disabled={disabled}
+                            items={operatorOptions}
+                            onValueChange={whenChosen((operatorValue) => {
+                              const nextCondition =
+                                applyOperatorValueToCondition(
+                                  condition,
+                                  operatorValue
+                                );
+                              if (!nextCondition) {
+                                return;
+                              }
+
+                              updateCondition(
+                                group.id,
+                                condition.id,
+                                () => nextCondition
+                              );
+                            })}
+                            value={condition.operator}
                           >
-                            <SelectValue placeholder="Select operator" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {operatorOptions.map((option) => (
-                              <SelectItem
-                                key={option.value}
-                                value={option.value}
-                              >
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                            <SelectTrigger
+                              aria-label={`${conditionName} operator`}
+                              className="w-full min-w-0"
+                            >
+                              <SelectValue placeholder="Select operator" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {operatorOptions.map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                        <ConditionValueInput
-                          condition={condition}
-                          currentNodeId={currentNodeId}
-                          disabled={disabled}
-                          field={selectedFieldDef}
-                          onConditionChange={(nextCondition) => {
-                            updateCondition(
-                              group.id,
-                              condition.id,
-                              () => nextCondition
-                            );
-                          }}
-                        />
+                        <div className="flex min-w-0 items-center gap-2">
+                          <ConditionValueInput
+                            condition={condition}
+                            currentNodeId={currentNodeId}
+                            disabled={disabled}
+                            field={selectedFieldDef}
+                            onConditionChange={(nextCondition) => {
+                              updateCondition(
+                                group.id,
+                                condition.id,
+                                () => nextCondition
+                              );
+                            }}
+                          />
+                        </div>
 
                         <Button
                           aria-label={`Remove condition on ${conditionName}`}
@@ -849,7 +860,7 @@ export function ConditionBuilderRow({
             </div>
           ))}
 
-          <div className="flex justify-center pt-1">
+          <div className="pt-1">
             <Button
               disabled={disabled || !seedField}
               onClick={addGroup}

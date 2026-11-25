@@ -1,7 +1,7 @@
 /**
  * Requests other surfaces make of Canvas Reveal: place nodes in the usable
  * rectangle, place the subject again after a resize, focus an element of a
- * node's Focus body, and focus Reveal's title. The canvas camera answers each
+ * node's inspector, and focus Reveal's title. The canvas camera answers each
  * placement once; the Reveal shell clears a field or title request once it has
  * moved focus.
  */
@@ -39,9 +39,10 @@ export const revealResizeSequenceAtom = atom(0);
 export const revealKeyResizeInProgressAtom = atom(false);
 
 /**
- * An element Canvas Reveal focuses once the node `nodeId` names is shown at
- * Focus. `targetId` is the element id: a field's config key, which is also its
- * control's id, or a section heading's id.
+ * An element Canvas Reveal focuses once it shows the node `nodeId` names, or
+ * once a phone shows that node's full-screen editor. `targetId` is the element
+ * id: a field's config key, which is also its control's id, or a section
+ * heading's id.
  */
 export type RevealFieldRequest = { nodeId: string; targetId: string };
 
@@ -53,3 +54,22 @@ export const revealFieldRequestAtom = atom<RevealFieldRequest | null>(null);
  * asks for this, because the control that had focus is gone.
  */
 export const revealTitleFocusRequestAtom = atom<string | null>(null);
+
+/**
+ * Focus the element `targetId` names in the inspector of `nodeId` once it
+ * shows, or its Reveal title when `targetId` is null, as the edit targets in
+ * `reveal-edit-target.ts` answer.
+ */
+export const requestRevealEditFocusAtom = atom(
+  null,
+  (_get, set, input: { nodeId: string; targetId: string | null }) => {
+    if (input.targetId === null) {
+      set(revealTitleFocusRequestAtom, input.nodeId);
+      return;
+    }
+    set(revealFieldRequestAtom, {
+      nodeId: input.nodeId,
+      targetId: input.targetId,
+    });
+  }
+);

@@ -12,9 +12,13 @@ import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { isGeneratingAtom } from "#src/lib/workflow-ui-store";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
+import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
+import { newStepFocusTarget } from "./canvas-reveal/reveal-edit-target";
+import { requestRevealEditFocusAtom } from "./canvas-reveal/reveal-requests";
 import { ActionConfig } from "./config/action-config";
 import { ActionGrid } from "./config/action-grid";
 import { ActionLinks } from "./config/action-links";
+import { FieldIssuesProvider } from "./config/field-issues";
 import { LifecyclePanel } from "./config/lifecycle-panel";
 import { useNodeConfigWriter } from "./config/use-node-config-writer";
 import type { NodeConfigFrame } from "./node-config-panel";
@@ -68,7 +72,8 @@ export function NodeDetailsFields({
 /**
  * The complete configuration form of one node, whether a step, a Group, or the
  * Lifecycle node: its label and description, its node-specific configuration,
- * and its enable, ungroup, and delete controls. Every value writes straight to
+ * and its enable, ungroup, and delete controls. Each validation issue that
+ * names a field shows beneath that field. Every value writes straight to
  * the graph store, so the form can unmount and mount again without losing an
  * edit or skipping autosave.
  */
@@ -89,6 +94,8 @@ export function NodePropertiesForm({
   const [newlyCreatedNodeId, setNewlyCreatedNodeId] = useAtom(
     newlyCreatedNodeIdAtom
   );
+  const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
+  const catalog = useExtensionCatalog();
 
   const selectedNode = nodes.find((node) => node.id === nodeId);
   if (!selectedNode) {
@@ -114,6 +121,21 @@ export function NodePropertiesForm({
           key={selectedNode.id}
           onSelectAction={(actionType) => {
             handleUpdateConfig({ actionType });
+            // The picker's buttons leave with it, so focus moves to the first
+            // field the chosen action needs, or to the label.
+            requestEditFocus({
+              nodeId: selectedNode.id,
+              targetId: newStepFocusTarget(
+                {
+                  ...selectedNode,
+                  data: {
+                    ...selectedNode.data,
+                    config: { ...selectedNode.data.config, actionType },
+                  },
+                },
+                catalog
+              ),
+            });
             if (selectedNode.id === newlyCreatedNodeId) {
               setNewlyCreatedNodeId(null);
             }
@@ -124,68 +146,70 @@ export function NodePropertiesForm({
   }
 
   return (
-    <div className="space-y-4 p-4">
-      {selectedNode.data.type !== "action" ||
-      selectedNode.data.config?.actionType ? (
-        <NodeDetailsFields
-          disabled={isGenerating || !canUpdate}
-          node={selectedNode}
-        />
-      ) : null}
+    <FieldIssuesProvider nodeId={selectedNode.id}>
+      <div className="space-y-4 p-4">
+        {selectedNode.data.type !== "action" ||
+        selectedNode.data.config?.actionType ? (
+          <NodeDetailsFields
+            disabled={isGenerating || !canUpdate}
+            node={selectedNode}
+          />
+        ) : null}
 
-      {selectedNode.data.type === "group" ? (
-        <p className="text-muted-foreground text-sm">
-          Steps in a Group run the same way they would outside it. A Group is
-          entered from one outlet outside it, and that outlet can lead to
-          several steps. Inside, steps can branch, join, and end. The Group
-          continues outside from at most one outlet.
-        </p>
-      ) : null}
+        {selectedNode.data.type === "group" ? (
+          <p className="text-muted-foreground text-sm">
+            Steps in a Group run the same way they would outside it. A Group is
+            entered from one outlet outside it, and that outlet can lead to
+            several steps. Inside, steps can branch, join, and end. The Group
+            continues outside from at most one outlet.
+          </p>
+        ) : null}
 
-      {selectedNode.data.type === "lifecycle" ? (
-        /* The Lifecycle Rules are the whole of the entry node's configuration.
+        {selectedNode.data.type === "lifecycle" ? (
+          /* The Lifecycle Rules are the whole of the entry node's configuration.
            The payload shape is not asked for here: it belongs to the Events the
            rules name, and the editor derives the fields it offers from them. */
-        <LifecyclePanel
-          config={selectedNode.data.config || {}}
-          disabled={isGenerating || !canUpdate}
-          // Keyed to the node, so the pickers inside start clean for the
-          // entry node being configured. The panel itself holds no state,
-          // but its comboboxes hold a search term, and opening another
-          // workflow puts its entry node in this same slot: unkeyed, the
-          // second node arrives with the first one's filter still typed in.
-          key={selectedNode.id}
-          onUpdateConfig={handleUpdateConfig}
-        />
-      ) : null}
+          <LifecyclePanel
+            config={selectedNode.data.config || {}}
+            disabled={isGenerating || !canUpdate}
+            // Keyed to the node, so the pickers inside start clean for the
+            // entry node being configured. The panel itself holds no state,
+            // but its comboboxes hold a search term, and opening another
+            // workflow puts its entry node in this same slot: unkeyed, the
+            // second node arrives with the first one's filter still typed in.
+            key={selectedNode.id}
+            onUpdateConfig={handleUpdateConfig}
+          />
+        ) : null}
 
-      {selectedNode.data.type === "action" &&
-      !selectedNode.data.config?.actionType ? (
-        <div className="rounded-lg border border-muted bg-muted/30 p-3">
-          <p className="text-muted-foreground text-sm">
-            No action configured for this step.
-          </p>
-        </div>
-      ) : null}
+        {selectedNode.data.type === "action" &&
+        !selectedNode.data.config?.actionType ? (
+          <div className="rounded-lg border border-muted bg-muted/30 p-3">
+            <p className="text-muted-foreground text-sm">
+              No action configured for this step.
+            </p>
+          </div>
+        ) : null}
 
-      {selectedNode.data.type === "action" &&
-      selectedNode.data.config?.actionType ? (
-        <ActionConfig
-          config={selectedNode.data.config || {}}
-          disabled={isGenerating || !canUpdate}
-          canUpdate={canUpdate}
-          key={selectedNode.id}
-          onUpdateConfig={handleUpdateConfig}
-        />
-      ) : null}
+        {selectedNode.data.type === "action" &&
+        selectedNode.data.config?.actionType ? (
+          <ActionConfig
+            config={selectedNode.data.config || {}}
+            disabled={isGenerating || !canUpdate}
+            canUpdate={canUpdate}
+            key={selectedNode.id}
+            onUpdateConfig={handleUpdateConfig}
+          />
+        ) : null}
 
-      {selectedActionId === undefined ? null : (
-        <ActionLinks actionId={selectedActionId} nodeId={selectedNode.id} />
-      )}
+        {selectedActionId === undefined ? null : (
+          <ActionLinks actionId={selectedActionId} nodeId={selectedNode.id} />
+        )}
 
-      {children}
+        {children}
 
-      <NodeControls className="pt-4" frame={frame} node={selectedNode} />
-    </div>
+        <NodeControls className="pt-4" frame={frame} node={selectedNode} />
+      </div>
+    </FieldIssuesProvider>
   );
 }

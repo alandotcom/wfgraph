@@ -11,8 +11,9 @@ import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
 
 /**
  * A Reveal body section: a heading over its content, divided from the next.
- * `headingId` gives the heading an element id that `openFocus` can focus, and
- * `action` is a control shown at the end of the heading row.
+ * `headingId` gives the heading an element id that `focusField` can focus and
+ * makes the section a region named by its heading. `action` is a control shown
+ * at the end of the heading row.
  */
 export function Section({
   title,
@@ -35,7 +36,10 @@ export function Section({
     </h3>
   );
   return (
-    <section className="space-y-2 border-t px-4 py-3 first:border-t-0">
+    <section
+      aria-labelledby={headingId}
+      className="space-y-2 border-t px-4 py-3 first:border-t-0"
+    >
       {action ? (
         <div className="flex items-center justify-between gap-2">
           {heading}

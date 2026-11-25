@@ -248,7 +248,7 @@ describe("mobile Reveal for an ordinary step", () => {
       expect(document.activeElement?.textContent).toBe("Wait 5 days")
     );
 
-    fireEvent.click(view.getByRole("button", { name: "Open editor" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit step" }));
     expect(sheet()?.dataset.level).toBe("inspector");
     expect(levels()).toEqual(["summary", "inspector"]);
     expect(view.getByRole("button", { name: "Back to Summary" })).toBeTruthy();
@@ -266,7 +266,7 @@ describe("mobile Reveal for an ordinary step", () => {
     await select("wait");
     scrollTo(120);
 
-    fireEvent.click(view.getByRole("button", { name: "Open editor" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit step" }));
     await waitFor(() => expect(scroller()?.scrollTop).toBe(0));
     scrollTo(60);
 
@@ -284,7 +284,7 @@ describe("mobile Reveal for an ordinary step", () => {
   it("goes Back one sheet on Escape", async () => {
     const { view, sheet, select, levels } = await renderMobile();
     await select("wait");
-    fireEvent.click(view.getByRole("button", { name: "Open editor" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit step" }));
 
     await act(async () => {
       fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
@@ -300,7 +300,7 @@ describe("mobile Reveal for an ordinary step", () => {
   it("edits through the inspector and autosaves, and offers no delete", async () => {
     const { view, store, select, update } = await renderMobile();
     await select("wait");
-    fireEvent.click(view.getByRole("button", { name: "Open editor" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit step" }));
 
     fireEvent.change(view.getByLabelText("Label"), {
       target: { value: "Wait a week" },
@@ -328,10 +328,10 @@ describe("mobile Reveal focus and camera", () => {
   it("returns focus on Back to the control that opened the sheet, or to the title", async () => {
     const { view, store, select } = await renderMobile();
     await select("wait");
-    fireEvent.click(view.getByRole("button", { name: "Open editor" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit step" }));
     fireEvent.click(view.getByRole("button", { name: "Back to Summary" }));
     await waitFor(() =>
-      expect(document.activeElement?.textContent).toBe("Open editor")
+      expect(document.activeElement?.textContent).toBe("Edit step")
     );
 
     act(() => {
@@ -377,7 +377,7 @@ describe("mobile Reveal focus and camera", () => {
     expect(node()?.closest("[inert]")).toBeNull();
     expect(agent().closest("[inert]")).toBeNull();
 
-    fireEvent.click(view.getByRole("button", { name: "Open editor" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit step" }));
     expect(node()?.closest("[inert]")).not.toBeNull();
     expect(agent().closest("[inert]")).not.toBeNull();
     const inspector = view.getByRole("region", { name: "Step inspector" });
@@ -411,7 +411,7 @@ describe("mobile Reveal focus and camera", () => {
       });
     await select("wait");
     record({ centerX: 5, centerY: 15, zoom: 1.2 });
-    fireEvent.click(view.getByRole("button", { name: "Open editor" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit step" }));
     const shown = { centerX: 90, centerY: 90, zoom: 0.5 };
     record(shown);
 
@@ -432,7 +432,7 @@ describe("mobile Reveal for complex nodes", () => {
       view.getByRole("region", { name: "Condition inspector" })
     ).toBeTruthy();
 
-    fireEvent.click(view.getByRole("button", { name: "Open editor" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit rules" }));
     expect(sheet()?.dataset.level).toBe("inspector");
     expect(view.getByRole("region", { name: "Rule builder" })).toBeTruthy();
 
@@ -468,7 +468,7 @@ describe("mobile Reveal for complex nodes", () => {
     expect(
       view.getByRole("region", { name: "Event Split inspector" })
     ).toBeTruthy();
-    expect(view.queryByRole("button", { name: "Open editor" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Edit step" })).toBeNull();
 
     fireEvent.click(
       view.getByRole("button", { name: "Open Lifecycle Start Events" })

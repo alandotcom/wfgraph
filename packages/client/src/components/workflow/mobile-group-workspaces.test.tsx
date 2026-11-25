@@ -682,7 +682,7 @@ describe("mobile workspace switching inside Groups", () => {
     press(/Enter group/);
     await waitFor(() => expect(search()).toEqual({ group: "outreach" }));
     await editor.tapNode("case_study");
-    press("Open editor");
+    press("Edit step");
     await waitFor(() =>
       expect(editor.sheet()?.dataset.level).toBe("inspector")
     );

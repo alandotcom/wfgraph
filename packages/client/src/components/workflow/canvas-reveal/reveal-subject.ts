@@ -46,8 +46,17 @@ export type RevealSubject = {
   /** The one node the subject is about, or null when it is about no single node. */
   nodeId: string | null;
   placement: RevealPlacement;
-  /** The open levels the subject offers, Browse first. */
+  /**
+   * The open levels desktop Canvas Reveal offers, Browse first. A Draft
+   * subject offers Browse alone, which holds its editable form.
+   */
   levels: readonly OpenRevealLevel[];
+  /**
+   * Whether the phone sequence offers an inspector sheet that covers the
+   * canvas over the subject's summary sheet: a Draft object's full-screen
+   * editor, or a run node's evidence.
+   */
+  offersInspectorSheet: boolean;
   /**
    * What a Runs subject inspects: a node's evidence or a Group's run summary.
    * Null for the run list, the run overview, and every other kind.
@@ -96,8 +105,9 @@ function selectedGraph(input: RevealMatchInput): {
 }
 
 /**
- * A Draft ordinary step selected alone. It offers Focus once its action is
- * chosen, because the action picker is all there is before that.
+ * A Draft ordinary step selected alone. On a phone it offers the full-screen
+ * editor once its action is chosen, because the action picker is all there is
+ * before that.
  */
 export function matchStepSubject(
   input: RevealMatchInput
@@ -116,17 +126,15 @@ export function matchStepSubject(
     key: `node:${onlyNode.id}`,
     nodeId: onlyNode.id,
     placement: { kind: "nodes", nodeIds: [onlyNode.id] },
-    levels:
-      typeof onlyNode.data.config?.actionType === "string"
-        ? ["browse", "focus"]
-        : ["browse"],
+    levels: ["browse"],
+    offersInspectorSheet: typeof onlyNode.data.config?.actionType === "string",
     runsTarget: null,
   };
 }
 
 /**
- * A Draft Condition selected alone. It offers Browse and Focus, and the camera
- * keeps its True and False outlets, and the labels that fit, in view with it.
+ * A Draft Condition selected alone. The camera keeps its True and False
+ * outlets, and the labels that fit, in view with it.
  */
 export function matchConditionSubject(
   input: RevealMatchInput
@@ -145,15 +153,15 @@ export function matchConditionSubject(
     key: `node:${onlyNode.id}`,
     nodeId: onlyNode.id,
     placement: { kind: "node-outlets", nodeId: onlyNode.id },
-    levels: ["browse", "focus"],
+    levels: ["browse"],
+    offersInspectorSheet: true,
     runsTarget: null,
   };
 }
 
 /**
  * A Draft Group frame selected alone, which the overview shows as a collapsed
- * card. Browse summarizes the Group and enters it; Focus holds the frame's
- * complete form.
+ * card.
  */
 export function matchGroupSubject(
   input: RevealMatchInput
@@ -172,15 +180,16 @@ export function matchGroupSubject(
     key: `node:${onlyNode.id}`,
     nodeId: onlyNode.id,
     placement: { kind: "nodes", nodeIds: [onlyNode.id] },
-    levels: ["browse", "focus"],
+    levels: ["browse"],
+    offersInspectorSheet: true,
     runsTarget: null,
   };
 }
 
 /**
- * A Draft Event Split selected alone. It offers Browse only, because its
- * outlets follow the Events that reach it, and the camera keeps its outlet
- * handles and the labels that fit in view the same way a Condition does.
+ * A Draft Event Split selected alone. It has no editor, because its outlets
+ * follow the Events that reach it, and the camera keeps its outlet handles and
+ * the labels that fit in view the same way a Condition does.
  */
 export function matchEventSplitSubject(
   input: RevealMatchInput
@@ -200,14 +209,12 @@ export function matchEventSplitSubject(
     nodeId: onlyNode.id,
     placement: { kind: "node-outlets", nodeId: onlyNode.id },
     levels: ["browse"],
+    offersInspectorSheet: false,
     runsTarget: null,
   };
 }
 
-/**
- * The Draft Lifecycle Node selected alone: its policy summary in Browse and the
- * sectioned policy editor in Focus.
- */
+/** The Draft Lifecycle Node selected alone. */
 export function matchLifecycleSubject(
   input: RevealMatchInput
 ): RevealSubject | null {
@@ -229,7 +236,8 @@ export function matchLifecycleSubject(
     key: `node:${onlyNode.id}`,
     nodeId: onlyNode.id,
     placement: { kind: "nodes", nodeIds: [onlyNode.id] },
-    levels: ["browse", "focus"],
+    levels: ["browse"],
+    offersInspectorSheet: true,
     runsTarget: null,
   };
 }
@@ -263,6 +271,7 @@ export function matchRunsSubject(input: RunsMatchInput): RevealSubject | null {
     kind: "runs" as const,
     workspace: input.workspace,
     levels,
+    offersInspectorSheet: target?.kind === "node",
     runsTarget: target,
   };
   if (onlyNodeId !== null) {
@@ -313,11 +322,12 @@ export function matchPanelSubject(
       ]),
     },
     levels: ["browse"],
+    offersInspectorSheet: false,
     runsTarget: null,
   };
 }
 
-/** The element id of the rule builder in a Condition's Focus body. */
+/** The element id of the rule builder in a Condition's editor. */
 export const CONDITION_RULES_TARGET_ID = "condition";
 
 /**
@@ -332,7 +342,7 @@ const CONDITION_RULE_FIELD_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The element Canvas Reveal focuses in a Focus body for an issue naming
+ * The element Canvas Reveal focuses in an editor for an issue naming
  * `fieldKey`, on a subject of kind `kind`. A Condition's two rule config keys
  * both resolve to its rule builder; every other kind focuses the field the
  * issue named. Both the issue list inside Reveal and the workflow issues
@@ -350,7 +360,8 @@ export function revealFocusTarget(
 
 /**
  * The level Canvas Reveal presents: closed with no subject, and otherwise the
- * stored level limited to the levels the subject offers.
+ * stored level limited to the levels the subject offers. A Focus level stored
+ * for a Draft object, which offers Browse alone, presents Browse.
  */
 export function effectiveRevealLevel(
   stored: RevealLevel,

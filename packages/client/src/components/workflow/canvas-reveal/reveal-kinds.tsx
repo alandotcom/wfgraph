@@ -2,7 +2,8 @@
  * The subject kinds Canvas Reveal can show, one record each: `header` builds the
  * header, `unwind` answers Back and Escape, `mobile` adapts the sheets below `md`,
  * and `shellOwnsScroll` names the body's scroller. The shell keys the body by kind,
- * so one component registered as both `Browse` and `Focus` stays mounted.
+ * so one component registered as both `Browse` and `Focus` stays mounted. A
+ * Draft object has one open level, Browse, which shows its editor.
  */
 
 import type { ComponentType } from "react";
@@ -11,7 +12,6 @@ import {
   NodeConfigPanel,
   useNodeConfigTitle,
 } from "#src/components/workflow/node-config-panel";
-import { NodePropertiesForm } from "#src/components/workflow/node-properties-form";
 import { groupLabel, type WorkflowNode } from "#src/lib/workflow-graph-types";
 import type {
   OpenRevealLevel,
@@ -22,6 +22,12 @@ import {
   findAction,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
+import type { DesktopScopePresentation } from "#src/lib/workflow-navigation-state";
+import {
+  activeRevealPresentationAtom,
+  activeWorkspaceAddressAtom,
+  recordInspectorSectionAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import {
   ACTION_TYPE_CONFIG_KEY,
   readConfigString,
@@ -32,11 +38,15 @@ import { compact } from "es-toolkit/array";
 import type { Getter } from "jotai";
 import type { Store } from "jotai";
 import { activeChosenExecutionAtom } from "#src/lib/workflow-workspace-navigation";
-import { ConditionBrowse, ConditionFocus } from "./condition-reveal";
+import { ConditionEditor, ConditionSummarySheet } from "./condition-reveal";
 import { EventSplitBrowse } from "./event-split-reveal";
-import { GroupBrowse, GroupFocusSections } from "./group-browse";
-import { LifecycleBrowse } from "./lifecycle-browse";
-import { LifecycleFocus } from "./lifecycle-focus";
+import { GroupEditor, GroupSummarySheet } from "./group-browse";
+import { LifecycleSummarySheet } from "./lifecycle-browse";
+import { LifecycleEditor, LifecycleFocus } from "./lifecycle-focus";
+import {
+  lifecycleEditButtonId,
+  lifecycleOpenSection,
+} from "./lifecycle-reveal-model";
 import type { MobileRevealState } from "./canvas-reveal-state";
 import type { MobileSheetControls } from "./mobile-sheet-header";
 import {
@@ -56,7 +66,11 @@ import {
   type RevealMatchInput,
   type RevealSubject,
 } from "./reveal-subject";
-import { unwindToInspectedOrigin } from "./reveal-origin";
+import {
+  inspectedOriginNodeId,
+  unwindToInspectedOrigin,
+} from "./reveal-origin";
+import { revealFieldRequestAtom } from "./reveal-requests";
 import {
   RunsBody,
   RunsHeader,
@@ -64,7 +78,7 @@ import {
   unwindMobileRuns,
   unwindRuns,
 } from "./runs-browse";
-import { StepBrowse } from "./step-browse";
+import { StepEditor, StepSummarySheet } from "./step-browse";
 
 export type RevealBodyProps = {
   subject: RevealSubject;
@@ -75,10 +89,12 @@ export type RevealBodyProps = {
   level: OpenRevealLevel;
   frame: NodeConfigFrame;
   /**
-   * Show Focus, then focus the element whose id is `targetId`: a field's
-   * config key, or the `headingId` of a section.
+   * Move keyboard focus to the element whose id is `targetId` once it shows:
+   * a field's config key, or the `headingId` of a section. On a phone's
+   * summary sheet it opens the full-screen editor first, which it also does
+   * with no `targetId`.
    */
-  openFocus: (targetId?: string) => void;
+  focusField: (targetId?: string) => void;
   /**
    * Scroll the body to its top without recording a scroll, for a body that
    * replaces what it shows after a navigation write already reset its scroll.
@@ -98,6 +114,8 @@ export type RevealHeaderContext = {
   issues: readonly WorkflowIssue[];
   workflowName: string;
   catalog: ExtensionCatalog;
+  /** The active scope's desktop Reveal state, which records where a jump began. */
+  presentation: DesktopScopePresentation;
 };
 
 /** What a kind's mobile sheet `Header` component receives from the shell. */
@@ -135,6 +153,12 @@ export type RevealKindHeader =
 export type RevealUnwind = (input: {
   subject: RevealSubject;
   level: OpenRevealLevel;
+  /**
+   * What asked: the Back control, or Escape. The Lifecycle kind's Escape
+   * closes a section open for editing before it steps back, and its Back steps
+   * back at once.
+   */
+  trigger: "back" | "escape";
   store: Store;
   unwindLevel: () => void;
   /**
@@ -157,6 +181,7 @@ export type RevealKind = {
   /** The accessible name of the Reveal region while it shows this kind. */
   regionLabel: string;
   header: RevealKindHeader;
+  /** The body at Browse, which for a Draft object is its editor. */
   Browse: ComponentType<RevealBodyProps>;
   /** The Focus body, for a kind whose subjects can offer Focus. */
   Focus: ComponentType<RevealBodyProps> | null;
@@ -166,19 +191,23 @@ export type RevealKind = {
    */
   unwind?: RevealUnwind;
   /**
-   * How the kind shows in the mobile Reveal sequence below `md`, for a kind
-   * whose sheets need more than the shell builds for Draft. `Header` renders
-   * the sheet header, usually `MobileSheetHeader`, with the shell's controls.
-   * `Body` replaces the default body, which is `Focus` on an inspector sheet
-   * and `Browse` on a summary sheet. `unwind` answers Back and Escape on a
-   * phone, where `unwindLevel` removes the top sheet; the default removes the
-   * top sheet. After Back, `backFocusTarget` names the element in the sheet
-   * that takes focus when the body moved none. `shellOwnsScroll` replaces the
-   * kind's own value for the sheet body.
+   * How the kind shows in the mobile Reveal sequence below `md`. `Header`
+   * renders the sheet header, usually `MobileSheetHeader`, with the shell's
+   * controls; without it the shell builds one from the kind's header model.
+   * `Summary` is the summary sheet's body, `Browse` by default, and
+   * `Inspector` is the inspector sheet's body, `Focus` by default.
+   * `inspectorLabel` names the control in the shell's header that opens the
+   * inspector sheet, which a kind without it does not offer. `unwind` answers
+   * Back and Escape on a phone, where `unwindLevel` removes the top sheet; the
+   * default removes the top sheet. After Back, `backFocusTarget` names the
+   * element in the sheet that takes focus when the body moved none.
+   * `shellOwnsScroll` replaces the kind's own value for the sheet body.
    */
   mobile?: {
-    Header: ComponentType<MobileKindHeaderProps>;
-    Body?: ComponentType<RevealBodyProps>;
+    Header?: ComponentType<MobileKindHeaderProps>;
+    Summary?: ComponentType<RevealBodyProps>;
+    Inspector?: ComponentType<RevealBodyProps>;
+    inspectorLabel?: string;
     unwind?: RevealUnwind;
     backFocusTarget?: (sheet: HTMLElement) => HTMLElement | null;
     shellOwnsScroll?: boolean;
@@ -222,6 +251,24 @@ function issueStatus(
   };
 }
 
+/**
+ * Whether Back has somewhere to go: the object a jump reached, such as a Wait
+ * opened from an Event Split, returns to where the jump began. Closing Reveal
+ * is Close's job.
+ */
+function hasWayBack(
+  subject: RevealSubject,
+  context: RevealHeaderContext
+): boolean {
+  return (
+    inspectedOriginNodeId({
+      presentation: context.presentation,
+      subject,
+      nodes: context.nodes,
+    }) !== null
+  );
+}
+
 function stepHeaderModel(
   subject: RevealSubject,
   context: RevealHeaderContext
@@ -255,7 +302,7 @@ function stepHeaderModel(
       node?.data.enabled === false
         ? { text: "Disabled", tone: "muted" }
         : issueStatus(issues),
-    showsBack: true,
+    showsBack: hasWayBack(subject, context),
   };
 }
 
@@ -281,7 +328,7 @@ function groupHeaderModel(
             })
           )
         : null,
-    showsBack: true,
+    showsBack: hasWayBack(subject, context),
   };
 }
 
@@ -301,26 +348,8 @@ function lifecycleHeaderModel(
           context.issues.filter((issue) => issue.nodeId === subject.nodeId)
         )
       : null,
-    showsBack: true,
+    showsBack: hasWayBack(subject, context),
   };
-}
-
-function StepFocus({ subject, frame }: RevealBodyProps) {
-  return subject.nodeId === null ? null : (
-    <NodePropertiesForm frame={frame} nodeId={subject.nodeId} />
-  );
-}
-
-/**
- * The complete form of a Group frame: label and description, its steps, Enter
- * group, and its commands.
- */
-function GroupFocus({ subject, frame }: RevealBodyProps) {
-  return subject.nodeId === null ? null : (
-    <NodePropertiesForm frame={frame} nodeId={subject.nodeId}>
-      <GroupFocusSections groupId={subject.nodeId} />
-    </NodePropertiesForm>
-  );
 }
 
 function PanelBrowse({ frame }: RevealBodyProps) {
@@ -348,61 +377,115 @@ function PanelHeader({ level, controls }: RevealKindHeaderProps) {
   );
 }
 
-/** A Draft ordinary step: a summary in Browse and its complete form in Focus. */
+/**
+ * One step back for the Lifecycle Node. Escape returns a section open for
+ * editing to its summary, with focus on that section's Edit button. Otherwise,
+ * and for Back, it returns to where a jump began, or closes Reveal.
+ */
+const unwindLifecycle: RevealUnwind = (input) => {
+  const { subject, store } = input;
+  const section =
+    subject.nodeId === null || input.trigger === "back"
+      ? null
+      : lifecycleOpenSection(
+          store.get(activeRevealPresentationAtom),
+          subject.nodeId
+        );
+  if (section === null || subject.nodeId === null) {
+    unwindToInspectedOrigin(input);
+    return;
+  }
+  store.set(recordInspectorSectionAtom, {
+    address: store.get(activeWorkspaceAddressAtom),
+    inspectedId: subject.nodeId,
+    section: null,
+  });
+  store.set(revealFieldRequestAtom, {
+    nodeId: subject.nodeId,
+    targetId: lifecycleEditButtonId(section),
+  });
+};
+
+/**
+ * A Draft ordinary step: its complete form. A phone shows a summary sheet and
+ * the form in the full-screen editor.
+ */
 const STEP_KIND: RevealKind = {
   id: "step",
   match: matchStepSubject,
   regionLabel: "Step inspector",
   header: { owner: "shell", model: stepHeaderModel },
-  Browse: StepBrowse,
-  Focus: StepFocus,
+  Browse: StepEditor,
+  Focus: null,
   unwind: unwindToInspectedOrigin,
+  mobile: {
+    Summary: StepSummarySheet,
+    Inspector: StepEditor,
+    inspectorLabel: "Edit step",
+  },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
 };
 
 /**
- * A Draft Condition: its rules as sentences and where each branch leads in
- * Browse, and the rule builder with its inputs, branches and issues in Focus.
+ * A Draft Condition: when it takes True, the rule builder, where each branch
+ * leads, and its inputs. A phone shows its rules as sentences on a summary
+ * sheet and the rule builder in the full-screen editor.
  */
 const CONDITION_KIND: RevealKind = {
   id: "condition",
   match: matchConditionSubject,
   regionLabel: "Condition inspector",
   header: { owner: "shell", model: stepHeaderModel },
-  Browse: ConditionBrowse,
-  Focus: ConditionFocus,
+  Browse: ConditionEditor,
+  Focus: null,
+  mobile: {
+    Summary: ConditionSummarySheet,
+    Inspector: ConditionEditor,
+    inspectorLabel: "Edit rules",
+  },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
 };
 
 /**
- * A Draft Group frame on the overview: a summary and Enter group in Browse, and
- * the frame's form in Focus.
+ * A Draft Group frame on the overview: its label and description, its
+ * summary, Enter group, and its commands. A phone shows the summary on a
+ * summary sheet and the rest in the full-screen editor.
  */
 const GROUP_KIND: RevealKind = {
   id: "group",
   match: matchGroupSubject,
   regionLabel: "Group inspector",
   header: { owner: "shell", model: groupHeaderModel },
-  Browse: GroupBrowse,
-  Focus: GroupFocus,
+  Browse: GroupEditor,
+  Focus: null,
+  mobile: {
+    Summary: GroupSummarySheet,
+    Inspector: GroupEditor,
+    inspectorLabel: "Edit group",
+  },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
 };
 
 /**
- * The Draft Lifecycle Node: its policy summary in Browse and the sectioned
- * policy editor in Focus.
+ * The Draft Lifecycle Node: its policy summary, each section opening its editor
+ * in place. A phone shows the summary on a summary sheet, and each section's
+ * Edit opens the sectioned full-screen editor at that section.
  */
 const LIFECYCLE_KIND: RevealKind = {
   id: "lifecycle",
   match: matchLifecycleSubject,
   regionLabel: "Lifecycle inspector",
   header: { owner: "shell", model: lifecycleHeaderModel },
-  Browse: LifecycleBrowse,
-  Focus: LifecycleFocus,
-  unwind: unwindToInspectedOrigin,
+  Browse: LifecycleEditor,
+  Focus: null,
+  unwind: unwindLifecycle,
+  mobile: {
+    Summary: LifecycleSummarySheet,
+    Inspector: LifecycleFocus,
+  },
   focusReturnTarget: canvasNodeElement,
   shellOwnsScroll: true,
 };
@@ -410,8 +493,8 @@ const LIFECYCLE_KIND: RevealKind = {
 /**
  * A Draft Event Split: which Event source its outlets come from, with the
  * action that opens that source, and every outlet with its Event identity and
- * stored connection. Browse is its only level, because its outlets follow the
- * graph above it.
+ * stored connection. It has no editor, because its outlets follow the graph
+ * above it.
  */
 const EVENT_SPLIT_KIND: RevealKind = {
   id: "eventSplit",

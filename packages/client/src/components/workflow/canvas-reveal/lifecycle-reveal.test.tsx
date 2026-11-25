@@ -407,12 +407,13 @@ describe("Lifecycle Browse", () => {
 
     fireEvent.click(issue);
 
-    expect(aside()?.dataset.level).toBe("focus");
+    expect(aside()?.dataset.level).toBe("browse");
     expect(
-      view
-        .getByRole("button", { name: /^Start Events/ })
-        .getAttribute("aria-current")
-    ).toBe("true");
+      view.getByRole("button", { name: "Done editing Start Events" })
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe("lifecycle-section-start-events")
+    );
   });
 
   it("summarizes each schedule with its next run", async () => {
@@ -461,35 +462,43 @@ describe("Lifecycle Browse", () => {
   });
 });
 
-describe("Lifecycle Focus", () => {
-  it("keeps the shared width while opening Focus for each policy concept", async () => {
+describe("Lifecycle section editors", () => {
+  it("opens a section's editor in place, in the policy's order, at the shared width", async () => {
     const { view, aside } = await renderLifecycle(CONFIGURED);
     // An unmeasured canvas counts as 1280px wide, where Reveal is 720px.
     expect(aside()?.style.width).toBe("720px");
-
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-
-    expect(aside()?.dataset.level).toBe("focus");
-    expect(aside()?.style.width).toBe("720px");
-    const nav = view.getByRole("navigation", { name: "Lifecycle policy" });
-    expect(
-      within(nav)
-        .getAllByRole("button")
-        .map((button) => button.textContent)
-    ).toEqual([
-      "Start Events1",
+    const headings = () =>
+      within(view.getByRole("complementary", { name: "Lifecycle inspector" }))
+        .getAllByRole("heading", { level: 3 })
+        .map((heading) => heading.textContent);
+    const order = [
+      "Label",
+      "Start Events",
       "Overlapping runs",
       "Schedule",
-      "Cancel Events1",
+      "Cancel Events",
       "Entity",
       "Event Connections",
       "Validation",
-    ]);
+    ];
+    expect(headings()).toEqual(order);
+    expect(view.queryByRole("button", { name: "Focus editor" })).toBeNull();
+
+    fireEvent.click(view.getByRole("button", { name: "Edit Start Events" }));
+
+    expect(aside()?.dataset.level).toBe("browse");
+    expect(aside()?.style.width).toBe("720px");
+    // The open editor adds headings of its own inside its section.
+    expect(headings().filter((text) => order.includes(text ?? ""))).toEqual(
+      order
+    );
+    expect(view.getByRole("region", { name: "Start Events" })).toBeTruthy();
     expect(
-      within(nav)
-        .getByRole("button", { name: /Start Events/ })
-        .getAttribute("aria-current")
-    ).toBe("true");
+      view.getByRole("button", { name: "Done editing Start Events" })
+    ).toBeTruthy();
+    expect(
+      view.queryByRole("button", { name: "Edit Start Events" })
+    ).toBeNull();
   });
 
   it("keeps Event bindings and eligibility timing in the Entity section", async () => {
@@ -518,8 +527,7 @@ describe("Lifecycle Focus", () => {
 
   it("explains why tracked Entity Events have no Correlation Path", async () => {
     const { view } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    fireEvent.click(view.getByRole("button", { name: /Cancel Events/ }));
+    fireEvent.click(view.getByRole("button", { name: "Edit Cancel Events" }));
 
     const cancelEvents = view.getByRole("region", { name: "Cancel Events" });
     expect(cancelEvents.textContent).toContain(
@@ -542,7 +550,7 @@ describe("Lifecycle Focus", () => {
 
   it("keeps removing a Start Event undoable and prunes its filter", async () => {
     const { view, store, rulesNow } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit Start Events" }));
 
     fireEvent.click(
       view.getByRole("button", { name: "Remove app/appointment.created" })
@@ -553,7 +561,7 @@ describe("Lifecycle Focus", () => {
     expect(store.get(historyAtom)).toHaveLength(1);
   });
 
-  it("opens Focus at a later section from Closed in one navigation write", async () => {
+  it("opens a later section from Closed in one navigation write", async () => {
     const step: WorkflowNode = {
       id: "step",
       type: "action",
@@ -580,18 +588,14 @@ describe("Lifecycle Focus", () => {
       });
     });
 
-    expect(aside()?.dataset.level).toBe("focus");
+    expect(aside()?.dataset.level).toBe("browse");
     expect(
-      view
-        .getByRole("button", { name: /^Cancel Events/ })
-        .getAttribute("aria-current")
-    ).toBe("true");
-    expect(view.getByRole("region", { name: "Cancel Events" }).hidden).toBe(
-      false
-    );
+      view.getByRole("button", { name: "Done editing Cancel Events" })
+    ).toBeTruthy();
+    expect(view.getByRole("region", { name: "Cancel Events" })).toBeTruthy();
   });
 
-  it("returns to the Event Split that opened it, on Back, instead of Browse", async () => {
+  it("returns to the Event Split that opened it on Back", async () => {
     const split: WorkflowNode = {
       id: "split",
       type: "action",
@@ -614,7 +618,7 @@ describe("Lifecycle Focus", () => {
         origin: { nodeId: "split" },
       });
     });
-    expect(aside()?.dataset.level).toBe("focus");
+    expect(aside()?.dataset.level).toBe("browse");
 
     fireEvent.click(view.getByRole("button", { name: "Back" }));
 
@@ -627,24 +631,33 @@ describe("Lifecycle Focus", () => {
     expect(aside()?.dataset.level).toBe("browse");
   });
 
-  it("steps back to Browse on a Back with no recorded origin", async () => {
+  it("offers no Back without an origin, and Escape closes the open section before Reveal", async () => {
     const { view, aside } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    expect(aside()?.dataset.level).toBe("focus");
+    fireEvent.click(view.getByRole("button", { name: "Edit Entity" }));
+    expect(view.queryByRole("button", { name: "Back" })).toBeNull();
 
-    fireEvent.click(view.getByRole("button", { name: "Back" }));
-
+    fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
+    expect(
+      view.queryByRole("button", { name: "Done editing Entity" })
+    ).toBeNull();
     expect(aside()?.dataset.level).toBe("browse");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        view.getByRole("button", { name: "Edit Entity" })
+      )
+    );
+
+    fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
+    expect(aside()?.dataset.level).toBe("closed");
   });
 
   it("restores the section and scroll after closing and reopening", async () => {
     const { view, store, aside, scroller } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    fireEvent.click(view.getByRole("button", { name: "Entity" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit Entity" }));
 
     const body = scroller();
     if (!body) {
-      throw new Error("the Focus body did not render");
+      throw new Error("the Lifecycle inspector did not render");
     }
     body.scrollTop = 180;
     fireEvent.scroll(body);
@@ -655,10 +668,8 @@ describe("Lifecycle Focus", () => {
     expect(aside()?.dataset.level).toBe("closed");
     fireEvent.click(view.getByLabelText("Open inspector"));
 
-    expect(aside()?.dataset.level).toBe("focus");
-    expect(
-      view.getByRole("button", { name: "Entity" }).getAttribute("aria-current")
-    ).toBe("true");
+    expect(aside()?.dataset.level).toBe("browse");
+    expect(view.getByRole("region", { name: "Entity" })).toBeTruthy();
     await waitFor(() => expect(scroller()?.scrollTop).toBe(180));
 
     await act(async () => {
@@ -667,9 +678,7 @@ describe("Lifecycle Focus", () => {
     await act(async () => {
       showWorkspaceRoute(store, {});
     });
-    expect(
-      view.getByRole("button", { name: "Entity" }).getAttribute("aria-current")
-    ).toBe("true");
+    expect(view.getByRole("region", { name: "Entity" })).toBeTruthy();
     await waitFor(() => expect(scroller()?.scrollTop).toBe(180));
 
     expect(store.get(nodesAtom).map((node) => node.position)).toEqual(
@@ -679,30 +688,28 @@ describe("Lifecycle Focus", () => {
     expect(store.get(historyAtom)).toEqual([]);
   });
 
-  it("starts a newly chosen section at the top", async () => {
-    const { view, store, aside, scroller } = await renderLifecycle(CONFIGURED);
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
-    const body = scroller();
-    if (!body) {
-      throw new Error("the Focus body did not render");
-    }
-    body.scrollTop = 240;
-    fireEvent.scroll(body);
-    fireEvent(body, new Event("scrollend"));
+  it("moves focus to an opened section's heading, and to its Edit button on Done", async () => {
+    const { view, store } = await renderLifecycle(CONFIGURED);
+    const positions = store.get(nodesAtom).map((node) => node.position);
 
-    fireEvent.click(view.getByRole("button", { name: "Validation" }));
-
-    expect(scroller()?.scrollTop).toBe(0);
-    expect(store.get(activeRevealPresentationAtom).inspectorScroll.focus).toBe(
-      0
+    fireEvent.click(view.getByRole("button", { name: "Edit Schedule" }));
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe("lifecycle-section-schedule")
     );
-    fireEvent.click(view.getByRole("button", { name: "Close" }));
-    fireEvent.click(view.getByLabelText("Open inspector"));
-    expect(aside()?.dataset.level).toBe("focus");
-    await waitFor(() => expect(scroller()?.scrollTop).toBe(0));
-    expect(
-      view.getByRole("region", { name: "Validation" }).textContent
-    ).toContain("No issues.");
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Done editing Schedule" })
+    );
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        view.getByRole("button", { name: "Edit Schedule" })
+      )
+    );
+    expect(store.get(nodesAtom).map((node) => node.position)).toEqual(
+      positions
+    );
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+    expect(store.get(historyAtom)).toEqual([]);
   });
 
   it("explains the Entity and Event Connections of a policy that needs neither", async () => {
@@ -711,14 +718,20 @@ describe("Lifecycle Focus", () => {
       cancelEvents: [],
       concurrency: "unlimited",
     });
-    fireEvent.click(view.getByRole("button", { name: "Focus editor" }));
+    expect(
+      within(
+        view.getByRole("complementary", { name: "Lifecycle inspector" })
+      ).getByText("No integration Events, so no Connection is needed.")
+    ).toBeTruthy();
 
-    fireEvent.click(view.getByRole("button", { name: "Event Connections" }));
+    fireEvent.click(
+      view.getByRole("button", { name: "Edit Event Connections" })
+    );
     expect(
       view.getByRole("region", { name: "Event Connections" }).textContent
     ).toContain("need a Connection");
 
-    fireEvent.click(view.getByRole("button", { name: "Entity" }));
+    fireEvent.click(view.getByRole("button", { name: "Edit Entity" }));
     const entity = view.getByRole("region", { name: "Entity" });
     expect(entity.textContent).toContain(
       "Optional. Track an Entity to match related runs by Entity ID."
@@ -767,11 +780,10 @@ describe("Lifecycle Focus", () => {
       { cron: "0 9 * * *", timeZone: browserTimeZone() },
     ]);
     expect(store.get(historyAtom)).toHaveLength(1);
-    expect(
-      within(
-        view.getByRole("navigation", { name: "Lifecycle policy" })
-      ).getByRole("button", { name: /^Schedule/ }).textContent
-    ).toBe("Schedule1");
+    fireEvent.click(
+      view.getByRole("button", { name: "Done editing Schedule" })
+    );
+    expect(view.queryByText("No schedules.")).toBeNull();
   });
 
   it("shows an unsaved schedule's refusal inside the Schedule section", async () => {

@@ -22,6 +22,7 @@ import type {
   OpenRevealLevel,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
+import { activeRevealPresentationAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   closeAllMobileSheetsAtom,
   closeMobileSheetAtom,
@@ -64,7 +65,7 @@ function sheetTitle(
 }
 
 /**
- * Where the Back control of a sheet whose kind has no `mobile` record leads, as
+ * Where the Back control of a sheet whose kind has no mobile `Header` leads, as
  * its visible label: the sheet beneath, or null for the first sheet.
  */
 function draftBackLabel(
@@ -85,7 +86,7 @@ function draftBackLabel(
 }
 
 /**
- * The title and status of a sheet whose kind has no `mobile` record. A kind
+ * The title and status of a sheet whose kind has no mobile `Header`. A kind
  * whose header the shell builds names them from its model; the one Draft kind
  * that builds its own header uses the node config panel's title.
  */
@@ -97,6 +98,7 @@ function useSheetHeading(
   const issues = useAtomValue(workflowIssuesAtom);
   const workflowName = useAtomValue(currentWorkflowNameAtom);
   const catalog = useExtensionCatalog();
+  const presentation = useAtomValue(activeRevealPresentationAtom);
   const panelTitle = useNodeConfigTitle();
   if (state === null || kind === null || kind.header.owner === "kind") {
     return { title: panelTitle, status: null };
@@ -106,6 +108,7 @@ function useSheetHeading(
     issues,
     workflowName,
     catalog,
+    presentation,
   });
   return { title: model.title, status: model.status };
 }
@@ -114,9 +117,9 @@ function useSheetHeading(
  * The inspector below `md`, in every workspace: a sequence of sheets that the
  * navigation state records per scope. A summary sheet shows over the bottom of
  * the canvas, which stays pannable and zoomable above it, and an inspector
- * sheet covers the canvas. A sheet about an object shows the kind's Browse or
- * Focus body, and an address sheet shows the address itself, such as a run list
- * or a run. Back and Escape remove one sheet, restoring the sheet beneath with
+ * sheet covers the canvas. A sheet about an object shows the kind's summary or
+ * inspector body, and an address sheet shows the address itself, such as a run
+ * list or a run. Back and Escape remove one sheet, restoring the sheet beneath with
  * its selection, scroll and camera, or answer through the kind's
  * `mobile.unwind`, as Runs does when Back leaves a run for its run list.
  */
@@ -191,7 +194,7 @@ export function MobileReveal() {
         fieldRequest === null ||
         state === null ||
         state.subject.nodeId !== fieldRequest.nodeId ||
-        (state.level !== "inspector" && state.subject.levels.includes("focus"))
+        (state.level !== "inspector" && state.subject.offersInspectorSheet)
       ) {
         return;
       }
@@ -216,6 +219,8 @@ export function MobileReveal() {
     unwind({
       subject: state.subject,
       level: state.level === "inspector" ? "focus" : "browse",
+      // A phone's Back and Escape each remove one sheet.
+      trigger: "back",
       store,
       unwindLevel: () => closeSheet(state.address),
       // The sheet focus hook returns focus as sheets close.
@@ -245,8 +250,9 @@ export function MobileReveal() {
   }
 
   const isInspector = state.level === "inspector";
+  const Inspector = mobile?.Inspector ?? kind.Focus;
   const offersInspector =
-    state.subject.levels.includes("focus") && kind.Focus !== null;
+    state.subject.offersInspectorSheet && Inspector !== null;
   const openInspector = (targetId?: string) => {
     const { subject, address } = state;
     if (!offersInspector) {
@@ -274,14 +280,22 @@ export function MobileReveal() {
   };
   const level: OpenRevealLevel = isInspector ? "focus" : "browse";
   const Body =
-    mobile?.Body ?? (isInspector && kind.Focus ? kind.Focus : kind.Browse);
+    isInspector && Inspector ? Inspector : (mobile?.Summary ?? kind.Browse);
   const body = (
     <Body
+      focusField={(targetId) => {
+        if (isInspector) {
+          if (targetId !== undefined && state.subject.nodeId !== null) {
+            setFieldRequest({ nodeId: state.subject.nodeId, targetId });
+          }
+          return;
+        }
+        openInspector(targetId);
+      }}
       frame={frame}
       key={state.subject.kind}
       level={level}
       mobile={state}
-      openFocus={openInspector}
       scrollToTop={scrollToTop}
       subject={state.subject}
     />
@@ -311,13 +325,13 @@ export function MobileReveal() {
           }
         }}
       >
-        {mobile ? (
+        {mobile?.Header ? (
           <mobile.Header controls={controls} key={kind.id} state={state} />
         ) : (
           <MobileSheetHeader
             backLabel={draftBackLabel(state, nodes, catalog)}
             controls={controls}
-            inspectorLabel="Open editor"
+            inspectorLabel={mobile?.inspectorLabel}
             status={heading.status}
             title={heading.title}
           />

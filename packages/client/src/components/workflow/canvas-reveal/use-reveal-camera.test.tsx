@@ -776,7 +776,8 @@ describe("useRevealCamera", () => {
     await camera.run(() =>
       unwindToInspectedOrigin({
         subject,
-        level: "focus",
+        level: "browse",
+        trigger: "back",
         store: camera.store,
         unwindLevel: () => {
           throw new Error("Back unwound a level");

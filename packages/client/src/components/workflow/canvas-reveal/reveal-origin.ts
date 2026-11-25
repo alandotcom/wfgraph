@@ -5,31 +5,51 @@
  */
 
 import { nodesAtom, selectOnlyNodeAtom } from "#src/lib/workflow-graph-store";
+import type { WorkflowNode } from "#src/lib/workflow-graph-types";
+import type { DesktopScopePresentation } from "#src/lib/workflow-navigation-state";
 import { activeRevealPresentationAtom } from "#src/lib/workflow-workspace-navigation";
 import type { RevealKind } from "./reveal-kinds";
+import type { RevealSubject } from "./reveal-subject";
 
 /**
- * Back or Escape for a node a jump can reach. While the active scope still
- * inspects `subject`'s node with a recorded origin that the graph holds, this
- * selects the origin again. Otherwise it runs `unwindLevel`.
+ * The node Back returns `subject` to: the recorded origin of the jump that
+ * reached it, while the scope still inspects `subject`'s node and the graph
+ * holds the origin, and otherwise null.
+ */
+export function inspectedOriginNodeId(input: {
+  presentation: DesktopScopePresentation;
+  subject: RevealSubject;
+  nodes: readonly WorkflowNode[];
+}): string | null {
+  const { presentation, subject } = input;
+  const origin =
+    presentation.inspected?.kind === "node" &&
+    presentation.inspected.id === subject.nodeId
+      ? presentation.inspectedOrigin
+      : null;
+  return origin !== null &&
+    input.nodes.some((node) => node.id === origin.nodeId)
+    ? origin.nodeId
+    : null;
+}
+
+/**
+ * Back or Escape for a node a jump can reach. While a recorded origin stands,
+ * this selects the origin again. Otherwise it runs `unwindLevel`.
  */
 export const unwindToInspectedOrigin: NonNullable<RevealKind["unwind"]> = ({
   subject,
   store,
   unwindLevel,
 }) => {
-  const presentation = store.get(activeRevealPresentationAtom);
-  const origin =
-    presentation.inspected?.kind === "node" &&
-    presentation.inspected.id === subject.nodeId
-      ? presentation.inspectedOrigin
-      : null;
-  if (
-    origin === null ||
-    !store.get(nodesAtom).some((node) => node.id === origin.nodeId)
-  ) {
+  const originId = inspectedOriginNodeId({
+    presentation: store.get(activeRevealPresentationAtom),
+    subject,
+    nodes: store.get(nodesAtom),
+  });
+  if (originId === null) {
     unwindLevel();
     return;
   }
-  store.set(selectOnlyNodeAtom, origin.nodeId);
+  store.set(selectOnlyNodeAtom, originId);
 };
