@@ -1,8 +1,8 @@
 /**
  * The host's `agent` option, and the service that carries it.
  *
- * The option is either what a provider entry's function returns (`wfOpenAi`
- * from `@wfgraph/core/openai` and the three beside it), or a host's own
+ * The option is either what a provider entry's function returns (`wfOpenAi`,
+ * `wfAnthropic`, `wfOpenRouter` or `wfOpenAiCompatible`), or a host's own
  * runner. This module imports no provider package: each provider's client is
  * built by the function in that provider's own entry, and core runs a turn
  * through the `modelLayer` function the returned value carries.
@@ -137,8 +137,8 @@ export function readAgentSettings(
 
 /**
  * An `agent` value that is neither a provider function's result nor a runner,
- * from a JavaScript host. A plain object naming a key and a model is refused
- * here rather than read as an agent that is off.
+ * from a JavaScript host. A plain object naming a key and a model throws here
+ * at startup.
  */
 function unknownAgentOption(_config: never): never {
   throw new Error(

@@ -503,8 +503,9 @@ describe("createWfGraphApp configuration", () => {
     ).rejects.toThrow("entityResolverTimeoutMs must be a positive integer");
   });
 
-  // A JavaScript host can still pass `true` or a plain object of hostnames,
-  // and either one is refused before anything opens.
+  // A JavaScript host can pass a value the `mcp` type forbids, such as `true`
+  // or a plain object of hostnames, and either one is refused before anything
+  // opens.
   it.each([
     ["true", true],
     [

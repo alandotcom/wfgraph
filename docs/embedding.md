@@ -781,8 +781,8 @@ const wfgraph = await createWfGraphApp({
 
 The endpoint is `${basePath}/api/mcp`. With the default `basePath`, the endpoint
 is `/api/mcp`. The `mcp` option is disabled by default and works with
-`createWfGraphApp` and `wfWorker`. Any other value, such as `true` or a plain
-object of hostnames, fails at startup with a message naming `wfMcp`.
+`createWfGraphApp` and `wfWorker`. A value `wfMcp` did not return fails at
+startup with a message naming `wfMcp`.
 
 List hostnames only, with no scheme or port. Every request must have an allowed
 `Host` header. Browser requests must also have an allowed `Origin` hostname.
@@ -1862,7 +1862,7 @@ Cloudflare Workers and Hyperdrive.
 | `extensions.integrations`  | No                  | `defineIntegration` values                                                                                                                                                                                                                                                                                              |
 | `agent`                    | No                  | The build agent's model: what `wfOpenAi`, `wfAnthropic`, `wfOpenRouter` or `wfOpenAiCompatible` returns, each from its own entry. Absent, the build agent is off and the editor shows no chat panel. See The build agent                                                                                                |
 | `agent.runner`             | No                  | A `WfGraphAgentRunner` that runs each turn in place of a provider function's model. See Run turns on your own gateway or model                                                                                                                                                                                          |
-| `agent.maxConcurrentTurns` | No                  | Beside `agent.runner`, how many agent turns this process streams at once, as a positive integer. Defaults to 4. A provider function takes the same option                                                                                                                                                               |
+| `agent.maxConcurrentTurns` | No                  | With `agent.runner`, how many agent turns this process streams at once, as a positive integer. Defaults to 4. A provider function takes the same option                                                                                                                                                                 |
 | `mcp`                      | No                  | The authenticated stateless MCP authoring endpoint at `${basePath}/api/mcp`: what `wfMcp` from `@wfgraph/core/mcp` returns. `wfMcp()` admits localhost alone; a deployed host passes `wfMcp` its allowed hostnames and origin hostnames, and optionally `authorization`. Absent, the endpoint is off. See MCP authoring |
 | `health`                   | No                  | `true` mounts `GET /api/health`, the readiness route outside `auth`. Off by default. See API endpoints                                                                                                                                                                                                                  |
 | `logger`                   | No                  | A `WfGraphLogger` that takes every record. See Logging below                                                                                                                                                                                                                                                            |
