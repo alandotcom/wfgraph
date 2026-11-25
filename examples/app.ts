@@ -256,7 +256,11 @@ const cancelAppointmentAction = defineAction({
 const sendPatientMessageAction = defineAction({
   id: "patients/send-message",
   label: "Send Patient Message",
-  description: "Sends a message to the appointment's patient.",
+  // The description says how the patient is reached, because the editor shows
+  // it wherever the action is chosen. This app has no mail service, so the
+  // handler only reports what it would do.
+  description:
+    "Emails the appointment's patient at the address on their patient record. A test run skips it.",
   category: "Appointments",
   sideEffect: true,
   links: [
