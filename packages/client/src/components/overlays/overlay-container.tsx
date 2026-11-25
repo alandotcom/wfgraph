@@ -5,10 +5,12 @@ import {
   motion,
   useReducedMotion,
 } from "motion/react";
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer";
 import { Dialog, DialogPortal } from "#src/components/ui/dialog";
 import {
+  focusableWithin,
+  useAfterPaint,
   useDomEvent,
   useFocusTrap,
   useMeasuredHeight,
@@ -95,6 +97,34 @@ function getOverlayTransform(
   return "translateX(100%) scale(1)";
 }
 
+/** A text field a person fills in, which an opening overlay focuses first. */
+const TEXT_FIELD =
+  'input:not([type="hidden"]):not([disabled]),textarea:not([disabled]),select:not([disabled]),[contenteditable="true"]';
+
+/**
+ * Where focus goes when an overlay shows: its first text field, or else its
+ * title, which carries `tabIndex={-1}` for this. A confirmation therefore opens
+ * on its question, and Tab reaches its buttons. Only the overlay on top of the
+ * stack counts, since the ones beneath it are `aria-hidden`.
+ */
+function overlayInitialFocus(dialog: HTMLElement): HTMLElement | null {
+  const current = dialog.querySelector<HTMLElement>(
+    '[data-overlay-item]:not([aria-hidden="true"])'
+  );
+  if (!current) {
+    return null;
+  }
+  const field = focusableWithin(current).find((element) =>
+    element.matches(TEXT_FIELD)
+  );
+  return (
+    field ??
+    current.querySelector<HTMLElement>('[id^="overlay-title-"]') ??
+    focusableWithin(current)[0] ??
+    null
+  );
+}
+
 /**
  * Desktop dialog container with internal sliding content
  * Renders all stack items persistently in the same React tree location,
@@ -104,7 +134,9 @@ function DesktopOverlayContainer() {
   const { stack, closeAll, pop } = useOverlay();
   const shouldReduceMotion = useReducedMotion();
   const contentRef = useRef<HTMLDivElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  // State rather than a ref, because the portal mounts the dialog a commit
+  // after `isOpen` turns true, and the focus trap has to see it arrive.
+  const [dialog, setDialog] = useState<HTMLDivElement | null>(null);
 
   const isOpen = stack.length > 0;
 
@@ -136,7 +168,19 @@ function DesktopOverlayContainer() {
   );
 
   useDomEvent(document, "keydown", handleEscapeKey, { enabled: isOpen });
-  useFocusTrap(dialogRef, isOpen);
+  useFocusTrap(dialog, isOpen, { initialFocus: overlayInitialFocus });
+
+  // An overlay pushed onto the stack, or shown again by a pop, takes focus the
+  // way the first one did. Focus already inside it, such as an autoFocus
+  // field, stays where it is.
+  useAfterPaint(currentItem?.id, () => {
+    const current = dialog?.querySelector(
+      '[data-overlay-item]:not([aria-hidden="true"])'
+    );
+    if (dialog && current && !current.contains(document.activeElement)) {
+      overlayInitialFocus(dialog)?.focus({ preventScroll: true });
+    }
+  });
 
   // The conditional sits inside AnimatePresence so that closing the last
   // overlay plays the backdrop and container exits before the dialog unmounts.
@@ -172,7 +216,7 @@ function DesktopOverlayContainer() {
               className="fixed top-1/2 left-1/2 z-50 w-full max-w-lg px-4"
               exit="exit"
               initial="hidden"
-              ref={dialogRef}
+              ref={setDialog}
               role="dialog"
               variants={
                 shouldReduceMotion
@@ -224,6 +268,7 @@ function DesktopOverlayContainer() {
                             opacity: isCurrent ? 1 : 0,
                           }}
                           aria-hidden={!isCurrent}
+                          data-overlay-item
                           className={cn(
                             "w-full",
                             isCurrent
@@ -307,6 +352,9 @@ function MobileOverlayContainer() {
             flex item rather than a fixed one. */}
         <DrawerPrimitive.Viewport className="fixed inset-0 z-50 flex items-end justify-center">
           <DrawerPrimitive.Popup
+            // The same modal marking the desktop container sets, which is also
+            // what the editor's shortcut gate reads.
+            aria-modal="true"
             aria-labelledby={
               currentItem ? `overlay-title-${currentItem.id}` : undefined
             }

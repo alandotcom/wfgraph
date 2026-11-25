@@ -153,7 +153,7 @@ function AgentCard({
   const isGenerating = useAtomValue(isGeneratingAtom);
   const isMobile = useIsMobile();
   const prefersReducedMotion = useReducedMotion();
-  const card = useRef<HTMLDivElement>(null);
+  const [card, setCard] = useState<HTMLDivElement | null>(null);
 
   // Only the expanded card is modal. Its backdrop takes every pointer event, so
   // leaving the editor behind it in the tab order would offer a keyboard user
@@ -254,7 +254,7 @@ function AgentCard({
           // rather than the width the user last chose on a desktop.
           !isExpanded && isMobile && "w-[calc(100vw-1.5rem)]"
         )}
-        ref={card}
+        ref={setCard}
         role={isExpanded ? "dialog" : "region"}
         style={measured}
       >

@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
-import { memo } from "react";
+import { memo, useState } from "react";
 import {
   useAbortableSubscription,
   useAbortableTask,
   useAfterDelay,
   useAfterPaint,
   useBeforePaint,
+  useFocusTrap,
 } from "./effects";
 
 afterEach(() => {
@@ -249,5 +250,71 @@ describe("useAbortableTask", () => {
 
     expect(signals[0]?.aborted).toBe(true);
     expect(signals[1]?.aborted).toBe(false);
+  });
+});
+
+describe("useFocusTrap", () => {
+  /**
+   * A trap whose element mounts a render after the trap turns on, the way a
+   * portal mounts its children, with a title as its first focus target.
+   */
+  function LateDialog({ open, mounted }: { open: boolean; mounted: boolean }) {
+    const [root, setRoot] = useState<HTMLElement | null>(null);
+    useFocusTrap(root, open, {
+      initialFocus: (element) => element.querySelector("h2"),
+    });
+    return open && mounted ? (
+      <div ref={setRoot} role="dialog">
+        <h2 tabIndex={-1}>Title</h2>
+        <button type="button">Close</button>
+      </div>
+    ) : null;
+  }
+
+  function opener(): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.textContent = "Open";
+    document.body.append(button);
+    button.focus();
+    return button;
+  }
+
+  test("moves focus in once the element arrives and back out on close", () => {
+    const trigger = opener();
+    const { rerender } = render(<LateDialog mounted={false} open={false} />);
+
+    rerender(<LateDialog mounted={false} open />);
+    expect(document.activeElement).toBe(trigger);
+
+    rerender(<LateDialog mounted open />);
+    expect(document.activeElement?.textContent).toBe("Title");
+
+    rerender(<LateDialog mounted open={false} />);
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+  });
+
+  test("returns a trap opened from a menu item to the menu's trigger", () => {
+    const trigger = opener();
+    trigger.id = "settings-trigger";
+    const menu = document.createElement("div");
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-labelledby", "settings-trigger");
+    const item = document.createElement("button");
+    menu.append(item);
+    document.body.append(menu);
+    item.focus();
+
+    const { rerender } = render(<LateDialog mounted open={false} />);
+    rerender(<LateDialog mounted open />);
+    menu.remove();
+
+    // The closing menu hands focus to its trigger, and the trap takes it back.
+    act(() => trigger.focus());
+    expect(document.activeElement?.textContent).toBe("Title");
+
+    rerender(<LateDialog mounted open={false} />);
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
   });
 });

@@ -59,10 +59,13 @@ export function OverlayHeader({
         )}
         {title && (
           // The container points aria-labelledby here, so the id has to track
-          // the overlay's own id rather than being generated per render.
+          // the overlay's own id rather than being generated per render. An
+          // overlay with no text field opens with focus on this title, which
+          // is why it takes focus from script and stays out of the Tab order.
           <h2
-            className="flex-1 font-medium text-sm"
+            className="flex-1 font-medium text-sm outline-none"
             id={overlayId ? `overlay-title-${overlayId}` : undefined}
+            tabIndex={overlayId ? -1 : undefined}
           >
             {title}
           </h2>

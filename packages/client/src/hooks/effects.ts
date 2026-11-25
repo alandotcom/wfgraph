@@ -501,54 +501,104 @@ export function useElementOverflow(input: { enabled: boolean; key: unknown }): {
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
 
-function focusableWithin(root: HTMLElement): HTMLElement[] {
+/**
+ * The focusable elements inside `root` a person can see. A subtree marked
+ * `aria-hidden`, such as an overlay waiting behind the one on top of it, is
+ * skipped along with anything that has no box.
+ */
+export function focusableWithin(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
     (el) =>
-      el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement
+      el.closest('[aria-hidden="true"]') === null &&
+      (el.offsetWidth > 0 ||
+        el.offsetHeight > 0 ||
+        el === document.activeElement)
   );
 }
 
 /**
- * Hold keyboard focus inside `ref`'s element while `enabled`, and give it back
- * to whatever had it once the element goes away.
+ * The control focus goes back to when a trap opened from `active` closes. A
+ * Base UI menu item is gone by then, so a trap opened from one returns to the
+ * menu's trigger, which the menu names in `aria-labelledby`.
+ */
+function returnTarget(active: Element | null): HTMLElement | null {
+  if (!(active instanceof HTMLElement) || active === document.body) {
+    return null;
+  }
+  const triggerId = active
+    .closest('[role="menu"][aria-labelledby]')
+    ?.getAttribute("aria-labelledby");
+  const trigger = triggerId ? document.getElementById(triggerId) : null;
+  return trigger ?? active;
+}
+
+/**
+ * Hold keyboard focus inside `root` while `enabled`, and give it back to the
+ * control that opened the trap once `enabled` turns false.
  *
- * The editor's overlays are a hand-rolled surface rather than a mounted popup,
- * so nothing was scoping Tab: focus walked out of the dialog and onto the canvas
- * behind the backdrop, where a keyboard user could act on controls they believed
- * were in front of them. This is the trap that surface never got.
+ * The opener is read when `enabled` turns true, which may be a render before
+ * `root` exists, since a portal mounts its children a commit late. Focus moves
+ * in once `root` exists, to `initialFocus(root)` or else the first focusable
+ * element. A menu that closes as the trap opens hands focus back to its
+ * trigger, so focus arriving on the opener while the trap holds is sent back
+ * in. A focused element inside `root`, such as an `autoFocus` field, keeps
+ * focus.
  *
- * Not a substitute for the dialog role and `aria-modal`, which the container
+ * Not a substitute for the dialog role and `aria-modal`, which the caller
  * sets; those tell a screen reader what the element is, and this decides where
  * Tab may go.
  */
 export function useFocusTrap(
-  ref: RefObject<HTMLElement | null>,
-  enabled: boolean
+  root: HTMLElement | null,
+  enabled: boolean,
+  options?: { initialFocus?: (root: HTMLElement) => HTMLElement | null }
 ): void {
   const restoreTo = useRef<HTMLElement | null>(null);
+  const focusIn = useLatestEvent((element: HTMLElement) => {
+    (
+      options?.initialFocus?.(element) ??
+      focusableWithin(element)[0] ??
+      element
+    ).focus({ preventScroll: true });
+  });
+
+  // Runs when the trap turns on and again when `root` arrives. The opener is
+  // read on the first of those runs, before anything inside `root` has focus.
+  useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+    restoreTo.current ??= returnTarget(document.activeElement);
+    if (root && !root.contains(document.activeElement)) {
+      focusIn(root);
+    }
+    return undefined;
+  }, [enabled, root, focusIn]);
 
   useEffect(() => {
-    const root = enabled ? ref.current : null;
-    if (root) {
-      restoreTo.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-
-      // Move focus in, so the first Tab lands inside rather than after the trap.
-      if (!root.contains(document.activeElement)) {
-        (focusableWithin(root)[0] ?? root).focus();
-      }
+    if (!enabled) {
+      return undefined;
     }
-
     return () => {
-      restoreTo.current?.focus();
+      const target = restoreTo.current;
       restoreTo.current = null;
+      if (target?.isConnected) {
+        target.focus({ preventScroll: true });
+      }
     };
-  }, [ref, enabled]);
+  }, [enabled]);
+
+  const onFocusIn = useLatestEvent((event: FocusEvent) => {
+    if (root && event.target !== null && event.target === restoreTo.current) {
+      focusIn(root);
+    }
+  });
+
+  useDomEvent(document, "focusin", onFocusIn, {
+    enabled: enabled && root !== null,
+  });
 
   const onKeyDown = useLatestEvent((event: KeyboardEvent) => {
-    const root = ref.current;
     if (event.key !== "Tab" || !root) {
       return;
     }
