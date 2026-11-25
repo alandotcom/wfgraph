@@ -452,8 +452,8 @@ describe("andJoinRefusalReason laws", () => {
           if (andJoinRefusalReason(graph) === null) {
             expect(reason).toBe(
               splitKind === "lifecycle"
-                ? `Node "${JOIN_ID}" cannot join the Started and Canceled branches`
-                : `Node "${JOIN_ID}" cannot join mutually exclusive branches from "new-split"`
+                ? `"${JOIN_ID}" cannot join the Started and Canceled branches`
+                : `"${JOIN_ID}" cannot join mutually exclusive branches from "new-split"`
             );
           }
         }
@@ -498,7 +498,7 @@ describe("andJoinRefusalReason laws", () => {
           expect(reason).not.toBeNull();
           if (andJoinRefusalReason(graph) === null) {
             expect(reason).toBe(
-              `Node "${JOIN_ID}" cannot join branches that include a Wait (found "new-left-${waitAt}")`
+              `"${JOIN_ID}" cannot join branches that include a Wait (found "new-left-${waitAt}")`
             );
           }
         }
@@ -542,7 +542,7 @@ describe("andJoinRefusalReason laws", () => {
           expect(reason).not.toBeNull();
           if (andJoinRefusalReason(graph) === null) {
             expect(reason).toBe(
-              `Node "${JOIN_ID}" cannot join branches that include a Wait (found "new-wait")`
+              `"${JOIN_ID}" cannot join branches that include a Wait (found "new-wait")`
             );
           }
         }
@@ -576,7 +576,7 @@ describe("andJoinRefusalReason laws", () => {
           expect(reason).not.toBeNull();
           if (andJoinRefusalReason(graph) === null) {
             expect(reason).toBe(
-              `Node "${JOIN_ID}" cannot join an unreachable branch (found "new-orphan")`
+              `"${JOIN_ID}" cannot join an unreachable branch (found "new-orphan")`
             );
           }
         }

@@ -283,7 +283,7 @@ describe("validateWorkflowGraph", () => {
 
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.error).toContain('sourceHandle "true" or "false"');
+      expect(result.error).toContain("leaves by neither True nor False");
     }
   });
 
@@ -304,7 +304,9 @@ describe("validateWorkflowGraph", () => {
 
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.error).toContain("Only Condition nodes");
+      expect(result.error).toContain(
+        "Only a Condition has True and False outlets"
+      );
     }
   });
 

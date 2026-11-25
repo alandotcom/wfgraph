@@ -83,7 +83,7 @@ function labelOf(
   nodeById: ReadonlyMap<string, GroupGraphNode>
 ): string {
   const node = nodeById.get(nodeId);
-  return node ? nodeLabel(node) : nodeId;
+  return node ? nodeLabel(node) : "a step";
 }
 
 /**

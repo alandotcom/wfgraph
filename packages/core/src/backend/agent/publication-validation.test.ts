@@ -216,14 +216,14 @@ describe("validateAgentPublication", () => {
         nodeId: "follow-up",
         nodeLabel: "Follow up",
         message:
-          'Node "Follow up" reads "Announce" in Text, but no path leads from "Announce" to "Follow up". Reference only a node upstream of "Follow up", or move "Follow up" below "Announce".',
+          'Step 2 "Follow up" reads "Announce" in Text, but no path leads from "Announce" to it. Reference only a step above it, or move it below "Announce".',
       },
       {
         kind: "reference_not_upstream",
         nodeId: "recap",
         nodeLabel: "Recap",
         message:
-          'Node "Recap" reads "Announce" in Text, but no path leads from "Announce" to "Recap". Reference only a node upstream of "Recap", or move "Recap" below "Announce".',
+          'Step 3 "Recap" reads "Announce" in Text, but no path leads from "Announce" to it. Reference only a step above it, or move it below "Announce".',
       },
     ]);
   });

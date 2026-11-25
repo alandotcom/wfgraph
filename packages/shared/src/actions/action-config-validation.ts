@@ -12,6 +12,7 @@ import { matchesShowWhen, type ShowWhen } from "#src/types/show-when";
 import { parseTimeOfDayMinutes } from "#src/utils/wait-allowed-hours";
 import { parseDurationMs, parsePositiveDurationMs } from "#src/utils/wait-time";
 import type { WorkflowNode } from "#src/graph/types";
+import { stepName, unlabelledStepName } from "#src/graph/step-name";
 
 export type MissingRequiredField = {
   fieldKey: string;
@@ -22,15 +23,22 @@ export type MissingRequiredField = {
 
 /**
  * The sentence the editor's issue list and Publish both give for one field, so
- * the two never describe the same problem in different words.
+ * the two never describe the same problem in different words. `nodeLabel` is
+ * the step's own name, or undefined for a step that has none, and `number` its
+ * number in the outline where the caller knows it.
  */
 export function requiredFieldMessage(
-  nodeLabel: string,
-  field: MissingRequiredField
+  nodeLabel: string | undefined,
+  field: MissingRequiredField,
+  number?: number
 ): string {
+  const step = stepName(nodeLabel, number);
+  if (field.fieldKey === ACTION_TYPE_CONFIG_KEY && !field.unreadable) {
+    return `${step} has no action chosen`;
+  }
   return field.unreadable
-    ? `Node "${nodeLabel}" has a "${field.fieldLabel}" value that cannot be read`
-    : `Node "${nodeLabel}" is missing required field "${field.fieldLabel}"`;
+    ? `${step} has a "${field.fieldLabel}" value that cannot be read`
+    : `${step} is missing required field "${field.fieldLabel}"`;
 }
 
 /**
@@ -49,7 +57,10 @@ export function waitDurationCannotBeRead(value: unknown): boolean {
 
 export type MissingRequiredFieldInfo = {
   nodeId: string;
+  /** What the step is called, falling back to what its card is titled. */
   nodeLabel: string;
+  /** The step's own name, or undefined for a step with no label and no action. */
+  stepLabel: string | undefined;
   missingFields: MissingRequiredField[];
 };
 
@@ -282,7 +293,7 @@ function getNodeLabel(input: {
   node: WorkflowNode;
   actionType?: string | undefined;
   actionLabel?: string | undefined;
-}): string {
+}): string | undefined {
   const { node, actionType, actionLabel } = input;
 
   const explicitLabel = asNonEmptyString(node.data.label);
@@ -294,11 +305,7 @@ function getNodeLabel(input: {
     return actionLabel;
   }
 
-  if (actionType) {
-    return actionType;
-  }
-
-  return node.id;
+  return actionType;
 }
 
 export function getNodeMissingRequiredFields(input: {
@@ -319,9 +326,11 @@ export function getNodeMissingRequiredFields(input: {
   const actionType = asNonEmptyString(config.actionType);
 
   if (!actionType) {
+    const stepLabel = getNodeLabel({ node });
     return {
       nodeId: node.id,
-      nodeLabel: getNodeLabel({ node }),
+      nodeLabel: stepLabel ?? unlabelledStepName(node),
+      stepLabel,
       missingFields: [
         {
           fieldKey: ACTION_TYPE_CONFIG_KEY,
@@ -346,13 +355,15 @@ export function getNodeMissingRequiredFields(input: {
     return null;
   }
 
+  const stepLabel = getNodeLabel({
+    node,
+    actionType,
+    actionLabel: action?.label,
+  });
   return {
     nodeId: node.id,
-    nodeLabel: getNodeLabel({
-      node,
-      actionType,
-      actionLabel: action?.label,
-    }),
+    nodeLabel: stepLabel ?? unlabelledStepName(node),
+    stepLabel,
     missingFields,
   };
 }

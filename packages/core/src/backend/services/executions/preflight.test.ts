@@ -198,7 +198,7 @@ describe("loadDraftForRun", () => {
         expect(failure).toMatchObject({
           _tag: "InvalidInput",
           error: expect.stringContaining(
-            'Node "Follow" reads "Pause" in waitUntil, but no path leads from "Pause" to "Follow".'
+            '"Follow" reads "Pause" in waitUntil, but no path leads from "Pause" to it.'
           ),
         });
       })

@@ -242,7 +242,7 @@ describe("validateUpstreamTemplateReferences", () => {
     });
 
     expect(errorOf(result)).toBe(
-      'Node "After" reads "Source" in subject, but no path leads from "Source" to "After". Reference only a node upstream of "After", or move "After" below "Source".'
+      '"After" reads "Source" in subject, but no path leads from "Source" to it. Reference only a step above it, or move it below "Source".'
     );
   });
 
@@ -259,7 +259,7 @@ describe("validateUpstreamTemplateReferences", () => {
     });
 
     expect(errorOf(result)).toMatch(
-      /^Node "After" reads "Source" in subject, .* \(2 more references to a node that is not upstream\)$/
+      /^"After" reads "Source" in subject, .* \(2 more references to a node that is not upstream\)$/
     );
   });
 

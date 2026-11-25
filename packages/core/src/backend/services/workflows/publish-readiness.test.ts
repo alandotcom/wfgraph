@@ -204,7 +204,7 @@ describe("checkPublishReadiness", () => {
         assert.instanceOf(failure, InvalidInput);
         assert.strictEqual(
           failure.error,
-          'Node "Notify" tests score from a step that is no longer in the workflow, in Continue when. Pick the field again from a node upstream of "Notify".'
+          '"Notify" tests score from a step that is no longer in the workflow, in Continue when. Pick the field again from a step above it.'
         );
       })
     );

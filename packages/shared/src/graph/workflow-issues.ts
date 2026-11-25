@@ -5,6 +5,8 @@
  * a draft run unless it is an `invalid_group` or a Publish-only Lifecycle check.
  */
 
+import { stepName } from "#src/graph/step-name";
+import { workflowStepNumbers } from "#src/graph/workflow-outline";
 import { groupBy, uniq, uniqBy } from "es-toolkit/array";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import {
@@ -237,6 +239,9 @@ export type WorkflowIssue =
   | ReferenceNotUpstreamIssue
   | SharedConditionPathIssue;
 
+/** A step's number in the outline, by node id, or undefined for none. */
+type StepNumberOf = (nodeId: string) => number | undefined;
+
 export type CollectWorkflowIssuesInput = {
   nodes: WorkflowNode[];
   /** The stored edges, which the Group rules read. */
@@ -437,6 +442,7 @@ export function findUnconfiguredIntegrationNodes(input: {
 function collectMissingRequiredFieldIssues(input: {
   nodes: WorkflowNode[];
   catalog: ExtensionCatalog;
+  numberOf?: StepNumberOf | undefined;
 }): MissingRequiredFieldIssue[] {
   return getMissingRequiredFieldsForNodes({
     nodes: input.nodes,
@@ -451,7 +457,11 @@ function collectMissingRequiredFieldIssues(input: {
         fieldKey: field.fieldKey,
         fieldLabel: field.fieldLabel,
         unreadable: field.unreadable,
-        message: requiredFieldMessage(nodeIssue.nodeLabel, field),
+        message: requiredFieldMessage(
+          nodeIssue.stepLabel,
+          field,
+          input.numberOf?.(nodeIssue.nodeId)
+        ),
       })
     )
   );
@@ -461,6 +471,7 @@ function collectMissingIntegrationIssues(input: {
   nodes: WorkflowNode[];
   catalog: ExtensionCatalog;
   integrations: ReadonlyArray<IntegrationLike>;
+  numberOf?: StepNumberOf | undefined;
 }): MissingIntegrationIssue[] {
   const knownIds = new Set(input.integrations.map((item) => item.id));
   const issues: MissingIntegrationIssue[] = [];
@@ -507,7 +518,7 @@ function collectMissingIntegrationIssues(input: {
       nodeLabel,
       integrationType,
       integrationLabel,
-      message: `Node "${nodeLabel}" needs a ${integrationLabel} connection`,
+      message: `${stepName(nodeLabel, input.numberOf?.(node.id))} needs a ${integrationLabel} connection`,
     });
   }
 
@@ -560,6 +571,7 @@ function referenceFieldLabelOf(
 function collectBrokenReferenceIssues(input: {
   nodes: WorkflowNode[];
   catalog: ExtensionCatalog;
+  numberOf?: StepNumberOf | undefined;
 }): BrokenReferenceIssue[] {
   const nodeIds = new Set(input.nodes.map((node) => node.id));
   const lifecycleRules = input.nodes
@@ -651,7 +663,7 @@ function collectBrokenReferenceIssues(input: {
           input.nodes,
           input.catalog
         ),
-        message: `Node "${nodeLabel}" references unavailable Entity data in Continue when`,
+        message: `${stepName(nodeLabel, input.numberOf?.(node.id))} references unavailable Entity data in Continue when`,
       });
     }
 
@@ -668,8 +680,8 @@ function collectBrokenReferenceIssues(input: {
         referencedNodeId: ref.nodeId,
         displayText: currentTokenDisplayText(ref, input.nodes, input.catalog),
         message: entityReference
-          ? `Node "${nodeLabel}" references unavailable Entity data in ${fieldLabel}`
-          : `Node "${nodeLabel}" references missing step in ${fieldLabel}`,
+          ? `${stepName(nodeLabel, input.numberOf?.(node.id))} references unavailable Entity data in ${fieldLabel}`
+          : `${stepName(nodeLabel, input.numberOf?.(node.id))} references a step that is no longer in the workflow, in ${fieldLabel}`,
       });
     }
   }
@@ -689,6 +701,7 @@ export function collectReferenceNotUpstreamIssues(input: {
   nodes: readonly WorkflowNode[];
   edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
+  numberOf?: StepNumberOf | undefined;
 }): ReferenceNotUpstreamIssue[] {
   // A Map, because node ids are chosen by the builder.
   const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
@@ -771,7 +784,7 @@ export function collectReferenceNotUpstreamIssues(input: {
             nodeLabel: referencedLabel,
             fieldPath: reference.fieldPath,
           }),
-          message: `Node "${nodeLabel}" reads "${referencedLabel}" in ${fieldLabel}, but no path leads from "${referencedLabel}" to "${nodeLabel}". Reference only a node upstream of "${nodeLabel}", or move "${nodeLabel}" below "${referencedLabel}".`,
+          message: `${stepName(nodeLabel, input.numberOf?.(node.id))} reads "${referencedLabel}" in ${fieldLabel}, but no path leads from "${referencedLabel}" to it. Reference only a step above it, or move it below "${referencedLabel}".`,
         },
       ];
     });
@@ -797,7 +810,7 @@ export function collectReferenceNotUpstreamIssues(input: {
           {
             ...base,
             displayText: reference.fieldPath,
-            message: `Node "${nodeLabel}" tests ${reference.fieldPath} from a step that is no longer in the workflow, in ${CONDITION_MODEL_FIELD_LABEL}. Pick the field again from a node upstream of "${nodeLabel}".`,
+            message: `${stepName(nodeLabel, input.numberOf?.(node.id))} tests ${reference.fieldPath} from a step that is no longer in the workflow, in ${CONDITION_MODEL_FIELD_LABEL}. Pick the field again from a step above it.`,
           },
         ];
       }
@@ -809,7 +822,7 @@ export function collectReferenceNotUpstreamIssues(input: {
             nodeLabel: referencedLabel,
             fieldPath: reference.fieldPath,
           }),
-          message: `Node "${nodeLabel}" reads "${referencedLabel}" in ${CONDITION_MODEL_FIELD_LABEL}, but no path leads from "${referencedLabel}" to "${nodeLabel}". Test only a node upstream of "${nodeLabel}", or move "${nodeLabel}" below "${referencedLabel}".`,
+          message: `${stepName(nodeLabel, input.numberOf?.(node.id))} reads "${referencedLabel}" in ${CONDITION_MODEL_FIELD_LABEL}, but no path leads from "${referencedLabel}" to it. Test only a step above it, or move it below "${referencedLabel}".`,
         },
       ];
     });
@@ -827,6 +840,7 @@ function collectSharedConditionPathIssues(input: {
   nodes: WorkflowNode[];
   edges: readonly WorkflowEdge[];
   catalog: ExtensionCatalog;
+  numberOf?: StepNumberOf | undefined;
 }): SharedConditionPathIssue[] {
   return input.nodes.flatMap((node) => {
     const config = readJsonObjectLeniently(node.data.config);
@@ -896,7 +910,7 @@ function collectSharedConditionPathIssues(input: {
           fieldLabel: CONDITION_MODEL_FIELD_LABEL,
           path,
           readNodeId: read.id,
-          message: `Node "${nodeLabel}" tests ${path}, which ${others} and ${labelOf(read)} all offer, and reads it from ${labelOf(read)}. Pick the field again to name the step it comes from.`,
+          message: `${stepName(nodeLabel, input.numberOf?.(node.id))} tests ${path}, which ${others} and ${labelOf(read)} all offer, and reads it from ${labelOf(read)}. Pick the field again to name the step it comes from.`,
         },
       ];
     });
@@ -970,16 +984,24 @@ function collectInvalidLifecycleRulesIssues(input: {
   });
 }
 
-/** Flat issue list for the client pre-run checks that need no provider. */
+/**
+ * Flat issue list for the client pre-run checks that need no provider. Each
+ * message names its step by the number the outline gives it and its label.
+ */
 export function collectWorkflowIssues(
   input: CollectWorkflowIssuesInput
 ): WorkflowIssue[] {
+  const numbers = workflowStepNumbers(input);
+  const numbered = {
+    ...input,
+    numberOf: (nodeId: string) => numbers.get(nodeId),
+  };
   return [
-    ...collectMissingRequiredFieldIssues(input),
-    ...collectMissingIntegrationIssues(input),
-    ...collectBrokenReferenceIssues(input),
-    ...collectReferenceNotUpstreamIssues(input),
-    ...collectSharedConditionPathIssues(input),
+    ...collectMissingRequiredFieldIssues(numbered),
+    ...collectMissingIntegrationIssues(numbered),
+    ...collectBrokenReferenceIssues(numbered),
+    ...collectReferenceNotUpstreamIssues(numbered),
+    ...collectSharedConditionPathIssues(numbered),
     ...collectInvalidGroupIssues(input),
     ...collectInvalidLifecycleRulesIssues(input),
   ];

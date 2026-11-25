@@ -733,8 +733,7 @@ describe("Authoring inside a Group drawn in place", () => {
     });
 
     expect(outcome).toEqual({
-      refusal:
-        'Node "after" cannot join an unreachable branch (found "orphan")',
+      refusal: '"after" cannot join an unreachable branch (found "orphan")',
     });
     expect(graphOf(store)).toEqual(before);
   });

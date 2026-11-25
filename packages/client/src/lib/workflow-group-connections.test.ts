@@ -461,7 +461,7 @@ describe("connection planning", () => {
         catalog: emptyExtensionCatalog,
       })
     ).toEqual({
-      refusal: 'Node "started" cannot join the Started and Canceled branches',
+      refusal: '"started" cannot join the Started and Canceled branches',
     });
     await tick();
     expect(graphOf(store)).toEqual(before);

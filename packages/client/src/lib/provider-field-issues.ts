@@ -10,7 +10,9 @@ import {
   type ExtensionCatalog,
   findAction,
 } from "@wfgraph/shared/extensions/catalog";
+import { requiredFieldMessage } from "@wfgraph/shared/actions/action-config-validation";
 import { readConfigTrimmedString } from "@wfgraph/shared/graph/node-config";
+import { stepName } from "@wfgraph/shared/graph/step-name";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 import { isBlank } from "@wfgraph/shared/types/string";
 import {
@@ -128,7 +130,10 @@ export function providerFieldIssuesFor(
         nodeLabel: question.nodeLabel,
         fieldKey: `${question.field.key}.${entry.key}`,
         fieldLabel,
-        message: `Node "${question.nodeLabel}" is missing required field "${fieldLabel}"`,
+        message: requiredFieldMessage(question.nodeLabel, {
+          fieldKey: `${question.field.key}.${entry.key}`,
+          fieldLabel,
+        }),
       };
     });
 }
@@ -144,7 +149,7 @@ function unverifiedIssue(
     nodeLabel: question.nodeLabel,
     fieldKey: question.field.key,
     fieldLabel: question.field.label,
-    message: `Node "${question.nodeLabel}" could not check "${question.field.label}" against its Connection`,
+    message: `${stepName(question.nodeLabel)} could not check "${question.field.label}" against its Connection`,
   };
 }
 

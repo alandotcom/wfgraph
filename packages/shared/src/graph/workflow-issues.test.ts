@@ -133,6 +133,37 @@ describe("collectWorkflowIssues", () => {
     expect(hasBlockingWorkflowIssues(issues)).toBe(true);
   });
 
+  it("names each step by its outline number and label, never by its id or as a Node", () => {
+    const issues = collectWorkflowIssues({
+      nodes: [
+        {
+          id: "lifecycle",
+          type: "lifecycle",
+          position: { x: 0, y: 0 },
+          data: { label: "Lifecycle", type: "lifecycle" },
+        },
+        actionNode("01a0c626-13a8-7790", {}, ""),
+        actionNode("w1", { actionType: "Wait", waitMode: "delay" }, "Wait"),
+      ],
+      edges: [
+        {
+          id: "e1",
+          source: "lifecycle",
+          target: "01a0c626-13a8-7790",
+          sourceHandle: "started",
+        },
+        { id: "e2", source: "01a0c626-13a8-7790", target: "w1" },
+      ],
+      catalog,
+      integrations: [],
+    });
+
+    expect(issues.map((issue) => issue.message)).toEqual([
+      "Step 1 has no action chosen",
+      'Step 2 "Wait" is missing required field "Duration"',
+    ]);
+  });
+
   it("blocks on a Wait Duration that cannot be read, in Publish's words", () => {
     const issues = collectWorkflowIssues({
       nodes: [
@@ -156,7 +187,8 @@ describe("collectWorkflowIssues", () => {
         fieldKey: "waitDuration",
         fieldLabel: "Duration",
         unreadable: true,
-        message: 'Node "Wait a day" has a "Duration" value that cannot be read',
+        message:
+          'Step 1 "Wait a day" has a "Duration" value that cannot be read',
       },
     ]);
     expect(
@@ -709,7 +741,7 @@ describe("collectWorkflowIssues references to a node that is not upstream", () =
       expect.objectContaining({
         displayText: "Send Message.name",
         message:
-          'Node "Notify" reads "Send Message" in Message, but no path leads from "Send Message" to "Notify". Reference only a node upstream of "Notify", or move "Notify" below "Send Message".',
+          'Step 2 "Notify" reads "Send Message" in Message, but no path leads from "Send Message" to it. Reference only a step above it, or move it below "Send Message".',
       }),
     ]);
   });
@@ -728,7 +760,7 @@ describe("collectWorkflowIssues references to a node that is not upstream", () =
       expect.objectContaining({
         displayText: "Action.name",
         message:
-          'Node "Notify" reads "Action" in Message, but no path leads from "Action" to "Notify". Reference only a node upstream of "Notify", or move "Notify" below "Action".',
+          'Step 2 "Notify" reads "Action" in Message, but no path leads from "Action" to it. Reference only a step above it, or move it below "Action".',
       }),
     ]);
   });
@@ -769,7 +801,7 @@ describe("collectWorkflowIssues references to a node that is not upstream", () =
         referencedNodeId: "lookup",
         displayText: "Lookup.name",
         message:
-          'Node "Notify" reads "Lookup" in Message, but no path leads from "Lookup" to "Notify". Reference only a node upstream of "Notify", or move "Notify" below "Lookup".',
+          'Step 2 "Notify" reads "Lookup" in Message, but no path leads from "Lookup" to it. Reference only a step above it, or move it below "Lookup".',
       },
     ]);
     expect(hasBlockingWorkflowIssues(issues)).toBe(true);
@@ -1042,7 +1074,7 @@ describe("collectWorkflowIssues Condition rules and their source nodes", () => {
         path: "score",
         readNodeId: "scorer",
         message:
-          'Node "Route" tests score, which "Lifecycle" and "Score" all offer, and reads it from "Score". Pick the field again to name the step it comes from.',
+          'Step 2 "Route" tests score, which "Lifecycle" and "Score" all offer, and reads it from "Score". Pick the field again to name the step it comes from.',
       },
     ]);
     expect(hasBlockingWorkflowIssues(issues)).toBe(false);
@@ -1106,7 +1138,7 @@ describe("collectWorkflowIssues Condition rules and their source nodes", () => {
         referencedNodeId: "scorer",
         displayText: "Score.score",
         message:
-          'Node "Route" reads "Score" in Continue when, but no path leads from "Score" to "Route". Test only a node upstream of "Route", or move "Route" below "Score".',
+          'Step 2 "Route" reads "Score" in Continue when, but no path leads from "Score" to it. Test only a step above it, or move it below "Score".',
       },
     ]);
     expect(hasDraftRunBlockingIssues(issues)).toBe(true);
@@ -1132,7 +1164,7 @@ describe("collectWorkflowIssues Condition rules and their source nodes", () => {
         referencedNodeId: "deleted",
         displayText: "score",
         message:
-          'Node "Route" tests score from a step that is no longer in the workflow, in Continue when. Pick the field again from a node upstream of "Route".',
+          'Step 1 "Route" tests score from a step that is no longer in the workflow, in Continue when. Pick the field again from a step above it.',
       }),
     ]);
   });

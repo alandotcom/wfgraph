@@ -10,16 +10,17 @@ import {
   type GroupGraphNode,
   isGroupNode,
 } from "#src/graph/group-boundary";
+import { stepLabelForMessage } from "#src/graph/step-name";
 
 /** Edge fields the integrity check reads; shared and editor edges both satisfy it. */
 export type GroupStructureEdge = GroupBoundaryEdge & { id: string };
 
-/** The name a refusal message gives a node: its trimmed label, or its id. */
+/** The name a refusal message gives a node: its label, never its id. */
 export function nodeLabel(node: {
   id: string;
-  data: { label?: string | undefined };
+  data: { type: string; label?: string | undefined };
 }): string {
-  return node.data.label?.trim() || node.id;
+  return stepLabelForMessage(node);
 }
 
 function memberRefusal(
@@ -29,16 +30,16 @@ function memberRefusal(
 ): string | null {
   const parent = nodeById.get(parentId);
   if (!parent) {
-    return `Node "${nodeLabel(node)}" names a parent Group the graph does not contain`;
+    return `"${nodeLabel(node)}" names a parent Group the graph does not contain`;
   }
   if (!isGroupNode(parent)) {
-    return `Node "${nodeLabel(node)}" names a parent that is not a Group`;
+    return `"${nodeLabel(node)}" names a parent that is not a Group`;
   }
   if (isGroupNode(node)) {
     return `Group "${nodeLabel(node)}" cannot sit inside another Group`;
   }
   if (node.data.type !== "action") {
-    return `Node "${nodeLabel(node)}" cannot be a member of Group "${nodeLabel(parent)}", because only action steps can be Group members`;
+    return `"${nodeLabel(node)}" cannot be a member of Group "${nodeLabel(parent)}", because only action steps can be Group members`;
   }
   return null;
 }

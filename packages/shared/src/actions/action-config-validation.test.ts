@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getMissingRequiredFieldsForNodes,
   getNodeMissingRequiredFields,
+  requiredFieldMessage,
   type ResolveActionByType,
 } from "./action-config-validation";
 import {
@@ -75,6 +76,7 @@ describe("getNodeMissingRequiredFields", () => {
     expect(result).toEqual({
       nodeId: "action_1",
       nodeLabel: "Action Step",
+      stepLabel: "Action Step",
       missingFields: [
         {
           fieldKey: "actionType",
@@ -497,6 +499,7 @@ describe("getMissingRequiredFieldsForNodes", () => {
       {
         nodeId: "action_1",
         nodeLabel: "Action Step",
+        stepLabel: "Action Step",
         missingFields: [
           {
             fieldKey: "condition",
@@ -505,5 +508,43 @@ describe("getMissingRequiredFieldsForNodes", () => {
         ],
       },
     ]);
+  });
+});
+
+describe("requiredFieldMessage", () => {
+  it("names a step by its number and label, never by its id or as a Node", () => {
+    const action = { fieldKey: "actionType", fieldLabel: "Action" };
+    const duration = { fieldKey: "waitDuration", fieldLabel: "Duration" };
+
+    expect(requiredFieldMessage(undefined, action, 2)).toBe(
+      "Step 2 has no action chosen"
+    );
+    expect(requiredFieldMessage("Wait", duration, 3)).toBe(
+      'Step 3 "Wait" is missing required field "Duration"'
+    );
+    expect(
+      requiredFieldMessage("Wait", { ...duration, unreadable: true })
+    ).toBe('"Wait" has a "Duration" value that cannot be read');
+  });
+
+  it("names an unlabelled step with no action by what its card is titled", () => {
+    const result = getNodeMissingRequiredFields({
+      node: createActionNode(
+        {},
+        {
+          id: "01a0c626-13a8",
+          data: { label: "", type: "action", config: {} },
+        }
+      ),
+      resolveActionByType,
+    });
+
+    expect(result?.nodeLabel).toBe("Action");
+    expect(result?.stepLabel).toBeUndefined();
+    const [field] = result?.missingFields ?? [];
+    if (!field) throw new Error("the step reported no missing field");
+    expect(requiredFieldMessage(result?.stepLabel, field)).toBe(
+      "A step has no action chosen"
+    );
   });
 });

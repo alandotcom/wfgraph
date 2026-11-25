@@ -69,7 +69,7 @@ describe("groupStructureRefusalReason", () => {
     graph.nodes = graph.nodes.filter((node) => node.id !== "g");
 
     expect(groupStructureRefusalReason(graph)).toBe(
-      'Node "Lookup a" names a parent Group the graph does not contain'
+      '"Lookup a" names a parent Group the graph does not contain'
     );
   });
 
@@ -78,7 +78,7 @@ describe("groupStructureRefusalReason", () => {
     graph.nodes = [...graph.nodes, lookup("child", "after")];
 
     expect(groupStructureRefusalReason(graph)).toBe(
-      'Node "Lookup child" names a parent that is not a Group'
+      '"Lookup child" names a parent that is not a Group'
     );
   });
 
@@ -98,7 +98,7 @@ describe("groupStructureRefusalReason", () => {
     );
 
     expect(groupStructureRefusalReason(graph)).toBe(
-      'Node "Lifecycle" cannot be a member of Group "Frame g", because only action steps can be Group members'
+      '"Lifecycle" cannot be a member of Group "Frame g", because only action steps can be Group members'
     );
   });
 
@@ -116,7 +116,7 @@ describe("groupStructureRefusalReason", () => {
     ];
 
     expect(groupStructureRefusalReason(graph)).toBe(
-      'Node "Add" cannot be a member of Group "Frame g", because only action steps can be Group members'
+      '"Add" cannot be a member of Group "Frame g", because only action steps can be Group members'
     );
   });
 

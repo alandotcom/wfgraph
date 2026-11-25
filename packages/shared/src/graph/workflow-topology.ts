@@ -36,13 +36,13 @@ function conditionBranchRefusal(input: {
     const branch = normalizeConditionBranch(edge.sourceHandle);
     if (isConditionActionNode(sourceNode)) {
       if (edge.sourceHandle !== "true" && edge.sourceHandle !== "false") {
-        return `Condition node "${nodeLabel(sourceNode)}" has edge "${edge.id}" without explicit sourceHandle "true" or "false"`;
+        return `Condition "${nodeLabel(sourceNode)}" has a connection that leaves by neither True nor False`;
       }
       continue;
     }
 
     if (branch) {
-      return `Only Condition nodes can emit true/false branch edges (edge "${edge.id}")`;
+      return `Only a Condition has True and False outlets, and "${nodeLabel(sourceNode)}" is not one`;
     }
   }
 

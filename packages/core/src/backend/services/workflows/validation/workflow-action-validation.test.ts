@@ -147,7 +147,7 @@ describe("validateWorkflowActionConfigs", () => {
 
     expect(result).toEqual({
       valid: false,
-      error: 'Node "Action" has a "Duration" value that cannot be read',
+      error: '"Action" has a "Duration" value that cannot be read',
     });
   });
 

@@ -213,7 +213,7 @@ describe("publish-checks", () => {
       {
         kind: "reference_not_upstream",
         error:
-          'Node "Reader" reads "Source" in to, but no path leads from "Source" to "Reader". Reference only a node upstream of "Reader", or move "Reader" below "Source".',
+          '"Reader" reads "Source" in to, but no path leads from "Source" to it. Reference only a step above it, or move it below "Source".',
       },
     ]);
   });

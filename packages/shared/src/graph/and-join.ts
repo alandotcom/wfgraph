@@ -11,6 +11,7 @@ import {
   normalizeConditionBranch,
 } from "#src/conditions/condition-branch";
 import { isWaitNode } from "#src/graph/node-config";
+import { stepLabelForMessage } from "#src/graph/step-name";
 import type { WorkflowNode } from "#src/graph/types";
 import { upstreamNodeIdsOver } from "#src/graph/upstream-nodes";
 import {
@@ -28,8 +29,9 @@ export type JoinGraphEdge = {
 /** `upstreamNodeIds` over the edge list one join analysis reads. */
 type UpstreamOf = (nodeId: string) => Set<string>;
 
-function nodeLabel(node: WorkflowNode | undefined, fallbackId: string): string {
-  return node?.data.label?.trim() || fallbackId;
+/** A node as a message names it; never by its id. */
+function nodeLabel(node: WorkflowNode | undefined): string {
+  return node ? stepLabelForMessage(node) : "a step";
 }
 
 /**
@@ -108,7 +110,7 @@ function refusalForJoin(input: {
 }): string | null {
   const { join, nodeById, edges, upstreamOf } = input;
   const { joinNodeId, predecessorIds } = join;
-  const joinLabel = nodeLabel(nodeById.get(joinNodeId), joinNodeId);
+  const joinLabel = nodeLabel(nodeById.get(joinNodeId));
   const upstream = upstreamOf(joinNodeId);
 
   for (const predecessorId of predecessorIds) {
@@ -119,7 +121,7 @@ function refusalForJoin(input: {
         upstreamOf,
       })
     ) {
-      return `Node "${joinLabel}" cannot join an unreachable branch (found "${nodeLabel(nodeById.get(predecessorId), predecessorId)}")`;
+      return `"${joinLabel}" cannot join an unreachable branch (found "${nodeLabel(nodeById.get(predecessorId))}")`;
     }
   }
 
@@ -143,15 +145,15 @@ function refusalForJoin(input: {
     }
     const source = nodeById.get(sourceId);
     if (source?.data.type === "lifecycle") {
-      return `Node "${joinLabel}" cannot join the Started and Canceled branches`;
+      return `"${joinLabel}" cannot join the Started and Canceled branches`;
     }
-    return `Node "${joinLabel}" cannot join mutually exclusive branches from "${nodeLabel(source, sourceId)}"`;
+    return `"${joinLabel}" cannot join mutually exclusive branches from "${nodeLabel(source)}"`;
   }
 
   for (const armNodeId of join.armNodeIds) {
     const armNode = nodeById.get(armNodeId);
     if (armNode && isWaitNode(armNode)) {
-      return `Node "${joinLabel}" cannot join branches that include a Wait (found "${nodeLabel(armNode, armNodeId)}")`;
+      return `"${joinLabel}" cannot join branches that include a Wait (found "${nodeLabel(armNode)}")`;
     }
   }
 
