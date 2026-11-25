@@ -2,10 +2,13 @@
  * Action Links: pages of the host's own that a host action names for the
  * editor to link to from Canvas Reveal, at Browse and at Focus.
  *
- * `defineAction` checks each link's URL with `actionLinkUrlProblem` when the
- * host declares it. The editor fills the URL's placeholders when it draws the
- * link. Workflow Graph never requests the URL itself.
+ * `actionLinksProblem` holds every rule for a valid list of links, and
+ * `defineAction` calls it when the host declares the action. The editor fills
+ * the URL's placeholders when it draws the link. Workflow Graph never
+ * requests the URL itself.
  */
+
+import { isBlank } from "#src/types/string";
 
 /**
  * One link a host action declares. `url` may hold the placeholders
@@ -36,6 +39,40 @@ const PLACEHOLDER_SENTINEL = "wfgraphplaceholder";
 
 const PLACEHOLDER_BEFORE_PATH =
   "the url holds a placeholder before its path, in the host, the port or the user info";
+
+/**
+ * The first rule a link in `links` breaks, with the link's zero-based
+ * position, or undefined when every link is valid. Each sentence names the
+ * rule and never quotes the url. A sentence naming an earlier link gives that
+ * link's position counted from 1.
+ *
+ * It checks each link in order for a blank label, then a label an earlier
+ * link already has, then a url `actionLinkUrlProblem` refuses. Labels must
+ * differ because the editor keys each link by its label, and a reader tells
+ * two links apart by nothing else. It compares labels and urls exactly as
+ * given, so the caller trims them first.
+ */
+export function actionLinksProblem(
+  links: readonly ActionLink[]
+): { index: number; problem: string } | undefined {
+  for (const [index, link] of links.entries()) {
+    if (isBlank(link.label)) {
+      return { index, problem: "the label is blank" };
+    }
+    const first = links.findIndex((other) => other.label === link.label);
+    if (first < index) {
+      return {
+        index,
+        problem: `the label is the same as link ${first + 1}'s`,
+      };
+    }
+    const problem = actionLinkUrlProblem(link.url);
+    if (problem) {
+      return { index, problem };
+    }
+  }
+  return undefined;
+}
 
 /**
  * Why `url` cannot be an Action Link's URL, or undefined when it can. The
