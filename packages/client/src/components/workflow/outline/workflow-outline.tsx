@@ -27,10 +27,6 @@ import { ProviderLogo } from "#src/components/workflow/nodes/action-node";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
 import { Input } from "#src/components/ui/input";
 import { useAfterCommit, useAfterPaint, useDomEvent } from "#src/hooks/effects";
-import {
-  useOpenRunWaits,
-  useTestSkippedNodeIds,
-} from "#src/hooks/use-execution-logs";
 import { eventLabel } from "@wfgraph/shared/graph/workflow-summary";
 import { isRunInProgress } from "#src/lib/execution-logs";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
@@ -76,6 +72,19 @@ import {
   type OutlineNodeRow,
   visibleRows,
 } from "./outline-view";
+
+/** The open run's facts a row's outcome reads beyond its path and logs. */
+export type OpenRunFacts = {
+  waits: readonly {
+    nodeId: string;
+    subscribedEvents: readonly string[];
+    waitUntil: Date | null;
+  }[];
+  testSkipped: ReadonlySet<string>;
+};
+
+const NO_WAITS: OpenRunFacts["waits"] = [];
+const NO_NODE_IDS: ReadonlySet<string> = new Set();
 
 /** Pixels each level of nesting indents a row. */
 const INDENT_PX = 14;
@@ -137,7 +146,15 @@ function outlineSections(input: {
  * or focusing a row puts the selection halo on its card without moving the
  * camera. Cmd+F or Ctrl+F focuses the filter field.
  */
-export function WorkflowOutline() {
+export function WorkflowOutline({
+  openRun,
+}: {
+  /**
+   * What the Runs column already reads about the open run that the outline's
+   * rows say: the Waits it is parked on and the steps a test run skipped.
+   */
+  openRun?: OpenRunFacts | undefined;
+} = {}) {
   const catalog = useExtensionCatalog();
   const store = useStore();
   const graph = useAtomValue(presentedGraphAtom);
@@ -157,8 +174,8 @@ export function WorkflowOutline() {
   const runPath = useAtomValue(runPathAtom);
   const runStatuses = useAtomValue(runNodeEvidenceStatusesAtom);
   const runLogs = useAtomValue(projectedRunLogsAtom);
-  const testSkipped = useTestSkippedNodeIds();
-  const runWaits = useOpenRunWaits();
+  const runWaits = openRun?.waits ?? NO_WAITS;
+  const testSkipped = openRun?.testSkipped ?? NO_NODE_IDS;
 
   const editing = view === "draft" && !reviewShown;
   // While the review sheet shows, the graph holds removed steps too, and the

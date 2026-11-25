@@ -459,13 +459,17 @@ leaves by no outlet. Placing an Event Split sets the zoom from its card and its
 outlet handles the same way a Condition does, keeping every outlet label that
 still fits inside the usable canvas.
 
-**Runs** has a Browse of its own and shows a run node's evidence in Focus. On
-the run list the header path names the workflow and Runs, and **Refresh** and
-**Delete all runs** sit above the superseded count, the Refused Starts, the
+**Runs** has a Browse of its own and shows a run node's evidence in Focus. The
+run list is the left column's: its header holds **Refresh** and **Delete all
+runs**, above the superseded count, the Refused Starts, the
 Cancellation Failures, a muted line naming the host's run retention window when
 the host deletes old runs, and the run rows. The All Runs list on the workflows
 page states the same window under its title. Selecting a run adds a browser history
-entry and puts the graph version the run pinned on the canvas. The header then
+entry and puts the graph version the run pinned on the canvas. The left column
+then shows the run's outline under a header naming the run, with **Back** to
+the list, and J and K open the next and previous run in the list. A failed run
+opens with the step that failed selected, and a waiting run with the Wait it is
+parked on, so the details column shows that step's evidence. The details header
 titles the run by its Entity and its start time, such as "Patient pat_20418 ·
 Nov 25, 7:42 AM", shows its status, and offers **Back**. A run's Entity is the
 Entity's label and the id the host supplied. A workflow that tracks no Entity

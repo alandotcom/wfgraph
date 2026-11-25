@@ -2,7 +2,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useRef } from "react";
 import { cn } from "@wfgraph/shared/utils";
-import { RunsListActions } from "#src/components/workflow/node-config-panel";
 import { runEvidenceOriginAtom } from "#src/components/workflow/run-evidence-origin";
 import {
   runBrowseFocusRequestAtom,
@@ -28,14 +27,7 @@ import {
 import { runTitle } from "#src/components/workflow/workflow-run-summary-row";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import {
-  RunsEmptyState,
-  RunsListNotices,
-  RunsLoadFailure,
-  RunsSkeleton,
-  RunUnavailableMessage,
-} from "#src/components/workflow/workflow-runs";
-import { WorkflowRunsList } from "#src/components/workflow/workflow-runs-list";
+import { RunsSkeleton } from "#src/components/workflow/workflow-runs";
 import { useAfterCommit } from "#src/hooks/effects";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { groupLabel } from "#src/lib/workflow-graph-types";
@@ -208,7 +200,7 @@ function useRunsHeaderModel(
  * does: the run's history entry is replaced by the list, and the list puts
  * focus on that run's row.
  */
-function useOpenRunList(): () => void {
+export function useOpenRunList(): () => void {
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const address = useAtomValue(activeWorkspaceAddressAtom);
   const requestRowFocus = useSetAtom(runRowFocusRequestAtom);
@@ -340,25 +332,21 @@ export const unwindMobileRuns: NonNullable<RevealKind["unwind"]> = (input) => {
   unwindRuns(input);
 };
 
-/** The details panel or the mobile Reveal sheet around a Runs body. */
-const REVEAL_SURFACE_SELECTOR =
-  '[data-slot="details-panel"], [data-slot="mobile-reveal"]';
-
 /**
- * Runs in the details column, at both levels. Browse shows the run list, or the run
- * the route opens with its summary, waits, exit and failure details, journey,
- * and activity. Focus shows the evidence of the node the run inspects. The run
+ * Runs in the details column, at both levels. Browse shows the run the route
+ * opens with its summary, waits, exit and failure details, journey, and
+ * activity, or with no run open a line pointing at the run list in the left
+ * column. Focus shows the evidence of the node the run inspects. The run
  * overview stays mounted, hidden, while Focus shows, so returning keeps its
- * state; the run list's scroll and each overview's scroll are kept per address.
+ * state; each overview's scroll is kept per address.
  */
-export function RunsBody({ subject, frame, level, mobile }: RevealBodyProps) {
+export function RunsBody({ subject, level, mobile }: RevealBodyProps) {
   const runs = useWorkflowRuns();
   const address = useAtomValue(activeWorkspaceAddressAtom);
   const focusRequest = useAtomValue(runBrowseFocusRequestAtom);
   const setFocusRequest = useSetAtom(runBrowseFocusRequestAtom);
   const inspectLog = useInspectRunLog();
   const chooseExecution = useChooseRunExecution();
-  const rootRef = useRef<HTMLDivElement>(null);
   const overlayNodes = useAtomValue(executionOverlayGraphAtom)?.nodes ?? [];
   const { screen } = runs;
   const openRun = screen.kind === "run" ? screen : null;
@@ -387,28 +375,12 @@ export function RunsBody({ subject, frame, level, mobile }: RevealBodyProps) {
       ? { groupId, summary: groupSummary }
       : null;
   const showsScroller =
-    screen.kind === "list" ||
-    (openRun !== null && !showsEvidence && shownGroup === null);
+    openRun !== null && !showsEvidence && shownGroup === null;
   const {
     ref: scrollRef,
     onScroll,
     onScrollEnd,
-    adoptScroll,
   } = useAddressBodyScroll(showsScroller ? address : null, mobile);
-
-  // A focused row has scrolled the list to itself, and that position replaces
-  // the stored one. With the row gone, the Reveal title takes focus.
-  const answerRowFocus = (focused: boolean) => {
-    runs.clearRowFocus();
-    if (focused) {
-      adoptScroll();
-      return;
-    }
-    rootRef.current
-      ?.closest(REVEAL_SURFACE_SELECTOR)
-      ?.querySelector<HTMLElement>('[data-slot="reveal-title"]')
-      ?.focus();
-  };
 
   // Leaving Focus for a canvas node hands DOM focus back to that node once the
   // overview shows again. A journey entry answers its own request below.
@@ -436,17 +408,9 @@ export function RunsBody({ subject, frame, level, mobile }: RevealBodyProps) {
   });
 
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col"
-      data-testid="runs-browse"
-      ref={rootRef}
-    >
-      {screen.kind === "loading-list" ? <RunsSkeleton /> : null}
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="runs-browse">
       {screen.kind === "opening-newest" || screen.kind === "run-loading" ? (
         <RunsSkeleton detail />
-      ) : null}
-      {screen.kind === "run-unavailable" ? (
-        <RunUnavailableMessage retry={screen.retry} />
       ) : null}
       {openRun !== null ? (
         <div
@@ -492,38 +456,17 @@ export function RunsBody({ subject, frame, level, mobile }: RevealBodyProps) {
           />
         </div>
       ) : null}
-      {screen.kind === "list" || screen.kind === "list-error" ? (
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-1.5">
-          <p className="text-muted-foreground text-xs">
-            Select a run to inspect its journey on the canvas.
-          </p>
-          <RunsListActions confirm={frame.confirm} />
-        </div>
-      ) : null}
-      {screen.kind === "list-error" ? (
-        <RunsLoadFailure retry={screen.retry} />
-      ) : null}
-      {screen.kind === "list" ? (
-        <div
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 [scrollbar-gutter:stable_both-edges]"
-          data-slot="runs-list-scroller"
-          onScroll={onScroll}
-          onScrollEnd={onScrollEnd}
-          ref={scrollRef}
-        >
-          <div className="px-2 py-2">
-            <RunsListNotices runs={runs}>
-              {screen.executions.length === 0 ? <RunsEmptyState /> : null}
-            </RunsListNotices>
-          </div>
-          <WorkflowRunsList
-            executions={screen.executions}
-            focusId={runs.focusRunId}
-            onFocusAnswered={answerRowFocus}
-            onSelect={runs.selectRun}
-            receivedAtMs={screen.receivedAtMs}
-          />
-        </div>
+      {screen.kind === "list" ||
+      screen.kind === "list-error" ||
+      screen.kind === "loading-list" ||
+      screen.kind === "run-unavailable" ? (
+        // The run list, its loading and failure states, and a run that could
+        // not be loaded are the left column's, so this column says where to go.
+        <p className="px-3 py-3 text-muted-foreground text-sm">
+          {screen.kind === "run-unavailable"
+            ? "This run's summary shows here once it loads."
+            : "Open a run from the list to see its summary here."}
+        </p>
       ) : null}
     </div>
   );

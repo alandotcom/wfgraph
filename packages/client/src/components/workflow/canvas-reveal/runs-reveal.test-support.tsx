@@ -5,6 +5,7 @@
  * once per worker and registers no hooks of its own.
  */
 
+import { OutlineColumn } from "#src/components/workflow/outline/outline-column";
 import {
   QueryClient,
   QueryClientProvider,
@@ -343,6 +344,9 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
           <ExecutionOverlaySync />
           <WorkspaceRouteSync />
           <RunStatusProjection />
+          <div data-testid="outline-column">
+            <OutlineColumn />
+          </div>
           <DetailsPanel />
           <MobileReveal />
         </div>
@@ -407,8 +411,9 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
   const overviewScroller = () =>
     aside()?.querySelector<HTMLElement>(".overflow-y-auto") ?? null;
   const listScroller = () =>
-    aside()?.querySelector<HTMLElement>('[data-slot="runs-list-scroller"]') ??
-    null;
+    view.container.querySelector<HTMLElement>(
+      '[data-slot="runs-list-scroller"]'
+    ) ?? null;
   const sheet = () =>
     view.container.querySelector<HTMLElement>('[data-slot="mobile-reveal"]');
   return {

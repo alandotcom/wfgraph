@@ -1,11 +1,18 @@
+import { useAtomValue } from "jotai";
 import { ColumnHeader } from "#src/components/workflow/columns/editor-columns";
 import { WorkflowOutline } from "#src/components/workflow/outline/workflow-outline";
+import { workflowWorkspaceViewAtom } from "#src/lib/workflow-ui-store";
+import { RunsColumn } from "./runs-column";
 
 /**
- * The editor's left column: its header and the workflow's outline below it.
- * The body holds the outline in run order.
+ * The editor's left column. In Draft it holds the workflow's outline in run
+ * order. In Runs it holds the run list, or the open run's outline.
  */
 export function OutlineColumn() {
+  const view = useAtomValue(workflowWorkspaceViewAtom);
+  if (view === "runs") {
+    return <RunsColumn />;
+  }
   return (
     <>
       <ColumnHeader side="outline">

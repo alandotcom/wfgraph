@@ -291,8 +291,9 @@ describe("mobile Runs sequence", () => {
 
   it("restores the run list scroll when Back leaves a run", async () => {
     serveTwoRuns();
-    const { sheetTitle, rows, press, scroller, scrollTo } =
-      await renderMobileRuns({ view: "runs" });
+    const { sheetTitle, rows, press, listScroller } = await renderMobileRuns({
+      view: "runs",
+    });
     press("Configuration");
     // The first visit opens the newest run; Back reaches the list.
     await waitFor(() =>
@@ -300,7 +301,14 @@ describe("mobile Runs sequence", () => {
     );
     press("Back to Runs");
     await waitFor(() => expect(rows()).toHaveLength(2));
-    scrollTo(40);
+    // The run list is the phone's main view, under the sheets.
+    const list = listScroller();
+    if (!list) {
+      throw new Error("the run list did not render");
+    }
+    list.scrollTop = 40;
+    fireEvent.scroll(list);
+    fireEvent(list, new Event("scrollend"));
 
     fireEvent.click(rows()[1]);
     await waitFor(() =>
@@ -309,7 +317,7 @@ describe("mobile Runs sequence", () => {
     press("Back to Runs");
     await waitFor(() => expect(rows()).toHaveLength(2));
     await afterPaint();
-    expect(scroller()?.scrollTop).toBe(40);
+    expect(listScroller()?.scrollTop).toBe(40);
   });
 
   it("unwinds the same way on Escape as on Back", async () => {

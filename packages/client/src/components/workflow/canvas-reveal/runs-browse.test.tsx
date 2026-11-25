@@ -236,7 +236,7 @@ describe("Runs Browse run list and selected run", () => {
       execution("exec_b", "completed"),
       execution("exec_a", "completed"),
     ];
-    const { aside, title, rows, back, listScroller } = await renderRunsReveal({
+    const { view, title, rows, back, listScroller } = await renderRunsReveal({
       view: "runs",
     });
     await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
@@ -254,7 +254,7 @@ describe("Runs Browse run list and selected run", () => {
     await waitFor(() => expect(title()).toBe(runHeading("exec_a")));
     // A browser scrolls a row it focuses into view; happy-dom does not, so a
     // run row taking focus stands in for that scroll here.
-    aside()?.addEventListener("focusin", (event) => {
+    view.getByTestId("outline-column").addEventListener("focusin", (event) => {
       const scroller = listScroller();
       if (
         event.target instanceof HTMLElement &&
@@ -816,15 +816,14 @@ describe("Runs Browse restoration", () => {
       execution("exec_b", "completed"),
       execution("exec_a", "completed"),
     ];
-    const { router, aside, title, rows, back, show } = await renderRunsReveal({
-      view: "runs",
-    });
+    const { router, title, rows, back, show, listScroller } =
+      await renderRunsReveal({
+        view: "runs",
+      });
     await waitFor(() => expect(title()).toBe(runHeading("exec_b")));
     back();
     await waitFor(() => expect(rows()).toHaveLength(2));
-    const scroller = () =>
-      aside()?.querySelector<HTMLElement>('[data-slot="runs-list-scroller"]') ??
-      null;
+    const scroller = listScroller;
     const list = scroller();
     if (!list) {
       throw new Error("the run list did not render");

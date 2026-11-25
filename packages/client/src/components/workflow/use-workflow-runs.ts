@@ -128,6 +128,11 @@ export type WorkflowRunsState = {
    * run.
    */
   selectRun: (executionId: string) => void;
+  /**
+   * The listed runs, newest first, whichever screen shows. An open run's next
+   * and previous runs are read from here.
+   */
+  listedRuns: readonly WorkflowExecution[];
 };
 
 /** What `useRunReads` hands the Runs header and the Runs body. */
@@ -425,5 +430,6 @@ export function useWorkflowRuns(): WorkflowRunsState {
     selectRun: (id) => {
       void navigate({ search: { view: "runs", executionId: id } });
     },
+    listedRuns: executions,
   };
 }
