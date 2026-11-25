@@ -42,8 +42,32 @@ import {
   nodesAtom,
 } from "#src/lib/workflow-graph-store";
 import { toEditorEdge, toEditorNode } from "#src/lib/workflow-graph-types";
-import { activeAgentTurnIdAtom } from "#src/lib/workflow-ui-store";
+import {
+  activeAgentTurnIdAtom,
+  agentConversationOpenAtom,
+} from "#src/lib/workflow-ui-store";
+import { requestRevealPlacementAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
+import { workspaceAddressId } from "#src/lib/workflow-navigation-state";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+
+/**
+ * Ask the canvas camera to show the steps a turn added or changed, in the
+ * address on screen.
+ */
+function showChangedSteps(
+  before: Parameters<typeof nodeChanges>[0],
+  after: Parameters<typeof nodeChanges>[1]
+): void {
+  const { added, changed } = nodeChanges(before, after);
+  const nodeIds = [...added, ...changed].map((node) => node.id);
+  if (nodeIds.length > 0) {
+    appStore.set(requestRevealPlacementAtom, {
+      addressId: workspaceAddressId(appStore.get(activeWorkspaceAddressAtom)),
+      nodeIds,
+    });
+  }
+}
 
 /** Text, reasoning and tool calls, in the order the turn produced them. */
 type TurnContent = ThreadAssistantMessagePart[];
@@ -259,6 +283,11 @@ export function useAgentRuntime(workflowId: string) {
                   catalog,
                 });
                 if (applied && !hasAppliedGraph) {
+                  // The conversation floats over the canvas where the change
+                  // lands, so the turn's first edit collapses it to the line,
+                  // which marks the turn as working until the person reopens
+                  // it.
+                  appStore.set(agentConversationOpenAtom, false);
                   // The first edit pushed the turn's one history entry, which
                   // the panel's "Undo changes" reverts to.
                   const undoKey = generateId();
@@ -289,6 +318,12 @@ export function useAgentRuntime(workflowId: string) {
               ...metadata,
               record: record(),
             });
+          }
+
+          // A turn that changed the canvas asks the camera to show the steps it
+          // added or changed, which moves it only when they are out of view.
+          if (hasAppliedGraph) {
+            showChangedSteps(startedOn, drawn);
           }
 
           // Reasoning the turn ended on is closed here, so its panel can say

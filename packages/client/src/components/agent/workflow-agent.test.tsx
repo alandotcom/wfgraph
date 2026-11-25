@@ -24,11 +24,15 @@ import {
 import { openReviewPageAtom } from "#src/lib/workflow-review-store";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
+  activeAgentTurnIdAtom,
   agentConversationOpenAtom,
   focusAgentComposerAtom,
 } from "#src/lib/workflow-ui-store";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { WfGraphOperationIds } from "@wfgraph/shared/authorization/operations";
+import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
+import { appStore } from "#src/lib/app-store";
+import { revealPlacementRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { emptyExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 
 /** The bodies of the chat requests sent, read as text. */
@@ -52,6 +56,13 @@ afterEach(() => {
   resetAuthorizationGrantsForTests();
   localStorage.clear();
 });
+
+const SEND_NODE = {
+  id: "send",
+  type: "action",
+  position: { x: 0, y: 0 },
+  data: { label: "Send 24-hour reminder", type: "action" as const, config: {} },
+};
 
 function renderAgent(variant: "canvas" | "phone" = "canvas") {
   const store = createStore();
@@ -285,5 +296,96 @@ describe("WorkflowAgentView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(conversation()).toBeNull();
     expect(agent()?.className).not.toContain("fixed");
+  });
+
+  it("collapses to the working line when the agent's edit lands, and shows the changed step", async () => {
+    const encoder = new TextEncoder();
+    const event = (data: unknown, name = "message") =>
+      encoder.encode(
+        `event: ${name}\ndata: ${JSON.stringify({ json: data })}\n\n`
+      );
+    let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        // Only the chat streams. The draft save the agent's edit asks for is
+        // answered as refused, which this test does not read.
+        if (
+          !String(input instanceof Request ? input.url : input).includes(
+            "agent"
+          )
+        ) {
+          return new Response("{}", { status: 404 });
+        }
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            stream = controller;
+          },
+        });
+        return new Response(body, {
+          headers: { "content-type": "text/event-stream" },
+        });
+      })
+    );
+    const store = appStore;
+    store.set(currentWorkflowIdAtom, "workflow_1");
+    store.set(loadWorkflowGraphAtom, { nodes: [SEND_NODE], edges: [] });
+    showWorkspaceRoute(store, {});
+    render(
+      <JotaiProvider store={store}>
+        <ExtensionCatalogProvider value={emptyExtensionCatalog}>
+          <WorkflowAgentView variant="canvas" workflowId="workflow_1" />
+        </ExtensionCatalogProvider>
+      </JotaiProvider>
+    );
+    try {
+      const field = screen.getByPlaceholderText(AGENT_COMPOSER_PLACEHOLDER);
+      fireEvent.change(field, { target: { value: "Add a wait" } });
+      fireEvent.keyDown(field, { key: "Enter" });
+      await waitFor(() => expect(stream).toBeDefined());
+      expect(store.get(agentConversationOpenAtom)).toBe(true);
+
+      await act(async () => {
+        stream?.enqueue(
+          event({
+            type: "graph",
+            graph: createSerializedWorkflowGraph({
+              nodes: [
+                SEND_NODE,
+                {
+                  id: "wait_new",
+                  type: "action",
+                  position: { x: 0, y: 200 },
+                  data: { label: "Wait a day", type: "action", config: {} },
+                },
+              ],
+              edges: [],
+            }),
+          })
+        );
+      });
+
+      await waitFor(() =>
+        expect(store.get(agentConversationOpenAtom)).toBe(false)
+      );
+      expect(
+        screen.queryByRole("region", { name: "Agent conversation" })
+      ).toBeNull();
+      expect(
+        screen.getByRole("img", { name: "The agent is working" })
+      ).toBeTruthy();
+
+      await act(async () => {
+        stream?.enqueue(event(null, "close"));
+      });
+      await waitFor(() =>
+        expect(store.get(revealPlacementRequestAtom)?.nodeIds).toEqual([
+          "wait_new",
+        ])
+      );
+    } finally {
+      store.set(agentConversationOpenAtom, false);
+      store.set(activeAgentTurnIdAtom, null);
+    }
   });
 });

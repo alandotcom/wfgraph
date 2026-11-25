@@ -365,7 +365,11 @@ Popover-filled panel up to 560px wide and 60% of the canvas tall, with a
 hairline ring and shadow-lg, holding the thread, the suggestions, tool
 activity, errors, **New conversation**, and **Close conversation**. That
 control and Escape collapse it back to the line and keep the conversation; the
-line then shows a small dot while the agent works or after it replied. With a
+line then shows a small dot while the agent works or after it replied. The
+conversation covers the canvas where an edit lands, so the agent's first edit
+in a turn collapses it to the line, whose dot says the agent is still working,
+and when the turn ends the camera shows the steps it added or changed if they
+are out of view. With a
 step selected, the line offers it as a chip, such as "+ Step 4 · Send 24-hour
 reminder"; pressing it attaches the step to the message being written, its ×
 removes it, and nothing is attached unless the person attaches it. A sent

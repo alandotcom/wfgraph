@@ -302,6 +302,7 @@ function AgentSurface({
   const [unseen, setUnseen] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const wasRunning = useRef(running);
+  const wasOpenRef = useRef(open);
   // Focus moved to the line by Escape from the conversation must not open the
   // conversation it just closed.
   const keepClosedOnFocus = useRef(false);
@@ -315,8 +316,18 @@ function AgentSurface({
     wasRunning.current = running;
   });
   useAfterCommit(open, () => {
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = open;
     if (open) {
       setUnseen(false);
+      return;
+    }
+    // The conversation also collapses when the agent's edit lands, and focus
+    // inside it would fall to the page: it goes to the line instead.
+    if (wasOpen && document.activeElement === document.body) {
+      keepClosedOnFocus.current = true;
+      input.current?.focus({ preventScroll: true });
+      keepClosedOnFocus.current = false;
     }
   });
 
