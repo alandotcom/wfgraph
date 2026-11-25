@@ -439,7 +439,12 @@ dependencies, but each is imported by one module under `backend/agent/providers/
 one provider entry (`@wfgraph/core/openai`, `/anthropic`, `/openrouter` or
 `/openai-compatible`) alone reaches. `backend/agent/model.ts` holds what the providers share
 and imports none of them, and the `agent` option carries a provider's `modelLayer`, so no
-other module names a provider. Verify a packaging change with `pnpm pack` and read
+other module names a provider. `@modelcontextprotocol/server`, and the `zod` it depends on,
+load the same way: `backend/agent/mcp-server.ts` is the one module that imports the SDK,
+and the `@wfgraph/core/mcp` entry alone reaches it at runtime. The `mcp` option carries
+what `wfMcp` returns, so `backend/api-app.ts` mounts the endpoint through that value's
+members and imports the module's types alone, and `backend/agent/mcp-option.ts` checks
+the option at startup with a type import. Verify a packaging change with `pnpm pack` and read
 the extracted manifest. `docs/embedding.md` ("Package exports") is the one home of the
 core entry points.
 
@@ -453,9 +458,10 @@ Nothing reachable from `@wfgraph/core/worker` or from an integration entry of
 dependency an entry of its own, the way `@wfgraph/core/inngest` holds the Inngest SDK.
 `scripts/plugins/worker-bundle.test.ts` bundles each of those entries with wrangler's
 settings, fails on an `import()` of bundled code, and holds each integration to its row of
-`ADDED_KIB_CEILING`. A model provider package is imported only by its own entry, which a
-host imports statically; the same test fails when a module of one reaches the bundle of
-`@wfgraph/core/worker`.
+`ADDED_KIB_CEILING`. A model provider package, the MCP server SDK and `zod` are each
+imported only by their own entry, which a host imports statically; the same test's
+`ENTRY_ONLY_PACKAGES` names each one, and the test fails when a module of one reaches the
+bundle of `@wfgraph/core/worker`.
 
 ## Code cleanliness
 

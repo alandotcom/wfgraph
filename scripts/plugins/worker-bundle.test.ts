@@ -10,8 +10,8 @@ import pluginsManifest from "../../packages/plugins/package.json" with { type: "
  * a row in `ADDED_KIB_CEILING`. Each integration entry must stay under that
  * ceiling and must not reach an `import()` of bundled code. The Worker host
  * entry of `@wfgraph/core` is checked for that `import()` rule, and for
- * bundling no module of the four model provider packages, which a host loads
- * only through the provider entry it imports.
+ * bundling no module of a package in `ENTRY_ONLY_PACKAGES`, each of which a
+ * host loads only through the `@wfgraph/core` entry it imports.
  */
 
 /**
@@ -35,36 +35,46 @@ const PLUGIN_BASELINE_ENTRY = "packages/core/src/plugin.ts";
 const WORKER_HOST_ENTRY = "packages/core/src/worker.ts";
 
 /**
- * The Effect provider packages behind `@wfgraph/core/openai`,
- * `@wfgraph/core/anthropic`, `@wfgraph/core/openrouter` and
- * `@wfgraph/core/openai-compatible`. Each is imported by its own entry alone.
+ * Packages that only one entry of `@wfgraph/core` may import, each with that
+ * entry: the four Effect model provider packages, and the MCP server SDK with
+ * the `zod` it depends on. A name matches the package of that name, and a
+ * scope such as `@modelcontextprotocol` matches every package in the scope.
  */
-const MODEL_PROVIDER_PACKAGES = [
-  "@effect/ai-openai",
-  "@effect/ai-anthropic",
-  "@effect/ai-openrouter",
-  "@effect/ai-openai-compat",
+const ENTRY_ONLY_PACKAGES = [
+  { name: "@effect/ai-openai", entry: "@wfgraph/core/openai" },
+  { name: "@effect/ai-anthropic", entry: "@wfgraph/core/anthropic" },
+  { name: "@effect/ai-openrouter", entry: "@wfgraph/core/openrouter" },
+  {
+    name: "@effect/ai-openai-compat",
+    entry: "@wfgraph/core/openai-compatible",
+  },
+  { name: "@modelcontextprotocol", entry: "@wfgraph/core/mcp" },
+  { name: "zod", entry: "@wfgraph/core/mcp" },
 ] as const;
 
-/** Whether a bundle input path lies inside one of the provider packages. */
-function isModelProviderInput(path: string): boolean {
-  return MODEL_PROVIDER_PACKAGES.some((name) =>
-    path.includes(`/node_modules/${name}/`)
-  );
+/** Whether a bundle input path lies inside the package or scope `name`. */
+function isInputOf(name: string, path: string): boolean {
+  return path.includes(`/node_modules/${name}/`);
+}
+
+/** Whether a bundle input path lies inside any entry-only package. */
+function isEntryOnlyInput(path: string): boolean {
+  return ENTRY_ONLY_PACKAGES.some(({ name }) => isInputOf(name, path));
 }
 
 /**
- * Each bundle input from a provider package, with the inputs that import it
- * from outside the provider packages, which is where the chain starts.
+ * Each bundle input from the package or scope `name`, with the inputs that
+ * import it from outside every entry-only package, which is where the chain
+ * starts.
  */
-function modelProviderInputs(metafile: Metafile): string[] {
+function inputsOf(name: string, metafile: Metafile): string[] {
   return Object.keys(metafile.inputs)
-    .filter(isModelProviderInput)
+    .filter((path) => isInputOf(name, path))
     .map((path) => {
       const importers = Object.entries(metafile.inputs)
         .filter(
           ([importer, input]) =>
-            !isModelProviderInput(importer) &&
+            !isEntryOnlyInput(importer) &&
             input.imports.some((imported) => imported.path === path)
         )
         .map(([importer]) => importer);
@@ -192,11 +202,15 @@ describe("Worker bundles", () => {
     ).toEqual([]);
   });
 
-  it("the Worker host entry bundles no model provider package", async () => {
+  it("the Worker host entry bundles no package that belongs to another entry", async () => {
     const metafile = await bundleForWorker(WORKER_HOST_ENTRY);
-    expect(
-      modelProviderInputs(metafile),
-      `${WORKER_HOST_ENTRY} bundles a model provider package; only that provider's own entry may import it`
-    ).toEqual([]);
+    for (const { name, entry } of ENTRY_ONLY_PACKAGES) {
+      expect
+        .soft(
+          inputsOf(name, metafile),
+          `${WORKER_HOST_ENTRY} bundles ${name}; only ${entry} may import it`
+        )
+        .toEqual([]);
+    }
   });
 });

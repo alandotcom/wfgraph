@@ -753,30 +753,43 @@ const wfgraph = await createWfGraphApp({
 
 ## MCP authoring
 
-Set `mcp: true` to expose the authenticated Model Context Protocol (MCP)
-authoring endpoint for localhost development. For a deployed host, configure
-the hostnames that can address the endpoint:
+Import `wfMcp` from `@wfgraph/core/mcp` and pass what it returns as the `mcp`
+option to expose the authenticated Model Context Protocol (MCP) authoring
+endpoint. `wfMcp()` with no argument admits localhost alone, for local
+development:
+
+```ts
+import { wfMcp } from "@wfgraph/core/mcp";
+
+const wfgraph = await createWfGraphApp({
+  // ...
+  mcp: wfMcp(),
+});
+```
+
+For a deployed host, pass `wfMcp` the hostnames that can address the endpoint:
 
 ```ts
 const wfgraph = await createWfGraphApp({
   // ...
-  mcp: {
+  mcp: wfMcp({
     allowedHostnames: ["workflows.example.com"],
     allowedOriginHostnames: ["console.example.com"],
-  },
+  }),
 });
 ```
 
 The endpoint is `${basePath}/api/mcp`. With the default `basePath`, the endpoint
 is `/api/mcp`. The `mcp` option is disabled by default and works with
-`createWfGraphApp` and `wfWorker`.
+`createWfGraphApp` and `wfWorker`. Any other value, such as `true` or a plain
+object of hostnames, fails at startup with a message naming `wfMcp`.
 
 List hostnames only, with no scheme or port. Every request must have an allowed
 `Host` header. Browser requests must also have an allowed `Origin` hostname.
 Requests from non-browser MCP clients can omit the `Origin` header. Workflow
 Graph rejects an invalid host or origin with HTTP 403 before reading the body.
-The 403 names the `mcp.allowedHostnames` or `mcp.allowedOriginHostnames` option
-that would admit the hostname.
+The 403 names the `allowedHostnames` or `allowedOriginHostnames` option of
+`wfMcp` that would admit the hostname.
 
 Every MCP request passes through the `auth` function, as an editor request
 does, so an MCP client must carry a credential that function accepts. A client
@@ -784,21 +797,21 @@ sends it as `Authorization: Bearer <token>`, so `auth` reads that header beside
 the session cookie the editor uses, and verifies the token itself: Workflow
 Graph issues and checks no MCP token. A request `auth` answers with `null` or
 `undefined` gets a 401 carrying a `WWW-Authenticate` challenge. Without
-`mcp.authorization` the challenge is a bare `Bearer`. Name the OAuth
+`authorization` in the options of `wfMcp` the challenge is a bare `Bearer`. Name the OAuth
 authorization servers that issue your tokens, and an MCP client can discover
 where to obtain one:
 
 ```ts
 const wfgraph = await createWfGraphApp({
   // ...
-  mcp: {
+  mcp: wfMcp({
     allowedHostnames: ["workflows.example.com"],
     allowedOriginHostnames: [],
     authorization: {
       authorizationServers: ["https://auth.example.com"],
       scopesSupported: ["workflows"],
     },
-  },
+  }),
 });
 ```
 
@@ -1809,6 +1822,7 @@ first publication. `GET /api/openapi.json` documents every route.
 | `@wfgraph/core/anthropic`         | `wfAnthropic`, the build agent on Anthropic's Messages API                                                                                                                                                                                                                                               |
 | `@wfgraph/core/openrouter`        | `wfOpenRouter`, the build agent on OpenRouter                                                                                                                                                                                                                                                            |
 | `@wfgraph/core/openai-compatible` | `wfOpenAiCompatible`, the build agent on a server implementing OpenAI's Chat Completions API                                                                                                                                                                                                             |
+| `@wfgraph/core/mcp`               | `wfMcp`, the MCP authoring endpoint, passed to `createWfGraphApp` or `wfWorker` as `mcp`, with its `WfGraphMcpOptions` and `WfGraphMcpAuthorization` types. See MCP authoring                                                                                                                            |
 | `@wfgraph/client`                 | `clientBundle`, the built editor, passed to `createWfGraphApp` as `client`                                                                                                                                                                                                                               |
 | `@wfgraph/plugins/clerk`          | `clerk()`, which returns the Clerk integration                                                                                                                                                                                                                                                           |
 | `@wfgraph/plugins/linear`         | `linear()`, which returns the Linear integration                                                                                                                                                                                                                                                         |
@@ -1831,28 +1845,28 @@ Cloudflare Workers and Hyperdrive.
 
 ## createWfGraphApp options
 
-| Option                     | Required            | Description                                                                                                                                                                                                                                                                                  |
-| -------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `basePath`                 | No                  | Path the host mounts Workflow Graph at (default `/`)                                                                                                                                                                                                                                         |
-| `publicUrl`                | No                  | External HTTPS origin. Required for OAuth callback and client metadata URLs, and to copy a Connection webhook URL. Loopback development can use HTTP                                                                                                                                         |
-| `auth`                     | Yes                 | A function of the request returning a request-scoped access policy, or `null` or `undefined` for a request that is not signed in. An object holding that function as `authenticate` also works                                                                                               |
-| `persistence`              | Yes                 | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                                                                                                                                                            |
-| `entityResolverTimeoutMs`  | No                  | How long one call to a `defineEntity` resolver may take, in milliseconds, as a positive integer. Defaults to 10,000. A timeout is an operational failure. See Current Entity State in `docs/events.md`                                                                                       |
-| `encryption.key`           | With an integration | 64-character hex string that seals the integration credentials. Required when `extensions.integrations` declares one; an app with none may leave `encryption` out                                                                                                                            |
-| `events.key`               | No                  | Shared secret that mounts `POST /api/events`. A sender presents it as `Authorization: Bearer <key>`. Unset, the route is not mounted. A blank value, or one holding whitespace, fails at startup. See `docs/events.md`                                                                       |
-| `events.retentionMs`       | No                  | How long a settled inbox row is kept after its Event arrived, in milliseconds, at most 100 years. Defaults to seven days. See Keep settled Events for a window                                                                                                                               |
-| `runs.retentionMs`         | No                  | How long an ended run is kept after it completed, in milliseconds, from one hour to 100 years. Unset, run history is never deleted. See Delete run history after a window                                                                                                                    |
-| `runner`                   | No                  | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none beside a `createWfGraphRunner` process. See Workflow runs                                                                                              |
-| `extensions.events`        | No                  | `defineEvent` values                                                                                                                                                                                                                                                                         |
-| `extensions.actions`       | No                  | `defineAction` values                                                                                                                                                                                                                                                                        |
-| `extensions.integrations`  | No                  | `defineIntegration` values                                                                                                                                                                                                                                                                   |
-| `agent`                    | No                  | The build agent's model: what `wfOpenAi`, `wfAnthropic`, `wfOpenRouter` or `wfOpenAiCompatible` returns, each from its own entry. Absent, the build agent is off and the editor shows no chat panel. See The build agent                                                                     |
-| `agent.runner`             | No                  | A `WfGraphAgentRunner` that runs each turn in place of a provider function's model. See Run turns on your own gateway or model                                                                                                                                                               |
-| `agent.maxConcurrentTurns` | No                  | Beside `agent.runner`, how many agent turns this process streams at once, as a positive integer. Defaults to 4. A provider function takes the same option                                                                                                                                    |
-| `mcp`                      | No                  | Enables the authenticated stateless MCP authoring endpoint at `${basePath}/api/mcp`. Pass `true` for localhost development. For deployed hosts, configure allowed hostnames and origin hostnames, and optionally `authorization` naming the OAuth authorization servers. Disabled by default |
-| `health`                   | No                  | `true` mounts `GET /api/health`, the readiness route outside `auth`. Off by default. See API endpoints                                                                                                                                                                                       |
-| `logger`                   | No                  | A `WfGraphLogger` that takes every record. See Logging below                                                                                                                                                                                                                                 |
-| `client`                   | No                  | The editor bundle to serve, from `@wfgraph/client`                                                                                                                                                                                                                                           |
+| Option                     | Required            | Description                                                                                                                                                                                                                                                                                                             |
+| -------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `basePath`                 | No                  | Path the host mounts Workflow Graph at (default `/`)                                                                                                                                                                                                                                                                    |
+| `publicUrl`                | No                  | External HTTPS origin. Required for OAuth callback and client metadata URLs, and to copy a Connection webhook URL. Loopback development can use HTTP                                                                                                                                                                    |
+| `auth`                     | Yes                 | A function of the request returning a request-scoped access policy, or `null` or `undefined` for a request that is not signed in. An object holding that function as `authenticate` also works                                                                                                                          |
+| `persistence`              | Yes                 | A backend from `@wfgraph/core/postgres` or `@wfgraph/core/sqlite`                                                                                                                                                                                                                                                       |
+| `entityResolverTimeoutMs`  | No                  | How long one call to a `defineEntity` resolver may take, in milliseconds, as a positive integer. Defaults to 10,000. A timeout is an operational failure. See Current Entity State in `docs/events.md`                                                                                                                  |
+| `encryption.key`           | With an integration | 64-character hex string that seals the integration credentials. Required when `extensions.integrations` declares one; an app with none may leave `encryption` out                                                                                                                                                       |
+| `events.key`               | No                  | Shared secret that mounts `POST /api/events`. A sender presents it as `Authorization: Bearer <key>`. Unset, the route is not mounted. A blank value, or one holding whitespace, fails at startup. See `docs/events.md`                                                                                                  |
+| `events.retentionMs`       | No                  | How long a settled inbox row is kept after its Event arrived, in milliseconds, at most 100 years. Defaults to seven days. See Keep settled Events for a window                                                                                                                                                          |
+| `runs.retentionMs`         | No                  | How long an ended run is kept after it completed, in milliseconds, from one hour to 100 years. Unset, run history is never deleted. See Delete run history after a window                                                                                                                                               |
+| `runner`                   | No                  | The worker loop that runs workflows in this process. Omit it for the defaults, pass an object to tune it, or pass `false` to run none beside a `createWfGraphRunner` process. See Workflow runs                                                                                                                         |
+| `extensions.events`        | No                  | `defineEvent` values                                                                                                                                                                                                                                                                                                    |
+| `extensions.actions`       | No                  | `defineAction` values                                                                                                                                                                                                                                                                                                   |
+| `extensions.integrations`  | No                  | `defineIntegration` values                                                                                                                                                                                                                                                                                              |
+| `agent`                    | No                  | The build agent's model: what `wfOpenAi`, `wfAnthropic`, `wfOpenRouter` or `wfOpenAiCompatible` returns, each from its own entry. Absent, the build agent is off and the editor shows no chat panel. See The build agent                                                                                                |
+| `agent.runner`             | No                  | A `WfGraphAgentRunner` that runs each turn in place of a provider function's model. See Run turns on your own gateway or model                                                                                                                                                                                          |
+| `agent.maxConcurrentTurns` | No                  | Beside `agent.runner`, how many agent turns this process streams at once, as a positive integer. Defaults to 4. A provider function takes the same option                                                                                                                                                               |
+| `mcp`                      | No                  | The authenticated stateless MCP authoring endpoint at `${basePath}/api/mcp`: what `wfMcp` from `@wfgraph/core/mcp` returns. `wfMcp()` admits localhost alone; a deployed host passes `wfMcp` its allowed hostnames and origin hostnames, and optionally `authorization`. Absent, the endpoint is off. See MCP authoring |
+| `health`                   | No                  | `true` mounts `GET /api/health`, the readiness route outside `auth`. Off by default. See API endpoints                                                                                                                                                                                                                  |
+| `logger`                   | No                  | A `WfGraphLogger` that takes every record. See Logging below                                                                                                                                                                                                                                                            |
+| `client`                   | No                  | The editor bundle to serve, from `@wfgraph/client`                                                                                                                                                                                                                                                                      |
 
 Read these once:
 

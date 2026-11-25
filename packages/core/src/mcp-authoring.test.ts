@@ -13,6 +13,7 @@ import { readJsonObject } from "@wfgraph/shared/types/json";
 import { createWfGraphApp, type WfGraphApp } from "#src/app";
 import { trustWfGraphUpstream } from "#src/backend/lib/http/authorize";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
+import { wfMcp } from "#src/mcp";
 
 /** The structured result of one tool call, failing the case when absent. */
 async function call(
@@ -36,7 +37,7 @@ describe("MCP authoring against a stored draft", () => {
     app = await createWfGraphApp({
       auth: trustWfGraphUpstream(),
       persistence: wfSqlite(),
-      mcp: true,
+      mcp: wfMcp(),
     });
     client = new Client(
       { name: "wfgraph-e2e", version: "1.0.0" },

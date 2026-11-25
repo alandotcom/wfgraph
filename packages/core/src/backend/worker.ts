@@ -66,9 +66,8 @@ import {
   runWithResponseClose,
 } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
-import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
-
-export type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
+import type { WfGraphMcp } from "#src/backend/agent/mcp-server";
+import { readMcpOption } from "#src/backend/agent/mcp-option";
 
 /**
  * How long one tick may run: a minute under the 15-minute wall time of a Cron
@@ -145,8 +144,11 @@ export type WfGraphWorkerOptions<Env> = {
    * Defaults to 10,000. A timeout is an operational failure.
    */
   entityResolverTimeoutMs?: number | undefined;
-  /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */
-  mcp?: true | WfGraphMcpOptions | undefined;
+  /**
+   * The authenticated stateless MCP endpoint at `${basePath}/api/mcp`, as on
+   * `createWfGraphApp`: what `wfMcp` from `@wfgraph/core/mcp` returns.
+   */
+  mcp?: WfGraphMcp | undefined;
   /** Public origin used in provider callback URLs and client metadata. */
   publicUrl?: string | undefined;
   logger?: WfGraphLogger | undefined;
@@ -231,6 +233,7 @@ export function wfWorker<Env>(
 ): WfGraphWorker<Env> {
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const publicUrl = resolvePublicUrl(options.publicUrl);
+  const mcp = readMcpOption(options.mcp, "wfWorker");
   const entityResolverTimeoutMs = readEntityResolverTimeoutMs(
     options.entityResolverTimeoutMs
   );
@@ -369,7 +372,7 @@ export function wfWorker<Env>(
             basePath: `${basePath}/api`,
             auth,
             runtime: invocation.runtime,
-            mcp: options.mcp,
+            mcp,
             eventsKey: config.events?.key,
           }).fetch(request),
         [invocation.close],

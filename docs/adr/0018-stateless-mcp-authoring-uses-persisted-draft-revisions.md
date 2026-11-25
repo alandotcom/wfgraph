@@ -136,3 +136,34 @@ without a `provider` key, was removed with no compatibility path. The host's own
 runner form, `{ runner, maxConcurrentTurns }`, was unchanged.
 `scripts/plugins/worker-bundle.test.ts` gained a case that fails when a module
 of a provider package reaches the bundle of `@wfgraph/core/worker`.
+
+## Amendment: the MCP server moved to its own entry
+
+Date: 2026-11-25
+
+The `mcp` option had taken `true`, for localhost, or a plain object of allowed
+hostnames, allowed origin hostnames and an optional `authorization`.
+`packages/core/src/backend/api-app.ts` imported
+`packages/core/src/backend/agent/mcp-server.ts` statically, and that module
+imported `@modelcontextprotocol/server` and built its tool argument schemas
+when it loaded. Every entry that reached the app, `@wfgraph/core/worker`
+included, therefore loaded the MCP server package and its `zod` dependency at
+startup, whether the host set `mcp` or not. Measured on a Worker with no
+integrations and no model provider, local startup took 91 ms with the MCP
+server bundled and 72 ms without it, and the bundle held 4,367 KiB of code
+against 3,731 KiB. A dynamic `import()` was rejected for the reason the
+provider amendment records.
+
+The MCP server moved to its own package entry, `@wfgraph/core/mcp`, which
+exports `wfMcp`. The host passes what `wfMcp()` returns as `mcp` for the
+localhost defaults `mcp: true` had given, or what `wfMcp(options)` returns for
+the options the object form had taken. The returned value carries what
+`api-app.ts` calls to mount and serve the endpoint, so that module imports
+only the MCP module's types. `mcp: true` and the plain-object form were
+removed with no compatibility path, and a JavaScript host that passes either
+one is refused at startup with a message naming `wfMcp`. The endpoint's path,
+its Host and Origin validation, its authentication challenge, its
+protected-resource metadata, its tools and its body size cap were unchanged.
+The case in `scripts/plugins/worker-bundle.test.ts` that the provider
+amendment added now also fails when a module of `@modelcontextprotocol/` or
+`zod` reaches the bundle of `@wfgraph/core/worker`.

@@ -833,8 +833,8 @@ skills:
     packages:
       - "@wfgraph/core"
     covers:
-      - mcp option (true, allowedHostnames, allowedOriginHostnames)
-      - mcp.authorization and the RFC 9728 protected-resource metadata
+      - the @wfgraph/core/mcp entry and wfMcp, with no options for localhost or with allowedHostnames and allowedOriginHostnames
+      - the authorization option of wfMcp and the RFC 9728 protected-resource metadata
       - bearer tokens verified by the host's auth function
       - the 401 WWW-Authenticate challenge and the 403 Host and Origin refusal
       - protocol revisions 2026-07-28 and 2024-10-07 through 2025-11-25, served statelessly
@@ -852,7 +852,7 @@ skills:
       - Explain a 401, a 403, an isError argument result or a refused publish from the endpoint.
     failure_modes:
       - mistake: A bearer token nobody verifies
-        mechanism: mcp.authorization only tells a client where to get a token, and Workflow Graph checks no MCP token itself, so an auth function that answers a role for any bearer header lets any string reach every tool the role grants.
+        mechanism: The authorization option of wfMcp only tells a client where to get a token, and Workflow Graph checks no MCP token itself, so an auth function that answers a role for any bearer header lets any string reach every tool the role grants.
         wrong_pattern: |
           auth answers WfGraphRoles.editor for any request carrying Authorization: Bearer
         correct_pattern: |
@@ -871,12 +871,22 @@ skills:
         priority: HIGH
         status: active
         skills: [mcp, auth]
-      - mistake: mcp true on a deployed host
-        mechanism: mcp true admits localhost alone, so every request to the deployed name answers 403 naming mcp.allowedHostnames.
+      - mistake: wfMcp() on a deployed host
+        mechanism: wfMcp() with no options admits localhost alone, so every request to the deployed name answers 403 naming the allowedHostnames option of wfMcp.
         wrong_pattern: |
-          mcp: true in production
+          mcp: wfMcp() in production
         correct_pattern: |
+          mcp: wfMcp({ allowedHostnames: ["workflows.example.com"], allowedOriginHostnames: [] })
+        source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
+        priority: HIGH
+        status: active
+      - mistake: mcp true or a plain object of hostnames
+        mechanism: The mcp option takes only what wfMcp returns. true or a plain object fails to type-check, and from JavaScript createWfGraphApp and wfWorker throw at startup naming wfMcp.
+        wrong_pattern: |
           mcp: { allowedHostnames: ["workflows.example.com"], allowedOriginHostnames: [] }
+        correct_pattern: |
+          import { wfMcp } from "@wfgraph/core/mcp";
+          mcp: wfMcp({ allowedHostnames: ["workflows.example.com"], allowedOriginHostnames: [] })
         source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
         priority: HIGH
         status: active
@@ -920,6 +930,7 @@ skills:
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/core/src/backend/agent/mcp-server.ts
+      - alandotcom/wfgraph:packages/core/src/mcp.ts
 
   - name: build-agent
     slug: build-agent

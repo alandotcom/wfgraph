@@ -32,7 +32,8 @@ import type {
   WfGraphRunnerOptions,
 } from "#src/backend/executor/in-process-runner";
 import { openWfGraphSetup, type WfGraphSetup } from "#src/backend/setup";
-import type { WfGraphMcpOptions } from "#src/backend/agent/mcp-server";
+import type { WfGraphMcp } from "#src/backend/agent/mcp-server";
+import { readMcpOption } from "#src/backend/agent/mcp-option";
 import {
   assertValidEventsKey,
   type WfGraphEvents,
@@ -58,10 +59,7 @@ export {
 export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
-export type {
-  WfGraphMcpAuthorization,
-  WfGraphMcpOptions,
-} from "#src/backend/agent/mcp-server";
+export type { WfGraphMcp } from "#src/backend/agent/mcp-server";
 export type {
   WfGraphAgentConfig,
   WfGraphAgentModel,
@@ -185,8 +183,12 @@ export type WfGraphAppOptions = {
    * editor shows no chat panel.
    */
   agent?: WfGraphAgentConfig | undefined;
-  /** Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`. */
-  mcp?: true | WfGraphMcpOptions | undefined;
+  /**
+   * The authenticated stateless MCP endpoint at `${basePath}/api/mcp`. Takes
+   * what `wfMcp` from `@wfgraph/core/mcp` returns. Absent, the endpoint is
+   * not mounted.
+   */
+  mcp?: WfGraphMcp | undefined;
   /**
    * `true` mounts `GET {basePath}/api/health`, a readiness route outside
    * `auth` for a load balancer, answering `app.health()` as booleans and a
@@ -268,6 +270,7 @@ export async function createWfGraphApp(
     caller: "createWfGraphApp",
   });
   assertValidEventsKey(options.events?.key, "createWfGraphApp");
+  const mcp = readMcpOption(options.mcp, "createWfGraphApp");
   const retention = resolveRetention({
     events: options.events,
     runs: options.runs,
@@ -300,6 +303,7 @@ export async function createWfGraphApp(
     return await assembleWfGraphApp(options, {
       basePath,
       auth,
+      mcp,
       setup,
     });
   } catch (error) {
@@ -331,10 +335,11 @@ async function assembleWfGraphApp(
   startup: {
     basePath: "" | `/${string}`;
     auth: ResolvedAuth;
+    mcp: WfGraphMcp | undefined;
     setup: WfGraphSetup;
   }
 ): Promise<WfGraphApp> {
-  const { basePath, auth, setup } = startup;
+  const { basePath, auth, mcp, setup } = startup;
   const { runtime } = setup;
   const { startRunner } = setup;
   // Assigned last, below, and read by the check whenever it runs.
@@ -349,7 +354,7 @@ async function assembleWfGraphApp(
     basePath: `${basePath}/api`,
     auth,
     runtime,
-    mcp: options.mcp,
+    mcp,
     eventsKey: options.events?.key,
     health: options.health === true ? health : undefined,
   });

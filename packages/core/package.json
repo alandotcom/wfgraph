@@ -80,6 +80,10 @@
     "./openai-compatible": {
       "types": "./dist/openai-compatible.d.ts",
       "default": "./dist/openai-compatible.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.ts",
+      "default": "./dist/mcp.js"
     }
   },
   "publishConfig": {

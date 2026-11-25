@@ -3,23 +3,24 @@ name: mcp
 description: >
   Use when letting an MCP client, such as a coding agent or an app built on an
   MCP SDK, author workflows in an embedded Workflow Graph app: turning on the
-  mcp option of createWfGraphApp or wfWorker, admitting a deployed hostname
-  with mcp.allowedHostnames and mcp.allowedOriginHostnames, accepting and
-  verifying the client's bearer token in the auth function, advertising an
-  OAuth authorization server with mcp.authorization, granting the operations
-  each tool needs, or explaining a 401, a 403, a workflow_draft_stale result or
-  a refused publish from the endpoint. Also use for requests such as "connect
-  our coding agent to the workflow editor", "the MCP client cannot sign in"
-  or "let an agent publish workflows". For the editor's own chat agent use
-  wfgraph-core/build-agent; for roles and custom grants in general use
-  wfgraph-core/auth.
+  mcp option of createWfGraphApp or wfWorker with wfMcp from
+  @wfgraph/core/mcp, admitting a deployed hostname with the allowedHostnames
+  and allowedOriginHostnames options of wfMcp, accepting and verifying the
+  client's bearer token in the auth function, advertising an OAuth
+  authorization server with the authorization option of wfMcp, granting the
+  operations each tool needs, or explaining a 401, a 403, a
+  workflow_draft_stale result or a refused publish from the endpoint. Also use
+  for requests such as "connect our coding agent to the workflow editor", "the
+  MCP client cannot sign in" or "let an agent publish workflows". For the
+  editor's own chat agent use wfgraph-core/build-agent; for roles and custom
+  grants in general use wfgraph-core/auth.
 metadata:
   purpose: >
     Turn on and secure Workflow Graph's stateless MCP authoring endpoint: the
-    mcp option, Host and Origin allowlists, bearer tokens checked by the host's
-    auth function, mcp.authorization discovery, per-tool grants, and the
-    draft-revision protocol a client follows from creating a workflow to
-    publishing it.
+    mcp option built by wfMcp, Host and Origin allowlists, bearer tokens
+    checked by the host's auth function, authorization-server discovery,
+    per-tool grants, and the draft-revision protocol a client follows from
+    creating a workflow to publishing it.
   type: sub-skill
   library: wfgraph
   library_version: "4.1.1"
@@ -28,6 +29,7 @@ requires:
 sources:
   - alandotcom/wfgraph:docs/embedding.md
   - alandotcom/wfgraph:packages/core/src/backend/agent/mcp-server.ts
+  - alandotcom/wfgraph:packages/core/src/mcp.ts
 ---
 
 This skill builds on wfgraph-core, and the access policy itself is
@@ -37,7 +39,10 @@ authoring").
 # The MCP authoring endpoint
 
 `mcp` mounts a Model Context Protocol endpoint at `{basePath}/api/mcp` on
-`createWfGraphApp` or `wfWorker`. It is off by default. An MCP client reads the
+`createWfGraphApp` or `wfWorker`. It takes what `wfMcp` from
+`@wfgraph/core/mcp` returns, and it is off by default. Any other value, `true`
+or a plain object of hostnames included, fails at startup with a message
+naming `wfMcp`. An MCP client reads the
 host's catalog, creates workflows, and reads and edits their drafts through the
 same tools the editor's build agent calls, and it can also publish and restore
 versions. Every request passes through the host's `auth` function, as an editor
@@ -45,9 +50,9 @@ request does.
 
 ## Procedure
 
-1. **Admit the hostname.** `mcp: true` accepts localhost alone. A deployed
-   host passes `mcp: { allowedHostnames, allowedOriginHostnames }`, hostnames
-   with no scheme or port. A client that is not a browser sends no `Origin`, so
+1. **Admit the hostname.** `wfMcp()` accepts localhost alone. A deployed
+   host passes `wfMcp({ allowedHostnames, allowedOriginHostnames })`,
+   hostnames with no scheme or port. A client that is not a browser sends no `Origin`, so
    `allowedOriginHostnames` may be empty for it. Result: a request whose
    `Host` is the deployed name is not answered `403`.
 2. **Accept the client's token in `auth`.** An MCP client authenticates with
@@ -57,8 +62,8 @@ request does.
    MCP token itself. Result: a request with no token, or with a token the
    function rejects, answers `401`, and a request with a valid token reaches
    the tools.
-3. **Advertise where a token comes from (optional).** Set
-   `mcp.authorization: { authorizationServers, scopesSupported? }`. Result:
+3. **Advertise where a token comes from (optional).** Pass `wfMcp`
+   `authorization: { authorizationServers, scopesSupported? }`. Result:
    `GET /.well-known/oauth-protected-resource{basePath}/api/mcp` answers the
    RFC 9728 metadata outside `auth`, and the `401` carries
    `WWW-Authenticate: Bearer resource_metadata="..."`, so a client can find
@@ -135,21 +140,22 @@ No tool returns or decrypts a Connection's credentials.
 - A write sent with an old revision: an `isError` result with code
   `workflow_draft_stale`, the stored `draftRevision`, and a statement that
   nothing was written.
-- An unaccepted `Host` or `Origin`: `403` naming `mcp.allowedHostnames` or
-  `mcp.allowedOriginHostnames`, without the hostname that was sent.
+- An unaccepted `Host` or `Origin`: `403` naming the `allowedHostnames` or
+  `allowedOriginHostnames` option, without the hostname that was sent. Under
+  `wfMcp()` the `403` names `wfMcp({ allowedHostnames, allowedOriginHostnames })`.
 
 ## Common Mistakes
 
 ### CRITICAL A bearer token nobody verifies
 
 Wrong: `auth` that answers a role for any request carrying
-`Authorization: Bearer ...`, or `mcp.authorization` set on the assumption
-that Workflow Graph checks the token.
+`Authorization: Bearer ...`, or `authorization` passed to `wfMcp` on the
+assumption that Workflow Graph checks the token.
 
 Correct: verify the token in `auth` with the authorization server or the
 host's own token store, and answer `null` for one that fails.
 
-`mcp.authorization` only tells a client where to get a token. Any string then
+The `authorization` option only tells a client where to get a token. Any string then
 reaches every tool the role grants, publishing included.
 
 Source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
@@ -166,14 +172,27 @@ An MCP client sends no cookie, so every call answers `401`.
 
 Source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
 
-### HIGH mcp: true on a deployed host
+### HIGH wfMcp() on a deployed host
 
-Wrong: `mcp: true` in production.
+Wrong: `mcp: wfMcp()` in production.
 
-Correct: `mcp: { allowedHostnames: ["workflows.example.com"], allowedOriginHostnames: [] }`.
+Correct: `mcp: wfMcp({ allowedHostnames: ["workflows.example.com"], allowedOriginHostnames: [] })`.
 
-`true` admits localhost alone, so every request to the deployed name answers
-`403` naming `mcp.allowedHostnames`.
+`wfMcp()` admits localhost alone, so every request to the deployed name
+answers `403` naming the `allowedHostnames` option of `wfMcp`.
+
+Source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
+
+### HIGH mcp: true or a plain object of hostnames
+
+Wrong: `mcp: true`, or `mcp: { allowedHostnames, allowedOriginHostnames }`.
+
+Correct: `mcp: wfMcp()` or `mcp: wfMcp({ allowedHostnames, allowedOriginHostnames })`,
+with `wfMcp` imported from `@wfgraph/core/mcp`.
+
+The `mcp` option takes only what `wfMcp` returns, so either form fails to
+type-check, and from JavaScript `createWfGraphApp` and `wfWorker` throw at
+startup naming `wfMcp`.
 
 Source: alandotcom/wfgraph:docs/embedding.md (MCP authoring)
 
@@ -228,7 +247,7 @@ Source: alandotcom/wfgraph:docs/embedding.md (Test runs call your handler)
 The endpoint is done when these hold against the deployed name:
 
 - A `tools/list` with no token answers `401`, with `resource_metadata` in its
-  challenge when `mcp.authorization` is set, and the metadata document
+  challenge when `wfMcp` was given `authorization`, and the metadata document
   answers `200` naming the authorization server.
 - A token `auth` rejects answers `401`; the issued token lists the tools.
 - `list_actions` answers with no `workflowId`, and `create_workflow` answers a

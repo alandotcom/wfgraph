@@ -1,4 +1,9 @@
-/** Adapts the canonical authoring toolkit to persisted, stateless MCP calls. */
+/**
+ * Adapts the canonical authoring toolkit to persisted, stateless MCP calls,
+ * and builds the `mcp` option through `wfMcp`. Only the `@wfgraph/core/mcp`
+ * entry reaches this module at runtime, so it is the one module that imports
+ * `@modelcontextprotocol/server`; every other module imports its types alone.
+ */
 
 import {
   CLIENT_CAPABILITIES_META_KEY,
@@ -159,15 +164,25 @@ export type WfGraphMcpOptions = {
   readonly authorization?: WfGraphMcpAuthorization | undefined;
 };
 
-type McpHttpSecurity = true | WfGraphMcpOptions;
+/**
+ * The endpoint's options as `wfMcp` resolved them. `localhostDefaults` is true
+ * when the host passed no options, which changes what a refusal tells the
+ * host to write.
+ */
+type McpHttpSecurity = {
+  readonly options: WfGraphMcpOptions;
+  readonly localhostDefaults: boolean;
+};
 
-function resolveMcpHttpSecurity(input: McpHttpSecurity): WfGraphMcpOptions {
-  return input === true
-    ? {
-        allowedHostnames: localhostAllowedHostnames(),
-        allowedOriginHostnames: localhostAllowedOrigins(),
-      }
-    : input;
+/** The options `wfMcp()` resolves to when the host passes none: localhost alone. */
+function localhostMcpHttpSecurity(): McpHttpSecurity {
+  return {
+    options: {
+      allowedHostnames: localhostAllowedHostnames(),
+      allowedOriginHostnames: localhostAllowedOrigins(),
+    },
+    localhostDefaults: true,
+  };
 }
 
 /** A 403 refusal of the request's routing headers, as a JSON-RPC error. */
@@ -183,15 +198,14 @@ function routingRefusal(message: string): Response {
  * refusal names the option that admits the hostname and leaves the hostname
  * itself out, since it is what the sender typed.
  */
-export function mcpHttpValidationResponse(
+function mcpHttpValidationResponse(
   request: Request,
-  input: McpHttpSecurity
+  security: McpHttpSecurity
 ): Response | undefined {
-  const options = resolveMcpHttpSecurity(input);
-  const optionHint =
-    input === true
-      ? "`mcp: true` admits localhost alone; pass `mcp: { allowedHostnames, allowedOriginHostnames }` to admit another hostname"
-      : undefined;
+  const { options } = security;
+  const optionHint = security.localhostDefaults
+    ? "`wfMcp()` admits localhost alone; pass `wfMcp({ allowedHostnames, allowedOriginHostnames })` to admit another hostname"
+    : undefined;
   const host = validateHostHeader(request.headers.get("host"), [
     ...options.allowedHostnames,
   ]);
@@ -216,15 +230,22 @@ export function mcpHttpValidationResponse(
 }
 
 /**
- * The canonical URL of the MCP endpoint, which is the `resource` an access
- * token is issued for. `publicUrl` is the host's configured public origin when
- * it has one, since a proxied request URL can name an internal host.
+ * One request to the MCP endpoint, as the discovery answers read it.
+ * `mcpPath` is the endpoint's absolute path. `publicUrl` is the host's
+ * configured public origin when it has one, since a proxied request URL can
+ * name an internal host.
  */
-function mcpResourceUrl(input: {
+export type McpEndpointRequest = {
   readonly request: Request;
   readonly mcpPath: string;
   readonly publicUrl: string | undefined;
-}): URL {
+};
+
+/**
+ * The canonical URL of the MCP endpoint, which is the `resource` an access
+ * token is issued for.
+ */
+function mcpResourceUrl(input: McpEndpointRequest): URL {
   return new URL(input.mcpPath, input.publicUrl ?? input.request.url);
 }
 
@@ -232,7 +253,7 @@ function mcpResourceUrl(input: {
  * The RFC 9728 path of the protected-resource metadata for an endpoint at
  * `mcpPath`: the well-known prefix inserted ahead of the endpoint's path.
  */
-export function mcpProtectedResourceMetadataPath(mcpPath: string): string {
+function mcpProtectedResourceMetadataPath(mcpPath: string): string {
   return new URL(
     getOAuthProtectedResourceMetadataUrl(new URL(mcpPath, "http://localhost"))
   ).pathname;
@@ -242,14 +263,10 @@ export function mcpProtectedResourceMetadataPath(mcpPath: string): string {
  * The protected-resource metadata document, or undefined when the host named
  * no authorization server.
  */
-export function mcpProtectedResourceMetadataResponse(input: {
-  readonly request: Request;
-  readonly mcp: McpHttpSecurity;
-  readonly mcpPath: string;
-  readonly publicUrl: string | undefined;
-}): Response | undefined {
-  const authorization =
-    input.mcp === true ? undefined : input.mcp.authorization;
+function mcpProtectedResourceMetadataResponse(
+  input: McpEndpointRequest,
+  authorization: WfGraphMcpAuthorization | undefined
+): Response | undefined {
   if (authorization === undefined) {
     return undefined;
   }
@@ -275,14 +292,10 @@ export function mcpProtectedResourceMetadataResponse(input: {
  * metadata URL and scopes when the host named an authorization server, and a
  * bare Bearer challenge otherwise.
  */
-export function mcpAuthenticationChallenge(input: {
-  readonly request: Request;
-  readonly mcp: McpHttpSecurity;
-  readonly mcpPath: string;
-  readonly publicUrl: string | undefined;
-}): string {
-  const authorization =
-    input.mcp === true ? undefined : input.mcp.authorization;
+function mcpAuthenticationChallenge(
+  input: McpEndpointRequest,
+  authorization: WfGraphMcpAuthorization | undefined
+): string {
   if (authorization === undefined) {
     return "Bearer";
   }
@@ -1135,19 +1148,19 @@ function registerPublicationTools(
  * in either era, so both serve the same tools against the same stored draft.
  */
 export function createAgentMcpHandler(
-  input: CreateAgentMcpServerInput & { readonly httpSecurity?: McpHttpSecurity }
+  input: CreateAgentMcpServerInput & {
+    readonly httpSecurity?: McpHttpSecurity | undefined;
+  }
 ): McpHttpHandler {
   const handler = createMcpHandler(() => createAgentMcpServer(input), {
     legacy: "stateless",
   });
+  const httpSecurity = input.httpSecurity ?? localhostMcpHttpSecurity();
 
   return {
     ...handler,
     fetch: async (request, options) => {
-      const rejection = mcpHttpValidationResponse(
-        request,
-        input.httpSecurity ?? true
-      );
+      const rejection = mcpHttpValidationResponse(request, httpSecurity);
       if (rejection) {
         return rejection;
       }
@@ -1188,5 +1201,66 @@ export function createAgentMcpHandler(
 
       return await handler.fetch(request, options);
     },
+  };
+}
+
+/**
+ * The `mcp` option of `createWfGraphApp` and `wfWorker`, as `wfMcp` returns
+ * it. `createApiApp` mounts the endpoint through these members, so the module
+ * that serves the routes imports nothing from this one at runtime.
+ */
+export type WfGraphMcp = {
+  /**
+   * A 403 answer when the request's Host or Origin header names a hostname
+   * the options do not admit, or undefined when both are admitted.
+   */
+  readonly refuseUntrustedHeaders: (request: Request) => Response | undefined;
+  /**
+   * The path the protected-resource metadata is served at for an endpoint at
+   * `mcpPath`, or undefined when the host named no authorization server and
+   * no metadata route is mounted.
+   */
+  readonly metadataPath: (mcpPath: string) => string | undefined;
+  /**
+   * The protected-resource metadata document, or undefined when the host
+   * named no authorization server.
+   */
+  readonly metadataResponse: (
+    input: McpEndpointRequest
+  ) => Response | undefined;
+  /** The `WWW-Authenticate` value a 401 from the endpoint carries. */
+  readonly authenticationChallenge: (input: McpEndpointRequest) => string;
+  /**
+   * A handler for one request, whose tools read and write through `input`.
+   * The caller closes it once the response is sent.
+   */
+  readonly createHandler: (input: CreateAgentMcpServerInput) => McpHttpHandler;
+};
+
+/**
+ * Enables the authenticated stateless MCP endpoint at `${basePath}/api/mcp`.
+ * Pass what it returns as the `mcp` option. With no argument the endpoint
+ * admits localhost alone, in the Host header and in a browser's Origin
+ * header; `options` names the hostnames a deployed endpoint admits and the
+ * authorization servers a 401 sends an MCP client to.
+ */
+export function wfMcp(options?: WfGraphMcpOptions): WfGraphMcp {
+  const httpSecurity: McpHttpSecurity =
+    options === undefined
+      ? localhostMcpHttpSecurity()
+      : { options, localhostDefaults: false };
+  const { authorization } = httpSecurity.options;
+  return {
+    refuseUntrustedHeaders: (request) =>
+      mcpHttpValidationResponse(request, httpSecurity),
+    metadataPath: (mcpPath) =>
+      authorization === undefined
+        ? undefined
+        : mcpProtectedResourceMetadataPath(mcpPath),
+    metadataResponse: (input) =>
+      mcpProtectedResourceMetadataResponse(input, authorization),
+    authenticationChallenge: (input) =>
+      mcpAuthenticationChallenge(input, authorization),
+    createHandler: (input) => createAgentMcpHandler({ ...input, httpSecurity }),
   };
 }

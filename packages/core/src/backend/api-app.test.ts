@@ -10,6 +10,7 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import type { Workflow } from "#src/backend/lib/db/schema";
 import { createApiApp } from "#src/backend/api-app";
+import { wfMcp } from "#src/backend/agent/mcp-server";
 import {
   defineWfGraphAuth,
   resolveAuth,
@@ -129,7 +130,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
-      mcp: true,
+      mcp: wfMcp(),
     });
     const requests: Request[] = [];
     const responses: Response[] = [];
@@ -238,7 +239,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
-      mcp: true,
+      mcp: wfMcp(),
     });
     const transport = new StreamableHTTPClientTransport(
       new URL(`http://localhost${basePath}/mcp`),
@@ -310,7 +311,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
-      mcp: true,
+      mcp: wfMcp(),
     });
 
     const response = await app.fetch(
@@ -330,10 +331,10 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
-      mcp: {
+      mcp: wfMcp({
         allowedHostnames: ["api.example.com"],
         allowedOriginHostnames: ["console.example.com"],
-      },
+      }),
     });
 
     const [hostResponse, originResponse] = await Promise.all([
@@ -369,13 +370,42 @@ describe("the MCP route", () => {
     expect(`${hostMessage} ${originMessage}`).not.toContain("attacker");
   });
 
+  it("names wfMcp's options when the localhost defaults refuse a hostname", async () => {
+    await using runtime = stubWfGraphRuntime({});
+    const app = createApiApp({
+      basePath,
+      auth: resolveAuth(trustWfGraphUpstream()),
+      runtime,
+      mcp: wfMcp(),
+    });
+
+    const response = await app.fetch(
+      new Request(`https://workflows.example.com${basePath}/mcp`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          host: "workflows.example.com",
+        },
+        body: "{}",
+      })
+    );
+
+    expect(response.status).toBe(403);
+    const message = (await response.json()).error.message;
+    expect(message).toContain("`wfMcp()` admits localhost alone");
+    expect(message).toContain(
+      "`wfMcp({ allowedHostnames, allowedOriginHostnames })`"
+    );
+    expect(message).not.toContain("workflows.example.com");
+  });
+
   it("challenges an unauthenticated MCP request with a Bearer scheme", async () => {
     await using runtime = stubWfGraphRuntime({});
     const app = createApiApp({
       basePath,
       auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
-      mcp: true,
+      mcp: wfMcp(),
     });
 
     const [mcpResponse, rpcResponse] = await Promise.all([
@@ -397,14 +427,14 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
-      mcp: {
+      mcp: wfMcp({
         allowedHostnames: ["localhost"],
         allowedOriginHostnames: [],
         authorization: {
           authorizationServers: ["https://auth.example.com"],
           scopesSupported: ["workflows"],
         },
-      },
+      }),
     });
     const metadataUrl = `http://localhost/.well-known/oauth-protected-resource${basePath}/mcp`;
 
@@ -432,7 +462,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
-      mcp: true,
+      mcp: wfMcp(),
     });
 
     const response = await app.fetch(
@@ -455,7 +485,7 @@ describe("the MCP route", () => {
         )
       ),
       runtime,
-      mcp: true,
+      mcp: wfMcp(),
     });
     const transport = new StreamableHTTPClientTransport(
       new URL(`http://localhost${basePath}/mcp`),
@@ -499,7 +529,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
-      mcp: true,
+      mcp: wfMcp(),
     });
 
     const response = await app.fetch(

@@ -59,6 +59,7 @@ import { createIntegrationCipher } from "#src/backend/services/integrations/ciph
 import { wfPostgres } from "#src/backend/persistence/postgres";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
 import { wfOpenAi } from "#src/backend/agent/providers/openai";
+import { wfMcp } from "#src/backend/agent/mcp-server";
 import { BASE_OPTIONS } from "#src/app-test-support";
 
 async function createTestApp(basePath?: string): Promise<WfGraphApp> {
@@ -502,6 +503,25 @@ describe("createWfGraphApp configuration", () => {
     ).rejects.toThrow("entityResolverTimeoutMs must be a positive integer");
   });
 
+  // A JavaScript host can still pass `true` or a plain object of hostnames,
+  // and either one is refused before anything opens.
+  it.each([
+    ["true", true],
+    [
+      "a plain object of hostnames",
+      { allowedHostnames: ["localhost"], allowedOriginHostnames: [] },
+    ],
+  ])("refuses %s as mcp, naming wfMcp", async (_label, mcp) => {
+    await expect(
+      createWfGraphApp({
+        ...BASE_OPTIONS,
+        mcp: mcp as unknown as WfGraphAppOptions["mcp"],
+      })
+    ).rejects.toThrow(
+      "createWfGraphApp's mcp option takes what wfMcp from @wfgraph/core/mcp returns"
+    );
+  });
+
   /** An integration whose credentials the app would have to seal. */
   const sealedIntegration = defineIntegration({
     type: "sealed",
@@ -862,7 +882,7 @@ describe("createWfGraphApp runner", () => {
     const options: WfGraphAppOptions = {
       ...BASE_OPTIONS,
       client: { dir: join(dir, "no-such-bundle") },
-      mcp: true,
+      mcp: wfMcp(),
       agent: wfOpenAi({ apiKey: "sk-test" }),
       events: { key: "events-key", retentionMs: 86_400_000 },
       runner: false,

@@ -29,6 +29,7 @@ import {
   WfGraphOperations,
 } from "@wfgraph/core";
 import { configureWfGraphLogging } from "@wfgraph/core/logging";
+import { wfMcp } from "@wfgraph/core/mcp";
 import { wfOpenAi } from "@wfgraph/core/openai";
 import { wfSqlite } from "@wfgraph/core/sqlite";
 // The built-in integrations, one entry each. Nothing registers on import: the
@@ -308,7 +309,7 @@ const wfgraph = await createWfGraphApp({
   // `WFGRAPH_MCP_TOKEN` as a bearer token, and any other request answers 401.
   // `WFGRAPH_DEMO_USER` skips the editor's login page and leaves this rule
   // for MCP requests as it is.
-  mcp: true,
+  mcp: wfMcp(),
   // Another process sends Events with `POST /api/events` and this key as a
   // bearer token. Without the variable the route stays off.
   events: {
