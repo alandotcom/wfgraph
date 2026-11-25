@@ -11,6 +11,7 @@
     "dev:app": "pnpm --filter @wfgraph/example-app dev",
     "build": "pnpm -r build",
     "package:smoke": "tsx scripts/smoke-core-package.ts",
+    "start:smoke": "tsx scripts/smoke-example-start.ts",
     "start": "pnpm --filter @wfgraph/example-app start",
     "test": "vitest run",
     "test:watch": "vitest",

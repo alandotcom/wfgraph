@@ -423,7 +423,9 @@ and Vite's dev server in `packages/client`.
 Vite serves the editor on its own port and proxies `/api`, and its history fallback answers
 a page view, so nothing outside Workflow Graph applies the SPA-path rule. `client` goes unset in
 development, because the option takes a built bundle. `pnpm run start` is one process, with
-the built bundle handed to `createWfGraphApp`.
+the built bundle handed to `createWfGraphApp`. It passes tsx `examples/tsconfig.start.json`,
+which clears the root `paths`, so every `@wfgraph/*` import loads the package's `dist` the
+way an adopter's install does.
 
 **The published package is not the dev tree.** `packages/core` publishes `dist`,
 `drizzle`, and `skills`, with `@wfgraph/shared` inlined into the build so it never appears as a dependency,

@@ -3,9 +3,9 @@
   "baseline": "3ba1808741203578fc60bc3727e761b953a5577e",
   "items": {
     "skill:packages/core/skills/wfgraph-core/SKILL.md": {
-      "fingerprint": "d4f282c46c53456fe41f97445f77027b506e4c54c812339d39856988b044f47b",
+      "fingerprint": "5b06fb0d34d9ef30762a634df05933a72ed05cdba02fb078aa64cbf12c479be5",
       "snapshot": {
-        "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
+        "README.md": "fbf73ed7f222ce2e2b542ccd9aedbda685e03219be780d6f5d8a28656b4b99c4",
         "docs/embedding.md": "6085bd6f4a81f6127f326c1e7be7f323adb41e874dddfb62e19960588acc6f20",
         "packages/core/skills/wfgraph-core/SKILL.md": "6113b20236da75af5d6266dbf205925a57f84491817f6974a653beb6d79817f7",
         "packages/core/skills/wfgraph-core/auth/SKILL.md": "e9beeaef0c16bb767e6f8c9c611e6325490f909d8f6145b7e36753fb1f9557ea",
@@ -17,7 +17,7 @@
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/skills/wfgraph-core/observability/SKILL.md": "9e556ba2a7371800e01c9d06dd2a92c8e9f55b73e5dbc2ca8540456959dc7f0b"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. wfgraph-core/SKILL.md says only that workflows.readDraftNode applies no auth and routes to host-actions, which still holds; host-actions/SKILL.md changed as recorded on its own item.",
       "evidence": [
@@ -47,7 +47,7 @@
         "docs/integrations.md": "c7a830e7f47fc43fb5a7beb4020d653100f5cf7d037a434e67bc788bcf99aa2f",
         "packages/core/skills/wfgraph-core/host-actions/SKILL.md": "3f10ace37eabf896a18eb9870bb2a7fb48f540d9d093aa3f1184e8a79c0e2547"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "updated",
       "reason": "The readDraftNode paragraph now says fields holds, for a host action node, each declared input the node stores, read as a template of text and reference segments, rows for a key-value field, or a stored value, that an input named actionType or integrationId has no entry, and that every other node answers no fields. Each matches draftFields in draft-node.ts and readConfigValue in template-config.ts at this revision. The Action links paragraph still matches checkActionLinks in action-links.ts, whose messages defineAction throws unchanged.",
       "evidence": [
@@ -79,15 +79,15 @@
         "packages/plugins/README.md": "b6569209a35f040f1d6e517b1166e5d134a22575b599d40f7c02e2ba9ea23a30",
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. An integration action node answers no fields, and the wfgraph-plugins skill states nothing about the section.",
       "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
     },
     "planning:_artifacts": {
-      "fingerprint": "7c97589f988004fd62750464124ddc7a608a406a75054e5fbe1ac8659ea5e251",
+      "fingerprint": "e6a3ac14be47334e63fba9542ff1a38dbe4e466eea8d8206216239ca977e89ef",
       "snapshot": {
-        "README.md": "3a34df09e638ca153ce9554b8e0bc42a39e7fbf25b88f66a375557f36bd3138a",
+        "README.md": "fbf73ed7f222ce2e2b542ccd9aedbda685e03219be780d6f5d8a28656b4b99c4",
         "_artifacts/domain_map.yaml": "37ef738271d10b949f08193d0d01be93b44e9936e557412d90c3c24845b22306",
         "_artifacts/skill_spec.md": "749229a41b29f8a4677d011105089cbf4e2475fe2d1e94c29c076cd0b4fb4e44",
         "_artifacts/skill_tree.yaml": "cdd9970c82abb906e5fbf7e3374e0edf936f9270af64f8735edec9d9339e4d8e",
@@ -116,7 +116,7 @@
         "packages/plugins/skills/wfgraph-plugins/SKILL.md": "5c8354c3d951c753499695b848117410770d8aeae777077ee90d2dcbcccc36cf",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "updated",
       "reason": "skill_spec.md gained a history entry after batch 6 recording that readDraftNode answers a host action's declared inputs as template, rows or value, that defineAction checks links through checkActionLinks with unchanged messages, and the checks that ran. domain_map.yaml and skill_tree.yaml say only that the page reads the node with readDraftNode and that defineAction refuses a relative url, which still holds, so neither changed.",
       "evidence": [
@@ -145,7 +145,7 @@
         "packages/core/src/backend/lib/http/authorize.ts": "99fb36e0b7819afbf6165cab930cdff057806adf0dd47e84c0ca0cfeb8cec656",
         "packages/shared/src/authorization/operations.ts": "a7afa240267c6356bc66f143f5af39d412b08dbcd6ee19e1e305c3697b7c15bc"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The auth skill covers the access policy and states nothing about Action Links or readDraftNode.",
       "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
@@ -168,7 +168,7 @@
       "snapshot": {
         "packages/evals/src/skills/host.ts": "d24700317bca03743ad89c83241b2b43c63be5d7df44887a3c205c0145205141"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "The shared fixture of the skill task checks (decision 5) writes the action id's config key through ACTION_TYPE_CONFIG_KEY. It grades the guidance and is no source of it, and the graph it builds is unchanged.",
       "evidence": [
@@ -184,7 +184,7 @@
         "packages/core/src/backend/lib/telemetry.ts": "fd42027f8e51654d9f4eead7de20e6a04d73e59b1781402ff307c215852246be",
         "packages/core/src/logging.ts": "64f9709517fa60f431ff35ed41b13f7cb945c6d47d99f399ec2de3872eaaef06"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The observability skill states nothing about Action Links or readDraftNode.",
       "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
@@ -236,7 +236,7 @@
         "packages/core/src/backend/persistence/hyperdrive-postgres.ts": "4acc325d7987dfc59635a5a6deb2529b9bcebcc8e2f67fc7a79a5538f822173a",
         "packages/core/src/backend/worker.ts": "13e79a2e7d51f874c275f3e8905e928d547fef22728be2505d878915e706f2bb"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The manual's sentence that a Worker deployment has no readDraftNode is unchanged, and the cloudflare-worker skill states nothing else about the section.",
       "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
@@ -3045,7 +3045,7 @@
       "snapshot": {
         "packages/core/src/backend/services/workflows/validation/workflow-template-validation.test.ts": "97c399b056ad37faf081ab10bb3e47a7cb1f00eeed28a080723eef3b64dbfae0"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
@@ -3058,7 +3058,7 @@
       "snapshot": {
         "packages/core/src/backend/services/workflows/validation/workflow-template-validation.ts": "580a5fc63ec7e14f130e2f1f299d3e1cd6cc18e3032e5cd693f55d6664c28519"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
@@ -3071,7 +3071,7 @@
       "snapshot": {
         "packages/shared/src/graph/workflow-issues.test.ts": "cacedf279ebdea9666e1ff1d5b1cdb21e5ff34290e8d0584794726fcf7d7b1c0"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
@@ -3084,7 +3084,7 @@
       "snapshot": {
         "packages/shared/src/graph/workflow-issues.ts": "2a05f863516000db03360d354447d2764de3aaceeeea16caff5ecd41efa10af8"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
@@ -3100,7 +3100,7 @@
         "packages/core/src/backend/agent/config.ts": "476ede26befe3c5a6b6aae558a07b06e9c72fd6d46c72c8a5abd4741d56fff48",
         "packages/core/src/backend/agent/runner.ts": "21ee776458dc17374175ccc1efd5417d1df5c25410a39fba78906ec164073f9f"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The build-agent skill states nothing about Action Links or readDraftNode.",
       "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
@@ -3112,7 +3112,7 @@
         "packages/core/skills/wfgraph-core/mcp/SKILL.md": "7cf16d61a53f0a18f881b695a1bfe148d17d1018a896fc859874e6a7bfcfedb8",
         "packages/core/src/backend/agent/mcp-server.ts": "6ae818c7f5794cda8bc1f4dd5b24e85b315783174232b0d2125decabffd113ca"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "docs/embedding.md changed only inside 'Action links and draft reads': the fields bullets now say readDraftNode answers fields only for a node running a host action, one entry per declared input the node stores, as a template, rows for a key-value field, or a stored value. The mcp skill states nothing about Action Links or readDraftNode.",
       "evidence": ["git diff main...f8a23675 -- docs/embedding.md"]
@@ -3418,7 +3418,7 @@
       "snapshot": {
         "packages/agent/src/tools/graph-write-tools.ts": "82532101b687bbca0bcc7b552f5ee8135f0ecaf9a75d25ceac6f3735c742d30c"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "The build agent's tools read and write the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType', and every tool message is unchanged. @wfgraph/agent is private and inlined into core, so no skill describes it.",
       "evidence": [
@@ -3484,7 +3484,7 @@
       "snapshot": {
         "packages/agent/src/tools/reference-tools.ts": "22310695323cd5302cb0bdb4aa31cd820f6f593df2c8344fce3464f194b60f8c"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "The build agent's tools read and write the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType', and every tool message is unchanged. @wfgraph/agent is private and inlined into core, so no skill describes it.",
       "evidence": [
@@ -4064,7 +4064,7 @@
       "snapshot": {
         "packages/core/src/app.ts": "6fa8339be0c423748c066e33bdea781aeb0a20d54276d554a00112c00e198d69"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "updated",
       "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
@@ -4444,7 +4444,7 @@
       "snapshot": {
         "packages/core/src/backend/engine/scheduler.ts": "53bd30ebe7b06a0c645958638ded4829511f26c5a81471e4c6de13a7bd5e970b"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
       "evidence": [
@@ -4456,7 +4456,7 @@
       "snapshot": {
         "packages/core/src/backend/engine/strategies/action.ts": "f431c169f2dbc22e1fefe5be3b6d79d467fc1d4a8d35003b3a30df49c4ce0df9"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
       "evidence": [
@@ -4713,7 +4713,7 @@
       "snapshot": {
         "packages/core/src/backend/extensions/define-action.ts": "db06ee176ccecb8bb4a38e6fbc38fcd35bb993261eae5ad7671f57865a507e4a"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "normalizeActionLinks in define-action.ts now calls checkActionLinks in action-links.ts, which trims each link and checks a blank label, a repeated label and actionLinkUrlProblem in the same order. defineAction throws the same messages, so the host-actions links paragraph and its relative-url mistake still hold.",
       "evidence": [
@@ -4781,7 +4781,7 @@
       "snapshot": {
         "packages/core/src/backend/extensions/steps/step-handler.ts": "6983b936154b4aa4f9736cb1941060758a020b7dc4605b366b92e013f8b3bb6b"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "readConfigValue and templateConfigRules in template-config.ts name the engine's existing reading of a config value, and STEP_INTERNAL_INPUT_KEYS in step-handler.ts names the keys stripInternalFields already removed. The engine reads and strips the same values as before; readDraftNode now uses both, which host-actions describes on the draft-node.ts item.",
       "evidence": ["template-config.test.ts and draft-node.test.ts passed"]
@@ -5731,7 +5731,7 @@
       "snapshot": {
         "packages/core/src/index.ts": "b471ae3dabad07d81bb6d19441dacbabbb74394c6fec659a450c668fc7822640"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "updated",
       "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
@@ -5920,7 +5920,7 @@
       "snapshot": {
         "packages/evals/src/agent/judges/graph.ts": "bb89f4c7858fd561ca06d2c540da190d0d1f39bc896bf17f6a9cb66dc2797b15"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "The eval harness's graph judge allows the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. Eval code is no source of any skill.",
       "evidence": [
@@ -6951,7 +6951,7 @@
       "snapshot": {
         "packages/client/src/lib/upstream-node-fields.ts": "ce00fb8e3c8f8a7c0a12734c1d4762b03726b0e1a73443405e9d12bb2a05a93f"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
@@ -7120,7 +7120,7 @@
       "snapshot": {
         "packages/shared/src/graph/condition-sources.ts": "d7bd2c74e8d18e4c48ac69c7856d6e76536ebf65e543dc50830f58eee1427216"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
       "evidence": [
@@ -7184,7 +7184,7 @@
       "snapshot": {
         "packages/client/src/components/workflow/nodes/action-node.tsx": "b0627a53492d675a7657fd07e8f53cf617169a9106aa1ea23f7795609921fb23"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
@@ -7775,7 +7775,7 @@
       "snapshot": {
         "examples/message-preview-page.tsx": "6cffbdcae66ddfd36961773f1b8b426ca9b712a97f0614af9e4ca44f7c14b4d8"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "The example preview page prints any field that is not a template as JSON, since readDraftNode can now answer rows. The repository's dev harness is not a published contract; host-actions teaches the contract from docs/embedding.md.",
       "evidence": [
@@ -7865,7 +7865,7 @@
       "snapshot": {
         "packages/core/src/backend/host-workflows.ts": "efcb68f06711251d916d9fd275293d98ece6fa9921c4a158f58d54ce0be663d4"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "updated",
       "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
@@ -7878,7 +7878,7 @@
       "snapshot": {
         "packages/core/src/backend/services/workflows/draft-node.test.ts": "dc6daa87cbc4365cff4e900132f401907dca626e0b84b62fc9163b3f4c2ceaef"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "updated",
       "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
@@ -7891,7 +7891,7 @@
       "snapshot": {
         "packages/core/src/backend/services/workflows/draft-node.ts": "71ef1b1b570f1191aa91e6618434647b0175bac5378c1b71a18f93409a557c0d"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "updated",
       "reason": "draftFields in draft-node.ts answers fields only for a node running a host action, one entry per declared input the node stores, read through readConfigValue as template, rows or value, with actionType and integrationId left out; app.ts and index.ts export the new WfGraphDraftRow type. host-actions/SKILL.md and docs/embedding.md were updated to match.",
       "evidence": [
@@ -7904,7 +7904,7 @@
       "snapshot": {
         "packages/shared/src/extensions/action-links.test.ts": "30b93d4d0364a7f417a0a3fbb338bcb61e741094adc685605191f77e455365b5"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "normalizeActionLinks in define-action.ts now calls checkActionLinks in action-links.ts, which trims each link and checks a blank label, a repeated label and actionLinkUrlProblem in the same order. defineAction throws the same messages, so the host-actions links paragraph and its relative-url mistake still hold.",
       "evidence": [
@@ -7917,7 +7917,7 @@
       "snapshot": {
         "packages/shared/src/extensions/action-links.ts": "4c58db3045b955b419daddc4a7692706f7cea7e0f7b47bb8324e96809f576087"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "normalizeActionLinks in define-action.ts now calls checkActionLinks in action-links.ts, which trims each link and checks a blank label, a repeated label and actionLinkUrlProblem in the same order. defineAction throws the same messages, so the host-actions links paragraph and its relative-url mistake still hold.",
       "evidence": [
@@ -7994,7 +7994,7 @@
       "snapshot": {
         "packages/client/src/components/ui/template-badge-dom.ts": "b55fdcfce0b11ca3dff8f08ed3c630714abd301a71788f4eb35bd7d2de6c12d3"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
@@ -8046,7 +8046,7 @@
       "snapshot": {
         "packages/client/src/components/workflow/canvas-reveal/step-browse.tsx": "2dee85a6578843a6e1c67b305f89d778f9ac0ba8c785f3697dcc6ffed2ada577"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
@@ -8085,7 +8085,7 @@
       "snapshot": {
         "packages/client/src/components/workflow/comparison-field-labels.ts": "73cd58a6909cb5e7e2fdbeda0e8f94b0d6a3b140c03e2d84cb76814918a355ea"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
@@ -8098,7 +8098,7 @@
       "snapshot": {
         "packages/client/src/components/workflow/comparison-properties.tsx": "bb5d2a9e2cf7ef15d6002f46d44201720f5d117015b2313bfa70bb84b0d8e6da"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
@@ -8163,7 +8163,7 @@
       "snapshot": {
         "packages/shared/src/graph/node-display.test.ts": "6810286333e645f1071d3bf95061130234da48efa47f706db1e3e67076525fdd"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
@@ -8176,7 +8176,7 @@
       "snapshot": {
         "packages/shared/src/graph/node-display.ts": "a05e610a92afdd85acd5f109d92a96d862e2bc307b3c691219e3626f0d6eb2fc"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
@@ -8189,7 +8189,7 @@
       "snapshot": {
         "packages/shared/src/graph/node-references.test.ts": "693f14f60114b94421a4e47a972f8e9fe2bf1e3a955477f1e7451da6caf20347"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
@@ -8202,7 +8202,7 @@
       "snapshot": {
         "packages/shared/src/graph/node-references.ts": "60db7409e135ad131806ec848fbdfc259b59757b4de9df6cce8ec8cb00d0876d"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Workflow issues and the server's Entity reference validation message name a reference's source through currentTokenDisplayText in node-display.ts, and ConfigTemplateReference lost its displayText field. No skill quotes issue or validation wording; mcp/SKILL.md names newIssues and the not-upstream case without their text.",
       "evidence": [
@@ -8210,12 +8210,48 @@
         "workflow-issues.test.ts, node-display.test.ts and workflow-template-validation.test.ts passed"
       ]
     },
+    "source:.github/workflows/pr-checks.yml": {
+      "fingerprint": "7ed5a1e5818f8da525f7d015b658984de80b395ca997f16d74d670b451800d5e",
+      "snapshot": {
+        ".github/workflows/pr-checks.yml": "3f80dd2f334c04fa844c3670b640b8d5e4332fab07e035b8e48709eb11b642c5"
+      },
+      "head": "b87f623f6e4a4a26230c820dced48d03c9724aa8",
+      "outcome": "out-of-scope",
+      "reason": "The workflow gains one step that runs pnpm run start:smoke after the build. It is this repository's CI and reaches no adopter.",
+      "evidence": [
+        "git diff 9c446a76..b87f623f -- .github/workflows/pr-checks.yml adds the step 'Smoke test pnpm run start'."
+      ]
+    },
+    "source:examples/tsconfig.start.json": {
+      "fingerprint": "e2a25c9319d097d2457a65411cfb7237cdcfece6356e5f68491bc86640f4e89d",
+      "snapshot": {
+        "examples/tsconfig.start.json": "0bdc221841c3974c9963f97f7a76091f629fa75e6813e9e0339c61290de635d3"
+      },
+      "head": "b87f623f6e4a4a26230c820dced48d03c9724aa8",
+      "outcome": "out-of-scope",
+      "reason": "The file is the tsconfig the example's start script hands to tsx so that @wfgraph/* imports resolve to built dist output inside this monorepo. An adopter installs the published packages, has no root paths mapping, and needs no such file, so no skill should teach it.",
+      "evidence": [
+        "examples/tsconfig.start.json extends ../tsconfig.json and clears compilerOptions.paths; examples/package.json start script passes it with --tsconfig. @wfgraph/example-app is private and in the changeset ignore list."
+      ]
+    },
+    "source:scripts/smoke-example-start.ts": {
+      "fingerprint": "94b94a6af85f56cd7b39b9703c056f8e195e1d244daa16ab558a93007f0dbe08",
+      "snapshot": {
+        "scripts/smoke-example-start.ts": "f8b7625dbff037b19e9295d23cadf652c505d88e813129ef30689f1ea242189b"
+      },
+      "head": "b87f623f6e4a4a26230c820dced48d03c9724aa8",
+      "outcome": "out-of-scope",
+      "reason": "The script is a repository smoke test that starts the example in production mode and checks that the built editor is served. It is not published and describes no adopter task.",
+      "evidence": [
+        "scripts/smoke-example-start.ts is run by the root start:smoke script and by pr-checks.yml; pnpm run start:smoke exited 0 at b87f623f."
+      ]
+    },
     "source:packages/client/src/components/workflow/canvas-reveal/reveal-kinds.tsx": {
       "fingerprint": "d0c1e9552b513cc734a6ff388d1708b9c9fe802dfe9b81d0e2ccd2300633fa68",
       "snapshot": {
         "packages/client/src/components/workflow/canvas-reveal/reveal-kinds.tsx": "0ab3a1a6054cc7904e3caff262c17668eda19b38c893477c1d8a3b37d42f6ec3"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
@@ -8228,7 +8264,7 @@
       "snapshot": {
         "packages/client/src/components/workflow/config/action-config.tsx": "d45673c639960d8256247f1fc0ed9ae93ec2874ffb3493c4c872c1c6052e680e"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
@@ -8241,7 +8277,7 @@
       "snapshot": {
         "packages/client/src/lib/node-integration.ts": "5c1258e8cb1cda0a9f12ae63f9a045c638a7bce0d284705ed971ff6c25d82221"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
@@ -8254,7 +8290,7 @@
       "snapshot": {
         "packages/client/src/lib/open-record-keys.ts": "015a82b5e241baee22c9161715d2fe20b532d153c4c234c210be3d4383ec0a92"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "Editor UI in @wfgraph/client: the template badge draws through currentTokenDisplay, and the editor reads the action id's config key through ACTION_TYPE_CONFIG_KEY. Decision 2 in skill_spec.md gives @wfgraph/client no skill, and no skill describes these.",
       "evidence": [
@@ -8267,7 +8303,7 @@
       "snapshot": {
         "packages/core/src/backend/services/workflows/validation/workflow-action-validation.ts": "7934633af0505efcb5bcd74c0c42787c0cbce898fa4ea6aeef51424112a8a89e"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
       "evidence": [
@@ -8279,7 +8315,7 @@
       "snapshot": {
         "packages/core/src/backend/services/workflows/validation/workflow-integration-validation.ts": "7dda7435ed398cbb2ea1583b6498ba5b89c4f57186fa766d10155fc8389a6da2"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
       "evidence": [
@@ -8291,7 +8327,7 @@
       "snapshot": {
         "packages/shared/src/actions/action-config-validation.ts": "62838f9b873394bb7ba04632fa4ad755612fac898ec0195cc3e1826c2639af15"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "out-of-scope",
       "reason": "The file reads the action id's config key through ACTION_TYPE_CONFIG_KEY in place of the string 'actionType'. The stored key and every message are unchanged, and no skill describes this internal key.",
       "evidence": [
@@ -8303,7 +8339,7 @@
       "snapshot": {
         "packages/shared/src/plugins/template-config.test.ts": "9cd430513de5c808da3532e2c2751e5d1e8b1a07750a18dd273c74bbac9973de"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "readConfigValue and templateConfigRules in template-config.ts name the engine's existing reading of a config value, and STEP_INTERNAL_INPUT_KEYS in step-handler.ts names the keys stripInternalFields already removed. The engine reads and strips the same values as before; readDraftNode now uses both, which host-actions describes on the draft-node.ts item.",
       "evidence": ["template-config.test.ts and draft-node.test.ts passed"]
@@ -8313,7 +8349,7 @@
       "snapshot": {
         "packages/shared/src/plugins/template-config.ts": "28a73b5253e2b822946c25e6cf9b6c2bd00a656749a24d7bb67f8fae2ca1d12f"
       },
-      "head": "f8a23675027b688f6f1e50a2c49265b284e517e6",
+      "head": "c1d50bb15f1801ac88b856abd3dffff9cfd00de9",
       "outcome": "no-change",
       "reason": "readConfigValue and templateConfigRules in template-config.ts name the engine's existing reading of a config value, and STEP_INTERNAL_INPUT_KEYS in step-handler.ts names the keys stripInternalFields already removed. The engine reads and strips the same values as before; readDraftNode now uses both, which host-actions describes on the draft-node.ts item.",
       "evidence": ["template-config.test.ts and draft-node.test.ts passed"]

@@ -66,7 +66,8 @@ The build agent is optional. Set `OPENAI_API_KEY` in `.env.local` to enable the 
 The key stays on the server; the browser sends chat requests to the host app, which calls the
 configured model. Leave the variable empty to run the editor without the agent.
 
-Production-style single process (built client handed to the app):
+Production-style single process, which runs every `@wfgraph/*` package from its build
+output and hands the built editor to the app:
 
 ```bash
 pnpm run build
