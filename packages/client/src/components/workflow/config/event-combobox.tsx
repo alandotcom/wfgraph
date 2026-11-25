@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { groupBy } from "es-toolkit/array";
+import { groupBy, partition } from "es-toolkit/array";
 import {
   Combobox,
   ComboboxCollection,
@@ -18,12 +18,27 @@ type EventChoiceGroup = {
   items: EventChoice[];
 };
 
-function groupEventChoices(
+/** The heading over the Events the host app declares itself. */
+const HOST_EVENT_GROUP = "This app";
+
+/**
+ * The choices under one heading each: the host app's own Events first, since
+ * they are what a workflow in this app usually starts on, then each
+ * integration's in the order the catalog lists them.
+ */
+export function groupEventChoices(
   choices: readonly EventChoice[]
 ): EventChoiceGroup[] {
+  const [hostChoices, integrationChoices] = partition(
+    choices,
+    (choice) => choice.group === undefined
+  );
   // Group names are integration labels and the host's own heading, never
   // numeric, so the record keeps the order the choices first used them in.
-  const byGroup = groupBy(choices, (choice) => choice.group ?? "This app");
+  const byGroup = groupBy(
+    [...hostChoices, ...integrationChoices],
+    (choice) => choice.group ?? HOST_EVENT_GROUP
+  );
   return Object.entries(byGroup).map(([value, items]) => ({ value, items }));
 }
 
