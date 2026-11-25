@@ -186,6 +186,44 @@ describe("a card's one anatomy", () => {
   });
 });
 
+describe("a card's kind glyph", () => {
+  it("draws a host action's glyph in graphite and keeps amber for a Wait", () => {
+    const host = renderAtZoom({
+      card: (
+        <ActionNode
+          data={reminder}
+          id="remind"
+          type="action"
+          {...requiredNodeProps}
+        />
+      ),
+      zoom: 1,
+    });
+    const hostGlyph = leadRow(host.view.container)?.querySelector("svg");
+    expect(hostGlyph?.getAttribute("class")).toContain("text-muted-foreground");
+    expect(hostGlyph?.getAttribute("class")).not.toContain("text-node-wait");
+    host.view.unmount();
+
+    const wait = renderAtZoom({
+      card: (
+        <ActionNode
+          data={{
+            ...reminder,
+            config: { actionType: BUILT_IN_ACTION_IDS.wait },
+          }}
+          id="wait"
+          type="action"
+          {...requiredNodeProps}
+        />
+      ),
+      zoom: 1,
+    });
+    expect(
+      leadRow(wait.view.container)?.querySelector("svg")?.getAttribute("class")
+    ).toContain("text-node-wait");
+  });
+});
+
 describe("a step card's compact form", () => {
   it("draws the full card with its step number at or above the compact zoom", () => {
     const { view } = renderAtZoom({

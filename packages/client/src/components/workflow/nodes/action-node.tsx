@@ -408,7 +408,12 @@ export const ProviderLogo = ({
     }
   }
 
-  return <Zap className={cn(className, "text-node-wait")} strokeWidth={1.5} />;
+  // A host action, or an action whose integration draws no icon. Graphite,
+  // because the four accents belong to the glyphs of built-in nodes, and
+  // amber here read as a Wait.
+  return (
+    <Zap className={cn(className, "text-muted-foreground")} strokeWidth={1.5} />
+  );
 };
 
 function GeneratedImageThumbnail({ base64 }: { base64: string }) {
