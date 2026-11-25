@@ -57,6 +57,7 @@ function renderColumns() {
             <input aria-label="Filter steps" type="search" />
           </>
         }
+        composer={<div data-testid="composer" />}
         phone={<div data-testid="phone-sheets" />}
       />
     </JotaiProvider>
@@ -270,6 +271,27 @@ describe("EditorColumns", () => {
     expect(screen.queryByText("Outline body")).toBeNull();
     expect(screen.getByTestId("canvas").closest("[inert]")).toBeNull();
     expect(screen.getByTestId("phone-sheets")).toBeTruthy();
+  });
+
+  it("puts a phone's prompt line below the outline and the map, never over them", () => {
+    setViewportWidth(500);
+    const store = renderColumns();
+    const box = document.querySelector('[data-slot="canvas-box"]');
+    if (box === null) {
+      throw new Error("the phone's main view did not render");
+    }
+    const composer = screen.getByTestId("composer");
+
+    // The line follows the main view rather than sitting inside it, so the
+    // outline's scroll and the map end above it.
+    expect(box.contains(composer)).toBe(false);
+    expect(
+      box.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    act(() => {
+      store.set(phoneShowsMapAtom, true);
+    });
+    expect(box.contains(screen.getByTestId("composer"))).toBe(false);
   });
 
   describe("Find a step", () => {

@@ -587,9 +587,9 @@ Below `md`, 900px, the outline is the editor's main view and fills the width.
 A **Map** control in the toolbar shows the canvas in the outline's place, and
 pressing it again returns to the outline. The canvas under the outline keeps
 its camera and leaves the tab order. The column collapse controls are absent.
-The agent's prompt line sits at the bottom of either view, above the status
-strip, and its conversation covers the whole view under a header whose Back
-returns to it. Details are a sequence of sheets over the outline or the canvas.
+The agent's prompt line sits below either view, above the status strip, so
+the outline's last row and the bottom of the map scroll clear of it, and its
+conversation covers the whole screen under a header whose Back returns to it. Details are a sequence of sheets over the outline or the canvas.
 Selecting a step, Condition, Lifecycle node, Event Split,
 Group, or connection opens its summary sheet over the bottom of the
 canvas, which stays pannable and zoomable above it. It reads the object the way

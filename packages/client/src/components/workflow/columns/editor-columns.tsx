@@ -274,19 +274,17 @@ function useDetailsFloatFollowsSelection(input: {
  * The editor below the toolbar on a phone: the outline fills the width, and
  * the toolbar's Map shows the canvas in its place. The canvas stays mounted
  * under the outline, so its camera and selection survive the switch; it leaves
- * keyboard and screen reader navigation while the outline covers it. The
- * agent's prompt line sits at the bottom of either one, and details open as
- * sheets over both.
+ * keyboard and screen reader navigation while the outline covers it. Details
+ * open as sheets over either one. The agent's prompt line sits below this box
+ * rather than over it, so the outline and the map scroll clear of it.
  */
 function PhoneMain({
   outline,
-  composer,
   phone,
   showsMap,
   children,
 }: {
   outline: ReactNode;
-  composer: ReactNode;
   phone: ReactNode;
   showsMap: boolean;
   children: ReactNode;
@@ -311,11 +309,6 @@ function PhoneMain({
           </section>
         </MobileRevealCovered>
       )}
-      {composer ? (
-        <div className="pointer-events-none absolute inset-0 z-10">
-          {composer}
-        </div>
-      ) : null}
       {phone}
     </div>
   );
@@ -380,17 +373,17 @@ export function EditorColumns({
   if (isMobile) {
     return (
       <div
-        className="relative flex min-h-0 min-w-0 flex-1"
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col"
         data-slot="editor-columns"
       >
-        <PhoneMain
-          composer={composer}
-          outline={outline}
-          phone={phone}
-          showsMap={showsMap}
-        >
+        <PhoneMain outline={outline} phone={phone} showsMap={showsMap}>
           {canvas}
         </PhoneMain>
+        {composer ? (
+          <div className="shrink-0" data-slot="phone-composer">
+            {composer}
+          </div>
+        ) : null}
         {overlay}
       </div>
     );

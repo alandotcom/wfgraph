@@ -53,7 +53,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-function renderAgent() {
+function renderAgent(variant: "canvas" | "phone" = "canvas") {
   const store = createStore();
   store.set(currentWorkflowIdAtom, "workflow_1");
   store.set(loadWorkflowGraphAtom, {
@@ -75,7 +75,7 @@ function renderAgent() {
   render(
     <JotaiProvider store={store}>
       <ExtensionCatalogProvider value={emptyExtensionCatalog}>
-        <WorkflowAgentView variant="canvas" workflowId="workflow_1" />
+        <WorkflowAgentView variant={variant} workflowId="workflow_1" />
       </ExtensionCatalogProvider>
     </JotaiProvider>
   );
@@ -269,5 +269,21 @@ describe("WorkflowAgentView", () => {
       expect(screen.queryByText("Add a Slack step")).toBeNull();
     });
     expect(localStorage.getItem("wfgraph:agent-thread:workflow_1")).toBeNull();
+  });
+
+  it("covers the whole screen with a phone's open conversation, with Back", async () => {
+    const { field, conversation } = renderAgent("phone");
+    const agent = () =>
+      document.querySelector<HTMLElement>('[data-slot="workflow-agent"]');
+    expect(agent()?.className).not.toContain("fixed");
+
+    act(() => {
+      field().focus();
+    });
+    expect(conversation()).not.toBeNull();
+    expect(agent()?.className).toContain("fixed inset-0");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(conversation()).toBeNull();
+    expect(agent()?.className).not.toContain("fixed");
   });
 });

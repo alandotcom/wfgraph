@@ -70,8 +70,8 @@ export const AGENT_COMPOSER_PLACEHOLDER =
 
 /**
  * Where the agent shows: `canvas` floats the line and the panel over the
- * canvas; `phone` puts the line at the bottom of the main view and opens the
- * conversation over the whole of it.
+ * canvas; `phone` puts the line below the main view, above the status strip,
+ * and opens the conversation over the whole screen.
  */
 export type WorkflowAgentVariant = "canvas" | "phone";
 
@@ -413,12 +413,14 @@ function AgentSurface({
   return (
     <div
       className={cn(
-        "flex h-full min-h-0 flex-col",
+        "flex min-h-0 flex-col",
         variant === "canvas"
-          ? "items-center justify-end gap-2"
-          : open
-            ? "pointer-events-auto bg-sidebar"
-            : "justify-end",
+          ? "h-full items-center justify-end gap-2"
+          : // On a phone the line sits below the main view in the page's
+            // flow, and the open conversation covers the whole screen.
+            open
+            ? "fixed inset-0 z-40 bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+            : "",
         // The canvas is read-only under the review sheet, so the agent hides
         // and keeps its conversation.
         reviewShown && "hidden"
