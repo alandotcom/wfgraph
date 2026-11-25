@@ -465,21 +465,23 @@ after its own authorization.
 
 ### Editor
 
-**Canvas Reveal**:
-The editor's inspector, a panel that floats over the right side of the canvas.
-In Draft it is closed or open, and open it holds the selected object's editor.
-In Runs it is Closed, Browse, or Focus: Browse holds the run list or a run, and
-Focus holds a run node's evidence. Draft, each run, and each entered Group
-remember their own level, inspected object, scroll position, and camera. While
-the review sheet Publish opens is on screen, it takes Canvas Reveal's place. On
-a phone a sequence of sheets takes its place.
-_Avoid_: sidebar (the retired resizable panel beside the canvas)
+**Details column**:
+The editor's inspector, the right of its three columns, always present beside
+the canvas. With an object selected it holds that object's editor; with
+nothing selected in Draft it holds the workflow's own details and issues. In
+Runs it holds the run list or a run at Browse, and a run node's evidence at
+Focus. Its second tab holds the Build Agent. Draft, each run, and each entered
+Group remember their own inspected object, scroll position, and camera. While
+the review sheet Publish opens is on screen, it covers the details column. On a
+phone a sequence of sheets takes its place.
+_Avoid_: Canvas Reveal (the retired panel that floated over the canvas),
+sidebar, inspector panel
 
 ### Build Agent
 
 **Build Agent**:
-The chat panel in the editor that reads the extension catalog and the open
-workflow, then edits the canvas on the Workflow Builder's behalf. It writes
+The chat in the details column's Agent tab that reads the extension catalog and
+the open workflow, then edits the canvas on the Workflow Builder's behalf. It writes
 through the same tools a person's clicks write through, so what it produces is
 a workflow like any other. Turned on by a host passing a model key; absent
 otherwise, panel and all.

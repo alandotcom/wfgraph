@@ -269,7 +269,7 @@ The workflow overview draws each Group as one collapsed card: solid Graphite Was
 
 Two gestures add a step where a path already runs, and they read the same on the workflow overview and on a focused Group canvas. **Add step after** on a step's context menu, one row per outlet so a Condition, an Event Split and the Lifecycle Node say which branch, inserts a step on that outlet: each existing connection becomes source → new step → former target. **Add step** from the palette or toolbar does the same while one step is selected, and uses the Started outlet while the Lifecycle Node is selected. With nothing selected on the workflow overview, Add step joins the Started path when that path has exactly one open end: the Started outlet of a new workflow, or the one outlet nothing leaves yet. Otherwise the step stands alone, placed clear of every card by half the layout's gaps and clear of every connection and its label. Dragging a connection from an outlet into empty canvas adds a branch with no automatic rejoin. **Insert step**, on a connection's context menu and on the + control the connection draws while it is hovered, selected, or focused, puts the step inside that connection instead: the connection's source reaches the new step and the new step reaches what the connection reached. On a downward connection, the new step takes the target's position and moves the target and its downstream cards down by one rank. Cards on sibling branches stay fixed. On a collapsed Group card, or a Group's "Continues to" stub, the connection stands for every stored edge it draws, and all of them are replaced. Each gesture is one undo step and goes through the Group rules. **Ungroup** shows on the menu of a Group card and a Group member, and nowhere else.
 
-The focused Group canvas shows its members at their stored positions relative to the frame, with top and bottom handles. Moving the collapsed card leaves those local positions and the focused camera unchanged. Each edge draws a complete rounded orthogonal path; forward edges entering the same row share a bend height. The canvas does not reserve routing lanes or rearrange cards to avoid crossings. The Group card itself is not drawn. Each outside step that enters the Group is a dashed stub before the members reading "Incoming from" and the step's name, one per outlet it enters by, so a Condition entering by both branches draws two stubs with True and False on their edges. Each step the Group continues to is a dashed stub after them reading "Continues to" and the step's name. Each place a path ends inside the Group is a dashed stub below its source reading "Path ends", with an edge from a step that connects to nothing, or from a Condition's unconnected True or False outlet, which then carries that branch label. A "Continues to" stub sits below its sources, centred across their outlets; an "Incoming from" stub sits above its targets, centred across them. Stubs spread apart around those centres to stay clear of member cards and each other, preserving True-before-False order when their centres coincide. An outlet that enters the Group at several steps draws one stub with an edge to each of them. An edge between two members can be selected and deleted, and dragging from one member's outlet to another member adds one. An edge from an "Incoming from" stub can be selected and deleted on its own, and dragging from that stub onto another member adds one more edge from the same outside outlet. An edge to a "Continues to" stub can be selected and deleted on its own, and dragging from a member's outlet onto that stub connects that outlet alone to the outside step it names. A Group is entered from one outside outlet, so a connection that would enter it from a second outlet is refused with a notice. A connection that would continue the Group to a second outside step from several outlets, give a step inside the Group a branch from outside it, or put a Condition on a branch into a join, is refused with the notice Publish would give. The focused canvas offers the same authoring as the overview for the Group's own steps: selecting and editing a step in Reveal, **Add step** from the palette, the toolbar and the canvas menu, dragging a connection from a member or an "Incoming from" stub into empty canvas, **Paste**, **Duplicate**, disabling, deleting, and connecting. A step added, pasted, or duplicated there becomes a member of the Group, and a step added by dragging out of a member, by **Add step after**, or by **Insert step** connects in the same undo step. Every such change is one undo step, and a change the Group rules refuse stores nothing and shows the refusal as a notice. Copying a step there copies that step alone. Stubs cannot be selected or dragged, and "Path ends" stubs and their edges cannot be selected or connected. Members can be dragged in an editable desktop draft. **Tidy layout** lays out the members and boundary stubs, then saves only member positions in one undo step. Entering the Group, opening Reveal, and editing connections do not rearrange members. **Ungroup** translates the stored member positions by the frame position, then moves the arrangement together down and to the right until it clears outside cards. Connections that would create a cycle are refused before any graph, history, or save change. A bar at the canvas's top left holds a **Workflow** button that returns to the overview, the workflow and Group names, and the step count.
+The focused Group canvas shows its members at their stored positions relative to the frame, with top and bottom handles. Moving the collapsed card leaves those local positions and the focused camera unchanged. Each edge draws a complete rounded orthogonal path; forward edges entering the same row share a bend height. The canvas does not reserve routing lanes or rearrange cards to avoid crossings. The Group card itself is not drawn. Each outside step that enters the Group is a dashed stub before the members reading "Incoming from" and the step's name, one per outlet it enters by, so a Condition entering by both branches draws two stubs with True and False on their edges. Each step the Group continues to is a dashed stub after them reading "Continues to" and the step's name. Each place a path ends inside the Group is a dashed stub below its source reading "Path ends", with an edge from a step that connects to nothing, or from a Condition's unconnected True or False outlet, which then carries that branch label. A "Continues to" stub sits below its sources, centred across their outlets; an "Incoming from" stub sits above its targets, centred across them. Stubs spread apart around those centres to stay clear of member cards and each other, preserving True-before-False order when their centres coincide. An outlet that enters the Group at several steps draws one stub with an edge to each of them. An edge between two members can be selected and deleted, and dragging from one member's outlet to another member adds one. An edge from an "Incoming from" stub can be selected and deleted on its own, and dragging from that stub onto another member adds one more edge from the same outside outlet. An edge to a "Continues to" stub can be selected and deleted on its own, and dragging from a member's outlet onto that stub connects that outlet alone to the outside step it names. A Group is entered from one outside outlet, so a connection that would enter it from a second outlet is refused with a notice. A connection that would continue the Group to a second outside step from several outlets, give a step inside the Group a branch from outside it, or put a Condition on a branch into a join, is refused with the notice Publish would give. The focused canvas offers the same authoring as the overview for the Group's own steps: selecting and editing a step in the details column, **Add step** from the palette, the toolbar and the canvas menu, dragging a connection from a member or an "Incoming from" stub into empty canvas, **Paste**, **Duplicate**, disabling, deleting, and connecting. A step added, pasted, or duplicated there becomes a member of the Group, and a step added by dragging out of a member, by **Add step after**, or by **Insert step** connects in the same undo step. Every such change is one undo step, and a change the Group rules refuse stores nothing and shows the refusal as a notice. Copying a step there copies that step alone. Stubs cannot be selected or dragged, and "Path ends" stubs and their edges cannot be selected or connected. Members can be dragged in an editable desktop draft. **Tidy layout** lays out the members and boundary stubs, then saves only member positions in one undo step. Entering the Group, selecting a step, and editing connections do not rearrange members. **Ungroup** translates the stored member positions by the frame position, then moves the arrangement together down and to the right until it clears outside cards. Connections that would create a cycle are refused before any graph, history, or save change. A bar at the canvas's top left holds a **Workflow** button that returns to the overview, the workflow and Group names, and the step count.
 
 Handles are 12px dots in Graphite Ink with a hairline ring, and their hit areas are 24px on desktop and 44px on touch. Those sizes are divided by `--rf-zoom`, the live canvas scale the viewport transform applies, because a flat pixel size inside that transform shrinks with the zoom and delivered 24.6px on a phone.
 
@@ -281,17 +281,18 @@ A step the run can never reach is muted: the card drops to 50% opacity, its inco
 
 ### Navigation
 
-A quiet menu bar spans the canvas. Canvas Reveal, a Panel-toned inspector
-floating over the canvas, shows details for the active workspace view. The
-selected workspace uses a Graphite Ink fill with Paper text. Tone, rather than an
+A quiet menu bar spans the editor. Below it the editor is three docked
+columns: the outline on the left, the canvas in the centre, and details on the
+right, with the status strip beneath them. Both side columns are Panel-toned
+and separated from the canvas by a hairline. The selected workspace uses a
+Graphite Ink fill with Paper text. Tone, rather than an
 accent stripe, marks the active workflow.
 
 The workflow workspace has two views: **Draft** and **Runs**. A
 segmented control precedes the Run split button and **Publish** at desktop
 widths. Below `md` the two views sit at the top of the toolbar's overflow
-menu, the active one checked, above the run commands and **Publish**. The control
-remains available when the inspector is closed. The canvas,
-inspector, editing lock, and status strip always follow the same active view.
+menu, the active one checked, above the run commands and **Publish**. The
+columns, editing lock, and status strip always follow the same active view.
 A workflow opens fitted to the whole graph, with the padding **Fit view** uses
 and no higher than 100%, so a small workflow is not blown up. The outline
 carries each step's text, so the canvas opens on the workflow's shape. The
@@ -309,69 +310,61 @@ only when the next presentation is ready.
 initial load directly to the newest run, and owns the run list, run details, and
 run-node inspection. Reviewing a change before publishing it, and reading what a
 past version changed, happen in the review sheet, described under Publication
-review. Entering **Runs** opens the inspector.
-Closing the inspector doesn't change the active view.
+review.
 
-In Draft, Canvas Reveal is closed or open, and open it holds the selected
-object's editor. **Runs** adds a level, described below: Browse holds the run
-list or a run, and Focus holds a run node's evidence. Reveal floats 8px inside
-the canvas box's top, right, and bottom edges with a hairline border and
-shadow-sm, and it never resizes the canvas. Every subject uses the same width,
-so selecting another object or moving between Browse and Focus never changes
-the panel's size.
+The outline column is 340px wide by default and the person can resize it from
+240px to 480px. The details column is 400px by default and resizes from 340px
+to 560px. Each column's inner edge is a focusable separator, "Resize outline"
+or "Resize details": dragging it resizes the column, Left Arrow and Right Arrow
+move the edge 16px, Home and End go to the narrowest and widest width, and
+double-clicking returns the default width. The separator draws nothing at
+rest, a 2px Ring line on hover, and the same line on keyboard focus. Each
+column's header holds the control that collapses it to a 40px rail; the rail
+holds the control that brings it back. `[` collapses or shows the outline and
+`]` collapses or shows details from anywhere outside a text field, and the
+command palette offers both. A viewer's widths and collapsed columns are
+remembered across workflows and reloads. Only these controls change the
+columns: selecting or deselecting anything never adds, removes, or resizes a
+column, so the canvas box and the camera stay put.
 
-| Canvas width     | Reveal width |
-| ---------------- | ------------ |
-| Under 1024px     | Up to 640px  |
-| 1024px to 1279px | 640px        |
-| 1280px to 1535px | 720px        |
-| 1536px and wider | 800px        |
+At 1360px and wider both side columns dock. From 900px to 1359px the canvas
+keeps room for one docked column: details docks, and the outline is a rail
+whose control, or `[`, opens it over the left of the canvas with shadow-lg.
+Escape or a press outside closes it there. Collapsing details docks the
+outline in its place. Below 900px the phone layout described below applies.
 
-Under 1024px, Reveal is 640px or the canvas less 16px, whichever is narrower.
-From 1024px up, Reveal and its 8px inset leave at least 256px of canvas.
-
-From a 1024px canvas, a resize handle runs down Reveal's left edge. Dragging it
-resizes the shared width for every subject. Reveal is at least 480px wide and at
-most the size that leaves 256px of canvas beside it and its 8px inset. The
-handle is a focusable separator named "Resize inspector": Left Arrow widens
-Reveal by 16px, Right Arrow narrows it by 16px, Home goes to the minimum, and
-End goes to the maximum. Double-clicking the handle returns the shared width to
-its default. The handle draws nothing at rest, a 2px Ring line on hover, and the
-line with the 2px `--ring` halo on keyboard focus. A viewer's chosen width
-is remembered across subjects, workflows, and reloads, and is narrowed to fit a
-smaller canvas when shown. The camera holds still while the handle is dragged.
-When a drag or key press ends, the camera places the subject beside the new
-width once, the way opening Reveal places it. Resizing never moves a step,
-changes the draft, or adds an undo step.
+The details column has two tabs in its header, **Details** and **Agent**.
+Details shows what the selection shows, under a header naming the object, the
+path from the workflow through any Group to it, and its status. With nothing
+selected in Draft it shows the workflow's own details: its name with
+**Rename**, its description, its publication state and Published mode, and its
+issues, each with an **Edit** that selects the step and puts the cursor in the
+field the issue names. Agent holds the build agent's conversation and **New
+conversation**. The conversation stays mounted under Details, so a turn in
+progress keeps going.
 
 A workflow that holds only its Lifecycle Node shows its starting moves one rank below that card, in a dashed block on the canvas: one line saying it has no steps yet, then **Choose what starts it**, **Add step**, and **Describe it to the agent** when the host runs the build agent. The first opens the Lifecycle node with its Start Events editor open and leaves once a Start Event or schedule exists. The block leaves once the workflow has a step. The build agent's empty panel offers **Explain this workflow** and **Why did the last run fail?**, and each sends at once.
 
-While Reveal is closed, the Draft canvas shows a Panel-toned card above the
-zoom controls titled **What this workflow does**. Collapsed, it shows the first
-sentence of what starts a run. Expanded, it lists in Caption type what starts a
-run, each step in order with its branches, and what stops a run. A branch nested
-more than two levels deep reads as one phrase with its step count. The card
-hides while Reveal, the review sheet, or the build agent's panel is open, and
-Runs shows the zoom cue in its place. On a phone the collapsed card is its title row
-alone, and the zoom controls sit in a row along the bottom edge. The zoom
-controls and the **Agent** button draw on the card surface, so the graph never
-shows through them.
+On a phone the zoom controls sit in a row along the bottom edge. The zoom
+controls draw on the card surface, so the graph never shows through them.
 
-The Draft canvas rests with Reveal closed. Selecting an ordinary step, which is
-any Action or Wait, opens its editor. A press on a step selects it only when it ends
-as a click. Dragging a step never opens Reveal or moves the camera, and dragging
-a step that is not selected clears the selection. A context header names the workspace, the step,
-the path from the workflow through any Group to the step, and the step's
-validation status, beside **Close**. It offers **Back** only where a jump
-reached the object, such as the Lifecycle node opened from an Event Split. No
-header control changes a level. A step's editor holds an editable label and
+Selecting an ordinary step, which is any Action or Wait, shows its editor in
+the details column at once. A press on a step selects it only when it ends as a
+click. Dragging a step never selects it or moves the camera, and dragging a
+step that is not selected clears the selection. The header offers **Back** only
+where a jump reached the object, such as the Lifecycle node opened from an
+Event Split. No header control changes a level. A step's editor holds an
+editable label and
 description, the action and its Connection, and every setting as its field.
 Each issue shows beneath the field it names, and the Validation list repeats
 every issue, where choosing one puts focus in its field. A template field's
 help line says that typing @ inserts a value from the Event or an earlier step.
 Edits write to the draft as they are made, and autosave carries on. A step with no
 action chosen shows the action picker, and choosing an action moves focus to
-the first required field it leaves empty. Selecting a
+the first required field it leaves empty. A Condition's rule keeps field,
+operator, value, and remove on one line where the rule has 28rem; in a
+narrower details column the field shares the first line with remove, and the
+operator and value share the second. Selecting a
 collapsed Group opens its editor: its label and description, the step count, each step in stored
 position order, the outside
 steps that enter it, the step it continues from with the Condition branch when
@@ -383,15 +376,17 @@ the card's issue badge and the status in the Group's header count the steps'
 issues with the Group's own. Double-clicking the card or its arrow also enters it.
 Entering and leaving a Group each add a browser history entry, so Back leaves a
 Group and Forward enters it again. On a focused Group canvas, selecting a step
-opens that step's own inspector. A connection and a multiple selection show
-their panel at the shared width, under a header holding the panel's title and
-**Close**. **Runs** has a Browse of its own.
+shows that step's own inspector. A connection and a multiple selection show
+their panel under a header holding the panel's title. **Runs** has a Browse of
+its own.
 
 Selecting an object with the pointer opens its editor and leaves keyboard focus
 on the canvas object. The context menu's **Edit**, Enter on a focused object,
 and the command palette finding a step open the editor with focus in its label,
 or in the action picker of a step with no action. **Edit** on a row of the
-workflow's issue list opens the step with focus in the field the row names. A
+workflow's issue list, in the details column or in the list a blocked Publish
+opens, selects the step, brings the details column back if it was collapsed,
+and puts focus in the field the row names. A
 step added from the palette opens with focus in the first required field it
 leaves empty, and any other new step opens with focus in the action picker.
 
@@ -497,7 +492,7 @@ finish and duration, its error or cancellation, the wait it holds with **Resume
 now**, what the step did in words, and the node's activity such as parking and
 resuming. A Condition leads with its answer, such as "Took False", and the step
 the branch continues to, or that the path ends there. Each rule then reads as
-the sentence Canvas Reveal builds for it, with whether it matched where the
+the sentence the details column builds for it, with whether it matched where the
 answer and the rules' logic decide that, and the value it compared where the
 run recorded the step it reads. Any other step shows its integration's own
 result display when it has one, then its input and output as labeled values
@@ -524,50 +519,43 @@ Browse in the Group, then to the overview with the Group card selected and its
 summary shown, then to the run with focus on the card, and then to the run
 list. From evidence Focus opened on the overview they return to the run's
 Browse at the journey position it was left at, with focus on the journey entry
-or canvas node that opened Focus. A canvas click that opened Focus or a Group
-summary from a closed Reveal returns straight to Closed, and that opening and
-closing leave the saved open or closed preference as it was. A click
+or canvas node that opened Focus. A click
 on the empty canvas clears the evidence. Selecting another node replaces the
 evidence and shows its latest execution. The chosen execution is remembered for
 each run. On a phone the evidence replaces the run overview in the sheet, and
 its heading takes focus.
 
 Escape and **Back** take one step back as the shown object's kind defines it.
-In Draft, Escape belongs to an open select, combobox, menu, autocomplete, or
-dialog first, then to a Lifecycle section open for editing, and then closes
-Reveal. For the Lifecycle node or a Wait opened from an Event Split, Back and
-that last Escape select the Event Split again, and the camera moves only if
-Reveal would cover it. The way back lasts while
-Reveal stays open and the source stays selected alone; closing Reveal or
-selecting anything else ends it, and Back is then no longer offered. For a
-run node's evidence the step back is the run, for a run it is the run list, and
-on the run list Escape closes Reveal. **Close** closes Reveal from any level.
-In Runs, opening Focus moves focus to the title and returning to Browse puts
-focus on **Show evidence**. Closing returns focus to the canvas object or control that
-opened Reveal. Closing keeps the canvas selection. Selecting a step again, or
-the chevron on the canvas's right edge, reopens the level Reveal was closed
-from. A Focus level remembered for a Draft object opens its editor. Cmd+B opens and closes Canvas Reveal from anywhere but a text field. The level, the inspected step, the
-inspector's scroll position, and the open Lifecycle section are remembered
-separately for Draft, each Group view, the run list, and each run. Levels add
-no browser history.
+In Draft, Escape inside the details column belongs to an open select,
+combobox, menu, autocomplete, or dialog first, then to a Lifecycle section open
+for editing, and then hands focus back to the selected object on the canvas.
+For the Lifecycle node or a Wait opened from an Event Split, Back and that last
+Escape select the Event Split again. The way back lasts while the source stays
+selected alone; selecting anything else ends it, and Back is then no longer
+offered. For a run node's evidence the step back is the run, and for a run it
+is the run list. In Runs, opening Focus moves focus to the title. The inspected
+step, the inspector's scroll position, and the open Lifecycle section are
+remembered separately for Draft, each Group view, the run list, and each run.
+Levels add no browser history.
 
-Opening or changing Reveal moves the camera and nothing else: it never runs
-layout, moves a node, or marks the draft changed. The camera keeps its zoom when
-the selected step fits the usable canvas, the part left after Reveal, the canvas
-controls, the MiniMap, and the docked agent card, and zooms out only as far as
-fitting it needs. It then moves the least distance that keeps the step and 64px
-of its neighbors inside the usable canvas, so a long horizontal or vertical workflow
-keeps its direction. **Runs** places its selected node the same way, or the
-whole graph when no single node is selected. The MiniMap sits beside
-open Reveal. The camera moves once per change and only when Reveal would cover
-the step or its 64px of neighbors: a step already in the usable canvas stays
-where it is. Opening Reveal and selecting another step can each move it. Closing Reveal by
-any path (Close, Escape, Back,
-clicking empty canvas, or clearing the selection), returning from Focus to
-Browse, and opening or closing a Lifecycle section never move the camera.
+Selecting an object never moves the camera. The camera moves for a request
+alone: the command palette finding a step, an issue's **Edit**, a jump to
+another scope, and the review sheet pointing at an edit. A request never runs
+layout, moves a node, or marks the draft changed. The camera keeps its zoom
+when the nodes fit the usable canvas, the canvas less its controls, the
+MiniMap, and the part the review sheet covers, and zooms out only as far as
+fitting them needs. It then moves the least distance that keeps them and 64px
+of their neighbors inside the usable canvas, so a node already in view moves
+nothing.
 
-Below `md`, Draft replaces Canvas Reveal with a sequence of sheets over the
-full-screen canvas. Selecting a step, Condition, Lifecycle node, Event Split,
+Below `md`, 900px, the outline is the editor's main view and fills the width.
+A **Map** control in the toolbar shows the canvas in the outline's place, and
+pressing it again returns to the outline. The canvas under the outline keeps
+its camera and leaves the tab order. The column collapse controls are absent.
+**Agent**, from the command palette or **Describe it to the agent**, covers
+both views with the agent's conversation under a header whose Back returns to
+them. Details are a sequence of sheets over the outline or the canvas.
+Selecting a step, Condition, Lifecycle node, Event Split,
 collapsed Group, or connection opens its summary sheet over the bottom of the
 canvas, which stays pannable and zoomable above it. It reads the object the way
 the desktop editor would summarize it: settings as labels and values, a
@@ -582,18 +570,17 @@ at its section, or the Wait's summary, over the Event Split's summary. Every
 sheet above the first leads with a Back control named for the sheet beneath,
 **Summary** when that sheet shows the same object. Back and Escape remove one
 sheet and restore the sheet beneath with its selection and its scroll position.
-The Canvas Reveal shortcut closes every sheet. Removing or closing sheets never
-moves the camera. Each sheet moves focus to its title. After Back, focus
+Removing or closing sheets never moves the camera. Each sheet moves focus to its title. After Back, focus
 stays where the sheet body put it, such as a run row or the canvas node that
 opened the evidence; otherwise it goes to the element the workspace names for
 that sheet, then to the control that opened the removed sheet, and then to the
 title of the sheet on screen. Closing the last sheet returns focus to the canvas
-node. The canvas and the agent panel under the inspector leave the tab
+node. The canvas and the outline under the inspector leave the tab
 order. Every control inside the sequence, and every option of a select, combobox
 or menu popup while the sequence shows, is at least 44px tall, text fields read
 at 1rem, and the sheets clear the left and right safe-area insets. The sheets,
 their scroll positions, and the Lifecycle section are remembered for each Draft
-scope apart from desktop Reveal, and each form factor keeps its own camera.
+scope apart from the details column, and each form factor keeps its own camera.
 While a sheet shows, the toolbar's **Configuration** button is absent. A phone
 offers no topology authoring: nodes cannot be dragged, added, deleted, pasted,
 duplicated, grouped, or ungrouped, connections cannot be drawn, the canvas has
@@ -681,7 +668,7 @@ tooltip, and their menu rows say it in a detail line. A paused workflow starts
 no run, so in Draft both run commands are disabled and say "Resume the workflow
 to run." The workflow menu holds **Pause workflow** or **Resume workflow** once
 a version is published. **Configuration** stays beside that menu as an icon
-button, because Canvas Reveal is absent at that width. In Draft it opens the
+button, because the details column is absent at that width. In Draft it opens the
 selected object's summary sheet, and in Runs the sheet of the run list or the run.
 
 Every icon-only control in the toolbar and on the canvas names itself in the
@@ -715,9 +702,9 @@ says "No changes to publish" and opens nothing. **Review changes**, in the
 command palette and the Actions menu, runs the same path. **Version history**
 in the Actions menu opens the sheet on the list of versions.
 
-The sheet takes Canvas Reveal's place and its shared width, at the same 8px
-inset. Reveal keeps its level and subject beneath it and returns as it was when
-the sheet closes. The sheet's header holds its title, one line of counts,
+The sheet covers the details column and reaches over the canvas from the
+editor's right edge, 8px inside it, up to 640px wide. The details column keeps
+its subject beneath it and returns as it was when the sheet closes. The sheet's header holds its title, one line of counts,
 **Version history** on the draft's review, and **Close**; a page opened over
 another leads with **Back**. Its footer holds the decision. The body between
 them scrolls as one surface, and nothing else in the sheet stays pinned.

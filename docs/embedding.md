@@ -233,8 +233,8 @@ fallback without exposing the exception text.
 
 Workflow Graph renders no preview of what a node will send. A host that wants one serves the
 page itself and declares an Action Link to it with `links` on `defineAction`. The editor
-shows each link while a step running that action is selected, at both levels of Canvas
-Reveal, Browse and Focus. The page reads the node's saved draft
+shows each link in its details column while a step running that action is selected. The
+page reads the node's saved draft
 with `app.workflows.readDraftNode`.
 
 ```ts
@@ -393,29 +393,31 @@ const wfgraph = await createWfGraphApp({ client: clientBundle, ... });
   is the same call with a different bundle.
 - Each of the two packages is independent of the other.
 
-### Workspaces and Canvas Reveal
+### Workspaces and columns
 
-The editor shows a workflow on one canvas in two workspaces. **Draft** edits the
-workflow, and **Runs** inspects its runs. Canvas Reveal is a panel that floats over the
-right side of the canvas. In Draft, selecting an object on the canvas opens Canvas Reveal
-on that object's editor. In Runs, the first visit opens Browse, pressing a step on a run's
-canvas opens Focus, and otherwise Canvas Reveal keeps the level the person last chose.
-Browse summarizes the run list or a run, and Focus holds a run node's evidence. **Publish**
-opens a review sheet in Canvas Reveal's place that lists each edit the draft makes to the
-published version, in the order a run reaches it, and ends in the decision to publish.
-Version history opens what each past version changed in the same sheet. On a canvas 1024px
-or wider, a person can drag the panel's left edge, or focus that edge and use the arrow
-keys, to resize the panel. The browser remembers each
-width in a cookie, and double-clicking the edge restores the default width. Cmd+B or
-Ctrl+B opens and closes Canvas Reveal when it has an object to show, which in Draft means a
-selected object. On a screen narrower than 768px, the shortcut closes the open sheets.
-Opening, changing, or closing it moves the camera and leaves the saved draft unchanged.
+The editor shows a workflow in two workspaces. **Draft** edits the workflow, and **Runs**
+inspects its runs. Each workspace is three columns: the outline of the workflow in run
+order on the left, the canvas in the centre, and the details column on the right. The
+details column shows the selected object's editor, or with nothing selected the workflow's
+own details and issues; in Runs it shows the run list, a run, or a run node's evidence. The
+build agent is the details column's second tab. **Publish** opens a review sheet over the
+details column that lists each edit the draft makes to the published version, in the order
+a run reaches it, and ends in the decision to publish. Version history opens what each past
+version changed in the same sheet.
+
+A person can resize each side column by dragging or with the arrow keys on its inner edge,
+and collapse either one with the control in its header, `[` for the outline or `]` for
+details. The browser remembers the widths and collapsed columns in a cookie. At 1360px and
+wider both side columns show; from 900px to 1359px the outline opens over the canvas
+unless details is collapsed. Selecting something never changes the columns or moves the
+camera, and nothing in the details column changes the saved draft except the edits made
+in it.
 
 The editor keeps the workspace address in the page's query string: `view` (`runs`,
 absent for Draft), `executionId`, and `group`. Browser Back and Forward move between those
 addresses, and a copied link opens the same run or Group. A link carrying `review=true`
 opens Draft with the review sheet. Draft, each run, and each entered Group keep their own
-selection, Canvas Reveal level, scroll position, and camera while the page is open.
+selection, inspected object, scroll position, and camera while the page is open.
 
 ### Groups
 
@@ -470,8 +472,8 @@ that stores any of those keys fails to load; this release ships no migration for
 
 ### On a phone
 
-Below 768px wide, Draft, Runs, and Changes show a sequence of sheets over a full-screen
-canvas in place of Canvas Reveal. A Workflow Builder there can inspect every object, edit
+Below 900px wide, the outline fills the screen, a **Map** control shows the canvas in its
+place, and details open as a sequence of sheets over either one. A Workflow Builder there can inspect every object, edit
 the configuration of an existing step, run, publish, undo, and redo, as their grants
 allow. The graph's shape cannot be edited on a phone: steps cannot be added, moved,
 deleted, pasted, duplicated, grouped, or ungrouped, and connections cannot be drawn.

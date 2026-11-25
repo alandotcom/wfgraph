@@ -121,8 +121,8 @@ the handler runs, in a test run or any other. Grouping ignores the field.
 ### Action links and readDraftNode
 
 Workflow Graph renders no preview. `links: [{ label, url }]` on `defineAction`
-puts a link to a page of the host's own in Canvas Reveal, at Browse and at
-Focus, opened in a new tab. The url is an absolute path starting with one `/`,
+puts a link to a page of the host's own in the editor's details column while
+a step running that action is selected, opened in a new tab. The url is an absolute path starting with one `/`,
 or a URL starting `http://` or `https://`, holds no control character, and may
 hold only `{workflowId}` and `{nodeId}`, which the editor fills, URL-encoded.
 In a full URL a placeholder may stand only in the path, query or fragment,
