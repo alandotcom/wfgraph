@@ -754,8 +754,9 @@ split button's face is **Run draft**, which always starts a test run. Its
 dialog says what this draft will do at each step that reaches outside the
 workflow, naming the steps by the rule its "In test runs" setting or its app
 decides by: "Send reminder and Alert the desk are skipped in this draft run.",
-"Text the test phone sends to Test Phone Number …", "Send intake form runs as
-in a live run unless the app skips it.", and that a Wait waits its full time
+"Text the test phone sends to Test Phone Number …", "Whether Send intake form
+does anything is up to the app; afterwards the run shows "Skipped (test run)"
+on a step that did nothing.", and that a Wait waits its full time
 unless Continue now is pressed. A published run in Test mode says the same of
 its version's steps. Its
 menu holds the run of the published version, labelled with that version number

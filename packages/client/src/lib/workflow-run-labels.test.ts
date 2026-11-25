@@ -275,8 +275,22 @@ describe("testRunStepsSentence", () => {
         step("g", "Old reminder", "patients/message", false),
       ])
     ).toBe(
-      'Text the patient and Text the front desk are skipped in this draft run. Text the test phone sends to Test Phone Number "+15557654321". Send intake form runs as in a live run unless the app skips it.'
+      'Text the patient and Text the front desk are skipped in this draft run. Text the test phone sends to Test Phone Number "+15557654321". Whether Send intake form does anything is up to the app; afterwards the run shows "Skipped (test run)" on a step that did nothing.'
     );
+  });
+
+  // The product knows what a step does in a test run only when its action
+  // declares an "In test runs" setting, so the rest are named as the app's
+  // to decide, with no guess either way.
+  it("names the steps whose app decides, with no guess at what they do", () => {
+    const text = sentence([
+      step("a", "Send booking confirmation", "patients/message"),
+      step("b", "Release the slot", "patients/message"),
+    ]);
+    expect(text).toBe(
+      'Whether Send booking confirmation and Release the slot do anything is up to the app; afterwards the run shows "Skipped (test run)" on a step that did nothing.'
+    );
+    expect(text).not.toMatch(/unless|as in a live run/);
   });
 
   it("says a test phone left empty means the step does nothing", () => {

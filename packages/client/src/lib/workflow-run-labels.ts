@@ -6,6 +6,7 @@
  * the run overlay states the sends in the same sentence it confirms.
  */
 
+import { TEST_RUN_SKIP_LABEL } from "#src/lib/test-run-skip";
 import {
   type ExtensionCatalog,
   findAction,
@@ -275,7 +276,8 @@ function namesPhrase(names: readonly string[]): string {
  * What a test run of this graph does at the steps that reach outside it, in
  * sentences naming those steps, from the rule `stepTestRunBehavior` states:
  * "Send reminder and Alert the desk are skipped in this draft run.", "Text the
- * patient sends to Test Phone Number "+15557654321".". A step is counted when
+ * patient sends to Test Phone Number "+15557654321".", and for the steps whose
+ * app decides, which ones they are and where the run says what they did. A step is counted when
  * a run can reach it, by the reachability `runSends` uses. Built-in steps reach
  * nothing outside, and an action with no "In test runs" setting counts only
  * when its catalog entry sets `sideEffect`. `run` names the run in the
@@ -342,8 +344,11 @@ export function testRunStepsSentence(input: {
       ? `${namesPhrase(skipped)} ${skipped.length === 1 ? "is" : "are"} skipped in this ${input.run}.`
       : null,
     ...followed,
+    // An action with no "In test runs" setting decides in its own handler,
+    // and nothing in the catalog says what it decides, so the sentence names
+    // those steps and says where the answer shows once the run has happened.
     appDecides.length > 0
-      ? `${namesPhrase(appDecides)} ${appDecides.length === 1 ? "runs" : "run"} as in a live run unless the app skips ${appDecides.length === 1 ? "it" : "them"}.`
+      ? `Whether ${namesPhrase(appDecides)} ${appDecides.length === 1 ? "does" : "do"} anything is up to the app; afterwards the run shows "${TEST_RUN_SKIP_LABEL}" on a step that did nothing.`
       : null,
   ]).join(" ");
 }

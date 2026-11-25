@@ -156,9 +156,10 @@ published version while its workflow is in Test mode. Every run calls the handle
 action node it reaches. Workflow Graph does not skip or stub a host action in a test run, so a
 Workflow Builder's Draft run of a refund workflow issues a real refund unless the handler
 checks `runMode`. An action that charges, cancels, deletes or sends answers without doing so
-when `runMode` is `"test"`, or does it against a sandbox. The Run draft dialog tells the
-Workflow Builder that a step runs as usual in a test run unless the app skips it, which is
-the `runMode` check this section asks of a handler.
+when `runMode` is `"test"`, or does it against a sandbox. The Run draft dialog names a
+host action's steps as ones whose test-run behaviour is up to the app, and the run then
+shows "Skipped (test run)" on a step whose handler did nothing, which is the `runMode`
+check this section asks of a handler.
 
 `sideEffect: true` declares that an action changes something outside the workflow. The
 catalog carries it to the editor, and the run dialog of a Live-mode published run counts the
