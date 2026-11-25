@@ -1,12 +1,10 @@
 import type { RefObject } from "react";
 import { useDomEvent } from "#src/hooks/effects";
-import { editorChordAllowed } from "#src/lib/editor-shortcuts";
-import type { RevealLevel } from "#src/lib/workflow-navigation-state";
-import { CANVAS_OBSTACLE_SLOTS } from "./reveal-geometry";
 
 /**
- * Whether an Escape belongs to a control inside Reveal that closes something
- * of its own first: an open select, combobox, menu, or template autocomplete.
+ * Whether an Escape belongs to a control inside the details column that closes
+ * something of its own first: an open select, combobox, menu, or template
+ * autocomplete.
  */
 function escapeOwnedByControl(target: Element): boolean {
   return (
@@ -16,36 +14,19 @@ function escapeOwnedByControl(target: Element): boolean {
 }
 
 /**
- * Canvas Reveal's keys. Cmd+B or Ctrl+B toggles Reveal, except from a text
- * field, where it is the field's own chord. Escape inside the canvas
- * area unwinds one level, unless an overlay, the agent panel, an open control,
- * or an earlier capture listener that called `preventDefault` owns it. Escape is
- * read in the document's capture phase and stopped once Reveal takes it, so a
- * focused React Flow node never sees it and keeps its selection.
+ * Escape inside the details panel, or on a phone inside the canvas area under
+ * its sheets, takes one step back, unless an overlay, an
+ * open control, or an earlier capture listener that called `preventDefault`
+ * owns it. Escape is read in the document's capture phase and stopped once the
+ * panel takes it, so no editor shortcut behind it sees the same key.
  */
 export function useRevealKeyboard(input: {
-  /** False below `md`, where Reveal is not mounted. */
   enabled: boolean;
-  level: RevealLevel;
   hasOverlays: boolean;
-  /** The canvas area Escape must come from: the Reveal surface's parent. */
+  /** The surface Escape must come from: the details panel or a phone's canvas area. */
   area: RefObject<HTMLElement | null>;
-  onToggle: () => void;
   onUnwind: () => void;
 }): void {
-  useDomEvent(window, "keydown", (event) => {
-    if (
-      (event.metaKey || event.ctrlKey) &&
-      event.key === "b" &&
-      editorChordAllowed(event, { inTextFields: false })
-    ) {
-      event.preventDefault();
-      if (input.enabled) {
-        input.onToggle();
-      }
-    }
-  });
-
   useDomEvent(
     document,
     "keydown",
@@ -54,8 +35,7 @@ export function useRevealKeyboard(input: {
         event.key !== "Escape" ||
         event.defaultPrevented ||
         !input.enabled ||
-        input.hasOverlays ||
-        input.level === "closed"
+        input.hasOverlays
       ) {
         return;
       }
@@ -63,14 +43,7 @@ export function useRevealKeyboard(input: {
       const inArea =
         target === document.body ||
         (target !== null && input.area.current?.contains(target) === true);
-      if (
-        !inArea ||
-        (target !== null &&
-          (target.closest(
-            `[data-slot="${CANVAS_OBSTACLE_SLOTS.agentPanel}"]`
-          ) !== null ||
-            escapeOwnedByControl(target)))
-      ) {
+      if (!inArea || (target !== null && escapeOwnedByControl(target))) {
         return;
       }
       event.preventDefault();

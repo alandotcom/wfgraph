@@ -445,9 +445,9 @@ function PinnedRunStatus() {
         <WorkflowSaveStatus />
       </StatusItems>
       {/* The one control on the strip, and the answer to #96: every other way
-          back out of a pinned run lives inside Canvas Reveal, which can be
-          closed or swapped to another view while the run stays on the canvas
-          refusing every edit. */}
+          back out of a pinned run lives inside the details column, which can be
+          collapsed or swapped to the Agent tab while the run stays on the
+          canvas refusing every edit. */}
       <Button
         className="h-6 shrink-0 text-info hover:text-info"
         onClick={showDraft}

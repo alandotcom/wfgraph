@@ -248,7 +248,7 @@ export function LifecycleFocus({ subject, scrollToTop }: RevealBodyProps) {
 }
 
 /**
- * The Lifecycle inspector in desktop Canvas Reveal: an editable label, the
+ * The Lifecycle inspector in the details column: an editable label, the
  * lifecycle policy summary, and the node's issues. Each section's Edit shows
  * that section's editor in place, and Done returns it to its summary. An issue
  * opens the section that edits what it names.
@@ -301,7 +301,7 @@ function LifecycleEditorBody({
 }
 
 /**
- * The inspector of the Lifecycle Node in desktop Canvas Reveal, keyed to the
+ * The inspector of the Lifecycle Node in the details column, keyed to the
  * node so the section editors' pickers start clean for each Lifecycle Node.
  */
 export function LifecycleEditor({ subject, focusField }: RevealBodyProps) {

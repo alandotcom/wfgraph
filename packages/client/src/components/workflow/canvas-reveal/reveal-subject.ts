@@ -1,5 +1,5 @@
 /**
- * The subjects Canvas Reveal can show, and the pure rules that recognize each
+ * The subjects the details column can show, and the pure rules that recognize each
  * kind in a selection. `reveal-kinds.tsx` pairs each rule with what the shell
  * renders for that kind.
  */
@@ -12,7 +12,6 @@ import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
 import { type RunTarget, runTarget } from "#src/lib/run-node-evidence";
 import type {
   CanvasSelection,
-  OpenRevealLevel,
   RevealLevel,
   ChosenRunExecution,
   WorkspaceView,
@@ -47,10 +46,10 @@ export type RevealSubject = {
   nodeId: string | null;
   placement: RevealPlacement;
   /**
-   * The open levels desktop Canvas Reveal offers, Browse first. A Draft
+   * The levels the desktop details column offers, Browse first. A Draft
    * subject offers Browse alone, which holds its editable form.
    */
-  levels: readonly OpenRevealLevel[];
+  levels: readonly RevealLevel[];
   /**
    * Whether the phone sequence offers an inspector sheet that covers the
    * canvas over the subject's summary sheet: a Draft object's full-screen
@@ -265,7 +264,7 @@ export function matchRunsSubject(input: RunsMatchInput): RevealSubject | null {
   const onlyNodeId =
     nodes.length === 1 && edges.length === 0 ? nodes[0].id : null;
   const target = runTarget(input);
-  const levels: readonly OpenRevealLevel[] =
+  const levels: readonly RevealLevel[] =
     target?.kind === "node" ? ["browse", "focus"] : ["browse"];
   const base = {
     kind: "runs" as const,
@@ -342,7 +341,7 @@ const CONDITION_RULE_FIELD_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The element Canvas Reveal focuses in an editor for an issue naming
+ * The element the details column focuses in an editor for an issue naming
  * `fieldKey`, on a subject of kind `kind`. A Condition's two rule config keys
  * both resolve to its rule builder; every other kind focuses the field the
  * issue named. Both the issue list inside Reveal and the workflow issues
@@ -359,19 +358,16 @@ export function revealFocusTarget(
 }
 
 /**
- * The level Canvas Reveal presents: closed with no subject, and otherwise the
- * stored level limited to the levels the subject offers. A Focus level stored
+ * The level the details column presents: the stored level limited to the
+ * levels the subject offers, and Browse with no subject. A Focus level stored
  * for a Draft object, which offers Browse alone, presents Browse.
  */
 export function effectiveRevealLevel(
   stored: RevealLevel,
   subject: RevealSubject | null
 ): RevealLevel {
-  if (subject === null) {
-    return "closed";
-  }
-  if (stored === "closed" || subject.levels.includes(stored)) {
-    return stored;
+  if (subject === null || subject.levels.includes(stored)) {
+    return subject === null ? "browse" : stored;
   }
   return subject.levels[0];
 }

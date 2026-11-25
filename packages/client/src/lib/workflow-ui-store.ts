@@ -1,23 +1,15 @@
 import { atom } from "jotai";
 import type { WorkspaceView } from "#src/lib/workflow-navigation-state";
-import { readCookie, writeCookie } from "#src/lib/preference-cookies";
 import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 
 /**
- * Editor chrome: which view is active, the agent panel, which run is on screen.
+ * Editor chrome: which view is active, which tab the details column shows,
+ * which run is on screen.
  *
  * None of this belongs to the graph, so this module does not import
  * `workflow-graph-store`. Authorization is server state and each UI surface
  * reads it through its own bounded authorization query.
- *
- * The agent panel survives a reload, in cookies. Each is read once as the
- * atom's initial value and written from the atom's own setter, so there is
- * exactly one place each preference is persisted and no effect mirroring state
- * into storage after the fact.
  */
-
-const AGENT_PANEL_OPEN_COOKIE = "agent-panel-open";
-const AGENT_PANEL_SIZE_COOKIE = "agent-panel-size";
 
 export type WorkflowWorkspaceView = WorkspaceView;
 
@@ -72,86 +64,12 @@ export type WorkflowGraphUpdate = {
 export const workflowGraphUpdateAtom = atom<WorkflowGraphUpdate | null>(null);
 
 /**
- * The build agent's panel: whether it is open, whether it covers the editor,
- * and how big the user made it while docked.
- *
- * Docked it floats over the bottom-left of the canvas, so it reserves no canvas
- * width. Expanded it covers the editor and the size below stops applying.
+ * The details column's tab: the selection's details, or the build agent. The
+ * agent's conversation stays mounted under either tab.
  */
-const AGENT_PANEL_MIN = { width: 320, height: 280 } as const;
-const AGENT_PANEL_MAX = { width: 720, height: 900 } as const;
-const AGENT_PANEL_DEFAULT = { width: 400, height: 520 } as const;
+export type DetailsTab = "details" | "agent";
 
-export type AgentPanelSize = { width: number; height: number };
-
-function clampAgentPanelSize(size: AgentPanelSize): AgentPanelSize {
-  return {
-    width: Math.min(
-      Math.max(size.width, AGENT_PANEL_MIN.width),
-      AGENT_PANEL_MAX.width
-    ),
-    height: Math.min(
-      Math.max(size.height, AGENT_PANEL_MIN.height),
-      AGENT_PANEL_MAX.height
-    ),
-  };
-}
-
-function readInitialAgentPanelSize(): AgentPanelSize {
-  const [width, height] = (readCookie(AGENT_PANEL_SIZE_COOKIE) ?? "")
-    .split("x")
-    .map((part) => Number.parseFloat(part));
-
-  return Number.isFinite(width) && Number.isFinite(height)
-    ? clampAgentPanelSize({ width, height })
-    : AGENT_PANEL_DEFAULT;
-}
-
-const agentPanelOpenStateAtom = atom(
-  readCookie(AGENT_PANEL_OPEN_COOKIE) === "true"
-);
-const agentPanelExpandedStateAtom = atom(false);
-
-export const isAgentPanelOpenAtom = atom(
-  (get) => get(agentPanelOpenStateAtom),
-  (get, set, next: boolean | ((previous: boolean) => boolean)) => {
-    const value =
-      typeof next === "function" ? next(get(agentPanelOpenStateAtom)) : next;
-    set(agentPanelOpenStateAtom, value);
-    if (!value) {
-      set(agentPanelExpandedStateAtom, false);
-    }
-    writeCookie(AGENT_PANEL_OPEN_COOKIE, String(value));
-  }
-);
-
-/**
- * Whether the panel covers the editor rather than sitting on the canvas. Only
- * an open panel can.
- *
- * Deliberately not persisted, and cleared when the panel closes: covering the
- * editor is something a reader asks for to read one long turn, so the next time
- * they open the agent it should be back on the canvas with the graph in view.
- */
-export const isAgentPanelExpandedAtom = atom(
-  (get) => get(agentPanelOpenStateAtom) && get(agentPanelExpandedStateAtom),
-  (get, set, next: boolean | ((previous: boolean) => boolean)) => {
-    const value =
-      typeof next === "function" ? next(get(isAgentPanelExpandedAtom)) : next;
-    set(agentPanelExpandedStateAtom, value && get(agentPanelOpenStateAtom));
-  }
-);
-
-const agentPanelSizeStateAtom = atom(readInitialAgentPanelSize());
-
-export const agentPanelSizeAtom = atom(
-  (get) => get(agentPanelSizeStateAtom),
-  (_get, set, size: AgentPanelSize) => {
-    const clamped = clampAgentPanelSize(size);
-    set(agentPanelSizeStateAtom, clamped);
-    writeCookie(AGENT_PANEL_SIZE_COOKIE, `${clamped.width}x${clamped.height}`);
-  }
-);
+export const detailsTabAtom = atom<DetailsTab>("details");
 
 /**
  * The run the canvas is painting, as the route names it. It reports a run only

@@ -1,94 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   MIN_USABLE_SIZE,
-  REVEAL_INSET,
-  revealOccupiedWidth,
-  revealWidth,
-  revealWidthRange,
   usableAboveSheet,
   usableCanvasRect,
 } from "./reveal-geometry";
 import { revealViewport } from "#src/components/workflow/workflow-viewport";
 
-/** No width a person chose, so every level uses its default. */
-const NONE = undefined;
-
-describe("revealWidth", () => {
-  it.each([
-    { canvas: 900, expected: 640 },
-    { canvas: 1100, expected: 640 },
-    { canvas: 1400, expected: 720 },
-    { canvas: 1800, expected: 800 },
-  ])(
-    "keeps every open level at the same width on a $canvas px canvas",
-    ({ canvas, expected }) => {
-      expect(revealWidth("closed", canvas, NONE)).toBe(0);
-      expect(revealWidth("browse", canvas, NONE)).toBe(expected);
-      expect(revealWidth("focus", canvas, NONE)).toBe(expected);
-    }
-  );
-
-  it("leaves at least 256 px of canvas from 1024 px", () => {
-    for (const canvas of [1024, 1100, 1280, 1536, 1800]) {
-      expect(
-        canvas - revealOccupiedWidth("focus", canvas, NONE)
-      ).toBeGreaterThanOrEqual(256);
-    }
-  });
-
-  it("stays within a canvas narrower than Reveal", () => {
-    expect(revealWidth("browse", 300, NONE)).toBe(300 - 2 * REVEAL_INSET);
-    expect(revealWidth("focus", 600, NONE)).toBe(600 - 2 * REVEAL_INSET);
-  });
-});
-
-describe("revealWidth with a remembered width", () => {
-  it("gives Reveal a range from its minimum to 256 px short of the canvas", () => {
-    expect(revealWidthRange(1024)).toEqual({
-      min: 480,
-      max: 1024 - 256 - REVEAL_INSET,
-      defaultWidth: 640,
-    });
-    expect(revealWidthRange(1440)).toEqual({
-      min: 480,
-      max: 1440 - 256 - REVEAL_INSET,
-      defaultWidth: 720,
-    });
-    expect(revealWidthRange(1023)).toBeNull();
-  });
-
-  it("uses one remembered width for every open level", () => {
-    expect(revealWidth("browse", 1440, 600)).toBe(600);
-    expect(revealWidth("focus", 1440, 600)).toBe(600);
-    expect(revealOccupiedWidth("focus", 1440, 600)).toBe(600 + REVEAL_INSET);
-  });
-
-  it("clamps a remembered width to the current canvas each time it is read", () => {
-    expect(revealWidth("browse", 1440, 1400)).toBe(1440 - 256 - REVEAL_INSET);
-    expect(revealWidth("browse", 1100, 1400)).toBe(1100 - 256 - REVEAL_INSET);
-    expect(revealWidth("focus", 1440, 200)).toBe(480);
-    expect(revealWidth("closed", 1440, 200)).toBe(0);
-  });
-
-  it("ignores a remembered width on a canvas narrower than 1024 px", () => {
-    expect(revealWidth("browse", 900, 500)).toBe(640);
-    expect(revealWidth("focus", 900, 500)).toBe(640);
-  });
-});
-
 describe("usableCanvasRect", () => {
   const canvas = { width: 1200, height: 800 };
 
-  it("excludes Reveal and its inset from the right", () => {
+  it("excludes the width the review sheet covers at the right", () => {
     expect(
-      usableCanvasRect({
-        canvas,
-        revealOccupiedWidth: 380 + REVEAL_INSET,
-        obstacles: [],
-      })
-    ).toEqual({ x: 0, y: 0, width: 1200 - 380 - REVEAL_INSET, height: 800 });
+      usableCanvasRect({ canvas, rightOccupiedWidth: 388, obstacles: [] })
+    ).toEqual({ x: 0, y: 0, width: 1200 - 388, height: 800 });
     expect(
-      usableCanvasRect({ canvas, revealOccupiedWidth: 0, obstacles: [] })
+      usableCanvasRect({ canvas, rightOccupiedWidth: 0, obstacles: [] })
     ).toEqual({ x: 0, y: 0, ...canvas });
   });
 
@@ -97,7 +23,7 @@ describe("usableCanvasRect", () => {
     expect(
       usableCanvasRect({
         canvas,
-        revealOccupiedWidth: 380 + REVEAL_INSET,
+        rightOccupiedWidth: 388,
         obstacles: [controls],
       })
     ).toEqual({ x: 56, y: 0, width: 812 - 56, height: 800 });
@@ -109,27 +35,17 @@ describe("usableCanvasRect", () => {
     expect(
       usableCanvasRect({
         canvas,
-        revealOccupiedWidth: 380 + REVEAL_INSET,
+        rightOccupiedWidth: 388,
         obstacles: [underReveal, covering],
       })
     ).toEqual({ x: 0, y: 0, width: 812, height: 800 });
   });
 
-  it("leaves a place for a step beside Focus on a 900px canvas", () => {
+  it("answers null when the sheet leaves less than the minimum", () => {
     expect(
       usableCanvasRect({
         canvas: { width: 900, height: 700 },
-        revealOccupiedWidth: revealOccupiedWidth("focus", 900, NONE),
-        obstacles: [],
-      })
-    ).toEqual({ x: 0, y: 0, width: 900 - 640 - REVEAL_INSET, height: 700 });
-  });
-
-  it("answers null when Reveal leaves less than the minimum", () => {
-    expect(
-      usableCanvasRect({
-        canvas: { width: 900, height: 700 },
-        revealOccupiedWidth: 900 - REVEAL_INSET,
+        rightOccupiedWidth: 892,
         obstacles: [],
       })
     ).toBeNull();

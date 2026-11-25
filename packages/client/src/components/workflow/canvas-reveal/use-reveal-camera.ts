@@ -9,43 +9,44 @@ import { useAfterPaint } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
-import type { WorldCamera } from "#src/lib/workflow-navigation-state";
-import { isAgentPanelExpandedAtom } from "#src/lib/workflow-ui-store";
-import { isReviewSheetShownAtom } from "#src/lib/workflow-review-store";
+import {
+  type WorldCamera,
+  workspaceAddressId,
+} from "#src/lib/workflow-navigation-state";
+import { activeWorkspaceAddressAtom } from "#src/lib/workflow-workspace-navigation";
 import {
   revealViewport,
   sameWorldCamera,
   viewportFromWorldCamera,
   worldCameraFromViewport,
 } from "#src/components/workflow/workflow-viewport";
-import { canvasRevealAtom } from "./canvas-reveal-state";
-import { revealCameraStep, type RevealCameraSlot } from "./reveal-camera";
-import {
-  measureObstacles,
-  placementNodeIds,
-  revealOccupiedWidth,
-  subjectBounds,
-  type SubjectBounds,
-  usableCanvasRect,
-} from "./reveal-geometry";
-import {
-  revealKeyResizeInProgressAtom,
-  revealPlacementRequestAtom,
-  revealResizeSequenceAtom,
-} from "./reveal-requests";
-import { rememberedRevealWidthAtom } from "./reveal-width-preference";
+import { measureObstacles, usableCanvasRect } from "./reveal-geometry";
+import { revealPlacementRequestAtom } from "./reveal-requests";
 
 /**
- * Moves the desktop camera the least it must when Canvas Reveal opens, changes
- * subject, takes more canvas width, finishes a resize, or answers a placement request,
- * so the subject stays visible beside it. The camera starts from where it is,
- * so a subject Reveal does not cover moves nothing. It only calls
- * `setViewport`: no layout runs and no node moves. Closing Reveal never moves
- * the camera. A keyboard resize places from the camera recorded when it began,
- * even if an earlier placement was still animating then. Nothing is compared
- * while the canvas cannot be placed, so a change made then is acted on once it
- * can.
- * `canvas` is the element React Flow fills.
+ * The pixels the review sheet covers at the right of the canvas element, or 0
+ * while it does not show. The sheet overlays the canvas from the editor's right
+ * edge, so a step a review edit points at is placed beside it.
+ */
+function reviewSheetOverlap(canvas: HTMLElement): number {
+  const sheet = document.querySelector('[data-slot="review-sheet"]');
+  if (sheet === null) {
+    return 0;
+  }
+  const canvasRect = canvas.getBoundingClientRect();
+  return Math.max(0, canvasRect.right - sheet.getBoundingClientRect().left);
+}
+
+/**
+ * Answers each placement request once: the command palette, an issue, an
+ * outline row, a jump between scopes, and the review sheet ask for nodes to be
+ * shown. The camera moves the least it must to bring those nodes fully into the
+ * canvas, clear of the controls floating over it and of the review sheet, so a
+ * node already in view moves nothing. A selection on its own asks for nothing,
+ * and the columns beside the canvas never move it. It only calls
+ * `setViewport`: no layout runs and no node moves. A request waits until its
+ * address shows, the canvas can be placed, and React Flow holds every node it
+ * names. `canvas` is the element React Flow fills.
  */
 export function useRevealCamera(input: {
   isCanvasPlaced: (workflowId: string) => boolean;
@@ -58,144 +59,83 @@ export function useRevealCamera(input: {
 } {
   const store = useStore();
   const flowStore = useStoreApi();
-  const flow = useReactFlow<WorkflowNode, WorkflowEdge>();
-  const { getNodesBounds, getViewport, setViewport } = flow;
+  const { getNodesBounds, getViewport, setViewport } = useReactFlow<
+    WorkflowNode,
+    WorkflowEdge
+  >();
   const isMobile = useIsMobile();
   const isSized = useFlowStore((state) => state.width > 0 && state.height > 0);
-  const reveal = useAtomValue(canvasRevealAtom);
   const request = useAtomValue(revealPlacementRequestAtom);
-  const resizeSequence = useAtomValue(revealResizeSequenceAtom);
-  const isKeyResizing = useAtomValue(revealKeyResizeInProgressAtom);
-  // Whether React Flow holds every node the subject is placed by. A paste or an
-  // added step becomes the subject in the commit that paints it, so the first
-  // look can come before React Flow has taken the new node.
-  const isSubjectHeld = useFlowStore((state) =>
-    placementNodeIds(reveal.subject?.placement).every((id) =>
-      state.nodeLookup.has(id)
-    )
+  const address = useAtomValue(activeWorkspaceAddressAtom);
+  const isRequestHeld = useFlowStore((state) =>
+    (request?.nodeIds ?? []).every((id) => state.nodeLookup.has(id))
   );
-  /** The slot the camera last acted on while the canvas could be placed. */
-  const shownRef = useRef<RevealCameraSlot | null>(null);
   const answeredSequenceRef = useRef(0);
   /** Where an animation this hook started is heading, until the move ends. */
   const inFlightRef = useRef<WorldCamera | null>(null);
-  /** The camera when the keyboard resize in progress began. */
-  const keyResizeStartRef = useRef<WorldCamera | null>(null);
-  const slotKey = [
-    reveal.addressId,
-    reveal.subject?.key ?? "",
-    reveal.level,
-    request?.sequence ?? 0,
-    resizeSequence,
-    isKeyResizing,
-    isMobile,
-    isSized,
-    input.isCanvasReady,
-    isSubjectHeld,
-  ].join("|");
 
-  useAfterPaint(slotKey, () => {
-    const state = store.get(canvasRevealAtom);
-    const { width, height } = flowStore.getState();
-    const element = input.canvas.current;
-    if (
-      isMobile ||
-      !element ||
-      width <= 0 ||
-      height <= 0 ||
-      !input.isCanvasPlaced(state.address.workflowId)
-    ) {
-      return;
-    }
-    const size = { width, height };
-    const current =
-      inFlightRef.current ?? worldCameraFromViewport(getViewport(), size);
-    // Record the camera once when a keyboard resize begins, and hand it to the
-    // placement that ends the resize.
-    const keyResizeStart = keyResizeStartRef.current ?? current;
-    keyResizeStartRef.current = store.get(revealKeyResizeInProgressAtom)
-      ? keyResizeStart
-      : null;
-    // The review sheet takes Reveal's place and width while it shows, so a
-    // placement it asks for keeps the step beside the sheet. Opening or
-    // closing the sheet is not something this hook looks at, so neither
-    // moves the camera.
-    const occupiedWidth = revealOccupiedWidth(
-      store.get(isReviewSheetShownAtom) ? "browse" : state.level,
-      width,
-      store.get(rememberedRevealWidthAtom)
-    );
-    const next: RevealCameraSlot = {
-      addressId: state.addressId,
-      subjectKey: state.subject?.key ?? null,
-      level: state.level,
-      occupiedWidth,
-      resizeSequence: store.get(revealResizeSequenceAtom),
-    };
-    const placementRequest = store.get(revealPlacementRequestAtom);
-    const finishedResize =
-      shownRef.current !== null &&
-      shownRef.current.resizeSequence !== next.resizeSequence;
-    const step = revealCameraStep({
-      shown: shownRef.current,
-      next,
-      request: placementRequest,
-      answeredSequence: answeredSequenceRef.current,
-    });
-    const shownBefore = shownRef.current;
-    shownRef.current = next;
-    if (step === "keep") {
-      return;
-    }
-
-    let placed: SubjectBounds | null = null;
-    if (step === "place-request" && placementRequest) {
-      answeredSequenceRef.current = placementRequest.sequence;
-      placed = {
-        bounds: getNodesBounds([...placementRequest.nodeIds]),
-        optionalBounds: [],
-      };
-    } else if (state.subject) {
-      placed = subjectBounds(state.subject.placement, flow);
-    }
-    if (!placed || placed.bounds.width <= 0 || placed.bounds.height <= 0) {
-      // Nothing to place yet. A subject React Flow does not hold stays unshown,
-      // so the camera places it once, when React Flow takes its nodes.
-      if (step === "place") {
-        shownRef.current = shownBefore;
+  useAfterPaint(
+    [
+      request?.sequence ?? 0,
+      workspaceAddressId(address),
+      isMobile,
+      isSized,
+      input.isCanvasReady,
+      isRequestHeld,
+    ].join("|"),
+    () => {
+      const placement = store.get(revealPlacementRequestAtom);
+      const { width, height } = flowStore.getState();
+      const element = input.canvas.current;
+      const active = store.get(activeWorkspaceAddressAtom);
+      if (
+        placement === null ||
+        placement.sequence === answeredSequenceRef.current ||
+        placement.addressId !== workspaceAddressId(active) ||
+        !isRequestHeld ||
+        isMobile ||
+        !element ||
+        width <= 0 ||
+        height <= 0 ||
+        !input.isCanvasPlaced(active.workflowId)
+      ) {
+        return;
       }
-      return;
-    }
-    const { bounds, optionalBounds } = placed;
-    const from = finishedResize ? keyResizeStart : current;
-    const usable = store.get(isAgentPanelExpandedAtom)
-      ? null
-      : usableCanvasRect({
-          canvas: size,
-          revealOccupiedWidth: occupiedWidth,
-          obstacles: measureObstacles(element),
-        });
-    const target = usable
-      ? worldCameraFromViewport(
-          revealViewport({
-            viewport: viewportFromWorldCamera(from, size),
-            usable,
-            bounds,
-            optionalBounds,
-          }),
-          size
-        )
-      : current;
-    if (!sameWorldCamera(target, current)) {
-      inFlightRef.current = target;
-      // React Flow's default `smooth` interpolation zooms out and back in on
-      // the way, so the canvas would bounce while keeping its zoom.
-      void setViewport(viewportFromWorldCamera(target, size), {
-        duration: viewportAnimationDuration(),
-        interpolate: "linear",
+      answeredSequenceRef.current = placement.sequence;
+      const bounds = getNodesBounds([...placement.nodeIds]);
+      if (bounds.width <= 0 || bounds.height <= 0) {
+        return;
+      }
+      const size = { width, height };
+      const current =
+        inFlightRef.current ?? worldCameraFromViewport(getViewport(), size);
+      const usable = usableCanvasRect({
+        canvas: size,
+        rightOccupiedWidth: reviewSheetOverlap(element),
+        obstacles: measureObstacles(element),
       });
+      if (usable === null) {
+        return;
+      }
+      const target = worldCameraFromViewport(
+        revealViewport({
+          viewport: viewportFromWorldCamera(current, size),
+          usable,
+          bounds,
+        }),
+        size
+      );
+      if (!sameWorldCamera(target, current)) {
+        inFlightRef.current = target;
+        // React Flow's default `smooth` interpolation zooms out and back in on
+        // the way, so the canvas would bounce while keeping its zoom.
+        void setViewport(viewportFromWorldCamera(target, size), {
+          duration: viewportAnimationDuration(),
+          interpolate: "linear",
+        });
+      }
     }
-  });
+  );
 
   return {
     onMoveEnd: () => {

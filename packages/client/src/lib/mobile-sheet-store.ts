@@ -11,7 +11,6 @@ import {
   withMobileSheet,
   withMobileSheetScroll,
   withMobileSheetSection,
-  withoutMobileSheets,
   withoutTopMobileSheet,
   type MobileRevealLevel,
 } from "#src/lib/mobile-sheet-navigation";
@@ -114,16 +113,6 @@ export const closeMobileSheetAtom = atom(
   null,
   (_get, set, address: WorkspaceAddress) => {
     set(updateAddressNavigationAtom, address, withoutTopMobileSheet);
-  }
-);
-
-/**
- * Close every mobile sheet of a named address, keeping its selection.
- */
-export const closeAllMobileSheetsAtom = atom(
-  null,
-  (_get, set, address: WorkspaceAddress) => {
-    set(updateAddressNavigationAtom, address, withoutMobileSheets);
   }
 );
 

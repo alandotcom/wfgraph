@@ -77,8 +77,8 @@ function viewportShowsGraph(input: {
 
 /**
  * Where the camera opens a workflow, or a workspace view that has no
- * remembered camera, inside `usable`: the canvas pixels Canvas Reveal and the
- * floating controls leave.
+ * remembered camera, inside `usable`: the canvas pixels the floating controls
+ * leave.
  *
  * The zoom fits the whole graph with the padding and the ceiling of zoom 1
  * that Fit view uses, and never goes above `zoomLimit`. `zoomLimit` is that
@@ -200,7 +200,7 @@ function axisShift(input: {
 
 /**
  * The viewport that places `bounds` (flow coordinates) inside `usable` (canvas
- * pixels) for Canvas Reveal. The zoom is kept when the bounds fit and otherwise
+ * pixels). The zoom is kept when the bounds fit and otherwise
  * decreases just enough to fit them, scaled around their center. Each box in
  * `optionalBounds` then grows the placed box, in order, while the grown box
  * still fits at that zoom; one that does not fit is left out. Each axis moves

@@ -127,7 +127,7 @@ export function useRunGroupSummary(
 }
 
 /**
- * Show a run node's evidence from outside the canvas, in Canvas Reveal Focus or
+ * Show a run node's evidence from outside the canvas, in the details column or
  * the mobile evidence inspector. A node in the pinned graph is selected in the
  * scope that shows it: a Group member on its Group's focused canvas, reached by
  * pushing that scope's route. A node the pinned graph lacks, or any node while
@@ -156,7 +156,6 @@ export function useInspectRunNode(): (input: {
       addressId: workspaceAddressId(address),
       nodeId,
       logId,
-      closedReopenLevel: null,
     });
     navigation.inspectRunNode({
       address,

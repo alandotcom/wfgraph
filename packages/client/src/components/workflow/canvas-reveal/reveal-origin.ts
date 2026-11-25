@@ -1,7 +1,6 @@
 /**
  * Back from a node a jump reached, to the node the jump started from. The jump
- * records the origin node; Back selects it again, and the camera treats that
- * as any other change of subject.
+ * records the origin node; Back selects it again.
  */
 
 import { nodesAtom, selectOnlyNodeAtom } from "#src/lib/workflow-graph-store";

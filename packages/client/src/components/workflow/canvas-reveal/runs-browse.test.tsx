@@ -181,7 +181,7 @@ describe("Runs Browse run list and selected run", () => {
     expect(title()).toBe(runHeading("exec_a"));
     expect(store.get(selectedNodeAtom)).toBe("a_step");
   });
-  it("leaves an open run for its row the same way on Escape and on Back, and closes from the list", async () => {
+  it("leaves an open run for its row the same way on Escape and on Back", async () => {
     served.items = [
       execution("exec_b", "completed"),
       execution("exec_a", "completed"),
@@ -203,8 +203,9 @@ describe("Runs Browse run list and selected run", () => {
     await waitFor(() => expect(document.activeElement).toBe(rows()[1]));
     expect(aside()?.dataset.level).toBe("browse");
 
+    // The run list has nothing to step back to, so Escape leaves it showing.
     escape();
-    await waitFor(() => expect(aside()?.dataset.level).toBe("closed"));
+    expect(aside()?.dataset.level).toBe("browse");
     expect(view.queryByRole("button", { name: "Back" })).toBeNull();
   });
 

@@ -134,7 +134,7 @@ function useWorkspaceRouteSync(): void {
     presentedGraph: store.get(presentedGraphAtom),
   });
 
-  // Selected ids, and the object Canvas Reveal inspects, that the active scope
+  // Selected ids, and the object the details column inspects, that the active scope
   // does not show are dropped: ids the presented graph no longer holds, Group
   // members on the overview, and anything outside a focused Group. The key
   // names only the graph structure, so moving a node does not run it again.

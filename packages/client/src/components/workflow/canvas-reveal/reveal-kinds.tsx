@@ -1,9 +1,10 @@
 /**
- * The subject kinds Canvas Reveal can show, one record each: `header` builds the
- * header, `unwind` answers Back and Escape, `mobile` adapts the sheets below `md`,
- * and `shellOwnsScroll` names the body's scroller. The shell keys the body by kind,
- * so one component registered as both `Browse` and `Focus` stays mounted. A
- * Draft object has one open level, Browse, which shows its editor.
+ * The subject kinds the details column and the phone's sheets can show, one
+ * record each: `header` builds the header, `unwind` answers Back and Escape,
+ * `mobile` adapts the sheets below `md`, and `shellOwnsScroll` names the
+ * body's scroller. The shell keys the body by kind, so one component
+ * registered as both `Browse` and `Focus` stays mounted. A Draft object has
+ * one level, Browse, which shows its editor.
  */
 
 import type { ComponentType } from "react";
@@ -14,7 +15,7 @@ import {
 } from "#src/components/workflow/node-config-panel";
 import { groupLabel, type WorkflowNode } from "#src/lib/workflow-graph-types";
 import type {
-  OpenRevealLevel,
+  RevealLevel,
   WorkflowRouteSearch,
 } from "#src/lib/workflow-navigation-state";
 import { groupIssues } from "#src/lib/workflow-issues-store";
@@ -86,7 +87,7 @@ export type RevealBodyProps = {
    * The level the body is shown at. A kind that names one component for both
    * Browse and Focus reads it, and that component stays mounted between them.
    */
-  level: OpenRevealLevel;
+  level: RevealLevel;
   frame: NodeConfigFrame;
   /**
    * Move keyboard focus to the element whose id is `targetId` once it shows:
@@ -101,8 +102,8 @@ export type RevealBodyProps = {
    */
   scrollToTop: () => void;
   /**
-   * The mobile Reveal sheet the body shows on below `md`, or null when desktop
-   * Canvas Reveal shows it. The shell passes it so a body reads the sheet
+   * The mobile Reveal sheet the body shows on below `md`, or null when the
+   * details column shows it. The shell passes it so a body reads the sheet
    * without importing the state module, which imports every kind.
    */
   mobile: MobileRevealState | null;
@@ -114,7 +115,7 @@ export type RevealHeaderContext = {
   issues: readonly WorkflowIssue[];
   workflowName: string;
   catalog: ExtensionCatalog;
-  /** The active scope's desktop Reveal state, which records where a jump began. */
+  /** The active scope's desktop presentation, which records where a jump began. */
   presentation: DesktopScopePresentation;
 };
 
@@ -127,7 +128,7 @@ export type MobileKindHeaderProps = {
 /** What a kind's own `Header` component receives from the shell. */
 export type RevealKindHeaderProps = {
   subject: RevealSubject;
-  level: OpenRevealLevel;
+  level: RevealLevel;
   controls: RevealHeaderControls;
 };
 
@@ -152,7 +153,7 @@ export type RevealKindHeader =
  */
 export type RevealUnwind = (input: {
   subject: RevealSubject;
-  level: OpenRevealLevel;
+  level: RevealLevel;
   /**
    * What asked: the Back control, or Escape. The Lifecycle kind's Escape
    * closes a section open for editing before it steps back, and its Back steps
@@ -161,11 +162,6 @@ export type RevealUnwind = (input: {
   trigger: "back" | "escape";
   store: Store;
   unwindLevel: () => void;
-  /**
-   * Hand DOM focus back to what opened Reveal at the next close, for a kind
-   * that closes Reveal through its own write.
-   */
-  returnFocusOnClose: () => void;
   /** Replace the editor route search, adding no history entry. */
   replaceRouteSearch: (search: WorkflowRouteSearch) => void;
 }) => void;
@@ -178,7 +174,7 @@ export type RevealKind = {
    * reads any further state only this kind matches on.
    */
   match: (input: RevealMatchInput, get: Getter) => RevealSubject | null;
-  /** The accessible name of the Reveal region while it shows this kind. */
+  /** The accessible name of the details region while it shows this kind. */
   regionLabel: string;
   header: RevealKindHeader;
   /** The body at Browse, which for a Draft object is its editor. */
@@ -187,7 +183,8 @@ export type RevealKind = {
   Focus: ComponentType<RevealBodyProps> | null;
   /**
    * What one Back or Escape does on desktop. Without it the shell runs
-   * `unwindLevel`, which goes from Focus to Browse to Closed.
+   * `unwindLevel`, which goes from Focus to Browse, and from Browse hands
+   * focus back to the canvas.
    */
   unwind?: RevealUnwind;
   /**
@@ -212,7 +209,7 @@ export type RevealKind = {
     backFocusTarget?: (sheet: HTMLElement) => HTMLElement | null;
     shellOwnsScroll?: boolean;
   };
-  /** The canvas element focus returns to when Reveal closes, when there is one. */
+  /** The canvas element Escape hands focus back to, when there is one. */
   focusReturnTarget: (
     subject: RevealSubject,
     area: HTMLElement
@@ -253,8 +250,7 @@ function issueStatus(
 
 /**
  * Whether Back has somewhere to go: the object a jump reached, such as a Wait
- * opened from an Event Split, returns to where the jump began. Closing Reveal
- * is Close's job.
+ * opened from an Event Split, returns to where the jump began.
  */
 function hasWayBack(
   subject: RevealSubject,
@@ -290,7 +286,6 @@ function stepHeaderModel(
     (issue) => issue.nodeId === subject.nodeId
   );
   return {
-    workspaceLabel: "Draft",
     title,
     path: compact([
       context.workflowName || "Untitled workflow",
@@ -313,7 +308,6 @@ function groupHeaderModel(
   const node = context.nodes.find((item) => item.id === subject.nodeId);
   const title = groupLabel(node?.data.label);
   return {
-    workspaceLabel: "Draft",
     title,
     path: [context.workflowName || "Untitled workflow", title],
     // The collapsed card hides the Group's steps, so the status counts their
@@ -340,7 +334,6 @@ function lifecycleHeaderModel(
   const title =
     node && !isBlank(node.data.label) ? node.data.label : "Lifecycle";
   return {
-    workspaceLabel: "Draft",
     title,
     path: [context.workflowName || "Untitled workflow", title],
     status: node
@@ -360,14 +353,12 @@ function PanelBrowse({ frame }: RevealBodyProps) {
  * The node config panel's header in Draft: its own title, which names
  * Properties or Connection, with no path and no status.
  */
-function PanelHeader({ level, controls }: RevealKindHeaderProps) {
+function PanelHeader({ controls }: RevealKindHeaderProps) {
   const title = useNodeConfigTitle();
   return (
     <RevealHeader
       controls={controls}
-      level={level}
       model={{
-        workspaceLabel: "Draft",
         title,
         path: [],
         status: null,
@@ -380,7 +371,8 @@ function PanelHeader({ level, controls }: RevealKindHeaderProps) {
 /**
  * One step back for the Lifecycle Node. Escape returns a section open for
  * editing to its summary, with focus on that section's Edit button. Otherwise,
- * and for Back, it returns to where a jump began, or closes Reveal.
+ * and for Back, it returns to where a jump began, or hands focus back to the
+ * canvas.
  */
 const unwindLifecycle: RevealUnwind = (input) => {
   const { subject, store } = input;

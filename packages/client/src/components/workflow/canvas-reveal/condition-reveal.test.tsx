@@ -65,7 +65,7 @@ import {
   serializeConditionModel,
 } from "@wfgraph/shared/conditions/conditions";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { CanvasReveal } from "./canvas-reveal";
+import { DetailsPanel } from "#src/components/workflow/details/details-panel";
 import { canvasRevealAtom } from "./canvas-reveal-state";
 import { ConditionSummarySheet } from "./condition-reveal";
 
@@ -239,7 +239,7 @@ async function renderCondition(input: {
     component: () => (
       <div className="relative" data-testid="canvas-area">
         <div data-testid="workflow-canvas" tabIndex={-1} />
-        <CanvasReveal />
+        <DetailsPanel />
         <ShowIssuesButton />
         {input.summarySheet ? (
           <SummarySheet focusField={input.summarySheet} />
@@ -275,7 +275,7 @@ async function renderCondition(input: {
     store.set(selectOnlyNodeAtom, "condition");
   });
   const aside = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="canvas-reveal"]');
+    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
   const region = () =>
     view.getByRole("complementary", { name: "Condition inspector" });
   const section = (title: string) => {
@@ -344,10 +344,9 @@ afterEach(() => {
 
 describe("Condition inspector", () => {
   it("opens on the Condition's editor with no level control", async () => {
-    const { view, level, region } = await renderCondition({});
+    const { view, level } = await renderCondition({});
 
     expect(level()).toBe("browse");
-    expect(region().textContent).toContain("Draft");
     expect(
       view.getByRole("heading", { name: "Patient eligible?" })
     ).toBeTruthy();

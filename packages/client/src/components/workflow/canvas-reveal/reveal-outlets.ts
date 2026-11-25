@@ -1,5 +1,5 @@
 /**
- * What Canvas Reveal keeps in view for a node with labelled outlets, in world
+ * What the details column keeps in view for a node with labelled outlets, in world
  * coordinates: the node with its source handles, which set the zoom, and the
  * label drawn on each edge leaving by a named outlet, which the camera adds
  * only while it fits. Before React Flow measures the handles, the node is alone.

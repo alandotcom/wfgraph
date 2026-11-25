@@ -53,7 +53,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
 import { LIFECYCLE_CANCELED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
-import { CanvasReveal } from "./canvas-reveal";
+import { DetailsPanel } from "#src/components/workflow/details/details-panel";
 
 const catalog: ExtensionCatalog = {
   entities: [],
@@ -180,7 +180,7 @@ async function renderEventSplit(input: {
     component: () => (
       <div className="relative" data-testid="canvas-area">
         <FakeCanvas />
-        <CanvasReveal />
+        <DetailsPanel />
       </div>
     ),
   });
@@ -211,7 +211,7 @@ async function renderEventSplit(input: {
     store.set(selectOnlyNodeAtom, "split");
   });
   const aside = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="canvas-reveal"]');
+    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
   const region = (name: string) => {
     const section = within(
       view.getByRole("complementary", { name: "Event Split inspector" })
@@ -495,7 +495,7 @@ describe("Event Split Browse", () => {
     expect(aside()?.dataset.level).toBe("browse");
   });
 
-  it("forgets the split once Reveal closes, so Back is no longer offered", async () => {
+  it("forgets the split once the selection empties, so Back is no longer offered", async () => {
     const { view, store, aside } = await renderEventSplit({
       nodes: [lifecycleNode, splitNode, sendNode],
       edges: BASE_EDGES,
@@ -504,7 +504,6 @@ describe("Event Split Browse", () => {
     fireEvent.click(
       view.getByRole("button", { name: "Open Lifecycle Start Events" })
     );
-    fireEvent.click(view.getByRole("button", { name: "Close" }));
     await act(async () => {
       store.set(clearSelectionAtom);
     });
@@ -521,8 +520,12 @@ describe("Event Split Browse", () => {
       view.getByRole("complementary", { name: "Lifecycle inspector" })
     ).toBeTruthy();
     expect(aside()?.dataset.level).toBe("browse");
+    // With nothing left to step back from, Escape keeps the Lifecycle Node
+    // shown.
     fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
-    expect(aside()?.dataset.level).toBe("closed");
+    expect(
+      view.getByRole("complementary", { name: "Lifecycle inspector" })
+    ).toBeTruthy();
     expect(store.get(activeRevealPresentationAtom).inspected).toEqual({
       kind: "node",
       id: "lifecycle-1",

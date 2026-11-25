@@ -147,7 +147,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
       store.set(selectOnlyNodeAtom, "draft_step");
       store.set(setWorkspaceRevealLevelAtom, {
         address: store.get(activeWorkspaceAddressAtom),
-        level: "closed",
+        level: "focus",
       });
     });
 
@@ -155,7 +155,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
     await waitFor(() =>
       expect(router.state.location.search).toEqual({ view: "runs" })
     );
-    // A first visit opens the inspector for that view alone.
+    // Runs keeps a level of its own.
     expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
     await act(() =>
       router.navigate({
@@ -170,7 +170,7 @@ describe("useWorkflowWorkspaceNavigation", () => {
     await waitFor(() => expect(router.state.location.search).toEqual({}));
     expect(store.get(workflowWorkspaceViewAtom)).toBe("draft");
     expect(store.get(selectedNodeAtom)).toBe("draft_step");
-    expect(store.get(activeDesktopRevealLevelAtom)).toBe("closed");
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("focus");
 
     click("Runs");
     await waitFor(() =>

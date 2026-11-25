@@ -19,7 +19,7 @@ import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
+import { DetailsPanel } from "#src/components/workflow/details/details-panel";
 import { lifecycleIssueSection } from "#src/components/workflow/canvas-reveal/lifecycle-reveal-model";
 import {
   installAuthorizationGrantsForTests,
@@ -180,7 +180,7 @@ async function renderLifecycle(
     component: () => (
       <div className="relative" data-testid="canvas-area">
         <FakeCanvas />
-        <CanvasReveal />
+        <DetailsPanel />
       </div>
     ),
   });
@@ -211,7 +211,7 @@ async function renderLifecycle(
     store.set(selectOnlyNodeAtom, "lifecycle");
   });
   const aside = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="canvas-reveal"]');
+    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
   // A Browse section is the section element around its heading.
   const region = (name: string) => {
     const section = within(
@@ -463,10 +463,8 @@ describe("Lifecycle Browse", () => {
 });
 
 describe("Lifecycle section editors", () => {
-  it("opens a section's editor in place, in the policy's order, at the shared width", async () => {
-    const { view, aside } = await renderLifecycle(CONFIGURED);
-    // An unmeasured canvas counts as 1280px wide, where Reveal is 720px.
-    expect(aside()?.style.width).toBe("720px");
+  it("opens a section's editor in place, in the policy's order", async () => {
+    const { view } = await renderLifecycle(CONFIGURED);
     const headings = () =>
       within(view.getByRole("complementary", { name: "Lifecycle inspector" }))
         .getAllByRole("heading", { level: 3 })
@@ -486,8 +484,6 @@ describe("Lifecycle section editors", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Edit Start Events" }));
 
-    expect(aside()?.dataset.level).toBe("browse");
-    expect(aside()?.style.width).toBe("720px");
     // The open editor adds headings of its own inside its section.
     expect(headings().filter((text) => order.includes(text ?? ""))).toEqual(
       order
@@ -561,7 +557,7 @@ describe("Lifecycle section editors", () => {
     expect(store.get(historyAtom)).toHaveLength(1);
   });
 
-  it("opens a later section from Closed in one navigation write", async () => {
+  it("opens a later section after another step in one navigation write", async () => {
     const step: WorkflowNode = {
       id: "step",
       type: "action",
@@ -571,14 +567,15 @@ describe("Lifecycle section editors", () => {
     const { view, store, aside } = await renderLifecycle(CONFIGURED, {
       extraNodes: [step],
     });
-    fireEvent.click(view.getByRole("button", { name: "Close" }));
     await act(async () => {
       store.set(selectOnlyNodeAtom, "step");
     });
     await act(async () => {
       store.set(clearSelectionAtom);
     });
-    expect(aside()?.dataset.level).toBe("closed");
+    expect(
+      view.queryByRole("complementary", { name: "Lifecycle inspector" })
+    ).toBeNull();
 
     await act(async () => {
       store.set(openInspectorSectionAtom, {
@@ -631,7 +628,7 @@ describe("Lifecycle section editors", () => {
     expect(aside()?.dataset.level).toBe("browse");
   });
 
-  it("offers no Back without an origin, and Escape closes the open section before Reveal", async () => {
+  it("offers no Back without an origin, and Escape closes the open section first", async () => {
     const { view, aside } = await renderLifecycle(CONFIGURED);
     fireEvent.click(view.getByRole("button", { name: "Edit Entity" }));
     expect(view.queryByRole("button", { name: "Back" })).toBeNull();
@@ -647,12 +644,16 @@ describe("Lifecycle section editors", () => {
       )
     );
 
+    // With no section open and no way back, Escape keeps the Lifecycle Node
+    // shown.
     fireEvent.keyDown(document.body, { key: "Escape", bubbles: true });
-    expect(aside()?.dataset.level).toBe("closed");
+    expect(
+      view.getByRole("complementary", { name: "Lifecycle inspector" })
+    ).toBeTruthy();
   });
 
-  it("restores the section and scroll after closing and reopening", async () => {
-    const { view, store, aside, scroller } = await renderLifecycle(CONFIGURED);
+  it("restores the section and scroll after another step and back", async () => {
+    const { view, store, scroller } = await renderLifecycle(CONFIGURED);
     fireEvent.click(view.getByRole("button", { name: "Edit Entity" }));
 
     const body = scroller();
@@ -664,13 +665,6 @@ describe("Lifecycle section editors", () => {
     fireEvent(body, new Event("scrollend"));
 
     const positions = store.get(nodesAtom).map((node) => node.position);
-    fireEvent.click(view.getByRole("button", { name: "Close" }));
-    expect(aside()?.dataset.level).toBe("closed");
-    fireEvent.click(view.getByLabelText("Open inspector"));
-
-    expect(aside()?.dataset.level).toBe("browse");
-    expect(view.getByRole("region", { name: "Entity" })).toBeTruthy();
-    await waitFor(() => expect(scroller()?.scrollTop).toBe(180));
 
     await act(async () => {
       showWorkspaceRoute(store, { view: "runs" });

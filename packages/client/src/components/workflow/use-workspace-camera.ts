@@ -28,7 +28,6 @@ import {
   recordWorkspaceCameraAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
-import { MIN_USABLE_SIZE } from "./canvas-reveal/reveal-geometry";
 import {
   viewportFromWorldCamera,
   workflowFitViewOptions,
@@ -62,8 +61,6 @@ type PendingPlacement = {
  * `paintedNodes` are the nodes this render paints for the active scope. Moving
  * between the overview and a focused Group of one workspace, or to the other
  * form factor, where no camera is saved fits the camera to them before paint.
- * The fit uses the canvas `revealOccupiedWidth` leaves beside Canvas Reveal, so
- * a step opened in a Group from Reveal is already placed when Reveal looks.
  *
  * The media query can report a form factor change before React Flow measures
  * the resized canvas. The camera the change asks for is placed at once and held
@@ -75,8 +72,6 @@ type PendingPlacement = {
 export function useWorkspaceCamera(input: {
   isCanvasPlaced: (workflowId: string) => boolean;
   paintedNodes: readonly WorkflowNode[];
-  /** The width Canvas Reveal takes from the right of the canvas for the active scope. */
-  revealOccupiedWidth: number;
 }): {
   /** The viewport saved for the presented scope, when one exists. */
   savedViewport: () => Viewport | null;
@@ -130,11 +125,10 @@ export function useWorkspaceCamera(input: {
     // React Flow has not installed the nodes of a scope just reached, so the
     // bounds come from the painted nodes themselves.
     const options = workflowFitViewOptions(0);
-    const besideReveal = size.width - input.revealOccupiedWidth;
     void setViewport(
       getViewportForBounds(
         getNodesBounds([...input.paintedNodes]),
-        besideReveal >= MIN_USABLE_SIZE.width ? besideReveal : size.width,
+        size.width,
         size.height,
         options.minZoom,
         options.maxZoom,

@@ -9,6 +9,7 @@
 import { atom } from "jotai";
 import { Option, Schema } from "effect";
 import { readCookie, writeCookie } from "#src/lib/preference-cookies";
+import { detailsTabAtom } from "#src/lib/workflow-ui-store";
 
 export type ColumnSide = "outline" | "details";
 
@@ -254,3 +255,28 @@ export function outlineToggle(input: {
     input.layout === "wide" || input.preferences.details.collapsed;
   return docksWhenExpanded ? "dock" : "open-overlay";
 }
+
+/**
+ * Show one tab of the details column, bringing the column back when the person
+ * collapsed it, for a command that asks for that tab by name: "Describe it to
+ * the agent", or an issue's Edit.
+ */
+const showDetailsColumnTabAtom = atom(
+  null,
+  (get, set, tab: "details" | "agent") => {
+    set(detailsTabAtom, tab);
+    if (get(columnPreferencesStateAtom).details.collapsed) {
+      set(setColumnCollapsedAtom, { side: "details", collapsed: false });
+    }
+  }
+);
+
+/** Show the build agent in the details column. */
+export const showAgentTabAtom = atom(null, (_get, set) => {
+  set(showDetailsColumnTabAtom, "agent");
+});
+
+/** Show the Details tab of the details column. */
+export const showDetailsTabAtom = atom(null, (_get, set) => {
+  set(showDetailsColumnTabAtom, "details");
+});

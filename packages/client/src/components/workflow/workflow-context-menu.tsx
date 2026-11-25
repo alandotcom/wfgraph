@@ -278,7 +278,7 @@ export function WorkflowContextMenu({
     [onClose]
   );
 
-  // Escape closes the menu, and `preventDefault` tells Canvas Reveal, which
+  // Escape closes the menu, and `preventDefault` tells the details column, which
   // listens in the document's capture phase, to leave the key alone.
   const handleEscape = useCallback(
     (event: KeyboardEvent) => {
@@ -298,7 +298,7 @@ export function WorkflowContextMenu({
     deferAttach: true,
     enabled: isMenuOpen,
   });
-  // On the window in the capture phase, which runs ahead of Reveal's listener.
+  // On the window in the capture phase, which runs ahead of the details column's listener.
   useDomEvent(window, "keydown", handleEscape, {
     capture: true,
     enabled: isMenuOpen,

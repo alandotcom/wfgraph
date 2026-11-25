@@ -23,7 +23,6 @@ import {
   expectSteadyCamera,
   recordCameraMotion,
 } from "./camera-motion-test-support";
-import { useRevealOccupiedWidth } from "./canvas-reveal/use-reveal-width";
 import { REVEAL_PADDING_PX } from "./canvas-reveal/reveal-geometry";
 import { useOpeningCamera } from "./use-opening-camera";
 import {
@@ -33,9 +32,6 @@ import {
 } from "./workflow-viewport";
 
 const CANVAS = { width: 1200, height: 800 };
-
-/** Canvas Reveal's default 640px and its 8px inset on a 1200px canvas. */
-const REVEAL_OCCUPIED = 648;
 
 type Viewport = { x: number; y: number; zoom: number };
 
@@ -121,19 +117,16 @@ async function renderOpeningCamera(input: {
     setState: (state: Partial<ReactFlowState>) => void;
   } | null = null;
   let place: ReturnType<typeof useOpeningCamera> | null = null;
-  let occupied = 0;
   let painted: WorkflowNode[] = [];
 
   function Harness() {
     const canvas = useRef<HTMLDivElement>(null);
     flow = useStoreApi();
     painted = useAtomValue(canvasGraphAtom).nodes;
-    occupied = useRevealOccupiedWidth();
     place = useOpeningCamera({
       canvas,
       paintedNodes: painted,
       graphNodes: useAtomValue(displayNodesAtom),
-      revealOccupiedWidth: occupied,
     });
     return <div ref={canvas} />;
   }
@@ -179,7 +172,6 @@ async function renderOpeningCamera(input: {
   return {
     start,
     motion,
-    occupied: () => occupied,
     /** Open the workflow, or enter a view at `zoomLimit`, as the canvas does. */
     open: async (zoomLimit: number) => {
       const placeCamera = place;
@@ -234,13 +226,12 @@ describe("useOpeningCamera", () => {
     expect(lifecycle.top).toBe(48);
   });
 
-  it("places the step a failed run stopped at beside Canvas Reveal, in one move", async () => {
+  it("places the step a failed run stopped at inside the canvas, in one move", async () => {
     const camera = await renderOpeningCamera({
       nodes: LARGE_GRAPH,
       search: { view: "runs", executionId: "run_1" },
       run: { stoppedNodeId: "stop" },
     });
-    expect(camera.occupied()).toBe(REVEAL_OCCUPIED);
 
     await camera.open(WORKFLOW_FIT_VIEW_MAX_ZOOM);
 
@@ -250,12 +241,10 @@ describe("useOpeningCamera", () => {
     expect(viewport.zoom).toBeCloseTo(LARGE_GRAPH_FITTED_ZOOM);
     const stopped = screenBox(LARGE_GRAPH[2], viewport);
     expect(stopped.left).toBeGreaterThanOrEqual(REVEAL_PADDING_PX);
-    expect(stopped.right).toBeLessThanOrEqual(
-      CANVAS.width - REVEAL_OCCUPIED - REVEAL_PADDING_PX
-    );
+    expect(stopped.right).toBeLessThanOrEqual(CANVAS.width - REVEAL_PADDING_PX);
   });
 
-  it("anchors the Lifecycle card beside Canvas Reveal when the run did not stop", async () => {
+  it("anchors the Lifecycle card at the canvas center when the run did not stop", async () => {
     const camera = await renderOpeningCamera({
       nodes: LARGE_GRAPH,
       search: { view: "runs", executionId: "run_1" },
@@ -268,7 +257,7 @@ describe("useOpeningCamera", () => {
     const viewport = camera.viewport();
     const lifecycle = screenBox(LARGE_GRAPH[0], viewport);
     expect((lifecycle.left + lifecycle.right) / 2).toBeCloseTo(
-      (CANVAS.width - REVEAL_OCCUPIED) / 2
+      CANVAS.width / 2
     );
   });
 
@@ -303,8 +292,6 @@ describe("useOpeningCamera", () => {
 
     expect(camera.motion.moves).toHaveLength(1);
     const group = screenBox(nodes[2], camera.viewport());
-    expect(group.right).toBeLessThanOrEqual(
-      CANVAS.width - REVEAL_OCCUPIED - REVEAL_PADDING_PX
-    );
+    expect(group.right).toBeLessThanOrEqual(CANVAS.width - REVEAL_PADDING_PX);
   });
 });

@@ -117,7 +117,7 @@ type RunStatusRead = {
 /**
  * The open run's logs, written where the canvas reads the path the run took.
  * The read is the Runs view's own query key, so the cache answers both from
- * one entry. The canvas shows the path with Canvas Reveal closed, when no Runs
+ * one entry. The canvas shows the path when no Runs
  * view polls the logs, so they are read again whenever `statusRead`, the
  * status poll's latest answer, shows a step moved since they were read. A run
  * whose steps stand still costs no logs read.

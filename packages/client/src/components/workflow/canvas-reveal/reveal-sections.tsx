@@ -1,5 +1,5 @@
 /**
- * The pieces every Canvas Reveal body is built from: a titled section, the
+ * The pieces every the details column body is built from: a titled section, the
  * validation issue list of one node, and the Enter group command.
  */
 

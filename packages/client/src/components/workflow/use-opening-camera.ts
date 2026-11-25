@@ -15,11 +15,10 @@ import { openingViewport, revealViewport } from "./workflow-viewport";
 /**
  * Places the camera where a workflow opens, or where a workspace view with no
  * remembered camera starts, in one `setViewport` with no animation. The graph
- * is placed by `openingViewport` inside the usable canvas: the canvas less open
- * Canvas Reveal and the controls floating over it. Then the nodes Reveal's
- * subject names, or on a run that stopped the step where it stopped, move the
- * least distance that keeps them inside that usable canvas, as Reveal places a
- * selected step. A step inside a collapsed Group is placed by its Group card.
+ * is placed by `openingViewport` inside the usable canvas: the canvas less the
+ * controls floating over it. Then the nodes the details column's subject
+ * names, or on a run that stopped the step where it stopped, move the least
+ * distance that keeps them inside that usable canvas. A step inside a collapsed Group is placed by its Group card.
  *
  * `paintedNodes` are the nodes the active scope paints, and `graphNodes` every
  * node of the presented graph. The returned function answers false, and moves
@@ -29,8 +28,6 @@ export function useOpeningCamera(input: {
   canvas: RefObject<HTMLElement | null>;
   paintedNodes: readonly WorkflowNode[];
   graphNodes: readonly WorkflowNode[];
-  /** The width Canvas Reveal takes from the right of the canvas. */
-  revealOccupiedWidth: number;
 }): (placement: {
   lifecycle: { nodePosition: { x: number; y: number }; nodeWidth: number };
   /** The highest zoom the placement may choose. */
@@ -43,10 +40,7 @@ export function useOpeningCamera(input: {
   /** The painted nodes the placement keeps in view after placing the graph. */
   const nodesToPlace = (): WorkflowNode[] => {
     const reveal = store.get(canvasRevealAtom);
-    const subjectIds =
-      reveal.level === "closed"
-        ? []
-        : placementNodeIds(reveal.subject?.placement);
+    const subjectIds = placementNodeIds(reveal.subject?.placement);
     const stoppedNodeId = store.get(executionOverlayGraphAtom)?.stoppedNodeId;
     const ids =
       subjectIds.length > 0 ? subjectIds : compact([stoppedNodeId ?? null]);
@@ -70,7 +64,7 @@ export function useOpeningCamera(input: {
     const element = input.canvas.current;
     const usable = usableCanvasRect({
       canvas,
-      revealOccupiedWidth: input.revealOccupiedWidth,
+      rightOccupiedWidth: 0,
       obstacles: element ? measureObstacles(element) : [],
     }) ?? { x: 0, y: 0, ...canvas };
     const opening = openingViewport({

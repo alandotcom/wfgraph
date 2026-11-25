@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom, useStore } from "jotai";
+import { useAtomValue, useAtomValueRawSync, useSetAtom, useStore } from "jotai";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { DeleteConfirmDialog } from "#src/components/delete-confirm-dialog";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
@@ -9,8 +9,13 @@ import {
   type NodeConfigFrame,
   useNodeConfigTitle,
 } from "#src/components/workflow/node-config-panel";
-import { useAfterPaint } from "#src/hooks/effects";
-import { nodesAtom, presentedGraphAtom } from "#src/lib/workflow-graph-store";
+import { useAfterCommit, useAfterPaint } from "#src/hooks/effects";
+import { useIsMobile } from "#src/hooks/use-mobile";
+import {
+  nodesAtom,
+  presentedGraphAtom,
+  selectedNodeAtom,
+} from "#src/lib/workflow-graph-store";
 import {
   comparisonNodeTitle,
   scopeGroupLabel,
@@ -19,12 +24,11 @@ import {
 import { workflowIssuesAtom } from "#src/lib/workflow-issues-store";
 import type {
   InspectedObject,
-  OpenRevealLevel,
+  RevealLevel,
 } from "#src/lib/workflow-navigation-state";
 import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import { activeRevealPresentationAtom } from "#src/lib/workflow-workspace-navigation";
 import {
-  closeAllMobileSheetsAtom,
   closeMobileSheetAtom,
   openMobileInspectorOverAddressAtom,
   openMobileSheetAtom,
@@ -47,6 +51,7 @@ import { useMobileSheetCamera } from "./use-mobile-sheet-camera";
 import { useMobileSheetFocus } from "./use-mobile-sheet-focus";
 import { useMobileSheetScroll } from "./use-mobile-sheet-scroll";
 import { useRevealKeyboard } from "./use-reveal-keyboard";
+import { useRevealNavigation } from "./use-reveal-navigation";
 
 /** The name a sheet goes by in the Back control of the sheet above it. */
 function sheetTitle(
@@ -125,7 +130,11 @@ function useSheetHeading(
  */
 export function MobileReveal() {
   const state = useShownMobileReveal();
-  const { addressId: activeAddressId } = useAtomValue(canvasRevealAtom);
+  const { addressId: activeAddressId, address: activeAddress } =
+    useAtomValue(canvasRevealAtom);
+  const isMobile = useIsMobile();
+  const selectedNodeId = useAtomValueRawSync(selectedNodeAtom);
+  const navigation = useRevealNavigation();
   const store = useStore();
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const openSheet = useSetAtom(openMobileSheetAtom);
@@ -133,10 +142,22 @@ export function MobileReveal() {
     openMobileInspectorOverAddressAtom
   );
   const closeSheet = useSetAtom(closeMobileSheetAtom);
-  const closeAllSheets = useSetAtom(closeAllMobileSheetsAtom);
   const fieldRequest = useAtomValue(revealFieldRequestAtom);
   const setFieldRequest = useSetAtom(revealFieldRequestAtom);
   const { hasOverlays } = useOverlay();
+  // Narrowing past the breakpoint hides the details column. Draft's sheets
+  // follow the same selection by themselves. In Runs the run's sheet picks the
+  // selected node up, so one inspector is on screen at any width.
+  useAfterCommit(isMobile, () => {
+    if (
+      isMobile &&
+      activeAddress.key.workspace !== "draft" &&
+      selectedNodeId &&
+      !hasOverlays
+    ) {
+      navigation.followSelection(activeAddress);
+    }
+  });
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const frame = useMemo<NodeConfigFrame>(() => ({ confirm: setRequest }), []);
   const areaRef = useRef<HTMLElement | null>(null);
@@ -223,8 +244,6 @@ export function MobileReveal() {
       trigger: "back",
       store,
       unwindLevel: () => closeSheet(state.address),
-      // The sheet focus hook returns focus as sheets close.
-      returnFocusOnClose: () => {},
       // Applying the route carries the sequence to the address it names.
       replaceRouteSearch: (search) => {
         void navigate({ search, replace: true });
@@ -234,14 +253,8 @@ export function MobileReveal() {
 
   useRevealKeyboard({
     enabled: state !== null,
-    level: state ? "browse" : "closed",
     hasOverlays,
     area: areaRef,
-    onToggle: () => {
-      if (state) {
-        closeAllSheets(state.address);
-      }
-    },
     onUnwind: back,
   });
 
@@ -278,7 +291,7 @@ export function MobileReveal() {
     titleRef,
     scopeBackLabel,
   };
-  const level: OpenRevealLevel = isInspector ? "focus" : "browse";
+  const level: RevealLevel = isInspector ? "focus" : "browse";
   const Body =
     isInspector && Inspector ? Inspector : (mobile?.Summary ?? kind.Browse);
   const body = (
@@ -366,9 +379,8 @@ export function MobileReveal() {
 }
 
 /**
- * The canvas and the agent panel beneath the mobile Reveal sequence. While the
- * full-screen inspector covers them, both leave keyboard and screen reader
- * navigation. `contents` keeps the wrapper out of the layout.
+ * The canvas beneath the mobile Reveal sequence. While the full-screen
+ * inspector covers it, it leaves keyboard and screen reader navigation. `contents` keeps the wrapper out of the layout.
  */
 export function MobileRevealCovered({ children }: { children: ReactNode }) {
   const covered = useShownMobileReveal()?.level === "inspector";

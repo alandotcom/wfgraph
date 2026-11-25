@@ -26,7 +26,7 @@ import { vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
+import { DetailsPanel } from "#src/components/workflow/details/details-panel";
 import {
   MobileReveal,
   MobileRevealCovered,
@@ -343,7 +343,7 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
           <ExecutionOverlaySync />
           <WorkspaceRouteSync />
           <RunStatusProjection />
-          <CanvasReveal />
+          <DetailsPanel />
           <MobileReveal />
         </div>
       </>
@@ -382,7 +382,7 @@ export async function renderRunsReveal(search: WorkflowRouteSearch) {
   await view.findByTestId("canvas-area");
 
   const aside = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="canvas-reveal"]');
+    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
   const title = () =>
     aside()?.querySelector("header h2")?.textContent ?? undefined;
   const path = () =>

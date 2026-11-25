@@ -78,7 +78,6 @@ describe("Runs Focus node evidence", () => {
     expect(aside()?.querySelector("header")?.textContent).toContain(
       "Successful"
     );
-    expect(view.getByRole("button", { name: "Return to run" })).toBeTruthy();
     expect(within(evidence()).getByText(/patient@example.com/)).toBeTruthy();
     expect(within(evidence()).getAllByText(/msg_42/).length).toBeGreaterThan(0);
     expect(store.get(selectedNodeAtom)).toBe("send");
@@ -87,7 +86,6 @@ describe("Runs Focus node evidence", () => {
     escape();
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
     await waitFor(() => expect(document.activeElement).toBe(node));
-    expect(view.getByRole("button", { name: "Show evidence" })).toBeTruthy();
 
     const overview = overviewScroller();
     if (!overview) {
@@ -791,52 +789,6 @@ describe("Runs Focus node evidence", () => {
         view.getByRole("button", { name: "Send reminder, Successful" })
       )
     );
-  });
-
-  it("returns straight to Closed after a canvas click opened Focus from Closed, and keeps the saved preference", async () => {
-    served.items = [execution("exec_s", "completed")];
-    served.graphs = {
-      ver_exec_s: labelledGraph([{ id: "send", label: "Send reminder" }]),
-    };
-    served.logsByExecutionId = {
-      exec_s: [
-        log({
-          id: "log_send",
-          nodeId: "send",
-          nodeName: "Send reminder",
-          status: "success",
-        }),
-      ],
-    };
-    const { view, aside, title, escape, canvasNode } = await renderRunsReveal({
-      view: "runs",
-      executionId: "exec_s",
-    });
-    await waitFor(() => expect(title()).toBe(runHeading("exec_s")));
-    const preference = () =>
-      document.cookie
-        .split("; ")
-        .find((entry) => entry.startsWith("canvas-reveal-closed="));
-
-    fireEvent.click(view.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(aside()?.dataset.level).toBe("closed"));
-    expect(preference()).toBe("canvas-reveal-closed=true");
-
-    const node = await canvasNode("Send reminder");
-    node.focus();
-    fireEvent.click(node);
-    await waitFor(() => expect(aside()?.dataset.level).toBe("focus"));
-    expect(title()).toBe("Send reminder");
-
-    escape();
-    await waitFor(() => expect(aside()?.dataset.level).toBe("closed"));
-    await waitFor(() => expect(document.activeElement).toBe(node));
-    expect(preference()).toBe("canvas-reveal-closed=true");
-
-    fireEvent.click(view.getByRole("button", { name: "Open inspector" }));
-    await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
-    expect(title()).toBe(runHeading("exec_s"));
-    expect(preference()).toBe("canvas-reveal-closed=false");
   });
 
   it("dismisses a chosen execution of a node nothing selects with a click on the canvas pane", async () => {

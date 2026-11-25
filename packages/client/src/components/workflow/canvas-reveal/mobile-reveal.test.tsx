@@ -51,8 +51,6 @@ import {
   activeRevealPresentationAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
-  recordWorkspaceCameraAtom,
-  activeWorkspaceCamerasAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
@@ -60,7 +58,7 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { collectWorkflowIssues } from "@wfgraph/shared/graph/workflow-issues";
 import { eventSplitOutlet } from "@wfgraph/shared/lifecycle/event-split";
-import { CanvasReveal } from "./canvas-reveal";
+import { DetailsPanel } from "#src/components/workflow/details/details-panel";
 import { MobileReveal, MobileRevealCovered } from "./mobile-reveal";
 
 const catalog: ExtensionCatalog = {
@@ -170,7 +168,7 @@ async function renderMobile() {
             Agent
           </button>
         </MobileRevealCovered>
-        <CanvasReveal />
+        <DetailsPanel />
         <MobileReveal />
       </div>
     ),
@@ -393,34 +391,6 @@ describe("mobile Reveal focus and camera", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Back to Summary" }));
     expect(agent().closest("[inert]")).toBeNull();
-  });
-
-  it("closes every sheet on Cmd+B and leaves the camera where it is", async () => {
-    const { view, store, select, sheet } = await renderMobile();
-    const record = (camera: {
-      centerX: number;
-      centerY: number;
-      zoom: number;
-    }) =>
-      act(() => {
-        store.set(recordWorkspaceCameraAtom, {
-          address: store.get(activeWorkspaceAddressAtom),
-          formFactor: "mobile",
-          camera,
-        });
-      });
-    await select("wait");
-    record({ centerX: 5, centerY: 15, zoom: 1.2 });
-    fireEvent.click(view.getByRole("button", { name: "Edit step" }));
-    const shown = { centerX: 90, centerY: 90, zoom: 0.5 };
-    record(shown);
-
-    await act(async () => {
-      fireEvent.keyDown(window, { key: "b", metaKey: true });
-    });
-    expect(sheet()).toBeNull();
-    expect(store.get(activeMobileSheetsAtom)).toEqual([]);
-    expect(store.get(activeWorkspaceCamerasAtom).mobile).toEqual(shown);
   });
 });
 

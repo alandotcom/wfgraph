@@ -35,7 +35,6 @@ describe("editorShortcutLabels", () => {
       undo: "⌘Z",
       redo: "⇧⌘Z",
       palette: "⌘K",
-      reveal: "⌘B",
     });
     expect(editorShortcutLabels(false)).toEqual({
       copy: "Ctrl+C",
@@ -48,7 +47,6 @@ describe("editorShortcutLabels", () => {
       undo: "Ctrl+Z",
       redo: "Ctrl+Shift+Z",
       palette: "Ctrl+K",
-      reveal: "Ctrl+B",
     });
   });
 });

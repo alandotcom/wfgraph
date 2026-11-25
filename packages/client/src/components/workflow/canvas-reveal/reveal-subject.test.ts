@@ -289,13 +289,12 @@ describe("revealFocusTarget", () => {
 });
 
 describe("effectiveRevealLevel", () => {
-  it("closes without a subject and limits the level to the subject's levels", () => {
+  it("shows Browse without a subject and limits the level to the subject's levels", () => {
     const runNode = matchRunsSubject(runsInput("runs", ["send"]));
     const step = matchStepSubject(input("draft", ["send"]));
-    expect(effectiveRevealLevel("focus", null)).toBe("closed");
+    expect(effectiveRevealLevel("focus", null)).toBe("browse");
     expect(effectiveRevealLevel("focus", runNode)).toBe("focus");
-    // A Focus level remembered for a Draft step opens its one level.
+    // A Focus level remembered for a Draft step shows its one level.
     expect(effectiveRevealLevel("focus", step)).toBe("browse");
-    expect(effectiveRevealLevel("closed", step)).toBe("closed");
   });
 });

@@ -1,8 +1,8 @@
 /**
- * The Canvas Reveal state the shell and the canvas camera both read, derived
- * from the active address's selection, presented graph, and stored desktop
- * presentation, and the writes a person's Reveal commands make. Levels create
- * no history entry.
+ * What the details column and the mobile Reveal sheets show, derived from the
+ * active address's selection, presented graph, and stored desktop
+ * presentation, and the write that moves Runs between a run and a node's
+ * evidence. Levels create no history entry.
  */
 
 import { atom, useAtomValue } from "jotai";
@@ -14,7 +14,6 @@ import {
   type MobileSheet,
 } from "#src/lib/mobile-sheet-navigation";
 import {
-  revealFollowsSelection,
   workspaceAddressId,
   type CanvasSelection,
   type DesktopScopePresentation,
@@ -28,7 +27,6 @@ import {
   activeRevealPresentationAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
-  chooseDesktopRevealLevelAtom,
   setWorkspaceRevealLevelAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import { revealSubject } from "./reveal-kinds";
@@ -38,7 +36,7 @@ export type CanvasRevealState = {
   address: WorkspaceAddress;
   addressId: string;
   subject: RevealSubject | null;
-  /** The level on screen, after the subject's levels apply. */
+  /** The level shown, after the subject's levels apply. */
   level: RevealLevel;
   presentation: DesktopScopePresentation;
 };
@@ -141,7 +139,7 @@ function showsSheet(input: {
 
 /**
  * The mobile Reveal state while the viewport is below `md`, and null at wider
- * viewports, where Canvas Reveal shows the selection.
+ * viewports, where the details column shows the selection.
  */
 export function useShownMobileReveal(): MobileRevealState | null {
   const isMobile = useIsMobile();
@@ -149,42 +147,21 @@ export function useShownMobileReveal(): MobileRevealState | null {
   return isMobile ? state : null;
 }
 
-/**
- * Show one level for the active address. A workspace that follows its selection
- * stores it on the scope. Any other workspace also keeps whether it is closed
- * as the preference cookie.
- */
+/** Show one level of the details column for the active address. */
 export const showCanvasRevealLevelAtom = atom(
   null,
   (get, set, level: RevealLevel) => {
-    const { address } = get(canvasRevealAtom);
-    if (revealFollowsSelection(address.key.workspace)) {
-      set(setWorkspaceRevealLevelAtom, { address, level });
-      return;
-    }
-    set(chooseDesktopRevealLevelAtom, level);
+    set(setWorkspaceRevealLevelAtom, {
+      address: get(canvasRevealAtom).address,
+      level,
+    });
   }
 );
 
 /**
- * The level one Escape or Back leaves toward: Focus to Browse to Closed. Only
- * Runs offers Focus, so in Draft and Changes it closes Reveal.
+ * The level one Escape or Back leaves toward: Focus to Browse, and nothing
+ * from Browse. Only Runs offers Focus.
  */
-export function unwoundLevel(level: RevealLevel): RevealLevel {
-  return level === "focus" ? "browse" : "closed";
+export function unwoundLevel(level: RevealLevel): RevealLevel | null {
+  return level === "focus" ? "browse" : null;
 }
-
-/**
- * Open Canvas Reveal for what the active address shows, or close it. It opens
- * at the level its scope reopens at, and does nothing with no subject.
- */
-export const toggleCanvasRevealAtom = atom(null, (get, set) => {
-  const { level, subject, presentation } = get(canvasRevealAtom);
-  if (subject === null) {
-    return;
-  }
-  set(
-    showCanvasRevealLevelAtom,
-    level === "closed" ? presentation.reopenLevel : "closed"
-  );
-});

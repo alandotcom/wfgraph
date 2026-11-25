@@ -34,7 +34,7 @@ import type {
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
+import { DetailsPanel } from "#src/components/workflow/details/details-panel";
 import {
   MobileReveal,
   MobileRevealCovered,
@@ -242,7 +242,7 @@ async function renderPhoneEditor(input: {
           <MobileRevealCovered>
             <WorkflowCanvas canEdit />
           </MobileRevealCovered>
-          <CanvasReveal />
+          <DetailsPanel />
           <MobileReveal />
         </div>
       </>

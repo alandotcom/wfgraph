@@ -15,7 +15,7 @@ import {
   scopeNavigationAt,
   updateScopeNavigation,
   withoutDraftSelections,
-  withSelectionOpeningReveal,
+  withInspectedSelection,
   workspaceAddressFromSearch,
 } from "#src/lib/workflow-navigation-state";
 
@@ -37,7 +37,7 @@ describe("mobile Reveal sheets", () => {
   const nodeSelection = (id: string) => ({ nodeIds: [id], edgeIds: [] });
 
   it("opens a summary sheet when one object becomes the Draft selection", () => {
-    const selected = withSelectionOpeningReveal(EMPTY, nodeSelection("send"));
+    const selected = withInspectedSelection(EMPTY, nodeSelection("send"));
     expect(selected.mobile.sheets).toEqual([
       {
         level: "summary",
@@ -47,17 +47,17 @@ describe("mobile Reveal sheets", () => {
       },
     ]);
 
-    const other = withSelectionOpeningReveal(selected, nodeSelection("wait"));
+    const other = withInspectedSelection(selected, nodeSelection("wait"));
     expect(other.mobile.sheets.map((sheet) => sheet.inspected?.id)).toEqual([
       "wait",
     ]);
     expect(
-      withSelectionOpeningReveal(other, EMPTY_SELECTION).mobile.sheets
+      withInspectedSelection(other, EMPTY_SELECTION).mobile.sheets
     ).toEqual([]);
   });
 
   it("opens the inspector over the summary", () => {
-    const summary = withSelectionOpeningReveal(EMPTY, nodeSelection("send"));
+    const summary = withInspectedSelection(EMPTY, nodeSelection("send"));
     const inspector = withMobileSheet(summary, {
       level: "inspector",
       inspected: node("send"),
@@ -90,7 +90,7 @@ describe("mobile Reveal sheets", () => {
   });
 
   it("goes Back one sheet at a time and selects what the sheet beneath shows", () => {
-    const split = withSelectionOpeningReveal(EMPTY, nodeSelection("split"));
+    const split = withInspectedSelection(EMPTY, nodeSelection("split"));
     const lifecycle = withMobileSheet(split, {
       level: "inspector",
       inspected: node("lifecycle"),
@@ -109,7 +109,7 @@ describe("mobile Reveal sheets", () => {
   });
 
   it("keeps each sheet's scroll and section, apart from the desktop inspector", () => {
-    const summary = withSelectionOpeningReveal(EMPTY, nodeSelection("send"));
+    const summary = withInspectedSelection(EMPTY, nodeSelection("send"));
     const scrolled = withMobileSheetScroll(summary, {
       depth: 1,
       level: "summary",
@@ -166,7 +166,7 @@ describe("mobile Reveal sheets", () => {
   });
 
   it("closes only the sheets showing an object the graph lost", () => {
-    const trigger = withSelectionOpeningReveal(EMPTY, nodeSelection("trigger"));
+    const trigger = withInspectedSelection(EMPTY, nodeSelection("trigger"));
     const gone = withMobileSheet(trigger, {
       level: "summary",
       inspected: node("gone"),
@@ -195,7 +195,7 @@ describe("mobile Reveal sheets", () => {
     const navigation = updateScopeNavigation(
       EMPTY_WORKFLOW_NAVIGATION,
       address,
-      (scope) => withSelectionOpeningReveal(scope, nodeSelection("trigger"))
+      (scope) => withInspectedSelection(scope, nodeSelection("trigger"))
     );
     expect(
       scopeNavigationAt(withoutDraftSelections(navigation), address).mobile

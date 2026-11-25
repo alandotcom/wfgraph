@@ -43,7 +43,6 @@ import {
   activeRevealPresentationAtom,
   activeSelectionAtom,
   activeWorkspaceAddressAtom,
-  chooseDesktopRevealLevelAtom,
   recordInspectorScrollAtom,
   openInspectorSectionAtom,
   recordInspectorSectionAtom,
@@ -293,28 +292,19 @@ describe("selection", () => {
   });
 });
 
-describe("desktop Reveal level", () => {
-  it("starts a Draft scope closed whatever the preference is", () => {
+describe("desktop details level", () => {
+  it("shows a scope that never set a level at Browse", () => {
     const store = draftStore();
-    showWorkspaceRoute(store, { view: "runs" });
-    store.set(chooseDesktopRevealLevelAtom, "browse");
-
     showWorkspaceRoute(store, { group: "group_1" });
-    expect(store.get(activeDesktopRevealLevelAtom)).toBe("closed");
+    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
   });
 
-  it("opens Draft Reveal at the reopen level when a step becomes the selection", () => {
+  it("keeps the level when another step becomes the selection", () => {
     const store = draftStore();
     store.set(selectOnlyNodeAtom, "draft_step");
-    expect(store.get(activeDesktopRevealLevelAtom)).toBe("browse");
-
     store.set(setWorkspaceRevealLevelAtom, {
       address: store.get(activeWorkspaceAddressAtom),
       level: "focus",
-    });
-    store.set(setWorkspaceRevealLevelAtom, {
-      address: store.get(activeWorkspaceAddressAtom),
-      level: "closed",
     });
     store.set(clearSelectionAtom);
     store.set(selectOnlyNodeAtom, "child_step");
@@ -387,7 +377,6 @@ describe("desktop Reveal level", () => {
     const store = draftStore();
     store.set(selectOnlyNodeAtom, "draft_step");
     const draft = store.get(activeWorkspaceAddressAtom);
-    store.set(setWorkspaceRevealLevelAtom, { address: draft, level: "closed" });
 
     store.set(openInspectorSectionAtom, {
       address: draft,
@@ -400,7 +389,6 @@ describe("desktop Reveal level", () => {
       edgeIds: [],
     });
     expect(store.get(activeRevealPresentationAtom)).toMatchObject({
-      revealLevel: "browse",
       inspected: { kind: "node", id: "child_step" },
       inspectorSection: "connections",
     });
@@ -455,23 +443,6 @@ describe("desktop Reveal level", () => {
     expect(store.get(activeRevealPresentationAtom).inspectorScroll.browse).toBe(
       0
     );
-  });
-
-  it("never writes the cookie when a workspace is restored", () => {
-    const store = draftStore();
-    showWorkspaceRoute(store, { view: "runs" });
-    store.set(chooseDesktopRevealLevelAtom, "closed");
-    showWorkspaceRoute(store, { view: "runs", executionId: "run_1" });
-    store.set(chooseDesktopRevealLevelAtom, "browse");
-    store.set(selectOnlyNodeAtom, "draft_step");
-    const cookie = document.cookie;
-
-    showWorkspaceRoute(store, {});
-    store.set(selectOnlyNodeAtom, "draft_step");
-    showWorkspaceRoute(store, { view: "runs" });
-    showWorkspaceRoute(store, {});
-
-    expect(document.cookie).toBe(cookie);
   });
 });
 

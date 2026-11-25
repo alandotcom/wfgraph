@@ -184,10 +184,13 @@ export function EditorColumns({
   outline,
   canvas,
   details,
+  overlay,
 }: {
   outline: ReactNode;
   canvas: ReactNode;
   details: ReactNode;
+  /** What shows over the canvas and details together, the review sheet. */
+  overlay?: ReactNode;
 }) {
   const controls = useColumnControls();
   const isMobile = useIsMobile();
@@ -208,13 +211,20 @@ export function EditorColumns({
   );
   if (isMobile) {
     return (
-      <div className="flex min-h-0 min-w-0 flex-1" data-slot="editor-columns">
+      <div
+        className="relative flex min-h-0 min-w-0 flex-1"
+        data-slot="editor-columns"
+      >
         {canvasBox}
+        {overlay}
       </div>
     );
   }
   return (
-    <div className="flex min-h-0 min-w-0 flex-1" data-slot="editor-columns">
+    <div
+      className="relative flex min-h-0 min-w-0 flex-1"
+      data-slot="editor-columns"
+    >
       {shapes.outline === "docked" ? (
         <DockedColumn side="outline">{outline}</DockedColumn>
       ) : (
@@ -226,6 +236,7 @@ export function EditorColumns({
       ) : (
         <ColumnRail side="details" />
       )}
+      {overlay}
     </div>
   );
 }

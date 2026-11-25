@@ -2,6 +2,12 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { afterEach, describe, expect, it } from "vitest";
 import { ColumnHeader, EditorColumns } from "./editor-columns";
+import {
+  clearSelectionAtom,
+  loadWorkflowGraphAtom,
+  selectOnlyNodeAtom,
+} from "#src/lib/workflow-graph-store";
+import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import { columnPreferencesAtom } from "./editor-columns-store";
 
 /**
@@ -18,6 +24,18 @@ function setViewportWidth(width: number): void {
 
 function renderColumns() {
   const store = createStore();
+  store.set(currentWorkflowIdAtom, "wf_1");
+  store.set(loadWorkflowGraphAtom, {
+    nodes: [
+      {
+        id: "send",
+        type: "action",
+        position: { x: 0, y: 0 },
+        data: { label: "Send", type: "action", config: {} },
+      },
+    ],
+    edges: [],
+  });
   render(
     <JotaiProvider store={store}>
       <EditorColumns
@@ -140,5 +158,26 @@ describe("EditorColumns", () => {
     expect(handle.getAttribute("aria-valuenow")).toBe("560");
     fireEvent.doubleClick(handle);
     expect(handle.getAttribute("aria-valuenow")).toBe("400");
+  });
+
+  it("keeps every column where it is when a step is selected and deselected", () => {
+    setViewportWidth(1512);
+    const store = renderColumns();
+    const layout = () =>
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-slot="editor-columns"] > *'
+        ),
+      ].map((element) => `${element.dataset.slot}:${element.style.width}`);
+    const before = layout();
+
+    act(() => {
+      store.set(selectOnlyNodeAtom, "send");
+    });
+    expect(layout()).toEqual(before);
+    act(() => {
+      store.set(clearSelectionAtom);
+    });
+    expect(layout()).toEqual(before);
   });
 });

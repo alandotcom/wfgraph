@@ -18,7 +18,7 @@ import {
   withInspectorSection,
   withChosenExecution,
   withoutDraftSelections,
-  withSelectionOpeningReveal,
+  withInspectedSelection,
   workspaceAddressFromSearch,
   workspaceKeyId,
   workspaceRouteSearch,
@@ -110,12 +110,12 @@ describe("updateScopeNavigation", () => {
     const navigation = updateScopeNavigation(
       EMPTY_WORKFLOW_NAVIGATION,
       address,
-      (scope) => withDesktopRevealLevel(scope, "closed")
+      (scope) => withDesktopRevealLevel(scope, "focus")
     );
 
     expect(
       updateScopeNavigation(navigation, address, (scope) =>
-        withDesktopRevealLevel(scope, "closed")
+        withDesktopRevealLevel(scope, "focus")
       )
     ).toBe(navigation);
     expect(
@@ -133,7 +133,7 @@ describe("updateScopeNavigation", () => {
     navigation = updateScopeNavigation(
       navigation,
       runAddress("exec_0"),
-      (scope) => withDesktopRevealLevel(scope, "closed")
+      (scope) => withDesktopRevealLevel(scope, "focus")
     );
     for (let index = 1; index <= RETAINED_KEYS_PER_VIEW + 2; index++) {
       navigation = updateScopeNavigation(
@@ -193,7 +193,7 @@ describe("selection", () => {
       (scope) =>
         withDesktopRevealLevel(
           withSelection(scope, { nodeIds: ["a"], edgeIds: [] }),
-          "closed"
+          "focus"
         )
     );
     navigation = updateScopeNavigation(navigation, group, (scope) =>
@@ -216,7 +216,7 @@ describe("selection", () => {
       edgeIds: [],
     });
     expect(scopeNavigationAt(cleared, overview).desktop.revealLevel).toBe(
-      "closed"
+      "focus"
     );
     expect(withoutDraftSelections(cleared)).toBe(cleared);
   });
@@ -408,76 +408,55 @@ describe("cameraStep", () => {
   });
 });
 
-describe("Canvas Reveal state", () => {
+describe("details column state", () => {
   const nodeSelection = (id: string) => ({ nodeIds: [id], edgeIds: [] });
   const EMPTY = scopeNavigationAt(
     EMPTY_WORKFLOW_NAVIGATION,
     workspaceAddressFromSearch("workflow_1", {})
   );
 
-  it("remembers the open level a scope reopens at, and keeps it on close", () => {
+  it("records the level Runs shows", () => {
     const focused = withDesktopRevealLevel(EMPTY, "focus");
-    const closed = withDesktopRevealLevel(focused, "closed");
-    expect(closed.desktop).toMatchObject({
-      revealLevel: "closed",
-      reopenLevel: "focus",
-    });
-    expect(withDesktopRevealLevel(closed, "browse").desktop.reopenLevel).toBe(
-      "browse"
-    );
+    expect(focused.desktop.revealLevel).toBe("focus");
+    expect(withDesktopRevealLevel(focused, "focus")).toBe(focused);
   });
 
-  it("opens at the reopen level when one object becomes the selection", () => {
-    const closedFromFocus = withDesktopRevealLevel(
-      withDesktopRevealLevel(EMPTY, "focus"),
-      "closed"
-    );
-    const opened = withSelectionOpeningReveal(
-      closedFromFocus,
-      nodeSelection("step_a")
-    );
-    expect(opened.desktop).toMatchObject({
+  it("inspects the object a selection comes to hold alone, and leaves the level alone", () => {
+    const focused = withDesktopRevealLevel(EMPTY, "focus");
+    const selected = withInspectedSelection(focused, nodeSelection("step_a"));
+    expect(selected.desktop).toMatchObject({
       revealLevel: "focus",
       inspected: { kind: "node", id: "step_a" },
     });
-  });
 
-  it("leaves the level alone for a multi-selection or an unchanged object", () => {
-    const opened = withSelectionOpeningReveal(EMPTY, nodeSelection("step_a"));
-    const closed = withDesktopRevealLevel(opened, "closed");
+    const same = withInspectedSelection(selected, nodeSelection("step_a"));
+    expect(same).toBe(selected);
 
-    const same = withSelectionOpeningReveal(closed, nodeSelection("step_a"));
-    expect(same).toBe(closed);
-
-    const multi = withSelectionOpeningReveal(closed, {
+    const multi = withInspectedSelection(selected, {
       nodeIds: ["step_a", "step_b"],
       edgeIds: [],
     });
-    expect(multi.desktop.revealLevel).toBe("closed");
+    expect(multi.desktop.inspected).toEqual({ kind: "node", id: "step_a" });
   });
 
-  it("reopens the inspected object with its scroll after the selection emptied", () => {
+  it("keeps the inspected object's scroll after the selection emptied", () => {
     const opened = withInspectorScroll(
-      withSelectionOpeningReveal(EMPTY, nodeSelection("step_a")),
+      withInspectedSelection(EMPTY, nodeSelection("step_a")),
       "browse",
       180
     );
-    const cleared = withDesktopRevealLevel(
-      withSelection(opened, EMPTY_SELECTION),
-      "closed"
-    );
+    const cleared = withSelection(opened, EMPTY_SELECTION);
 
-    const again = withSelectionOpeningReveal(cleared, nodeSelection("step_a"));
-    expect(again.desktop.revealLevel).toBe("browse");
+    const again = withInspectedSelection(cleared, nodeSelection("step_a"));
     expect(again.desktop.inspectorScroll.browse).toBe(180);
 
-    const other = withSelectionOpeningReveal(again, nodeSelection("step_b"));
+    const other = withInspectedSelection(again, nodeSelection("step_b"));
     expect(other.desktop.inspectorScroll).toEqual({ browse: 0, focus: 0 });
   });
 
   it("keeps the inspected object's section and starts another object's over", () => {
     const opened = withInspectorSection(
-      withSelectionOpeningReveal(EMPTY, nodeSelection("step_a")),
+      withInspectedSelection(EMPTY, nodeSelection("step_a")),
       "entity-eligibility"
     );
     expect(opened.desktop.inspectorSection).toBe("entity-eligibility");
@@ -493,15 +472,15 @@ describe("Canvas Reveal state", () => {
     ).toEqual({ browse: 90, focus: 0 });
 
     const cleared = withSelection(opened, EMPTY_SELECTION);
-    const again = withSelectionOpeningReveal(cleared, nodeSelection("step_a"));
+    const again = withInspectedSelection(cleared, nodeSelection("step_a"));
     expect(again.desktop.inspectorSection).toBe("entity-eligibility");
 
-    const other = withSelectionOpeningReveal(again, nodeSelection("step_b"));
+    const other = withInspectedSelection(again, nodeSelection("step_b"));
     expect(other.desktop.inspectorSection).toBeNull();
     expect(
       inspectionInGraph(
         withInspectorSection(
-          withSelectionOpeningReveal(EMPTY, nodeSelection("gone")),
+          withInspectedSelection(EMPTY, nodeSelection("gone")),
           "validation"
         ),
         graph
@@ -512,7 +491,7 @@ describe("Canvas Reveal state", () => {
   it("keeps the inspected object's origin across its own section changes and clears it for another object", () => {
     const origin = { nodeId: "split_a" };
     const opened = withInspectedOrigin(
-      withSelectionOpeningReveal(EMPTY, nodeSelection("lifecycle_a")),
+      withInspectedSelection(EMPTY, nodeSelection("lifecycle_a")),
       origin
     );
     expect(opened.desktop.inspectedOrigin).toBe(origin);
@@ -521,28 +500,25 @@ describe("Canvas Reveal state", () => {
     const resectioned = withInspectorSection(opened, "start-events");
     expect(resectioned.desktop.inspectedOrigin).toBe(origin);
 
-    const other = withSelectionOpeningReveal(opened, nodeSelection("step_b"));
+    const other = withInspectedSelection(opened, nodeSelection("step_b"));
     expect(other.desktop.inspectedOrigin).toBeNull();
 
     expect(inspectionInGraph(opened, graph).desktop.inspectedOrigin).toBeNull();
   });
 
-  it("clears the origin when Reveal closes or the selection stops holding the inspected object alone", () => {
+  it("clears the origin when the selection stops holding the inspected object alone", () => {
     const opened = withInspectedOrigin(
-      withSelectionOpeningReveal(EMPTY, nodeSelection("lifecycle_a")),
+      withInspectedSelection(EMPTY, nodeSelection("lifecycle_a")),
       { nodeId: "split_a" }
     );
 
     expect(
-      withDesktopRevealLevel(opened, "closed").desktop.inspectedOrigin
-    ).toBeNull();
-    expect(
       withDesktopRevealLevel(opened, "focus").desktop.inspectedOrigin
     ).not.toBeNull();
 
-    const cleared = withSelectionOpeningReveal(opened, EMPTY_SELECTION);
+    const cleared = withInspectedSelection(opened, EMPTY_SELECTION);
     expect(cleared.desktop.inspectedOrigin).toBeNull();
-    const reselected = withSelectionOpeningReveal(
+    const reselected = withInspectedSelection(
       cleared,
       nodeSelection("lifecycle_a")
     );
@@ -557,11 +533,11 @@ describe("Canvas Reveal state", () => {
 
   it("forgets an inspected object the graph no longer holds", () => {
     const inspected = withInspectorScroll(
-      withSelectionOpeningReveal(EMPTY, nodeSelection("gone")),
+      withInspectedSelection(EMPTY, nodeSelection("gone")),
       "focus",
       90
     );
-    const kept = withSelectionOpeningReveal(EMPTY, nodeSelection("child"));
+    const kept = withInspectedSelection(EMPTY, nodeSelection("child"));
 
     expect(inspectionInGraph(kept, graph)).toBe(kept);
     expect(inspectionInGraph(inspected, graph).desktop).toMatchObject({

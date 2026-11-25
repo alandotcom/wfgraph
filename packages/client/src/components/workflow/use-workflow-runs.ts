@@ -154,7 +154,7 @@ function useRunReads(): RunReads {
   // Route synchronization can write these before normal subscriptions mount.
   const currentWorkflowId = useAtomValueRawSync(currentWorkflowIdAtom);
   // Which run is open is URL state, read through the active workspace address
-  // that Canvas Reveal and its scroll are keyed by, so the screen and the
+  // that the details column and its scroll are keyed by, so the screen and the
   // address change in the same render. ExecutionOverlaySync pins the graph.
   const executionId = useAtomValueRawSync(selectedExecutionIdAtom) ?? undefined;
   const showSuperseded = useAtomValueRawSync(activeShowSupersededAtom);

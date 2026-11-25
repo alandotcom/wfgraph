@@ -1,7 +1,7 @@
 /**
  * The review sheet: one document for deciding to publish, and the same
- * document read-only for what a past version changed. On desktop it takes
- * Canvas Reveal's place and width over the right of the canvas, which stays
+ * document read-only for what a past version changed. On desktop it covers
+ * the details column and reaches over the right of the canvas, which stays
  * on screen beside it; below `md` it covers the screen. Only its own header
  * and footer stay put while its body scrolls as one surface.
  */
@@ -65,9 +65,6 @@ import type {
 import { cn } from "@wfgraph/shared/utils";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import { formatExactTime } from "@wfgraph/shared/utils/time";
-import { REVEAL_INSET, revealWidth } from "../canvas-reveal/reveal-geometry";
-import { rememberedRevealWidthAtom } from "../canvas-reveal/reveal-width-preference";
-import { useRevealCanvasWidth } from "../canvas-reveal/use-reveal-width";
 import { ReviewDocument, reviewEditElementId } from "./review-document";
 import { usePublishReview } from "./use-publish-review";
 import { type ReviewActions, useReviewActions } from "./use-review-actions";
@@ -85,8 +82,6 @@ export function ReviewSheet() {
   const pages = useAtomValue(reviewPagesAtom);
   const draftReview = useAtomValue(publicationReviewAtom);
   const isMobile = useIsMobile();
-  const canvasWidth = useRevealCanvasWidth();
-  const rememberedWidth = useAtomValue(rememberedRevealWidthAtom);
   const actions = useReviewActions();
   const publish = usePublishReview();
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -149,20 +144,13 @@ export function ReviewSheet() {
         "z-30 flex flex-col overflow-clip bg-sidebar",
         isMobile
           ? "fixed inset-0 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
-          : "absolute rounded-xl border shadow-sm"
+          : // It covers the details column and reaches over the canvas from
+            // the editor's right edge, 8px inside it, at a width that fits
+            // its one column of differences.
+            "absolute inset-y-2 right-2 w-[min(40rem,calc(100%-1rem))] rounded-xl border shadow-sm"
       )}
       data-slot="review-sheet"
       onKeyDown={onKeyDown}
-      style={
-        isMobile
-          ? undefined
-          : {
-              top: REVEAL_INSET,
-              right: REVEAL_INSET,
-              bottom: REVEAL_INSET,
-              width: revealWidth("browse", canvasWidth, rememberedWidth),
-            }
-      }
     >
       <SheetHeader
         actions={actions}

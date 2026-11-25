@@ -60,9 +60,9 @@ export const Canvas = ({ children, ...props }: CanvasProps) => {
       // activation key (Cmd on a Mac, Ctrl elsewhere) is held.
       panOnScroll
       selectionOnDrag={false}
-      // A press selects a node, and opens Canvas Reveal on it, only when it
-      // ends as a click. A press that becomes a drag selects nothing, so
-      // Reveal never opens or moves the camera while the node is dragged.
+      // A press selects a node, and shows it in the details column, only when
+      // it ends as a click. A press that becomes a drag selects nothing, so
+      // the details column keeps what it shows while the node is dragged.
       selectNodesOnDrag={false}
       zoomOnDoubleClick={false}
       zoomOnPinch

@@ -1,9 +1,8 @@
 /**
- * Requests other surfaces make of Canvas Reveal: place nodes in the usable
- * rectangle, place the subject again after a resize, focus an element of a
- * node's inspector, and focus Reveal's title. The canvas camera answers each
- * placement once; the Reveal shell clears a field or title request once it has
- * moved focus.
+ * Requests other surfaces make of the canvas camera and the details column:
+ * show nodes in the usable rectangle, focus an element of a node's inspector,
+ * and focus the details title. The canvas camera answers each placement once;
+ * the details panel clears a field or title request once it has moved focus.
  */
 
 import { atom } from "jotai";
@@ -25,21 +24,7 @@ export const requestRevealPlacementAtom = atom(
 );
 
 /**
- * How many times a person has finished resizing Canvas Reveal. The desktop
- * camera places the subject once each time the count changes, and a width that
- * changes during a drag moves no camera.
- */
-export const revealResizeSequenceAtom = atom(0);
-
-/**
- * True from the first key press of a keyboard resize until that resize
- * finishes. The desktop camera records the camera it holds when this turns
- * true, and places the subject from that camera when the resize finishes.
- */
-export const revealKeyResizeInProgressAtom = atom(false);
-
-/**
- * An element Canvas Reveal focuses once it shows the node `nodeId` names, or
+ * An element the details column focuses once it shows the node `nodeId` names, or
  * once a phone shows that node's full-screen editor. `targetId` is the element
  * id: a field's config key, which is also its control's id, or a section
  * heading's id.
@@ -49,7 +34,7 @@ export type RevealFieldRequest = { nodeId: string; targetId: string };
 export const revealFieldRequestAtom = atom<RevealFieldRequest | null>(null);
 
 /**
- * A node whose Canvas Reveal title takes focus once Reveal shows that node. A
+ * A node whose details title takes focus once the column shows that node. A
  * surface that selects a step and then closes, such as the command palette,
  * asks for this, because the control that had focus is gone.
  */
@@ -57,7 +42,7 @@ export const revealTitleFocusRequestAtom = atom<string | null>(null);
 
 /**
  * Focus the element `targetId` names in the inspector of `nodeId` once it
- * shows, or its Reveal title when `targetId` is null, as the edit targets in
+ * shows, or its details title when `targetId` is null, as the edit targets in
  * `reveal-edit-target.ts` answer.
  */
 export const requestRevealEditFocusAtom = atom(

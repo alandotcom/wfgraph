@@ -1,12 +1,11 @@
 /**
  * The workspace address the editor route names, and the navigation each
  * address remembers. The route is the system of record for the active address;
- * the selection, Canvas Reveal state, and cameras stored here per address are
+ * the selection, details column state, and cameras stored here per address are
  * the system of record for those values. The UI and graph stores read this module.
  */
 
 import { atom, type Getter } from "jotai";
-import { readCookie, writeCookie } from "#src/lib/preference-cookies";
 import {
   withMobileSequenceFrom,
   type MobileSheet,
@@ -24,7 +23,7 @@ import {
   withInspectorScroll,
   withInspectorSection,
   withChosenExecution,
-  withSelectionOpeningReveal,
+  withInspectedSelection,
   withShowSuperseded,
   withoutDraftSelections,
   workspaceAddressFromSearch,
@@ -34,7 +33,6 @@ import {
   type FormFactor,
   type InspectedOrigin,
   type NavigationGraph,
-  type OpenRevealLevel,
   type RevealLevel,
   type ChosenRunExecution,
   type ScopeNavigation,
@@ -111,25 +109,9 @@ export function addressNavigation(
   return scopeNavigationAt(navigationFor(get, address.workflowId), address);
 }
 
-const REVEAL_PREFERENCE_COOKIE = "canvas-reveal-closed";
-
-/**
- * Whether a person last left Canvas Reveal open or closed in a workspace that
- * does not follow its selection, kept in a cookie across reloads. A scope of
- * that workspace shown for the first time from another view starts here.
- */
-const revealLevelPreferenceAtom = atom<"closed" | "browse">(
-  readCookie(REVEAL_PREFERENCE_COOKIE) === "true" ? "closed" : "browse"
-);
-
 /**
  * Apply the route the router committed: the workflow in the path and its
- * validated search. Records the search as the one its view returns to. An
- * address shown for the first time stores the desktop Reveal level it
- * displays. An address whose workspace follows its selection starts closed.
- * Any other address starts at the level of the address it was reached from in
- * the same view, as a run opened from the run list, and otherwise at the
- * preference.
+ * validated search. Records the search as the one its view returns to.
  *
  * The mobile Reveal sequence carries across addresses of Runs, whose sheets
  * show the address itself: when the previous address had a sheet open and the
@@ -141,18 +123,15 @@ export const applyWorkspaceRouteAtom = atom(
   null,
   (get, set, route: WorkspaceRoute) => {
     const previous = get(activeWorkspaceAddressAtom);
-    const previousLevel = get(activeDesktopRevealLevelAtom);
     const previousSheets = get(activeMobileSheetsAtom);
-    const preference = get(revealLevelPreferenceAtom);
     set(workspaceRouteStateAtom, route);
     const next = workspaceAddressFromSearch(route.workflowId, route.search);
-    const sameView =
-      previous.workflowId === next.workflowId &&
-      previous.key.workspace === next.key.workspace;
     const carriesSequence =
-      sameView && !revealFollowsSelection(next.key.workspace);
-    set(writeNavigationAtom, route.workflowId, (navigation) => {
-      const remembered = updateScopeNavigation(
+      previous.workflowId === next.workflowId &&
+      previous.key.workspace === next.key.workspace &&
+      !revealFollowsSelection(next.key.workspace);
+    set(writeNavigationAtom, route.workflowId, (navigation) =>
+      updateScopeNavigation(
         rememberRouteSearch(navigation, next),
         next,
         (scope) =>
@@ -164,19 +143,8 @@ export const applyWorkspaceRouteAtom = atom(
                   workspaceAddressId(next),
               })
             : scope
-      );
-      if (scopeNavigationAt(remembered, next).desktop.revealLevel !== null) {
-        return remembered;
-      }
-      const firstLevel: RevealLevel = revealFollowsSelection(next.key.workspace)
-        ? "closed"
-        : sameView
-          ? previousLevel
-          : preference;
-      return updateScopeNavigation(remembered, next, (scope) =>
-        withDesktopRevealLevel(scope, firstLevel)
-      );
-    });
+      )
+    );
   }
 );
 
@@ -247,7 +215,7 @@ export const activeSelectionAtom = atom(
 /**
  * Set the selection of a named address, which need not be the active one. In a
  * workspace that follows its selection, a selection that comes to hold one
- * object opens Canvas Reveal for it.
+ * object becomes the object the details column inspects.
  */
 export const setWorkspaceSelectionAtom = atom(
   null,
@@ -257,7 +225,7 @@ export const setWorkspaceSelectionAtom = atom(
     input: { address: WorkspaceAddress; selection: CanvasSelection }
   ) => {
     const write = revealFollowsSelection(input.address.key.workspace)
-      ? withSelectionOpeningReveal
+      ? withInspectedSelection
       : withSelection;
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
       updateScopeNavigation(navigation, input.address, (scope) =>
@@ -282,43 +250,20 @@ export const clearDraftSelectionsAtom = atom(
 );
 
 /**
- * The stored desktop Reveal level of the active address, before Canvas Reveal
- * applies what it is showing. An address that was never shown reads as closed
- * when its workspace follows its selection, and otherwise as the preference.
+ * The level the desktop details column shows the active address at. An address
+ * that never set one shows Browse.
  */
-export const activeDesktopRevealLevelAtom = atom((get): RevealLevel => {
-  const stored = get(activeScopeNavigationAtom).desktop.revealLevel;
-  if (stored !== null) {
-    return stored;
-  }
-  return revealFollowsSelection(get(activeWorkspaceAddressAtom).key.workspace)
-    ? "closed"
-    : get(revealLevelPreferenceAtom);
-});
+export const activeDesktopRevealLevelAtom = atom(
+  (get): RevealLevel =>
+    get(activeScopeNavigationAtom).desktop.revealLevel ?? "browse"
+);
 
-/** The desktop Canvas Reveal state stored for the active address. */
+/** The desktop details column state stored for the active address. */
 export const activeRevealPresentationAtom = atom(
   (get): DesktopScopePresentation => get(activeScopeNavigationAtom).desktop
 );
 
-/**
- * A person choosing the Canvas Reveal level in a workspace that does not follow
- * its selection: it sets the active address's level, and whether that level is
- * closed becomes the preference, which the cookie keeps.
- */
-export const chooseDesktopRevealLevelAtom = atom(
-  null,
-  (get, set, level: RevealLevel) => {
-    set(setWorkspaceRevealLevelAtom, {
-      address: get(activeWorkspaceAddressAtom),
-      level,
-    });
-    set(revealLevelPreferenceAtom, level === "closed" ? "closed" : "browse");
-    writeCookie(REVEAL_PREFERENCE_COOKIE, String(level === "closed"));
-  }
-);
-
-/** Set the desktop Reveal level of a named address. */
+/** Set the desktop details column level of a named address. */
 export const setWorkspaceRevealLevelAtom = atom(
   null,
   (_get, set, input: { address: WorkspaceAddress; level: RevealLevel }) => {
@@ -331,7 +276,7 @@ export const setWorkspaceRevealLevelAtom = atom(
 );
 
 /**
- * Record the inspector scroll of one open level for a named address. The write
+ * Record the inspector scroll of one level for a named address. The write
  * is dropped when the address no longer inspects the node `inspectedId` names,
  * so a scroll read before a selection change never lands on the next object. A
  * null `inspectedId` is the scroll of an address that inspects no object, such
@@ -345,7 +290,7 @@ export const recordInspectorScrollAtom = atom(
     input: {
       address: WorkspaceAddress;
       inspectedId: string | null;
-      level: OpenRevealLevel;
+      level: RevealLevel;
       top: number;
     }
   ) => {
@@ -386,10 +331,10 @@ export const recordInspectorSectionAtom = atom(
 );
 
 /**
- * Select the node `nodeId` alone in a named address, record `section` as the
- * section its inspector has open for editing, and open Canvas Reveal. One
- * navigation write holds all three, so the selection cannot start the new
- * object's section over after the section is recorded.
+ * Select the node `nodeId` alone in a named address and record `section` as
+ * the section its inspector has open for editing. One navigation write holds
+ * both, so the selection cannot start the new object's section over after the
+ * section is recorded.
  *
  * `origin` records where this jump started, for Back to return to. A call that
  * names no origin keeps the origin of a node that was already inspected, so
@@ -409,18 +354,15 @@ export const openInspectorSectionAtom = atom(
   ) => {
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
       updateScopeNavigation(navigation, input.address, (scope) =>
-        withDesktopRevealLevel(
-          withInspectorSection(selectFromOrigin(scope, input), input.section),
-          "browse"
-        )
+        withInspectorSection(selectFromOrigin(scope, input), input.section)
       )
     );
   }
 );
 
 /**
- * Select the node `nodeId` alone in a named address, record `origin` as where
- * the jump started, and open Canvas Reveal at Browse, in one navigation write.
+ * Select the node `nodeId` alone in a named address and record `origin` as
+ * where the jump started, in one navigation write.
  */
 export const openNodeRevealFromOriginAtom = atom(
   null,
@@ -435,7 +377,7 @@ export const openNodeRevealFromOriginAtom = atom(
   ) => {
     set(writeNavigationAtom, input.address.workflowId, (navigation) =>
       updateScopeNavigation(navigation, input.address, (scope) =>
-        withDesktopRevealLevel(selectFromOrigin(scope, input), "browse")
+        selectFromOrigin(scope, input)
       )
     );
   }
@@ -451,32 +393,13 @@ function selectFromOrigin(
   }
 ): ScopeNavigation {
   const select = revealFollowsSelection(input.address.key.workspace)
-    ? withSelectionOpeningReveal
+    ? withInspectedSelection
     : withSelection;
   const selected = select(scope, { nodeIds: [input.nodeId], edgeIds: [] });
   return input.origin === undefined
     ? selected
     : withInspectedOrigin(selected, input.origin);
 }
-
-/**
- * Open Canvas Reveal for a named address at `level`, or at the level the
- * address reopens at when `level` is absent.
- */
-export const openWorkspaceRevealAtom = atom(
-  null,
-  (
-    _get,
-    set,
-    input: { address: WorkspaceAddress; level?: OpenRevealLevel | undefined }
-  ) => {
-    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, input.address, (scope) =>
-        withDesktopRevealLevel(scope, input.level ?? scope.desktop.reopenLevel)
-      )
-    );
-  }
-);
 
 /** Forget the active address's inspected object when the graph lost it. */
 export const keepActiveInspectionInGraphAtom = atom(
@@ -517,8 +440,8 @@ export const activeChosenExecutionAtom = atom(
  * Show the evidence of one run node in a named run address, in one navigation
  * write. `selectsNode` selects the node alone, and otherwise the selection is
  * emptied, for a node the address's canvas cannot select. A non-null
- * `executionLogId` records that execution as the chosen one. `opensFocus` opens
- * Canvas Reveal at Focus.
+ * `executionLogId` records that execution as the chosen one. `opensFocus` shows
+ * the node's evidence in the details column.
  */
 export const inspectRunNodeAtom = atom(
   null,
@@ -580,29 +503,6 @@ export const chooseRunExecutionAtom = atom(
     set(writeNavigationAtom, address.workflowId, (navigation) =>
       updateScopeNavigation(navigation, address, (scope) =>
         withChosenExecution(scope, chosen)
-      )
-    );
-  }
-);
-
-/**
- * Close Canvas Reveal for a named address and set the level it reopens at. It
- * writes no preference cookie, for a close that undoes an opening the person
- * did not choose as a Reveal level.
- */
-export const closeWorkspaceRevealAtom = atom(
-  null,
-  (
-    _get,
-    set,
-    input: { address: WorkspaceAddress; reopenLevel: OpenRevealLevel }
-  ) => {
-    set(writeNavigationAtom, input.address.workflowId, (navigation) =>
-      updateScopeNavigation(navigation, input.address, (scope) =>
-        withDesktopRevealLevel(
-          withDesktopRevealLevel(scope, input.reopenLevel),
-          "closed"
-        )
       )
     );
   }

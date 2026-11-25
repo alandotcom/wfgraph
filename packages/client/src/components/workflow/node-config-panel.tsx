@@ -35,8 +35,8 @@ import { workflowNodeAriaLabel } from "#src/lib/workflow-graph-types";
 /**
  * Configuring the selected node, edge, or the workflow itself.
  *
- * The editor mounts this in two places: Canvas Reveal, for the Draft
- * selections no other Reveal kind shows, on a wide viewport and in the mobile
+ * The editor mounts this in two places: the details column, for the Draft
+ * selections no other kind shows, on a wide viewport and in the mobile
  * Reveal sequence, and the configuration sheet a narrow viewport opens for a
  * Draft with nothing selected.
  * Everything the two placements share is here; what a frame genuinely owns is
@@ -58,7 +58,7 @@ export type NodeConfigFrame = {
   confirm: (request: ConfirmRequest) => void;
   /**
    * Close the frame, once what it was configuring no longer exists. A frame
-   * that closes when its selection goes away, like Canvas Reveal, leaves this
+   * that follows its selection, like the details column, leaves this
    * unset.
    */
   dismiss?: () => void;
@@ -82,8 +82,8 @@ export function useNodeConfigTitle(): string {
 }
 
 /**
- * Refresh and Delete all runs for the Runs surface, above the run list in
- * Canvas Reveal and in the mobile run list sheet. The confirm callback is the
+ * Refresh and Delete all runs for the Runs surface, above the run list in the
+ * details column and in the mobile run list sheet. The confirm callback is the
  * frame's, so each frame asks in its own way.
  */
 export function RunsListActions({

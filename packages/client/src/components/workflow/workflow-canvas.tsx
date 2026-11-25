@@ -9,7 +9,6 @@ import {
 } from "@xyflow/react";
 import { useAtom, useAtomValue, useAtomValueRawSync, useSetAtom } from "jotai";
 import {
-  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useMemo,
@@ -83,7 +82,6 @@ import {
 } from "./canvas-interaction";
 import { useWorkspaceCamera } from "./use-workspace-camera";
 import { useRevealCamera } from "./canvas-reveal/use-reveal-camera";
-import { useRevealOccupiedWidth } from "./canvas-reveal/use-reveal-width";
 import { WorkflowSummaryCard } from "./workflow-summary-card";
 import { CANVAS_OBSTACLE_SLOTS } from "./canvas-reveal/reveal-geometry";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
@@ -167,7 +165,6 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const workflowGraphUpdate = useAtomValue(workflowGraphUpdateAtom);
   const currentWorkflowId = useAtomValueRawSync(currentWorkflowIdAtom);
   const [showMinimap] = useAtom(showMinimapAtom);
-  const revealOccupiedWidth = useRevealOccupiedWidth();
   const onNodesChange = useSetAtom(onNodesChangeAtom);
   const onEdgesChange = useSetAtom(onEdgesChangeAtom);
   const selection = useAtomValue(canvasSelectionAtom);
@@ -202,13 +199,11 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const workspaceCamera = useWorkspaceCamera({
     isCanvasPlaced,
     paintedNodes: accessibleGraph.nodes,
-    revealOccupiedWidth,
   });
   const placeOpeningCamera = useOpeningCamera({
     canvas: canvasContainerRef,
     paintedNodes: accessibleGraph.nodes,
     graphNodes,
-    revealOccupiedWidth,
   });
   const canvasPresentation = canvasSynchronizationKey({
     workspaceView,
@@ -298,7 +293,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   const isCanvasReady =
     currentWorkflowId !== null && readyWorkflowId === currentWorkflowId;
   // The workspace camera restores a scope's saved camera before paint, and
-  // Canvas Reveal's camera runs after paint, so a placement always compares
+  // the placement camera runs after paint, so a placement always compares
   // against the restored camera.
   const insertStepOnEdge = useInsertStepOnEdge();
   const revealCamera = useRevealCamera({
@@ -582,7 +577,7 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   }, [clearSelection, closeContextMenu, wasNodeJustCreatedFromConnection]);
 
   // React Flow treats Escape on a focused node as a selection key, so Escape
-  // on a step that is not selected would select it and open Reveal. Escape
+  // on a step that is not selected would select it. Escape
   // only closes or deselects, so that key press stops here. Escape on a
   // selected node still reaches React Flow, which deselects it.
   // Enter on a focused Draft object inspects it the way a click does, and the
@@ -629,18 +624,15 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
   );
 
   return (
-    // Size comes from the canvas box, which Canvas Reveal floats over without
-    // resizing. Nothing animates that size, because React Flow observes the
-    // parent box and a transition on it produces ResizeObserver loop warnings.
+    // Size comes from the canvas box between the outline and details columns.
+    // Nothing animates that size, because React Flow observes the parent box
+    // and a transition on it produces ResizeObserver loop warnings.
     <div
       className="relative h-full w-full bg-background"
       data-testid="workflow-canvas"
       onKeyDownCapture={onCanvasKeyDownCapture}
       ref={canvasContainerRef}
-      style={canvasContainerStyle({
-        ready: isCanvasReady,
-        revealOccupiedWidth,
-      })}
+      style={{ opacity: isCanvasReady ? 1 : 0 }}
     >
       {/* React Flow Canvas. */}
       <InsertStepSlot.Provider
@@ -703,15 +695,13 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
                 graphEditingLocked || !topologyAuthoring ? undefined : reflow
               }
             >
-              {/* Draft says what the workflow does while nothing is open in
-                    Canvas Reveal, which then holds the selected object's
-                    details. Runs keeps the zoom cue, since its
-                    canvas shows a graph other than the draft. */}
+              {/* Draft says what the workflow does. Runs keeps the zoom cue,
+                    since its canvas shows a graph other than the draft. */}
               {workspaceView !== "draft" ? (
                 <OverviewCue />
-              ) : revealOccupiedWidth === 0 ? (
+              ) : (
                 <WorkflowSummaryCard />
-              ) : null}
+              )}
             </Controls>
           </Panel>
           {/* A workflow with nothing but its Lifecycle Node shows how to
@@ -748,19 +738,4 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
       />
     </div>
   );
-}
-
-/**
- * The canvas box's opacity and `--reveal-occupied-width`, the pixels open
- * Canvas Reveal covers at the canvas's right edge. The React Flow attribution
- * rule in `globals.css` reads that variable to sit beside Reveal.
- */
-function canvasContainerStyle(input: {
-  ready: boolean;
-  revealOccupiedWidth: number;
-}): CSSProperties & Record<"--reveal-occupied-width", string> {
-  return {
-    opacity: input.ready ? 1 : 0,
-    "--reveal-occupied-width": `${input.revealOccupiedWidth}px`,
-  };
 }

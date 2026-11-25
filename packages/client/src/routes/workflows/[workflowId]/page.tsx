@@ -1,7 +1,5 @@
 import { getRouteApi, Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { AgentPanel } from "#src/components/agent/agent-panel";
-import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
 import {
   MobileReveal,
   MobileRevealCovered,
@@ -22,7 +20,6 @@ import {
 } from "#src/components/workflow/workflow-toolbar";
 import { WorkspaceRouteSync } from "#src/components/workflow/workspace-route-sync";
 import { useDocumentTitle, useUnmountCleanup } from "#src/hooks/effects";
-import { isAgentEnabled } from "#src/lib/extensions";
 import { can } from "#src/lib/authorization";
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { endWorkflowEditorLifetimeAtom } from "#src/lib/workflow-graph-store";
@@ -107,15 +104,15 @@ const WorkflowEditor = () => {
 
             Three things hold the contents inside the corner, and all three are
             needed. The radius and `overflow-clip` clip an ordinary child.
-            They do not clip a composited one: Canvas Reveal animates on
+            They do not clip a composited one: a phone sheet animates on
             `transform`, which puts it on its own layer, and a composited layer
             paints its square corner over the rounded one and takes the page
             margin's hit region with it. The
             `clip-path` is the form of the clip that layer cannot escape.
 
             The shell uses `overflow-clip` because a clipped box is not a scroll
-            container. Focusing a control inside Canvas Reveal while Reveal
-            slides in from past the right edge scrolls the nearest scroll
+            container. Focusing a control inside a sheet while it slides in
+            from past an edge scrolls the nearest scroll
             container to reach it, and an `overflow-hidden` shell would be that
             container, carrying the toolbar and canvas sideways with it.
 
@@ -128,7 +125,7 @@ const WorkflowEditor = () => {
             editor still has to be portalled out to escape the corner, which is
             what every one of them already does. */}
         <div className="relative flex size-full flex-col overflow-clip md:rounded-xl md:border md:[clip-path:inset(0_round_var(--editor-shell-radius))]">
-          {/* Route → pinned-graph overlay. Outside Canvas Reveal so it
+          {/* Route → pinned-graph overlay. Outside the details column so it
               outlives the Runs view; `RunStatusProjection` reads what it writes. */}
           <ExecutionOverlaySync />
           {/* Route → workspace address, and route recovery. After the overlay
@@ -169,27 +166,20 @@ const WorkflowEditor = () => {
                 <>
                   <MobileRevealCovered>
                     <WorkflowCanvas canEdit={canUpdate} />
-                    {/* The agent belongs to the canvas rather than the editor
-                      shell. This keeps its card above the status strip while
-                      the graph remains visible behind it. */}
-                    {currentWorkflowId && isAgentEnabled() && (
-                      <AgentPanel workflowId={currentWorkflowId} />
-                    )}
                   </MobileRevealCovered>
-                  {/* Canvas Reveal floats over the canvas, so opening it
-                    changes the camera's usable rectangle and never the canvas
-                    size. */}
-                  <CanvasReveal />
-                  {/* Below `md` the Draft inspector is a sequence of sheets
-                    over the same canvas box. */}
+                  {/* Below `md` the inspector is a sequence of sheets over the
+                    same canvas box. */}
                   <MobileReveal />
-                  {/* The review sheet takes Canvas Reveal's place while it is
-                    open, and covers the screen below `md`. */}
-                  <ReviewSheet />
                 </>
               }
               details={<DetailsColumn />}
               outline={<OutlineColumn />}
+              overlay={
+                // The review sheet covers the details column and reaches over
+                // the canvas while it is open, and covers the screen below
+                // `md`.
+                <ReviewSheet />
+              }
             />
             <WorkflowStatusStrip workflowId={currentWorkflowId ?? undefined} />
           </div>

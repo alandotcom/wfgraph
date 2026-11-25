@@ -40,7 +40,7 @@ import { useAfterCommit } from "#src/hooks/effects";
 import { executionOverlayGraphAtom } from "#src/lib/workflow-graph-store";
 import { groupLabel } from "#src/lib/workflow-graph-types";
 import {
-  type OpenRevealLevel,
+  type RevealLevel,
   type WorkspaceAddress,
   workspaceAddressId,
   workspaceRouteSearch,
@@ -49,7 +49,6 @@ import { currentWorkflowNameAtom } from "#src/lib/workflow-save-store";
 import {
   activeWorkspaceAddressAtom,
   clearRunNodeInspectionAtom,
-  closeWorkspaceRevealAtom,
   inspectRunNodeAtom,
 } from "#src/lib/workflow-workspace-navigation";
 import {
@@ -69,11 +68,8 @@ import { MobileSheetHeader } from "./mobile-sheet-header";
 import type { RevealSubject } from "./reveal-subject";
 import { useAddressBodyScroll } from "./use-address-body-scroll";
 
-/** The Focus toggle's text on Runs, whose Focus shows a node's evidence. */
-const RUNS_FOCUS_TOGGLE_TEXT = {
-  browse: "Show evidence",
-  focus: "Return to run",
-};
+/** The phone's control that opens a run node's evidence over the run's sheet. */
+const MOBILE_EVIDENCE_LABEL = "Show evidence";
 
 /**
  * What the Runs header names past the run: nothing, the node whose evidence
@@ -108,12 +104,10 @@ function runsHeaderModel(input: {
 }): RevealHeaderModel {
   const { workflowName, openRun, target, catalog } = input;
   const list: RevealHeaderModel = {
-    workspaceLabel: "Runs",
     title: "Runs",
     path: [workflowName || "Untitled workflow", "Runs"],
     status: null,
     showsBack: false,
-    focusToggleText: RUNS_FOCUS_TOGGLE_TEXT,
   };
   const runHeader = (
     title: string,
@@ -165,7 +159,7 @@ function runsHeaderModel(input: {
  */
 function useRunsHeaderModel(
   subject: RevealSubject,
-  level: OpenRevealLevel
+  level: RevealLevel
 ): RevealHeaderModel {
   const workflowName = useAtomValue(currentWorkflowNameAtom);
   const catalog = useExtensionCatalog();
@@ -241,14 +235,14 @@ export function RunsMobileHeader({ state, controls }: MobileKindHeaderProps) {
     <MobileSheetHeader
       backLabel={backLabel}
       controls={controls}
-      inspectorLabel={RUNS_FOCUS_TOGGLE_TEXT.browse}
+      inspectorLabel={MOBILE_EVIDENCE_LABEL}
       status={model.status}
       title={model.title}
     />
   );
 }
 
-/** The Runs header in Canvas Reveal, built from `useRunsHeaderModel`. */
+/** The Runs header in the details column, built from `useRunsHeaderModel`. */
 export function RunsHeader({
   subject,
   level,
@@ -257,7 +251,6 @@ export function RunsHeader({
   return (
     <RevealHeader
       controls={controls}
-      level={level}
       model={useRunsHeaderModel(subject, level)}
     />
   );
@@ -265,20 +258,18 @@ export function RunsHeader({
 
 /**
  * Back and Escape on Runs. At Focus they return to the run's Browse and ask it
- * to focus the journey entry or canvas node that opened the evidence, or close
- * Reveal when a canvas click opened Focus from Closed. On a Group's summary
- * they close Reveal when a canvas click opened it from Closed, and otherwise
- * return to the run overview with focus on the Group card. In a Group's scope
- * they return to the overview scope with the Group card selected and its
- * summary shown. On the run overview they replace the route with the run list
- * and ask the list to focus that run's row; on the run list they close.
+ * to focus the journey entry or canvas node that opened the evidence. On a
+ * Group's summary they return to the run overview with focus on the Group
+ * card. In a Group's scope they return to the overview scope with the Group
+ * card selected and its summary shown. On the run overview they replace the
+ * route with the run list and ask the list to focus that run's row. On the run
+ * list they run the shell's own step back, which returns focus to the canvas.
  */
 export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
   subject,
   level,
   store,
   unwindLevel,
-  returnFocusOnClose,
   replaceRouteSearch,
 }) => {
   const address = store.get(activeWorkspaceAddressAtom);
@@ -291,24 +282,7 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
     stored.nodeId === (target.kind === "node" ? target.nodeId : target.groupId)
       ? stored
       : null;
-  const closeOpenedReveal = () => {
-    if (origin === null || origin.closedReopenLevel === null) {
-      return false;
-    }
-    // Closing through the address keeps the saved open or closed preference
-    // as the person last chose it.
-    store.set(runEvidenceOriginAtom, { ...origin, closedReopenLevel: null });
-    returnFocusOnClose();
-    store.set(closeWorkspaceRevealAtom, {
-      address,
-      reopenLevel: origin.closedReopenLevel,
-    });
-    return true;
-  };
   if (level === "focus" && target?.kind === "node") {
-    if (closeOpenedReveal()) {
-      return;
-    }
     store.set(runBrowseFocusRequestAtom, {
       nodeId: target.nodeId,
       logId: origin?.logId ?? null,
@@ -321,9 +295,6 @@ export const unwindRuns: NonNullable<RevealKind["unwind"]> = ({
     return;
   }
   if (target?.kind === "group") {
-    if (closeOpenedReveal()) {
-      return;
-    }
     store.set(runBrowseFocusRequestAtom, {
       nodeId: target.groupId,
       logId: null,
@@ -369,12 +340,12 @@ export const unwindMobileRuns: NonNullable<RevealKind["unwind"]> = (input) => {
   unwindRuns(input);
 };
 
-/** Canvas Reveal or the mobile Reveal sheet around a Runs body. */
+/** The details panel or the mobile Reveal sheet around a Runs body. */
 const REVEAL_SURFACE_SELECTOR =
-  '[data-slot="canvas-reveal"], [data-slot="mobile-reveal"]';
+  '[data-slot="details-panel"], [data-slot="mobile-reveal"]';
 
 /**
- * Runs in Canvas Reveal, at both levels. Browse shows the run list, or the run
+ * Runs in the details column, at both levels. Browse shows the run list, or the run
  * the route opens with its summary, waits, exit and failure details, journey,
  * and activity. Focus shows the evidence of the node the run inspects. The run
  * overview stays mounted, hidden, while Focus shows, so returning keeps its
@@ -385,7 +356,6 @@ export function RunsBody({ subject, frame, level, mobile }: RevealBodyProps) {
   const address = useAtomValue(activeWorkspaceAddressAtom);
   const focusRequest = useAtomValue(runBrowseFocusRequestAtom);
   const setFocusRequest = useSetAtom(runBrowseFocusRequestAtom);
-  const setEvidenceOrigin = useSetAtom(runEvidenceOriginAtom);
   const inspectLog = useInspectRunLog();
   const chooseExecution = useChooseRunExecution();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -449,9 +419,8 @@ export function RunsBody({ subject, frame, level, mobile }: RevealBodyProps) {
       return;
     }
     setFocusRequest(null);
-    rootRef.current
-      ?.closest(REVEAL_SURFACE_SELECTOR)
-      ?.parentElement?.querySelector<HTMLElement>(
+    document
+      .querySelector<HTMLElement>(
         `.react-flow__node[data-id="${CSS.escape(canvasFocusNodeId)}"]`
       )
       ?.focus({ preventScroll: true });
@@ -463,21 +432,6 @@ export function RunsBody({ subject, frame, level, mobile }: RevealBodyProps) {
   useAfterCommit(shownExecutionId, () => {
     if (evidenceScrollRef.current) {
       evidenceScrollRef.current.scrollTop = 0;
-    }
-  });
-
-  // Reaching Browse by any path ends a Focus a canvas click opened from Closed,
-  // so the next Back from Focus returns to Browse. A Group card click opens
-  // Browse itself, so its record stays while its summary shows.
-  useAfterCommit(`${level}:${groupId ?? ""}`, () => {
-    if (level === "browse") {
-      setEvidenceOrigin((origin) =>
-        origin === null ||
-        origin.closedReopenLevel === null ||
-        origin.nodeId === groupId
-          ? origin
-          : { ...origin, closedReopenLevel: null }
-      );
     }
   });
 

@@ -369,7 +369,7 @@ function CommandPaletteDialog({
   const topologyAuthoring = useTopologyAuthoring();
   const store = useStore();
   // The palette's search box is gone once a row is chosen, so a row that
-  // selects a step asks Canvas Reveal to put focus on the step's title.
+  // selects a step asks the details column to put focus on the step's title.
   const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
   const hintsId = useId();
   const pageId = useId();

@@ -21,8 +21,8 @@ import { useRevealNavigation } from "./canvas-reveal/use-reveal-navigation";
 import { useWorkflowNodeInspection } from "./use-workflow-node-inspection";
 
 /**
- * Select a node, open its inspector, and ask the canvas camera to place it
- * beside Canvas Reveal. A Group member is shown on its focused Group canvas and
+ * Select a node, open its inspector, and ask the canvas camera to show it when
+ * it is not in view. A Group member is shown on its focused Group canvas and
  * any other node on the overview, so reaching a node in the other scope pushes
  * that scope's route and selects the node there. The zoom is kept unless the
  * node needs less to fit, and no graph data changes.

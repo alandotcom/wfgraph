@@ -100,7 +100,7 @@ export function TemplateBadgeInput({
           aria-required={required || undefined}
           className="w-full outline-none"
           contentEditable={!disabled}
-          // Canvas Reveal leaves Escape to the autocomplete menu while it shows.
+          // The details column leaves Escape to the autocomplete menu while it shows.
           data-autocomplete-open={isMenuShown || undefined}
           id={id}
           onBlur={handleBlur}

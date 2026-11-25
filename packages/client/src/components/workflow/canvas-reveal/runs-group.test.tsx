@@ -232,7 +232,7 @@ describe("Runs Group summary", () => {
     await waitFor(() => expect(document.activeElement).toBe(card));
   });
 
-  it("opens a closed Reveal on a waiting Group that has not continued and closes it again on Back, and keeps a continuing Group Reached without later evidence", async () => {
+  it("shows a waiting Group that has not continued and returns to the run on Back, and keeps a continuing Group Reached without later evidence", async () => {
     served.items = [
       execution("exec_w", "waiting"),
       execution("exec_r", "exited"),
@@ -282,8 +282,6 @@ describe("Runs Group summary", () => {
       await renderRunsReveal({ view: "runs", executionId: "exec_w" });
     await waitFor(() => expect(title()).toBe(runHeading("exec_w")));
 
-    fireEvent.click(view.getByRole("button", { name: "Close" }));
-    await waitFor(() => expect(aside()?.dataset.level).toBe("closed"));
     fireEvent.click(await canvasNode("Outreach"));
     await waitFor(() => expect(aside()?.dataset.level).toBe("browse"));
     const summary = await view.findByTestId("runs-group-summary");
@@ -296,10 +294,9 @@ describe("Runs Group summary", () => {
       within(summary).getByRole("button", { name: "Wait for reply, Waiting" })
     ).toBeTruthy();
 
-    // The card click opened Reveal from Closed, so Back closes it again.
     back();
-    await waitFor(() => expect(aside()?.dataset.level).toBe("closed"));
-    expect(store.get(selectedNodeAtom)).toBe("grp");
+    await waitFor(() => expect(title()).toBe(runHeading("exec_w")));
+    expect(view.queryByTestId("runs-group-summary")).toBeNull();
 
     await show({ view: "runs", executionId: "exec_r" });
     await waitFor(() => expect(title()).toBe(runHeading("exec_r")));

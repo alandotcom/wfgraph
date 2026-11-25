@@ -468,15 +468,6 @@
   text-align: left;
 }
 
-/* The attribution and the MiniMap sit beside open Canvas Reveal, whose covered
-   width the canvas box publishes as `--reveal-occupied-width`. The panel's own
-   margin keeps the gap to Reveal's edge. The extra classes outrank React Flow's
-   `.react-flow__panel.right`, which loads after this file. */
-.react-flow .react-flow__panel.react-flow__attribution.right,
-.react-flow .react-flow__panel.react-flow__minimap.right {
-  right: var(--reveal-occupied-width, 0px);
-}
-
 /* React Flow attribution styling */
 .react-flow__attribution {
   background: transparent !important;
@@ -655,7 +646,7 @@
 }
 
 /* Every control in the mobile Reveal sequence answers a finger. Its bodies are
-   the ones Canvas Reveal shows on desktop at compact heights, so this raises
+   the ones the details column shows on desktop at compact heights, so this raises
    each button, checkbox, switch, select trigger and text field inside the
    sequence to the 44px touch target instead of giving each body a second set
    of sizes. Text fields also read at 1rem, below which iOS zooms the page when

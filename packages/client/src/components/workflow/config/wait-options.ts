@@ -1,6 +1,6 @@
 /**
  * The labels a Wait step's fields and choices are offered and summarized under.
- * The Wait form and Canvas Reveal's Wait summary both read these, so a field
+ * The Wait form and the phone's Wait summary both read these, so a field
  * and a choice read the same in both places.
  */
 

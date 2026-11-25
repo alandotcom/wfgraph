@@ -69,8 +69,7 @@ function renderCamera(
   graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] } = {
     nodes: NODES,
     edges: [],
-  },
-  options: { revealOccupiedWidth?: number } = {}
+  }
 ) {
   const store = createStore();
   store.set(currentWorkflowIdAtom, "wf_1");
@@ -90,7 +89,6 @@ function renderCamera(
     camera = useWorkspaceCamera({
       isCanvasPlaced: () => true,
       paintedNodes: painted.nodes,
-      revealOccupiedWidth: options.revealOccupiedWidth ?? 0,
     });
     return null;
   }
@@ -244,16 +242,15 @@ describe("useWorkspaceCamera across Group scopes", () => {
     }
   );
 
-  it("fits a first visit beside an open Reveal in one placement", async () => {
-    // Browse on a 1200px canvas takes 360px and its 8px inset.
-    const camera = renderCamera(undefined, { revealOccupiedWidth: 368 });
+  it("fits a first visit to the canvas in one placement", async () => {
+    const camera = renderCamera();
     const motion = recordCameraMotion(camera.flow());
     const start = camera.viewport();
 
     await camera.show({ group: "g" });
 
     expectSteadyCamera(motion.moves, start);
-    const usable = { width: CANVAS.width - 368, height: CANVAS.height };
+    const usable = { width: CANVAS.width, height: CANVAS.height };
     const members = camera.store.get(canvasNodesAtom);
     expect(members.length).toBeGreaterThan(0);
     expect(

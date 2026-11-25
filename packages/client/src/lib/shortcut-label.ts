@@ -38,7 +38,6 @@ export type EditorShortcutLabels = {
   undo: string;
   redo: string;
   palette: string;
-  reveal: string;
 };
 
 /** The chords the menu bar prints, spelled for this keyboard. */
@@ -55,7 +54,6 @@ export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
         undo: "⌘Z",
         redo: "⇧⌘Z",
         palette: "⌘K",
-        reveal: "⌘B",
       }
     : {
         copy: "Ctrl+C",
@@ -68,7 +66,6 @@ export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
         undo: "Ctrl+Z",
         redo: "Ctrl+Shift+Z",
         palette: "Ctrl+K",
-        reveal: "Ctrl+B",
       };
 }
 
@@ -130,7 +127,6 @@ export function shortcutReference(
         { label: "Run draft", keys: [keys.run] },
         { label: "Undo", keys: [keys.undo] },
         { label: "Redo", keys: [keys.redo] },
-        { label: "Open or close Canvas Reveal", keys: [keys.reveal] },
         {
           label: "Collapse or show the outline",
           keys: [COLUMN_SHORTCUT_KEYS.outline],
@@ -139,7 +135,7 @@ export function shortcutReference(
           label: "Collapse or show details",
           keys: [COLUMN_SHORTCUT_KEYS.details],
         },
-        { label: "Go back one level in Canvas Reveal", keys: ["Esc"] },
+        { label: "Go back in details", keys: ["Esc"] },
       ],
     },
     {

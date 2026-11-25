@@ -8,7 +8,23 @@ import {
   RouterProvider,
   type SearchSchemaInput,
 } from "@tanstack/react-router";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import {
+  WorkflowIssuesOverlay,
+  type WorkflowIssuesOverlayInput,
+} from "#src/components/overlays/workflow-issues-overlay";
+import { OverlayContainer } from "#src/components/overlays/overlay-container";
+import { useGoToStep } from "#src/hooks/use-workflow-issues";
+import {
+  groupWorkflowIssuesForOverlay,
+  type WorkflowIssue,
+} from "@wfgraph/shared/graph/workflow-issues";
 import { ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import {
   createStore,
@@ -16,7 +32,7 @@ import {
   useAtomValue,
   useSetAtom,
 } from "jotai";
-import { type CSSProperties, type ReactNode, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
@@ -24,19 +40,12 @@ import {
   OverlayProvider,
   useOverlay,
 } from "#src/components/overlays/overlay-provider";
-import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
+import { DetailsPanel } from "#src/components/workflow/details/details-panel";
 import { canvasRevealAtom } from "#src/components/workflow/canvas-reveal/canvas-reveal-state";
 import {
   type RevealKind,
   revealKind,
 } from "#src/components/workflow/canvas-reveal/reveal-kinds";
-import {
-  requestRevealEditFocusAtom,
-  revealResizeSequenceAtom,
-} from "#src/components/workflow/canvas-reveal/reveal-requests";
-import { KEYBOARD_RESIZE_SETTLE_MS } from "#src/components/workflow/canvas-reveal/reveal-resize-handle";
-import { rememberedRevealWidthAtom } from "#src/components/workflow/canvas-reveal/reveal-width-preference";
-import { useRevealOccupiedWidth } from "#src/components/workflow/canvas-reveal/use-reveal-width";
 import { WorkflowContextMenu } from "#src/components/workflow/workflow-context-menu";
 import {
   installAuthorizationGrantsForTests,
@@ -45,7 +54,6 @@ import {
 import { historyAtom } from "#src/lib/workflow-graph-cells";
 import {
   addNodeAtom,
-  clearSelectionAtom,
   displayNodesAtom,
   executionOverlayGraphAtom,
   loadWorkflowGraphAtom,
@@ -180,6 +188,47 @@ const NODES: WorkflowNode[] = [
   }),
 ];
 
+/**
+ * A stand-in canvas with a Publish button that opens the issues list a blocked
+ * Publish opens, wired to the editor's own Go to step, and the container that
+ * draws the list.
+ */
+function PublishBlockedCanvas() {
+  const { open } = useOverlay();
+  const goToStep = useGoToStep();
+  const issues = useAtomValue(workflowIssuesAtom);
+  return (
+    <div data-testid="workflow-canvas">
+      <div className="react-flow__node" data-id="send" tabIndex={0}>
+        Send reminder card
+      </div>
+      <button
+        onClick={() =>
+          open<WorkflowIssuesOverlayInput>(WorkflowIssuesOverlay, {
+            issues: groupWorkflowIssuesForOverlay(issues),
+            trigger: "publish",
+            onGoToStep: goToStep,
+          })
+        }
+        type="button"
+      >
+        Publish
+      </button>
+      <OverlayContainer />
+    </div>
+  );
+}
+
+const SEND_TO_MISSING: WorkflowIssue = {
+  kind: "missing_required_field",
+  severity: "blocking",
+  nodeId: "send",
+  nodeLabel: "Send reminder",
+  fieldKey: "to",
+  fieldLabel: "To",
+  message: "To is required.",
+};
+
 /** Says whether any overlay, such as the configuration sheet, is open. */
 function OverlayProbe() {
   const { hasOverlays } = useOverlay();
@@ -204,17 +253,6 @@ function FakeCanvas() {
       </div>
     </div>
   );
-}
-
-/**
- * A canvas box publishing `--reveal-occupied-width`, the value the canvas
- * overlays beside open Reveal read, as the editor canvas publishes it.
- */
-function OccupiedWidthCanvas() {
-  const style: CSSProperties & Record<"--reveal-occupied-width", string> = {
-    "--reveal-occupied-width": `${useRevealOccupiedWidth()}px`,
-  };
-  return <div data-testid="workflow-canvas" style={style} />;
 }
 
 /**
@@ -294,7 +332,7 @@ async function renderReveal(
     component: () => (
       <div className="relative" data-testid="canvas-area">
         <Canvas />
-        <CanvasReveal />
+        <DetailsPanel />
         <OverlayProbe />
       </div>
     ),
@@ -338,7 +376,7 @@ async function renderReveal(
   );
   await view.findByTestId("canvas-area");
   const aside = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="canvas-reveal"]');
+    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
   const level = () => aside()?.dataset.level;
   const select = async (nodeId: string) => {
     await act(async () => {
@@ -400,37 +438,13 @@ afterEach(() => {
   resetAuthorizationGrantsForTests();
 });
 
-describe("Canvas Reveal presentation states", () => {
-  it("rests closed and offers no resize control", async () => {
-    const { view, level } = await renderReveal();
-    expect(level()).toBe("closed");
-    expect(view.queryByRole("separator")).toBeNull();
-    expect(view.queryByLabelText("Open inspector")).toBeNull();
-  });
-
-  it("publishes the width open Canvas Reveal covers on the canvas box", async () => {
-    const { view, select } = await renderReveal(
-      {},
-      { canvas: OccupiedWidthCanvas }
-    );
-    const occupied = () =>
-      view
-        .getByTestId("workflow-canvas")
-        .style.getPropertyValue("--reveal-occupied-width");
-    expect(occupied()).toBe("0px");
-
-    await select("send");
-
-    await waitFor(() => expect(occupied()).toMatch(/^[1-9]\d*px$/));
-  });
-
+describe("details panel presentation states", () => {
   it("opens an Action's editor with the workspace, step, path, and status", async () => {
     const { view, level, select, store } = await renderReveal();
     await select("send");
 
     expect(level()).toBe("browse");
     const region = view.getByRole("complementary", { name: "Step inspector" });
-    expect(region.textContent).toContain("Draft");
     expect(view.getByRole("heading", { name: "Send reminder" })).toBeTruthy();
     expect(region.querySelector("[data-slot=reveal-path]")?.textContent).toBe(
       "Appointment reminders › Send reminder"
@@ -523,7 +537,7 @@ describe("Canvas Reveal presentation states", () => {
   });
 });
 
-describe("Canvas Reveal editing", () => {
+describe("details panel editing", () => {
   it("writes label and description edits to the draft in one autosave", async () => {
     const { view, store, update, select, level } = await renderReveal();
     await select("send");
@@ -592,242 +606,8 @@ describe("Canvas Reveal editing", () => {
   });
 });
 
-describe("Canvas Reveal resizing", () => {
-  const handle = (view: Awaited<ReturnType<typeof renderReveal>>["view"]) =>
-    view.getByRole("separator", { name: "Resize inspector" });
-  const shownWidth = (aside: HTMLElement | null) =>
-    Number.parseFloat(aside?.style.width ?? "");
-  const press = async (separator: HTMLElement, key: string) => {
-    await act(async () => {
-      fireEvent.keyDown(separator, { key });
-      fireEvent.keyUp(separator, { key });
-    });
-  };
-  /** Wait past the pause that finishes a keyboard resize. */
-  const settleKeyResize = async () => {
-    await act(async () => {
-      await new Promise((resolve) =>
-        setTimeout(resolve, KEYBOARD_RESIZE_SETTLE_MS + 50)
-      );
-    });
-  };
-
-  it("resizes from the keyboard in 16 px steps within its range", async () => {
-    const { view, store, aside, select } = await renderReveal(
-      {},
-      { canvasWidth: 1440 }
-    );
-    await select("send");
-    const separator = handle(view);
-
-    // A 1440px canvas gives a standard inspector 720px by default, and at
-    // most the canvas less 256px and the 8px inset.
-    expect(separator.getAttribute("aria-orientation")).toBe("vertical");
-    expect(separator.getAttribute("aria-valuenow")).toBe("720");
-    expect(separator.getAttribute("aria-valuemin")).toBe("480");
-    expect(separator.getAttribute("aria-valuemax")).toBe(String(1440 - 264));
-    expect(separator.tabIndex).toBe(0);
-
-    await press(separator, "ArrowLeft");
-    expect(separator.getAttribute("aria-valuenow")).toBe("736");
-    expect(shownWidth(aside())).toBe(736);
-    await press(separator, "ArrowRight");
-    await press(separator, "ArrowRight");
-    expect(separator.getAttribute("aria-valuenow")).toBe("704");
-    await press(separator, "End");
-    expect(shownWidth(aside())).toBe(1440 - 264);
-    await press(separator, "Home");
-    expect(shownWidth(aside())).toBe(480);
-    await settleKeyResize();
-    expect(store.get(revealResizeSequenceAtom)).toBe(1);
-
-    // Pressing Home again changes nothing, so nothing is placed again.
-    await press(separator, "Home");
-    await settleKeyResize();
-    expect(store.get(revealResizeSequenceAtom)).toBe(1);
-  });
-
-  it("finishes quick key presses as one resize after the last release", async () => {
-    const { view, store, aside, select } = await renderReveal(
-      {},
-      { canvasWidth: 1440 }
-    );
-    await select("send");
-    const separator = handle(view);
-
-    for (let count = 0; count < 20; count += 1) {
-      await press(separator, "ArrowLeft");
-    }
-    expect(shownWidth(aside())).toBe(720 + 20 * 16);
-    expect(store.get(revealResizeSequenceAtom)).toBe(0);
-
-    // A key held down repeats without a release, so the resize waits for it.
-    await act(async () => {
-      fireEvent.keyDown(separator, { key: "ArrowRight" });
-    });
-    await settleKeyResize();
-    expect(store.get(revealResizeSequenceAtom)).toBe(0);
-
-    await act(async () => {
-      fireEvent.keyUp(separator, { key: "ArrowRight" });
-    });
-    await settleKeyResize();
-    expect(store.get(revealResizeSequenceAtom)).toBe(1);
-    expect(store.get(rememberedRevealWidthAtom)).toBe(720 + 19 * 16);
-  });
-
-  it("finishes a keyboard resize once when focus leaves the handle", async () => {
-    const { view, store, select } = await renderReveal(
-      {},
-      { canvasWidth: 1440 }
-    );
-    await select("send");
-    const separator = handle(view);
-
-    for (let count = 0; count < 5; count += 1) {
-      await press(separator, "ArrowLeft");
-    }
-    await act(async () => {
-      fireEvent.blur(separator);
-    });
-    expect(store.get(revealResizeSequenceAtom)).toBe(1);
-    await settleKeyResize();
-    expect(store.get(revealResizeSequenceAtom)).toBe(1);
-  });
-
-  it("shares one remembered width between a step and a Condition", async () => {
-    const { view, store, aside, select } = await renderReveal(
-      {},
-      { canvasWidth: 1440 }
-    );
-    await select("send");
-    await act(async () => {
-      fireEvent.keyDown(handle(view), { key: "ArrowLeft" });
-      fireEvent.keyUp(handle(view), { key: "ArrowLeft" });
-    });
-    expect(shownWidth(aside())).toBe(736);
-
-    await select("condition");
-    expect(shownWidth(aside())).toBe(736);
-    await act(async () => {
-      fireEvent.keyDown(handle(view), { key: "Home" });
-      fireEvent.keyUp(handle(view), { key: "Home" });
-    });
-    expect(store.get(rememberedRevealWidthAtom)).toBe(480);
-  });
-
-  it("shares a manually chosen width across selected nodes", async () => {
-    const { view, aside, select } = await renderReveal(
-      {},
-      { canvasWidth: 1440 }
-    );
-    await select("send");
-    await press(handle(view), "ArrowLeft");
-    expect(shownWidth(aside())).toBe(736);
-
-    await select("lifecycle");
-    expect(shownWidth(aside())).toBe(736);
-
-    await press(handle(view), "ArrowLeft");
-    expect(shownWidth(aside())).toBe(752);
-    await select("wait");
-    expect(shownWidth(aside())).toBe(752);
-  });
-
-  it("follows a drag and places the subject once when it ends", async () => {
-    const { view, store, aside, select } = await renderReveal(
-      {},
-      { canvasWidth: 1440 }
-    );
-    await select("send");
-    const separator = handle(view);
-
-    await act(async () => {
-      fireEvent.pointerDown(separator, {
-        button: 0,
-        clientX: 600,
-        pointerId: 1,
-      });
-    });
-    await act(async () => {
-      fireEvent.pointerMove(separator, { clientX: 560, pointerId: 1 });
-    });
-    expect(shownWidth(aside())).toBe(760);
-    await act(async () => {
-      fireEvent.pointerMove(separator, { clientX: 500, pointerId: 1 });
-    });
-    expect(shownWidth(aside())).toBe(820);
-    expect(store.get(revealResizeSequenceAtom)).toBe(0);
-
-    await act(async () => {
-      fireEvent.pointerUp(separator, { clientX: 500, pointerId: 1 });
-    });
-    expect(store.get(revealResizeSequenceAtom)).toBe(1);
-    expect(store.get(rememberedRevealWidthAtom)).toBe(820);
-    await settleKeyResize();
-    expect(store.get(revealResizeSequenceAtom)).toBe(1);
-  });
-
-  it("resets the level's width to its default on double-click", async () => {
-    const { view, store, aside, select } = await renderReveal(
-      {},
-      { canvasWidth: 1440 }
-    );
-    await select("send");
-    await act(async () => {
-      fireEvent.keyDown(handle(view), { key: "End" });
-      fireEvent.keyUp(handle(view), { key: "End" });
-    });
-    expect(shownWidth(aside())).toBe(1440 - 264);
-
-    await act(async () => {
-      fireEvent.doubleClick(handle(view));
-    });
-    expect(shownWidth(aside())).toBe(720);
-    expect(store.get(rememberedRevealWidthAtom)).toBeUndefined();
-    expect(store.get(revealResizeSequenceAtom)).toBe(1);
-    await settleKeyResize();
-    expect(store.get(revealResizeSequenceAtom)).toBe(1);
-  });
-
-  it("offers no handle on a canvas narrower than 1024 px", async () => {
-    const { view, level, select } = await renderReveal(
-      {},
-      { canvasWidth: 1000 }
-    );
-    await select("send");
-    expect(level()).toBe("browse");
-    expect(view.queryByRole("separator")).toBeNull();
-  });
-
-  it("never moves, dirties, or records history while resizing", async () => {
-    const { view, store, select } = await renderReveal(
-      {},
-      { canvasWidth: 1440 }
-    );
-    const positions = store.get(nodesAtom).map((item) => item.position);
-    await select("send");
-    await act(async () => {
-      fireEvent.pointerDown(handle(view), {
-        button: 0,
-        clientX: 600,
-        pointerId: 1,
-      });
-      fireEvent.pointerMove(handle(view), { clientX: 520, pointerId: 1 });
-      fireEvent.pointerUp(handle(view), { clientX: 520, pointerId: 1 });
-      fireEvent.doubleClick(handle(view));
-    });
-
-    expect(store.get(nodesAtom).map((item) => item.position)).toEqual(
-      positions
-    );
-    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
-    expect(store.get(historyAtom)).toEqual([]);
-  });
-});
-
-describe("Canvas Reveal keyboard and focus", () => {
-  it("leaves focus on the canvas object and closes on one Escape, returning focus there", async () => {
+describe("details panel keyboard and focus", () => {
+  it("leaves focus on the canvas object, and Escape in the details hands it back there", async () => {
     const { view, store, select, escape, level } = await renderReveal();
     const card = view.getByText("Send reminder card");
     card.focus();
@@ -835,58 +615,15 @@ describe("Canvas Reveal keyboard and focus", () => {
     expect(level()).toBe("browse");
     expect(document.activeElement).toBe(card);
 
-    await escape();
-    expect(level()).toBe("closed");
+    const label = view.getByLabelText("Label");
+    label.focus();
+    await escape(label);
+    expect(level()).toBe("browse");
     expect(document.activeElement).toBe(card);
     expect(store.get(activeSelectionAtom)).toEqual({
       nodeIds: ["send"],
       edgeIds: [],
     });
-  });
-
-  it("moves focus without scrolling while Reveal slides in and out", async () => {
-    // A focus that scrolls reaches for Reveal while it still sits past the
-    // canvas edge and drags the editor shell sideways, toolbar and all. happy-dom
-    // does not scroll, so this holds the two things that prevent it: every focus
-    // Reveal moves passes `preventScroll`, and Reveal clips its overflow.
-    const { view, store, escape, level, aside } = await renderReveal();
-    const card = view.getByText("Send reminder card");
-    card.focus();
-    const focus = vi.spyOn(HTMLElement.prototype, "focus");
-    try {
-      await act(async () => {
-        store.set(addNodeAtom, node("new", "", {}));
-      });
-      expect(level()).toBe("browse");
-      const search = view.getByPlaceholderText("Search actions...");
-      expect(document.activeElement).toBe(search);
-
-      await escape();
-      expect(level()).toBe("closed");
-
-      await act(async () => {
-        store.set(selectOnlyNodeAtom, "send");
-        store.set(requestRevealEditFocusAtom, {
-          nodeId: "send",
-          targetId: "label",
-        });
-      });
-      await waitFor(() =>
-        expect(document.activeElement).toBe(view.getByLabelText("Label"))
-      );
-      await escape();
-      expect(level()).toBe("closed");
-      expect(document.activeElement).toBe(card);
-
-      expect(focus.mock.calls.length).toBeGreaterThanOrEqual(4);
-      for (const call of focus.mock.calls) {
-        expect(call).toEqual([{ preventScroll: true }]);
-      }
-    } finally {
-      focus.mockRestore();
-    }
-    expect(aside()?.classList.contains("overflow-clip")).toBe(true);
-    expect(aside()?.classList.contains("overflow-hidden")).toBe(false);
   });
 
   it("offers Back only where a jump began, and Back returns there", async () => {
@@ -903,6 +640,7 @@ describe("Canvas Reveal keyboard and focus", () => {
 
   it("runs the kind's own unwind for both Back and Escape", async () => {
     const { view, store, escape, level } = await renderReveal();
+    const card = view.getByText("Send reminder card");
     await openFromOrigin(store, { nodeId: "send", originId: "wait" });
     const { subject } = store.get(canvasRevealAtom);
     if (!subject) {
@@ -919,8 +657,9 @@ describe("Canvas Reveal keyboard and focus", () => {
     const unwind = vi.fn<NonNullable<RevealKind["unwind"]>>();
     kind.unwind = unwind;
     try {
-      fireEvent.click(view.getByRole("button", { name: "Back" }));
-      await escape();
+      const back = view.getByRole("button", { name: "Back" });
+      fireEvent.click(back);
+      await escape(back);
       expect(level()).toBe("browse");
       expect(unwind).toHaveBeenCalledTimes(2);
       expect(unwind.mock.calls.map(([input]) => input.level)).toEqual([
@@ -932,28 +671,11 @@ describe("Canvas Reveal keyboard and focus", () => {
       await act(async () => {
         unwind.mock.calls[1]?.[0].unwindLevel();
       });
-      expect(level()).toBe("closed");
+      expect(level()).toBe("browse");
+      expect(document.activeElement).toBe(card);
     } finally {
       kind.unwind = ownUnwind;
     }
-  });
-
-  it("reopens a closed Reveal from a selection and from its chevron", async () => {
-    const { view, store, select, level } = await renderReveal();
-    await select("send");
-    fireEvent.click(view.getByRole("button", { name: "Close" }));
-    expect(level()).toBe("closed");
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["send"]);
-
-    await act(async () => {
-      store.set(clearSelectionAtom);
-    });
-    await select("wait");
-    expect(level()).toBe("browse");
-
-    fireEvent.click(view.getByRole("button", { name: "Close" }));
-    fireEvent.click(view.getByLabelText("Open inspector"));
-    expect(level()).toBe("browse");
   });
 
   it("opens the one level for a Focus level remembered from before", async () => {
@@ -969,17 +691,18 @@ describe("Canvas Reveal keyboard and focus", () => {
   });
 
   it("leaves Escape to a control that holds a popup open", async () => {
-    const { view, select, escape, level } = await renderReveal();
+    const { view, select, escape } = await renderReveal();
     await select("send");
     const label = view.getByLabelText("Label");
     label.setAttribute("aria-expanded", "true");
 
+    label.focus();
     await escape(label);
-    expect(level()).toBe("browse");
+    expect(document.activeElement).toBe(label);
 
     label.removeAttribute("aria-expanded");
     await escape(label);
-    expect(level()).toBe("closed");
+    expect(document.activeElement).toBe(view.getByText("Send reminder card"));
   });
 
   it("leaves Escape to an open Select in the editor", async () => {
@@ -1006,7 +729,7 @@ describe("Canvas Reveal keyboard and focus", () => {
   });
 });
 
-describe("Canvas Reveal navigation state", () => {
+describe("details panel navigation state", () => {
   it("restores the open inspector, step, and inspector scroll per scope", async () => {
     const { store, select, aside, level } = await renderReveal();
     await select("send");
@@ -1036,54 +759,7 @@ describe("Canvas Reveal navigation state", () => {
   });
 });
 
-describe("Canvas Reveal in Runs", () => {
-  async function renderRuns() {
-    const rendered = await renderReveal({
-      view: "runs",
-      executionId: "exec_1",
-    });
-    await act(async () => {
-      rendered.store.set(executionOverlayGraphAtom, {
-        nodes: [NODES[0]],
-        edges: [],
-      });
-    });
-    return rendered;
-  }
-
-  it("closes and reopens Canvas Reveal in Runs from the header and Cmd+B, keeping the run", async () => {
-    const { view, store, router, level } = await renderRuns();
-    await waitFor(() => expect(level()).toBe("browse"));
-
-    fireEvent.click(view.getByRole("button", { name: "Close" }));
-    expect(level()).toBe("closed");
-    expect(store.get(workflowWorkspaceViewAtom)).toBe("runs");
-
-    await act(async () => {
-      fireEvent.keyDown(window, { key: "b", metaKey: true });
-    });
-    expect(level()).toBe("browse");
-    await act(async () => {
-      fireEvent.keyDown(window, { key: "b", metaKey: true });
-    });
-    expect(level()).toBe("closed");
-    expect(router.state.location.search).toEqual({
-      view: "runs",
-      executionId: "exec_1",
-    });
-  });
-
-  it("keeps the closed panel mounted and inert", async () => {
-    const { view, aside, level } = await renderRuns();
-    await waitFor(() => expect(level()).toBe("browse"));
-    fireEvent.click(view.getByRole("button", { name: "Close" }));
-
-    expect(aside()?.hasAttribute("inert")).toBe(true);
-    expect(aside()?.querySelector('[data-testid="runs-browse"]')).toBeTruthy();
-  });
-});
-
-describe("Canvas Reveal on a narrow viewport", () => {
+describe("details panel on a narrow viewport", () => {
   afterEach(() => setViewportWidth(1440));
 
   it("leaves a selected Draft step to the mobile Reveal sequence", async () => {
@@ -1095,24 +771,29 @@ describe("Canvas Reveal on a narrow viewport", () => {
   });
 });
 
-describe("Canvas Reveal over a React Flow canvas", () => {
+describe("details panel over a React Flow canvas", () => {
   const flow = { canvas: FlowCanvas };
 
-  it("keeps the step when Backspace or Delete is pressed on a control inside Reveal", async () => {
+  it("keeps the step when Backspace or Delete is pressed on a control inside the details", async () => {
     const { view, store, select } = await renderReveal({}, flow);
     await select("send");
-    const close = view.getByRole("button", { name: "Close" });
-    close.focus();
+    const control = view.container.querySelector<HTMLElement>(
+      '[data-slot="reveal-title"]'
+    );
+    if (!control) {
+      throw new Error("the details title did not render");
+    }
+    control.focus();
 
     await act(async () => {
-      fireEvent.keyDown(close, { key: "Backspace", bubbles: true });
-      fireEvent.keyDown(close, { key: "Delete", bubbles: true });
+      fireEvent.keyDown(control, { key: "Backspace", bubbles: true });
+      fireEvent.keyDown(control, { key: "Delete", bubbles: true });
     });
 
     expect(store.get(nodesAtom).some((item) => item.id === "send")).toBe(true);
   });
 
-  it("closes on Escape from the focused node and keeps its selection", async () => {
+  it("leaves Escape on the focused node to the canvas, which deselects it", async () => {
     const { view, store, select, level } = await renderReveal({}, flow);
     await select("send");
     const card = await waitFor(() => {
@@ -1130,8 +811,12 @@ describe("Canvas Reveal over a React Flow canvas", () => {
       fireEvent.keyDown(card, { key: "Escape", bubbles: true });
     });
 
-    expect(level()).toBe("closed");
-    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["send"]);
+    // The details column stays where it is and shows the workflow.
+    expect(level()).toBe("browse");
+    expect(
+      view.getByRole("complementary", { name: "Workflow details" })
+    ).toBeTruthy();
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual([]);
   });
 
   it("leaves Escape to an open canvas context menu", async () => {
@@ -1147,10 +832,12 @@ describe("Canvas Reveal over a React Flow canvas", () => {
   });
 });
 
-describe("Canvas Reveal edit focus", () => {
+describe("details panel edit focus", () => {
   it("opens the step from the context menu's Edit with focus in its label", async () => {
     const { view, level } = await renderReveal({}, { canvas: FlowCanvas });
-    expect(level()).toBe("closed");
+    expect(
+      view.getByRole("complementary", { name: "Workflow details" })
+    ).toBeTruthy();
 
     fireEvent.click(view.getByRole("button", { name: "Open step menu" }));
     fireEvent.click(
@@ -1179,9 +866,9 @@ describe("Canvas Reveal edit focus", () => {
   });
 });
 
-describe("Canvas Reveal subjects and focus return", () => {
-  it("returns focus to the node that opened the current subject", async () => {
-    const { view, store, escape, level } = await renderReveal();
+describe("details panel subjects and focus return", () => {
+  it("hands focus to the selected node on Escape when it has none to step back to", async () => {
+    const { view, store, escape } = await renderReveal();
     const canvas = view.getByTestId("workflow-canvas");
     const second = document.createElement("div");
     second.className = "react-flow__node";
@@ -1189,37 +876,21 @@ describe("Canvas Reveal subjects and focus return", () => {
     second.tabIndex = 0;
     canvas.append(second);
 
-    view.getByText("Send reminder card").focus();
-    await act(async () => {
-      store.set(selectOnlyNodeAtom, "send");
-    });
-    second.focus();
     await act(async () => {
       store.set(selectOnlyNodeAtom, "wait");
     });
-
-    view.getByRole("button", { name: "Close" }).focus();
-    await escape();
-    expect(level()).toBe("closed");
+    const title = view.container.querySelector<HTMLElement>(
+      '[data-slot="reveal-title"]'
+    );
+    if (!title) {
+      throw new Error("the details title did not render");
+    }
+    title.focus();
+    await escape(title);
     expect(document.activeElement).toBe(second);
   });
 
-  it("falls back to the subject's node when the opener is gone", async () => {
-    const { view, store, level } = await renderReveal();
-    const opener = document.createElement("button");
-    view.getByTestId("workflow-canvas").append(opener);
-    opener.focus();
-    await act(async () => {
-      store.set(selectOnlyNodeAtom, "send");
-    });
-    opener.remove();
-
-    fireEvent.click(view.getByRole("button", { name: "Close" }));
-    expect(level()).toBe("closed");
-    expect(document.activeElement).toBe(view.getByText("Send reminder card"));
-  });
-
-  it("gives the run list a header with its title and Close and no Back", async () => {
+  it("gives the run list a header with its title and no Back", async () => {
     const { view, store, level } = await renderReveal({ view: "runs" });
     await act(async () => {
       store.set(executionOverlayGraphAtom, { nodes: [NODES[0]], edges: [] });
@@ -1227,7 +898,6 @@ describe("Canvas Reveal subjects and focus return", () => {
     await waitFor(() => expect(level()).toBe("browse"));
 
     expect(view.getByRole("heading", { name: "Runs" })).toBeTruthy();
-    expect(view.getByRole("button", { name: "Close" })).toBeTruthy();
     expect(view.queryByRole("button", { name: "Back" })).toBeNull();
   });
 
@@ -1294,5 +964,56 @@ describe("Template field Escape", () => {
     expect(
       document.querySelector('[data-slot="template-autocomplete"]')
     ).toBeNull();
+  });
+});
+
+describe("details panel with nothing selected", () => {
+  it("shows the workflow's details and issues, and Edit opens the step at its field", async () => {
+    const { view, store } = await renderReveal();
+    await act(async () => {
+      store.set(workflowIssuesAtom, [SEND_TO_MISSING]);
+    });
+
+    const panel = view.getByRole("complementary", { name: "Workflow details" });
+    expect(
+      within(panel).getByRole("heading", { name: "Appointment reminders" })
+    ).toBeTruthy();
+    expect(panel.textContent).toContain("To is required.");
+
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Edit Send reminder" })
+    );
+
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["send"]);
+    expect(
+      view.getByRole("complementary", { name: "Step inspector" })
+    ).toBeTruthy();
+    await waitFor(() => expect(document.activeElement?.id).toBe("to"));
+  });
+
+  it("opens the step at its field from Edit in the issues list a blocked Publish opens", async () => {
+    const { view, store } = await renderReveal(
+      {},
+      { canvas: PublishBlockedCanvas }
+    );
+    await act(async () => {
+      store.set(workflowIssuesAtom, [SEND_TO_MISSING]);
+    });
+    const publish = view.getByRole("button", { name: "Publish" });
+    publish.focus();
+    fireEvent.click(publish);
+    const edit = await view.findByRole("button", {
+      name: "Edit To in Send reminder",
+    });
+    expect(view.getByTestId("overlay-open")).toBeTruthy();
+
+    fireEvent.click(edit);
+
+    await waitFor(() => expect(view.queryByTestId("overlay-open")).toBeNull());
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["send"]);
+    expect(
+      view.getByRole("complementary", { name: "Step inspector" })
+    ).toBeTruthy();
+    await waitFor(() => expect(document.activeElement?.id).toBe("to"));
   });
 });

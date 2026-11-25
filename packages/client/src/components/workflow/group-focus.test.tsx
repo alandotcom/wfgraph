@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
-import { CanvasReveal } from "#src/components/workflow/canvas-reveal/canvas-reveal";
+import { DetailsPanel } from "#src/components/workflow/details/details-panel";
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
 import { useAddStep } from "#src/components/workflow/use-add-step";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
@@ -214,7 +214,7 @@ async function renderEditor(
         <WorkspaceRouteSync />
         <RunStatusProjection />
         <WorkflowCanvas canEdit={options.canEdit ?? true} />
-        {options.reveal === false ? null : <CanvasReveal />}
+        {options.reveal === false ? null : <DetailsPanel />}
         <Probe />
       </div>
     ),
@@ -254,7 +254,7 @@ async function renderEditor(
       (element) => element.dataset.id
     );
   const reveal = () =>
-    view.container.querySelector<HTMLElement>('[data-slot="canvas-reveal"]');
+    view.container.querySelector<HTMLElement>('[data-slot="details-panel"]');
   const select = async (nodeId: string) => {
     await act(async () => {
       store.set(selectOnlyNodeAtom, nodeId);
@@ -297,7 +297,7 @@ describe("canvas selection", () => {
   });
 
   it("drags a step without selecting it, opening Reveal, or moving the camera", async () => {
-    const { store, view, reveal } = await renderEditor();
+    const { store, view } = await renderEditor();
     const card = view.container.querySelector<HTMLElement>(
       '.react-flow__node[data-id="qualify"]'
     );
@@ -340,7 +340,9 @@ describe("canvas selection", () => {
       nodeIds: [],
       edgeIds: [],
     });
-    expect(reveal()?.dataset.level).toBe("closed");
+    expect(
+      view.queryByRole("complementary", { name: "Step inspector" })
+    ).toBeNull();
     expect(cameraChanges).toEqual([]);
     expect(
       store.get(nodesAtom).find((node) => node.id === "qualify")?.position
@@ -494,7 +496,7 @@ describe("canvas Delete gesture", () => {
       expect(store.get(activeSelectionAtom).nodeIds).toEqual(["qualify"])
     );
     await waitFor(() => expect(reveal()?.dataset.level).toBe("browse"));
-    view.getByRole("button", { name: "Close" }).focus();
+    reveal()?.querySelector<HTMLElement>('[data-slot="reveal-title"]')?.focus();
 
     const focusedControl = document.activeElement;
     expect(reveal()?.contains(focusedControl)).toBe(true);
@@ -714,8 +716,8 @@ describe("the collapsed Group overview", () => {
     expect(renderedNodeIds()).not.toContain("welcome");
   });
 
-  it.each(["browse", "closed"] as const)(
-    "Edit Group opens the editing form from %s",
+  it.each(["browse", "focus"] as const)(
+    "Edit Group opens the editing form from a stored %s level",
     async (level) => {
       const { view, store, select, reveal, search } = await renderEditor();
       await select("outreach");
@@ -1270,7 +1272,7 @@ describe("the collapsed Group overview", () => {
 
 describe("the focused Group canvas", () => {
   it("enters with a pushed route, shows members and stubs, and inspects a child", async () => {
-    const { view, store, router, search, select, renderedNodeIds, reveal } =
+    const { view, store, router, search, select, renderedNodeIds } =
       await renderEditor();
     await select("outreach");
 
@@ -1292,7 +1294,9 @@ describe("the focused Group canvas", () => {
     expect(
       view.getByRole("navigation", { name: "Group" }).textContent
     ).toContain("Initial outreach");
-    expect(reveal()?.dataset.level).toBe("closed");
+    expect(
+      view.queryByRole("complementary", { name: "Step inspector" })
+    ).toBeNull();
 
     await select("case_study");
     const region = view.getByRole("complementary", { name: "Step inspector" });

@@ -126,7 +126,7 @@ export function useLifecycleSection(nodeId: string): {
 }
 
 /**
- * The section of the Lifecycle Node `nodeId` that desktop Canvas Reveal has
+ * The section of the Lifecycle Node `nodeId` that the details column has
  * open for editing in place, or null while every section shows its summary.
  * `open` and `close` record the change on the active scope.
  */
@@ -153,7 +153,7 @@ export function useLifecycleOpenSection(nodeId: string): {
 
 /**
  * The section of the Lifecycle Node `nodeId` that `presentation` records as
- * open for editing in desktop Canvas Reveal, or null for none.
+ * open for editing in the details column, or null for none.
  */
 export function lifecycleOpenSection(
   presentation: DesktopScopePresentation,
