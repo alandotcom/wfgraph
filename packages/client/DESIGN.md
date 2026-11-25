@@ -760,8 +760,8 @@ changed". The canvas holds no selection. Pointing at or focusing an edit puts
 the selection halo on its card, and on its Group's card when the step sits in
 a collapsed Group, with no camera move. **Show on canvas** places the step
 once beside the sheet, entering its Group when it sits inside one. Pressing a
-changed card scrolls the sheet to its edit, and pressing a Group card scrolls
-to the first changed step inside it. **Keep editing**, **Close**, or Escape
+changed card scrolls the sheet to its edit and moves focus to the edit's title,
+and pressing a Group card does the same for the first changed step inside it. **Keep editing**, **Close**, or Escape
 return the canvas to editing. Opening or closing the sheet never moves the
 camera, runs layout, moves a node, or marks the draft changed. A link naming
 the Changes view the editor once had, or `review=true`, opens Draft and runs the Publish path once the draft is

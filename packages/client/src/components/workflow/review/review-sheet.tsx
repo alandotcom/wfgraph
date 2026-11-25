@@ -109,7 +109,7 @@ export function ReviewSheet() {
     titleRef.current?.focus({ preventScroll: true });
   });
 
-  useReviewScroll(scrollRef);
+  useReviewScroll(scrollRef, titleRef);
 
   if (shown === null) return null;
 
@@ -184,9 +184,15 @@ export function ReviewSheet() {
 }
 
 /**
- * Scroll the edit of a card pressed on the canvas into view, once per press.
+ * Scroll the edit of a card pressed on the canvas into view, once per press,
+ * and move focus to that edit's title, or to the sheet's title when the card
+ * has no edit. The press itself leaves focus on the canvas or the page, where
+ * the sheet's Escape and Cmd+Enter do not reach.
  */
-function useReviewScroll(scrollRef: RefObject<HTMLDivElement | null>) {
+function useReviewScroll(
+  scrollRef: RefObject<HTMLDivElement | null>,
+  titleRef: RefObject<HTMLHeadingElement | null>
+) {
   const request = useAtomValue(reviewScrollRequestAtom);
   useAfterPaint(request?.sequence ?? 0, () => {
     if (!request) return;
@@ -194,6 +200,10 @@ function useReviewScroll(scrollRef: RefObject<HTMLDivElement | null>) {
       `#${CSS.escape(reviewEditElementId(request.nodeId))}`
     );
     element?.scrollIntoView?.({ block: "start" });
+    const editTitle = element?.querySelector<HTMLElement>(
+      '[data-slot="review-edit-title"]'
+    );
+    (editTitle ?? titleRef.current)?.focus({ preventScroll: true });
   });
 }
 

@@ -117,7 +117,12 @@ function EditEntry({
           className="static shrink-0"
           comparison={{ kind: edit.kind }}
         />
-        <h3 className="min-w-0 truncate font-semibold text-sm">
+        {/* Takes focus when the step's card is pressed on the canvas. */}
+        <h3
+          className="min-w-0 truncate font-semibold text-sm outline-none"
+          data-slot="review-edit-title"
+          tabIndex={-1}
+        >
           <span className="sr-only">
             {COMPARISON_CHANGE_KIND_LABEL[edit.kind]}:{" "}
           </span>

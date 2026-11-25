@@ -43,6 +43,7 @@ import {
 } from "#src/lib/workflow-publication-review-store";
 import {
   openReviewPageAtom,
+  requestReviewScrollAtom,
   reviewHighlightAtom,
 } from "#src/lib/workflow-review-store";
 import {
@@ -554,6 +555,38 @@ describe("ReviewSheet", () => {
       )
     );
     expect(view.getByLabelText("overlay count").textContent).toBe("0");
+  });
+
+  // Pressing a card on the canvas leaves focus on the page, outside the
+  // sheet that listens for Escape.
+  it("moves focus to the pressed card's edit, where Escape keeps editing", async () => {
+    const view = await renderSheet();
+    const title = await view.findByRole("heading", { name: "Publish v8" });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    title.blur();
+
+    act(() => view.store.set(requestReviewScrollAtom, "remind"));
+
+    const entry = view
+      .getAllByRole("listitem")
+      .find((item) => item.dataset.editNode === "remind");
+    const editTitle = entry?.querySelector('[data-slot="review-edit-title"]');
+    await waitFor(() => expect(document.activeElement).toBe(editTitle));
+    expect(view.store.get(reviewHighlightAtom)).toBe("remind");
+
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(view.store.get(publicationReviewAtom)).toBeNull();
+  });
+
+  it("moves focus to the sheet's title when the pressed card has no edit", async () => {
+    const view = await renderSheet();
+    const title = await view.findByRole("heading", { name: "Publish v8" });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    title.blur();
+
+    act(() => view.store.set(requestReviewScrollAtom, "unchanged-step"));
+
+    await waitFor(() => expect(document.activeElement).toBe(title));
   });
 
   it("keeps editing by closing the review", async () => {
