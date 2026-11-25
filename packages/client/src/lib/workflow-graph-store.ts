@@ -109,6 +109,7 @@ export {
   displayNodesAtom,
   isExecutingAtom,
   isExecutionOverlayActiveAtom,
+  isLiveRunCanvasAtom,
   presentedGraphAtom,
   presentedGraphStructureAtom,
   projectedRunStatusAtom,

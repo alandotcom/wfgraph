@@ -106,6 +106,23 @@ export const runPathAtom = atom((get): RunPath | null => {
     : null;
 });
 
+/**
+ * Whether the canvas shows a run that is still going, read from the same logs
+ * as `runPathAtom`. Only then does a connection march, and only one the run
+ * may still take. A Draft, a comparison and an ended run hold every
+ * connection still, so motion on the canvas always means work in progress.
+ */
+export const isLiveRunCanvasAtom = atom((get) => {
+  if (
+    get(workflowWorkspaceViewAtom) !== "runs" ||
+    get(executionOverlayGraphAtom) === null
+  ) {
+    return false;
+  }
+  const snapshot = get(runLogsAtom);
+  return snapshot !== null && isRunInProgress(snapshot.executionStatus);
+});
+
 /** The run evidence status of each node the open run's progress names. */
 export const runNodeEvidenceStatusesAtom = atom((get) =>
   get(statusByNodeIdAtom)

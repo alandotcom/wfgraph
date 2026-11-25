@@ -21,6 +21,7 @@ import {
   deleteNodeAtom,
   deleteSelectedItemsAtom,
   canvasEdgesAtom,
+  isLiveRunCanvasAtom,
   displayNodesAtom,
   duplicateSelectionAtom,
   edgesAtom,
@@ -1618,6 +1619,29 @@ describe("run path", () => {
       "c-yes": "not-taken",
     });
     expect(store.get(canvasEdgesAtom).at(0)?.id).toBe("c-yes");
+  });
+
+  it("marches connections only on the canvas of a run in progress", () => {
+    const store = createGraphStore(...standardGraph());
+    store.set(projectRunLogsAtom, {
+      executionStatus: "running",
+      logs: [ran("t")],
+    });
+    // A Draft holds still, even while a run's logs are read.
+    expect(store.get(isLiveRunCanvasAtom)).toBe(false);
+
+    showWorkspaceRoute(store, { view: "runs" });
+    store.set(executionOverlayGraphAtom, {
+      nodes: [lifecycleNode("t"), actionNode("a")],
+      edges: [edge("t-a", "t", "a")],
+    });
+    expect(store.get(isLiveRunCanvasAtom)).toBe(true);
+
+    store.set(projectRunLogsAtom, {
+      executionStatus: "completed",
+      logs: [ran("t"), ran("a")],
+    });
+    expect(store.get(isLiveRunCanvasAtom)).toBe(false);
   });
 
   it("leaves the Draft canvas unmarked", () => {

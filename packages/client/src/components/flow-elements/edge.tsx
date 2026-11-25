@@ -4,6 +4,7 @@ import {
   type EdgeProps,
   useInternalNode,
 } from "@xyflow/react";
+import { useAtomValue } from "jotai";
 import { createContext, memo, useContext } from "react";
 import { cn } from "@wfgraph/shared/utils";
 import { resolveEdgeLabel } from "#src/components/flow-elements/edge-label";
@@ -20,6 +21,7 @@ import {
   type ComparisonEdgeAnnotation,
   type WorkflowEdge,
 } from "#src/lib/workflow-graph-types";
+import { isLiveRunCanvasAtom } from "#src/lib/workflow-graph-store";
 
 /**
  * What the + control on a connection does: put a step inside that connection.
@@ -67,6 +69,7 @@ const Animated = memo(function Animated({
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
   const insertStepOnEdge = useContext(InsertStepSlot);
+  const liveRun = useAtomValue(isLiveRunCanvasAtom);
   // A painted connection that stands for nothing stored, such as the edge to a
   // "Path ends" stub, takes no control: there is nothing to insert into.
   const insertStep = data?.insertable === false ? null : insertStepOnEdge;
@@ -99,6 +102,9 @@ const Animated = memo(function Animated({
   const runPath = data?.runPath;
   const inactive = data?.inactive === true || runPath === "not-taken";
   const taken = runPath === "taken" && !inactive;
+  // The dash marches only on the canvas of a run in progress, along a
+  // connection the run may still take. Everywhere else the wire holds still.
+  const marches = liveRun && runPath === undefined && !inactive;
   const captionMark = taken ? "taken" : runPath === "not-taken" ? runPath : null;
   const comparison = data?.[COMPARISON_EDGE_ANNOTATION];
   const comparisonStyle = comparisonEdgeStyle(comparison);
@@ -113,10 +119,10 @@ const Animated = memo(function Animated({
           ...style,
           // Selection outranks inactivity, because an inactive edge is still
           // selectable and deletable and has to show what Delete would take.
-          // Inactive is then said by the wider gap and the stopped march below,
-          // rather than by fading the wire toward the background. A taken edge
-          // is a solid Graphite Ink line that does not march, so the path a
-          // run took reads by its unbroken stroke as well as its tone.
+          // Inactive is then said by the wider dash gap rather than by fading
+          // the wire toward the background. A taken edge is a solid Graphite
+          // Ink line, so the path a run took reads by its unbroken stroke as
+          // well as its tone.
           ...comparisonStyle,
           stroke:
             selected || taken
@@ -128,10 +134,7 @@ const Animated = memo(function Animated({
           strokeDasharray:
             comparisonStyle.strokeDasharray ??
             (taken ? "none" : inactive ? "4, 8" : "5"),
-          animation:
-            inactive || taken || comparison
-              ? undefined
-              : "dashdraw 0.5s linear infinite",
+          animation: marches ? "dashdraw 0.5s linear infinite" : undefined,
         }}
       />
       {insertStep && (
