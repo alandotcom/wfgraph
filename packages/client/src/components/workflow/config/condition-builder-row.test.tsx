@@ -1216,3 +1216,47 @@ describe("ConditionBuilderRow removal", () => {
     expect(view.queryAllByRole("button", { name: /^Edit /u })).toEqual([]);
   });
 });
+
+describe("ConditionBuilderRow operator width", () => {
+  it("gives the chosen operator a column as wide as its whole label", () => {
+    const model = serializeConditionModel({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "g",
+          logic: "and",
+          conditions: [
+            {
+              id: "r",
+              field: "amount",
+              fieldType: "number",
+              operator: "greater_or_equal",
+              value: 7500,
+            },
+          ],
+        },
+      ],
+    });
+    const view = renderRow(
+      [field("amount", "Booked", { type: "number" })],
+      model
+    );
+    enterEdit(view);
+
+    const trigger = view.getByLabelText("amount operator");
+    expect(trigger.textContent).toContain("is greater than or equal");
+    // The operator's column is sized to its content in both layouts, and
+    // neither the cell nor the trigger lets the label shrink below it.
+    const rule = trigger.closest<HTMLElement>('[data-slot="condition-rule"]');
+    expect(rule?.className).toContain("grid-cols-[auto_minmax(0,1fr)_auto]");
+    expect(rule?.className).toContain(
+      "@md/rule:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]"
+    );
+    const cell = trigger.closest<HTMLElement>(
+      '[data-slot="condition-rule-operator"]'
+    );
+    expect(cell?.className ?? "").not.toContain("min-w-0");
+    expect(trigger.className).not.toContain("min-w-0");
+  });
+});

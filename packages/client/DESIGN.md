@@ -397,7 +397,9 @@ action chosen shows the action picker, and choosing an action moves focus to
 the first required field it leaves empty. A Condition's rule keeps field,
 operator, value, and remove on one line where the rule has 28rem; in a
 narrower details column the field shares the first line with remove, and the
-operator and value share the second. Selecting a
+operator and value share the second. The operator is always as wide as its
+chosen label, so "is greater than or equal" never reads as "is greater than";
+the field and the value take the width it leaves. Selecting a
 Group, by its header or its card, opens its editor: its label and description,
 the step count, each step in stored position order, the outside steps that
 enter it, the step it continues from with the Condition branch when it leaves

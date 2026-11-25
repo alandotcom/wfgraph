@@ -92,6 +92,15 @@ type ConditionBuilderRowProps = {
   disabled: boolean;
 };
 
+/**
+ * One rule's grid. The operator's column is `auto`, sized to the chosen
+ * operator's whole label, and the field and value take what it leaves. Below a
+ * 28rem rule the field and the remove button share the first line, and the
+ * operator and the value the second.
+ */
+const CONDITION_RULE_GRID_CLASS =
+  "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 @md/rule:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]";
+
 function isTimeUnitValue(value: string): value is TimeUnit {
   return TIME_UNIT_OPTIONS.some((option) => option.value === value);
 }
@@ -685,14 +694,19 @@ export function ConditionBuilderRow({
 
                   return (
                     <div className="@container/rule" key={condition.id}>
-                      {/* Where the rule has 28rem, one line per rule: the
-                          field and the value share the free width, the
-                          operator takes less, and the remove button keeps its
+                      {/* The operator's column is as wide as the chosen
+                          operator's whole label, because a clipped operator
+                          states another rule: "is greater than or equal" cut
+                          to "is greater than". Where the rule has 28rem, one
+                          line per rule: the field and the value share what
+                          the operator leaves, and the remove button keeps its
                           own slot at the end. In a narrower details column the
                           field takes the first line beside the remove button,
-                          and the operator and value share the second, so no
-                          slot shrinks past reading. */}
-                      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] items-center gap-2 @md/rule:grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,3fr)_auto]">
+                          and the operator and the value share the second. */}
+                      <div
+                        className={CONDITION_RULE_GRID_CLASS}
+                        data-slot="condition-rule"
+                      >
                         <div className="col-span-2 flex min-w-0 items-center gap-2 @md/rule:col-span-1">
                           <ConditionFieldCombobox
                             disabled={disabled || availableFields.length === 0}
@@ -761,7 +775,7 @@ export function ConditionBuilderRow({
                           )}
                         </div>
 
-                        <div className="min-w-0">
+                        <div data-slot="condition-rule-operator">
                           <Select
                             disabled={disabled}
                             items={operatorOptions}
@@ -785,7 +799,7 @@ export function ConditionBuilderRow({
                           >
                             <SelectTrigger
                               aria-label={`${conditionName} operator`}
-                              className="w-full min-w-0"
+                              className="w-full"
                             >
                               <SelectValue placeholder="Select operator" />
                             </SelectTrigger>
