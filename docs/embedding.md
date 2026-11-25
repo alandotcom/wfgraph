@@ -707,6 +707,11 @@ Each provider function takes these options:
   the variable leaves the agent off, where a blank `model` for a provider with no default
   throws when the host calls the function. `wfOpenAiCompatible` is the exception: its
   `baseUrl` turns it on, and the key is sent as a bearer token only when one is set.
+- **Any other `agent` value is refused.** A value that is neither a provider function's
+  result nor `{ runner }`, such as a plain object of `apiKey` and `model`, throws a message
+  naming the provider functions. `createWfGraphApp` throws it when it is called. `wfWorker`
+  reads `agent` from its `request` callback on each invocation, so it throws the message on
+  each request and tick.
 
 ### Run turns on your own gateway or model
 

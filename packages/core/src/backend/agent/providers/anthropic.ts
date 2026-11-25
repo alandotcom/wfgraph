@@ -1,8 +1,4 @@
-/**
- * Anthropic's Messages API as the build agent's model, for the
- * `@wfgraph/core/anthropic` entry. This is the only module that imports
- * `@effect/ai-anthropic`.
- */
+/** Anthropic's Messages API as the build agent's model, through `wfAnthropic`. */
 
 import { AnthropicClient, AnthropicLanguageModel } from "@effect/ai-anthropic";
 import { Layer } from "effect";
@@ -10,6 +6,8 @@ import { FetchHttpClient } from "effect/http";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   AGENT_OFF,
+  agentModel,
+  type AgentTurnLimitOptions,
   readMaxConcurrentTurns,
   type WfGraphAgentModel,
 } from "#src/backend/agent/config";
@@ -40,7 +38,7 @@ type AnthropicReasoningEffort = Exclude<AgentReasoningEffort, "none">;
 const DEFAULT_ANTHROPIC_REASONING_EFFORT: AnthropicReasoningEffort = "high";
 
 /** The options `wfAnthropic` takes. */
-export type AnthropicAgentOptions = {
+export type AnthropicAgentOptions = AgentTurnLimitOptions & {
   /**
    * Optional in the type so a host can pass `process.env.ANTHROPIC_API_KEY`
    * straight through; a blank one turns the agent off rather than failing the
@@ -59,11 +57,6 @@ export type AnthropicAgentOptions = {
    * `POST {baseUrl}/v1/messages`.
    */
   readonly baseUrl?: string | undefined;
-  /**
-   * How many turns this process streams at once, across every person using
-   * the editor. A positive integer; defaults to 4.
-   */
-  readonly maxConcurrentTurns?: number | undefined;
 };
 
 /**
@@ -73,16 +66,19 @@ export type AnthropicAgentOptions = {
  * or a `maxConcurrentTurns` that is not a positive integer throws.
  */
 export function wfAnthropic(options: AnthropicAgentOptions): WfGraphAgentModel {
-  const maxConcurrentTurns = readMaxConcurrentTurns(options.maxConcurrentTurns);
+  const maxConcurrentTurns = readMaxConcurrentTurns(
+    options.maxConcurrentTurns,
+    "wfAnthropic's maxConcurrentTurns"
+  );
   const apiKey = present(options.apiKey);
   if (apiKey === undefined) {
     return AGENT_OFF;
   }
-  const model = requiredModel("anthropic", options.model);
+  const model = requiredModel("wfAnthropic", options.model);
   const effort = options.reasoningEffort ?? DEFAULT_ANTHROPIC_REASONING_EFFORT;
   const apiUrl = present(options.baseUrl);
 
-  return {
+  return agentModel({
     enabled: true,
     provider: "anthropic",
     model,
@@ -112,5 +108,5 @@ export function wfAnthropic(options: AnthropicAgentOptions): WfGraphAgentModel {
         ),
         Layer.provide(FetchHttpClient.layer)
       ),
-  };
+  });
 }

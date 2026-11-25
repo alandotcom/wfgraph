@@ -32,8 +32,11 @@ import type {
   WfGraphRunnerOptions,
 } from "#src/backend/executor/in-process-runner";
 import { openWfGraphSetup, type WfGraphSetup } from "#src/backend/setup";
-import type { WfGraphMcp } from "#src/backend/agent/mcp-server";
-import { readMcpOption } from "#src/backend/agent/mcp-option";
+import {
+  type McpEndpoint,
+  readMcpOption,
+  type WfGraphMcp,
+} from "#src/backend/agent/mcp-option";
 import {
   assertValidEventsKey,
   type WfGraphEvents,
@@ -59,7 +62,7 @@ export {
 export type { WfGraphLogger } from "@wfgraph/shared/types/logger";
 export type { WfGraphExtensions } from "#src/backend/extensions/extension-set";
 export type { WfGraphPersistence } from "#src/backend/persistence/types";
-export type { WfGraphMcp } from "#src/backend/agent/mcp-server";
+export type { WfGraphMcp } from "#src/backend/agent/mcp-option";
 export type {
   WfGraphAgentConfig,
   WfGraphAgentModel,
@@ -335,7 +338,7 @@ async function assembleWfGraphApp(
   startup: {
     basePath: "" | `/${string}`;
     auth: ResolvedAuth;
-    mcp: WfGraphMcp | undefined;
+    mcp: McpEndpoint | undefined;
     setup: WfGraphSetup;
   }
 ): Promise<WfGraphApp> {

@@ -29,6 +29,7 @@ requires:
 sources:
   - alandotcom/wfgraph:docs/embedding.md
   - alandotcom/wfgraph:packages/core/src/backend/agent/mcp-server.ts
+  - alandotcom/wfgraph:packages/core/src/backend/agent/mcp-http.ts
   - alandotcom/wfgraph:packages/core/src/mcp.ts
 ---
 

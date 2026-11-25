@@ -664,10 +664,20 @@ sources, apart from the source checks each later batch records.
   new HIGH mistake covers passing the `agent` option as a plain object. The
   skill's sources name the four provider modules.
 - wfgraph-core: the `agent` routing line names a provider entry's function.
-- Startup messages are unchanged: a blank `model` for a provider with no
-  default still throws `agent.model is required for the "<provider>" provider`,
-  now where the host calls the function, and a bad turn limit still throws
-  `agent.maxConcurrentTurns must be a positive integer`.
+- Refusal messages name what the host wrote. A blank `model` for a provider
+  with no default throws `<function> needs a non-blank model, because its
+  provider has no default model.` where the host calls the function, and a bad
+  turn limit passed to a provider function throws `<function>'s
+  maxConcurrentTurns must be a positive integer`. The runner form keeps
+  `agent.maxConcurrentTurns must be a positive integer`. A value that is
+  neither a provider function's result nor `{ runner }` throws
+  `agent takes what a provider function returns`, followed by how to turn the
+  agent off: `createWfGraphApp` throws it when called, and `wfWorker`, which
+  reads `agent` from its `request` callback, throws it on each request and
+  tick. An earlier note in this batch recorded the two `agent.`-prefixed
+  provider messages as kept; they named options a host no longer writes, and
+  build-agent's procedure steps 2 and 6, its no-model mistake and its
+  plain-object mistake now give the messages listed here.
 - `library_version` stays at 4.1.1, as in batch 7.
 - Checks: `intent validate` passed. The task check
   `packages/evals/src/skills/build-agent/agent-config.test.ts` grades the
@@ -689,10 +699,13 @@ sources, apart from the source checks each later batch records.
   metadata route sentence names the `authorization` option of `wfMcp`.
 - Startup and refusal messages: `createWfGraphApp` and `wfWorker` refuse any
   `mcp` value `wfMcp` did not build with
-  `<caller>'s mcp option takes what wfMcp from @wfgraph/core/mcp returns`. The
-  403 under `wfMcp()` names `wfMcp({ allowedHostnames, allowedOriginHostnames })`,
-  and the 403 under explicit options still names `mcp.allowedHostnames` or
-  `mcp.allowedOriginHostnames`.
+  `<caller>'s mcp option takes what wfMcp from @wfgraph/core/mcp returns`,
+  followed by how to turn the endpoint off. The 403 under `wfMcp()` names
+  `wfMcp({ allowedHostnames, allowedOriginHostnames })`, and the 403 under
+  explicit options names the `allowedHostnames` or `allowedOriginHostnames`
+  option of `wfMcp`. The skill's sources name
+  `packages/core/src/backend/agent/mcp-http.ts`, which holds `wfMcp` and the
+  endpoint's HTTP edge.
 - Checks: `intent validate` passed. The task check
   `packages/evals/src/skills/mcp/mcp-endpoint.test.ts` builds its endpoint with
   `wfMcp`, and its localhost mistake case passes `wfMcp()` on the deployed

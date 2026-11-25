@@ -1,6 +1,10 @@
 import { Effect, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_AGENT_MODEL } from "@wfgraph/core/backend/agent/providers/openai";
+import {
+  chatCompletionsAnswer,
+  streamOnce,
+} from "@wfgraph/core/backend/agent/providers/wire-test-support";
 import type { AgentRunner } from "@wfgraph/core/backend/agent/runner";
 import {
   collectAgentTurn,
@@ -127,6 +131,19 @@ describe("readEvalModelSettings", () => {
       provider: "anthropic",
       model: "claude-sonnet-5-5",
     });
+  });
+
+  it("sends the effort WFGRAPH_EVAL_REASONING_EFFORT names to the provider", async () => {
+    vi.stubEnv("WFGRAPH_EVAL_AGENT_PROVIDER", "openrouter");
+    vi.stubEnv("WFGRAPH_EVAL_AGENT_MODEL", "openai/gpt-6.1-terra");
+    vi.stubEnv("WFGRAPH_EVAL_REASONING_EFFORT", "low");
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+
+    const { request } = await Effect.runPromise(
+      streamOnce(readEvalModelSettings(), chatCompletionsAnswer)
+    );
+
+    expect(request.body.reasoning).toEqual({ effort: "low" });
   });
 
   it("skips a provider whose key is unset, whatever other key is set", () => {

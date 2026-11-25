@@ -158,12 +158,16 @@ The MCP server moved to its own package entry, `@wfgraph/core/mcp`, which
 exports `wfMcp`. The host passes what `wfMcp()` returns as `mcp` for the
 localhost defaults `mcp: true` had given, or what `wfMcp(options)` returns for
 the options the object form had taken. The returned value carries what
-`api-app.ts` calls to mount and serve the endpoint, so that module imports
-only the MCP module's types. `mcp: true` and the plain-object form were
+`api-app.ts` calls to mount and serve the endpoint, and the option's types
+moved to `packages/core/src/backend/agent/mcp-option.ts`, which imports no MCP
+SDK, so no module the other entries reach imports from the MCP server's
+modules. `mcp: true` and the plain-object form were
 removed with no compatibility path, and a JavaScript host that passes either
 one is refused at startup with a message naming `wfMcp`. The endpoint's path,
 its Host and Origin validation, its authentication challenge, its
 protected-resource metadata, its tools and its body size cap were unchanged.
 The case in `scripts/plugins/worker-bundle.test.ts` that the provider
-amendment added now also fails when a module of `@modelcontextprotocol/` or
-`zod` reaches the bundle of `@wfgraph/core/worker`.
+amendment added now bundles every entry in core's "exports" map, and fails
+when a module of a provider package, of `@modelcontextprotocol/` or of `zod`
+reaches an entry other than the one that owns it. `@wfgraph/core/inngest` may
+also bundle `zod`, because the `inngest` SDK depends on it.

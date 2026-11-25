@@ -1,29 +1,24 @@
 import { defineConfig } from "tsdown";
+import manifest from "./package.json" with { type: "json" };
 
-// Builds the publishable @wfgraph/core library, one output file per entry.
-// Each entry is named in the "exports" map in package.json, so the emitted
-// file names have to keep matching that map; `docs/embedding.md` ("Package
-// exports") says what each entry is for. `src/inngest.ts` is the one entry
-// that imports the optional `inngest` peer, each of the four model provider
-// entries is the one entry that imports its Effect provider package, and
-// `src/mcp.ts` is the one entry that imports `@modelcontextprotocol/server`.
+// Builds the publishable @wfgraph/core library, one named entry per subpath in
+// this package's "exports" map, which makes that map the one list of the
+// package's entries: "." builds from src/index.ts, and every other subpath
+// "./<name>" builds from src/<name>.ts. tsdown writes each entry to
+// dist/<name>.js and dist/<name>.d.ts, which are the paths the map points at.
+// `docs/embedding.md` ("Package exports") says what each entry is for.
+//
+// tsdown loads this file with Node's own TypeScript support, which is what
+// accepts the JSON import attribute on the manifest import.
+const entry = Object.fromEntries(
+  Object.keys(manifest.exports).map((subpath) => {
+    const name = subpath === "." ? "index" : subpath.replace(/^\.\//, "");
+    return [name, `src/${name}.ts`];
+  })
+);
+
 export default defineConfig({
-  entry: [
-    "src/index.ts",
-    "src/plugin.ts",
-    "src/testing.ts",
-    "src/migrate.ts",
-    "src/logging.ts",
-    "src/postgres.ts",
-    "src/sqlite.ts",
-    "src/worker.ts",
-    "src/inngest.ts",
-    "src/openai.ts",
-    "src/anthropic.ts",
-    "src/openrouter.ts",
-    "src/openai-compatible.ts",
-    "src/mcp.ts",
-  ],
+  entry,
   format: "esm",
   // Selects Node-flavoured resolution and externalization, which is what a
   // server library needs. tsdown's own default is already "node"; stated here

@@ -1,11 +1,10 @@
 /**
  * The MCP authoring endpoint. Pass what `wfMcp` returns as the `mcp` option
- * of `createWfGraphApp` or `wfWorker`. This is the one entry that loads
- * `@modelcontextprotocol/server`.
+ * of `createWfGraphApp` or `wfWorker`.
  */
 
-export {
-  wfMcp,
-  type WfGraphMcpAuthorization,
-  type WfGraphMcpOptions,
-} from "#src/backend/agent/mcp-server";
+export { wfMcp } from "#src/backend/agent/mcp-http";
+export type {
+  WfGraphMcpAuthorization,
+  WfGraphMcpOptions,
+} from "#src/backend/agent/mcp-option";

@@ -59,7 +59,7 @@ import { createIntegrationCipher } from "#src/backend/services/integrations/ciph
 import { wfPostgres } from "#src/backend/persistence/postgres";
 import { wfSqlite } from "#src/backend/persistence/sqlite";
 import { wfOpenAi } from "#src/backend/agent/providers/openai";
-import { wfMcp } from "#src/backend/agent/mcp-server";
+import { wfMcp } from "#src/backend/agent/mcp-http";
 import { BASE_OPTIONS } from "#src/app-test-support";
 
 async function createTestApp(basePath?: string): Promise<WfGraphApp> {

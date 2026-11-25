@@ -66,8 +66,7 @@ import {
   runWithResponseClose,
 } from "#src/backend/lib/close-in-order";
 import { resolvePublicUrl } from "#src/backend/lib/http/public-url";
-import type { WfGraphMcp } from "#src/backend/agent/mcp-server";
-import { readMcpOption } from "#src/backend/agent/mcp-option";
+import { readMcpOption, type WfGraphMcp } from "#src/backend/agent/mcp-option";
 
 /**
  * How long one tick may run: a minute under the 15-minute wall time of a Cron

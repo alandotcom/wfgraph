@@ -5,44 +5,48 @@ import { MAX_AGENT_OUTPUT_TOKENS } from "#src/backend/agent/model";
 import { wfOpenAiCompatible } from "#src/backend/agent/providers/openai-compatible";
 import {
   chatCompletionsAnswer,
-  INVALID_TURN_LIMITS,
+  enabled,
+  settingsOf,
   streamOnce,
 } from "#src/backend/agent/providers/wire-test-support";
 
 describe("wfOpenAiCompatible", () => {
   it("leaves the agent off for a blank base URL, even with a key", () => {
     expect(
-      wfOpenAiCompatible({ baseUrl: " ", apiKey: "key", model: "qwen3" })
+      settingsOf(
+        wfOpenAiCompatible({ baseUrl: " ", apiKey: "key", model: "qwen3" })
+      )
     ).toEqual({ enabled: false });
-    expect(wfOpenAiCompatible({ baseUrl: undefined, model: "qwen3" })).toEqual({
-      enabled: false,
-    });
+    expect(
+      settingsOf(wfOpenAiCompatible({ baseUrl: undefined, model: "qwen3" }))
+    ).toEqual({ enabled: false });
   });
 
   it("refuses a blank model, which a compatible server has no default for", () => {
     expect(() =>
       wfOpenAiCompatible({ baseUrl: "http://localhost:11434/v1", model: "" })
-    ).toThrow('agent.model is required for the "openai-compatible" provider');
+    ).toThrow("wfOpenAiCompatible needs a non-blank model");
   });
 
   it.effect(
     "turns on by its base URL and sends Chat Completions there, with no key",
     () =>
       Effect.gen(function* () {
-        const agent = wfOpenAiCompatible({
-          baseUrl: " http://localhost:11434/v1 ",
-          model: "qwen3",
-          reasoningEffort: "medium",
-        });
-        expect(agent).toMatchObject({
-          enabled: true,
+        const settings = enabled(
+          wfOpenAiCompatible({
+            baseUrl: " http://localhost:11434/v1 ",
+            model: "qwen3",
+            reasoningEffort: "medium",
+          })
+        );
+        expect(settings).toMatchObject({
           provider: "openai-compatible",
           model: "qwen3",
           maxConcurrentTurns: DEFAULT_MAX_CONCURRENT_AGENT_TURNS,
         });
 
         const { request, text } = yield* streamOnce(
-          agent,
+          settings,
           chatCompletionsAnswer
         );
 
@@ -62,12 +66,14 @@ describe("wfOpenAiCompatible", () => {
   it.effect("sends a key as a bearer token and no blank reasoning effort", () =>
     Effect.gen(function* () {
       const { request } = yield* streamOnce(
-        wfOpenAiCompatible({
-          baseUrl: "http://localhost:11434/v1",
-          apiKey: " local-key ",
-          model: "qwen3",
-          reasoningEffort: " ",
-        }),
+        enabled(
+          wfOpenAiCompatible({
+            baseUrl: "http://localhost:11434/v1",
+            apiKey: " local-key ",
+            model: "qwen3",
+            reasoningEffort: " ",
+          })
+        ),
         chatCompletionsAnswer
       );
 
@@ -75,16 +81,4 @@ describe("wfOpenAiCompatible", () => {
       expect(request.body).not.toHaveProperty("reasoning_effort");
     })
   );
-
-  it("takes the host's turn limit and refuses one that is not a count", () => {
-    const options = { baseUrl: "http://localhost:11434/v1", model: "qwen3" };
-    expect(
-      wfOpenAiCompatible({ ...options, maxConcurrentTurns: 16 })
-    ).toMatchObject({ maxConcurrentTurns: 16 });
-    for (const maxConcurrentTurns of INVALID_TURN_LIMITS) {
-      expect(() =>
-        wfOpenAiCompatible({ ...options, maxConcurrentTurns })
-      ).toThrow("agent.maxConcurrentTurns must be a positive integer");
-    }
-  });
 });

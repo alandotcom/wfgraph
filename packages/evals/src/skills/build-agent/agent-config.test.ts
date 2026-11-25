@@ -74,7 +74,7 @@ describe("wfgraph-core/build-agent task check", () => {
 
   it("rejects Anthropic with no model, which throws where the host calls wfAnthropic", () => {
     expect(() => wfAnthropic({ apiKey: "sk-ant-test", model: "" })).toThrow(
-      'agent.model is required for the "anthropic" provider'
+      "wfAnthropic needs a non-blank model"
     );
   });
 
@@ -87,6 +87,6 @@ describe("wfgraph-core/build-agent task check", () => {
   it("rejects a turn limit that is not a positive integer, which throws where the host calls wfOpenAi", () => {
     expect(() =>
       wfOpenAi({ apiKey: "sk-test", maxConcurrentTurns: 0 })
-    ).toThrow("agent.maxConcurrentTurns must be a positive integer");
+    ).toThrow("wfOpenAi's maxConcurrentTurns must be a positive integer");
   });
 });

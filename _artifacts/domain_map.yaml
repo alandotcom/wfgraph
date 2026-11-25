@@ -930,6 +930,7 @@ skills:
     sources:
       - alandotcom/wfgraph:docs/embedding.md
       - alandotcom/wfgraph:packages/core/src/backend/agent/mcp-server.ts
+      - alandotcom/wfgraph:packages/core/src/backend/agent/mcp-http.ts
       - alandotcom/wfgraph:packages/core/src/mcp.ts
 
   - name: build-agent
@@ -954,7 +955,7 @@ skills:
     tasks:
       - Turn on the editor's build agent against a chosen provider or gateway, or run its turns on the host's own model, and size its turn limit and grants.
       - Choose wfOpenAiCompatible for a gateway that serves Chat Completions alone.
-      - Explain a missing chat panel, a startup refusal of the agent option, or a refused tool call.
+      - Explain a missing chat panel, a refusal of the agent option, or a refused tool call.
     failure_modes:
       - mistake: Anthropic or OpenRouter with no model
         mechanism: Only wfOpenAi has a default model, so wfAnthropic or wfOpenRouter given a key and a blank model throws where the host calls it.
@@ -975,7 +976,7 @@ skills:
         priority: HIGH
         status: active
       - mistake: The agent option as a plain object
-        mechanism: The agent option takes what a provider function returns, or { runner }. A plain object with a provider key fails to type-check, and from JavaScript startup throws.
+        mechanism: The agent option takes what a provider function returns, or { runner }. A plain object with a provider key fails to type-check. From JavaScript, createWfGraphApp throws when it is called, and wfWorker, which reads agent from its request callback, throws on every request and tick.
         wrong_pattern: |
           agent: { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY, model: "claude-opus-5-5" }
         correct_pattern: |
@@ -1087,5 +1088,5 @@ gaps:
     status: resolved
   - skill: build-agent
     question: Which build agent claims can be checked without a live model?
-    context: The task check covers startup refusals and agent.enabled for the provider functions and a host runner. Whether a gateway passes streaming, tools and the cache fields through, adaptive thinking on older Claude models, and a turn's tool grants in a live turn are unverified.
+    context: The task check covers the refusals and agent.enabled for the provider functions and a host runner. Whether a gateway passes streaming, tools and the cache fields through, adaptive thinking on older Claude models, and a turn's tool grants in a live turn are unverified.
     status: open

@@ -10,7 +10,11 @@ import { createSerializedWorkflowGraph } from "@wfgraph/shared/graph/graph";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import type { Workflow } from "#src/backend/lib/db/schema";
 import { createApiApp } from "#src/backend/api-app";
-import { wfMcp } from "#src/backend/agent/mcp-server";
+import { wfMcp } from "#src/backend/agent/mcp-http";
+import {
+  readMcpOption,
+  type WfGraphMcpOptions,
+} from "#src/backend/agent/mcp-option";
 import {
   defineWfGraphAuth,
   resolveAuth,
@@ -26,6 +30,11 @@ import {
 import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 
 const basePath = "/wfgraph/api" as const;
+
+/** The endpoint `createApiApp` mounts, read from `wfMcp` as the app reads it. */
+function mcpEndpoint(options?: WfGraphMcpOptions) {
+  return readMcpOption(wfMcp(options), "createWfGraphApp");
+}
 
 const workflow: Workflow = {
   id: "wf_1",
@@ -130,7 +139,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
-      mcp: wfMcp(),
+      mcp: mcpEndpoint(),
     });
     const requests: Request[] = [];
     const responses: Response[] = [];
@@ -239,7 +248,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
-      mcp: wfMcp(),
+      mcp: mcpEndpoint(),
     });
     const transport = new StreamableHTTPClientTransport(
       new URL(`http://localhost${basePath}/mcp`),
@@ -311,7 +320,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
-      mcp: wfMcp(),
+      mcp: mcpEndpoint(),
     });
 
     const response = await app.fetch(
@@ -331,7 +340,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
-      mcp: wfMcp({
+      mcp: mcpEndpoint({
         allowedHostnames: ["api.example.com"],
         allowedOriginHostnames: ["console.example.com"],
       }),
@@ -365,8 +374,12 @@ describe("the MCP route", () => {
     expect(originResponse.status).toBe(403);
     const hostMessage = (await hostResponse.json()).error.message;
     const originMessage = (await originResponse.json()).error.message;
-    expect(hostMessage).toContain("mcp.allowedHostnames");
-    expect(originMessage).toContain("mcp.allowedOriginHostnames");
+    expect(hostMessage).toContain(
+      "Add the hostname to the allowedHostnames option of wfMcp"
+    );
+    expect(originMessage).toContain(
+      "Add the hostname to the allowedOriginHostnames option of wfMcp"
+    );
     expect(`${hostMessage} ${originMessage}`).not.toContain("attacker");
   });
 
@@ -376,7 +389,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
-      mcp: wfMcp(),
+      mcp: mcpEndpoint(),
     });
 
     const response = await app.fetch(
@@ -405,7 +418,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
-      mcp: wfMcp(),
+      mcp: mcpEndpoint(),
     });
 
     const [mcpResponse, rpcResponse] = await Promise.all([
@@ -427,7 +440,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
-      mcp: wfMcp({
+      mcp: mcpEndpoint({
         allowedHostnames: ["localhost"],
         allowedOriginHostnames: [],
         authorization: {
@@ -462,7 +475,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(defineWfGraphAuth(() => null)),
       runtime,
-      mcp: wfMcp(),
+      mcp: mcpEndpoint(),
     });
 
     const response = await app.fetch(
@@ -485,7 +498,7 @@ describe("the MCP route", () => {
         )
       ),
       runtime,
-      mcp: wfMcp(),
+      mcp: mcpEndpoint(),
     });
     const transport = new StreamableHTTPClientTransport(
       new URL(`http://localhost${basePath}/mcp`),
@@ -529,7 +542,7 @@ describe("the MCP route", () => {
       basePath,
       auth: resolveAuth(trustWfGraphUpstream()),
       runtime,
-      mcp: wfMcp(),
+      mcp: mcpEndpoint(),
     });
 
     const response = await app.fetch(

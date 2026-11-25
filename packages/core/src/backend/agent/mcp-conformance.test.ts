@@ -9,10 +9,8 @@ import { layoutWorkflowNodes } from "@wfgraph/shared/graph/workflow-layout";
 import type { JsonObject } from "@wfgraph/shared/types/json";
 import { readJsonObject } from "@wfgraph/shared/types/json";
 import { makeAgentToolSession } from "#src/backend/agent/tool-session";
-import {
-  createAgentMcpServer,
-  type DraftToolExecutor,
-} from "#src/backend/agent/mcp-server";
+import type { DraftToolExecutor } from "#src/backend/agent/mcp-option";
+import { createAgentMcpServer } from "#src/backend/agent/mcp-server";
 import type { AgentToolName } from "#src/backend/services/agent/draft-tool";
 
 const workflowId = "wf_conformance";

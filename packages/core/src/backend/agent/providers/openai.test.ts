@@ -11,7 +11,8 @@ import {
   wfOpenAi,
 } from "#src/backend/agent/providers/openai";
 import {
-  INVALID_TURN_LIMITS,
+  enabled,
+  settingsOf,
   sse,
   streamOnce,
 } from "#src/backend/agent/providers/wire-test-support";
@@ -61,24 +62,25 @@ function responsesAnswer(): Response {
 describe("wfOpenAi", () => {
   it("reads a half-filled environment as off rather than as broken", () => {
     // `process.env.OPENAI_API_KEY` on a machine with the line present but empty.
-    expect(wfOpenAi({ apiKey: "" })).toEqual({ enabled: false });
-    expect(wfOpenAi({ apiKey: "   " })).toEqual({ enabled: false });
-    expect(wfOpenAi({ apiKey: undefined })).toEqual({ enabled: false });
+    expect(settingsOf(wfOpenAi({ apiKey: "" }))).toEqual({ enabled: false });
+    expect(settingsOf(wfOpenAi({ apiKey: "   " }))).toEqual({ enabled: false });
+    expect(settingsOf(wfOpenAi({ apiKey: undefined }))).toEqual({
+      enabled: false,
+    });
   });
 
   it.effect(
     "runs the default model at the default effort, unstored and cached under the workflow",
     () =>
       Effect.gen(function* () {
-        const agent = wfOpenAi({ apiKey: "sk-test" });
-        expect(agent).toMatchObject({
-          enabled: true,
+        const settings = enabled(wfOpenAi({ apiKey: "sk-test" }));
+        expect(settings).toMatchObject({
           provider: "openai",
           model: DEFAULT_AGENT_MODEL,
           maxConcurrentTurns: DEFAULT_MAX_CONCURRENT_AGENT_TURNS,
         });
 
-        const { request, text } = yield* streamOnce(agent, responsesAnswer);
+        const { request, text } = yield* streamOnce(settings, responsesAnswer);
 
         expect(request.url).toBe("https://api.openai.com/v1/responses");
         expect(request.headers.get("authorization")).toBe("Bearer sk-test");
@@ -99,7 +101,7 @@ describe("wfOpenAi", () => {
   it.effect("takes the host's reasoning effort when it names one", () =>
     Effect.gen(function* () {
       const { request } = yield* streamOnce(
-        wfOpenAi({ apiKey: "sk-test", reasoningEffort: "low" }),
+        enabled(wfOpenAi({ apiKey: "sk-test", reasoningEffort: "low" })),
         responsesAnswer
       );
 
@@ -111,14 +113,16 @@ describe("wfOpenAi", () => {
 
   it.effect("takes the host's model and endpoint, trimmed", () =>
     Effect.gen(function* () {
-      const agent = wfOpenAi({
-        apiKey: "  sk-test  ",
-        model: " gpt-4.1 ",
-        baseUrl: "https://gateway.example.test/v1",
-      });
-      expect(agent).toMatchObject({ model: "gpt-4.1" });
+      const settings = enabled(
+        wfOpenAi({
+          apiKey: "  sk-test  ",
+          model: " gpt-4.1 ",
+          baseUrl: "https://gateway.example.test/v1",
+        })
+      );
+      expect(settings).toMatchObject({ model: "gpt-4.1" });
 
-      const { request } = yield* streamOnce(agent, responsesAnswer);
+      const { request } = yield* streamOnce(settings, responsesAnswer);
 
       expect(request.url).toBe("https://gateway.example.test/v1/responses");
       expect(request.headers.get("authorization")).toBe("Bearer sk-test");
@@ -129,26 +133,11 @@ describe("wfOpenAi", () => {
   it.effect("calls OpenAI's own endpoint for a blank baseUrl", () =>
     Effect.gen(function* () {
       const { request } = yield* streamOnce(
-        wfOpenAi({ apiKey: "sk-test", baseUrl: "" }),
+        enabled(wfOpenAi({ apiKey: "sk-test", baseUrl: "" })),
         responsesAnswer
       );
 
       expect(request.url).toBe("https://api.openai.com/v1/responses");
     })
   );
-
-  it("takes the host's turn limit and refuses one that is not a count", () => {
-    expect(
-      wfOpenAi({ apiKey: "sk-test", maxConcurrentTurns: 16 })
-    ).toMatchObject({ enabled: true, maxConcurrentTurns: 16 });
-    for (const maxConcurrentTurns of INVALID_TURN_LIMITS) {
-      expect(() => wfOpenAi({ apiKey: "sk-test", maxConcurrentTurns })).toThrow(
-        "agent.maxConcurrentTurns must be a positive integer"
-      );
-      // Checked before the key, so a bad limit fails with the agent off too.
-      expect(() => wfOpenAi({ apiKey: "", maxConcurrentTurns })).toThrow(
-        "agent.maxConcurrentTurns must be a positive integer"
-      );
-    }
-  });
 });

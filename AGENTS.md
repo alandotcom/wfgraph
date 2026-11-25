@@ -316,7 +316,8 @@ payload are each stored where they can be read whole, and one of them printed at
 
 **Third-party libraries.** Check official usage with Context7 or Exa before writing against
 a library, and never take a version from memory. Prefer latest stable. Use Base UI for UI
-primitives and do not introduce Radix. Bundle size is not a concern here.
+primitives and do not introduce Radix. Bundle size is not a concern for the client and
+its UI libraries.
 
 The one Radix in the tree arrives under `@assistant-ui/react`, which the build agent's
 chat panel is built on. Its own widget-level Radix sits in primitives this repo does not
@@ -434,17 +435,9 @@ reachable from no entry. `inngest` is an optional peer dependency, so in product
 only `backend/lib/inngest/`, which the `@wfgraph/core/inngest` entry alone reaches, may
 import it. A host without the SDK must load every other
 entry, which `pnpm run package:smoke` checks by importing each of them from the packed
-tarball installed without `inngest`. The four Effect model provider packages are
-dependencies, but each is imported by one module under `backend/agent/providers/`, which
-one provider entry (`@wfgraph/core/openai`, `/anthropic`, `/openrouter` or
-`/openai-compatible`) alone reaches. `backend/agent/model.ts` holds what the providers share
-and imports none of them, and the `agent` option carries a provider's `modelLayer`, so no
-other module names a provider. `@modelcontextprotocol/server`, and the `zod` it depends on,
-load the same way: `backend/agent/mcp-server.ts` is the one module that imports the SDK,
-and the `@wfgraph/core/mcp` entry alone reaches it at runtime. The `mcp` option carries
-what `wfMcp` returns, so `backend/api-app.ts` mounts the endpoint through that value's
-members and imports the module's types alone, and `backend/agent/mcp-option.ts` checks
-the option at startup with a type import. Verify a packaging change with `pnpm pack` and read
+tarball installed without `inngest`. The model provider packages and the MCP server SDK
+are dependencies that only their own entries reach, as the pitfall on a dynamic `import()`
+of bundled code describes. Verify a packaging change with `pnpm pack` and read
 the extracted manifest. `docs/embedding.md` ("Package exports") is the one home of the
 core entry points.
 
@@ -458,10 +451,15 @@ Nothing reachable from `@wfgraph/core/worker` or from an integration entry of
 dependency an entry of its own, the way `@wfgraph/core/inngest` holds the Inngest SDK.
 `scripts/plugins/worker-bundle.test.ts` bundles each of those entries with wrangler's
 settings, fails on an `import()` of bundled code, and holds each integration to its row of
-`ADDED_KIB_CEILING`. A model provider package, the MCP server SDK and `zod` are each
-imported only by their own entry, which a host imports statically; the same test's
-`ENTRY_ONLY_PACKAGES` names each one, and the test fails when a module of one reaches the
-bundle of `@wfgraph/core/worker`.
+`ADDED_KIB_CEILING`. An optional piece of core with a large dependency gets an entry the
+same way: each model provider module under `backend/agent/providers/` is reached only by
+its provider entry (`@wfgraph/core/openai`, `/anthropic`, `/openrouter` or
+`/openai-compatible`), and `backend/agent/mcp-http.ts` and `backend/agent/mcp-server.ts`,
+which import `@modelcontextprotocol/server`, only by `@wfgraph/core/mcp`. The `agent` and
+`mcp` options carry what those entries' functions return, so the option contracts in
+`backend/agent/config.ts` and `backend/agent/mcp-option.ts` import neither. The same test's
+`ENTRY_ONLY_PACKAGES` names each such package with the entries that may bundle it, and fails
+when a module of one reaches the bundle of any other entry in core's "exports" map.
 
 ## Code cleanliness
 

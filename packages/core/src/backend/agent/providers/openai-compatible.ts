@@ -1,7 +1,6 @@
 /**
  * Any server implementing OpenAI's Chat Completions API as the build agent's
- * model, for the `@wfgraph/core/openai-compatible` entry. This is the only
- * module that imports `@effect/ai-openai-compat`.
+ * model, through `wfOpenAiCompatible`.
  */
 
 import {
@@ -13,6 +12,8 @@ import { FetchHttpClient } from "effect/http";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   AGENT_OFF,
+  agentModel,
+  type AgentTurnLimitOptions,
   readMaxConcurrentTurns,
   type WfGraphAgentModel,
 } from "#src/backend/agent/config";
@@ -24,7 +25,7 @@ import {
 } from "#src/backend/agent/model";
 
 /** The options `wfOpenAiCompatible` takes. */
-export type OpenAiCompatibleAgentOptions = {
+export type OpenAiCompatibleAgentOptions = AgentTurnLimitOptions & {
   /**
    * Required, and what turns the agent on: a blank one leaves it off. A
    * conventional value ends in `/v1`. The server must implement
@@ -37,11 +38,6 @@ export type OpenAiCompatibleAgentOptions = {
   readonly model: string;
   /** Sent as the top-level `reasoning_effort` field only when set. */
   readonly reasoningEffort?: string | undefined;
-  /**
-   * How many turns this process streams at once, across every person using
-   * the editor. A positive integer; defaults to 4.
-   */
-  readonly maxConcurrentTurns?: number | undefined;
 };
 
 /**
@@ -53,16 +49,19 @@ export type OpenAiCompatibleAgentOptions = {
 export function wfOpenAiCompatible(
   options: OpenAiCompatibleAgentOptions
 ): WfGraphAgentModel {
-  const maxConcurrentTurns = readMaxConcurrentTurns(options.maxConcurrentTurns);
+  const maxConcurrentTurns = readMaxConcurrentTurns(
+    options.maxConcurrentTurns,
+    "wfOpenAiCompatible's maxConcurrentTurns"
+  );
   const apiUrl = present(options.baseUrl);
   if (apiUrl === undefined) {
     return AGENT_OFF;
   }
-  const model = requiredModel("openai-compatible", options.model);
+  const model = requiredModel("wfOpenAiCompatible", options.model);
   const apiKey = present(options.apiKey);
   const effort = present(options.reasoningEffort);
 
-  return {
+  return agentModel({
     enabled: true,
     provider: "openai-compatible",
     model,
@@ -86,5 +85,5 @@ export function wfOpenAiCompatible(
         ),
         Layer.provide(FetchHttpClient.layer)
       ),
-  };
+  });
 }

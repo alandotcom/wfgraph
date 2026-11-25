@@ -1,6 +1,9 @@
 import { Cause, Effect, Stream } from "effect";
 import { wfAnthropic } from "@wfgraph/core/anthropic";
-import type { EnabledAgentSettings } from "@wfgraph/core/backend/agent/config";
+import {
+  agentModelSettings,
+  type EnabledAgentSettings,
+} from "@wfgraph/core/backend/agent/config";
 import {
   type AgentReasoningEffort,
   AGENT_REASONING_EFFORTS,
@@ -109,13 +112,10 @@ export function readEvalModelSettings(
   const model = modelOverride?.trim() || process.env[AGENT_MODEL_ENV];
   const reasoningEffort = readReasoningEffort();
 
-  const settings = readProviderSettings({
-    provider,
-    apiKey,
-    model,
-    reasoningEffort,
-  });
-  if (!settings.enabled) {
+  const settings = agentModelSettings(
+    readProviderSettings({ provider, apiKey, model, reasoningEffort })
+  );
+  if (settings === undefined || !settings.enabled) {
     throw new Error(
       `Set ${keyEnv} before running the model-backed agent evals on ${provider}.`
     );

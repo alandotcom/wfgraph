@@ -1,7 +1,6 @@
 /**
- * OpenRouter's Chat Completions API as the build agent's model, for the
- * `@wfgraph/core/openrouter` entry. This is the only module that imports
- * `@effect/ai-openrouter`.
+ * OpenRouter's Chat Completions API as the build agent's model, through
+ * `wfOpenRouter`.
  */
 
 import {
@@ -13,6 +12,8 @@ import { FetchHttpClient } from "effect/http";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   AGENT_OFF,
+  agentModel,
+  type AgentTurnLimitOptions,
   readMaxConcurrentTurns,
   type WfGraphAgentModel,
 } from "#src/backend/agent/config";
@@ -26,7 +27,7 @@ import {
 } from "#src/backend/agent/model";
 
 /** The options `wfOpenRouter` takes. */
-export type OpenRouterAgentOptions = {
+export type OpenRouterAgentOptions = AgentTurnLimitOptions & {
   /**
    * Optional in the type so a host can pass `process.env.OPENROUTER_API_KEY`
    * straight through; a blank one turns the agent off rather than failing the
@@ -42,11 +43,6 @@ export type OpenRouterAgentOptions = {
   readonly reasoningEffort?: AgentReasoningEffort | undefined;
   /** Replaces `https://openrouter.ai/api/v1`. */
   readonly baseUrl?: string | undefined;
-  /**
-   * How many turns this process streams at once, across every person using
-   * the editor. A positive integer; defaults to 4.
-   */
-  readonly maxConcurrentTurns?: number | undefined;
 };
 
 /**
@@ -57,16 +53,19 @@ export type OpenRouterAgentOptions = {
 export function wfOpenRouter(
   options: OpenRouterAgentOptions
 ): WfGraphAgentModel {
-  const maxConcurrentTurns = readMaxConcurrentTurns(options.maxConcurrentTurns);
+  const maxConcurrentTurns = readMaxConcurrentTurns(
+    options.maxConcurrentTurns,
+    "wfOpenRouter's maxConcurrentTurns"
+  );
   const apiKey = present(options.apiKey);
   if (apiKey === undefined) {
     return AGENT_OFF;
   }
-  const model = requiredModel("openrouter", options.model);
+  const model = requiredModel("wfOpenRouter", options.model);
   const effort = options.reasoningEffort;
   const apiUrl = present(options.baseUrl);
 
-  return {
+  return agentModel({
     enabled: true,
     provider: "openrouter",
     model,
@@ -87,5 +86,5 @@ export function wfOpenRouter(
         ),
         Layer.provide(FetchHttpClient.layer)
       ),
-  };
+  });
 }

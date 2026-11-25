@@ -1,13 +1,7 @@
 /**
- * What every model provider shares: the output token limit, the prompt cache
- * key, the reasoning efforts, and the rules for reading a provider's options.
- *
- * Each provider's own module under `agent/providers/` imports its Effect
- * provider package and builds that provider's `LanguageModel` layer. This
- * module imports none of them, so a provider package loads only for a host
- * that imports that provider's entry. The AI runtime itself lives in
- * `effect/ai`, and every tool and the whole stream mapping speak
- * `LanguageModel`.
+ * What every model provider module under `agent/providers/` shares: the output
+ * token limit, the prompt cache key, the reasoning efforts, and the rules for
+ * reading a provider function's options.
  */
 
 import { Redacted } from "effect";
@@ -75,14 +69,15 @@ export function present(value: string | undefined): string | undefined {
 }
 
 /**
- * A model the provider has no default for, refusing a blank one at startup,
- * because that is a host's mistake rather than an absent key.
+ * A model the provider has no default for, refusing a blank one, because that
+ * is a host's mistake rather than an absent key. `caller` names the provider
+ * function the host called, such as `wfAnthropic`.
  */
-export function requiredModel(provider: string, model: string): string {
+export function requiredModel(caller: string, model: string): string {
   const named = present(model);
   if (!named) {
     throw new Error(
-      `agent.model is required for the "${provider}" provider, which has no default model.`
+      `${caller} needs a non-blank model, because its provider has no default model.`
     );
   }
   return named;

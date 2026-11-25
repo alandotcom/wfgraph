@@ -1,8 +1,4 @@
-/**
- * OpenAI's Responses API as the build agent's model, for the
- * `@wfgraph/core/openai` entry. This is the only module that imports
- * `@effect/ai-openai`.
- */
+/** OpenAI's Responses API as the build agent's model, through `wfOpenAi`. */
 
 import { OpenAiClient, OpenAiLanguageModel } from "@effect/ai-openai";
 import { Layer } from "effect";
@@ -10,6 +6,8 @@ import { FetchHttpClient } from "effect/http";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
 import {
   AGENT_OFF,
+  agentModel,
+  type AgentTurnLimitOptions,
   readMaxConcurrentTurns,
   type WfGraphAgentModel,
 } from "#src/backend/agent/config";
@@ -55,7 +53,7 @@ export const DEFAULT_AGENT_MODEL = "gpt-6.1-terra";
 export const DEFAULT_AGENT_REASONING_EFFORT: AgentReasoningEffort = "medium";
 
 /** The options `wfOpenAi` takes. */
-export type OpenAiAgentOptions = {
+export type OpenAiAgentOptions = AgentTurnLimitOptions & {
   /**
    * Optional in the type so a host can pass `process.env.OPENAI_API_KEY`
    * straight through; a blank one turns the agent off rather than failing the
@@ -73,11 +71,6 @@ export type OpenAiAgentOptions = {
    * `wfOpenAiCompatible` instead.
    */
   readonly baseUrl?: string | undefined;
-  /**
-   * How many turns this process streams at once, across every person using
-   * the editor. A positive integer; defaults to 4.
-   */
-  readonly maxConcurrentTurns?: number | undefined;
 };
 
 /**
@@ -86,7 +79,10 @@ export type OpenAiAgentOptions = {
  * is not a positive integer throws.
  */
 export function wfOpenAi(options: OpenAiAgentOptions): WfGraphAgentModel {
-  const maxConcurrentTurns = readMaxConcurrentTurns(options.maxConcurrentTurns);
+  const maxConcurrentTurns = readMaxConcurrentTurns(
+    options.maxConcurrentTurns,
+    "wfOpenAi's maxConcurrentTurns"
+  );
   const apiKey = present(options.apiKey);
   if (apiKey === undefined) {
     return AGENT_OFF;
@@ -95,7 +91,7 @@ export function wfOpenAi(options: OpenAiAgentOptions): WfGraphAgentModel {
   const effort = options.reasoningEffort ?? DEFAULT_AGENT_REASONING_EFFORT;
   const apiUrl = present(options.baseUrl);
 
-  return {
+  return agentModel({
     enabled: true,
     provider: "openai",
     model,
@@ -122,5 +118,5 @@ export function wfOpenAi(options: OpenAiAgentOptions): WfGraphAgentModel {
         ),
         Layer.provide(FetchHttpClient.layer)
       ),
-  };
+  });
 }

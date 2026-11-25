@@ -1,7 +1,6 @@
 /**
  * OpenAI's Responses API as the build agent's model. Pass what `wfOpenAi`
- * returns as the `agent` option. This is the one entry that loads
- * `@effect/ai-openai`.
+ * returns as the `agent` option.
  */
 
 export {

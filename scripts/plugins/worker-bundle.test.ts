@@ -2,16 +2,17 @@ import { builtinModules } from "node:module";
 import { fileURLToPath } from "node:url";
 import { build, type Metafile } from "esbuild";
 import { beforeAll, describe, expect, it } from "vitest";
+import coreManifest from "../../packages/core/package.json" with { type: "json" };
 import pluginsManifest from "../../packages/plugins/package.json" with { type: "json" };
 
 /**
  * Bundles entries from source the way wrangler bundles a Worker and reads
  * esbuild's metafile. Every integration export of `@wfgraph/plugins` must have
  * a row in `ADDED_KIB_CEILING`. Each integration entry must stay under that
- * ceiling and must not reach an `import()` of bundled code. The Worker host
- * entry of `@wfgraph/core` is checked for that `import()` rule, and for
- * bundling no module of a package in `ENTRY_ONLY_PACKAGES`, each of which a
- * host loads only through the `@wfgraph/core` entry it imports.
+ * ceiling and must not reach an `import()` of bundled code, and neither may the
+ * Worker host entry of `@wfgraph/core`. Each entry of `@wfgraph/core` must
+ * bundle no module of a package in `ENTRY_ONLY_PACKAGES` unless the package's
+ * row names that entry among its owners.
  */
 
 /**
@@ -35,22 +36,52 @@ const PLUGIN_BASELINE_ENTRY = "packages/core/src/plugin.ts";
 const WORKER_HOST_ENTRY = "packages/core/src/worker.ts";
 
 /**
- * Packages that only one entry of `@wfgraph/core` may import, each with that
- * entry: the four Effect model provider packages, and the MCP server SDK with
- * the `zod` it depends on. A name matches the package of that name, and a
- * scope such as `@modelcontextprotocol` matches every package in the scope.
+ * Packages that only some entries of `@wfgraph/core` may bundle, each with the
+ * subpaths of those entries in core's "exports" map: the four Effect model
+ * provider packages, the MCP server SDK, and `zod`, which arrives through the
+ * packages `via` names. A name matches the package of that name, and a scope
+ * such as `@modelcontextprotocol` matches every package in the scope.
  */
-const ENTRY_ONLY_PACKAGES = [
-  { name: "@effect/ai-openai", entry: "@wfgraph/core/openai" },
-  { name: "@effect/ai-anthropic", entry: "@wfgraph/core/anthropic" },
-  { name: "@effect/ai-openrouter", entry: "@wfgraph/core/openrouter" },
+const ENTRY_ONLY_PACKAGES: readonly {
+  readonly name: string;
+  readonly owners: readonly string[];
+  readonly via?: string;
+}[] = [
+  { name: "@effect/ai-openai", owners: ["./openai"] },
+  { name: "@effect/ai-anthropic", owners: ["./anthropic"] },
+  { name: "@effect/ai-openrouter", owners: ["./openrouter"] },
+  { name: "@effect/ai-openai-compat", owners: ["./openai-compatible"] },
+  { name: "@modelcontextprotocol", owners: ["./mcp"] },
+  // The optional `inngest` peer depends on zod too, and `./inngest` is the one
+  // entry that imports it.
   {
-    name: "@effect/ai-openai-compat",
-    entry: "@wfgraph/core/openai-compatible",
+    name: "zod",
+    owners: ["./mcp", "./inngest"],
+    via: "@modelcontextprotocol/server and inngest",
   },
-  { name: "@modelcontextprotocol", entry: "@wfgraph/core/mcp" },
-  { name: "zod", entry: "@wfgraph/core/mcp" },
-] as const;
+];
+
+const CORE_SUBPATHS = Object.keys(coreManifest.exports);
+
+/** The package specifier of a subpath of core's "exports" map. */
+function coreSpecifier(subpath: string): string {
+  return subpath === "."
+    ? "@wfgraph/core"
+    : `@wfgraph/core/${subpath.slice(2)}`;
+}
+
+/** The source file tsdown builds a subpath of core's "exports" map from. */
+function coreSource(subpath: string): string {
+  return `packages/core/src/${subpath === "." ? "index" : subpath.slice(2)}.ts`;
+}
+
+/** Why a package may not reach another entry's bundle, for a failure message. */
+function ownership(row: (typeof ENTRY_ONLY_PACKAGES)[number]): string {
+  const owners = row.owners.map(coreSpecifier).join(" and ");
+  return row.via === undefined
+    ? `only ${owners} may import it`
+    : `${row.name} arrives through ${row.via}, which only ${owners} import, and no other entry of @wfgraph/core should bundle it`;
+}
 
 /** Whether a bundle input path lies inside the package or scope `name`. */
 function isInputOf(name: string, path: string): boolean {
@@ -88,6 +119,9 @@ function integrationEntry(name: string): string {
   return `packages/plugins/src/${name}/index.ts`;
 }
 
+/** Each entry's metafile, so a test reading an entry another test bundled reuses it. */
+const bundles = new Map<string, Promise<Metafile>>();
+
 /**
  * Bundles one entry into one ESM file with the settings wrangler uses for a
  * Worker, and answers the metafile. Paths in the metafile are relative to the
@@ -96,6 +130,16 @@ function integrationEntry(name: string): string {
  * whatever `packages/core/dist` holds.
  */
 async function bundleForWorker(entry: string): Promise<Metafile> {
+  const cached = bundles.get(entry);
+  if (cached !== undefined) {
+    return await cached;
+  }
+  const bundle = bundleOnce(entry);
+  bundles.set(entry, bundle);
+  return await bundle;
+}
+
+async function bundleOnce(entry: string): Promise<Metafile> {
   const result = await build({
     absWorkingDir: repoRoot,
     entryPoints: [entry],
@@ -202,15 +246,37 @@ describe("Worker bundles", () => {
     ).toEqual([]);
   });
 
-  it("the Worker host entry bundles no package that belongs to another entry", async () => {
-    const metafile = await bundleForWorker(WORKER_HOST_ENTRY);
-    for (const { name, entry } of ENTRY_ONLY_PACKAGES) {
-      expect
-        .soft(
-          inputsOf(name, metafile),
-          `${WORKER_HOST_ENTRY} bundles ${name}; only ${entry} may import it`
-        )
-        .toEqual([]);
+  it("names entries of @wfgraph/core as the owners of each entry-only package", () => {
+    for (const { name, owners } of ENTRY_ONLY_PACKAGES) {
+      for (const owner of owners) {
+        expect
+          .soft(
+            CORE_SUBPATHS,
+            `${name} names ${owner}, which packages/core/package.json does not export`
+          )
+          .toContain(owner);
+      }
     }
   });
+
+  it.each(
+    CORE_SUBPATHS.map((subpath) => [coreSpecifier(subpath), subpath] as const)
+  )(
+    "%s bundles no package that belongs to another entry",
+    async (_specifier, subpath) => {
+      const source = coreSource(subpath);
+      const metafile = await bundleForWorker(source);
+      for (const row of ENTRY_ONLY_PACKAGES) {
+        if (row.owners.includes(subpath)) {
+          continue;
+        }
+        expect
+          .soft(
+            inputsOf(row.name, metafile),
+            `${source} bundles ${row.name}; ${ownership(row)}`
+          )
+          .toEqual([]);
+      }
+    }
+  );
 });

@@ -1,14 +1,8 @@
 /**
- * The host's `agent` option, and the service that carries it.
- *
- * The option is either what a provider entry's function returns (`wfOpenAi`,
- * `wfAnthropic`, `wfOpenRouter` or `wfOpenAiCompatible`), or a host's own
- * runner. This module imports no provider package: each provider's client is
- * built by the function in that provider's own entry, and core runs a turn
- * through the `modelLayer` function the returned value carries.
- *
- * The key arrives as an option and travels by argument, never as module state,
- * so a second app in the same process cannot read the first one's credential.
+ * The host's `agent` option and the services that carry it. A provider entry's
+ * function builds its value with `agentModel`, and `readAgentSettings` reads
+ * that value or the `{ runner }` form once per runtime. A provider's key
+ * travels inside its `modelLayer` function, never as module state.
  */
 
 import { Context, Layer, Semaphore } from "effect";
@@ -21,6 +15,16 @@ import type { WfGraphAgentRunner } from "#src/backend/agent/runner";
  * message asking the person to wait, rather than queued behind the others.
  */
 export const DEFAULT_MAX_CONCURRENT_AGENT_TURNS = 4;
+
+/** The option every provider function and the `{ runner }` form take. */
+export type AgentTurnLimitOptions = {
+  /**
+   * How many turns this process streams at once, across every person using
+   * the editor. A positive integer; defaults to
+   * `DEFAULT_MAX_CONCURRENT_AGENT_TURNS`.
+   */
+  readonly maxConcurrentTurns?: number | undefined;
+};
 
 /** What a model layer needs to know about the turn it serves. */
 export type AgentModelTurn = {
@@ -46,27 +50,28 @@ export type EnabledAgentSettings = {
 };
 
 /**
- * A model the built-in agent runs against, as a provider entry's function
- * returns it, which a host passes as `agent`. It reads `{ enabled: false }`
- * when the function was given a blank key, or for `wfOpenAiCompatible` a
- * blank base URL, which leaves the agent off.
+ * A provider function's settings. `{ enabled: false }` is what it returns for
+ * a blank key, or for `wfOpenAiCompatible` a blank base URL.
  */
-export type WfGraphAgentModel =
+export type AgentModelSettings =
   | { readonly enabled: false }
   | EnabledAgentSettings;
+
+/** The brand that marks the value a provider function returns. */
+const AGENT_MODEL: unique symbol = Symbol.for("@wfgraph/core/agent-model");
+
+/**
+ * What a provider entry's function returns, such as `wfOpenAi` from
+ * `@wfgraph/core/openai`, which a host passes as `agent`.
+ */
+export type WfGraphAgentModel = { readonly [AGENT_MODEL]: unknown };
 
 /**
  * The `agent` option for a host that runs turns itself, on its own gateway or
  * model. The built-in model settings do not apply.
  */
-export type WfGraphRunnerAgentConfig = {
+export type WfGraphRunnerAgentConfig = AgentTurnLimitOptions & {
   readonly runner: WfGraphAgentRunner;
-  /**
-   * How many turns this process streams at once, across every person using
-   * the editor. A positive integer; defaults to
-   * `DEFAULT_MAX_CONCURRENT_AGENT_TURNS`.
-   */
-  readonly maxConcurrentTurns?: number | undefined;
 };
 
 /** The `agent` option of `createWfGraphApp` and of a `wfWorker` request. */
@@ -80,7 +85,7 @@ export type HostRunnerAgentSettings = {
 };
 
 /** The configuration as the runtime holds it. */
-export type AgentSettings = WfGraphAgentModel | HostRunnerAgentSettings;
+export type AgentSettings = AgentModelSettings | HostRunnerAgentSettings;
 
 export class AgentConfig extends Context.Service<AgentConfig, AgentSettings>()(
   "@wfgraph/core/AgentConfig"
@@ -92,57 +97,83 @@ export class AgentCapacity extends Context.Service<
   Semaphore.Semaphore
 >()("@wfgraph/core/AgentCapacity") {}
 
+/** The value a provider function returns, carrying `settings` under its brand. */
+export function agentModel(settings: AgentModelSettings): WfGraphAgentModel {
+  return { [AGENT_MODEL]: settings };
+}
+
 /** What a provider function returns for a blank key: the agent is off. */
-export const AGENT_OFF: WfGraphAgentModel = { enabled: false };
+export const AGENT_OFF: WfGraphAgentModel = agentModel({ enabled: false });
 
 /**
- * The turn limit, refusing anything but a positive integer at startup. Every
- * provider function and the runner form read `maxConcurrentTurns` through it,
- * before anything else, so a bad limit fails even when the key is blank.
+ * The settings a provider function's value carries, or undefined for any
+ * value a provider function did not build.
  */
-export function readMaxConcurrentTurns(value: number | undefined): number {
+export function agentModelSettings(
+  value: unknown
+): AgentModelSettings | undefined {
+  return isAgentModel(value) ? value[AGENT_MODEL] : undefined;
+}
+
+function isAgentModel(
+  value: unknown
+): value is { readonly [AGENT_MODEL]: AgentModelSettings } {
+  return typeof value === "object" && value !== null && AGENT_MODEL in value;
+}
+
+/**
+ * The turn limit, refusing anything but a positive integer. `option` names
+ * the option as the host wrote it, such as `wfAnthropic's maxConcurrentTurns`.
+ */
+export function readMaxConcurrentTurns(
+  value: number | undefined,
+  option: string
+): number {
   if (value === undefined) {
     return DEFAULT_MAX_CONCURRENT_AGENT_TURNS;
   }
   if (!Number.isSafeInteger(value) || value < 1) {
-    throw new Error("agent.maxConcurrentTurns must be a positive integer");
+    throw new Error(`${option} must be a positive integer`);
   }
   return value;
 }
 
 /**
  * Reads the host's option into the settings the runtime carries.
- *
- * A provider function already resolved its own defaults, so its value is
- * carried as it is. The runner form's turn limit is checked here.
+ * `undefined` leaves the agent off, the turn limit of every value accepted is
+ * checked, and any value that is neither a provider function's result nor
+ * `{ runner }` throws.
  */
 export function readAgentSettings(
   config: WfGraphAgentConfig | undefined
 ): AgentSettings {
   if (config === undefined) {
-    return AGENT_OFF;
+    return { enabled: false };
   }
-  if ("runner" in config) {
+  const model = agentModelSettings(config);
+  if (model !== undefined) {
+    return model.enabled
+      ? {
+          ...model,
+          maxConcurrentTurns: readMaxConcurrentTurns(
+            model.maxConcurrentTurns,
+            "agent.maxConcurrentTurns"
+          ),
+        }
+      : model;
+  }
+  if (typeof config === "object" && config !== null && "runner" in config) {
     return {
       enabled: true,
       runner: config.runner,
-      maxConcurrentTurns: readMaxConcurrentTurns(config.maxConcurrentTurns),
+      maxConcurrentTurns: readMaxConcurrentTurns(
+        config.maxConcurrentTurns,
+        "agent.maxConcurrentTurns"
+      ),
     };
   }
-  if (!("enabled" in config)) {
-    return unknownAgentOption(config);
-  }
-  return config;
-}
-
-/**
- * An `agent` value that is neither a provider function's result nor a runner,
- * from a JavaScript host. A plain object naming a key and a model throws here
- * at startup.
- */
-function unknownAgentOption(_config: never): never {
   throw new Error(
-    "agent takes what a provider function returns, such as wfOpenAi from @wfgraph/core/openai, or { runner }."
+    "agent takes what a provider function returns, such as wfOpenAi from @wfgraph/core/openai, or { runner }. Leave agent out to turn the build agent off."
   );
 }
 

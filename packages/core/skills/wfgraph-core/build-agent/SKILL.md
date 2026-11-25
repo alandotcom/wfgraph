@@ -8,7 +8,7 @@ description: >
   limiting maxConcurrentTurns, running turns on the host's own gateway
   or model with agent.runner and streamAgentTurn, granting agent.use and the
   operations the agent's tools check, or explaining why the chat panel is
-  missing, why startup refuses the agent option, or why a tool call is
+  missing, why the agent option is refused, or why a tool call is
   refused. Also use for requests such as "add AI to the workflow editor with
   our Anthropic key", "send the workflow agent through our LLM gateway" or
   "the agent panel does not appear". For an external MCP client use
@@ -51,7 +51,7 @@ the history with each message and keeps the thread in its own storage.
 
 1. **Pick the provider entry.** Each provider has its own entry, and `agent`
    takes what its function returns. There is no `provider` key: a plain
-   object of `apiKey` and `model` is refused at startup.
+   object of `apiKey` and `model` is refused wherever `agent` is read.
 
    | Entry and function                                      | Turned on by | `model`                     | Note                                                                 |
    | ------------------------------------------------------- | ------------ | --------------------------- | -------------------------------------------------------------------- |
@@ -66,8 +66,9 @@ the history with each message and keeps the thread in its own storage.
 2. **Read the key from the environment.** A blank or absent `apiKey` leaves
    the agent off without an error, and so does a blank `baseUrl` for
    `wfOpenAiCompatible`. A key with a blank `model` for a provider that has no
-   default throws where the host calls the function. Result: startup either
-   succeeds with the agent on, or throws a message naming `agent.model`.
+   default throws where the host calls the function. Result: the call either
+   returns a value that turns the agent on, or throws a message saying the
+   function needs a non-blank `model`.
 3. **Put a gateway in front only if it speaks the provider's API.** A
    `baseUrl` for `wfOpenAi` must serve `POST {baseUrl}/responses`, OpenAI's
    Responses API. A gateway that serves Chat Completions alone, as most
@@ -92,8 +93,10 @@ the history with each message and keeps the thread in its own storage.
    `agent.use` alone every tool call in a turn is refused.
 6. **Size the turn limit.** `maxConcurrentTurns`, an option of every provider
    function and of the runner form, caps how many turns one process streams
-   at once, across every person using the editor. It defaults to 4, and a
-   value that is not a positive integer throws at startup.
+   at once, across every person using the editor. It defaults to 4. A value
+   that is not a positive integer throws where the host calls a provider
+   function, naming the function, and wherever a runner form's `agent` is
+   read, naming `agent.maxConcurrentTurns`.
    A turn past the limit is refused with a message asking the person to wait.
 
 ## Core Patterns
@@ -145,8 +148,8 @@ or a model read from an unset variable.
 Correct: name the model, such as `model: "claude-sonnet-5-5"`, the Claude model
 the eval suite has measured.
 
-`wfAnthropic` throws `agent.model is required for the "anthropic" provider,
-which has no default model.` Only `wfOpenAi` has a default model.
+`wfAnthropic` throws `wfAnthropic needs a non-blank model, because its
+provider has no default model.` Only `wfOpenAi` has a default model.
 
 Source: alandotcom/wfgraph:docs/embedding.md (The build agent)
 
@@ -172,8 +175,11 @@ Correct: `agent: wfAnthropic({ apiKey, model })` from `@wfgraph/core/anthropic`,
 or `wfOpenAi` from `@wfgraph/core/openai`.
 
 The `agent` option takes what a provider function returns, or `{ runner }`.
-A plain object fails to type-check, and from JavaScript startup throws
-`agent takes what a provider function returns`.
+A plain object fails to type-check. From JavaScript, `createWfGraphApp`
+throws `agent takes what a provider function returns` when it is called.
+`wfWorker` reads `agent` from its `request` callback on each invocation, so
+it builds without complaint and then throws the same message on every
+request and every tick.
 
 Source: alandotcom/wfgraph:docs/embedding.md (The build agent)
 
@@ -213,6 +219,6 @@ The agent is configured when these hold:
 - A session without `agent.use` is refused `agent.chat` with `403`.
 
 `packages/evals/src/skills/build-agent/agent-config.test.ts` in the Workflow
-Graph repository asserts the startup and `agent.enabled` outcomes for the
+Graph repository asserts the refusals and `agent.enabled` outcomes for the
 provider functions and the runner form; a turn against a live model is not
 part of it.
