@@ -24,7 +24,7 @@ Each run that `getExecutions`, `getExecutionsGlobal` and `getExecutionLogs` retu
 
 Each run that `getExecutions`, `getExecutionsGlobal` and `getExecutionLogs` return carries `entity`: the tracked Entity's `type` and `id`, or null when the workflow tracks no Entity. Each wait that `getExecutionLogs` returns carries `waitType`, `delay` or `event`. The new `workflow.continueWait` procedure, which takes `run.manage`, ends one waiting park of a draft run as if its time had come and refuses a run of a published version.
 
-Each workflow that `getAll` and `subscribeList` return carries `runCounts`: `failedRecently`, the failed runs among the newest 50 its run list shows, and `waiting`, its runs waiting now. A run that fails or parks emits a new `subscribeList` snapshot.
+Each workflow that `getAll` and `subscribeList` return carries `runCounts`: `failedRecently`, the failed runs among the newest 50 its run list shows, and `waiting`, its runs waiting now. `subscribeList` reads the counts every ten seconds, so a run that fails or parks reaches a new snapshot within that time.
 
 A run that fails because the host found no Entity, or because its resolver failed, records that failure on the node whose data needed the Entity, so `getExecutionLogs` answers an error log for that node.
 
