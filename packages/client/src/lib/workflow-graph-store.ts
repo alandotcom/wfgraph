@@ -296,12 +296,19 @@ export const onNodesChangeAtom = atom(
       (change) => change.type === "position" && change.dragging === true
     );
     const isDragSettled = filteredChanges.some(isSettledPosition);
+    const dragActive = get(workflowDragActiveAtom);
 
-    if (isDragFrame && !get(workflowDragActiveAtom)) {
+    if (isDragFrame && !dragActive) {
       // A drag arrives as a stream of frames. Only the first still has the
       // pre-drag positions worth snapshotting.
       pushHistory(get, set);
       set(workflowDragOriginAtom, get(historyAtom).at(-1) ?? null);
+    }
+
+    if (isDragSettled && !isDragFrame && !dragActive) {
+      // An arrow-key nudge moves the selection in one settled change with no
+      // drag frames before it, so it is recorded as one undo step here.
+      pushHistory(get, set);
     }
 
     if (isDragSettled) {

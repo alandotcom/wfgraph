@@ -478,6 +478,27 @@ describe("graph history", () => {
     expect(nodeA?.position.x).toBe(0);
   });
 
+  it("undoes an arrow-key nudge one key press at a time", () => {
+    const store = createGraphStore(...standardGraph());
+
+    // React Flow moves a selected node on an arrow key with one settled
+    // change and no drag frames before it.
+    store.set(onNodesChangeAtom, [
+      { type: "position", id: "a", dragging: false, position: { x: 5, y: 0 } },
+    ]);
+    store.set(onNodesChangeAtom, [
+      { type: "position", id: "a", dragging: false, position: { x: 10, y: 0 } },
+    ]);
+
+    const positionOfA = () =>
+      store.get(nodesAtom).find((node) => node.id === "a")?.position.x;
+    expect(positionOfA()).toBe(10);
+    store.set(undoAtom);
+    expect(positionOfA()).toBe(5);
+    store.set(undoAtom);
+    expect(positionOfA()).toBe(0);
+  });
+
   it("undoes an auto-layout pass", () => {
     const store = createGraphStore([actionNode("a", 0), actionNode("b", 10)]);
 
