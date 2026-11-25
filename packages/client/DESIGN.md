@@ -133,7 +133,7 @@ An achromatic graphite ramp carries the entire interface; saturated hues exist o
 - **Graphite Line** (oklch(0.922 0 0)): Hairline borders and input strokes (oklch(0.27 0 0) in dark mode).
 - **Graphite Mid** (oklch(0.54 0 0), oklch(0.65 0 0) in dark): Muted foreground for descriptions and placeholders. It is solved against Graphite Wash, the darkest ground muted text sits on: 4.61:1 there and 5.02:1 on Paper. Anything lighter is decorative only.
 - **Canvas Line** (oklch(0.6 0 0), oklch(0.48 0 0) in dark): The structural stroke on the React Flow canvas, carrying a node's resting border and the wire between two nodes. `--canvas-line`. It is a separate step from Graphite Line because a node card is Paper on a Paper canvas, so this stroke is the whole card edge rather than a hairline over a fill; it is solved for the 3:1 WCAG 1.4.11 asks of a graphic carrying meaning, which Graphite Line misses at 1.20:1. Canvas only. A border inside a panel or a card is still Graphite Line.
-- **Canvas Line Muted** (oklch(0.78 0 0), oklch(0.37 0 0) in dark): One step down at 2.0:1, for an edge into a subtree the run cannot reach, and on a run's canvas for an edge the run did not take. `--canvas-line-muted`. It is a value per theme rather than Canvas Line mixed toward the background, because mixing toward Paper lightens while mixing toward Void darkens, so a single expression reads correctly in one theme and disappears in the other. This is the one canvas stroke below the 3:1 floor, and it is deliberate: an unreachable edge has to read as quieter than a live one, and the meaning is carried by the wider dash gap and the stopped march rather than by contrast alone. Treat 2.0:1 as the floor for a deliberately quiet stroke, not as a target to design toward.
+- **Canvas Line Muted** (oklch(0.78 0 0), oklch(0.37 0 0) in dark): One step down at 2.0:1, for an edge into a subtree the run cannot reach, and on a run's canvas for an edge the run did not take. `--canvas-line-muted`. It is a value per theme rather than Canvas Line mixed toward the background, because mixing toward Paper lightens while mixing toward Void darkens, so a single expression reads correctly in one theme and disappears in the other. This is the one canvas stroke below the 3:1 floor, and it is deliberate: an unreachable edge has to read as quieter than a live one, and the meaning is carried by the wider dash gap rather than by contrast alone. Treat 2.0:1 as the floor for a deliberately quiet stroke, not as a target to design toward.
 - **Void** (oklch(0 0 0)): Dark mode's background. True black, tuned for the OLED-dark canvas where the graph floats.
 
 ### Tertiary (signals)
@@ -263,7 +263,7 @@ All primitives are shadcn/ui on Base UI, refined and restrained: quiet at rest, 
 
 The reason the product exists. A 192×112px rectangular card at 8px radius sitting on the React Flow canvas: a 16px integration icon, a 14px semibold title that wraps to two lines, and a one-line description at detail zoom. A Condition holding more than one rule leads that line with how many must match, such as "All of 2 rules", because its title names one question. The overview presentation hides descriptions while retaining card geometry. Event Split is wider at 264px on purpose, because it carries two labelled outlets. A collapsed Group draws at the same 192×112. The card is flat; elevation on the canvas would compete with the status border.
 
-At rest the border is 1.5px of Canvas Line. Status is worn on that same border, stepping up to 2px: Signal Green for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. A step the run is parked on keeps the resting border and shows a Waiting chip, and a step the executor is retrying after a failure keeps it too and shows a Retrying chip in Signal Amber. Every status also renders its word in a chip, so the border is never the only carrier. The chip straddles the card's top edge at the right, so it never covers the type icon. The chip reads Running, Waiting, Retrying, Successful, Failed, or Canceled, the same words a run's Group card, Group summary, and member rows use for that step. A successful step that did nothing because the run has Test recipients keeps the resting border and reads "Skipped (test run)" on its chip, its journey entry, and its evidence, which says why in one sentence. Focus shifts the border to Graphite Ink rather than the ring color, because the resting border already sits at the ring's lightness and the shift would otherwise read as nothing.
+At rest the border is 1.5px of Canvas Line. Status is worn on that same border, stepping up to 2px: Signal Green for success, Signal Red for failure, Signal Slate for cancelled, and an animated Signal Blue sweep while running. A step the run is parked on keeps the resting border and shows a Waiting chip, and a step the executor is retrying after a failure keeps it too and shows a Retrying chip in Signal Amber. Every status also renders its word in a chip, so the border is never the only carrier. The chip straddles the card's top edge, right-aligned in the strip between the top handle and the card's right corner, so it covers neither the type icon nor the handle. A chip wider than that strip starts just right of the handle and runs past the card's right edge into the gap between siblings. The chip reads Running, Waiting, Retrying, Successful, Failed, or Canceled, the same words a run's Group card, Group summary, and member rows use for that step. A successful step that did nothing because the run has Test recipients keeps the resting border and reads "Skipped (test run)" on its chip, its journey entry, and its evidence, which says why in one sentence. Focus shifts the border to Graphite Ink rather than the ring color, because the resting border already sits at the ring's lightness and the shift would otherwise read as nothing.
 
 The workflow overview draws each Group as one collapsed card: solid Graphite Wash behind a 1.5px Canvas Line border, a title band holding the Group icon, the label, the issue badge, and an **Enter group** arrow, and below a rule an optional one-line description above the number of steps, or on a run's canvas above the Group's run status and step counts. The description uses the same detail-zoom visibility and overflow tooltip as a step's description. The Wash is what separates a Group from a step, and it inverts on its own in dark. Its members never expand in place. Edges entering the Group attach to the card's one top handle, and edges leaving it attach to its one bottom handle, which carries no label. Every edge from inside the Group to the same outside step draws as one edge from that handle, and when every edge it stands for leaves by the same Condition branch, it carries that branch's True or False label. While nothing leaves the Group, dragging from the bottom handle to an outside step adds a connection from each terminal non-Condition member. Unused Condition outlets stay unwired, so taking an unused branch ends the path without running the outside step. If only unused Condition outlets remain, the editor asks the builder to open the Group and choose a branch. A join the rules refuse, such as terminal steps on opposite branches of one Condition, is refused with its notice. Once the Group continues, dragging from the bottom handle adds a connection from the outlets it already continues by. Deleting an edge drawn from the card deletes every connection it stands for, and an outlet entering the Group at several steps draws one edge onto the card, whose deletion deletes the connection to each of those steps. Changing which branch continues is done on the focused Group canvas.
 
@@ -273,11 +273,11 @@ The focused Group canvas shows its members at their stored positions relative to
 
 Handles are 12px dots in Graphite Ink with a hairline ring, and their hit areas are 24px on desktop and 44px on touch. Those sizes are divided by `--rf-zoom`, the live canvas scale the viewport transform applies, because a flat pixel size inside that transform shrinks with the zoom and delivered 24.6px on a phone.
 
-Edges leave the bottom handle, travel in a rounded orthogonal step, and enter the top handle of the next node. The dash is the wire, 2px of Canvas Line marching while live and Graphite Ink when selected; a label sits on the horizontal span when the outlet has a name. An edge landing where the run cannot go widens its dash gap and stops marching, keeping a legible stroke rather than fading toward the background.
+Edges leave the bottom handle, travel in a rounded orthogonal step, and enter the top handle of the next node. The dash is the wire, 2px of Canvas Line and Graphite Ink when selected; a label sits on the horizontal span when the outlet has a name. The dash holds still on a Draft, a comparison and an ended run, and marches only on the canvas of a run in progress, along an edge the run may still take, so motion on the canvas always means work in progress. An edge landing where the run cannot go widens its dash gap, keeping a legible stroke rather than fading toward the background.
 
 A run's canvas shows the path the run took, read from its recorded executions. A Condition leaves by the branch its answer names, an Event Split by the outlet of the Event it recorded, and any other step by each edge whose target the run reached. An edge the run took is a solid 2px Graphite Ink line that does not march, and is drawn above the others. An edge it did not take wears the unreachable face: Canvas Line Muted, the wider dash gap, and no march. While the run is in progress, an edge it may still take keeps the live marching dash. The outlet label of a branch the run took, on the edge or under the card, inverts to Graphite Ink with Paper text and leads with a check, so it reads without color; the label of one it did not take drops to 70% opacity. A Group card's edge is taken when any edge it stands for was, and on a focused Group canvas the edges to and from stubs follow the same rule. A Draft canvas shows no path.
 
-A step the run can never reach is muted: the card drops to 50% opacity, its incoming edge takes Canvas Line Muted and a wider dash gap, and that edge stops animating, so a dead region reads as still while a live one moves. Two things put a step out of reach, and both wear this: a Canceled subtree while no Cancel Event is declared, which also labels the outlet, and everything below a disabled step, since disabling one ends its branch. A disabled step wears its own face instead, 50% opacity with an eye badge, which is what separates the step a person switched off from the steps that lost their path because of it. A Group frame has no enabled state and never wears the disabled face; each member wears its own.
+A step the run can never reach is muted: the card drops to 50% opacity, its incoming edge takes Canvas Line Muted and a wider dash gap, and that edge never marches, even while a run is in progress. Two things put a step out of reach, and both wear this: a Canceled subtree while no Cancel Event is declared, which also labels the outlet, and everything below a disabled step, since disabling one ends its branch. A disabled step wears its own face instead, 50% opacity with an eye badge, which is what separates the step a person switched off from the steps that lost their path because of it. A Group frame has no enabled state and never wears the disabled face; each member wears its own.
 
 ### Navigation
 
@@ -292,10 +292,10 @@ widths. Below `md` the three views sit at the top of the toolbar's overflow
 menu, the active one checked, above the run commands and **Publish**. The control
 remains available when the inspector is closed. The canvas,
 inspector, editing lock, and status strip always follow the same active view.
-A workflow opens at the zoom that fits its whole graph in the usable canvas, held
-between 90% and 100%. At 90% a step's 14px title still renders above 12px. The
+A workflow opens at 100%, where a step's 12px captions render at the floor of
+the type scale. The
 Lifecycle card sits at the top center of the usable canvas, so a graph too
-large for 90% runs off the bottom edge. A graph that fits but would clip at
+large for 100% runs off the bottom edge. A graph that fits but would clip at
 that anchor is centered. A camera remembered for the view wins. When a resolved
 view changes to a view with no remembered camera, the canvas places the graph
 the same way, never zooming in past the zoom it had. A run that failed, is
@@ -347,7 +347,11 @@ zoom controls titled **What this workflow does**. Collapsed, it shows the first
 sentence of what starts a run. Expanded, it lists in Caption type what starts a
 run, each step in order with its branches, and what stops a run. A branch nested
 more than two levels deep reads as one phrase with its step count. The card
-hides while Reveal is open, and Runs and Changes show the zoom cue in its place.
+hides while Reveal or the build agent's panel is open, and Runs and Changes
+show the zoom cue in its place. On a phone the collapsed card is its title row
+alone, and the zoom controls sit in a row along the bottom edge. The zoom
+controls and the **Agent** button draw on the card surface, so the graph never
+shows through them.
 
 The Draft canvas rests with Reveal closed. Selecting an ordinary step, which is
 any Action or Wait, opens Browse. A press on a step selects it only when it ends
@@ -744,13 +748,14 @@ the catalog and its settings show general names, and when the comparison lacks
 a side's values. A changed step lists the changed connections that touch it,
 each selecting that connection. A changed Group lists its own settings, the
 changed steps inside it, each entering the Group and opening that step's row,
-and **Enter group**. It says execution
+and **Enter group** as an outline button at the end of the row. It says execution
 behavior is unchanged when none of those steps changed behavior, and otherwise
 says that the Group's own change does not affect execution. A step whose Group changed shows a **Group membership** table
 naming each version's Group or "Not in a Group", and its sentence names the
 Groups it moved between. A changed step also shows how the editor's issue
 checks differ between the two versions, and says validation is unknown for a
-version whose action is missing from the catalog. A changed step inside a
+version whose action is missing from the catalog. A step with no issue in any
+version shows no Validation section. A changed step inside a
 collapsed Group is selected on that Group's focused canvas, which adds a
 browser history entry, and the list keeps its scroll there. A route or a
 remembered state that names the Focus level of a comparison shows Browse, with
