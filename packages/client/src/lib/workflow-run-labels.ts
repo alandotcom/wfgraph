@@ -90,8 +90,8 @@ export const WORKFLOW_PUBLICATION_STATE_LABELS: Record<
 /**
  * The editor's publication chip: the state in the list's words, then the
  * published version and whether the draft holds changes it does not, as
- * "Live · v2 · changes not published", "Test · v3", "Never published" or
- * "Paused".
+ * "Live · v2 · changes not published", "Test · v3", "Never published", or
+ * with the same parts after "Paused" once paused: "Paused · Live · v2".
  */
 export function publicationChipLabel(input: {
   isPaused: boolean;
@@ -100,12 +100,15 @@ export function publicationChipLabel(input: {
   publishedVersion: number | undefined;
   hasUnpublishedChanges: boolean;
 }): string {
-  const state = workflowPublicationState(input);
-  if (state === "paused" || state === "never_published") {
-    return WORKFLOW_PUBLICATION_STATE_LABELS[state];
+  if (!input.isPublished) {
+    return input.isPaused
+      ? WORKFLOW_PUBLICATION_STATE_LABELS.paused
+      : WORKFLOW_PUBLICATION_STATE_LABELS.never_published;
   }
+  // A paused workflow keeps the facts the pause holds back.
   return compact([
-    WORKFLOW_PUBLICATION_STATE_LABELS[state],
+    input.isPaused ? WORKFLOW_PUBLICATION_STATE_LABELS.paused : null,
+    publishedModeWord(input.workflowMode),
     input.publishedVersion === undefined ? null : `v${input.publishedVersion}`,
     input.hasUnpublishedChanges ? "changes not published" : null,
   ]).join(" · ");
@@ -156,9 +159,8 @@ export function publishedRunLabel(input: {
 }
 
 /**
- * One choice in the Published mode menu: the mode's word, and who that mode
- * sends to. The description is a clause, because the menu title and the
- * publication badge beside it already supply the rest.
+ * One choice in the Published mode menu: the mode's word, and one sentence on
+ * what the mode does.
  */
 export function publishedModeChoice(workflowMode: WorkflowMode): {
   label: string;
@@ -166,10 +168,28 @@ export function publishedModeChoice(workflowMode: WorkflowMode): {
 } {
   return {
     label: publishedModeWord(workflowMode),
+    // What the mode does, from CONTEXT.md's Published mode: Events start
+    // runs either way, and only the recipients differ.
     description:
-      workflowMode === "live" ? "Real recipients" : "Test recipients",
+      workflowMode === "live"
+        ? "Real Events start runs, and every step reaches real recipients."
+        : "Real Events still start runs, and each step follows its In test runs setting.",
   };
 }
+
+/** Who a run of a published version in `workflowMode` reaches, as a phrase. */
+export function publishedModeRecipients(workflowMode: WorkflowMode): string {
+  return workflowMode === "live" ? "Real recipients" : "Test recipients";
+}
+
+/**
+ * What Pause and Resume do, from CONTEXT.md's Paused workflow: a pause
+ * refuses every new start and leaves the runs in progress alone.
+ */
+export const PAUSE_EFFECT =
+  "New Events, schedules and manual runs start nothing. Runs in progress continue.";
+export const RESUME_EFFECT =
+  "Events, schedules and manual runs start runs again.";
 
 /**
  * The steps of a graph that change something outside the workflow through an

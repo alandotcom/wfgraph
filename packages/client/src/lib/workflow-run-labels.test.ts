@@ -94,16 +94,17 @@ describe("publishedModeWord", () => {
 });
 
 describe("publishedModeChoice", () => {
-  // Each description is a clause, because the badge beside the control names
-  // the version and the menu title names the setting.
-  it("describes who each mode reaches", () => {
+  // Events start runs in both modes; only what the steps reach differs.
+  it("says what each mode does", () => {
     expect(publishedModeChoice("live")).toEqual({
       label: "Live",
-      description: "Real recipients",
+      description:
+        "Real Events start runs, and every step reaches real recipients.",
     });
     expect(publishedModeChoice("test")).toEqual({
       label: "Test",
-      description: "Test recipients",
+      description:
+        "Real Events still start runs, and each step follows its In test runs setting.",
     });
   });
 });
@@ -390,6 +391,8 @@ describe("publicationChipLabel", () => {
         hasUnpublishedChanges: true,
       })
     ).toBe("Never published");
-    expect(publicationChipLabel({ ...base, isPaused: true })).toBe("Paused");
+    expect(publicationChipLabel({ ...base, isPaused: true })).toBe(
+      "Paused · Live · v2"
+    );
   });
 });

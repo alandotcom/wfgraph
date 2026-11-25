@@ -137,14 +137,23 @@ describe("PublicationChip", () => {
     const chip = await open();
     expect(chip.getAttribute("aria-label")).toBe("Publication: Test · v2");
 
-    const test = view.getByRole("menuitemradio", { name: /Test recipients/ });
+    const test = view.getByRole("menuitemradio", {
+      name: /^Test.*Real Events still start runs, and each step follows its In test runs setting/,
+    });
     expect(test.getAttribute("aria-checked")).toBe("true");
     expect(
-      view.getByRole("menuitemradio", { name: /Real recipients/ })
+      view.getByRole("menuitemradio", {
+        name: /^Live.*every step reaches real recipients/,
+      })
     ).toBeTruthy();
     // A version is published, so the mode is already in force.
     expect(view.queryByText("Takes effect on publish")).toBeNull();
-    expect(view.getByRole("menuitem", { name: "Pause workflow" })).toBeTruthy();
+    // Pause says what it does before it is pressed.
+    expect(
+      view.getByRole("menuitem", {
+        name: "Pause workflow New Events, schedules and manual runs start nothing. Runs in progress continue.",
+      })
+    ).toBeTruthy();
 
     fireEvent.click(view.getByRole("menuitem", { name: "Version history" }));
     expect(showHistory).toHaveBeenCalledTimes(1);
@@ -168,9 +177,14 @@ describe("PublicationChip", () => {
     const { view, open } = renderChip({ published: true, paused: true });
     const chip = await open();
 
-    expect(chip.getAttribute("aria-label")).toBe("Publication: Paused");
+    // A paused chip keeps the mode and version the pause holds back.
+    expect(chip.getAttribute("aria-label")).toBe(
+      "Publication: Paused · Live · v2"
+    );
     expect(
-      view.getByRole("menuitem", { name: "Resume workflow" })
+      view.getByRole("menuitem", {
+        name: "Resume workflow Events, schedules and manual runs start runs again.",
+      })
     ).toBeTruthy();
   });
 
@@ -181,7 +195,7 @@ describe("PublicationChip", () => {
     await waitFor(() =>
       expect(
         view
-          .getByRole("menuitemradio", { name: /Real recipients/ })
+          .getByRole("menuitemradio", { name: /^Live/ })
           .getAttribute("aria-disabled")
       ).toBe("true")
     );

@@ -19,7 +19,7 @@ import type { WorkflowMode } from "#src/lib/workflow-graph-types";
 import type { WorkflowWorkspaceView } from "#src/lib/workflow-ui-store";
 import {
   NOTHING_PUBLISHED_LABEL,
-  publishedModeChoice,
+  publishedModeRecipients,
   publishedRunLabel,
 } from "#src/lib/workflow-run-labels";
 
@@ -308,7 +308,7 @@ export function workflowCommands({
         ? NOTHING_PUBLISHED_LABEL
         : state.isPaused
           ? PAUSED_RUN_REASON
-          : publishedModeChoice(state.workflowMode).description,
+          : publishedModeRecipients(state.workflowMode),
       keywords: "Run published version live test execute start trigger",
       disabled: !state.canRunPublished || isPublishedRunDisabled(state),
       paletteOnly: true,

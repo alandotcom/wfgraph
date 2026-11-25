@@ -34,8 +34,10 @@ import {
 } from "#src/lib/workflow-commands";
 import { workflowPublicationQueryOptions } from "#src/lib/rpc-query";
 import {
+  PAUSE_EFFECT,
   publicationChipLabel,
   publishedModeChoice,
+  RESUME_EFFECT,
   workflowPublicationState,
 } from "#src/lib/workflow-run-labels";
 import { currentWorkflowModeAtom } from "#src/lib/workflow-save-store";
@@ -114,7 +116,7 @@ export function PublicationChip({
         <span className="hidden truncate md:inline">{label}</span>
         <ChevronDown className="size-3 opacity-50" data-icon="inline-end" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60">
+      <DropdownMenuContent align="start" className="w-72">
         <DropdownMenuGroup>
           <DropdownMenuLabel>
             Published mode
@@ -164,7 +166,14 @@ export function PublicationChip({
             onClick={() => pause.setPaused(!publication.isPaused)}
           >
             {publication.isPaused ? <Play /> : <Pause />}
-            {publication.isPaused ? "Resume workflow" : "Pause workflow"}
+            {/* What a pause does, styled as the mode rows say what each
+                mode does. */}
+            <span>
+              {publication.isPaused ? "Resume workflow" : "Pause workflow"}
+              <span className="block font-normal text-muted-foreground text-xs">
+                {publication.isPaused ? RESUME_EFFECT : PAUSE_EFFECT}
+              </span>
+            </span>
           </DropdownMenuItem>
         ) : null}
         {commands.map((command) => (

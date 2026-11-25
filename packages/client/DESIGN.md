@@ -711,12 +711,17 @@ screen, the strip says whether the draft is saved, and holds the issue count.
 
 The publication state is stated once, in a chip beside the workflow's name in
 the toolbar, in the words the Workflows list uses: "Live · v2 · changes not
-published", "Test · v3", "Never published" or "Paused", behind the list's dot,
+published", "Test · v3" or "Never published", and a paused workflow keeps the
+same parts after "Paused": "Paused · Live · v2". It sits behind the list's dot,
 filled green for Live, filled Signal Amber for Test and an outline otherwise.
-Its menu holds **Published mode** (Live or Test, each with its recipients, and
-"Takes effect on publish" before the first publish), **Pause workflow** or
-**Resume workflow** once a version is published, **Version history** and
-**Review changes**. A viewer who may not edit sees the mode and cannot change
+Its menu holds **Published mode**, each choice with one line on what it does
+("Real Events start runs, and every step reaches real recipients." and "Real
+Events still start runs, and each step follows its In test runs setting."),
+with "Takes effect on publish" before the first publish; **Pause workflow**
+("New Events, schedules and manual runs start nothing. Runs in progress
+continue.") or **Resume workflow** ("Events, schedules and manual runs start
+runs again.") once a version is published; **Version history**; and **Review
+changes**. A viewer who may not edit sees the mode and cannot change
 it. The chip renders nothing until the workflow has loaded, since Live is a
 claim about real recipients.
 The strip also identifies **Runs**, explains that editing is
