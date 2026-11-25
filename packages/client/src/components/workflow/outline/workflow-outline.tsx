@@ -47,6 +47,7 @@ import {
   canvasSelectionAtom,
   edgesAtom,
   executionOverlayGraphAtom,
+  moveStepAtom,
   nodesAtom,
   presentedGraphAtom,
   runNodeEvidenceStatusesAtom,
@@ -152,7 +153,8 @@ function outlineSections(input: {
  * fills its container and scrolls inside it. The list is one Tab stop: arrow
  * keys, Home and End move between rows and select each step, Left and Right
  * fold, Enter selects the step and asks the details for focus, and `/` opens
- * the step picker to add a step after the row's step. Pointing at
+ * the step picker to add a step after the row's step, and Alt+Up and Alt+Down
+ * move the step within its sequence. Pointing at
  * or focusing a row puts the selection halo on its card without moving the
  * camera. Cmd+F or Ctrl+F focuses the filter field.
  */
@@ -183,6 +185,7 @@ export function WorkflowOutline({
   const requestReviewScroll = useSetAtom(requestReviewScrollAtom);
   const requestEditFocus = useSetAtom(requestRevealEditFocusAtom);
   const openPalette = useSetAtom(openCommandPaletteAtom);
+  const applyMoveStep = useSetAtom(moveStepAtom);
   const runPath = useAtomValue(runPathAtom);
   const runStatuses = useAtomValue(runNodeEvidenceStatusesAtom);
   const runLogs = useAtomValue(projectedRunLogsAtom);
@@ -407,6 +410,12 @@ export function WorkflowOutline({
       switch (event.key) {
         case "ArrowDown":
         case "ArrowUp":
+          if (event.altKey) {
+            moveStep(row, event.key === "ArrowUp" ? "up" : "down");
+            return true;
+          }
+          moveTo(moveFocus({ shown, from: row.key, key: event.key }));
+          return true;
         case "Home":
         case "End":
           if (event.altKey) return false;
@@ -478,6 +487,20 @@ export function WorkflowOutline({
     }
     if (row.key !== selectedKey) choose(row);
     openPalette({ id: "add-step" });
+  };
+
+  /**
+   * Swap the row's step with the one before or after it in its sequence, as
+   * Alt+Up and Alt+Down do. The row keeps focus, and the outline redraws in
+   * the new order.
+   */
+  const moveStep = (row: OutlineDisplayRow, direction: "up" | "down") => {
+    if (!editing) return;
+    if (row.kind !== "step") {
+      showGraphEditRefusal({ refusal: "Select a step to move it." });
+      return;
+    }
+    showGraphEditRefusal(applyMoveStep({ nodeId: row.nodeId, direction }));
   };
 
   const onFilterKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {

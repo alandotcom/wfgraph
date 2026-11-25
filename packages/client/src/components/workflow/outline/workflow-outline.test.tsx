@@ -15,7 +15,7 @@ import {
   within,
 } from "@testing-library/react";
 import { createStore, Provider } from "jotai";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExtensionCatalogProvider } from "#src/components/extension-catalog-provider";
 import { IntegrationUiProvider } from "#src/components/integration-ui-provider";
 import { OverlayProvider } from "#src/components/overlays/overlay-provider";
@@ -37,7 +37,14 @@ import {
   reviewHighlightAtom,
   reviewScrollRequestAtom,
 } from "#src/lib/workflow-review-store";
-import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
+import {
+  currentWorkflowIdAtom,
+  workflowApiAtom,
+} from "#src/lib/workflow-save-store";
+import {
+  savedWorkflow,
+  unreadableDraft,
+} from "#src/lib/workflow-save-test-support";
 import { showWorkspaceRoute } from "#src/lib/workflow-workspace-navigation.test-support";
 import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import {
@@ -99,6 +106,11 @@ function renderOutline(
   const store = createStore();
   const hero = toWorkflowGraphData(createSerializedWorkflowGraph(heroGraph()));
   store.set(currentWorkflowIdAtom, "workflow_1");
+  // A graph edit saves the draft; the save resolves with the draft as saved.
+  store.set(workflowApiAtom, {
+    update: vi.fn(() => Promise.resolve(savedWorkflow("workflow_1"))) as never,
+    read: unreadableDraft,
+  });
   store.set(loadWorkflowGraphAtom, {
     nodes: hero.nodes.map(toEditorNode),
     edges: hero.edges.map(toEditorEdge),
@@ -360,5 +372,26 @@ describe("WorkflowOutline", () => {
     // Rows behind an outlet the run did not take fold away.
     expect(screen.queryByText("Release the slot")).toBeNull();
     expect(screen.queryByText("Send cancellation notice")).toBeNull();
+  });
+
+  it("moves a step within its sequence with Alt+Up and Alt+Down, and refuses what cannot move", async () => {
+    const { store } = renderOutline();
+    const list = await tree();
+
+    act(() => store.set(selectOnlyNodeAtom, "Send deposit receipt"));
+    fireEvent.keyDown(list, { key: "ArrowDown", altKey: true });
+    await waitFor(() =>
+      expect(row("Send intake form").textContent).toMatch(/^10/u)
+    );
+    expect(row("Send deposit receipt").textContent).toMatch(/^11/u);
+    // The moved step keeps the selection and the keyboard.
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual([
+      "Send deposit receipt",
+    ]);
+
+    fireEvent.keyDown(list, { key: "ArrowUp", altKey: true });
+    await waitFor(() =>
+      expect(row("Send deposit receipt").textContent).toMatch(/^10/u)
+    );
   });
 });

@@ -40,6 +40,7 @@ import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { storedCanvasConnection } from "#src/lib/group-scope-canvas";
 import { groupStructureRefusalReason } from "@wfgraph/shared/graph/group-structure";
 import { generateId } from "@wfgraph/shared/utils/id";
+import { type MoveStepDirection, moveStepInSequence } from "#src/lib/move-step";
 import {
   expandConnection,
   connectionAdditionsRefusal,
@@ -848,6 +849,40 @@ export const insertStepOnEdgeAtom = atom(
       }),
       rowPlan?.movedNodes
     );
+  }
+);
+
+/**
+ * Swap a step with the step before or after it in its sequence, as one undo
+ * step. The two steps trade their connections and positions, and the
+ * selection stays where it was. Answers the refusal `moveStepInSequence`
+ * gives for a shape that cannot swap, and null when the draft is not
+ * editable.
+ */
+export const moveStepAtom = atom(
+  null,
+  (
+    get,
+    set,
+    input: { nodeId: string; direction: MoveStepDirection }
+  ): { moved: true } | { refusal: string } | null => {
+    if (!draftEditable(get)) {
+      return null;
+    }
+    const outcome = moveStepInSequence({
+      nodes: get(nodesStateAtom),
+      edges: get(edgesStateAtom),
+      nodeId: input.nodeId,
+      direction: input.direction,
+    });
+    if ("refusal" in outcome) {
+      return outcome;
+    }
+    pushHistory(get, set);
+    set(nodesStateAtom, outcome.nodes);
+    set(edgesStateAtom, outcome.edges);
+    requestGraphSave(get, set, { immediate: true });
+    return { moved: true };
   }
 );
 

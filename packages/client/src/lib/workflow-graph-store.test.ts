@@ -33,6 +33,7 @@ import {
   installRemoteWorkflowAtom,
   installRestoredWorkflowAtom,
   loadWorkflowGraphAtom,
+  moveStepAtom,
   nodesAtom,
   onEdgesChangeAtom,
   onNodesChangeAtom,
@@ -2484,5 +2485,47 @@ describe("a Group frame has no enabled state", () => {
       .find((node) => node.id === frameId);
     expect(frame).toBe(stored);
     expect(frame?.data).not.toHaveProperty("enabled");
+  });
+});
+
+describe("moveStepAtom", () => {
+  it("swaps two steps as one undo step and keeps the selection", () => {
+    const store = createGraphStore(
+      [
+        lifecycleNode("t"),
+        { ...actionNode("a"), selected: true },
+        actionNode("b"),
+      ],
+      [edge("t-a", "t", "a"), edge("a-b", "a", "b")]
+    );
+    showWorkspaceRoute(store, {});
+    const wiring = () =>
+      store
+        .get(edgesAtom)
+        .map((item) => `${item.source}→${item.target}`)
+        .toSorted();
+
+    expect(store.set(moveStepAtom, { nodeId: "a", direction: "down" })).toEqual(
+      { moved: true }
+    );
+    expect(wiring()).toEqual(["b→a", "t→b"]);
+    expect(store.get(activeSelectionAtom).nodeIds).toEqual(["a"]);
+
+    store.set(undoAtom);
+    expect(wiring()).toEqual(["a→b", "t→a"]);
+  });
+
+  it("answers a refusal and changes nothing for a step that cannot move", () => {
+    const store = createGraphStore(
+      [lifecycleNode("t"), actionNode("a")],
+      [edge("t-a", "t", "a")]
+    );
+    showWorkspaceRoute(store, {});
+    const before = store.get(edgesAtom);
+
+    expect(store.set(moveStepAtom, { nodeId: "a", direction: "up" })).toEqual({
+      refusal: "This step is first in its path.",
+    });
+    expect(store.get(edgesAtom)).toBe(before);
   });
 });
