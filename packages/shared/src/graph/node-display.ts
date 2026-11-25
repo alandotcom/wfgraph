@@ -16,6 +16,7 @@ import {
   type ExtensionCatalog,
   findAction,
   findEntity,
+  findEvent,
 } from "#src/extensions/catalog";
 import {
   ACTION_TYPE_CONFIG_KEY,
@@ -30,6 +31,32 @@ import {
 } from "#src/graph/node-references";
 import type { WorkflowNode } from "#src/graph/types";
 import { readLifecycleRules } from "#src/lifecycle/lifecycle-rules";
+
+/**
+ * What the interface titles the Lifecycle Node: its own label, else the Start
+ * Events that start a run, such as "When Payment settled", else "Start". The
+ * domain term stays Lifecycle Node; a person reads the node as where a run
+ * starts. Value references keep reading the node by `getNodeDisplayName`.
+ */
+export function startNodeTitle(
+  catalog: ExtensionCatalog,
+  data: {
+    label?: string | undefined;
+    config?: Record<string, unknown> | undefined;
+  }
+): string {
+  const label = data.label?.trim();
+  if (label) {
+    return label;
+  }
+  const events = readLifecycleRules(data.config)?.startEvents ?? [];
+  if (events.length === 0) {
+    return "Start";
+  }
+  return `When ${events
+    .map((name) => findEvent(catalog, name)?.label ?? name)
+    .join(" or ")}`;
+}
 
 export function getNodeDisplayName(
   catalog: ExtensionCatalog,

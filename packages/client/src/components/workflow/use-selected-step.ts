@@ -1,3 +1,4 @@
+import { startNodeTitle } from "@wfgraph/shared/graph/node-display";
 import { useAtomValue } from "jotai";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { stepNumbersAtom } from "#src/lib/step-numbers";
@@ -14,8 +15,8 @@ import { isBlank } from "@wfgraph/shared/types/string";
 /**
  * The one step the selection holds alone: its node, its number in the outline
  * when it has one, and the label a person reads for it, which falls back to
- * its action's name, "Lifecycle", or the Group's default name when the label
- * is blank.
+ * its action's name, the start's title (`startNodeTitle`), or the Group's
+ * default name when the label is blank.
  */
 export type SelectedStep = {
   node: WorkflowNode;
@@ -40,7 +41,7 @@ export function useSelectedStep(): SelectedStep | null {
   const actionType = readConfigString(node.data.config, ACTION_TYPE_CONFIG_KEY);
   const fallback =
     node.data.type === "lifecycle"
-      ? "Lifecycle"
+      ? startNodeTitle(catalog, node.data)
       : node.data.type === "group"
         ? groupLabel(node.data.label)
         : ((actionType && findAction(catalog, actionType)?.label) ??

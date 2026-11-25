@@ -101,6 +101,35 @@ function comparison(input: {
 const started = (target: string) => edge("lifecycle", target, "started");
 
 describe("workflowEdits", () => {
+  it("names a new workflow's start Start and calls it added, never a new step", () => {
+    const start: WorkflowNode = {
+      id: "lifecycle",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: { label: "", type: "lifecycle", config: {} },
+    };
+    const edits = workflowEdits(
+      comparison({
+        base: { nodes: [], edges: [] },
+        draft: {
+          nodes: [start, step("send", "Send welcome")],
+          edges: [started("send")],
+        },
+        nodeChanges: [
+          { nodeId: "lifecycle", kind: "added", fields: [] },
+          { nodeId: "send", kind: "added", fields: [] },
+        ],
+        edgeChanges: [{ edgeId: "lifecycle-started-send", kind: "added" }],
+      }),
+      catalog
+    );
+
+    expect(edits.edits.map(({ title, summary }) => [title, summary])).toEqual([
+      ["Start", "Added"],
+      ["Send welcome", "New step"],
+    ]);
+  });
+
   it("reads the seeded comparison's six changes as three edits and one organization change", () => {
     const shared = [
       lifecycle(),

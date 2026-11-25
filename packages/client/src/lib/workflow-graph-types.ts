@@ -5,6 +5,7 @@
  * `Edge` and run `status` are editor-only and stop at this package.
  */
 
+import { startNodeTitle } from "@wfgraph/shared/graph/node-display";
 import type { Edge, Node } from "@xyflow/react";
 import { isEmptyObject } from "es-toolkit/predicate";
 import type {
@@ -123,6 +124,14 @@ export function groupLabel(label: string | undefined): string {
   return label === undefined || isBlank(label) ? "Group" : label;
 }
 
+/** The catalog a title reads when its caller has none: it declares nothing. */
+const EMPTY_CATALOG: ExtensionCatalog = {
+  actions: [],
+  entities: [],
+  events: [],
+  integrations: [],
+};
+
 /** A comparison names an unavailable action safely rather than exposing its id. */
 export function comparisonNodeTitle(
   data: WorkflowNodeData,
@@ -133,7 +142,7 @@ export function comparisonNodeTitle(
     return nodeLabel;
   }
   if (data.type === "lifecycle") {
-    return "Lifecycle";
+    return startNodeTitle(catalog ?? EMPTY_CATALOG, data);
   }
   if (data.type === "group") {
     return "Group";
@@ -141,15 +150,7 @@ export function comparisonNodeTitle(
   const actionType = data.config?.actionType;
   const actionLabel =
     typeof actionType === "string" && actionType.trim()
-      ? findAction(
-          catalog ?? {
-            actions: [],
-            entities: [],
-            events: [],
-            integrations: [],
-          },
-          actionType
-        )?.label.trim()
+      ? findAction(catalog ?? EMPTY_CATALOG, actionType)?.label.trim()
       : undefined;
   if (actionLabel) {
     return actionLabel;
@@ -179,7 +180,7 @@ export function workflowNodeAriaLabel(
         ? ((catalog ? findAction(catalog, actionType)?.label : undefined) ??
           actionType)
         : data.type === "lifecycle"
-          ? "Lifecycle"
+          ? startNodeTitle(catalog ?? EMPTY_CATALOG, data)
           : data.type === "group"
             ? "Group"
             : "Action";

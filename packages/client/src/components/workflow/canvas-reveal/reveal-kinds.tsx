@@ -7,6 +7,7 @@
  * one level, Browse, which shows its editor.
  */
 
+import { startNodeTitle } from "@wfgraph/shared/graph/node-display";
 import type { ComponentType } from "react";
 import type { NodeConfigFrame } from "#src/components/workflow/node-config-panel";
 import {
@@ -330,8 +331,7 @@ function lifecycleHeaderModel(
   context: RevealHeaderContext
 ): RevealHeaderModel {
   const node = context.nodes.find((item) => item.id === subject.nodeId);
-  const title =
-    node && !isBlank(node.data.label) ? node.data.label : "Lifecycle";
+  const title = node ? startNodeTitle(context.catalog, node.data) : "Start";
   return {
     title,
     path: [context.workflowName || "Untitled workflow", title],

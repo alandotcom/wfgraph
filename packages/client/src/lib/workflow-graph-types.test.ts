@@ -225,7 +225,36 @@ describe("the persist round trip", () => {
   it("uses node-type fallbacks for nodes that are not configured actions", () => {
     expect(
       comparisonNodeTitle({ label: "", type: "lifecycle", config: {} })
-    ).toBe("Lifecycle");
+    ).toBe("Start");
+    // A start with Start Events is titled by what starts it.
+    expect(
+      comparisonNodeTitle(
+        {
+          label: "",
+          type: "lifecycle",
+          config: {
+            lifecycleRules: {
+              startEvents: ["payment.settled"],
+              cancelEvents: [],
+              concurrency: "unlimited",
+            },
+          },
+        },
+        {
+          actions: [],
+          entities: [],
+          integrations: [],
+          events: [
+            {
+              name: "payment.settled",
+              label: "Payment settled",
+              description: "",
+              payloadFields: [],
+            },
+          ],
+        }
+      )
+    ).toBe("When Payment settled");
     expect(comparisonNodeTitle({ label: "", type: "group", config: {} })).toBe(
       "Group"
     );

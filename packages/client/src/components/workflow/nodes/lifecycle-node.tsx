@@ -1,3 +1,4 @@
+import { startNodeTitle } from "@wfgraph/shared/graph/node-display";
 import { type NodeProps, Position } from "@xyflow/react";
 import { Play } from "lucide-react";
 import { memo } from "react";
@@ -54,7 +55,7 @@ export const LifecycleNode = memo(
       return null;
     }
 
-    const displayTitle = data.label || "Lifecycle";
+    const displayTitle = startNodeTitle(catalog, data);
     const startSummary = getStartSummary(data.config, catalog);
     const displayDescription =
       reviewEdit?.summary ?? (data.description || startSummary);

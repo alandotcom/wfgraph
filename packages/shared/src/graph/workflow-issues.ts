@@ -365,7 +365,8 @@ export function workflowNodeLabel(input: {
     return input.actionType;
   }
   if (input.node.data.type === "lifecycle") {
-    return "Lifecycle";
+    // The issue list names the start as the canvas card does with no Event.
+    return "Start";
   }
   if (input.node.data.type === "group") {
     return "Group";

@@ -510,7 +510,10 @@ function computeEdits(
         : null;
     const ownSummary =
       change.kind === "added"
-        ? "New step"
+        ? // The start of a run is no step, so a new one is said to be added.
+          draft.nodes.get(change.nodeId)?.data.type === "lifecycle"
+          ? "Added"
+          : "New step"
         : change.kind === "removed"
           ? "Removed"
           : settings;

@@ -1479,6 +1479,6 @@ describe("workflowNodeLabel", () => {
       workflowNodeLabel({
         node: { ...node, data: { label: "", type: "lifecycle" } },
       })
-    ).toBe("Lifecycle");
+    ).toBe("Start");
   });
 });
