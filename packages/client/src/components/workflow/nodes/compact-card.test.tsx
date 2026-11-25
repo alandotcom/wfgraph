@@ -368,3 +368,51 @@ describe("captions while cards are compact", () => {
     expect(view.getByLabelText("True outlet")).toBeTruthy();
   });
 });
+
+describe("a compact title the page breaks onto more lines than measured", () => {
+  it("steps down to a size that shows the whole title before the card paints", () => {
+    // happy-dom lays nothing out, so the title reports overflow itself while
+    // it draws above 23px, as a browser did for "Enough time / for…".
+    const scrollHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight"
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.dataset.slot === "node-compact-title" &&
+          Number.parseFloat(this.style.fontSize) > 23
+          ? 100
+          : 0;
+      },
+    });
+    try {
+      const { view } = renderAtZoom({
+        card: (
+          <ActionNode
+            data={{ ...reminder, label: "Enough time for reminders?" }}
+            id="enough"
+            type="action"
+            {...requiredNodeProps}
+          />
+        ),
+        zoom: 0.5,
+      });
+      const title = view.container.querySelector<HTMLElement>(
+        "[data-slot='node-compact-title']"
+      );
+      expect(title?.style.fontSize).toBe("23px");
+      expect(title?.className).toContain("line-clamp-3");
+    } finally {
+      if (scrollHeight) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollHeight",
+          scrollHeight
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
+      }
+    }
+  });
+});

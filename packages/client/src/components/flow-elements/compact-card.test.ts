@@ -82,4 +82,12 @@ describe("fitCompactTitle", () => {
     expect(fit.fontPx).toBe(16);
     expect(fit.hyphenate).toBe(true);
   });
+
+  it("leaves out the largest sizes the page has ruled out, keeping three whole lines", () => {
+    expect(fitCompactTitle("Enough time for reminders?", measure, 1)).toEqual({
+      fontPx: 23,
+      maxLines: 3,
+      hyphenate: false,
+    });
+  });
 });

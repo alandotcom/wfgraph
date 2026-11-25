@@ -70,19 +70,23 @@ function lineCount(
 
 /**
  * The largest size at which every word of `title` fits on a line and the
- * title fits the box, breaking only between words: 24px on two lines, or
- * down to 21px on three. A title too long for that draws at 21px and ends in
- * an ellipsis after its third line. A word wider than the box at 21px shrinks
- * the title until it fits, and below 16px it breaks with a hyphen instead.
+ * whole title fits the box, breaking only between words: 24px on two lines,
+ * or down to 21px on three. Only a title that does not fit three lines at
+ * 21px ends in an ellipsis. A word wider than the box at 21px shrinks the
+ * title until it fits, and below 16px it breaks with a hyphen instead.
+ *
+ * `skipSizes` leaves out that many of the largest sizes, for a title the page
+ * laid out on more lines than the measure predicted.
  */
 export function fitCompactTitle(
   title: string,
-  measure: MeasureText
+  measure: MeasureText,
+  skipSizes = 0
 ): CompactTitleFit {
   const words = title.split(/\s+/).filter((word) => word !== "");
   const widestAt = (fontPx: number) =>
     Math.max(0, ...words.map((word) => measure(word, fontPx)));
-  for (const fontPx of TITLE_SIZES) {
+  for (const fontPx of TITLE_SIZES.slice(skipSizes)) {
     if (
       widestAt(fontPx) <= COMPACT_TITLE_BOX.width &&
       lineCount(words, fontPx, measure) <= linesAt(fontPx)
@@ -104,13 +108,30 @@ export function fitCompactTitle(
   };
 }
 
+/** Whether a later size in the list remains after skipping `skipSizes`. */
+export function hasSmallerTitleSize(skipSizes: number): boolean {
+  return skipSizes < TITLE_SIZES.length - 1;
+}
+
 let context: CanvasRenderingContext2D | null | undefined;
-let fontFamily = "";
+let fontFamily = "sans-serif";
+
+/**
+ * The first family of the page's font stack, then `sans-serif`. A canvas
+ * refuses a whole font string holding a family it cannot parse, such as
+ * `ui-sans-serif`, and keeps measuring in its 10px default.
+ */
+function canvasFontFamily(stack: string): string {
+  const first = stack.split(",")[0]?.trim();
+  return first ? `${first}, sans-serif` : "sans-serif";
+}
 
 /**
  * Measures text in the canvas cards' semibold sans, read from the page's own
- * font stack. Without a 2D canvas it estimates 0.62em a character, which is
- * wider than the font's average so an estimate errs toward a smaller size.
+ * font stack, with 3% added for the difference between a canvas measure and
+ * the page's own line breaking. Without a 2D canvas, or when the canvas
+ * refuses the font, it estimates 0.62em a character, which is wider than the
+ * font's average so an estimate errs toward a smaller size.
  */
 export const measureCompactTitle: MeasureText = (text, fontPx) => {
   if (context === undefined) {
@@ -118,14 +139,16 @@ export const measureCompactTitle: MeasureText = (text, fontPx) => {
       typeof document === "undefined"
         ? null
         : document.createElement("canvas").getContext("2d");
-    fontFamily =
-      typeof document === "undefined"
-        ? "sans-serif"
-        : getComputedStyle(document.body).fontFamily || "sans-serif";
+    if (typeof document !== "undefined") {
+      fontFamily = canvasFontFamily(getComputedStyle(document.body).fontFamily);
+    }
   }
   if (context === null) {
     return text.length * fontPx * 0.62;
   }
   context.font = `600 ${fontPx}px ${fontFamily}`;
-  return context.measureText(text).width;
+  if (!context.font.includes(`${fontPx}px`)) {
+    return text.length * fontPx * 0.62;
+  }
+  return context.measureText(text).width * 1.03;
 };

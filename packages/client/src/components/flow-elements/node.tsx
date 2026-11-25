@@ -12,6 +12,8 @@ import {
   type ComponentProps,
   type CSSProperties,
   type ReactNode,
+  useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
 import { AnimatedBorder } from "#src/components/ui/animated-border";
@@ -30,9 +32,10 @@ import {
   COMPACT_TITLE_LINE_HEIGHT,
   type CompactTitleFit,
   fitCompactTitle,
+  hasSmallerTitleSize,
   measureCompactTitle,
 } from "#src/components/flow-elements/compact-card";
-import { useElementOverflow } from "#src/hooks/effects";
+import { useBeforePaint, useElementOverflow } from "#src/hooks/effects";
 import { cn } from "@wfgraph/shared/utils";
 
 export type NodeProps = ComponentProps<typeof Card> & {
@@ -452,11 +455,30 @@ export const NodeCompactBody = ({
   // Subscribed so the card draws again, and measures again, once the page's
   // fonts finish loading.
   useSyncExternalStore(subscribeToFonts, () => fontsLoaded, () => true);
-  let fit = titleFits.get(title);
+  const titleRef = useRef<HTMLSpanElement>(null);
+  // How many of the largest sizes the page's own layout ruled out, for a
+  // title the measure said would fit but that the page broke onto more lines.
+  const [skippedSizes, setSkippedSizes] = useState(0);
+  let fit = skippedSizes === 0 ? titleFits.get(title) : undefined;
   if (fit === undefined) {
-    fit = fitCompactTitle(title, measureCompactTitle);
-    titleFits.set(title, fit);
+    fit = fitCompactTitle(title, measureCompactTitle, skippedSizes);
+    if (skippedSizes === 0) {
+      titleFits.set(title, fit);
+    }
   }
+  // The page is the authority on where lines break: a clamped title whose
+  // content runs past its box steps down a size before the card is painted,
+  // so a title that fits three lines at a smaller size never ends early.
+  useBeforePaint(`${title}|${fit.fontPx}|${fit.maxLines}`, () => {
+    const element = titleRef.current;
+    if (
+      element !== null &&
+      element.scrollHeight > element.clientHeight + 1 &&
+      hasSmallerTitleSize(skippedSizes)
+    ) {
+      setSkippedSizes(skippedSizes + 1);
+    }
+  });
   return (
     <div
       className={cn(
@@ -486,6 +508,7 @@ export const NodeCompactBody = ({
           )}
           data-slot="node-compact-title"
           lang="en"
+          ref={titleRef}
           style={{
             fontSize: fit.fontPx,
             lineHeight: COMPACT_TITLE_LINE_HEIGHT,
