@@ -1,5 +1,6 @@
 import { useReactFlow, useStore } from "@xyflow/react";
 import { useAtom, useSetAtom } from "jotai";
+import type { ReactNode } from "react";
 import {
   MapPin,
   MapPinXInside,
@@ -19,18 +20,49 @@ import { workflowZoomPresentation } from "#src/components/workflow/workflow-view
 type ControlsProps = {
   onReflow?: (() => void) | undefined;
   canReflow?: boolean | undefined;
+  /** What sits above the zoom buttons, such as `OverviewCue`. */
+  children?: ReactNode | undefined;
 };
 
-export const Controls = ({
-  onReflow,
-  canReflow = true,
-}: ControlsProps) => {
-  const { zoomIn, zoomOut, fitView } = useReactFlow();
-  const [showMinimap, setShowMinimap] = useAtom(showMinimapAtom);
+/**
+ * While the canvas is zoomed out to its overview presentation, a card saying
+ * that node details appear when zoomed in, with a way to find a node by name.
+ * Renders nothing at detail zoom.
+ */
+export function OverviewCue() {
   const openPalette = useSetAtom(openCommandPaletteAtom);
   const overview = useStore(
     (state) => workflowZoomPresentation(state.transform[2]) === "overview"
   );
+  if (!overview) {
+    return null;
+  }
+  return (
+    <div
+      className="w-44 rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm"
+      data-slot="canvas-overview-cue"
+    >
+      <p className="font-medium">Overview</p>
+      <p className="mt-0.5 text-muted-foreground">Zoom in to view details.</p>
+      <Button
+        className="mt-1.5 h-11 px-3 md:h-7 md:px-2"
+        onClick={() => openPalette({ id: "find-node" })}
+        size="xs"
+        variant="outline"
+      >
+        Find a node
+      </Button>
+    </div>
+  );
+}
+
+export const Controls = ({
+  onReflow,
+  canReflow = true,
+  children,
+}: ControlsProps) => {
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
+  const [showMinimap, setShowMinimap] = useAtom(showMinimapAtom);
 
   const handleZoomIn = () => {
     void zoomIn();
@@ -50,25 +82,7 @@ export const Controls = ({
 
   return (
     <div className="flex flex-col items-start gap-2">
-      {overview ? (
-        <div
-          className="w-44 rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm"
-          data-slot="canvas-overview-cue"
-        >
-          <p className="font-medium">Overview</p>
-          <p className="mt-0.5 text-muted-foreground">
-            Zoom in to view details.
-          </p>
-          <Button
-            className="mt-1.5 h-11 px-3 md:h-7 md:px-2"
-            onClick={() => openPalette({ id: "find-node" })}
-            size="xs"
-            variant="outline"
-          >
-            Find a node
-          </Button>
-        </div>
-      ) : null}
+      {children}
       <ButtonGroup orientation="vertical">
       <Button
         className="size-11 md:size-7"

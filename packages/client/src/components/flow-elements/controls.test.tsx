@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { ReactFlowProvider, useStoreApi } from "@xyflow/react";
-import { Controls } from "./controls";
+import { Controls, OverviewCue } from "./controls";
 
 afterEach(() => {
   cleanup();
@@ -48,7 +48,9 @@ describe("Controls", () => {
     const { getByRole, getByText } = render(
       <ReactFlowProvider>
         <SetOverviewZoom />
-        <Controls />
+        <Controls>
+          <OverviewCue />
+        </Controls>
       </ReactFlowProvider>
     );
 

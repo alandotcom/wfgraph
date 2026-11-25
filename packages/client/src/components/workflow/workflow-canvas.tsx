@@ -18,7 +18,7 @@ import {
 } from "react";
 import { Canvas } from "#src/components/flow-elements/canvas";
 import { Connection } from "#src/components/flow-elements/connection";
-import { Controls } from "#src/components/flow-elements/controls";
+import { Controls, OverviewCue } from "#src/components/flow-elements/controls";
 import "@xyflow/react/dist/style.css";
 
 import { Edge, InsertStepSlot } from "#src/components/flow-elements/edge";
@@ -84,6 +84,7 @@ import {
 import { useWorkspaceCamera } from "./use-workspace-camera";
 import { useRevealCamera } from "./canvas-reveal/use-reveal-camera";
 import { useRevealOccupiedWidth } from "./canvas-reveal/use-reveal-width";
+import { WorkflowSummaryCard } from "./workflow-summary-card";
 import { CANVAS_OBSTACLE_SLOTS } from "./canvas-reveal/reveal-geometry";
 import { useCollectWorkflowIssues } from "#src/hooks/use-workflow-issues";
 import {
@@ -679,7 +680,17 @@ export function WorkflowCanvas({ canEdit }: { canEdit: boolean }) {
                 onReflow={
                   graphEditingLocked || !topologyAuthoring ? undefined : reflow
                 }
-              />
+              >
+                {/* Draft says what the workflow does while nothing is open in
+                    Canvas Reveal, which then holds the selected object's
+                    details. Runs and Changes keep the zoom cue, since their
+                    canvas shows a graph other than the draft. */}
+                {workspaceView !== "draft" ? (
+                  <OverviewCue />
+                ) : revealOccupiedWidth === 0 ? (
+                  <WorkflowSummaryCard />
+                ) : null}
+              </Controls>
             </Panel>
             {/* A workflow with nothing but its Lifecycle Node shows how to
                 begin, wherever the canvas can add a step. */}
