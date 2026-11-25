@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "#src/components/ui/button";
 import { ButtonGroup } from "#src/components/ui/button-group";
+import { useIsMobile } from "#src/hooks/use-mobile";
 import { workflowFitViewOptions } from "#src/components/workflow/workflow-viewport";
 import { viewportAnimationDuration } from "#src/lib/motion";
 import { showMinimapAtom } from "#src/lib/workflow-ui-store";
@@ -62,6 +63,7 @@ export const Controls = ({
   children,
 }: ControlsProps) => {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
+  const isMobile = useIsMobile();
   const [showMinimap, setShowMinimap] = useAtom(showMinimapAtom);
 
   const handleZoomIn = () => {
@@ -80,10 +82,17 @@ export const Controls = ({
     setShowMinimap(!showMinimap);
   };
 
+  // The group draws on the card surface, because an outline button has no
+  // fill of its own and the graph would show through it. A phone lays the
+  // buttons in a row along the bottom edge, where a column of 44px targets
+  // would cover a third of the canvas's height.
   return (
     <div className="flex flex-col items-start gap-2">
       {children}
-      <ButtonGroup orientation="vertical">
+      <ButtonGroup
+        className="rounded-md bg-card shadow-sm"
+        orientation={isMobile ? "horizontal" : "vertical"}
+      >
       <Button
         className="size-11 md:size-7"
         onClick={handleZoomIn}

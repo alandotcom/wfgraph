@@ -21,3 +21,14 @@ export function can(operationId: WfGraphOperationId): boolean {
 export function canInspectWorkflowRuns(): boolean {
   return WORKFLOW_RUN_INSPECTION_OPERATION_IDS.every(can);
 }
+
+/**
+ * Whether this viewer may use the build agent where the host runs it: chat
+ * with it, and let it change the workflow it edits.
+ */
+export function canUseBuildAgent(): boolean {
+  return (
+    can(WfGraphOperations.agentChat.id) &&
+    can(WfGraphOperations.workflowUpdate.id)
+  );
+}

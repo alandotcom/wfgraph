@@ -3,26 +3,38 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import { Button } from "#src/components/ui/button";
+import { canUseBuildAgent } from "#src/lib/authorization";
+import { isAgentEnabled } from "#src/lib/extensions";
 import { edgesAtom, nodesAtom } from "#src/lib/workflow-graph-store";
-import { workflowSummaryExpandedAtom } from "#src/lib/workflow-ui-store";
+import {
+  isAgentPanelOpenAtom,
+  workflowSummaryExpandedAtom,
+} from "#src/lib/workflow-ui-store";
 import {
   summarizeWorkflow,
   type WorkflowSummaryLine,
 } from "@wfgraph/shared/graph/workflow-summary";
+import { cn } from "@wfgraph/shared/utils";
 
 /**
  * The Draft canvas's account of what the workflow does, above the zoom
  * controls. Collapsed, it shows the first sentence of what starts a run.
  * Expanded, it shows what starts a run, each step in order with its branches,
  * and what stops a run. It reads the draft graph on the canvas, so it changes
- * as the builder edits.
+ * as the builder edits. It hides while the build agent's panel is open,
+ * which docks over the same corner of the canvas. On a phone, collapsed, it is
+ * its title row alone, so it covers as little of the graph as it can.
  */
 export function WorkflowSummaryCard() {
   const catalog = useExtensionCatalog();
   const nodes = useAtomValue(nodesAtom);
   const edges = useAtomValue(edgesAtom);
   const [expanded, setExpanded] = useAtom(workflowSummaryExpandedAtom);
+  const agentPanelOpen = useAtomValue(isAgentPanelOpenAtom);
   const bodyId = useId();
+  if (agentPanelOpen && isAgentEnabled() && canUseBuildAgent()) {
+    return null;
+  }
   const summary = summarizeWorkflow({ nodes, edges, catalog });
 
   return (
@@ -45,7 +57,13 @@ export function WorkflowSummaryCard() {
           <ChevronUp aria-hidden data-icon="inline-end" />
         )}
       </Button>
-      <div className="border-t px-3 py-2" id={bodyId}>
+      <div
+        className={cn(
+          "border-t px-3 py-2",
+          expanded ? undefined : "max-md:hidden"
+        )}
+        id={bodyId}
+      >
         {expanded ? (
           // The height cap is a fallback for a very long workflow; an
           // ordinary one fits beside the zoom controls without scrolling.

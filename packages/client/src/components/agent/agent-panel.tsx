@@ -34,8 +34,7 @@ import { Button } from "#src/components/ui/button";
 import { CANVAS_OBSTACLE_SLOTS } from "#src/components/workflow/canvas-reveal/reveal-geometry";
 import { useDomEvent, useFocusTrap } from "#src/hooks/effects";
 import { useIsMobile } from "#src/hooks/use-mobile";
-import { can } from "#src/lib/authorization";
-import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
+import { canUseBuildAgent } from "#src/lib/authorization";
 import {
   type AgentPanelSize,
   agentPanelSizeAtom,
@@ -363,16 +362,19 @@ function WorkflowAgentPanel({ workflowId }: { workflowId: string }) {
         {isOpen ? (
           <AgentCard onClose={onClose} onNewConversation={onNewConversation} />
         ) : (
-          <Button
-            className="pointer-events-auto shadow-sm"
-            onClick={() => setIsOpen(true)}
-            ref={trigger}
-            size="sm"
-            variant="outline"
-          >
-            <SparklesIcon />
-            Agent
-          </Button>
+          // The card surface under the button, because an outline button has
+          // no fill of its own and the graph would show through it.
+          <div className="pointer-events-auto rounded-md bg-card shadow-sm">
+            <Button
+              onClick={() => setIsOpen(true)}
+              ref={trigger}
+              size="sm"
+              variant="outline"
+            >
+              <SparklesIcon />
+              Agent
+            </Button>
+          </div>
         )}
       </AssistantRuntimeProvider>
     </div>
@@ -380,11 +382,7 @@ function WorkflowAgentPanel({ workflowId }: { workflowId: string }) {
 }
 
 export function AgentPanel({ workflowId }: { workflowId: string }) {
-  const canUseAgent =
-    can(WfGraphOperations.agentChat.id) &&
-    can(WfGraphOperations.workflowUpdate.id);
-
-  if (!canUseAgent) {
+  if (!canUseBuildAgent()) {
     return null;
   }
 
