@@ -3,7 +3,28 @@ import {
   formatClockTime,
   formatClockTimeWithSeconds,
   formatDayAndTime,
+  getCompactRelativeTime,
 } from "#src/utils/time";
+
+describe("getCompactRelativeTime", () => {
+  const now = new Date("2026-08-12T12:00:00.000Z");
+  const ago = (ms: number) => new Date(now.getTime() - ms);
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+
+  it.each([
+    [30_000, "now"],
+    [5 * MINUTE, "5m"],
+    [14 * HOUR, "14h"],
+    [3 * DAY, "3d"],
+    [15 * DAY, "2w"],
+    [120 * DAY, "4mo"],
+    [400 * DAY, "1y"],
+  ])("writes an age of %i ms as %s", (ms, expected) => {
+    expect(getCompactRelativeTime(ago(ms), now)).toBe(expected);
+  });
+});
 
 /**
  * Local-time constructors throughout: both formatters read the viewer's own

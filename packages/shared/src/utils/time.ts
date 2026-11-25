@@ -40,6 +40,50 @@ export function getRelativeTime(date: string | Date): string {
   return formatTimeDifference(diffInYears, "year");
 }
 
+/**
+ * The age of `date` in at most four characters, as `now`, `5m`, `14h`, `3d`,
+ * `2w`, `4mo` or `1y`, for a list column of fixed width. It uses the same unit
+ * steps as `getRelativeTime`. `now` is a parameter so a test can hold it still.
+ */
+export function getCompactRelativeTime(
+  date: string | Date,
+  now: Date = new Date()
+): string {
+  const diffInSeconds = Math.floor(
+    (now.getTime() - new Date(date).getTime()) / 1000
+  );
+  if (diffInSeconds < 60) {
+    return "now";
+  }
+
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes}m`;
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) {
+    return `${diffInHours}h`;
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 7) {
+    return `${diffInDays}d`;
+  }
+
+  const diffInWeeks = Math.floor(diffInDays / 7);
+  if (diffInWeeks < 4) {
+    return `${diffInWeeks}w`;
+  }
+
+  const diffInMonths = Math.floor(diffInDays / 30);
+  if (diffInMonths < 12) {
+    return `${diffInMonths}mo`;
+  }
+
+  return `${Math.floor(diffInDays / 365)}y`;
+}
+
 const MONTH_NAMES = [
   "Jan",
   "Feb",
