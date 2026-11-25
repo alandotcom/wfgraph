@@ -1,4 +1,5 @@
 import { mapValues } from "es-toolkit/object";
+import { ACTION_TYPE_CONFIG_KEY } from "#src/graph/node-config";
 import {
   templateReferencesInString,
   type ConfigTemplateReference,
@@ -17,7 +18,7 @@ export type ConsumedTemplateString = {
 };
 
 const BUILT_IN_LITERAL_KEYS = new Set([
-  "actionType",
+  ACTION_TYPE_CONFIG_KEY,
   "condition",
   "conditionModel",
 ]);

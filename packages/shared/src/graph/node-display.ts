@@ -17,7 +17,11 @@ import {
   findAction,
   findEntity,
 } from "#src/extensions/catalog";
-import { isLifecycleNode, readConfigString } from "#src/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  isLifecycleNode,
+  readConfigString,
+} from "#src/graph/node-config";
 import {
   isEntityStateSourceId,
   parseTemplate,
@@ -36,7 +40,10 @@ export function getNodeDisplayName(
   }
 
   if (node.data.type === "action") {
-    const actionType = readConfigString(node.data.config, "actionType");
+    const actionType = readConfigString(
+      node.data.config,
+      ACTION_TYPE_CONFIG_KEY
+    );
     if (actionType) {
       const action = findAction(catalog, actionType);
       if (action?.label) {

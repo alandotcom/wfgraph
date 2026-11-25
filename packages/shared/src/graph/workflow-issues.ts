@@ -32,7 +32,11 @@ import {
   type GroupContractRule,
   groupContractViolations,
 } from "#src/graph/group-contract";
-import { isWaitNode, readConfigTrimmedString } from "#src/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  isWaitNode,
+  readConfigTrimmedString,
+} from "#src/graph/node-config";
 import {
   currentTokenDisplayText,
   getNodeDisplayName,
@@ -379,7 +383,10 @@ export function findUnconfiguredIntegrationNodes(input: {
       continue;
     }
 
-    const actionType = readConfigTrimmedString(node.data.config, "actionType");
+    const actionType = readConfigTrimmedString(
+      node.data.config,
+      ACTION_TYPE_CONFIG_KEY
+    );
     if (!actionType) {
       continue;
     }
@@ -446,7 +453,10 @@ function collectMissingIntegrationIssues(input: {
       continue;
     }
 
-    const actionType = readConfigTrimmedString(node.data.config, "actionType");
+    const actionType = readConfigTrimmedString(
+      node.data.config,
+      ACTION_TYPE_CONFIG_KEY
+    );
     if (!actionType) {
       continue;
     }
@@ -561,7 +571,7 @@ function collectBrokenReferenceIssues(input: {
       continue;
     }
 
-    const actionType = readConfigTrimmedString(config, "actionType");
+    const actionType = readConfigTrimmedString(config, ACTION_TYPE_CONFIG_KEY);
     const action = actionType
       ? findAction(input.catalog, actionType)
       : undefined;
@@ -675,7 +685,10 @@ export function collectReferenceNotUpstreamIssues(input: {
     edges: input.edges,
   });
   const labelOf = (node: WorkflowNode): string => {
-    const actionType = readConfigTrimmedString(node.data.config, "actionType");
+    const actionType = readConfigTrimmedString(
+      node.data.config,
+      ACTION_TYPE_CONFIG_KEY
+    );
     return workflowNodeLabel({
       node,
       actionLabel: actionType
@@ -694,7 +707,7 @@ export function collectReferenceNotUpstreamIssues(input: {
       return [];
     }
 
-    const actionType = readConfigTrimmedString(config, "actionType");
+    const actionType = readConfigTrimmedString(config, ACTION_TYPE_CONFIG_KEY);
     const action = actionType
       ? findAction(input.catalog, actionType)
       : undefined;
@@ -804,7 +817,7 @@ function collectSharedConditionPathIssues(input: {
   return input.nodes.flatMap((node) => {
     const config = readJsonObjectLeniently(node.data.config);
     const actionType = config
-      ? readConfigTrimmedString(config, "actionType")
+      ? readConfigTrimmedString(config, ACTION_TYPE_CONFIG_KEY)
       : undefined;
     const model =
       config &&
@@ -852,7 +865,10 @@ function collectSharedConditionPathIssues(input: {
           node: source,
           actionLabel: findAction(
             input.catalog,
-            readConfigTrimmedString(source.data.config, "actionType") ?? ""
+            readConfigTrimmedString(
+              source.data.config,
+              ACTION_TYPE_CONFIG_KEY
+            ) ?? ""
           )?.label,
         })}"`;
       const others = sources.slice(0, -1).map(labelOf).join(" and ");

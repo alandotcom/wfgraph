@@ -71,6 +71,7 @@ import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import { can } from "#src/lib/authorization";
 import { settledProviderParameter } from "#src/lib/provider-parameters";
 import {
+  ACTION_TYPE_CONFIG_KEY,
   readConfigString,
   readConfigStringOr,
 } from "@wfgraph/shared/graph/node-config";
@@ -776,7 +777,7 @@ export function ActionConfig({
   canUpdate = true,
 }: ActionConfigProps) {
   const catalog = useExtensionCatalog();
-  const actionType = readConfigString(config, "actionType");
+  const actionType = readConfigString(config, ACTION_TYPE_CONFIG_KEY);
   const categories = useCategoryData(actionType);
   const categoryOptions = useMemo(
     () =>
@@ -972,7 +973,7 @@ export function ActionConfig({
 
       {/* System actions - hardcoded config fields */}
       <SystemActionFields
-        actionType={readConfigString(config, "actionType") ?? ""}
+        actionType={readConfigString(config, ACTION_TYPE_CONFIG_KEY) ?? ""}
         config={config}
         disabled={disabled}
         onUpdateConfig={onUpdateConfig}

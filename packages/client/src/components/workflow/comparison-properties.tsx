@@ -16,6 +16,7 @@ import type {
   WorkflowComparisonPayload,
   WorkflowNodeChange,
 } from "@wfgraph/shared/graph/publication-contracts";
+import { ACTION_TYPE_CONFIG_KEY } from "@wfgraph/shared/graph/node-config";
 import { TEST_PAYLOADS_CONFIG_KEY } from "@wfgraph/shared/lifecycle/test-payloads";
 import { compareText } from "@wfgraph/shared/types/string";
 import { cn } from "@wfgraph/shared/utils";
@@ -174,7 +175,7 @@ function snapshotFields(
     fields.push({
       label: "Action",
       key: "snapshot:action",
-      ...value(["data", "config", "actionType"], actionType),
+      ...value(["data", "config", ACTION_TYPE_CONFIG_KEY], actionType),
     });
   return [
     ...fields,
@@ -183,7 +184,8 @@ function snapshotFields(
       // so an added or removed node lists the same config keys a modified one
       // can report.
       .filter(
-        ([key]) => key !== "actionType" && key !== TEST_PAYLOADS_CONFIG_KEY
+        ([key]) =>
+          key !== ACTION_TYPE_CONFIG_KEY && key !== TEST_PAYLOADS_CONFIG_KEY
       )
       .toSorted(([left], [right]) => compareText(left, right))
       .map(([key, raw]) =>

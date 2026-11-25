@@ -24,7 +24,10 @@ import {
   findEvent,
   findIntegration,
 } from "@wfgraph/shared/extensions/catalog";
-import { readConfigString } from "@wfgraph/shared/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  readConfigString,
+} from "@wfgraph/shared/graph/node-config";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 import type { RevealBodyProps } from "./reveal-kinds";
 import { NodeIssueList, Section } from "./reveal-sections";
@@ -142,7 +145,7 @@ export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
   if (!node || nodeId === null) {
     return null;
   }
-  const actionType = readConfigString(config, "actionType");
+  const actionType = readConfigString(config, ACTION_TYPE_CONFIG_KEY);
   if (!actionType) {
     return <NodePropertiesForm frame={frame} nodeId={nodeId} />;
   }

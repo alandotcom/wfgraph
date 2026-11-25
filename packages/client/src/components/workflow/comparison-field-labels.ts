@@ -16,6 +16,7 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { isGroupMembershipPath } from "@wfgraph/shared/graph/change-classification";
 import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { ACTION_TYPE_CONFIG_KEY } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowFieldChange } from "@wfgraph/shared/graph/publication-contracts";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
@@ -244,7 +245,7 @@ export function comparisonFieldLabel(
   if (key === "enabled") return "Enabled";
   if (key !== "config") return GENERIC_PROPERTY_LABEL;
   const configKey = path[2];
-  if (configKey === "actionType") return "Action";
+  if (configKey === ACTION_TYPE_CONFIG_KEY) return "Action";
   const node = afterNode ?? beforeNode;
   if (node?.data.type === "group") {
     return groupConfigFieldLabel(path.slice(2));

@@ -2,6 +2,7 @@ import { asNonEmptyString, isBlank } from "#src/types/string";
 import { BUILT_IN_ACTION_IDS } from "#src/actions/built-in-actions";
 import { WAIT_FIELD_LABELS } from "#src/actions/wait-field-labels";
 import { compileSerializedConditionModel } from "#src/conditions/conditions";
+import { ACTION_TYPE_CONFIG_KEY } from "#src/graph/node-config";
 import { findTemplateTokens } from "#src/graph/node-references";
 import {
   readWaitDelayTiming,
@@ -288,7 +289,7 @@ export function getNodeMissingRequiredFields(input: {
       nodeLabel: getNodeLabel({ node }),
       missingFields: [
         {
-          fieldKey: "actionType",
+          fieldKey: ACTION_TYPE_CONFIG_KEY,
           fieldLabel: "Action",
         },
       ],

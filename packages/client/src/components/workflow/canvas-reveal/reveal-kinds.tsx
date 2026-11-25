@@ -26,7 +26,10 @@ import {
   findAction,
   type ExtensionCatalog,
 } from "@wfgraph/shared/extensions/catalog";
-import { readConfigString } from "@wfgraph/shared/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  readConfigString,
+} from "@wfgraph/shared/graph/node-config";
 import type { WorkflowIssue } from "@wfgraph/shared/graph/workflow-issues";
 import { isBlank } from "@wfgraph/shared/types/string";
 import { compact } from "es-toolkit/array";
@@ -236,7 +239,10 @@ function stepHeaderModel(
   context: RevealHeaderContext
 ): RevealHeaderModel {
   const node = context.nodes.find((item) => item.id === subject.nodeId);
-  const actionType = readConfigString(node?.data.config, "actionType");
+  const actionType = readConfigString(
+    node?.data.config,
+    ACTION_TYPE_CONFIG_KEY
+  );
   const title =
     node && !isBlank(node.data.label)
       ? node.data.label

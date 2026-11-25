@@ -4,7 +4,10 @@ import {
   findAction,
 } from "@wfgraph/shared/extensions/catalog";
 import type { DeterministicAssessment } from "#src/agent/assessment";
-import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  actionTypeOf,
+} from "@wfgraph/shared/graph/node-config";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
@@ -110,7 +113,7 @@ export function assessGraphGrounding(
     // to its declaration.
     if (action && !BUILT_INS.has(actionId)) {
       const allowed = new Set([
-        "actionType",
+        ACTION_TYPE_CONFIG_KEY,
         "integrationId",
         ...flattenConfigFields(action.configFields).map((field) => field.key),
       ]);

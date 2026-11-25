@@ -23,6 +23,7 @@ import {
 import { executeWaitAction } from "#src/backend/engine/wait";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
+  ACTION_TYPE_CONFIG_KEY,
   actionTypeOf,
   readConfigString,
 } from "@wfgraph/shared/graph/node-config";
@@ -79,7 +80,7 @@ function executeActionStep(
 
 function runAction(context: NodeWorkContext) {
   const config = context.node.data.config || {};
-  const actionType = readConfigString(config, "actionType");
+  const actionType = readConfigString(config, ACTION_TYPE_CONFIG_KEY);
 
   return Effect.gen(function* () {
     const {

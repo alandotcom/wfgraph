@@ -19,7 +19,10 @@ import { eventsReaching } from "@wfgraph/shared/graph/events-reaching";
 import { isGroupNode } from "@wfgraph/shared/graph/group-boundary";
 import { isGroupableStep } from "@wfgraph/shared/graph/group-contract";
 import { nodeLabel } from "@wfgraph/shared/graph/group-structure";
-import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  actionTypeOf,
+} from "@wfgraph/shared/graph/node-config";
 import { canonicalizeNodeEnabled } from "@wfgraph/shared/graph/node-enabled";
 import { isInteriorEdge } from "@wfgraph/shared/graph/node-group";
 import { findTemplateTokens } from "@wfgraph/shared/graph/node-references";
@@ -659,7 +662,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
           });
         }
 
-        if (configNamesKey(input.config, "actionType")) {
+        if (configNamesKey(input.config, ACTION_TYPE_CONFIG_KEY)) {
           return Effect.fail({
             reason:
               "actionType is set by actionId. Remove it from config and call add_node again.",
@@ -721,8 +724,8 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
         }
 
         if (
-          configNamesKey(input.config, "actionType") ||
-          input.clearConfigKeys?.includes("actionType")
+          configNamesKey(input.config, ACTION_TYPE_CONFIG_KEY) ||
+          input.clearConfigKeys?.includes(ACTION_TYPE_CONFIG_KEY)
         ) {
           return Effect.fail({
             reason:
@@ -957,7 +960,7 @@ export const graphWriteToolHandlers = Effect.gen(function* () {
             reason: `No action with id ${input.actionId}. Call list_actions to see what exists, or use one of ${builtInActionIds.join(", ")}.`,
           });
         }
-        if (configNamesKey(input.config, "actionType")) {
+        if (configNamesKey(input.config, ACTION_TYPE_CONFIG_KEY)) {
           return Effect.fail({
             reason:
               "actionType is set by actionId. Remove it from config and call insert_node_on_edge again.",

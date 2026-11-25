@@ -39,7 +39,10 @@ import {
   keysForRecord,
 } from "#src/lib/open-record-keys";
 import { upstreamNodeIds } from "@wfgraph/shared/graph/upstream-nodes";
-import { readConfigString } from "@wfgraph/shared/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  readConfigString,
+} from "@wfgraph/shared/graph/node-config";
 import { findTrackedEntityStateSource } from "@wfgraph/shared/lifecycle/entity-eligibility";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { getNodeDisplayName } from "@wfgraph/shared/graph/node-display";
@@ -256,7 +259,7 @@ function nodeOutputFields(
   request: FieldRequest,
   eventReachability?: ArrivingEventReachability
 ): SourcedField[] {
-  const actionType = readConfigString(node.data.config, "actionType");
+  const actionType = readConfigString(node.data.config, ACTION_TYPE_CONFIG_KEY);
 
   if (actionType) {
     const pluginFields = getPluginActionOutputFields(
