@@ -4,10 +4,11 @@
  * One home for the two decisions a new step needs -- where it goes, and what a
  * just-chosen action leaves on its config -- so the toolbar, the canvas's
  * context menu and the command palette cannot answer either of them
- * differently. Open-canvas placement is `positionClearOfNodes`; inserting on
- * a connection opens its row inside `insertStepOnEdgeAtom`. The config rule is
- * `repairNodeIntegration`, which `use-node-config-writer.ts` runs for the same
- * reason when an action is chosen on a node that already exists.
+ * differently. Open-canvas placement is `positionClearOfNodes` against
+ * `canvasObstacles`; inserting on a connection opens its row inside
+ * `insertStepOnEdgeAtom`. The config rule is `repairNodeIntegration`, which
+ * `use-node-config-writer.ts` runs for the same reason when an action is
+ * chosen on a node that already exists.
  */
 
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,9 +18,14 @@ import { useCallback } from "react";
 import { generateId } from "@wfgraph/shared/utils/id";
 import { useExtensionCatalog } from "#src/components/extension-catalog-provider";
 import type { CanvasPosition } from "#src/lib/command-palette";
-import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
+import {
+  activeSelectionAtom,
+  activeWorkspaceAddressAtom,
+} from "#src/lib/workflow-workspace-navigation";
 import { isConditionActionNode } from "@wfgraph/shared/conditions/condition-branch";
 import { isEventSplitNode } from "@wfgraph/shared/lifecycle/event-split";
+import { LIFECYCLE_STARTED_HANDLE } from "@wfgraph/shared/lifecycle/lifecycle-outlets";
+import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import { repairNodeIntegration } from "#src/lib/node-integration";
 import { integrationsQueryOptions } from "#src/lib/rpc-query";
 import {
@@ -27,7 +33,9 @@ import {
   addStepAfterAtom,
   canvasEdgesAtom,
   canvasNodesAtom,
+  edgesAtom,
   insertStepOnEdgeAtom,
+  nodesAtom,
 } from "#src/lib/workflow-graph-store";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
@@ -36,10 +44,11 @@ import {
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
 import {
+  canvasObstacles,
   positionClearOfNodes,
-  workflowNodeRectangles,
 } from "#src/lib/workflow-node-placement";
 import { showGraphEditRefusal } from "#src/components/workflow/graph-edit-refusal";
+import { soleStartedPathEnd } from "#src/components/workflow/connection-handle";
 
 export type AddStepRequest = {
   /** The action the step runs. Absent leaves the node asking for one. */
@@ -50,10 +59,12 @@ export type AddStepRequest = {
 
 /**
  * Returns a function that creates a step, selects it, and opens its
- * configuration. On a focused Group canvas the step becomes a member of that
- * Group, which places it from the Group's layout. Does nothing when React Flow
- * is not on screen to measure, and shows the refusal when the Group rules
- * refuse the step.
+ * configuration. With one step selected the step goes on that step's outlet.
+ * With nothing selected on the overview, a Started path with one open end
+ * gains the step there. Otherwise it stands alone in clear canvas. On a
+ * focused Group canvas the step becomes a member of that Group, which places
+ * it from the Group's layout. Does nothing when React Flow is not on screen to
+ * measure, and shows the refusal when the Group rules refuse the step.
  */
 export function useAddStep(): (request: AddStepRequest) => void {
   const store = useStore();
@@ -65,15 +76,16 @@ export function useAddStep(): (request: AddStepRequest) => void {
 
   return useCallback(
     ({ actionType, at }: AddStepRequest) => {
-      const selected = selectedStepOutlet(store);
+      const source = at === undefined ? outletForNewStep(store, catalog) : null;
       const position =
         at ??
-        (selected
-          ? positionAfter(store, selected.nodeId)
+        (source
+          ? positionAfter(store, source.nodeId)
           : // The painted canvas of the active scope. On the overview a Group
             // is its collapsed card and its members take no room.
             canvasCentre(
               store.get(canvasNodesAtom),
+              store.get(canvasEdgesAtom),
               screenToFlowPosition,
               (nodeId) => getInternalNode(nodeId)?.internals.positionAbsolute
             ));
@@ -81,12 +93,10 @@ export function useAddStep(): (request: AddStepRequest) => void {
         return;
       }
       const node = newStep({ actionType, position });
-      // A step added while one step is selected goes on that step's outlet,
-      // the way Add step after does; with no selection it stands alone.
+      // A step with an outlet to go on joins it the way Add step after does,
+      // in the same undo step.
       showGraphEditRefusal(
-        selected && at === undefined
-          ? addStepAfter({ node, source: selected, catalog })
-          : addNode(node)
+        source ? addStepAfter({ node, source, catalog }) : addNode(node)
       );
     },
     [
@@ -157,10 +167,33 @@ export function useInsertStepOnEdge(): (input: { edgeId: string }) => void {
 }
 
 /**
- * The outlet a step added with no place named goes on: the one outlet of the
- * one step the active scope selects. Null with any other selection, and null
- * for a Condition, an Event Split or the Lifecycle Node, which draw several
- * outlets and are asked which one through their menu instead.
+ * The outlet a step added with no place named goes on. With a selection it is
+ * `selectedStepOutlet`. With nothing selected on the overview it is the
+ * Started path's one open end, such as the Lifecycle Node's Started outlet in
+ * a new workflow. Null otherwise, and the step stands alone.
+ */
+function outletForNewStep(
+  store: ReturnType<typeof useStore>,
+  catalog: ExtensionCatalog
+): { nodeId: string; handle: string | null } | null {
+  if (store.get(activeSelectionAtom).nodeIds.length > 0) {
+    return selectedStepOutlet(store);
+  }
+  if (store.get(activeWorkspaceAddressAtom).scope.kind === "group") {
+    return null;
+  }
+  return soleStartedPathEnd({
+    nodes: store.get(nodesAtom),
+    edges: store.get(edgesAtom),
+    catalog,
+  });
+}
+
+/**
+ * The outlet of the one step the active scope selects: its only outlet, or
+ * Started for the Lifecycle Node, which is where a workflow's path begins.
+ * Null with any other selection, and null for a Condition or an Event Split,
+ * whose branches are equal and are asked for through their menu instead.
  */
 function selectedStepOutlet(
   store: ReturnType<typeof useStore>
@@ -171,18 +204,24 @@ function selectedStepOutlet(
     return null;
   }
   const node = store.get(canvasNodesAtom).find((item) => item.id === nodeId);
-  const drawsOneOutlet =
-    node !== undefined &&
-    node.data.type !== "lifecycle" &&
-    !isEventSplitNode(node) &&
-    !isConditionActionNode(node);
-  return drawsOneOutlet ? { nodeId, handle: null } : null;
+  if (
+    node === undefined ||
+    isEventSplitNode(node) ||
+    isConditionActionNode(node)
+  ) {
+    return null;
+  }
+  return {
+    nodeId,
+    handle: node.data.type === "lifecycle" ? LIFECYCLE_STARTED_HANDLE : null,
+  };
 }
 
 /**
  * Where a step added after the step `sourceId` goes: one rank past it, moved
- * clear of the cards already there. Null when the canvas holds no such step.
- * A focused Group ignores it and places the step from the Group's layout.
+ * clear of the cards and connections already there. Null when the canvas
+ * holds no such step. A focused Group ignores it and places the step from the
+ * Group's layout.
  */
 function positionAfter(
   store: ReturnType<typeof useStore>,
@@ -198,7 +237,7 @@ function positionAfter(
       x: source.position.x,
       y: source.position.y + WORKFLOW_NODE_HEIGHT + RANK_SPACING,
     },
-    workflowNodeRectangles(nodes, () => undefined)
+    canvasObstacles({ nodes, edges: store.get(canvasEdgesAtom) })
   );
 }
 
@@ -246,13 +285,15 @@ function useNewStep(): (input: {
 }
 
 /**
- * The middle of the visible graph, moved clear of whatever is already there.
+ * The middle of the visible graph, moved clear of the cards and connections
+ * already there.
  *
  * Null when no canvas is mounted, which is the one case where there is nothing
  * to measure against and no sensible place to put a node.
  */
 function canvasCentre(
   nodes: readonly WorkflowNode[],
+  edges: readonly { source: string; target: string }[],
   screenToFlowPosition: (point: { x: number; y: number }) => {
     x: number;
     y: number;
@@ -278,6 +319,6 @@ function canvasCentre(
       x: centre.x - WORKFLOW_NODE_WIDTH / 2,
       y: centre.y - WORKFLOW_NODE_HEIGHT / 2,
     },
-    workflowNodeRectangles(nodes, absolutePositionForId)
+    canvasObstacles({ nodes, edges, absolutePositionForId })
   );
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSourceHandleForConnection } from "#src/components/workflow/connection-handle";
+import {
+  normalizeSourceHandleForConnection,
+  soleStartedPathEnd,
+} from "#src/components/workflow/connection-handle";
 import {
   LIFECYCLE_CANCELED_HANDLE,
   LIFECYCLE_STARTED_HANDLE,
@@ -296,6 +299,105 @@ describe("group outlet handle", () => {
         edges: [{ id: "ab", source: "a", target: "b" }],
         sourceNodeId: "g",
         sourceHandle: null,
+        catalog: emptyCatalog,
+      })
+    ).toBeNull();
+  });
+});
+
+describe("soleStartedPathEnd", () => {
+  function edge(
+    source: string,
+    target: string,
+    sourceHandle: string | null = null
+  ): WorkflowEdge {
+    return { id: `${source}-${target}`, source, target, sourceHandle };
+  }
+
+  it("answers the Started outlet of a new workflow", () => {
+    expect(
+      soleStartedPathEnd({
+        nodes: [lifecycleNode()],
+        edges: [],
+        catalog: emptyCatalog,
+      })
+    ).toEqual({ nodeId: "entry", handle: LIFECYCLE_STARTED_HANDLE });
+  });
+
+  it("answers the last step of a straight path, ignoring Canceled", () => {
+    expect(
+      soleStartedPathEnd({
+        nodes: [lifecycleNode(), plainActionNode("a"), plainActionNode("b")],
+        edges: [edge("entry", "a", LIFECYCLE_STARTED_HANDLE), edge("a", "b")],
+        catalog: emptyCatalog,
+      })
+    ).toEqual({ nodeId: "b", handle: null });
+  });
+
+  it("answers nothing when a Condition leaves two branches open", () => {
+    expect(
+      soleStartedPathEnd({
+        nodes: [lifecycleNode(), conditionNode()],
+        edges: [edge("entry", "cond", LIFECYCLE_STARTED_HANDLE)],
+        catalog: emptyCatalog,
+      })
+    ).toBeNull();
+  });
+
+  // The True branch ends at "b", which leaves "b" and the False branch open.
+  it("answers nothing when a branch and a step are both open", () => {
+    expect(
+      soleStartedPathEnd({
+        nodes: [
+          lifecycleNode(),
+          conditionNode(),
+          plainActionNode("a"),
+          plainActionNode("b"),
+        ],
+        edges: [
+          edge("entry", "cond", LIFECYCLE_STARTED_HANDLE),
+          edge("cond", "a", "true"),
+          edge("a", "b"),
+        ],
+        catalog: emptyCatalog,
+      })
+    ).toBeNull();
+  });
+
+  // A disabled step ends the True branch, which leaves False the one open end.
+  it("answers a Condition's one open branch", () => {
+    const disabled = plainActionNode("off");
+    disabled.data.enabled = false;
+    expect(
+      soleStartedPathEnd({
+        nodes: [lifecycleNode(), conditionNode(), disabled],
+        edges: [
+          edge("entry", "cond", LIFECYCLE_STARTED_HANDLE),
+          edge("cond", "off", "true"),
+        ],
+        catalog: emptyCatalog,
+      })
+    ).toEqual({ nodeId: "cond", handle: "false" });
+  });
+
+  it("stops at a disabled step, which ends its branch on purpose", () => {
+    const disabled = plainActionNode("off");
+    disabled.data.enabled = false;
+    expect(
+      soleStartedPathEnd({
+        nodes: [lifecycleNode(), plainActionNode("a"), disabled],
+        edges: [edge("entry", "a", LIFECYCLE_STARTED_HANDLE), edge("a", "off")],
+        catalog: emptyCatalog,
+      })
+    ).toBeNull();
+  });
+
+  it("answers nothing when the one open end is inside a Group", () => {
+    const member = { ...plainActionNode("a"), parentId: "group" };
+    expect(
+      soleStartedPathEnd({
+        nodes: [lifecycleNode(), member],
+        edges: [edge("entry", "a", LIFECYCLE_STARTED_HANDLE)],
         catalog: emptyCatalog,
       })
     ).toBeNull();

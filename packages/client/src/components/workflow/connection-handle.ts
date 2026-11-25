@@ -177,3 +177,83 @@ export function stepOutlets(input: {
   }
   return [{ handle: null, label: null }];
 }
+
+/**
+ * The one place the Started path is still open, where a step added with
+ * nothing selected joins it. The path is the Lifecycle Node's Started outlet
+ * and every enabled step it reaches. Each outlet of those that no stored edge
+ * leaves by is an open end. Null when there are none or several, since the
+ * step then has no single place to go, and null when the one open end is a
+ * Group member, which the overview draws inside its collapsed card. A
+ * disabled step ends its branch on purpose, so its outlet is not an open end.
+ */
+export function soleStartedPathEnd(input: {
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  catalog: ExtensionCatalog;
+}): { nodeId: string; handle: string | null } | null {
+  const { nodes, edges } = input;
+  const lifecycle = nodes.find((node) => node.data.type === "lifecycle");
+  if (!lifecycle) {
+    return null;
+  }
+  // Maps, because node ids are chosen by the builder.
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const leavingBySource = Map.groupBy(edges, (edge) => edge.source);
+
+  const openEnds: { nodeId: string; handle: string | null }[] = [];
+  const reached = new Set<string>();
+  const pending: { node: WorkflowNode; outlets: StepOutlet[] }[] = [
+    {
+      node: lifecycle,
+      outlets: [{ handle: LIFECYCLE_STARTED_HANDLE, label: "Started" }],
+    },
+  ];
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    const leaving = leavingBySource.get(next.node.id) ?? [];
+    for (const outlet of next.outlets) {
+      const taken = leaving.filter((edge) =>
+        leavesByOutlet(next.node, edge.sourceHandle ?? null, outlet.handle)
+      );
+      if (taken.length === 0) {
+        openEnds.push({ nodeId: next.node.id, handle: outlet.handle });
+      }
+      for (const edge of taken) {
+        const target = byId.get(edge.target);
+        if (
+          !target ||
+          reached.has(target.id) ||
+          target.data.enabled === false
+        ) {
+          continue;
+        }
+        reached.add(target.id);
+        pending.push({
+          node: target,
+          outlets: stepOutlets({ ...input, node: target }),
+        });
+      }
+    }
+  }
+
+  const [only] = openEnds;
+  return openEnds.length === 1 &&
+    only &&
+    byId.get(only.nodeId)?.parentId === undefined
+    ? only
+    : null;
+}
+
+/** Whether a stored edge leaving `node` by `stored` uses the outlet `outlet`. */
+function leavesByOutlet(
+  node: WorkflowNode,
+  stored: string | null,
+  outlet: string | null
+): boolean {
+  if (outlet === null) {
+    return true;
+  }
+  return isConditionActionNode(node)
+    ? normalizeConditionBranch(stored) === outlet
+    : stored === outlet;
+}

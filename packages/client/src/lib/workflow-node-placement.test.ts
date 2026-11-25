@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  canvasObstacles,
   positionClearOfNodes,
-  workflowNodeRectangles,
 } from "#src/lib/workflow-node-placement";
 import {
+  NODE_SPACING,
+  RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "#src/lib/workflow-node-dimensions";
+import { rectanglesOverlap } from "@wfgraph/shared/graph/node-placement";
 
 function at(x: number, y: number) {
   return {
@@ -96,38 +99,38 @@ describe("positionClearOfNodes", () => {
   });
 });
 
-describe("workflowNodeRectangles", () => {
+describe("canvasObstacles", () => {
   it("resolves a child position relative to its parent", () => {
-    const rectangles = workflowNodeRectangles([
-      {
-        id: "group",
-        type: "group",
-        position: { x: 500, y: 300 },
-        width: 420,
-        height: 260,
-        data: { label: "Group", type: "group" },
-      },
-      {
-        id: "child",
-        type: "action",
-        parentId: "group",
-        position: { x: 20, y: 40 },
-        measured: { width: 188, height: 56 },
-        data: { label: "Child", type: "action", config: {} },
-      },
-    ]);
-
-    expect(rectangles).toContainEqual({
-      x: 520,
-      y: 340,
-      width: 188,
-      height: 56,
+    const obstacles = canvasObstacles({
+      nodes: [
+        {
+          id: "group",
+          type: "group",
+          position: { x: 500, y: 300 },
+          width: 420,
+          height: 260,
+          data: { label: "Group", type: "group" },
+        },
+        {
+          id: "child",
+          type: "action",
+          parentId: "group",
+          position: { x: 20, y: 40 },
+          measured: { width: 188, height: 56 },
+          data: { label: "Child", type: "action", config: {} },
+        },
+      ],
+      edges: [],
     });
+
+    expect(obstacles).toContainEqual(
+      grown({ x: 520, y: 340, width: 188, height: 56 })
+    );
   });
 
   it("prefers React Flow's absolute position", () => {
-    const rectangles = workflowNodeRectangles(
-      [
+    const obstacles = canvasObstacles({
+      nodes: [
         {
           id: "child",
           type: "action",
@@ -136,9 +139,70 @@ describe("workflowNodeRectangles", () => {
           data: { label: "Child", type: "action", config: {} },
         },
       ],
-      () => ({ x: 720, y: 440 })
-    );
+      edges: [],
+      absolutePositionForId: () => ({ x: 720, y: 440 }),
+    });
 
-    expect(rectangles[0]).toMatchObject({ x: 720, y: 440 });
+    expect(obstacles[0]).toMatchObject(grown(at(720, 440)));
+  });
+
+  // The palette once put a new card 1px from a neighbour, which read as one
+  // card wider than the rest.
+  it("keeps half the layout's gaps between a new step and a card", () => {
+    const obstacles = canvasObstacles({
+      nodes: [actionNode("a", 0, 0)],
+      edges: [],
+    });
+
+    const besideIt = { x: WORKFLOW_NODE_WIDTH + 1, y: 0 };
+    expect(positionClearOfNodes(besideIt, obstacles)).not.toEqual(besideIt);
+    const sibling = { x: WORKFLOW_NODE_WIDTH + NODE_SPACING, y: 0 };
+    expect(positionClearOfNodes(sibling, obstacles)).toEqual(sibling);
+  });
+
+  it("keeps a new step off a connection and the label on it", () => {
+    const obstacles = canvasObstacles({
+      nodes: [actionNode("a", 0, 0), actionNode("b", 600, 400)],
+      edges: [{ source: "a", target: "b" }],
+    });
+
+    // Between the two ranks and between the two columns, where the connection
+    // turns and draws its label.
+    const onTheConnection = { x: 250, y: 140 };
+    const placed = positionClearOfNodes(onTheConnection, obstacles);
+    expect(placed).not.toEqual(onTheConnection);
+    expect(
+      obstacles.some((obstacle) =>
+        rectanglesOverlap(obstacle, at(placed.x, placed.y))
+      )
+    ).toBe(false);
+  });
+
+  it("leaves the slot one rank below a step open", () => {
+    const obstacles = canvasObstacles({
+      nodes: [actionNode("a", 0, 0)],
+      edges: [],
+    });
+
+    const below = { x: 0, y: WORKFLOW_NODE_HEIGHT + RANK_SPACING };
+    expect(positionClearOfNodes(below, obstacles)).toEqual(below);
   });
 });
+
+function actionNode(id: string, x: number, y: number) {
+  return {
+    id,
+    type: "action",
+    position: { x, y },
+    data: { label: id, type: "action" as const, config: {} },
+  };
+}
+
+function grown(rectangle: ReturnType<typeof at>) {
+  return {
+    x: rectangle.x - NODE_SPACING / 2,
+    y: rectangle.y - RANK_SPACING / 2,
+    width: rectangle.width + NODE_SPACING,
+    height: rectangle.height + RANK_SPACING,
+  };
+}

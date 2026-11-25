@@ -6,6 +6,7 @@
 
 export {
   eventSplitCardWidth,
+  NODE_SPACING,
   RANK_SPACING,
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
