@@ -78,6 +78,11 @@ type RunOverlayProps = OverlayComponentProps<{
    */
   sends: RunSends;
   /**
+   * What a test run of the graph does at each step that reaches outside the
+   * workflow, naming the steps, from `testRunStepsSentence`.
+   */
+  testRunSteps: string;
+  /**
    * Starts the run. It resolves with the server's sentence when the server
    * refused the request and no run exists, which the dialog shows while it
    * stays open, and with null once the dialog can close.
@@ -252,11 +257,12 @@ export function RunOverlay({
   hasEventSplit,
   savedPayloads,
   sends,
+  testRunSteps,
   onRun,
 }: RunOverlayProps) {
   const catalog = useExtensionCatalog();
   const { closeAll } = useOverlay();
-  const copy = runOverlayCopy(target);
+  const copy = runOverlayCopy(target, testRunSteps);
   // The sends line states what the published graph sends when it reaches real
   // recipients. A version built only from waits, conditions and internal steps
   // sends nothing, so the line is left out rather than reading "0".

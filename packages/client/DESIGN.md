@@ -728,6 +728,13 @@ groups in DOM order, so Tab reaches it in the position it appears. The workspace
 control, the Run split button, and **Publish** form the trailing group, which
 sticks to the shell's right edge so a scrolling row never carries a write control out of reach. The
 split button's face is **Run draft**, which always starts a test run. Its
+dialog says what this draft will do at each step that reaches outside the
+workflow, naming the steps by the rule its "In test runs" setting or its app
+decides by: "Send reminder and Alert the desk are skipped in this draft run.",
+"Text the test phone sends to Test Phone Number …", "Send intake form runs as
+in a live run unless the app skips it.", and that a Wait waits its full time
+unless Continue now is pressed. A published run in Test mode says the same of
+its version's steps. Its
 menu holds the run of the published version, labelled with that version number
 and the Published mode. Below `md` the workspace control, both run commands and
 **Publish** collapse into one overflow menu, each disabled for the reason its

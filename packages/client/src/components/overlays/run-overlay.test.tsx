@@ -85,6 +85,7 @@ function renderOverlay(
           sends={overrides.sends ?? { count: 0, integrations: [] }}
           startEvents={overrides.startEvents ?? START_EVENTS}
           target={overrides.target ?? { graph: "draft" }}
+          testRunSteps="Send reminder is skipped in this draft run."
         />
       </OverlayProvider>
     </ExtensionCatalogProvider>
@@ -110,7 +111,7 @@ describe("RunOverlay", () => {
     expect(screen.getByRole("heading", { name: "Run draft" })).toBeTruthy();
     expect(
       screen.getByText(
-        /^Runs the draft as a test run\. A step with an "In test runs" setting follows it\./
+        /^Runs the draft as a test run\. Send reminder is skipped in this draft run\. A Wait waits/
       )
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Run draft" })).toBeTruthy();

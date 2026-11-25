@@ -11,7 +11,9 @@ import {
   findAction,
   findIntegration,
 } from "@wfgraph/shared/extensions/catalog";
+import { stepTestRunBehavior } from "@wfgraph/shared/actions/test-run-behavior";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
+import { isBlank } from "@wfgraph/shared/types/string";
 import type { WorkflowVersionKind } from "@wfgraph/shared/graph/version-kinds";
 import { compact, uniq } from "es-toolkit/array";
 import { inactiveBranch } from "#src/lib/inactive-branch";
@@ -240,24 +242,104 @@ export function runSendsLabel(sends: RunSends): string {
     : `${counted}: ${sends.integrations.join(", ")}`;
 }
 
+/** Up to three names, then how many more: "A, B and C", "A, B, C and 2 more". */
+function namesPhrase(names: readonly string[]): string {
+  const shown = names.slice(0, 3);
+  const more = names.length - shown.length;
+  const head = more > 0 ? shown : shown.slice(0, -1);
+  const last = more > 0 ? `${more} more` : shown.at(-1);
+  return head.length === 0 ? (last ?? "") : `${head.join(", ")} and ${last}`;
+}
+
 /**
- * What every step of a test run does, in the words a finished run uses. A test
- * run calls each step's handler: a built-in step follows its "In test runs"
- * setting, which defaults to doing nothing, and any other step runs as it would
- * in a live run unless the app's own handler skips it. A finished run marks a
- * step that did nothing "Skipped (test run)".
+ * What a test run of this graph does at the steps that reach outside it, in
+ * sentences naming those steps, from the rule `stepTestRunBehavior` states:
+ * "Send reminder and Alert the desk are skipped in this draft run.", "Text the
+ * patient sends to Test Phone Number "+15557654321".". A step is counted when
+ * a run can reach it, by the reachability `runSends` uses. Built-in steps reach
+ * nothing outside, and an action with no "In test runs" setting counts only
+ * when its catalog entry sets `sideEffect`. `run` names the run in the
+ * sentences.
  */
-const TEST_RUN_STEPS =
-  'A step with an "In test runs" setting follows it. Other steps run as usual unless the app skips them.';
+export function testRunStepsSentence(input: {
+  nodes: readonly WorkflowNode[];
+  edges: readonly WorkflowEdge[];
+  catalog: ExtensionCatalog;
+  run: "draft run" | "test run";
+}): string {
+  const { nodeIds: stranded } = inactiveBranch({
+    nodes: input.nodes,
+    edges: input.edges,
+  });
+  const steps = input.nodes.flatMap((node) => {
+    if (node.data.enabled === false || stranded.has(node.id)) {
+      return [];
+    }
+    const behavior = stepTestRunBehavior(node, input.catalog);
+    const actionId = actionTypeOf(node);
+    const action = actionId ? findAction(input.catalog, actionId) : undefined;
+    if (
+      behavior === undefined ||
+      behavior.kind === "built-in" ||
+      (behavior.kind === "handler-decides" && action?.sideEffect !== true)
+    ) {
+      return [];
+    }
+    const name = isBlank(node.data.label)
+      ? (action?.label ?? "A step")
+      : node.data.label;
+    return [{ name, behavior }];
+  });
+  if (steps.length === 0) {
+    return "No step reaches outside this workflow.";
+  }
+  const skipped = steps.flatMap((step) =>
+    step.behavior.kind === "setting" && step.behavior.skips ? [step.name] : []
+  );
+  const appDecides = steps.flatMap((step) =>
+    step.behavior.kind === "handler-decides" ? [step.name] : []
+  );
+  const followed = steps.flatMap((step) => {
+    const { behavior } = step;
+    if (behavior.kind !== "setting" || behavior.skips) {
+      return [];
+    }
+    const empty = behavior.shownFields.find((field) => field.value === null);
+    if (empty) {
+      return [
+        `${step.name} is set to ${behavior.optionLabel}, but ${empty.label} is empty, so it does nothing.`,
+      ];
+    }
+    const target = behavior.shownFields[0];
+    return [
+      target
+        ? `${step.name} sends to ${target.label} ${target.value}.`
+        : `${step.name}: ${behavior.optionLabel}.`,
+    ];
+  });
+  return compact([
+    skipped.length > 0
+      ? `${namesPhrase(skipped)} ${skipped.length === 1 ? "is" : "are"} skipped in this ${input.run}.`
+      : null,
+    ...followed,
+    appDecides.length > 0
+      ? `${namesPhrase(appDecides)} ${appDecides.length === 1 ? "runs" : "run"} as in a live run unless the app skips ${appDecides.length === 1 ? "it" : "them"}.`
+      : null,
+  ]).join(" ");
+}
 
 /**
  * The run dialog's heading, opening sentence, and confirm button.
  *
  * The heading and the button both repeat the command that opened the dialog.
- * The description says what the run does with each step, so the button never
+ * The description says what the run does with each step that reaches outside
+ * the workflow, `testRunSteps` from `testRunStepsSentence`, so the button never
  * has to carry it.
  */
-export function runOverlayCopy(target: WorkflowRunTarget): {
+export function runOverlayCopy(
+  target: WorkflowRunTarget,
+  testRunSteps: string
+): {
   title: string;
   description: string;
   confirmLabel: string;
@@ -267,7 +349,7 @@ export function runOverlayCopy(target: WorkflowRunTarget): {
       title: "Run draft",
       // Continue now is offered on a draft run alone, so only this sentence
       // names it.
-      description: `Runs the draft as a test run. ${TEST_RUN_STEPS} A Wait waits its full time unless you press Continue now.`,
+      description: `Runs the draft as a test run. ${testRunSteps} A Wait waits its full time unless you press Continue now.`,
       confirmLabel: "Run draft",
     };
   }
@@ -280,7 +362,7 @@ export function runOverlayCopy(target: WorkflowRunTarget): {
     description:
       target.workflowMode === "live"
         ? `Runs v${target.publishedVersion} and sends to real recipients.`
-        : `Runs v${target.publishedVersion} as a test run. ${TEST_RUN_STEPS}`,
+        : `Runs v${target.publishedVersion} as a test run. ${testRunSteps}`,
     confirmLabel: command,
   };
 }

@@ -50,6 +50,7 @@ import {
 import {
   type RunSends,
   runSends,
+  testRunStepsSentence,
   runCommandLabel,
   workflowRunTarget,
   type WorkflowRunGraph,
@@ -150,6 +151,8 @@ type RunOverlayGraphFacts = {
   hasEventSplit: boolean;
   savedPayloads: TestPayloads;
   sends: RunSends;
+  /** What a test run of the graph does at each step that reaches outside it. */
+  testRunSteps: string;
 };
 
 /**
@@ -159,7 +162,8 @@ type RunOverlayGraphFacts = {
 function runOverlayGraphFacts(
   nodes: readonly WorkflowNode[],
   edges: readonly WorkflowEdge[],
-  catalog: ExtensionCatalog
+  catalog: ExtensionCatalog,
+  run: "draft run" | "test run"
 ): RunOverlayGraphFacts {
   const rules = readEntryLifecycleRules(nodes) ?? initialLifecycleRules;
   return {
@@ -168,6 +172,12 @@ function runOverlayGraphFacts(
     hasEventSplit: graphSplitsOnEvent(nodes),
     savedPayloads: readEntryTestPayloads(nodes),
     sends: runSends({ nodes, edges, catalog }),
+    testRunSteps: testRunStepsSentence({
+      nodes,
+      edges,
+      catalog,
+      run,
+    }),
   };
 }
 
@@ -399,7 +409,8 @@ export function useWorkflowHandlers({
         ...runOverlayGraphFacts(
           published.nodes.map(toEditorNode),
           published.edges.map(toEditorEdge),
-          catalog
+          catalog,
+          "test run"
         ),
         savedPayloads: readEntryTestPayloads(nodes),
       };
@@ -473,7 +484,7 @@ export function useWorkflowHandlers({
       return;
     }
     const { issues } = preflight;
-    const draftFacts = runOverlayGraphFacts(nodes, edges, catalog);
+    const draftFacts = runOverlayGraphFacts(nodes, edges, catalog, "draft run");
 
     if (issues.length > 0) {
       // A Group problem stops Publish only, so a draft whose only blockers are
