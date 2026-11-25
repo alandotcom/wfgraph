@@ -84,3 +84,32 @@ export const GROUP_REGION_INSET = {
   left: GROUP_REGION_PADDING,
   top: GROUP_REGION_HEADER_HEIGHT + GROUP_REGION_PADDING,
 } as const;
+
+type SizedFrame = {
+  id: string;
+  type?: string | undefined;
+  parentId?: string | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  data: { type: string };
+};
+
+/**
+ * Whether the graph was last laid out by an editor that drew each Group as one
+ * collapsed card: some Group frame holding a member stores no size, or exactly
+ * the card's 192 by 112. The editor that draws Groups in place stores the
+ * region's own size on every frame it writes, which is at least the card's
+ * width plus `GROUP_REGION_PADDING` once the Group holds a member, so a graph
+ * it saved never matches, whatever a person later did to its members.
+ */
+export function hasLegacyGroupLayout(nodes: readonly SizedFrame[]): boolean {
+  const parentIds = new Set(nodes.map((node) => node.parentId));
+  return nodes.some(
+    (node) =>
+      node.data.type === "group" &&
+      parentIds.has(node.id) &&
+      ((node.width === undefined && node.height === undefined) ||
+        (node.width === WORKFLOW_NODE_WIDTH &&
+          node.height === WORKFLOW_NODE_HEIGHT))
+  );
+}

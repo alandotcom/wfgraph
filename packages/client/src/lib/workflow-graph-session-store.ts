@@ -11,6 +11,10 @@ import { omit } from "es-toolkit/object";
 import { orderGroupParentsFirst } from "@wfgraph/shared/graph/node-group";
 import { getClientLogger } from "#src/lib/logger";
 import { repairCanvasGroups } from "#src/lib/node-group";
+import { repairLegacyGroupLayout } from "#src/components/workflow/workflow-layout";
+import { getExtensionCatalog } from "#src/lib/extensions";
+import { can } from "#src/lib/authorization";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import type { SavedWorkflow } from "#src/lib/rpc-client";
 import {
   currentWorkflowDraftRevisionAtom,
@@ -42,6 +46,7 @@ import {
   futureAtom,
   historyAtom,
   nodesStateAtom,
+  requestGraphSave,
 } from "#src/lib/workflow-graph-cells";
 import { clearReviewPagesAtom } from "#src/lib/workflow-review-store";
 import { resetNodeStatusesAtom as resetPresentationNodeStatusesAtom } from "#src/lib/workflow-graph-presentation-store";
@@ -149,7 +154,19 @@ export const endWorkflowEditorLifetimeAtom = atom(null, (_get, set) => {
  */
 export const loadWorkflowGraphAtom = atom(
   null,
-  (get, set, graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }) => {
+  (
+    get,
+    set,
+    graph: { nodes: WorkflowNode[]; edges: WorkflowEdge[] },
+    options?: {
+      /**
+       * Lay the graph out again when an editor that drew Groups as collapsed
+       * cards last laid it out, after the Group repair, so no region opens
+       * over the steps around it. A workflow load asks for it.
+       */
+      repairLegacyLayout?: boolean | undefined;
+    }
+  ): { repairedLegacyLayout: boolean } => {
     const workflowId = get(currentWorkflowIdAtom);
     if (workflowId) {
       set(clearReviewPagesAtom, workflowId);
@@ -168,10 +185,18 @@ export const loadWorkflowGraphAtom = atom(
       // save reports the refusal.
       logger.error("Loaded graph holds a malformed Group", { workflowId });
     }
-    set(
-      nodesStateAtom,
-      repair.ok ? repair.nodes : orderGroupParentsFirst(unselected.nodes)
-    );
+    const repaired = repair.ok
+      ? repair.nodes
+      : orderGroupParentsFirst(unselected.nodes);
+    const legacy =
+      options?.repairLegacyLayout === true
+        ? repairLegacyGroupLayout({
+            nodes: repaired,
+            edges: unselected.edges,
+            catalog: getExtensionCatalog(),
+          })
+        : { nodes: repaired, repaired: false };
+    set(nodesStateAtom, legacy.nodes);
     set(edgesStateAtom, unselected.edges);
     set(historyAtom, []);
     set(futureAtom, []);
@@ -182,6 +207,7 @@ export const loadWorkflowGraphAtom = atom(
       repair.ok && repair.dissolvedGroupIds.length > 0
     );
     set(workflowIssuesAtom, NO_ISSUES);
+    return { repairedLegacyLayout: legacy.repaired };
   }
 );
 
@@ -215,16 +241,21 @@ export const hydrateWorkflowAtom = atom(
     // Before the graph loads, which clears the current workflow's Draft selections.
     set(currentWorkflowIdAtom, workflow.id);
 
+    let repairedLegacyLayout = false;
+    let outstandingLoaded = false;
     if (!clientIsAheadOfServer) {
       // Leaving a workflow with its save queued, in flight, or failed leaves
       // that graph in the queue, newer than the snapshot the server returned.
       const outstanding = outstandingGraph(get, workflow.id);
-      set(
+      const loaded = set(
         loadWorkflowGraphAtom,
         outstanding
           ? { nodes: outstanding.nodes, edges: outstanding.edges }
-          : { nodes: workflow.nodes, edges: workflow.edges }
+          : { nodes: workflow.nodes, edges: workflow.edges },
+        { repairLegacyLayout: true }
       );
+      repairedLegacyLayout = loaded.repairedLegacyLayout;
+      outstandingLoaded = outstanding !== null;
       if (outstanding) {
         set(hasUnsavedChangesAtom, true);
       }
@@ -249,6 +280,17 @@ export const hydrateWorkflowAtom = atom(
         set(observedRemoteDraftRevisionStateAtom, null);
         set(lastSaveErrorAtom, null);
       }
+    }
+
+    // The repaired layout goes through the normal draft save, which stores it
+    // so the repair runs once. A viewer who cannot edit sees it laid out and
+    // writes nothing.
+    if (
+      repairedLegacyLayout &&
+      !outstandingLoaded &&
+      can(WfGraphOperations.workflowUpdate.id)
+    ) {
+      requestGraphSave(get, set, { immediate: true });
     }
 
     set(activeAgentTurnIdAtom, null);

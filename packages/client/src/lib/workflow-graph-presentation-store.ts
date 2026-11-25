@@ -28,6 +28,8 @@ import {
   type PaintedCanvasGraph,
 } from "#src/lib/group-canvas";
 import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
+import { repairLegacyGroupLayout } from "#src/components/workflow/workflow-layout";
+import { getExtensionCatalog } from "#src/lib/extensions";
 import { type RunPath, type RunPathMark, runPath } from "#src/lib/run-path";
 import {
   edgesStateAtom,
@@ -251,6 +253,31 @@ function withSelectedFlag<T extends { selected?: boolean | undefined }>(
   return flagged;
 }
 
+const displayLayouts = new WeakMap<object, WorkflowNode[]>();
+
+/**
+ * The nodes of a graph the canvas shows without editing it, a run's pinned
+ * graph or the review sheet's comparison, laid out for display when an editor
+ * that drew Groups as collapsed cards last laid it out. Nothing is written.
+ * Cached per graph, so a repaint does not lay it out again.
+ */
+function laidOutForDisplay(graph: {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}): WorkflowNode[] {
+  const cached = displayLayouts.get(graph.nodes);
+  if (cached) {
+    return cached;
+  }
+  const { nodes } = repairLegacyGroupLayout({
+    nodes: graph.nodes,
+    edges: graph.edges,
+    catalog: getExtensionCatalog(),
+  });
+  displayLayouts.set(graph.nodes, nodes);
+  return nodes;
+}
+
 /** The class a card a list points at wears, for the canvas's soft tint ring. */
 export const POINTED_NODE_CLASS = "node-pointed";
 
@@ -337,7 +364,9 @@ export const displayNodesAtom = atom((get) => {
   const overlay = view === "runs" ? get(executionOverlayGraphAtom) : null;
   const comparison = view === "draft" ? get(reviewDisplayGraphAtom) : null;
   const displayGraph = view === "runs" ? overlay : comparison;
-  const nodes = displayGraph?.nodes ?? get(nodesStateAtom);
+  const nodes = displayGraph
+    ? laidOutForDisplay(displayGraph)
+    : get(nodesStateAtom);
   const statusByNodeId = get(statusByNodeIdAtom);
   const { nodeIds } = get(inactiveBranchAtom);
   const ordered = orderGroupParentsFirst(nodes);

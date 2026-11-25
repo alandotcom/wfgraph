@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Store } from "jotai";
 import { createStore } from "jotai";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
@@ -75,6 +75,16 @@ import {
 import { savedWorkflow, unreadableDraft } from "./workflow-save-test-support";
 import { PASTE_OFFSET } from "#src/lib/copy-selection";
 import { reviewHighlightAtom } from "#src/lib/workflow-review-store";
+import { historyAtom } from "#src/lib/workflow-graph-cells";
+import {
+  GROUP_REGION_INSET,
+  groupRegionBox,
+} from "@wfgraph/shared/graph/workflow-layout-geometry";
+import {
+  installAuthorizationGrantsForTests,
+  resetAuthorizationGrantsForTests,
+} from "#src/lib/authorization-test-support";
+import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { collapsedGroupIdsAtom } from "#src/lib/collapsed-groups";
 import { POINTED_NODE_CLASS } from "#src/lib/workflow-graph-presentation-store";
 import { formatTemplateToken } from "@wfgraph/shared/graph/node-references";
@@ -806,6 +816,132 @@ describe("clearWorkflowAtom", () => {
   });
 });
 
+describe("hydrateWorkflowAtom with a layout saved for collapsed Group cards", () => {
+  /**
+   * A workflow saved by the editor that drew Groups as collapsed cards: the
+   * frame stores no size, its two members stack from the frame's corner, and
+   * `after` sits one card's rank below the frame, where the region now draws.
+   */
+  function legacyWorkflow() {
+    return savedWorkflow("workflow_legacy", {
+      nodes: [
+        { ...lifecycleNode("t"), position: { x: 0, y: 0 } },
+        { ...groupNode("g"), position: { x: 0, y: 180 } },
+        { ...groupedChild("a", "g"), position: { x: 0, y: 0 } },
+        { ...groupedChild("b", "g"), position: { x: 0, y: 180 } },
+        { ...actionNode("after"), position: { x: 0, y: 360 } },
+      ],
+      edges: [
+        { ...edge("t-a", "t", "a"), sourceHandle: "started" },
+        edge("a-b", "a", "b"),
+        edge("b-after", "b", "after"),
+      ],
+    });
+  }
+
+  /** Whether the Group's region overlaps `after`'s card on the canvas. */
+  function regionOverlapsAfter(store: Store): boolean {
+    const nodes = store.get(nodesAtom);
+    const frame = nodes.find((node) => node.id === "g");
+    const members = nodes.filter((node) => node.parentId === "g");
+    const after = nodes.find((node) => node.id === "after");
+    if (!frame || !after) throw new Error("expected the fixture");
+    const box = groupRegionBox(members);
+    return (
+      after.position.y < frame.position.y + box.height &&
+      after.position.y + 112 > frame.position.y - GROUP_REGION_INSET.top &&
+      after.position.x < frame.position.x + box.width &&
+      after.position.x + 192 > frame.position.x - GROUP_REGION_INSET.left
+    );
+  }
+
+  afterEach(() => {
+    resetAuthorizationGrantsForTests();
+  });
+
+  it("lays the workflow out once so no region opens over a step, and saves it", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const store = createGraphStore([]);
+    updateMock.mockClear();
+
+    store.set(hydrateWorkflowAtom, legacyWorkflow());
+
+    expect(regionOverlapsAfter(store)).toBe(false);
+    const frame = store.get(nodesAtom).find((node) => node.id === "g");
+    expect(frame?.width).toBeGreaterThan(192);
+    await vi.waitFor(() => expect(updateMock).toHaveBeenCalledOnce());
+    expect(store.get(historyAtom)).toEqual([]);
+
+    // The saved graph no longer reads as legacy, so loading it again writes
+    // nothing.
+    const saved = {
+      ...savedWorkflow("workflow_legacy", {
+        nodes: store.get(nodesAtom),
+        edges: store.get(edgesAtom),
+      }),
+      draftRevision: 2,
+    };
+    updateMock.mockClear();
+    store.set(hydrateWorkflowAtom, saved);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves a layout the in-place editor saved untouched, overlap and all", async () => {
+    installAuthorizationGrantsForTests([WfGraphOperations.workflowUpdate.id]);
+    const store = createGraphStore([]);
+    const workflow = legacyWorkflow();
+    // Stored at a region's size: a person dragged a member until the region
+    // reached over `after`, and that is their layout.
+    const placed = {
+      ...workflow,
+      nodes: workflow.nodes.map((node) =>
+        node.id === "g" ? { ...node, width: 216, height: 316 } : node
+      ),
+    };
+    updateMock.mockClear();
+
+    store.set(hydrateWorkflowAtom, placed);
+
+    const positions = (nodes: readonly WorkflowNode[]) =>
+      new Map(nodes.map((node) => [node.id, node.position]));
+    expect(positions(store.get(nodesAtom))).toEqual(positions(placed.nodes));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+  });
+
+  it("lays a legacy workflow out for a viewer who cannot edit and writes nothing", async () => {
+    installAuthorizationGrantsForTests([]);
+    const store = createGraphStore([]);
+    updateMock.mockClear();
+
+    store.set(hydrateWorkflowAtom, legacyWorkflow());
+
+    expect(regionOverlapsAfter(store)).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(store.get(hasUnsavedChangesAtom)).toBe(false);
+  });
+
+  it("lays out a run's legacy pinned graph for display, writing nothing", () => {
+    const store = createGraphStore([]);
+    showWorkspaceRoute(store, { view: "runs" });
+    const pinned = legacyWorkflow();
+    store.set(executionOverlayGraphAtom, {
+      nodes: pinned.nodes,
+      edges: pinned.edges,
+    });
+
+    const shown = store.get(displayNodesAtom);
+    expect(shown.find((node) => node.id === "g")?.width ?? 0).toBeGreaterThan(
+      192
+    );
+    expect(store.get(nodesAtom)).toEqual([]);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("hydrateWorkflowAtom", () => {
   it("returns a different workflow to Draft", () => {
     const store = createGraphStore(...standardGraph());
@@ -1368,7 +1504,8 @@ describe("displayNodesAtom memoization", () => {
     const store = createGraphStore(...standardGraph());
     showWorkspaceRoute(store, { view: "runs" });
     const rest = lifecycleNode("pinned_t");
-    const frame = groupNode("pinned_g");
+    // A frame stored at its region's size, as the in-place editor writes it.
+    const frame = { ...groupNode("pinned_g"), width: 216, height: 136 };
     const child = groupedChild("pinned_a", "pinned_g");
     store.set(executionOverlayGraphAtom, {
       nodes: [child, rest, frame],

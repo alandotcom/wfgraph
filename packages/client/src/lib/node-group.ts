@@ -24,8 +24,8 @@ import type { WorkflowEdge, WorkflowNode } from "#src/lib/workflow-graph-types";
 import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
-  workflowNodeSize,
 } from "#src/lib/workflow-node-dimensions";
+import { groupRegionBox } from "@wfgraph/shared/graph/workflow-layout-geometry";
 
 export function groupSelection(input: {
   nodes: WorkflowNode[];
@@ -58,10 +58,23 @@ export function groupSelection(input: {
     y: Math.min(...members.map((node) => node.position.y)),
   };
   const memberSet = new Set(analysis.memberIds);
-  // The overview draws a Group as one collapsed card.
-  const size = workflowNodeSize();
   const groupId = (input.createId ?? generateId)();
 
+  // Grouping preserves each step's data and size. Positions become local to
+  // the frame, which draws in place around them, and Ungroup translates them
+  // back.
+  const children = members.map((node): WorkflowNode => ({
+    ...node,
+    parentId: groupId,
+    position: {
+      x: node.position.x - origin.x,
+      y: node.position.y - origin.y,
+    },
+  }));
+  // The frame stores the size of the region its members fill, which is what
+  // tells a graph laid out for Groups drawn in place apart from one laid out
+  // for collapsed cards.
+  const size = groupRegionBox(children);
   const groupNode: WorkflowNode = {
     id: groupId,
     type: "group",
@@ -74,17 +87,6 @@ export function groupSelection(input: {
       type: "group",
     },
   };
-
-  // Grouping preserves each step's data and size. Positions become local to
-  // the frame; focus paints them unchanged and Ungroup translates them back.
-  const children = members.map((node): WorkflowNode => ({
-    ...node,
-    parentId: groupId,
-    position: {
-      x: node.position.x - origin.x,
-      y: node.position.y - origin.y,
-    },
-  }));
   const rest = input.nodes.filter((node) => !memberSet.has(node.id));
 
   return {
