@@ -5,9 +5,8 @@ import {
 } from "#src/extensions/catalog";
 import {
   currentTemplateDisplayText,
+  currentTokenDisplay,
   currentTokenDisplayText,
-  tokenSourceIsLive,
-  trackedEntityTypeOf,
 } from "#src/graph/node-display";
 import {
   ENTITY_STATE_SOURCE_ID,
@@ -69,7 +68,7 @@ function tokenOf(raw: string) {
   return token;
 }
 
-describe("currentTokenDisplayText", () => {
+describe("currentTokenDisplay", () => {
   it("names a renamed step by its current label", () => {
     const token = tokenOf(
       formatTemplateToken({
@@ -79,7 +78,7 @@ describe("currentTokenDisplayText", () => {
       })
     );
 
-    expect(currentTokenDisplayText(token, [member], catalog, undefined)).toBe(
+    expect(currentTokenDisplayText(token, [member], catalog)).toBe(
       "Member.firstName"
     );
   });
@@ -93,38 +92,35 @@ describe("currentTokenDisplayText", () => {
       })
     );
 
-    expect(currentTokenDisplayText(token, [member], catalog, undefined)).toBe(
+    expect(currentTokenDisplayText(token, [member], catalog)).toBe(
       "Send Email.id"
     );
   });
 
-  it("names a token of the tracked Entity by its catalog label", () => {
-    expect(
-      currentTokenDisplayText(
-        tokenOf(patientToken),
-        [member],
-        catalog,
-        "crm/patient"
-      )
-    ).toBe("Patient.status");
+  it("names a token of the Entity the Lifecycle node tracks by its catalog label", () => {
+    const token = tokenOf(patientToken);
+    const nodes = [member, lifecycleTracking("crm/patient")];
+
+    expect(currentTokenDisplay(token, nodes, catalog)).toEqual({
+      text: "Patient.status",
+      sourceIsLive: true,
+    });
   });
 
   // The badge draws such a token broken, holding the label it was written
   // with, because the run has no state of that Entity type to read.
   it.each([
-    ["tracks another Entity type", "crm/lead"],
-    ["tracks no Entity", undefined],
+    ["tracks another Entity type", [member, lifecycleTracking("crm/lead")]],
+    ["has no Lifecycle node", [member]],
   ])(
     "keeps the stored label for an Entity token when the workflow %s",
-    (_case, trackedEntityType) => {
+    (_case, nodes) => {
       const token = tokenOf(patientToken);
 
-      expect(
-        currentTokenDisplayText(token, [member], catalog, trackedEntityType)
-      ).toBe("Old Patient.status");
-      expect(
-        tokenSourceIsLive(token, [member], catalog, trackedEntityType)
-      ).toBe(false);
+      expect(currentTokenDisplay(token, nodes, catalog)).toEqual({
+        text: "Old Patient.status",
+        sourceIsLive: false,
+      });
     }
   );
 
@@ -139,20 +135,12 @@ describe("currentTokenDisplayText", () => {
     );
 
     expect(
-      currentTokenDisplayText(token, [member], catalog, "crm/unknown")
+      currentTokenDisplayText(
+        token,
+        [member, lifecycleTracking("crm/unknown")],
+        catalog
+      )
     ).toBe("Lead.stage");
-  });
-});
-
-describe("trackedEntityTypeOf", () => {
-  it("reads the tracked Entity type off the Lifecycle node", () => {
-    expect(
-      trackedEntityTypeOf([member, lifecycleTracking("crm/patient")])
-    ).toBe("crm/patient");
-  });
-
-  it("answers undefined for a workflow with no Lifecycle node", () => {
-    expect(trackedEntityTypeOf([member])).toBeUndefined();
   });
 });
 

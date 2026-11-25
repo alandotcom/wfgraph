@@ -17,7 +17,11 @@ import {
   findAction,
   findEntity,
 } from "#src/extensions/catalog";
-import { isLifecycleNode, readConfigString } from "#src/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  isLifecycleNode,
+  readConfigString,
+} from "#src/graph/node-config";
 import {
   isEntityStateSourceId,
   parseTemplate,
@@ -36,7 +40,10 @@ export function getNodeDisplayName(
   }
 
   if (node.data.type === "action") {
-    const actionType = readConfigString(node.data.config, "actionType");
+    const actionType = readConfigString(
+      node.data.config,
+      ACTION_TYPE_CONFIG_KEY
+    );
     if (actionType) {
       const action = findAction(catalog, actionType);
       if (action?.label) {
@@ -58,7 +65,7 @@ export function getNodeDisplayName(
  * The `type` of the Entity the workflow made of `nodes` tracks, read off its
  * Lifecycle node, or undefined when it tracks none.
  */
-export function trackedEntityTypeOf(
+function trackedEntityTypeOf(
   nodes: readonly WorkflowNode[]
 ): string | undefined {
   return readLifecycleRules(nodes.find(isLifecycleNode)?.data.config)
@@ -68,19 +75,18 @@ export function trackedEntityTypeOf(
 /**
  * The current name of the step or Entity a token reads from, or undefined
  * when the workflow no longer offers that source. A step token's source is
- * its node in `nodes`. An Entity token's source is the workflow's tracked
- * Entity, so a token naming any other Entity type, or none, has no source,
- * and neither does a type the catalog does not hold.
+ * its node in `nodes`. An Entity token's source is the Entity the Lifecycle
+ * node in `nodes` tracks, so a token naming any other Entity type, or none,
+ * has no source, and neither does a type the catalog does not hold.
  */
 function liveTokenSourceLabel(
   token: Pick<TemplateToken, "nodeId" | "sourceType">,
   nodes: readonly WorkflowNode[],
-  catalog: ExtensionCatalog,
-  trackedEntityType: string | undefined
+  catalog: ExtensionCatalog
 ): string | undefined {
   if (isEntityStateSourceId(token.nodeId)) {
     return token.sourceType !== undefined &&
-      token.sourceType === trackedEntityType
+      token.sourceType === trackedEntityTypeOf(nodes)
       ? findEntity(catalog, token.sourceType)?.label
       : undefined;
   }
@@ -89,60 +95,41 @@ function liveTokenSourceLabel(
 }
 
 /**
- * Whether the workflow still offers the source a token reads from, by the
- * rule `currentTokenSourceLabel` names it by. `trackedEntityType` is what
- * `trackedEntityTypeOf` answers for `nodes`.
+ * What a builder reads for one token, and whether the workflow made of
+ * `nodes` still offers the source the token reads from. `text` is the name of
+ * that source, then the path. The name is a step's display name from `nodes`,
+ * or the catalog label of the Entity the workflow tracks. The label stored in
+ * the token answers when `sourceIsLive` is false, which keeps what the token
+ * was written to read in view.
  */
-export function tokenSourceIsLive(
-  token: Pick<TemplateToken, "nodeId" | "sourceType">,
+export function currentTokenDisplay(
+  token: Pick<
+    TemplateToken,
+    "nodeId" | "sourceType" | "nodeLabel" | "fieldPath"
+  >,
   nodes: readonly WorkflowNode[],
-  catalog: ExtensionCatalog,
-  trackedEntityType: string | undefined
-): boolean {
-  return (
-    liveTokenSourceLabel(token, nodes, catalog, trackedEntityType) !== undefined
-  );
+  catalog: ExtensionCatalog
+): { text: string; sourceIsLive: boolean } {
+  const liveLabel = liveTokenSourceLabel(token, nodes, catalog);
+  return {
+    text: templateTokenDisplayText({
+      nodeLabel: liveLabel ?? token.nodeLabel,
+      fieldPath: token.fieldPath,
+    }),
+    sourceIsLive: liveLabel !== undefined,
+  };
 }
 
-/**
- * The name of the step or Entity a token reads from, as the workflow has it
- * now: a step's display name from `nodes`, or the catalog label of the
- * workflow's tracked Entity. The label stored in the token answers when the
- * workflow no longer offers the source, which keeps what the token used to
- * read in view. `trackedEntityType` is what `trackedEntityTypeOf` answers for
- * `nodes`.
- */
-export function currentTokenSourceLabel(
-  token: Pick<TemplateToken, "nodeId" | "sourceType" | "nodeLabel">,
-  nodes: readonly WorkflowNode[],
-  catalog: ExtensionCatalog,
-  trackedEntityType: string | undefined
-): string {
-  return (
-    liveTokenSourceLabel(token, nodes, catalog, trackedEntityType) ??
-    token.nodeLabel
-  );
-}
-
-/** What a builder reads for one token: its source's current name and the path. */
+/** The `text` of `currentTokenDisplay`, for a caller that needs no more. */
 export function currentTokenDisplayText(
   token: Pick<
     TemplateToken,
     "nodeId" | "sourceType" | "nodeLabel" | "fieldPath"
   >,
   nodes: readonly WorkflowNode[],
-  catalog: ExtensionCatalog,
-  trackedEntityType: string | undefined
+  catalog: ExtensionCatalog
 ): string {
-  return templateTokenDisplayText({
-    nodeLabel: currentTokenSourceLabel(
-      token,
-      nodes,
-      catalog,
-      trackedEntityType
-    ),
-    fieldPath: token.fieldPath,
-  });
+  return currentTokenDisplay(token, nodes, catalog).text;
 }
 
 /**
@@ -160,17 +147,11 @@ export function currentTemplateDisplayText(
   if (segments.every((segment) => segment.kind === "literal")) {
     return value;
   }
-  const trackedEntityType = trackedEntityTypeOf(nodes);
   return segments
     .map((segment) =>
       segment.kind === "literal"
         ? segment.text
-        : currentTokenDisplayText(
-            segment.token,
-            nodes,
-            catalog,
-            trackedEntityType
-          )
+        : currentTokenDisplayText(segment.token, nodes, catalog)
     )
     .join("");
 }

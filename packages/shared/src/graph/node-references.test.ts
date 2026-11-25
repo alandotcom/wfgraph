@@ -873,7 +873,6 @@ describe("extractAllTemplateReferences", () => {
         nodeId: "n1",
         nodeLabel: "Fetch",
         fieldPath: "name",
-        displayText: "Fetch.name",
       },
       {
         configKey: "body",
@@ -881,7 +880,6 @@ describe("extractAllTemplateReferences", () => {
         nodeId: "n2",
         nodeLabel: "Order",
         fieldPath: "id",
-        displayText: "Order.id",
       },
     ]);
   });
@@ -903,7 +901,6 @@ describe("extractAllTemplateReferences", () => {
         nodeId: "n1",
         nodeLabel: "Fetch",
         fieldPath: "tag",
-        displayText: "Fetch.tag",
       },
       {
         configKey: "headers",
@@ -911,7 +908,6 @@ describe("extractAllTemplateReferences", () => {
         nodeId: "n2",
         nodeLabel: "Order",
         fieldPath: "id",
-        displayText: "Order.id",
       },
       {
         configKey: "waitFor",
@@ -919,7 +915,6 @@ describe("extractAllTemplateReferences", () => {
         nodeId: "n3",
         nodeLabel: "Order",
         fieldPath: "total",
-        displayText: "Order.total",
       },
     ]);
   });
@@ -932,7 +927,6 @@ describe("extractAllTemplateReferences", () => {
         nodeId: "n1",
         nodeLabel: "Fetch",
         fieldPath: "",
-        displayText: "Fetch",
       },
     ]);
   });

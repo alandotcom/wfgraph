@@ -21,13 +21,14 @@ const previewCss = String.raw`
 `;
 
 /**
- * One config value as text. A reference shows as a bracketed placeholder,
- * such as [Patient.status], where a real preview would put the value this
- * app holds for it.
+ * One input as text. A reference shows as a bracketed placeholder, such as
+ * [Patient.status], where a real preview would put the value this app holds
+ * for it. This app's action declares text inputs only, so any other kind of
+ * field is printed as JSON.
  */
 function FieldValue({ field }: { field: WfGraphDraftField }) {
-  if (field.kind === "value") {
-    return <p class="value">{JSON.stringify(field.value)}</p>;
+  if (field.kind !== "template") {
+    return <p class="value">{JSON.stringify(field)}</p>;
   }
   return (
     <p class="value">

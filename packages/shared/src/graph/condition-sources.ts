@@ -7,7 +7,10 @@
 
 import { type ExtensionCatalog, findAction } from "#src/extensions/catalog";
 import { arrivingEventReachability } from "#src/graph/events-reaching";
-import { readConfigString } from "#src/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  readConfigString,
+} from "#src/graph/node-config";
 import { fieldsVisibleForConfig } from "#src/graph/node-references";
 import { reachableEventFields } from "#src/graph/reachable-fields";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
@@ -28,7 +31,10 @@ export function nodesOfferingOutputPath(input: {
       return false;
     }
 
-    const actionType = readConfigString(node.data.config, "actionType");
+    const actionType = readConfigString(
+      node.data.config,
+      ACTION_TYPE_CONFIG_KEY
+    );
     if (actionType) {
       const action = findAction(input.catalog, actionType);
       return action

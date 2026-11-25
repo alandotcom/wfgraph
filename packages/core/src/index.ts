@@ -75,6 +75,7 @@ export {
   type WfGraphDraftField,
   type WfGraphDraftNode,
   type WfGraphDraftReferenceSource,
+  type WfGraphDraftRow,
   type WfGraphDraftSegment,
   type WfGraphWorkflows,
   type WfGraphExtensions,

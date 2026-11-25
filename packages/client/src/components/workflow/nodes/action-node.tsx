@@ -60,6 +60,7 @@ import {
   OutletLabel,
 } from "#src/components/workflow/nodes/outlet-label";
 import {
+  ACTION_TYPE_CONFIG_KEY,
   readConfigString,
   readConfigStringOr,
 } from "@wfgraph/shared/graph/node-config";
@@ -452,7 +453,7 @@ export function actionNodeDisplayTitle(
   if (data[COMPARISON_NODE_ANNOTATION]) {
     return comparisonNodeTitle(data, catalog);
   }
-  const actionType = readConfigString(data.config, "actionType");
+  const actionType = readConfigString(data.config, ACTION_TYPE_CONFIG_KEY);
   return (
     data.label ||
     (actionType ? findAction(catalog, actionType)?.label : undefined) ||
@@ -471,7 +472,7 @@ export const ActionNode = memo((props: ActionNodeProps) => {
   const selectedExecutionId = useAtomValue(selectedExecutionIdAtom);
   const executionLogs = useExecutionLogsByNode();
   const nodeLog = executionLogs[id];
-  const actionType = readConfigString(data?.config, "actionType");
+  const actionType = readConfigString(data?.config, ACTION_TYPE_CONFIG_KEY);
   const isConditionAction = isConditionActionType(actionType);
   const isEventSplitAction = isEventSplitActionType(actionType);
   const splitOutlets = useEventSplitOutlets(isEventSplitAction ? id : null);

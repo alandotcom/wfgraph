@@ -1,8 +1,70 @@
 import { describe, expect, it } from "vitest";
 import {
   actionLinkUrlProblem,
+  checkActionLinks,
   fillActionLinkUrl,
 } from "#src/extensions/action-links";
+
+describe("checkActionLinks", () => {
+  it("answers a list of valid links", () => {
+    expect(
+      checkActionLinks([
+        { label: "Members", url: "/members/{nodeId}" },
+        { label: "Orders", url: "https://app.example.com/orders" },
+      ])
+    ).toEqual({
+      valid: true,
+      links: [
+        { label: "Members", url: "/members/{nodeId}" },
+        { label: "Orders", url: "https://app.example.com/orders" },
+      ],
+    });
+  });
+
+  it("trims each label and url", () => {
+    expect(
+      checkActionLinks([{ label: "  Members ", url: " /members/{nodeId}  " }])
+    ).toEqual({
+      valid: true,
+      links: [{ label: "Members", url: "/members/{nodeId}" }],
+    });
+  });
+
+  it("names a blank label", () => {
+    expect(
+      checkActionLinks([
+        { label: "Members", url: "/members" },
+        { label: " ", url: "/orders" },
+      ])
+    ).toEqual({ valid: false, problem: "link 2: the label is blank" });
+  });
+
+  it("names the position of the earlier link holding the same label", () => {
+    expect(
+      checkActionLinks([
+        { label: "Members", url: "/members" },
+        { label: "Orders", url: "/orders" },
+        { label: " Members", url: "/members/all" },
+      ])
+    ).toEqual({
+      valid: false,
+      problem: "link 3: the label is the same as link 1's",
+    });
+  });
+
+  it("names the url problem of the link that has one", () => {
+    expect(
+      checkActionLinks([
+        { label: "Members", url: "/members" },
+        { label: "Orders", url: "//evil.example.com/orders" },
+      ])
+    ).toEqual({
+      valid: false,
+      problem:
+        "link 2: the url starts with // or /\\, which a browser reads as another origin",
+    });
+  });
+});
 
 describe("actionLinkUrlProblem", () => {
   it.each([

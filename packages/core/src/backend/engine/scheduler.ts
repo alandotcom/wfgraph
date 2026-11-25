@@ -21,6 +21,7 @@ import {
   waitTemplateKeysIn,
 } from "@wfgraph/shared/lifecycle/wait-subscription";
 import {
+  ACTION_TYPE_CONFIG_KEY,
   actionTypeOf,
   isConditionNode,
   isWaitNode,
@@ -67,7 +68,10 @@ function getNodeName(node: WorkflowNode, actions: WorkflowActions): string {
     return node.data.label;
   }
   if (node.data.type === "action") {
-    const actionType = readConfigString(node.data.config, "actionType");
+    const actionType = readConfigString(
+      node.data.config,
+      ACTION_TYPE_CONFIG_KEY
+    );
     if (actionType) {
       // The label comes from the assembled catalog, so a run log names an action
       // the way the editor does.

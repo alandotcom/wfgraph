@@ -16,6 +16,7 @@ import {
 } from "@wfgraph/shared/conditions/conditions";
 import { conditionTypeOf } from "@wfgraph/shared/conditions/condition-field-type";
 import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
+import { currentTokenDisplayText } from "@wfgraph/shared/graph/node-display";
 import {
   type ExtensionCatalog,
   findAction,
@@ -34,12 +35,11 @@ import {
   type ValueTargetType,
 } from "@wfgraph/shared/graph/value-targets";
 import type { WorkflowEdge, WorkflowNode } from "@wfgraph/shared/graph/types";
+import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import {
-  flattenConfigFields,
-  literalFieldKeys,
-  templateJsonFieldShapes,
-} from "@wfgraph/shared/plugins/action-fields";
-import { extractConsumedTemplateReferences } from "@wfgraph/shared/plugins/template-config";
+  extractConsumedTemplateReferences,
+  templateConfigRules,
+} from "@wfgraph/shared/plugins/template-config";
 import {
   waitMatchTemplateStringsIn,
   waitTemplateKeysIn,
@@ -169,16 +169,9 @@ export function validateWorkflowTemplates(input: {
       actionType === BUILT_IN_ACTION_IDS.wait
         ? new Set<string>(waitTemplateKeysIn(config))
         : undefined;
-    const literalKeys = new Set(literalFieldKeys(action?.configFields ?? []));
     const references = extractConsumedTemplateReferences(
       jsonConfig,
-      {
-        literalKeys,
-        jsonShapes: new Map(
-          templateJsonFieldShapes(action?.configFields ?? [])
-        ),
-        activeKeys: activeWaitKeys,
-      },
+      templateConfigRules(action?.configFields ?? [], activeWaitKeys),
       actionType === BUILT_IN_ACTION_IDS.wait
         ? waitMatchTemplateStringsIn(config)
         : []
@@ -240,7 +233,7 @@ export function validateWorkflowTemplates(input: {
         entitySource && reference.sourceType === entitySource.type
           ? referenceFieldForPath(entitySource.stateFields, reference.fieldPath)
           : undefined;
-      const where = `Node "${getNodeLabel(node)}" reads ${reference.displayText}`;
+      const where = `Node "${getNodeLabel(node)}" reads ${currentTokenDisplayText(reference, nodes, catalog)}`;
       if (!entitySource) {
         return {
           valid: false,

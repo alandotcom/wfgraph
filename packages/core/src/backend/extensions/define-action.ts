@@ -36,9 +36,8 @@ import {
 import { asStandardSchema } from "@wfgraph/shared/types/schema";
 import {
   type ActionLink,
-  actionLinkUrlProblem,
+  checkActionLinks,
 } from "@wfgraph/shared/extensions/action-links";
-import { isBlank } from "@wfgraph/shared/types/string";
 import type { ReferenceField } from "@wfgraph/shared/graph/node-references";
 import {
   type OutputSchema,
@@ -264,11 +263,9 @@ function inferOptionFields(
 }
 
 /**
- * The links with their label and url trimmed, or undefined for an action that
- * declares none. Throws naming the action and the link's position for a blank
- * label, a label an earlier link already has, or a url `actionLinkUrlProblem`
- * refuses. The editor keys each link by its label, and a reader tells two
- * links apart by nothing else.
+ * The links `checkActionLinks` answers, or undefined for an action that
+ * declares none. Throws when `checkActionLinks` refuses one, prefixing its
+ * sentence with the action id.
  */
 function normalizeActionLinks(
   actionId: string,
@@ -277,25 +274,11 @@ function normalizeActionLinks(
   if (!links || links.length === 0) {
     return undefined;
   }
-  const trimmed = links.map((link) => ({
-    label: link.label.trim(),
-    url: link.url.trim(),
-  }));
-  for (const [index, link] of trimmed.entries()) {
-    const where = `Action "${actionId}" link ${index + 1}`;
-    if (isBlank(link.label)) {
-      throw new Error(`${where}: the label is blank`);
-    }
-    const first = trimmed.findIndex((other) => other.label === link.label);
-    if (first < index) {
-      throw new Error(`${where}: the label is the same as link ${first + 1}'s`);
-    }
-    const problem = actionLinkUrlProblem(link.url);
-    if (problem) {
-      throw new Error(`${where}: ${problem}`);
-    }
+  const checked = checkActionLinks(links);
+  if (!checked.valid) {
+    throw new Error(`Action "${actionId}" ${checked.problem}`);
   }
-  return trimmed;
+  return checked.links;
 }
 
 function normalizeActionIdentity(

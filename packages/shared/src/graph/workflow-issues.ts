@@ -32,7 +32,15 @@ import {
   type GroupContractRule,
   groupContractViolations,
 } from "#src/graph/group-contract";
-import { isWaitNode, readConfigTrimmedString } from "#src/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  isWaitNode,
+  readConfigTrimmedString,
+} from "#src/graph/node-config";
+import {
+  currentTokenDisplayText,
+  getNodeDisplayName,
+} from "#src/graph/node-display";
 import { checkCancelFilters } from "#src/lifecycle/cancel-filters";
 import {
   LIFECYCLE_CANCELED_HANDLE,
@@ -57,18 +65,18 @@ import {
 } from "#src/lifecycle/wait-subscription";
 import {
   type ConfigTemplateReference,
+  ENTITY_STATE_SOURCE_ID,
   isEntityStateSourceId,
   referenceFieldForPath,
   templateTokenDisplayText,
 } from "#src/graph/node-references";
 import type { WorkflowEdge, WorkflowNode } from "#src/graph/types";
 import { upstreamNodeIdsOver } from "#src/graph/upstream-nodes";
+import { flattenConfigFields } from "#src/plugins/action-fields";
 import {
-  flattenConfigFields,
-  literalFieldKeys,
-  templateJsonFieldShapes,
-} from "#src/plugins/action-fields";
-import { extractConsumedTemplateReferences } from "#src/plugins/template-config";
+  extractConsumedTemplateReferences,
+  templateConfigRules,
+} from "#src/plugins/template-config";
 import { type JsonObject, readJsonObjectLeniently } from "#src/types/json";
 import { asNonEmptyString } from "#src/types/string";
 
@@ -375,7 +383,10 @@ export function findUnconfiguredIntegrationNodes(input: {
       continue;
     }
 
-    const actionType = readConfigTrimmedString(node.data.config, "actionType");
+    const actionType = readConfigTrimmedString(
+      node.data.config,
+      ACTION_TYPE_CONFIG_KEY
+    );
     if (!actionType) {
       continue;
     }
@@ -442,7 +453,10 @@ function collectMissingIntegrationIssues(input: {
       continue;
     }
 
-    const actionType = readConfigTrimmedString(node.data.config, "actionType");
+    const actionType = readConfigTrimmedString(
+      node.data.config,
+      ACTION_TYPE_CONFIG_KEY
+    );
     if (!actionType) {
       continue;
     }
@@ -504,16 +518,12 @@ function consumedReferencesOf(input: {
   action: ActionMetadata | undefined;
 }): ConfigTemplateReference[] {
   const waitNode = isWaitNode(input.node);
-  const configFields = input.action?.configFields ?? [];
   return extractConsumedTemplateReferences(
     input.config,
-    {
-      literalKeys: new Set(literalFieldKeys(configFields)),
-      jsonShapes: new Map(templateJsonFieldShapes(configFields)),
-      activeKeys: waitNode
-        ? new Set<string>(waitTemplateKeysIn(input.config))
-        : undefined,
-    },
+    templateConfigRules(
+      input.action?.configFields ?? [],
+      waitNode ? new Set<string>(waitTemplateKeysIn(input.config)) : undefined
+    ),
     waitNode ? waitMatchTemplateStringsIn(input.config) : []
   );
 }
@@ -557,7 +567,7 @@ function collectBrokenReferenceIssues(input: {
       continue;
     }
 
-    const actionType = readConfigTrimmedString(config, "actionType");
+    const actionType = readConfigTrimmedString(config, ACTION_TYPE_CONFIG_KEY);
     const action = actionType
       ? findAction(input.catalog, actionType)
       : undefined;
@@ -611,8 +621,19 @@ function collectBrokenReferenceIssues(input: {
         nodeLabel,
         fieldKey: CONDITION_MODEL_FIELD_KEY,
         fieldLabel: CONDITION_MODEL_FIELD_LABEL,
-        referencedNodeId: "$entity",
-        displayText: `${reference.entityType}.${reference.fieldPath}`,
+        referencedNodeId: ENTITY_STATE_SOURCE_ID,
+        // The catalog label when the workflow tracks this Entity, and the raw
+        // Entity type otherwise.
+        displayText: currentTokenDisplayText(
+          {
+            nodeId: ENTITY_STATE_SOURCE_ID,
+            sourceType: reference.entityType,
+            nodeLabel: reference.entityType,
+            fieldPath: reference.fieldPath,
+          },
+          input.nodes,
+          input.catalog
+        ),
         message: `Node "${nodeLabel}" references unavailable Entity data in Continue when`,
       });
     }
@@ -628,7 +649,7 @@ function collectBrokenReferenceIssues(input: {
         fieldKey: ref.field,
         fieldLabel,
         referencedNodeId: ref.nodeId,
-        displayText: ref.displayText,
+        displayText: currentTokenDisplayText(ref, input.nodes, input.catalog),
         message: entityReference
           ? `Node "${nodeLabel}" references unavailable Entity data in ${fieldLabel}`
           : `Node "${nodeLabel}" references missing step in ${fieldLabel}`,
@@ -670,16 +691,6 @@ export function collectReferenceNotUpstreamIssues(input: {
     outlet: LIFECYCLE_CANCELED_HANDLE,
     edges: input.edges,
   });
-  const labelOf = (node: WorkflowNode): string => {
-    const actionType = readConfigTrimmedString(node.data.config, "actionType");
-    return workflowNodeLabel({
-      node,
-      actionLabel: actionType
-        ? findAction(input.catalog, actionType)?.label
-        : undefined,
-      actionType,
-    });
-  };
 
   return input.nodes.flatMap((node) => {
     if (node.data.type !== "action" || node.data.enabled === false) {
@@ -690,7 +701,7 @@ export function collectReferenceNotUpstreamIssues(input: {
       return [];
     }
 
-    const actionType = readConfigTrimmedString(config, "actionType");
+    const actionType = readConfigTrimmedString(config, ACTION_TYPE_CONFIG_KEY);
     const action = actionType
       ? findAction(input.catalog, actionType)
       : undefined;
@@ -713,7 +724,11 @@ export function collectReferenceNotUpstreamIssues(input: {
 
     const upstream = upstreamOf(node.id);
     const readsStartedSide = canceledSide.has(node.id);
-    const nodeLabel = labelOf(node);
+    const nodeLabel = workflowNodeLabel({
+      node,
+      actionLabel: action?.label,
+      actionType,
+    });
     const readable = (referenced: WorkflowNode) =>
       upstream.has(referenced.id) ||
       (readsStartedSide && startedSide.has(referenced.id));
@@ -722,7 +737,9 @@ export function collectReferenceNotUpstreamIssues(input: {
       if (!referenced || readable(referenced)) {
         return [];
       }
-      const referencedLabel = labelOf(referenced);
+      // The message and `displayText` name the step by its current name. The
+      // label saved inside the reference is stale once the step is renamed.
+      const referencedLabel = getNodeDisplayName(input.catalog, referenced);
       const fieldLabel = referenceFieldLabelOf(reference, action);
       return [
         {
@@ -733,8 +750,6 @@ export function collectReferenceNotUpstreamIssues(input: {
           fieldKey: reference.field,
           fieldLabel,
           referencedNodeId: referenced.id,
-          // The step's current name, which the message also uses. The label
-          // saved inside the reference is stale once the step is renamed.
           displayText: templateTokenDisplayText({
             nodeLabel: referencedLabel,
             fieldPath: reference.fieldPath,
@@ -769,11 +784,14 @@ export function collectReferenceNotUpstreamIssues(input: {
           },
         ];
       }
-      const referencedLabel = labelOf(referenced);
+      const referencedLabel = getNodeDisplayName(input.catalog, referenced);
       return [
         {
           ...base,
-          displayText: `${referencedLabel}.${reference.fieldPath}`,
+          displayText: templateTokenDisplayText({
+            nodeLabel: referencedLabel,
+            fieldPath: reference.fieldPath,
+          }),
           message: `Node "${nodeLabel}" reads "${referencedLabel}" in ${CONDITION_MODEL_FIELD_LABEL}, but no path leads from "${referencedLabel}" to "${nodeLabel}". Test only a node upstream of "${nodeLabel}", or move "${nodeLabel}" below "${referencedLabel}".`,
         },
       ];
@@ -796,7 +814,7 @@ function collectSharedConditionPathIssues(input: {
   return input.nodes.flatMap((node) => {
     const config = readJsonObjectLeniently(node.data.config);
     const actionType = config
-      ? readConfigTrimmedString(config, "actionType")
+      ? readConfigTrimmedString(config, ACTION_TYPE_CONFIG_KEY)
       : undefined;
     const model =
       config &&
@@ -844,7 +862,10 @@ function collectSharedConditionPathIssues(input: {
           node: source,
           actionLabel: findAction(
             input.catalog,
-            readConfigTrimmedString(source.data.config, "actionType") ?? ""
+            readConfigTrimmedString(
+              source.data.config,
+              ACTION_TYPE_CONFIG_KEY
+            ) ?? ""
           )?.label,
         })}"`;
       const others = sources.slice(0, -1).map(labelOf).join(" and ");

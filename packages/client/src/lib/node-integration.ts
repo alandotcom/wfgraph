@@ -4,6 +4,7 @@ import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import {
+  ACTION_TYPE_CONFIG_KEY,
   isLifecycleNode,
   readConfigString,
 } from "@wfgraph/shared/graph/node-config";
@@ -68,7 +69,7 @@ export function repairNodeIntegration<T extends WorkflowNode>(
   node: T,
   integrations: readonly IntegrationLike[]
 ): T {
-  const actionType = readConfigString(node.data.config, "actionType");
+  const actionType = readConfigString(node.data.config, ACTION_TYPE_CONFIG_KEY);
   if (!actionType) {
     return node;
   }
@@ -202,7 +203,7 @@ export function repairNodeIntegrations<T extends WorkflowNode>(
   return mapOrSame(nodes, (node) => {
     const isEventWait =
       node.data.type === "action" &&
-      readConfigString(node.data.config, "actionType") ===
+      readConfigString(node.data.config, ACTION_TYPE_CONFIG_KEY) ===
         BUILT_IN_ACTION_IDS.wait &&
       readConfigString(node.data.config, "waitMode") === "event";
     return isLifecycleNode(node)

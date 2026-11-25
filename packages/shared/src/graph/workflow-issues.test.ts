@@ -75,6 +75,42 @@ function actionNode(
 }
 
 describe("collectWorkflowIssues", () => {
+  /** The test catalog holding one Entity, `type`, labelled `label`. */
+  function catalogWithEntity(type: string, label: string): ExtensionCatalog {
+    return {
+      ...catalog,
+      entities: [
+        {
+          type,
+          label,
+          stateFields: [{ path: "name", type: "string" }],
+          stateSchemaDigest: `${type}-state`,
+        },
+      ],
+    };
+  }
+
+  /** A Lifecycle node whose workflow tracks the Entity `type`. */
+  function lifecycleTracking(type: string): WorkflowNode {
+    return {
+      id: "lifecycle",
+      type: "lifecycle",
+      position: { x: 0, y: 0 },
+      data: {
+        type: "lifecycle",
+        label: "Lifecycle",
+        config: {
+          lifecycleRules: {
+            startEvents: [],
+            cancelEvents: [],
+            concurrency: "unlimited",
+            trackedEntity: { type, bindings: {} },
+          },
+        },
+      },
+    };
+  }
+
   it("reports missing required fields as blocking", () => {
     const issues = collectWorkflowIssues({
       nodes: [actionNode("a1", { actionType: "custom/send" }, "Notify")],
@@ -145,7 +181,7 @@ describe("collectWorkflowIssues", () => {
     ).toBe(true);
   });
 
-  it("reports orphan template refs as warnings", () => {
+  it("reports orphan template refs as warnings, named by the label stored in the token", () => {
     const issues = collectWorkflowIssues({
       nodes: [
         actionNode(
@@ -174,6 +210,85 @@ describe("collectWorkflowIssues", () => {
       }),
     ]);
     expect(hasBlockingWorkflowIssues(issues)).toBe(false);
+  });
+
+  it("names a broken Entity reference by the tracked Entity's catalog label", () => {
+    const issues = collectWorkflowIssues({
+      nodes: [
+        lifecycleTracking("member"),
+        actionNode(
+          "a1",
+          {
+            actionType: "custom/send",
+            channel: "#general",
+            integrationId: "int_1",
+            message:
+              "Hi {{@$entity:member|Customer.gone}} {{@$entity:order|Order.id}}",
+          },
+          "Notify"
+        ),
+      ],
+      edges: [],
+      catalog: catalogWithEntity("member", "Member"),
+      integrations: [{ id: "int_1", type: "slack" }],
+    });
+
+    // The tracked Entity answers by its catalog label. An Entity type the
+    // workflow does not track keeps the label stored in the token.
+    expect(
+      issues
+        .filter((issue) => issue.kind === "broken_reference")
+        .map((issue) => issue.displayText)
+    ).toEqual(["Member.gone", "Order.id"]);
+  });
+
+  it("names a broken Entity reference in a Condition by the tracked Entity's catalog label", () => {
+    const model = serializeConditionModel({
+      version: 2,
+      groupLogic: "and",
+      groups: [
+        {
+          id: "group",
+          logic: "and",
+          conditions: [
+            {
+              id: "tracked",
+              field: entityStateConditionPath("member", "gone") ?? "",
+              fieldType: "string",
+              operator: "equals",
+              value: "active",
+            },
+            {
+              id: "untracked",
+              field: entityStateConditionPath("order", "id") ?? "",
+              fieldType: "string",
+              operator: "equals",
+              value: "ord_1",
+            },
+          ],
+        },
+      ],
+    });
+    const issues = collectWorkflowIssues({
+      nodes: [
+        lifecycleTracking("member"),
+        actionNode(
+          "condition",
+          { actionType: "Condition", conditionModel: model },
+          "Check member"
+        ),
+      ],
+      edges: [],
+      catalog: catalogWithEntity("member", "Member"),
+      integrations: [],
+    });
+
+    // An Entity type the workflow does not track is named by its raw type.
+    expect(
+      issues
+        .filter((issue) => issue.kind === "broken_reference")
+        .map((issue) => issue.displayText)
+    ).toEqual(["Member.gone", "order.id"]);
   });
 
   it("accepts Entity references when tracking has no Eligibility", () => {
@@ -321,12 +436,12 @@ describe("collectWorkflowIssues", () => {
         nodeId: "condition",
         fieldKey: "conditionModel",
         fieldLabel: "Continue when",
-        displayText: "patient.gone",
+        displayText: "Patient.gone",
         severity: "blocking",
       }),
       expect.objectContaining({
         nodeId: "condition",
-        displayText: "patient.name",
+        displayText: "Patient.name",
         severity: "blocking",
       }),
     ]);
@@ -543,6 +658,57 @@ describe("collectWorkflowIssues references to a node that is not upstream", () =
     expect(issues.map((issue) => issue.displayText)).toEqual([
       "Find member.name",
     ]);
+  });
+
+  it("names an unlabelled referenced step by its action's label in the message and display text", () => {
+    const issues = notUpstream(
+      [
+        entry,
+        sender("lookup", ""),
+        sender("notify", "Notify", "Hi {{@lookup:Lookup.name}}"),
+      ],
+      [fromEntry("lookup"), fromEntry("notify")]
+    );
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        displayText: "Send Message.name",
+        message:
+          'Node "Notify" reads "Send Message" in Message, but no path leads from "Send Message" to "Notify". Reference only a node upstream of "Notify", or move "Notify" below "Send Message".',
+      }),
+    ]);
+  });
+
+  it("names a referenced step with no label and no action as Action", () => {
+    const issues = notUpstream(
+      [
+        entry,
+        actionNode("lookup", {}, ""),
+        sender("notify", "Notify", "Hi {{@lookup:Lookup.name}}"),
+      ],
+      [fromEntry("lookup"), fromEntry("notify")]
+    );
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        displayText: "Action.name",
+        message:
+          'Node "Notify" reads "Action" in Message, but no path leads from "Action" to "Notify". Reference only a node upstream of "Notify", or move "Notify" below "Action".',
+      }),
+    ]);
+  });
+
+  it("names a reference to a step's whole output by the step's name alone", () => {
+    const issues = notUpstream(
+      [
+        entry,
+        sender("lookup", "Find member"),
+        sender("notify", "Notify", "Hi {{@lookup:Lookup}}"),
+      ],
+      [fromEntry("lookup"), fromEntry("notify")]
+    );
+
+    expect(issues.map((issue) => issue.displayText)).toEqual(["Find member"]);
   });
 
   // Both branches leave the entry node together, so whether Lookup has run

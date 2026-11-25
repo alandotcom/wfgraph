@@ -9,7 +9,10 @@ import {
 } from "@wfgraph/shared/extensions/catalog";
 import { BUILT_IN_ACTION_IDS } from "@wfgraph/shared/actions/built-in-actions";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
-import { readConfigTrimmedString } from "@wfgraph/shared/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  readConfigTrimmedString,
+} from "@wfgraph/shared/graph/node-config";
 import { readLifecycleRules } from "@wfgraph/shared/lifecycle/lifecycle-rules";
 import { readWaitSubscriptions } from "@wfgraph/shared/lifecycle/wait-subscription";
 import { findUnconfiguredIntegrationNodes } from "@wfgraph/shared/graph/workflow-issues";
@@ -122,7 +125,10 @@ export function extractRequiredIntegrationRequirements(
       continue;
     }
 
-    const actionType = readConfigTrimmedString(node.data.config, "actionType");
+    const actionType = readConfigTrimmedString(
+      node.data.config,
+      ACTION_TYPE_CONFIG_KEY
+    );
 
     if (actionType === BUILT_IN_ACTION_IDS.wait) {
       for (const subscription of readWaitSubscriptions(node.data.config)) {

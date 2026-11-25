@@ -20,7 +20,10 @@ import {
   type ExtensionCatalog,
   findAction,
 } from "@wfgraph/shared/extensions/catalog";
-import { readConfigString } from "@wfgraph/shared/graph/node-config";
+import {
+  ACTION_TYPE_CONFIG_KEY,
+  readConfigString,
+} from "@wfgraph/shared/graph/node-config";
 import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import { readKeyValueRows } from "@wfgraph/shared/plugins/key-value-rows";
 import type { WorkflowNode } from "#src/lib/workflow-graph-types";
@@ -46,7 +49,10 @@ export function collectOpenRecordKeys(
   const keysByRecord = new Map<string, string[]>();
 
   for (const node of nodes) {
-    const actionType = readConfigString(node.data.config, "actionType");
+    const actionType = readConfigString(
+      node.data.config,
+      ACTION_TYPE_CONFIG_KEY
+    );
     const action = actionType ? findAction(catalog, actionType) : undefined;
     const config = node.data.config;
     if (!(action?.integration && config)) {

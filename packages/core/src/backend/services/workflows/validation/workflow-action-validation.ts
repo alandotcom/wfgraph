@@ -6,6 +6,7 @@ import {
   getMissingRequiredFieldsForNodes,
   type ResolveActionByType,
 } from "@wfgraph/shared/actions/action-config-validation";
+import { ACTION_TYPE_CONFIG_KEY } from "@wfgraph/shared/graph/node-config";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
 
 export type WorkflowActionValidationResult =
@@ -31,7 +32,9 @@ export function validateWorkflowActionConfigs(
       .join(", ");
 
     if (
-      firstIssue.missingFields.some((field) => field.fieldKey === "actionType")
+      firstIssue.missingFields.some(
+        (field) => field.fieldKey === ACTION_TYPE_CONFIG_KEY
+      )
     ) {
       return {
         valid: false,

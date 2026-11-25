@@ -367,12 +367,14 @@ export type ConfigTemplateReference = {
   nodeId: string;
   /** Stable Entity type carried by a virtual Entity reference. */
   sourceType?: string | undefined;
-  /** The source label stored for display in the token. */
+  /**
+   * The source label stored in the token, which is stale once the source is
+   * renamed. `currentTokenDisplayText` in `node-display.ts` names the source
+   * as the workflow has it now.
+   */
   nodeLabel: string;
   /** Dotted path into that node's output; empty when the token names the whole output. */
   fieldPath: string;
-  /** The label and field path a builder sees, for a message about the reference. */
-  displayText: string;
 };
 
 /**
@@ -445,7 +447,6 @@ export function templateReferencesInString(
       sourceType: token.sourceType,
       nodeLabel: token.nodeLabel,
       fieldPath: token.fieldPath,
-      displayText: templateTokenDisplayText(token),
     })
   );
 }

@@ -14,6 +14,7 @@ import {
   type WfGraphAppOptions,
 } from "@wfgraph/core";
 import { wfSqlite } from "@wfgraph/core/sqlite";
+import { ACTION_TYPE_CONFIG_KEY } from "@wfgraph/shared/graph/node-config";
 
 /** A valid 64-character hex key; the checks store no real credential. */
 export const ENCRYPTION = { key: "e".repeat(64) };
@@ -81,7 +82,7 @@ export function manualStartGraph() {
         },
       }),
       graphNode("record", "action", {
-        actionType: RECORD_ACTION_ID,
+        [ACTION_TYPE_CONFIG_KEY]: RECORD_ACTION_ID,
         marker: "ran",
       }),
     ],

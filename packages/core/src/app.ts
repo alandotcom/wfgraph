@@ -100,6 +100,7 @@ export type {
   WfGraphDraftField,
   WfGraphDraftNode,
   WfGraphDraftReferenceSource,
+  WfGraphDraftRow,
   WfGraphDraftSegment,
   WfGraphWorkflows,
 } from "#src/backend/host-workflows";

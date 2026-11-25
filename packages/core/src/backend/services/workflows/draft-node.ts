@@ -6,20 +6,21 @@
  */
 
 import { Effect } from "effect";
+import { STEP_INTERNAL_INPUT_KEYS } from "#src/backend/extensions/steps/step-handler";
 import { AppLogger } from "#src/backend/lib/effect/app-logger";
 import { Extensions } from "#src/backend/lib/effect/extensions";
 import { internalFailureFromCause } from "#src/backend/lib/effect/internal-failure";
 import { WorkflowRepo } from "#src/backend/services/workflows/repo";
-import type { ExtensionCatalog } from "@wfgraph/shared/extensions/catalog";
-import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { isBuiltInActionId } from "@wfgraph/shared/actions/built-in-actions";
 import {
-  ACTION_TYPE_CONFIG_KEY,
-  actionTypeOf,
-} from "@wfgraph/shared/graph/node-config";
+  type ExtensionCatalog,
+  findAction,
+} from "@wfgraph/shared/extensions/catalog";
+import { toWorkflowGraphData } from "@wfgraph/shared/graph/graph";
+import { actionTypeOf } from "@wfgraph/shared/graph/node-config";
 import {
   currentTokenDisplayText,
   getNodeDisplayName,
-  trackedEntityTypeOf,
 } from "@wfgraph/shared/graph/node-display";
 import {
   isEntityStateSourceId,
@@ -27,7 +28,14 @@ import {
   type TemplateToken,
 } from "@wfgraph/shared/graph/node-references";
 import type { WorkflowNode } from "@wfgraph/shared/graph/types";
+import { flattenConfigFields } from "@wfgraph/shared/plugins/action-fields";
 import {
+  readConfigValue,
+  type TemplateConfigRules,
+  templateConfigRules,
+} from "@wfgraph/shared/plugins/template-config";
+import {
+  type JsonObject,
   type JsonValue,
   readJsonObjectLeniently,
 } from "@wfgraph/shared/types/json";
@@ -62,19 +70,31 @@ export type WfGraphDraftSegment =
       display: string;
     };
 
+/** One row of a key-value field. */
+export type WfGraphDraftRow = {
+  /** The row's name as written. The engine resolves no reference in it. */
+  name: string;
+  /** The row's value, read as a template. */
+  segments: readonly WfGraphDraftSegment[];
+};
+
 /**
- * One top-level config value. A string is a template, read as segments; any
- * other value is passed on unchanged.
+ * One input of a host action, read the way the engine reads it when the step
+ * runs. `template` is a string the engine resolves references in, `rows` is a
+ * `key-value` field whose row values it resolves one at a time, and `value` is
+ * handed to the step as stored, such as a value that is not a string or a
+ * string under a `literal` field. A `key-value` field whose text is not a list
+ * of rows is answered as `template`, since the engine reads it as one.
  */
 export type WfGraphDraftField =
   | { kind: "template"; segments: readonly WfGraphDraftSegment[] }
+  | { kind: "rows"; rows: readonly WfGraphDraftRow[] }
   | { kind: "value"; value: JsonValue };
 
 /** The saved draft a node's references are named against. */
 type DraftWorkflow = {
   nodes: readonly WorkflowNode[];
   catalog: ExtensionCatalog;
-  trackedEntityType: string | undefined;
 };
 
 /** One node of a workflow's saved draft. */
@@ -90,7 +110,14 @@ export type WfGraphDraftNode = {
    * it, so a page that reads again can tell a newer save apart.
    */
   revision: number;
-  /** One entry per top-level config key, the stored action id excluded. */
+  /**
+   * For a node running a host action, one entry per input the action declares
+   * and the node stores, in the declared order, except that an integer-like
+   * key comes first, as in any JavaScript object. An input named `actionType`
+   * or `integrationId` has no entry, since the step never receives it. Empty
+   * for any other node, including an integration action, a built-in such as
+   * Wait, and an action the catalog does not hold.
+   */
   fields: Record<string, WfGraphDraftField>;
 };
 
@@ -125,30 +152,84 @@ function referenceSegment(
     kind: "reference",
     source,
     fieldPath: token.fieldPath,
-    display: currentTokenDisplayText(
-      token,
-      workflow.nodes,
-      workflow.catalog,
-      workflow.trackedEntityType
-    ),
+    display: currentTokenDisplayText(token, workflow.nodes, workflow.catalog),
   };
 }
 
+/** A template string as text and reference segments. */
+function templateSegments(
+  text: string,
+  workflow: DraftWorkflow
+): WfGraphDraftSegment[] {
+  return parseTemplate(text).map((segment) =>
+    segment.kind === "literal"
+      ? { kind: "text", text: segment.text }
+      : referenceSegment(segment.token, workflow)
+  );
+}
+
 function draftField(
+  key: string,
   value: JsonValue,
+  rules: TemplateConfigRules,
   workflow: DraftWorkflow
 ): WfGraphDraftField {
-  if (typeof value !== "string") {
+  const reading = readConfigValue(key, value, rules);
+  if (reading.kind === "template") {
+    return {
+      kind: "template",
+      segments: templateSegments(reading.text, workflow),
+    };
+  }
+  if (reading.kind === "key-value") {
+    return {
+      kind: "rows",
+      rows: reading.rows.map((row) => ({
+        name: row.name,
+        segments: templateSegments(row.value, workflow),
+      })),
+    };
+  }
+  if (reading.kind === "provider-fields") {
+    // A host action's `configFields` type excludes the `provider-fields` type.
     return { kind: "value", value };
   }
-  return {
-    kind: "template",
-    segments: parseTemplate(value).map((segment) =>
-      segment.kind === "literal"
-        ? { kind: "text", text: segment.text }
-        : referenceSegment(segment.token, workflow)
-    ),
-  };
+  reading.kind satisfies "stored";
+  return { kind: "value", value };
+}
+
+/**
+ * The keys the engine removes from a step's input before the step reads it,
+ * so a host action input declared under one of them never reaches the step.
+ */
+const STEP_INTERNAL_KEYS: ReadonlySet<string> = new Set(
+  STEP_INTERNAL_INPUT_KEYS
+);
+
+function draftFields(
+  actionId: string | undefined,
+  config: JsonObject,
+  workflow: DraftWorkflow
+): Record<string, WfGraphDraftField> {
+  const action =
+    actionId === undefined || isBuiltInActionId(actionId)
+      ? undefined
+      : findAction(workflow.catalog, actionId);
+  if (!action || action.integration !== undefined) {
+    return {};
+  }
+  const rules = templateConfigRules(action.configFields);
+  return Object.fromEntries(
+    flattenConfigFields(action.configFields).flatMap((field) => {
+      const value =
+        Object.hasOwn(config, field.key) && !STEP_INTERNAL_KEYS.has(field.key)
+          ? config[field.key]
+          : undefined;
+      return value === undefined
+        ? []
+        : [[field.key, draftField(field.key, value, rules, workflow)]];
+    })
+  );
 }
 
 /** The logger a failed read writes its one record to, the ids as fields. */
@@ -194,25 +275,18 @@ export const readDraftNode = Effect.fn("readDraftNode")(
       return null;
     }
 
-    const draftWorkflow: DraftWorkflow = {
-      nodes,
-      catalog,
-      trackedEntityType: trackedEntityTypeOf(nodes),
-    };
-    const config = readJsonObjectLeniently(node.data.config) ?? {};
-    const fields = Object.fromEntries(
-      Object.entries(config)
-        .filter(([key]) => key !== ACTION_TYPE_CONFIG_KEY)
-        .map(([key, value]) => [key, draftField(value, draftWorkflow)])
-    );
-
+    const actionId = actionTypeOf(node);
     const draftNode: WfGraphDraftNode = omitUndefined({
       workflowId: workflow.id,
       nodeId: node.id,
       label: getNodeDisplayName(catalog, node),
-      actionId: actionTypeOf(node),
+      actionId,
       revision: workflow.draftRevision,
-      fields,
+      fields: draftFields(
+        actionId,
+        readJsonObjectLeniently(node.data.config) ?? {},
+        { nodes, catalog }
+      ),
     });
     return draftNode;
   },
