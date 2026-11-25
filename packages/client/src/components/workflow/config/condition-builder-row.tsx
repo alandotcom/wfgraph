@@ -684,12 +684,16 @@ export function ConditionBuilderRow({
                     selectedFieldDef?.label ?? unavailableFieldLabel();
 
                   return (
-                    <div key={condition.id}>
-                      {/* One line per rule: the field and the value share the
-                          free width, the operator takes less, and the remove
-                          button keeps its own slot at the end. */}
-                      <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,3fr)_auto] items-center gap-2">
-                        <div className="flex min-w-0 items-center gap-2">
+                    <div className="@container/rule" key={condition.id}>
+                      {/* Where the rule has 28rem, one line per rule: the
+                          field and the value share the free width, the
+                          operator takes less, and the remove button keeps its
+                          own slot at the end. In a narrower details column the
+                          field takes the first line beside the remove button,
+                          and the operator and value share the second, so no
+                          slot shrinks past reading. */}
+                      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] items-center gap-2 @md/rule:grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,3fr)_auto]">
+                        <div className="col-span-2 flex min-w-0 items-center gap-2 @md/rule:col-span-1">
                           <ConditionFieldCombobox
                             disabled={disabled || availableFields.length === 0}
                             fields={availableFields}
@@ -816,6 +820,7 @@ export function ConditionBuilderRow({
 
                         <Button
                           aria-label={`Remove condition on ${conditionName}`}
+                          className="col-start-3 row-start-1 @md/rule:col-start-auto @md/rule:row-start-auto"
                           disabled={disabled}
                           onClick={() =>
                             removeConditionFromGroup(group.id, condition.id)
