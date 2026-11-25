@@ -174,6 +174,11 @@ function DesktopOverlayContainer() {
   // way the first one did. Focus already inside it, such as an autoFocus
   // field, stays where it is.
   useAfterPaint(currentItem?.id, () => {
+    // With the stack empty the dialog is playing its exit, and the focus trap
+    // has given focus back to the control that opened it.
+    if (!isOpen) {
+      return;
+    }
     const current = dialog?.querySelector(
       '[data-overlay-item]:not([aria-hidden="true"])'
     );
