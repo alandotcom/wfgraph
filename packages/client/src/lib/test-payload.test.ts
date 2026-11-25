@@ -6,6 +6,8 @@ import {
   nextTestPayloads,
   parseTestPayload,
   payloadFromFormValues,
+  samplePayload,
+  startingTestPayload,
   testPayloadFields,
 } from "#src/lib/test-payload";
 
@@ -226,5 +228,90 @@ describe("missingRequiredFields", () => {
         },
       })
     ).toEqual([]);
+  });
+});
+
+describe("samplePayload", () => {
+  const now = new Date("2026-11-25T10:00:00.000Z");
+
+  it("gives every addressable field a value its declared type accepts", () => {
+    expect(samplePayload(appointmentCreated, now)).toEqual({
+      appointment: {
+        id: "Sample Appointment ID",
+        startsAt: "2026-11-25T10:00:00.000Z",
+        seats: 1,
+        confirmed: true,
+        channel: "sms",
+      },
+    });
+  });
+
+  it("writes an address, a phone number or a URL where the key names one", () => {
+    const contact: EventMetadata = {
+      name: "app/contact.created",
+      label: "Contact created",
+      payloadFields: [
+        { path: "contact.email", type: "string" },
+        { path: "contact.phoneNumber", type: "string" },
+        { path: "contact.profileUrl", type: "string" },
+        { path: "contact.delay", type: "duration" },
+        { path: "contact.tags", type: "array" },
+      ],
+    };
+
+    expect(samplePayload(contact, now)).toEqual({
+      contact: {
+        email: "person@example.com",
+        phoneNumber: "+15555550100",
+        profileUrl: "https://example.com",
+        delay: "1h",
+        tags: [],
+      },
+    });
+  });
+});
+
+describe("startingTestPayload", () => {
+  const now = new Date("2026-11-25T10:00:00.000Z");
+
+  it("prefers the payload the workflow kept over a sample", () => {
+    expect(
+      startingTestPayload({
+        kept: { appointment: { id: "appt_1" } },
+        event: appointmentCreated,
+        now,
+      })
+    ).toEqual({ payload: { appointment: { id: "appt_1" } }, sample: false });
+  });
+
+  it("starts an Event the workflow kept nothing for on a sample", () => {
+    expect(
+      startingTestPayload({ kept: undefined, event: appointmentCreated, now })
+        .sample
+    ).toBe(true);
+  });
+
+  it("starts an Event-less run empty", () => {
+    expect(
+      startingTestPayload({ kept: undefined, event: undefined, now })
+    ).toEqual({ payload: {}, sample: false });
+  });
+});
+
+describe("payloadFromFormValues with a starting payload", () => {
+  // The dialog keeps the payload it opened with as the base, so a cleared
+  // field has to leave it, or the sample value would still be sent.
+  it("drops a field the form left blank from the base", () => {
+    const fields = testPayloadFields(appointmentCreated);
+    const base = samplePayload(appointmentCreated, new Date());
+
+    const payload = payloadFromFormValues(
+      fields,
+      { ...formValuesFromPayload(fields, base), "appointment.id": "" },
+      base
+    );
+
+    expect(payload).not.toHaveProperty(["appointment", "id"]);
+    expect(base).toHaveProperty(["appointment", "id"]);
   });
 });

@@ -20,6 +20,7 @@ import {
   missingRequiredFields,
   parseTestPayload,
   payloadFromFormValues,
+  startingTestPayload,
   type TestPayloadField,
   type TestPayloadFormValues,
   testPayloadFields,
@@ -272,18 +273,29 @@ export function RunOverlay({
   const [pane, setPane] = useState<"form" | "json">("form");
 
   const eventName = selectedEvent === NO_EVENT ? undefined : selectedEvent;
-  const savedPayload = testPayloadFor(savedPayloads, eventName);
 
   const selectedEventDefinition = eventName
     ? findEvent(catalog, eventName)
     : undefined;
   const fields = testPayloadFields(selectedEventDefinition);
 
+  /** The payload the dialog shows for an Event, kept or sample. */
+  const startFor = (name: string | undefined) =>
+    startingTestPayload({
+      kept: testPayloadFor(savedPayloads, name),
+      event: name ? findEvent(catalog, name) : undefined,
+      now: new Date(),
+    });
+  const [initial] = useState(() => startFor(eventName));
+  // Whether the payload on screen started as a sample rather than one the
+  // workflow kept from an earlier run.
+  const [isSample, setIsSample] = useState(initial.sample);
+
   const [values, setValues] = useState<TestPayloadFormValues>(() =>
-    formValuesFromPayload(fields, savedPayload)
+    formValuesFromPayload(fields, initial.payload)
   );
   const [jsonText, setJsonText] = useState(() =>
-    JSON.stringify(savedPayload ?? {}, null, 2)
+    JSON.stringify(initial.payload, null, 2)
   );
   const [jsonError, setJsonError] = useState<string | null>(null);
   // The required fields the last Run press found empty, and the sentence the
@@ -301,17 +313,18 @@ export function RunOverlay({
   // The form writes into the same payload the JSON pane holds, so a path with
   // no matching form field survives the round trip.
   const [basePayload, setBasePayload] = useState<JsonObject>(
-    () => savedPayload ?? {}
+    () => initial.payload
   );
 
   const chooseEvent = (next: string) => {
     setSelectedEvent(next);
     const chosen = next === NO_EVENT ? undefined : next;
-    const payload = testPayloadFor(savedPayloads, chosen) ?? {};
+    const { payload, sample } = startFor(chosen);
     const nextFields = testPayloadFields(
       chosen ? findEvent(catalog, chosen) : undefined
     );
 
+    setIsSample(sample);
     setValues(formValuesFromPayload(nextFields, payload));
     setJsonText(JSON.stringify(payload, null, 2));
     setBasePayload(payload);
@@ -508,6 +521,13 @@ export function RunOverlay({
               </Button>
             </div>
           </div>
+
+          {isSample ? (
+            <p className="text-muted-foreground text-xs">
+              Each field holds a sample value. Change any of them before you
+              run.
+            </p>
+          ) : null}
 
           {pane === "form" ? (
             <PayloadForm

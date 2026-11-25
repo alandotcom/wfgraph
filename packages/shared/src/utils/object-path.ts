@@ -102,3 +102,30 @@ export function setValueByPath(
   current[leaf] = value;
   return true;
 }
+
+/**
+ * Removes the value a dot-separated path names from a JSON object, leaving the
+ * objects the path walks through in place. The test-payload form calls it for a
+ * field left blank, so a value it started with, kept or sample, does not travel
+ * once the field is cleared. A path that names nothing changes nothing.
+ */
+export function removeValueByPath(target: JsonObject, path: string): void {
+  const segments = compact(path.trim().split("."));
+  const leaf = segments.pop();
+  if (!leaf) {
+    return;
+  }
+
+  let current = target;
+  for (const segment of segments) {
+    const next = Object.hasOwn(current, segment) ? current[segment] : undefined;
+    if (!isJsonObject(next)) {
+      return;
+    }
+    current = next;
+  }
+
+  if (Object.hasOwn(current, leaf)) {
+    delete current[leaf];
+  }
+}

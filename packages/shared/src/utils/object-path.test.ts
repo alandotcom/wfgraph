@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { JsonObject } from "#src/types/json";
-import { getValueByPath, setValueByPath } from "#src/utils/object-path";
+import {
+  getValueByPath,
+  removeValueByPath,
+  setValueByPath,
+} from "#src/utils/object-path";
 
 describe("getValueByPath", () => {
   it("refuses a malformed array index instead of reading its numeric prefix", () => {
@@ -33,5 +37,24 @@ describe("setValueByPath", () => {
       true
     );
     expect(target).toEqual({ order: { customer: { email: "a@b.test" } } });
+  });
+});
+
+describe("removeValueByPath", () => {
+  it("removes the leaf and keeps the objects above it", () => {
+    const target: JsonObject = { appointment: { id: "a", kind: "b" } };
+
+    removeValueByPath(target, "appointment.id");
+
+    expect(target).toEqual({ appointment: { kind: "b" } });
+  });
+
+  it("changes nothing for a path that names nothing", () => {
+    const target: JsonObject = { appointment: "a" };
+
+    removeValueByPath(target, "appointment.id");
+    removeValueByPath(target, "missing.id");
+
+    expect(target).toEqual({ appointment: "a" });
   });
 });

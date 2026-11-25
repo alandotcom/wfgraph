@@ -35,6 +35,7 @@ import { isSafeRecordPath } from "@wfgraph/shared/types/record-key";
 import { encodeIsoTimestamp } from "@wfgraph/shared/types/timestamp";
 import {
   getValueByPath,
+  removeValueByPath,
   setValueByPath,
 } from "@wfgraph/shared/utils/object-path";
 import { omitUndefined } from "@wfgraph/shared/utils/omit-undefined";
@@ -159,6 +160,86 @@ export function formValuesFromPayload(
 }
 
 /**
+ * A believable payload for one Event, built from the fields it declares, for a
+ * run dialog that has no payload the workflow kept. Each value is one the
+ * field's declared type accepts: the first enum value, `true`, `1`, `now` as a
+ * timestamp, one hour as a duration, and an empty list. A string gets an
+ * address, phone number or URL when its key names one, and otherwise the text
+ * "Sample" and the field's label. The catalog carries no example values and no
+ * string formats, so a string the Event checks more strictly than its type can
+ * still be refused. Paths the form cannot address, such as one into an array,
+ * are left out.
+ */
+export function samplePayload(event: EventMetadata, now: Date): JsonObject {
+  const payload: JsonObject = {};
+  for (const field of event.payloadFields) {
+    if (field.path.includes("[") || !isSafeRecordPath(field.path)) {
+      continue;
+    }
+    const value = sampleValue(field, now);
+    if (value !== undefined) {
+      setValueByPath(payload, field.path, value);
+    }
+  }
+  return payload;
+}
+
+/**
+ * The payload a run dialog opens with for one Event: the one the workflow kept
+ * from its last run, or else `samplePayload`. `sample` is true when the values
+ * are a sample, which the dialog says. An Event-less run with nothing kept
+ * opens empty.
+ */
+export function startingTestPayload(input: {
+  kept: JsonObject | undefined;
+  event: EventMetadata | undefined;
+  now: Date;
+}): { payload: JsonObject; sample: boolean } {
+  if (input.kept) {
+    return { payload: input.kept, sample: false };
+  }
+  const payload = input.event ? samplePayload(input.event, input.now) : {};
+  return { payload, sample: Object.keys(payload).length > 0 };
+}
+
+function sampleValue(field: ReferenceField, now: Date): JsonValue | undefined {
+  const [firstEnumValue] = field.enumValues ?? [];
+  if (firstEnumValue !== undefined) {
+    return firstEnumValue;
+  }
+  switch (field.type) {
+    case "boolean":
+      return true;
+    case "number":
+      return 1;
+    case "timestamp":
+      return encodeIsoTimestamp(now);
+    case "duration":
+      return "1h";
+    case "array":
+      return [];
+    case "object":
+      return undefined;
+    default:
+      return sampleText(field);
+  }
+}
+
+function sampleText(field: ReferenceField): string {
+  const key = field.path.split(".").at(-1) ?? field.path;
+  if (/email/i.test(key)) {
+    return "person@example.com";
+  }
+  if (/phone/i.test(key)) {
+    return "+15555550100";
+  }
+  if (/url|link/i.test(key)) {
+    return "https://example.com";
+  }
+  return `Sample ${referenceFieldLabel(field)}`;
+}
+
+/**
  * One typed value out of the text a control holds, or undefined where the field
  * was left blank. A blank field is an absent key rather than an empty string, so
  * an optional path stays absent and a required one is refused by the Event.
@@ -191,7 +272,8 @@ function coerce(field: TestPayloadField, text: string): JsonValue | undefined {
 /**
  * The payload the form describes, with each path nested where the Event declared
  * it. `base` carries whatever the JSON pane holds that the form has no field
- * for, so switching between the two panes loses nothing.
+ * for, so switching between the two panes loses nothing. A field left blank is
+ * removed from `base` too, so clearing it clears it.
  */
 export function payloadFromFormValues(
   fields: readonly TestPayloadField[],
@@ -202,7 +284,9 @@ export function payloadFromFormValues(
 
   for (const field of fields) {
     const value = coerce(field, values[field.path] ?? "");
-    if (value !== undefined) {
+    if (value === undefined) {
+      removeValueByPath(payload, field.path);
+    } else {
       setValueByPath(payload, field.path, value);
     }
   }

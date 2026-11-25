@@ -198,16 +198,19 @@ describe("RunOverlay", () => {
       target: { value: "appt_1" },
     });
     fireEvent.click(screen.getByLabelText(/^Kind/));
-    const option = screen.getByRole("option", {
-      name: "Appointment reminders",
-    });
+    const option = screen.getByRole("option", { name: "Follow-up" });
     fireEvent.pointerDown(option);
     fireEvent.click(option);
     fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
 
     expect(onRun).toHaveBeenCalledWith({
       eventName: "app/appointment.created",
-      input: { appointment: { id: "appt_1", kind: "appointmentReminders" } },
+      input: {
+        appointment: expect.objectContaining({
+          id: "appt_1",
+          kind: "followUp",
+        }),
+      },
     });
   });
 
@@ -223,7 +226,34 @@ describe("RunOverlay", () => {
 
     expect(onRun).toHaveBeenCalledWith({
       eventName: "app/appointment.created",
-      input: { appointment: { id: "appt_1" } },
+      input: { appointment: expect.objectContaining({ id: "appt_1" }) },
+    });
+  });
+
+  // A first run needs no typing: every declared field holds a value its type
+  // accepts, and the dialog says the values are a sample.
+  it("opens an Event the workflow kept nothing for on a sample", () => {
+    const { onRun } = renderOverlay();
+
+    expect(
+      screen.getByText(
+        "Each field holds a sample value. Change any of them before you run."
+      )
+    ).toBeTruthy();
+    expect(
+      screen.getByLabelText<HTMLInputElement>("Appointment ID").value
+    ).toBe("Sample Appointment ID");
+
+    fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
+    expect(onRun).toHaveBeenCalledWith({
+      eventName: "app/appointment.created",
+      input: {
+        appointment: {
+          id: "Sample Appointment ID",
+          kind: "appointmentReminders",
+          startsAt: expect.any(String),
+        },
+      },
     });
   });
 
@@ -239,6 +269,7 @@ describe("RunOverlay", () => {
     expect(
       screen.getByLabelText<HTMLInputElement>("Appointment ID").value
     ).toBe("appt_saved");
+    expect(screen.queryByText(/sample value/)).toBeNull();
   });
 
   // A graph that splits on the Event rejects an Event-less run, so the overlay
@@ -280,6 +311,9 @@ describe("RunOverlay", () => {
   it("names an empty required field and sends nothing", () => {
     const { onRun } = renderOverlay();
 
+    fireEvent.change(screen.getByLabelText("Appointment ID"), {
+      target: { value: "" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Run draft" }));
 
     expect(onRun).not.toHaveBeenCalled();
