@@ -2,6 +2,8 @@ import { useAtomValue, useSetAtom, useStore } from "jotai";
 import {
   ChevronDown,
   ChevronRight,
+  CircleX,
+  Clock,
   CornerDownRight,
   EyeOff,
   Group,
@@ -449,7 +451,7 @@ export function WorkflowOutline() {
           value={filter}
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pt-1 pb-3">
         {graph === null ? (
           <p className="px-3 py-3 text-muted-foreground text-sm">
             Open a run to see what it did at each step.
@@ -470,7 +472,7 @@ export function WorkflowOutline() {
             {shownSections.map((section) => (
               <div key={section.title} role="none">
                 <div
-                  className="px-3 pt-3 pb-1 font-medium text-muted-foreground text-xs"
+                  className="px-2 pt-2.5 pb-0.5 text-muted-foreground text-xs"
                   role="none"
                 >
                   {section.title}
@@ -526,6 +528,50 @@ export function WorkflowOutline() {
   );
 }
 
+/** Pixels of the row's own left padding, before any nesting. */
+const ROW_INSET_PX = 8;
+
+/**
+ * Pixels from a row's indent to its text: the number column, the glyph and
+ * the gaps between them. An outlet label and a note start their text here,
+ * so they line up with the labels of the rows under them.
+ */
+const TEXT_OFFSET_PX = 46;
+
+function indentPx(depth: number): number {
+  return ROW_INSET_PX + INDENT_PX * depth;
+}
+
+/**
+ * The control that folds a Group or a block. It sits in space the row already
+ * has, the Group's empty number slot or the gap before a label, so rows that
+ * cannot fold carry no column for it. The keyboard folds with Left and Right.
+ */
+function FoldToggle({
+  expanded,
+  onToggle,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <span
+      aria-hidden
+      className="flex size-3 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle();
+      }}
+    >
+      {expanded ? (
+        <ChevronDown className="size-3" />
+      ) : (
+        <ChevronRight className="size-3" />
+      )}
+    </span>
+  );
+}
+
 function OutlineRowView({
   row,
   active,
@@ -559,59 +605,31 @@ function OutlineRowView({
   onPoint: () => void;
   onToggle: () => void;
 }) {
-  const indent = { paddingLeft: 4 + INDENT_PX * row.depth };
-  const chevron =
-    expanded === undefined ? (
-      <span className="size-4 shrink-0" />
-    ) : (
-      <button
-        aria-hidden
-        className="flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted"
-        onClick={(event) => {
-          event.stopPropagation();
-          onToggle();
+  if (row.kind === "note" || row.kind === "outlet" || row.kind === "parallel") {
+    // A heading over the rows behind an outlet or an arm, or a line a run's
+    // outline folds rows into. Pressing a heading folds its block; the
+    // keyboard folds from the step that opens it.
+    const foldable = row.kind !== "note" && expanded !== undefined;
+    const text =
+      row.kind === "note"
+        ? row.text
+        : `${row.text}${row.kind === "outlet" && row.detail ? ` · ${row.detail}` : ""}${
+            expanded === false ? ` · ${stepsNoun(row.stepCount)}` : ""
+          }`;
+    return (
+      <div
+        className="flex min-h-5 cursor-default items-center gap-1 pt-1 pr-2 text-muted-foreground text-xs"
+        onClick={foldable ? onToggle : undefined}
+        role="none"
+        style={{
+          paddingLeft:
+            indentPx(row.depth) + TEXT_OFFSET_PX - (foldable ? 16 : 0),
         }}
-        tabIndex={-1}
-        type="button"
       >
-        {expanded ? (
-          <ChevronDown className="size-3" />
-        ) : (
-          <ChevronRight className="size-3" />
-        )}
-      </button>
-    );
-
-  if (row.kind === "note") {
-    return (
-      <div
-        className="flex h-6 items-center gap-1 pr-2 text-muted-foreground text-xs"
-        role="none"
-        style={indent}
-      >
-        <span className="size-4 shrink-0" />
-        <span className="ml-7 min-w-0 truncate font-medium">{row.text}</span>
-      </div>
-    );
-  }
-
-  if (row.kind === "outlet" || row.kind === "parallel") {
-    // A heading over the rows behind an outlet or an arm. Pressing it folds
-    // that block; the keyboard folds from the step that opens it.
-    const folded = expanded === false;
-    return (
-      <div
-        className="flex h-6 cursor-default items-center gap-1 pr-2 text-muted-foreground text-xs"
-        onClick={expanded === undefined ? undefined : onToggle}
-        role="none"
-        style={indent}
-      >
-        {chevron}
-        <span className="ml-7 min-w-0 truncate font-medium">
-          {row.text}
-          {row.kind === "outlet" && row.detail ? ` · ${row.detail}` : ""}
-          {folded ? ` · ${stepsNoun(row.stepCount)}` : ""}
-        </span>
+        {foldable ? (
+          <FoldToggle expanded={expanded ?? true} onToggle={onToggle} />
+        ) : null}
+        <span className="min-w-0 truncate">{text}</span>
       </div>
     );
   }
@@ -622,27 +640,30 @@ function OutlineRowView({
     },
     onFocus,
   };
+  const rowClass = cn(
+    "flex min-h-6 cursor-default items-center gap-1.5 rounded-md py-1 pr-2 text-xs outline-none",
+    "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+    selected
+      ? "bg-selection/10 shadow-[inset_2px_0_0_var(--selection)]"
+      : "hover:bg-muted"
+  );
 
   if (row.kind === "continues") {
     return (
       <div
         aria-level={row.depth + 1}
-        className={cn(
-          "flex h-7 cursor-default items-center gap-1 pr-2 text-muted-foreground text-sm outline-none",
-          "hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-        )}
+        className={cn(rowClass, "text-muted-foreground")}
         id={outlineRowElementId(row.key)}
         onClick={onChoose}
         onPointerEnter={onPoint}
         onPointerLeave={onLeave}
         role="treeitem"
-        style={indent}
+        style={{ paddingLeft: indentPx(row.depth) }}
         tabIndex={active ? 0 : -1}
         {...focusHandlers}
       >
-        <span className="size-4 shrink-0" />
-        <span className="w-6 shrink-0" />
-        <CornerDownRight aria-hidden className="size-4 shrink-0" />
+        <span className="w-5 shrink-0" />
+        <CornerDownRight aria-hidden className="size-3.5 shrink-0" />
         <span className="min-w-0 truncate">{row.text}</span>
       </div>
     );
@@ -654,31 +675,34 @@ function OutlineRowView({
       aria-expanded={expanded}
       aria-level={row.depth + 1}
       aria-selected={selected}
-      className={cn(
-        "flex h-7 cursor-default items-center gap-1 pr-2 text-sm outline-none",
-        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-        selected ? "bg-accent text-accent-foreground" : "hover:bg-muted",
-        muted && "opacity-60"
-      )}
+      className={rowClass}
       data-node-id={nodeRow.nodeId}
       id={outlineRowElementId(row.key)}
       onClick={onChoose}
       onPointerEnter={onPoint}
       onPointerLeave={onLeave}
       role="treeitem"
-      style={indent}
+      style={{ paddingLeft: indentPx(row.depth) }}
       tabIndex={active ? 0 : -1}
       {...focusHandlers}
     >
-      {chevron}
-      <span className="w-6 shrink-0 text-right text-muted-foreground text-xs tabular-nums">
-        {nodeRow.kind === "step" ? (nodeRow.number ?? "") : ""}
+      <span className="flex w-5 shrink-0 items-center justify-end text-muted-foreground tabular-nums">
+        {nodeRow.kind === "step" ? (
+          (nodeRow.number ?? "")
+        ) : nodeRow.kind === "group" && expanded !== undefined ? (
+          <FoldToggle expanded={expanded} onToggle={onToggle} />
+        ) : null}
       </span>
-      <span aria-hidden className="ml-1 flex size-4 shrink-0 items-center">
-        <RowGlyph row={nodeRow} />
+      <span aria-hidden className="flex size-3.5 shrink-0 items-center">
+        <RowGlyph outcome={outcome} row={nodeRow} />
       </span>
-      <span className="ml-1 min-w-0 flex-1 truncate">
-        <span className="font-medium">{nodeRow.label}</span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate",
+          muted && "text-muted-foreground"
+        )}
+      >
+        <span className={cn(!muted && "font-medium")}>{nodeRow.label}</span>
         {outcome ? (
           <span className={OUTCOME_TONE_CLASS[outcome.tone]}>
             {" "}
@@ -690,7 +714,7 @@ function OutlineRowView({
       </span>
       <RowEnd>
         {outcome?.time ? (
-          <span className="text-muted-foreground text-xs tabular-nums">
+          <span className="text-muted-foreground tabular-nums">
             {outcome.time}
           </span>
         ) : null}
@@ -722,23 +746,40 @@ function RowEnd({ children }: { children: ReactNode }) {
   return <span className="flex shrink-0 items-center gap-1">{children}</span>;
 }
 
-/** The glyph a row's card leads with on the canvas. */
-function RowGlyph({ row }: { row: OutlineNodeRow }) {
+/**
+ * The glyph a row's card leads with on the canvas. On a run, a step that
+ * failed or is waiting shows its status glyph in the status colour instead.
+ */
+function RowGlyph({
+  row,
+  outcome,
+}: {
+  row: OutlineNodeRow;
+  outcome: RunOutcome | undefined;
+}) {
   const catalog = useExtensionCatalog();
+  if (outcome?.tone === "failed") {
+    return <CircleX className="size-3.5 text-destructive" strokeWidth={2} />;
+  }
+  if (outcome?.tone === "waiting") {
+    return <Clock className="size-3.5 text-warning" strokeWidth={2} />;
+  }
   if (row.kind === "lifecycle") {
-    return <Play className="size-4 text-node-lifecycle" strokeWidth={1.5} />;
+    return <Play className="size-3.5 text-node-lifecycle" strokeWidth={1.5} />;
   }
   if (row.kind === "group") {
-    return <Group className="size-4 text-muted-foreground" strokeWidth={1.5} />;
+    return (
+      <Group className="size-3.5 text-muted-foreground" strokeWidth={1.5} />
+    );
   }
   if (row.actionType === undefined) {
-    return <Zap className="size-4 text-muted-foreground" strokeWidth={1.5} />;
+    return <Zap className="size-3.5 text-muted-foreground" strokeWidth={1.5} />;
   }
   return (
     <ProviderLogo
       actionType={row.actionType}
       catalog={catalog}
-      className="size-4"
+      className="size-3.5"
     />
   );
 }
