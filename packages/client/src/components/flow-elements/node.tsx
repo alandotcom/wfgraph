@@ -286,13 +286,18 @@ export const Node = ({
   <Card
     className={cn(
       // The resting border is heavier and darker than Card's hairline: a node is
-      // Paper on a Paper canvas, so this stroke is the whole card edge. Status
-      // still steps up to 2px below, so a run reads as a change in weight and
-      // not only in colour.
-      "node-container relative flex flex-col items-center justify-center gap-0 overflow-visible rounded-md border-[1.5px] border-canvas-line bg-card p-0 shadow-none transition-[background-color,border-color,opacity] duration-150 ease-out",
-      status === "success" && !testSkipped && "border-2 border-success",
-      status === "error" && "border-2 border-destructive",
-      status === "cancelled" && "border-2 border-cancelled",
+      // Paper on a Paper canvas, so this stroke is the whole card edge. It is
+      // held at 2px on screen as the canvas zooms out (`--canvas-stroke`), and
+      // status steps up to `--canvas-stroke-heavy`, so a run reads as a change
+      // in weight and not only in colour.
+      "node-container relative flex flex-col items-center justify-center gap-0 overflow-visible rounded-md border-(length:--canvas-stroke) border-canvas-line bg-card p-0 shadow-none transition-[background-color,border-color,opacity] duration-150 ease-out",
+      status === "success" &&
+        !testSkipped &&
+        "border-(length:--canvas-stroke-heavy) border-success",
+      status === "error" &&
+        "border-(length:--canvas-stroke-heavy) border-destructive",
+      status === "cancelled" &&
+        "border-(length:--canvas-stroke-heavy) border-cancelled",
       className
     )}
     data-selected={selected}

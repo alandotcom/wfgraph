@@ -190,7 +190,7 @@ function RegionHeader({
 
   return (
     <div
-      className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-t-lg border-canvas-line/60 border-b bg-muted px-3 font-medium"
+      className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-t-lg border-canvas-line/60 border-b bg-canvas-region px-3 font-medium"
       data-slot="group-region-header"
       style={{
         height: GROUP_REGION_HEADER_HEIGHT,
@@ -290,9 +290,10 @@ function GroupRegion({ data, selected, id }: GroupNodeProps) {
     >
       <div
         className={cn(
-          // A Wash tint behind a dashed Canvas Line border marks the region
-          // as a container without hiding the connections drawn inside it.
-          "group-node-container absolute rounded-lg border-[1.5px] border-canvas-line border-dashed bg-muted/40",
+          // A Canvas Region fill behind a dashed Canvas Line border marks the
+          // region as a container without hiding the connections drawn inside
+          // it. The border is held at 2px on screen like a card's.
+          "group-node-container absolute rounded-lg border-(length:--canvas-stroke) border-canvas-line border-dashed bg-canvas-region",
           runSummary?.status === "successful" && "border-success border-solid",
           runSummary?.status === "failed" && "border-destructive border-solid",
           runSummary?.status === "canceled" && "border-cancelled border-solid"
@@ -346,10 +347,13 @@ function CollapsedGroupCard({
         // Graphite Wash behind the Canvas Line border marks the one container
         // on the canvas, and the rule under the title separates its chrome
         // from the summary below.
-        "pointer-events-auto relative flex h-full w-full flex-col rounded-md border-[1.5px] border-canvas-line bg-muted shadow-none",
-        runSummary?.status === "successful" && "border-2 border-success",
-        runSummary?.status === "failed" && "border-2 border-destructive",
-        runSummary?.status === "canceled" && "border-2 border-cancelled",
+        "pointer-events-auto relative flex h-full w-full flex-col rounded-md border-(length:--canvas-stroke) border-canvas-line bg-muted shadow-none",
+        runSummary?.status === "successful" &&
+          "border-(length:--canvas-stroke-heavy) border-success",
+        runSummary?.status === "failed" &&
+          "border-(length:--canvas-stroke-heavy) border-destructive",
+        runSummary?.status === "canceled" &&
+          "border-(length:--canvas-stroke-heavy) border-cancelled",
         "group-node-container"
       )}
       data-card-form={tier}

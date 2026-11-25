@@ -214,6 +214,48 @@ describe("a step card's compact form", () => {
     expect(card.querySelector(".comparison-marker")?.textContent).toBe("M");
   });
 
+  it("holds its border, and a heavier run status border, at a width on screen at every zoom", () => {
+    for (const zoom of [0.34, 0.6, 1]) {
+      const resting = renderAtZoom({
+        card: (
+          <ActionNode
+            data={reminder}
+            id="resting"
+            type="action"
+            {...requiredNodeProps}
+          />
+        ),
+        zoom,
+      });
+      const failed = renderAtZoom({
+        card: (
+          <ActionNode
+            data={{ ...reminder, status: "error" }}
+            id="failed"
+            type="action"
+            {...requiredNodeProps}
+          />
+        ),
+        zoom,
+      });
+
+      // Both widths come from `--canvas-stroke` and `--canvas-stroke-heavy`,
+      // which divide by the live zoom, so neither thins as the canvas zooms
+      // out.
+      const restingCard = resting.view.getByTestId("action-node-resting");
+      const failedCard = failed.view.getByTestId("action-node-failed");
+      expect(restingCard.className).toContain(
+        "border-(length:--canvas-stroke)"
+      );
+      expect(failedCard.className).toContain(
+        "border-(length:--canvas-stroke-heavy)"
+      );
+      expect(failedCard.className).not.toMatch(/border-2|border-\[/);
+      resting.view.unmount();
+      failed.view.unmount();
+    }
+  });
+
   it("switches back to the full card once the zoom rises past the compact zoom", () => {
     const { view, setZoom } = renderAtZoom({
       card: (
@@ -295,6 +337,16 @@ describe("a Group on the canvas", () => {
 
   const header = (container: HTMLElement) =>
     container.querySelector<HTMLElement>("[data-slot='group-region-header']");
+
+  it("draws its region on the Canvas Region fill, with a dashed border held on screen", () => {
+    const { view } = renderGroup({ zoom: 0.34 });
+    const region = view.container.querySelector<HTMLElement>(
+      ".group-node-container"
+    );
+    expect(region?.className).toContain("bg-canvas-region");
+    expect(region?.className).toContain("border-(length:--canvas-stroke)");
+    expect(region?.className).toContain("border-dashed");
+  });
 
   it("draws in place as a region whose header names it, with its number", () => {
     const { view } = renderGroup({

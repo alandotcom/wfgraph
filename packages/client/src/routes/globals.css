@@ -58,6 +58,7 @@
      meaning, which a hairline `--border` misses by a wide margin on a white
      canvas. See DESIGN.md section 2. */
   --color-canvas-line: var(--canvas-line);
+  --color-canvas-region: var(--canvas-region);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   /* Run-status signals. A signal's text form clears 4.5:1 on Paper, Panel and
@@ -162,6 +163,10 @@
      `color-mix` toward the background, because mixing toward Paper lightens and
      mixing toward Void darkens, so one expression cannot serve both. */
   --canvas-line-muted: oklch(0.78 0 0);
+  /* A Group region's fill, one step below the 0.985 canvas so the region reads
+     as a place, and above nothing a card draws: Paper cards sit on it at
+     1.14:1. Its dashed Canvas Line border carries the boundary at 3:1. */
+  --canvas-region: oklch(0.955 0 0);
   /* The focus indicator, drawn at full strength as a 2px ring or outline. 3.95:1
      on Paper and 3.62:1 on Wash, over the 3:1 SC 1.4.11 asks of it. */
   --ring: oklch(0.6 0 0);
@@ -230,6 +235,9 @@
   --canvas-line: oklch(0.48 0 0);
   /* 2.01:1 on Void, the same step down from live that the light theme takes. */
   --canvas-line-muted: oklch(0.37 0 0);
+  /* A step up from Void and below the 0.205 card, so cards stay the lightest
+     thing in a region. */
+  --canvas-region: oklch(0.15 0 0);
   --ring: oklch(0.8 0 0);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -318,9 +326,11 @@
   }
 }
 
+/* One period of a live run's 5-on-5-off dash, held on screen as the dash is
+   (`heldDashes` in the canvas edge), so the march never jumps. */
 @keyframes dashdraw {
   from {
-    stroke-dashoffset: 10;
+    stroke-dashoffset: max(10px, calc(10px / var(--rf-zoom, 1)));
   }
   to {
     stroke-dashoffset: 0;
@@ -406,6 +416,20 @@
    `--canvas-line`, so they invert with the theme and sit at one weight: a wire
    and the card it lands on are the same kind of line, and neither should
    out-shout the other. */
+/* Canvas strokes held on screen. A stroke drawn in flow pixels shrinks with
+   the zoom, and a line under 2px on screen is anti-aliased across two pixels
+   at some positions, which blends Canvas Line toward the canvas: at the fitted
+   zoom a 2px wire measured 2.54:1 and a 1.5px card border 1.29:1. A line 2px
+   wide on screen always covers one whole pixel, so it reads at Canvas Line's
+   own 3.95:1 in light and 3.21:1 in dark. Each value is that many flow pixels,
+   and never under that many screen pixels while the canvas is zoomed out.
+   `--rf-zoom` is the live zoom the canvas publishes on the root element. */
+:root {
+  --canvas-stroke: max(2px, calc(2px / var(--rf-zoom, 1)));
+  /* A run status border, heavier than the resting border at every zoom. */
+  --canvas-stroke-heavy: max(3px, calc(3px / var(--rf-zoom, 1)));
+}
+
 .react-flow {
   --xy-edge-stroke-default: var(--canvas-line);
   --xy-edge-stroke-selected-default: var(--primary);

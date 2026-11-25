@@ -57,6 +57,26 @@ export function comparisonEdgeStyle(
   }
 }
 
+/**
+ * `px` flow pixels, and never under `px` pixels on screen while the canvas is
+ * zoomed out, read from the `--rf-zoom` the canvas publishes. A wire 2px wide
+ * on screen always covers a whole pixel, so it reads at Canvas Line's own
+ * contrast at every zoom.
+ */
+export function heldOnScreen(px: number): string {
+  return `max(${px}px, calc(${px}px / var(--rf-zoom, 1)))`;
+}
+
+/** A dash pattern such as "7, 4", with each length held like `heldOnScreen`. */
+export function heldDashes(pattern: string): string {
+  return pattern === "none"
+    ? pattern
+    : pattern
+        .split(",")
+        .map((length) => heldOnScreen(Number(length.trim())))
+        .join(", ");
+}
+
 const Animated = memo(function Animated({
   id,
   source,
@@ -132,10 +152,11 @@ const Animated = memo(function Animated({
               : inactive
                 ? "var(--canvas-line-muted)"
                 : (comparisonStyle.stroke ?? "var(--canvas-line)"),
-          strokeWidth: comparisonStyle.strokeWidth ?? 2,
-          strokeDasharray:
+          strokeWidth: heldOnScreen(comparisonStyle.strokeWidth ?? 2),
+          strokeDasharray: heldDashes(
             comparisonStyle.strokeDasharray ??
-            (taken ? "none" : inactive ? "4, 8" : "5"),
+              (taken ? "none" : inactive ? "4, 8" : "5")
+          ),
           animation: marches ? "dashdraw 0.5s linear infinite" : undefined,
         }}
       />
