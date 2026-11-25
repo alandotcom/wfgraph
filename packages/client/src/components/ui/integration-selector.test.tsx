@@ -121,6 +121,36 @@ describe("IntegrationSelector", () => {
     expect(trigger().textContent).toContain("Linear Testing");
   });
 
+  it("says a deleted connection is deleted and shows no other in its place", () => {
+    renderSelector({
+      value: "int_deleted",
+      connections: [connection("int_other", "Acme Linear")],
+    });
+
+    expect(trigger().textContent).toContain("Connection deleted");
+    expect(trigger().textContent).not.toContain("Acme Linear");
+    expect(trigger().getAttribute("aria-invalid")).toBe("true");
+    expect(
+      screen.getByText(
+        "This step's Linear connection was deleted. Choose another connection."
+      )
+    ).toBeTruthy();
+  });
+
+  it("says a deleted connection is deleted when none of its kind is left", () => {
+    renderSelector({ value: "int_deleted", connections: [] });
+
+    expect(trigger().textContent).toContain("Connection deleted");
+    expect(
+      screen.getByText(
+        "This step's Linear connection was deleted. Choose another connection."
+      )
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Open Connections" })
+    ).toBeTruthy();
+  });
+
   it("binds the node to the connection that was picked", () => {
     const { onChange } = renderSelector({
       value: undefined,

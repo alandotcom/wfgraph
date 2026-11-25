@@ -33,6 +33,9 @@ type IntegrationSelectorProps = {
  * Connections, so a node's configuration panel never manages the list it reads
  * from. That is also why nothing here refreshes the graph after a write: the
  * repair belongs to the surface that changes the list.
+ *
+ * A stored id naming no Connection of this type is a deleted Connection. The
+ * field says so and shows no Connection chosen until the person picks one.
  */
 export function IntegrationSelector({
   integrationType,
@@ -57,6 +60,14 @@ export function IntegrationSelector({
   const integrationLabel = catalogEntry?.label || integrationType;
   const nameOf = (integration: Integration) =>
     integration.name || `${integrationLabel} API Key`;
+  const deleted =
+    Boolean(value) &&
+    !integrations.some((integration) => integration.id === value);
+  const deletedNotice = deleted ? (
+    <p className="text-destructive text-xs">
+      {`This step's ${integrationLabel} connection was deleted. Choose another connection.`}
+    </p>
+  ) : null;
 
   // isPending is false the moment the cache holds anything, so a second
   // selector mounting alongside the first shows the list rather than a skeleton.
@@ -73,11 +84,18 @@ export function IntegrationSelector({
     return (
       <div className="space-y-1">
         <Select disabled items={[]} value={null}>
-          <SelectTrigger aria-label={`${integrationLabel} connection`} className="w-full">
-            <SelectValue placeholder="No connection" />
+          <SelectTrigger
+            aria-invalid={deleted || undefined}
+            aria-label={`${integrationLabel} connection`}
+            className="w-full"
+          >
+            <SelectValue
+              placeholder={deleted ? "Connection deleted" : "No connection"}
+            />
           </SelectTrigger>
           <SelectContent />
         </Select>
+        {deletedNotice}
         <p className="text-muted-foreground text-xs">
           {`No ${integrationLabel} connections are configured.`}
         </p>
@@ -102,25 +120,31 @@ export function IntegrationSelector({
   }));
 
   return (
-    <Select
-      disabled={disabled}
-      items={items}
-      onValueChange={whenChosen(onChange)}
-      value={value ?? null}
-    >
-      <SelectTrigger
-        aria-label={`${integrationLabel} connection`}
-        className="w-full"
+    <div className="space-y-1">
+      <Select
+        disabled={disabled}
+        items={items}
+        onValueChange={whenChosen(onChange)}
+        value={deleted ? null : (value ?? null)}
       >
-        <SelectValue placeholder="Choose a connection" />
-      </SelectTrigger>
-      <SelectContent>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+        <SelectTrigger
+          aria-invalid={deleted || undefined}
+          aria-label={`${integrationLabel} connection`}
+          className="w-full"
+        >
+          <SelectValue
+            placeholder={deleted ? "Connection deleted" : "Choose a connection"}
+          />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {deletedNotice}
+    </div>
   );
 }

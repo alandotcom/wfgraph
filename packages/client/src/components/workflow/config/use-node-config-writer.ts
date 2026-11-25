@@ -80,14 +80,13 @@ export function useNodeConfigWriter(nodeId: string | null) {
         );
       }
 
-      // Choosing an action is exactly when its connection can be settled, so
-      // read the connection list from the cache here rather than closing over a
+      // Choosing an action is exactly when its connection can be settled: a
+      // node with no connection takes the only one of the action's type. Read
+      // the connection list from the cache here rather than closing over a
       // render's copy of it. Creating a connection from a node calls this
       // through a callback the overlay stack froze at push time, and a list
       // captured before that write does not contain the connection the user
-      // just made: repairNodeIntegration would see an unknown id and either
-      // rebind the node to the older connection of that type or, with none,
-      // clear it.
+      // just made.
       //
       // An entry that has never been fetched is not an empty connection list,
       // and the repair cannot tell them apart, so leave the node alone.

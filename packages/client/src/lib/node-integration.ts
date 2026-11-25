@@ -56,18 +56,20 @@ export function requiredIntegrationType(
  * An action node with its `integrationId` reconciled against `integrations`.
  *
  * The rule, deliberately conservative about guessing:
- * - the stored id still exists for the required integration: leave it alone
- * - exactly one connection of the right kind: select it, because there is no
- *   choice to put to the user
- * - no connections of the right kind: clear the id, so the node reports itself
- *   as needing a connection rather than pointing at nothing
- * - two or more: clear a stale id, because picking one would be picking for the
- *   user
+ * - a stored id is left alone, including one naming a Connection that no
+ *   longer exists. The step then says its Connection was deleted, the issue
+ *   list reports it, and Publish refuses it. Putting another Connection in its
+ *   place would send the step's work through credentials nobody chose for it.
+ * - no stored id and exactly one connection of the right kind: select it,
+ *   because there is no choice to put to the user
+ * - `chosen`, a Connection the person just created to fill the steps that need
+ *   its type, replaces a blank or deleted id on those steps
  */
 export function repairNodeIntegration<T extends WorkflowNode>(
   catalog: ExtensionCatalog,
   node: T,
-  integrations: readonly IntegrationLike[]
+  integrations: readonly IntegrationLike[],
+  chosen?: IntegrationLike
 ): T {
   const actionType = readConfigString(node.data.config, ACTION_TYPE_CONFIG_KEY);
   if (!actionType) {
@@ -83,28 +85,26 @@ export function repairNodeIntegration<T extends WorkflowNode>(
     node.data.config,
     "integrationId"
   );
-  if (
-    currentIntegrationId &&
-    integrations.some(
-      (integration) =>
-        integration.id === currentIntegrationId &&
-        integration.type === integrationType
-    )
-  ) {
+  const currentExists = integrations.some(
+    (integration) =>
+      integration.id === currentIntegrationId &&
+      integration.type === integrationType
+  );
+  if (chosen?.type === integrationType && !currentExists) {
+    return chosen.id === currentIntegrationId
+      ? node
+      : withIntegrationId(node, chosen.id);
+  }
+  if (currentIntegrationId) {
     return node;
   }
 
   const candidates = integrations.filter(
     (integration) => integration.type === integrationType
   );
-
-  if (candidates.length === 1) {
-    return withIntegrationId(node, candidates[0].id);
-  }
-  if (currentIntegrationId) {
-    return withIntegrationId(node, undefined);
-  }
-  return node;
+  return candidates.length === 1
+    ? withIntegrationId(node, candidates[0].id)
+    : node;
 }
 
 function repairLifecycleConnections<T extends WorkflowNode>(
@@ -198,7 +198,8 @@ function sameConnectionIds(
 export function repairNodeIntegrations<T extends WorkflowNode>(
   catalog: ExtensionCatalog,
   nodes: T[],
-  integrations: readonly IntegrationLike[]
+  integrations: readonly IntegrationLike[],
+  chosen?: IntegrationLike
 ): T[] {
   return mapOrSame(nodes, (node) => {
     const isEventWait =
@@ -210,7 +211,7 @@ export function repairNodeIntegrations<T extends WorkflowNode>(
       ? repairLifecycleConnections(catalog, node, integrations)
       : isEventWait
         ? repairWaitConnections(catalog, node, integrations)
-        : repairNodeIntegration(catalog, node, integrations);
+        : repairNodeIntegration(catalog, node, integrations, chosen);
   });
 }
 

@@ -188,7 +188,9 @@ export function StepBrowse({ subject, frame, openFocus }: RevealBodyProps) {
             Connection:{" "}
             {connection
               ? connection.name || `${integration.label} API Key`
-              : "Not set"}
+              : connectionId && connections
+                ? "Deleted"
+                : "Not set"}
           </p>
         ) : null}
         {/* Browse shows the action's links as well as Focus, since following

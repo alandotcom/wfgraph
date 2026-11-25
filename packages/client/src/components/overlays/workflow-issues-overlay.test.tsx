@@ -75,6 +75,40 @@ describe("repairIntegrationsAtom", () => {
       "int_linear"
     );
   });
+
+  // The Add on a Missing Connections row creates a Connection for the steps it
+  // names, so it replaces a deleted Connection, which the plain repair keeps.
+  it("binds a step whose connection was deleted only to the connection created for it", () => {
+    const store = createStore();
+    const deletedConnectionNode: WorkflowNode = {
+      ...unboundNode,
+      data: {
+        ...unboundNode.data,
+        config: { actionType: ACTION, integrationId: "int_deleted" },
+      },
+    };
+    store.set(loadWorkflowGraphAtom, {
+      nodes: [deletedConnectionNode],
+      edges: [],
+    });
+
+    store.set(repairIntegrationsAtom, {
+      integrations: [{ id: "int_linear", type: "linear" }],
+      catalog: linearCatalog,
+    });
+    expect(store.get(nodesAtom)[0]?.data.config?.integrationId).toBe(
+      "int_deleted"
+    );
+
+    store.set(repairIntegrationsAtom, {
+      integrations: [{ id: "int_linear", type: "linear" }],
+      catalog: linearCatalog,
+      chosen: { id: "int_linear", type: "linear" },
+    });
+    expect(store.get(nodesAtom)[0]?.data.config?.integrationId).toBe(
+      "int_linear"
+    );
+  });
 });
 
 describe("workflowIssueCount", () => {
@@ -354,40 +388,6 @@ describe("WorkflowIssuesOverlay", () => {
     expect(onGoToStep).toHaveBeenCalledWith("lifecycle", undefined);
   });
 
-  it("gives direct recovery actions for fields that were not verified", () => {
-    const onGoToStep = vi.fn();
-    const { getByRole, getByText } = renderIssues(
-      issuesModel({
-        totalIssues: 1,
-        unverifiedProviderFields: [
-          {
-            nodeId: "create",
-            nodeLabel: "Create issue",
-            fields: [{ fieldKey: "fields", fieldLabel: "Fields" }],
-          },
-        ],
-      }),
-      { onGoToStep }
-    );
-
-    expect(
-      getByText(
-        "The Connection did not respond, so these fields were not verified."
-      )
-    ).toBeTruthy();
-    expect(
-      getByText("Reconnect the Connection in Settings to verify them again.")
-    ).toBeTruthy();
-    fireEvent.click(
-      getByRole("button", { name: "Review Fields in Create issue" })
-    );
-    expect(onGoToStep).toHaveBeenCalledWith("create", "fields");
-  });
-
-  it("opens the rules of a Condition testing a path several steps offer", () => {
-    const onGoToStep = vi.fn();
-    const message =
-      'Node "Route" tests score, which "Lifecycle" and "Score" all offer, and reads it from "Score". Pick the field again to name the step it comes from.';
   it("tells an empty required field from one that cannot be read", () => {
     const onGoToStep = vi.fn();
     const { getByRole, getByText } = renderIssues(
@@ -425,6 +425,40 @@ describe("WorkflowIssuesOverlay", () => {
     expect(onGoToStep).toHaveBeenCalledWith("wait", "waitDuration");
   });
 
+  it("gives direct recovery actions for fields that were not verified", () => {
+    const onGoToStep = vi.fn();
+    const { getByRole, getByText } = renderIssues(
+      issuesModel({
+        totalIssues: 1,
+        unverifiedProviderFields: [
+          {
+            nodeId: "create",
+            nodeLabel: "Create issue",
+            fields: [{ fieldKey: "fields", fieldLabel: "Fields" }],
+          },
+        ],
+      }),
+      { onGoToStep }
+    );
+
+    expect(
+      getByText(
+        "The Connection did not respond, so these fields were not verified."
+      )
+    ).toBeTruthy();
+    expect(
+      getByText("Reconnect the Connection in Settings to verify them again.")
+    ).toBeTruthy();
+    fireEvent.click(
+      getByRole("button", { name: "Review Fields in Create issue" })
+    );
+    expect(onGoToStep).toHaveBeenCalledWith("create", "fields");
+  });
+
+  it("opens the rules of a Condition testing a path several steps offer", () => {
+    const onGoToStep = vi.fn();
+    const message =
+      'Node "Route" tests score, which "Lifecycle" and "Score" all offer, and reads it from "Score". Pick the field again to name the step it comes from.';
     const { getByRole, getByText } = renderIssues(
       issuesModel({
         totalIssues: 1,

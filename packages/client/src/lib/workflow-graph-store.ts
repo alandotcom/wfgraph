@@ -154,12 +154,13 @@ type CopiedClipboard = {
 const copiedSelectionAtom = atom<CopiedClipboard | null>(null);
 
 /**
- * Point every node at a connection that exists, given the list as it stands now.
+ * Reconcile every node's connection references with the list as it stands now.
  *
  * Called from the handlers that already know the connection list changed, which
  * is the only moment a stored id can newly have gone stale while the editor is
- * open. `repairNodeIntegrations` returns the same array when nothing needed
- * fixing, so the common case writes nothing and queues no save.
+ * open. `chosen` is a Connection the person just created for the steps that
+ * need its type. `repairNodeIntegrations` returns the same array when nothing
+ * needed fixing, so the common case writes nothing and queues no save.
  */
 export const repairIntegrationsAtom = atom(
   null,
@@ -169,6 +170,7 @@ export const repairIntegrationsAtom = atom(
     input: {
       integrations: readonly { id: string; type: string }[];
       catalog: ExtensionCatalog;
+      chosen?: { id: string; type: string } | undefined;
     }
   ) => {
     if (!draftEditable(get)) {
@@ -179,7 +181,8 @@ export const repairIntegrationsAtom = atom(
     const repaired = repairNodeIntegrations(
       input.catalog,
       currentNodes,
-      input.integrations
+      input.integrations,
+      input.chosen
     );
 
     if (repaired === currentNodes) {

@@ -83,26 +83,35 @@ afterEach(() => {
 });
 
 describe("IntegrationsManager", () => {
-  it("repairs the open graph when a connection is deleted here", async () => {
-    // Settings is the only place a connection is created, edited or deleted, so
-    // it is also the only place left that can point a node away from one that
-    // has just stopped existing.
+  it("leaves a step on its deleted connection rather than moving it to another", async () => {
+    // Settings deletes a connection and then reconciles the open graph. A step
+    // bound to the deleted connection keeps that id, so it says the connection
+    // was deleted, even when exactly one other connection of the kind is left.
     const store = createStore();
     store.set(loadWorkflowGraphAtom, { nodes: [boundNode], edges: [] });
 
+    const otherConnection: Integration = {
+      ...connection,
+      id: "int_linear_other",
+      name: "Acme Linear",
+    };
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    queryClient.setQueryData(integrationsQueryOptions().queryKey, [connection]);
+    queryClient.setQueryData(integrationsQueryOptions().queryKey, [
+      connection,
+      otherConnection,
+    ]);
     installAuthorizationGrantsForTests(WfGraphOperationIds);
 
-    // The delete lands, and every read of the list after it comes back empty.
+    // The delete lands, and every read of the list after it holds the other
+    // connection alone.
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
         if (url.includes("/api/rpc/integration/getAll")) {
-          return new Response(JSON.stringify({ json: [] }), {
+          return new Response(JSON.stringify({ json: [otherConnection] }), {
             headers: { "content-type": "application/json" },
           });
         }
@@ -131,7 +140,7 @@ describe("IntegrationsManager", () => {
       await screen.findByRole("button", { name: /Delete Linear Testing/ })
     );
 
-    const confirm = await screen.findByRole("button", { name: /^Delete/ });
+    const confirm = await screen.findByRole("button", { name: "Delete" });
     await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
     await act(async () => {
       fireEvent.click(confirm);
@@ -139,9 +148,17 @@ describe("IntegrationsManager", () => {
 
     await waitFor(() => {
       expect(
-        store.get(nodesAtom)[0]?.data.config?.integrationId
-      ).toBeUndefined();
+        queryClient
+          .getQueryData(integrationsQueryOptions().queryKey)
+          ?.map((entry) => entry.id)
+      ).toEqual(["int_linear_other"]);
     });
+    // Let the reconciliation that follows the refreshed list finish.
+    await act(async () => {});
+
+    expect(store.get(nodesAtom)[0]?.data.config?.integrationId).toBe(
+      "int_linear"
+    );
   });
 
   it("orders two connections that share a label by connection name", async () => {

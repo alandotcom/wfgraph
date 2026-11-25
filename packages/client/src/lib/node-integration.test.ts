@@ -122,29 +122,54 @@ describe("repairNodeIntegration", () => {
     expect(repaired.data.config?.integrationId).toBe("int_twilio");
   });
 
-  it("clears an id when no connection of that kind is left", () => {
+  // A deleted Connection's id stays, so the step can say its Connection was
+  // deleted and Publish refuses it. Another Connection never takes its place.
+  it.each([
+    ["no connection of that kind is left", [slackConnection]],
+    ["exactly one other connection would fit", [twilioConnection]],
+    [
+      "several connections would fit",
+      [twilioConnection, otherTwilioConnection],
+    ],
+  ])("keeps a deleted connection's id when %s", (_case, integrations) => {
     const node = actionNode({
       actionType: "twilio/send-sms",
       integrationId: "int_deleted",
     });
 
-    const repaired = repairNodeIntegration(served, node, [slackConnection]);
-
-    expect(repaired.data.config?.integrationId).toBeUndefined();
+    expect(repairNodeIntegration(served, node, integrations)).toBe(node);
   });
 
-  it("clears a stale id when more than one connection would fit", () => {
+  it("puts a connection just created for the step in place of a deleted one", () => {
     const node = actionNode({
       actionType: "twilio/send-sms",
       integrationId: "int_deleted",
     });
 
-    const repaired = repairNodeIntegration(served, node, [
-      twilioConnection,
-      otherTwilioConnection,
-    ]);
+    const repaired = repairNodeIntegration(
+      served,
+      node,
+      [twilioConnection, otherTwilioConnection],
+      otherTwilioConnection
+    );
 
-    expect(repaired.data.config?.integrationId).toBeUndefined();
+    expect(repaired.data.config?.integrationId).toBe("int_twilio_2");
+  });
+
+  it("leaves a working connection alone when another is created", () => {
+    const node = actionNode({
+      actionType: "twilio/send-sms",
+      integrationId: "int_twilio",
+    });
+
+    expect(
+      repairNodeIntegration(
+        served,
+        node,
+        [twilioConnection, otherTwilioConnection],
+        otherTwilioConnection
+      )
+    ).toBe(node);
   });
 
   it("returns the same object when the stored id is still valid", () => {
@@ -158,15 +183,13 @@ describe("repairNodeIntegration", () => {
     expect(repairNodeIntegration(served, node, [twilioConnection])).toBe(node);
   });
 
-  it("clears a stored id that exists for the wrong integration type", () => {
+  it("keeps a stored id that exists for the wrong integration type", () => {
     const node = actionNode({
       actionType: "twilio/send-sms",
       integrationId: "int_slack",
     });
 
-    const repaired = repairNodeIntegration(served, node, [slackConnection]);
-
-    expect(repaired.data.config?.integrationId).toBeUndefined();
+    expect(repairNodeIntegration(served, node, [slackConnection])).toBe(node);
   });
 
   it("leaves a node with no action type alone", () => {
@@ -209,18 +232,15 @@ describe("repairNodeIntegrations", () => {
       { actionType: "twilio/send-sms", integrationId: "int_twilio" },
       "node_1"
     );
-    const stale = actionNode(
-      { actionType: "twilio/send-sms", integrationId: "int_gone" },
-      "node_2"
-    );
+    const unbound = actionNode({ actionType: "twilio/send-sms" }, "node_2");
 
     const repaired = repairNodeIntegrations(
       served,
-      [healthy, stale],
+      [healthy, unbound],
       [twilioConnection]
     );
 
-    expect(repaired).not.toBe([healthy, stale]);
+    expect(repaired).not.toBe([healthy, unbound]);
     expect(repaired[0]).toBe(healthy);
     expect(repaired[1].data.config?.integrationId).toBe("int_twilio");
   });

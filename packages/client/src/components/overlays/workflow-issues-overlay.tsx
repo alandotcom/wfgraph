@@ -67,10 +67,14 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
     push(ConfigureConnectionOverlay, {
       type: integrationType,
       // The repair is what clears the issue. One integration type is listed
-      // once here however many nodes need it, so the fix is the graph rather
-      // than any one node, and the write's own list refresh leaves each node's
-      // stored id as it was.
-      onSuccess: () => void repairAgainstConnectionList(),
+      // once here however many nodes need it, so the new Connection goes to
+      // every step of that type with no Connection or a deleted one.
+      onSuccess: (integrationId: string) => {
+        void repairAgainstConnectionList({
+          id: integrationId,
+          type: integrationType,
+        });
+      },
     });
   };
 
@@ -362,7 +366,9 @@ export function WorkflowIssuesOverlay(props: WorkflowIssuesOverlayProps) {
                       key={`${node.nodeId}-${field.fieldKey}`}
                     >
                       <p className="min-w-0 flex-1 text-muted-foreground text-sm">
-                        {field.fieldLabel}
+                        {field.unreadable
+                          ? `${field.fieldLabel} cannot be read`
+                          : `${field.fieldLabel} is missing`}
                       </p>
                       <Button
                         aria-label={`Edit ${field.fieldLabel} in ${node.nodeLabel}`}

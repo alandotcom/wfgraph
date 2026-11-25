@@ -8,8 +8,10 @@ import { WfGraphOperations } from "@wfgraph/shared/authorization/operations";
 import { repairIntegrationsAtom } from "#src/lib/workflow-graph-store";
 
 /**
- * Keep every Action, Lifecycle, and Wait binding in the open graph pointed at a
- * connection that exists after a write changes the connection list.
+ * Reconcile every Action, Lifecycle, and Wait binding in the open graph with
+ * the connection list after a write changes it. An Action step keeps the id of
+ * a deleted Connection, so it reports the deletion; `chosen` is a Connection
+ * the person just created to fill the steps that need its type.
  *
  * Every place that creates or deletes a connection while a graph is on screen
  * calls this. Refreshing the list on its own leaves each node's stored
@@ -25,13 +27,17 @@ export function useConnectionRepair() {
   const catalog = useExtensionCatalog();
   const repairIntegrations = useSetAtom(repairIntegrationsAtom);
 
-  return useCallback(async () => {
-    if (!can(WfGraphOperations.integrationGetAll.id)) {
-      return;
-    }
-    repairIntegrations({
-      integrations: await queryClient.query(integrationsQueryOptions()),
-      catalog,
-    });
-  }, [queryClient, repairIntegrations, catalog]);
+  return useCallback(
+    async (chosen?: { id: string; type: string }) => {
+      if (!can(WfGraphOperations.integrationGetAll.id)) {
+        return;
+      }
+      repairIntegrations({
+        integrations: await queryClient.query(integrationsQueryOptions()),
+        catalog,
+        chosen,
+      });
+    },
+    [queryClient, repairIntegrations, catalog]
+  );
 }
