@@ -4,9 +4,9 @@
  *
  * One file, because only the server imports it. The editor gets this plugin's
  * metadata as JSON over `/api/extensions`, so nothing here reaches a browser
- * bundle and the system client below costs the browser nothing. The icon is the
- * exception, because a React component cannot be serialized: it stays in
- * `ui.ts`, which only the browser imports.
+ * bundle and the GraphQL client in `client.ts` costs the browser nothing. The
+ * icon is the exception, because a React component cannot be serialized: it
+ * stays in `ui.ts`, which only the browser imports.
  */
 
 import {

@@ -110,9 +110,9 @@ describe("testLinear", () => {
     });
   });
 
-  // A request that never arrived has no HTTP status to report, so the transport
-  // error is the whole story. The viewer query is a read, so it is retried, and
-  // the case waits out that schedule on the real clock.
+  // A request that never arrived has no HTTP status to report, so the result
+  // carries the transport's message alone. The viewer query is a read, so it
+  // is retried, and the case waits out that schedule on the real clock.
   it("reports a request that never arrived", async () => {
     stubFetch(() => {
       throw new Error("ECONNREFUSED");

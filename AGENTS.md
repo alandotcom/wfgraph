@@ -442,7 +442,7 @@ core entry points.
 into one file with esbuild, and esbuild wraps the target of an `import()` it bundles, along
 with every module that target imports statically, in a lazy initializer. The wrapping
 reaches the `effect` modules that target shares with the rest of the bundle, so the Worker
-grows and starts slower, and esbuild can no longer tree-shake what the target pulled in.
+grows and starts slower, and esbuild cannot tree-shake what the target pulled in.
 Nothing reachable from `@wfgraph/core/worker` or from an integration entry of
 `@wfgraph/plugins` uses `import()`: import a module statically, and give an optional
 dependency an entry of its own, the way `@wfgraph/core/inngest` holds the Inngest SDK.

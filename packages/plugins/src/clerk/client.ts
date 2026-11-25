@@ -69,7 +69,7 @@ export function describeClerkFailure(error: ExternalError): string {
   }
 
   const firstMessage = readClerkError(error.payload)?.errors[0]?.message;
-  return firstMessage ? firstMessage : String(error.status);
+  return firstMessage || String(error.status);
 }
 
 function requestClerk<S extends Schema.ConstraintDecoder<unknown>>(

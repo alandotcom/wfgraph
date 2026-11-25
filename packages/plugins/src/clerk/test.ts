@@ -45,8 +45,8 @@ export async function testClerk(
 
   const { failure } = result;
 
-  // A request that never arrived has no HTTP status to report, so the transport
-  // error is the whole story.
+  // A request that never arrived has no HTTP status to report, so the result
+  // carries the transport's message alone.
   if (failure._tag === "ExternalUnreachable") {
     return {
       success: false,

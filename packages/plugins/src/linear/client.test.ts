@@ -342,8 +342,7 @@ describe("listLinearIssues", () => {
 
       yield* listLinearIssues(API_KEY, {});
 
-      expect(yield* readBody()).toMatchObject({ variables: { first: 50 } });
-      expect(Object.keys((yield* readBody()).variables)).toEqual(["first"]);
+      expect((yield* readBody()).variables).toEqual({ first: 50 });
     }).pipe(withTransport)
   );
 });

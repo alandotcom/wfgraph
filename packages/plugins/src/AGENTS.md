@@ -64,7 +64,8 @@ calls answer an `Effect` a step yields directly. Twilio's client is the one to c
 retry policy is stated once, above `RETRY_ATTEMPTS`, and the executor's run-level retry is
 the outer policy beyond it.
 
-An SDK earns its place only where it carries protocol logic worth borrowing. `svix` is the
+A vendor SDK belongs here only when it implements protocol logic, such as signature
+verification, that an integration would otherwise have to write itself. `svix` is the
 one vendor dependency this package has: `resend/webhook.ts` uses it to verify the signature
 on a Resend webhook. Every call to a vendor's API goes through `callExternal`. A new vendor
 dependency has to fit under the integration's byte ceiling in
