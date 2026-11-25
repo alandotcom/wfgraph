@@ -1,8 +1,9 @@
 /**
  * Requests other surfaces make of Canvas Reveal: place nodes in the usable
- * rectangle, place the subject again after a resize, and focus an element of a
- * node's Focus body. The canvas camera answers each placement once; the Reveal
- * shell clears a field request once it has focused the field.
+ * rectangle, place the subject again after a resize, focus an element of a
+ * node's Focus body, and focus Reveal's title. The canvas camera answers each
+ * placement once; the Reveal shell clears a field or title request once it has
+ * moved focus.
  */
 
 import { atom } from "jotai";
@@ -45,3 +46,10 @@ export const revealKeyResizeInProgressAtom = atom(false);
 export type RevealFieldRequest = { nodeId: string; targetId: string };
 
 export const revealFieldRequestAtom = atom<RevealFieldRequest | null>(null);
+
+/**
+ * A node whose Canvas Reveal title takes focus once Reveal shows that node. A
+ * surface that selects a step and then closes, such as the command palette,
+ * asks for this, because the control that had focus is gone.
+ */
+export const revealTitleFocusRequestAtom = atom<string | null>(null);

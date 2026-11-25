@@ -1,5 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useAtomValueRawSync, useSetAtom, useStore } from "jotai";
+import {
+  useAtom,
+  useAtomValue,
+  useAtomValueRawSync,
+  useSetAtom,
+  useStore,
+} from "jotai";
 import { ChevronLeft } from "lucide-react";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { DeleteConfirmDialog } from "#src/components/delete-confirm-dialog";
@@ -27,7 +33,10 @@ import {
 import { RevealHeader, type RevealHeaderControls } from "./reveal-header";
 import { REVEAL_INSET, revealWidth } from "./reveal-geometry";
 import { revealKind } from "./reveal-kinds";
-import { revealFieldRequestAtom } from "./reveal-requests";
+import {
+  revealFieldRequestAtom,
+  revealTitleFocusRequestAtom,
+} from "./reveal-requests";
 import { RevealResizeHandle } from "./reveal-resize-handle";
 import { rememberedRevealWidthAtom } from "./reveal-width-preference";
 import { useInspectorScroll } from "./use-inspector-scroll";
@@ -60,6 +69,9 @@ export function CanvasReveal() {
   const navigate = useNavigate({ from: "/workflows/$workflowId" });
   const fieldRequest = useAtomValue(revealFieldRequestAtom);
   const setFieldRequest = useSetAtom(revealFieldRequestAtom);
+  const [titleFocusRequest, setTitleFocusRequest] = useAtom(
+    revealTitleFocusRequestAtom
+  );
   const { hasOverlays } = useOverlay();
   const navigation = useRevealNavigation();
   const canvasWidth = useRevealCanvasWidth();
@@ -181,6 +193,22 @@ export function CanvasReveal() {
       element?.focus({ preventScroll: true });
       element?.scrollIntoView?.({ block: "center" });
       adoptScroll();
+    }
+  );
+
+  // A title request is answered once Reveal shows the node it names, after
+  // the palette or menu that asked has given focus back.
+  useAfterPaint(
+    `${titleFocusRequest ?? ""}|${subject?.key ?? ""}|${level}`,
+    () => {
+      if (
+        titleFocusRequest !== null &&
+        level !== "closed" &&
+        subject?.nodeId === titleFocusRequest
+      ) {
+        setTitleFocusRequest(null);
+        titleRef.current?.focus({ preventScroll: true });
+      }
     }
   );
 

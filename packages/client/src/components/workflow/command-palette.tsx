@@ -16,7 +16,7 @@ import { Autocomplete } from "@base-ui/react/autocomplete";
 import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import type { BaseUIEvent } from "@base-ui/react/types";
 import { compact, partition, uniq } from "es-toolkit/array";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom, useStore } from "jotai";
 import { ChevronLeft, Search } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -37,6 +37,7 @@ import {
   DialogTitle,
 } from "#src/components/ui/dialog";
 import { ActionIcon } from "#src/components/workflow/config/action-grid";
+import { revealTitleFocusRequestAtom } from "#src/components/workflow/canvas-reveal/reveal-requests";
 import { useAddStep } from "#src/components/workflow/use-add-step";
 import { useTopologyAuthoring } from "#src/components/workflow/canvas-interaction";
 import { useFocusWorkflowNode } from "#src/components/workflow/use-focus-workflow-node";
@@ -56,6 +57,7 @@ import {
   commandPaletteRefusalAtom,
   openCommandPaletteAtom,
 } from "#src/lib/command-palette-store";
+import { rankPaletteGroups } from "#src/lib/palette-search";
 import { stepGroups, stepSearchText } from "#src/lib/step-types";
 import {
   WorkflowCommandIcon,
@@ -65,6 +67,7 @@ import {
   canvasEditingLockedAtom,
   displayNodesAtom,
 } from "#src/lib/workflow-graph-store";
+import { activeSelectionAtom } from "#src/lib/workflow-workspace-navigation";
 import { currentWorkflowIdAtom } from "#src/lib/workflow-save-store";
 import {
   findAction,
@@ -96,8 +99,9 @@ type PaletteGroup = {
 };
 
 /**
- * Module-level so Base UI's filter keeps one identity across renders. It reads
- * the keywords rather than the label, which is how "delay" finds Wait.
+ * Module-level so Base UI keeps one identity across renders. The palette ranks
+ * and filters the rows itself with `rankPaletteGroups`, which reads the label
+ * and the keywords, so "delay" still finds Wait.
  */
 function itemKeywords(item: PaletteItem): string {
   return item.keywords;
@@ -238,10 +242,10 @@ export function CommandPalette({ commands }: CommandPaletteProps) {
   useAfterCommit(workflowId, () => setPalette(null));
 
   // Capture phase for the same reason Cmd+S takes it one level up: a focused
-  // field on the canvas would otherwise see the chord first. A text field the
-  // user is typing in keeps it, which is the rule Cmd+Enter follows -- except
-  // while the palette is up, where the field holding focus is the palette's own
-  // and the chord toggles it shut.
+  // field on the canvas would otherwise see the chord first. The chord opens
+  // the palette from a text field too, since a field has no Cmd+K of its own.
+  // While the palette is up the chord toggles it shut, and while another dialog
+  // or a menu is open the chord does nothing.
   //
   // Shift and Alt are excluded rather than ignored: ⌘⇧K and ⌘⌥K are other
   // people's chords, and swallowing them here would take a browser or OS
@@ -298,6 +302,10 @@ function CommandPaletteDialog({
   const focusNode = useFocusWorkflowNode();
   const addStep = useAddStep();
   const topologyAuthoring = useTopologyAuthoring();
+  const store = useStore();
+  // The palette's search box is gone once a row is chosen, so a row that
+  // selects a step asks Canvas Reveal to put focus on the step's title.
+  const focusRevealTitle = useSetAtom(revealTitleFocusRequestAtom);
   const hintsId = useId();
   const pageId = useId();
 
@@ -327,6 +335,10 @@ function CommandPaletteDialog({
 
   const onStepPage = page.id === "add-step";
   const onFindNodePage = page.id === "find-node";
+  // The root searches step types too, as its placeholder says, once something
+  // is typed. At rest it lists commands only, and "Add step" leads to the types.
+  const searchesStepTypes =
+    onStepPage || (page.id === "root" && palette.query !== "");
   // Held apart from `page` so the memo below depends on the position itself
   // rather than on the state object a keystroke replaces.
   const stepAt: CanvasPosition | undefined =
@@ -339,14 +351,14 @@ function CommandPaletteDialog({
    * dependency list that never matched -- a cost with nothing bought.
    */
   const stepPageGroups = useMemo((): readonly PaletteGroup[] => {
-    if (!onStepPage) {
+    if (!searchesStepTypes) {
       return NO_GROUPS;
     }
     return stepGroups(selectableActions(catalog)).map((group) => ({
       id: group.category,
       label: group.category,
       items: group.actions.map((action) => ({
-        id: action.id,
+        id: `step:${action.id}`,
         label: action.label,
         detail: action.description,
         keywords: stepSearchText(action),
@@ -359,17 +371,24 @@ function CommandPaletteDialog({
         icon: <ActionIcon action={action} className="size-3.5" />,
         select: () => {
           addStep({ actionType: action.id, at: stepAt });
+          // A step that was added is the one selection.
+          const [added, ...others] = store.get(activeSelectionAtom).nodeIds;
+          if (added !== undefined && others.length === 0) {
+            focusRevealTitle(added);
+          }
           setPalette(null);
         },
       })),
     }));
   }, [
-    onStepPage,
+    searchesStepTypes,
     stepAt,
     catalog,
     editingLocked,
     topologyAuthoring,
     addStep,
+    store,
+    focusRevealTitle,
     setPalette,
   ]);
 
@@ -415,12 +434,20 @@ function CommandPaletteDialog({
             if (
               focusNode({ nodeId: node.id, workflowId: palette.workflowId })
             ) {
+              focusRevealTitle(node.id);
               setPalette(null);
             }
           },
         };
       });
-  }, [catalog, displayNodes, focusNode, palette.workflowId, setPalette]);
+  }, [
+    catalog,
+    displayNodes,
+    focusNode,
+    focusRevealTitle,
+    palette.workflowId,
+    setPalette,
+  ]);
 
   const rootPageGroups: readonly PaletteGroup[] = [
     { id: "steps", label: "Steps" },
@@ -483,16 +510,25 @@ function CommandPaletteDialog({
         ? rootPageGroups
         : [
             ...rootPageGroups,
+            {
+              id: "step-types",
+              label: "Add step",
+              items: stepPageGroups.flatMap((group) => group.items),
+            },
             { id: "nodes", label: "Nodes", items: nodeItems },
           ];
   }
 
+  // A query ranks the rows it matches, so a row the query names comes first
+  // and Return takes it. Within that order the rows that send go last.
   const groups =
-    palette.query === "" ? authoredGroups : authoredGroups.map(plainRowsFirst);
+    palette.query === ""
+      ? authoredGroups
+      : rankPaletteGroups(authoredGroups, palette.query).map(plainRowsFirst);
 
   // An empty list is two different facts, and the reader is owed the right one:
   // a query that matched nothing, or a surface with no node types in it at all.
-  const hasAnyItem = countItems(groups) > 0;
+  const hasAnyItem = countItems(authoredGroups) > 0;
 
   /**
    * What a screen reader is told the palette is showing. It changes when the
@@ -581,8 +617,9 @@ function CommandPaletteDialog({
         </p>
         <Autocomplete.Root
           autoHighlight="always"
+          filteredItems={groups}
           inline
-          items={groups}
+          items={authoredGroups}
           itemToStringValue={itemKeywords}
           onItemHighlighted={(item, details) => {
             // One rule for every event, so a pointer highlight disarms what an
@@ -678,13 +715,13 @@ function CommandPaletteDialog({
                 ? "Step types"
                 : page.id === "find-node"
                   ? "Nodes"
-                  : "Commands and nodes"
+                  : "Commands, step types, and nodes"
             }
             className="max-h-[min(24rem,50vh)] overflow-y-auto overscroll-contain p-1"
           >
             {(group: PaletteGroup) => (
               <Autocomplete.Group items={group.items} key={group.id}>
-                <Autocomplete.GroupLabel className="px-2 pt-2 pb-1 font-medium text-[0.625rem] text-muted-foreground uppercase tracking-wider">
+                <Autocomplete.GroupLabel className="px-2 pt-2 pb-1 font-medium text-muted-foreground text-xs">
                   {group.label}
                 </Autocomplete.GroupLabel>
                 <Autocomplete.Collection>
@@ -716,7 +753,7 @@ function CommandPaletteDialog({
                         )}
                       </span>
                       {item.hint && (
-                        <span className="shrink-0 text-[0.625rem] text-muted-foreground tracking-widest">
+                        <span className="shrink-0 text-muted-foreground text-xs">
                           {item.hint}
                         </span>
                       )}
@@ -731,7 +768,7 @@ function CommandPaletteDialog({
               who has them on screen. */}
           <div
             aria-hidden="true"
-            className="flex items-center justify-end gap-3 border-t px-3 py-1.5 text-[0.625rem] text-muted-foreground"
+            className="flex items-center justify-end gap-3 border-t px-3 py-1.5 text-muted-foreground text-xs"
           >
             <span>↵ to choose</span>
             <span>esc to {canGoBack ? "go back" : "close"}</span>

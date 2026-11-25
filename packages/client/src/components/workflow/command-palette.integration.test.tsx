@@ -204,9 +204,8 @@ describe("the command palette", () => {
     );
   });
 
-  // The same rule Cmd+Enter follows: a chord is not worth a keystroke taken out
-  // of a field somebody is typing in.
-  it("leaves Cmd+K alone while a text field has focus", async () => {
+  // A text field has no Cmd+K of its own, so the palette opens from one.
+  it("opens on Cmd+K while a text field has focus", async () => {
     const { findByRole } = renderChrome(ToolbarActions);
     await findByRole("button", { name: "Publish" });
 
@@ -215,7 +214,55 @@ describe("the command palette", () => {
     pressCommandK(field);
     field.remove();
 
+    expect(paletteInput()).not.toBeNull();
+  });
+
+  // An open dialog owns the keyboard, so the palette does not open over it.
+  it("leaves Cmd+K alone while another dialog is open", async () => {
+    const { findByRole } = renderChrome(ToolbarActions);
+    await findByRole("button", { name: "Publish" });
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    pressCommandK();
+    dialog.remove();
+
     expect(paletteInput()).toBeNull();
+  });
+
+  it("highlights the command a query names ahead of one that mentions it", async () => {
+    const rendered = renderChrome(ToolbarActions, {
+      state: {
+        publication: {
+          isPublished: true,
+          hasUnpublishedChanges: true,
+          publishedVersionId: "version_1",
+          publishedVersion: 1,
+          publishedAt: "2026-08-23T15:00:00.000Z",
+        },
+      },
+    });
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "publish" } });
+
+    const publish = rendered.getByRole("option", { name: "Publish workflow" });
+    expect(publish.hasAttribute("data-highlighted")).toBe(true);
+    expect(rendered.getAllByRole("option")[0]).toBe(publish);
+  });
+
+  it("finds a step type from the root page", async () => {
+    const rendered = renderChrome(ToolbarActions, {
+      catalog: ONE_ACTION_CATALOG,
+    });
+    const input = await openedPalette(rendered);
+
+    fireEvent.change(input, { target: { value: "wait" } });
+
+    expect(rendered.getByText("Add step", { selector: "div" })).toBeTruthy();
+    expect(rendered.getAllByRole("option")[0]?.textContent).toContain("Wait");
   });
 
   /**
@@ -234,7 +281,9 @@ describe("the command palette", () => {
     expect(
       getByRole("combobox", { name: "Search commands, step types, and nodes" })
     ).toBeTruthy();
-    expect(getByRole("listbox", { name: "Commands and nodes" })).toBeTruthy();
+    expect(
+      getByRole("listbox", { name: "Commands, step types, and nodes" })
+    ).toBeTruthy();
     // Base UI asks for a close inside every modal popup, for the touch screen
     // reader that has no Escape key and cannot reach the backdrop.
     expect(getByRole("button", { name: "Close command palette" })).toBeTruthy();
