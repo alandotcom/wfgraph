@@ -75,6 +75,12 @@ export function editorShortcutLabels(onApple: boolean): EditorShortcutLabels {
 /** The key that opens the shortcut reference from outside a text field. */
 export const SHORTCUT_REFERENCE_KEY = "?";
 
+/**
+ * The keys that collapse and show the editor's outline and details columns
+ * from outside a text field.
+ */
+export const COLUMN_SHORTCUT_KEYS = { outline: "[", details: "]" } as const;
+
 /** One row of the shortcut reference: what it does, and each key that does it. */
 export type ShortcutEntry = {
   readonly label: string;
@@ -125,6 +131,14 @@ export function shortcutReference(
         { label: "Undo", keys: [keys.undo] },
         { label: "Redo", keys: [keys.redo] },
         { label: "Open or close Canvas Reveal", keys: [keys.reveal] },
+        {
+          label: "Collapse or show the outline",
+          keys: [COLUMN_SHORTCUT_KEYS.outline],
+        },
+        {
+          label: "Collapse or show details",
+          keys: [COLUMN_SHORTCUT_KEYS.details],
+        },
         { label: "Go back one level in Canvas Reveal", keys: ["Esc"] },
       ],
     },

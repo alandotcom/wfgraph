@@ -9,6 +9,9 @@ import {
 import { Button } from "#src/components/ui/button";
 import { ExecutionOverlaySync } from "#src/components/workflow/execution-overlay-sync";
 import { RunStatusProjection } from "#src/components/workflow/run-status-projection";
+import { EditorColumns } from "#src/components/workflow/columns/editor-columns";
+import { DetailsColumn } from "#src/components/workflow/details/details-column";
+import { OutlineColumn } from "#src/components/workflow/outline/outline-column";
 import { ReviewSheet } from "#src/components/workflow/review/review-sheet";
 import { WorkflowCanvas } from "#src/components/workflow/workflow-canvas";
 import { WorkflowDraftSync } from "#src/components/workflow/workflow-draft-sync";
@@ -157,39 +160,37 @@ const WorkflowEditor = () => {
           )}
 
           <WorkflowToolbar workflowId={currentWorkflowId ?? undefined} />
-          {/* The canvas column: graph in the middle, status strip below. The
-              toolbar is above this column so its centred search control
-              measures the editor shell. */}
+          {/* The columns, with the status strip below. The toolbar is above
+              this column so its centred search control measures the editor
+              shell. */}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {/* This box is bounded by the column rather than by the graph inside
-              it: React Flow measures whatever height it is given.
-
-              The floor is what stops the two `shrink-0` rows around it from
-              eating the canvas, and it yields on a short viewport rather than
-              pushing the strip past the shell's clip. The `min()` measures the
-              viewport rather than this box, and whatever is left over the shell
-              clips, which is a far better failure than handing React Flow a
-              parent of zero height. */}
-            <div className="relative min-h-[min(20rem,40dvh)] flex-1">
-              <MobileRevealCovered>
-                <WorkflowCanvas canEdit={canUpdate} />
-                {/* The agent belongs to the canvas rather than the editor shell.
-                  This keeps its card above the status strip while the graph
-                  remains visible behind it. */}
-                {currentWorkflowId && isAgentEnabled() && (
-                  <AgentPanel workflowId={currentWorkflowId} />
-                )}
-              </MobileRevealCovered>
-              {/* Canvas Reveal floats over the canvas, so opening it changes
-                the camera's usable rectangle and never the canvas size. */}
-              <CanvasReveal />
-              {/* Below `md` the Draft inspector is a sequence of sheets over
-                the same canvas box. */}
-              <MobileReveal />
-              {/* The review sheet takes Canvas Reveal's place while it is
-                open, and covers the screen below `md`. */}
-              <ReviewSheet />
-            </div>
+            <EditorColumns
+              canvas={
+                <>
+                  <MobileRevealCovered>
+                    <WorkflowCanvas canEdit={canUpdate} />
+                    {/* The agent belongs to the canvas rather than the editor
+                      shell. This keeps its card above the status strip while
+                      the graph remains visible behind it. */}
+                    {currentWorkflowId && isAgentEnabled() && (
+                      <AgentPanel workflowId={currentWorkflowId} />
+                    )}
+                  </MobileRevealCovered>
+                  {/* Canvas Reveal floats over the canvas, so opening it
+                    changes the camera's usable rectangle and never the canvas
+                    size. */}
+                  <CanvasReveal />
+                  {/* Below `md` the Draft inspector is a sequence of sheets
+                    over the same canvas box. */}
+                  <MobileReveal />
+                  {/* The review sheet takes Canvas Reveal's place while it is
+                    open, and covers the screen below `md`. */}
+                  <ReviewSheet />
+                </>
+              }
+              details={<DetailsColumn />}
+              outline={<OutlineColumn />}
+            />
             <WorkflowStatusStrip workflowId={currentWorkflowId ?? undefined} />
           </div>
         </div>
