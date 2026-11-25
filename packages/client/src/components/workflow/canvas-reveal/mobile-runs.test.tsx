@@ -638,7 +638,9 @@ describe("mobile Runs accessibility", () => {
     expect(region().classList.contains("mobile-reveal")).toBe(true);
     expect(sheetTitle()?.tagName).toBe("H2");
 
-    const topology = /Delete|Duplicate|Group steps|Ungroup|Add step|Tidy/;
+    // Delete all runs removes run history, which the Runs list offers.
+    const topology =
+      /^Delete(?! all runs$)|Duplicate|Group steps|Ungroup|Add step|Tidy/;
     expect(
       within(region()).queryAllByRole("button", { name: topology })
     ).toEqual([]);
